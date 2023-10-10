@@ -41,8 +41,8 @@ YCQL has a number of features that are not present in Cassandra, as summarized i
 | [Strongly consistent with RAFT replication](../../architecture/docdb-replication/replication/#raft-replication) | Enables strong consistency across replicas |
 | [Fast transactions](../../architecture/transactions/distributed-txns/) | Single round-trip distributed transactions |
 | [Native JSONB support](../../api/ycql/type_jsonb)| Enables document data modelling like MongoDB |
-| Fast and consistent Secondary Indexes | Immediately consistent indexes with point lookups (no fan-out) |
-| Secondary indexes with JSONB datatype | Flexibility in data model without compromising efficiency and consistency |
+| [Fast and consistent Secondary Indexes](../../explore/indexes-constraints/secondary-indexes-ycql) | Immediately consistent indexes with point lookups (no fan-out) |
+| [Secondary indexes with JSONB datatype](../../explore/indexes-constraints/secondary-indexes-with-jsonb-ycql) | Efficient reads with consistency and flexibility in data model |
 
 ## Learn more
 

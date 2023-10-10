@@ -184,17 +184,17 @@ struct RocksDBPriorityThreadPoolMetrics {
 //     std::make_shared<rocksdb::RocksDBPriorityThreadPoolMetrics>(
 //          ROCKSDB_PRIORITY_THREAD_POOL_METRICS_INSTANCE(metric_entity));
 #define ROCKSDB_TASK_METRICS_INSTANCE(entity, name) { \
-    entity->FindOrCreateGauge(&BOOST_PP_CAT(METRIC_, \
+    entity->FindOrCreateMetric<AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
         BOOST_PP_CAT(name, _tasks_added)), uint64_t(0)), \
-    entity->FindOrCreateGauge(&BOOST_PP_CAT(METRIC_, \
+    entity->FindOrCreateMetric<AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
         BOOST_PP_CAT(name, _tasks_removed)), uint64_t(0)), \
-    entity->FindOrCreateGauge(&BOOST_PP_CAT(METRIC_, \
+    entity->FindOrCreateMetric<AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
         BOOST_PP_CAT(name, _input_files_added)), uint64_t(0)), \
-    entity->FindOrCreateGauge(&BOOST_PP_CAT(METRIC_, \
+    entity->FindOrCreateMetric<AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
         BOOST_PP_CAT(name, _input_files_removed)), uint64_t(0)), \
-    entity->FindOrCreateGauge(&BOOST_PP_CAT(METRIC_, \
+    entity->FindOrCreateMetric<AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
         BOOST_PP_CAT(name, _input_bytes_added)), uint64_t(0)), \
-    entity->FindOrCreateGauge(&BOOST_PP_CAT(METRIC_, \
+    entity->FindOrCreateMetric<AtomicGauge<uint64_t>>(&BOOST_PP_CAT(METRIC_, \
         BOOST_PP_CAT(name, _input_bytes_removed)), uint64_t(0)) \
 }
 

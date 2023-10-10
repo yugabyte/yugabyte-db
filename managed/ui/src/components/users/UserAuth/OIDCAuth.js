@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import * as Yup from 'yup';
 import clsx from 'clsx';
 import { trimStart, trimEnd, isString } from 'lodash';
@@ -10,7 +10,7 @@ import { Formik, Form, Field } from 'formik';
 import { YBFormInput, YBButton, YBModal, YBToggle } from '../../common/forms/fields';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import OIDCMetadataModal from './OIDCMetadataModal';
-import { setSSO } from '../../../config';
+import { setSSO, setShowJWTTokenInfo } from '../../../config';
 import WarningIcon from '../icons/warning_icon';
 
 const VALIDATION_SCHEMA = Yup.object().shape({
@@ -28,7 +28,8 @@ const OIDC_FIELDS = [
   'discoveryURI',
   'oidcProviderMetadata',
   'oidcScope',
-  'oidcEmailAttribute'
+  'oidcEmailAttribute',
+  'showJWTInfoOnLogin'
 ];
 
 const TOAST_OPTIONS = { autoClose: 1750 };
@@ -44,9 +45,11 @@ export const OIDCAuth = (props) => {
   } = props;
   const [showToggle, setToggleVisible] = useState(false);
   const [dialog, showDialog] = useState(false);
+  const [showJWTTokenToggle, setShowJWTTokenToggle] = useState(false);
   const [oidcEnabled, setOIDC] = useState(false);
   const [OIDCMetadata, setOIDCMetadata] = useState(null);
   const [showMetadataModel, setShowMetadataModal] = useState(false);
+  let submitAction = undefined;
 
   const transformData = (values) => {
     const escStr = values.oidcProviderMetadata
@@ -68,6 +71,25 @@ export const OIDCAuth = (props) => {
     return s;
   };
 
+  const resetFormValues = () => {
+    const oidcFields = OIDC_FIELDS.map((ef) => `${OIDC_PATH}.${ef}`);
+    const oidcConfigs = configEntries.filter((config) => oidcFields.includes(config.key));
+    const formData = oidcConfigs.reduce((fData, config) => {
+      const [, key] = config.key.split(`${OIDC_PATH}.`);
+      fData[key] = '';
+      if (key === 'showJWTInfoOnLogin') {
+        fData[key] = false;
+      }
+      return fData;
+    }, {});
+
+    const finalFormData = {
+      ...formData
+    };
+
+    return finalFormData;
+  };
+
   const initializeFormValues = () => {
     const oidcFields = OIDC_FIELDS.map((ef) => `${OIDC_PATH}.${ef}`);
     const oidcConfigs = configEntries.filter((config) => oidcFields.includes(config.key));
@@ -78,6 +100,9 @@ export const OIDCAuth = (props) => {
         fData[key] = escapedStr ? JSON.stringify(JSON.parse(escapedStr), null, 2) : '';
       } else {
         fData[key] = escapeStr(config.value);
+      }
+      if (key === 'showJWTInfoOnLogin') {
+        fData[key] = config.value === 'true';
       }
       return fData;
     }, {});
@@ -155,7 +180,12 @@ export const OIDCAuth = (props) => {
       key: `${OIDC_PATH}.use_oauth`,
       value: 'false'
     });
+    await setRunTimeConfig({
+      key: `${OIDC_PATH}.showJWTInfoOnLogin`,
+      value: 'false'
+    });
     setSSO(false);
+    setShowJWTTokenInfo(false);
     fetchRunTimeConfigs();
     toast.warn(`OIDC authentication is disabled`, TOAST_OPTIONS);
   };
@@ -164,6 +194,10 @@ export const OIDCAuth = (props) => {
     const oidcConfig = configEntries.find((config) =>
       config.key.includes(`${OIDC_PATH}.use_oauth`)
     );
+    const isOIDCEnhancementEnabled =
+      configEntries.find((c) => c.key === `${OIDC_PATH}.oidc_feature_enhancements`).value ===
+      'true';
+    setShowJWTTokenToggle(isOIDCEnhancementEnabled);
     setToggleVisible(!!oidcConfig);
     setOIDC(escapeStr(oidcConfig?.value) === 'true');
   }, [configEntries, setToggleVisible, setOIDC]);
@@ -191,7 +225,7 @@ export const OIDCAuth = (props) => {
               <b>Note!</b>{' '}
               {
                 "By disabling OIDC users won't be able to login with your current\
-            authentication provider. Are you sure"
+            authentication provider. Are you sure?"
               }
             </div>
           </div>
@@ -203,9 +237,13 @@ export const OIDCAuth = (props) => {
           initialValues={initializeFormValues()}
           enableReinitialize
           onSubmit={(values, { setSubmitting, resetForm }) => {
-            saveOIDCConfigs(values);
-            setSubmitting(false);
-            resetForm(values);
+            if (submitAction === 'submit') {
+              saveOIDCConfigs(values);
+              setSubmitting(false);
+              resetForm(values);
+            } else if (submitAction === 'clear') {
+              resetForm(resetFormValues());
+            }
           }}
         >
           {({ handleSubmit, setFieldValue, isSubmitting, dirty, values }) => {
@@ -238,6 +276,14 @@ export const OIDCAuth = (props) => {
                 </div>
               </OverlayTrigger>
             );
+
+            const displayJWTToggled = async (event) => {
+              await setRunTimeConfig({
+                key: `${OIDC_PATH}.showJWTInfoOnLogin`,
+                value: `${event.target.checked}`
+              });
+              setShowJWTTokenInfo(event.target.checked);
+            };
 
             const renderOIDCMetadata = () => {
               return (
@@ -409,6 +455,42 @@ export const OIDCAuth = (props) => {
                   </Col>
                 </Row>
 
+                {showJWTTokenToggle && (
+                  <Row key="oidc_show_jwt_attribute">
+                    <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
+                      <Row className="ua-field-row">
+                        <Col className="ua-label-c">
+                          <div>
+                            Display JWT token on login&nbsp;
+                            <YBInfoTip
+                              title="Display JWT token on login"
+                              content="Option to display button to retrieve the JWT token"
+                            >
+                              <i className="fa fa-info-circle" />
+                            </YBInfoTip>
+                          </div>
+                        </Col>
+                        <Col lg={12} className="ua-field">
+                          <Field name="showJWTInfoOnLogin">
+                            {({ field }) => (
+                              <YBToggle
+                                name="showJWTInfoOnLogin"
+                                onToggle={displayJWTToggled}
+                                input={{
+                                  value: field.value,
+                                  onChange: field.onChange
+                                }}
+                                isReadOnly={isDisabled}
+                                defaultChecked={false}
+                              />
+                            )}
+                          </Field>
+                        </Col>
+                      </Row>
+                    </Col>
+                  </Row>
+                )}
+
                 <Row key="oidc_provider_meta">
                   <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
                     <Row className="ua-field-row">
@@ -438,8 +520,22 @@ export const OIDCAuth = (props) => {
                     <YBButton
                       btnText="Save"
                       btnType="submit"
+                      onClick={() => {
+                        submitAction = 'submit';
+                        handleSubmit();
+                      }}
                       disabled={isSubmitting || isDisabled || isSaveDisabled}
                       btnClass="btn btn-orange pull-right"
+                    />
+                    <YBButton
+                      btnText="Clear"
+                      btnType="submit"
+                      onClick={() => {
+                        submitAction = 'clear';
+                        handleSubmit();
+                      }}
+                      disabled={isSubmitting || isDisabled}
+                      btnClass="btn btn-orange pull-right clear-btn"
                     />
                   </Col>
                 </Row>

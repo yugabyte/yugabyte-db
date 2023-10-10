@@ -5,7 +5,7 @@ description: Using Liquibase with YugabyteDB
 menu:
   preview_integrations:
     identifier: liquibase
-    parent: integrations
+    parent: schema-migration
     weight: 571
 type: docs
 ---

@@ -41,6 +41,9 @@
 
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+#include "yb_ysql_conn_mgr_helper.h"
 
 /*
  * Version of the catalog entries in the relcache and catcache.
@@ -64,6 +67,11 @@
 #define YB_CATCACHE_VERSION_UNINITIALIZED (0)
 
 /*
+ * Check if (const char *)FLAG is non-empty.
+ */
+#define IS_NON_EMPTY_STR_FLAG(flag) (flag != NULL && flag[0] != '\0')
+
+/*
  * Utility to get the current cache version that accounts for the fact that
  * during a DDL we automatically apply the pending syscatalog changes to
  * the local cache (of the current session).
@@ -82,7 +90,8 @@ extern void YbResetCatalogCacheVersion();
 
 extern uint64_t YbGetLastKnownCatalogCacheVersion();
 
-extern uint64_t YbGetCatalogCacheVersionForTablePrefetching();
+extern YBCPgLastKnownCatalogVersionInfo
+YbGetCatalogCacheVersionForTablePrefetching();
 
 extern void YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version);
 
@@ -103,11 +112,6 @@ extern GeolocationDistance get_tablespace_distance (Oid tablespaceoid);
  * YBIsEnabledInPostgresEnvVar function might be more appropriate.
  */
 extern bool IsYugaByteEnabled();
-
-/*
- * Check whether the connection is made from Ysql Connection Manager.
- */
-extern bool YbIsClientYsqlConnMgr();
 
 extern bool yb_enable_docdb_tracing;
 extern bool yb_read_from_followers;
@@ -176,8 +180,6 @@ extern bool IsRealYBColumn(Relation rel, int attrNum);
  */
 extern bool IsYBSystemColumn(int attrNum);
 
-extern bool YBNeedRetryAfterCacheRefresh(ErrorData *edata);
-
 extern void YBReportFeatureUnsupported(const char *err_msg);
 
 extern AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation);
@@ -187,6 +189,10 @@ extern AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid);
 extern int YBAttnumToBmsIndex(Relation rel, AttrNumber attnum);
 
 extern AttrNumber YBBmsIndexToAttnum(Relation rel, int idx);
+
+extern int YBAttnumToBmsIndexWithMinAttr(AttrNumber minattr, AttrNumber attnum);
+
+extern AttrNumber YBBmsIndexToAttnumWithMinAttr(AttrNumber minattr, int idx);
 
 /*
  * Get primary key columns as bitmap set of a table for real YB columns.
@@ -441,6 +447,12 @@ extern bool yb_enable_expression_pushdown;
 extern bool yb_enable_distinct_pushdown;
 
 /*
+ * Enables index aggregate pushdown (IndexScan only, not IndexOnlyScan).
+ * If true, request aggregated results from DocDB when possible.
+ */
+extern bool yb_enable_index_aggregate_pushdown;
+
+/*
  * YSQL guc variable that is used to enable the use of Postgres's selectivity
  * functions and YSQL table statistics.
  * e.g. 'SET yb_enable_optimizer_statistics = true'
@@ -487,9 +499,20 @@ extern bool yb_enable_sequence_pushdown;
 extern bool yb_disable_wait_for_backends_catalog_version;
 
 /*
+ * Enables YB cost model for Sequential and Index scans
+ */
+extern bool yb_enable_base_scans_cost_model;
+
+/*
  * Total timeout for waiting for backends to have up-to-date catalog version.
  */
 extern int yb_wait_for_backends_catalog_version_timeout;
+
+/*
+ * If true, we will always prefer batched nested loop join plans over nested
+ * loop join plans.
+ */
+extern bool yb_prefer_bnl;
 
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
@@ -536,6 +559,18 @@ extern bool yb_test_fail_next_ddl;
  * - "postbackfill": post-backfill operations like validation and event triggers
  */
 extern char *yb_test_block_index_phase;
+
+/*
+ * Same as above, but fails the operation at the given stage instead of
+ * blocking.
+ */
+extern char *yb_test_fail_index_state_change;
+
+/*
+ * Denotes whether DDL operations touching DocDB system catalog will be rolled
+ * back upon failure.
+*/
+extern bool ddl_rollback_enabled;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for
@@ -616,6 +651,8 @@ bool YBIsSupportedLibcLocale(const char *localebuf);
 extern void YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
 										const char *msg);
 
+extern void YbTestGucFailIfStrEqual(char *actual, const char *expected);
+
 char *YBDetailSorted(char *input);
 
 /*
@@ -666,9 +703,21 @@ bool IsYbFdwUser(Oid member);
 extern const uint32 yb_funcs_safe_for_pushdown[];
 
 /*
- * Number of functions in 'yb_funcs_safe_for_modify_fast_path' above.
+ * These functions are unsafe to run in a multi-threaded environment. There is
+ * no specific attribute that identifies them as such, so we have to manually
+ * identify them.
+ */
+extern const uint32 yb_funcs_unsafe_for_pushdown[];
+
+/*
+ * Number of functions in 'yb_funcs_safe_for_pushdown' above.
  */
 extern const int yb_funcs_safe_for_pushdown_count;
+
+/*
+ * Number of functions in 'yb_funcs_unsafe_for_pushdown' above.
+ */
+extern const int yb_funcs_unsafe_for_pushdown_count;
 
 /**
  * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to
@@ -752,6 +801,12 @@ void YbRefreshSessionStatsDuringExecution();
  */
 void YbToggleSessionStatsTimer(bool timing_on);
 
+/**
+ * Update the global flag indicating what metric changes to capture and return
+ * from the tserver to PG.
+ */
+void YbSetMetricsCaptureType(YBCPgMetricsCaptureType metrics_capture);
+
 /*
  * If the tserver gflag --ysql_disable_server_file_access is set to
  * true, then prevent any server file writes/reads/execution.
@@ -764,26 +819,34 @@ uint64_t YbGetSharedCatalogVersion();
 uint32_t YbGetNumberOfDatabases();
 
 /*
- * This function helps map the user intended row-level lock policy i.e., "userLockWaitPolicy" of
- * type enum LockWaitPolicy to the "effectiveWaitPolicy" of type enum WaitPolicy as defined in
+ * This function maps the user intended row-level lock policy i.e., "pg_wait_policy" of
+ * type enum LockWaitPolicy to the "docdb_wait_policy" of type enum WaitPolicy as defined in
  * common.proto.
  *
- * The semantics of the WaitPolicy enum differs slightly from the traditional LockWaitPolicy in
- * Postgres as explained in common.proto. This is due to historical reasons. WaitPolicy in
+ * The semantics of the WaitPolicy enum differ slightly from those of the traditional LockWaitPolicy
+ * in Postgres, as explained in common.proto. This is for historical reasons. WaitPolicy in
  * common.proto was created as a copy of LockWaitPolicy to be passed to the Tserver to help in
  * appropriate conflict-resolution steps for the different row-level lock policies.
  *
- * This function does the following:
- * 1. Log a warning for a userLockWaitPolicy of LockWaitSkip and LockWaitError because SKIP LOCKED
- *		and NO WAIT are not supported yet.
- * 2. Set effectiveWaitPolicy to either WAIT_BLOCK if wait queues are enabled. Else, set it to
- *		WAIT_ERROR (which actually uses the "Fail on Conflict" conflict management policy instead
- *		of "no wait" semantics as explained in "enum WaitPolicy" in common.proto).
+ * In isolation level SERIALIZABLE, this function sets docdb_wait_policy to WAIT_BLOCK as
+ * this is the only policy currently supported for SERIALIZABLE.
+ *
+ * However, if wait queues aren't enabled in the following cases:
+ *  * Isolation level SERIALIZABLE
+ *  * The user requested LockWaitBlock in another isolation level
+ * this function sets docdb_wait_policy to WAIT_ERROR (which actually uses the "Fail on Conflict"
+ * conflict management policy instead of "no wait" semantics, as explained in "enum WaitPolicy" in
+ * common.proto).
+ *
+ * Logs a warning:
+ * 1. In isolation level SERIALIZABLE for a pg_wait_policy of LockWaitSkip and LockWaitError
+ *    because SKIP LOCKED and NOWAIT are not supported yet.
+ * 2. In isolation level REPEATABLE READ for a pg_wait_policy of LockWaitError because NOWAIT
+ *    is not supported.
  */
-void YBUpdateRowLockPolicyForSerializable(
-		int *effectiveWaitPolicy, LockWaitPolicy userLockWaitPolicy);
+void YBSetRowLockPolicy(int *docdb_wait_policy, LockWaitPolicy pg_wait_policy);
 
-const char* yb_fetch_current_transaction_priority(void);
+const char *yb_fetch_current_transaction_priority(void);
 
 void GetStatusMsgAndArgumentsByCode(
 	const uint32_t pg_err_code, uint16_t txn_err_code, YBCStatus s,
@@ -792,6 +855,12 @@ void GetStatusMsgAndArgumentsByCode(
 
 bool YbIsBatchedExecution();
 void YbSetIsBatchedExecution(bool value);
+
+/* Check if the given column is a part of the relation's key. */
+bool YbIsColumnPartOfKey(Relation rel, const char *column_name);
+
+/* Get a relation's split options. */
+OptSplit *YbGetSplitOptions(Relation rel);
 
 #define HandleYBStatus(status) \
 	HandleYBStatusAtErrorLevel(status, ERROR)
@@ -889,6 +958,35 @@ void YbSetIsBatchedExecution(bool value);
 	} while (0)
 #endif
 
-extern bool yb_is_client_ysqlconnmgr;
+/*
+ * Increments a tally of sticky objects (TEMP TABLES/WITH HOLD CURSORS)
+ * maintained for every transaction.
+ */
+extern void increment_sticky_object_count();
+
+/*
+ * Decrements a tally of sticky objects (TEMP TABLES/WITH HOLD CURSORS)
+ * maintained for every transaction.
+ */
+extern void decrement_sticky_object_count();
+
+/*
+ * Check if there exists a database object that requires a sticky connection.
+ */
+extern bool YbIsStickyConnection(int *change);
+
+/*
+ * Creates a shallow copy of the pointer list.
+ */
+extern void** YbPtrListToArray(const List* str_list, size_t* length);
+
+/*
+ * Reads the contents of the given file assuming that the filename is an
+ * absolute path.
+ *
+ * The file contents are returned as a single palloc'd chunk with an extra \0
+ * byte added to the end.
+ */
+extern char* YbReadWholeFile(const char *filename, int* length, int elevel);
 
 #endif /* PG_YB_UTILS_H */

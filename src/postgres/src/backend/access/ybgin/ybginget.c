@@ -524,6 +524,7 @@ ybginDoFirstExec(IndexScanDesc scan, ScanDirection dir)
 		YbDmlAppendTargetsAggregate(scan->yb_aggrefs,
 									RelationGetDescr(scan->indexRelation),
 									scan->indexRelation,
+									scan->xs_want_itup,
 									ybso->handle);
 	else
 		ybginSetupTargets(scan);
@@ -601,14 +602,6 @@ ybgingettuple(IndexScanDesc scan, ScanDirection dir)
 	if (scan->yb_aggrefs)
 	{
 		/*
-		 * As of 2023-06-28, aggregate pushdown is only implemented for
-		 * IndexOnlyScan, not IndexScan.  Also, this codepath is not exercised
-		 * because such queries hit error "non-default search mode" when
-		 * setting up binds.
-		 */
-		Assert(scan->xs_want_itup);
-
-		/*
 		 * TODO(jason): don't assume that recheck is needed.
 		 */
 		scan->xs_recheck = true;
@@ -616,17 +609,8 @@ ybgingettuple(IndexScanDesc scan, ScanDirection dir)
 		/*
 		 * Aggregate pushdown directly modifies the scan slot rather than
 		 * passing it through xs_hitup or xs_itup.
-		 *
-		 * The index id passed into ybFetchNext is likely not going to be used
-		 * as it is only used for system table scans, which have oid, and there
-		 * shouldn't exist any system table secondary indexes that index the
-		 * oid column.
-		 * TODO(jason): deduplicate with ybcingettuple.
 		 */
-		scan->yb_agg_slot =
-			ybFetchNext(ybso->handle, scan->yb_agg_slot,
-						RelationGetRelid(scan->indexRelation));
-		return !scan->yb_agg_slot->tts_isempty;
+		return ybc_getnext_aggslot(scan, ybso->handle, scan->xs_want_itup);
 	}
 	while (HeapTupleIsValid(tup = ybginFetchNextHeapTuple(scan)))
 	{
@@ -645,4 +629,14 @@ ybgingettuple(IndexScanDesc scan, ScanDirection dir)
 	}
 
 	return scan->xs_ctup.t_ybctid != 0;
+}
+
+/*
+ * TODO(jason): don't assume that recheck is needed.
+ */
+bool
+ybginmightrecheck(Relation heapRelation, Relation indexRelation,
+				  bool xs_want_itup, ScanKey keys, int nkeys)
+{
+	return true;
 }

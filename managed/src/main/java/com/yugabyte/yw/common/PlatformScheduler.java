@@ -35,7 +35,7 @@ public class PlatformScheduler {
     Cancellable cancellable =
         actorSystem
             .scheduler()
-            .schedule(
+            .scheduleWithFixedDelay(
                 initialDelay,
                 interval,
                 () -> {

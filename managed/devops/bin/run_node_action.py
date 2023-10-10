@@ -84,11 +84,11 @@ def handle_run_command(args, client):
 
 def handle_test_directory(args, client):
     filename = args.test_directory + str(uuid.uuid4())
-    client.exec_command('touch ' + filename)
-    client.exec_command('echo "This is some text" > ' + filename)
-    output = client.exec_command('cat ' + filename)
-    client.exec_command('rm ' + filename)
-    if 'This is some text' in str(output):
+    client.exec_command(['touch', filename])
+    client.exec_command(['bash', '-c', "echo write-test > {}".format(filename)])
+    output = client.exec_command(['cat', filename])
+    client.exec_command(['rm', filename])
+    if 'write-test' in str(output):
         print('Directory is writable')
     else:
         print('Directory is not writable')
@@ -246,7 +246,6 @@ def copy_file_k8s(args, client):
 
 
 def handle_copy_file(args, client):
-    logging.info("args here {}".format(args))
     local_path = Path(args.local_file)
     cmd = ['mkdir', '-p', str(local_path.parent.absolute())]
     client.exec_command(cmd)
@@ -280,7 +279,6 @@ def upload_file_k8s(args, client):
 
 
 def handle_upload_file(args, client):
-    logging.info("args here {}".format(args))
     target_path = Path(args.target_file)
     cmd = ['mkdir', '-p', str(target_path.parent.absolute())]
     client.exec_command(cmd)

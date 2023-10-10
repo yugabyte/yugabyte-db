@@ -162,10 +162,9 @@ class RaftConsensusQuorumTest : public YBTest {
 
       string peer_uuid = Substitute("peer-$0", i);
 
-      std::unique_ptr<ConsensusMetadata> cmeta;
       fs_managers_[i]->SetTabletPathByDataPath(kTestTablet, fs_managers_[i]->GetDataRootDirs()[0]);
-      ASSERT_OK(ConsensusMetadata::Create(fs_managers_[i], kTestTablet, peer_uuid, config_,
-                                         kMinimumTerm, &cmeta));
+      std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
+          fs_managers_[i], kTestTablet, peer_uuid, config_, kMinimumTerm));
 
       RaftPeerPB local_peer_pb;
       ASSERT_OK(GetRaftConfigMember(config_, peer_uuid, &local_peer_pb));
@@ -191,6 +190,14 @@ class RaftConsensusQuorumTest : public YBTest {
           pool_token.get(),
           nullptr);
 
+      RetryableRequestsManager retryable_requests_manager(
+          options_.tablet_id,
+          fs_managers_[i],
+          fs_managers_[i]->GetWalRootDirs()[0],
+          parent_mem_trackers_[i],
+          "");
+      Status s = retryable_requests_manager.Init(clock_);
+
       shared_ptr<RaftConsensus> peer(new RaftConsensus(
           options_,
           std::move(cmeta),
@@ -207,7 +214,7 @@ class RaftConsensusQuorumTest : public YBTest {
           parent_mem_trackers_[i],
           Bind(&DoNothing),
           DEFAULT_TABLE_TYPE,
-          nullptr /* retryable_requests */));
+          &retryable_requests_manager));
 
       operation_factory->SetConsensus(peer.get());
       operation_factories_.emplace_back(operation_factory);

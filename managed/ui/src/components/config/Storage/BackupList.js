@@ -5,7 +5,7 @@
 // This file will hold a common list view for the different kind
 // of storage configuration.
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Button, DropdownButton, MenuItem } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { AssociatedBackups } from '../../backupv2/components/AssociatedBackups';
@@ -16,6 +16,8 @@ import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { YBPanelItem } from '../../panels';
 
 import { StorageConfigDeleteModal } from './StorageConfigDeleteModal';
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 
 /**
  * This method is used to return the current in-use status
@@ -48,9 +50,17 @@ const header = (currTab, onCreateBackup) => (
     <h2 className="table-container-title pull-left">Backup List</h2>
     <FlexContainer className="pull-right">
       <FlexShrink>
-        <Button bsClass="btn btn-orange btn-config" onClick={onCreateBackup}>
-          Create {currTab} Backup
-        </Button>
+        <RbacValidator
+          accessRequiredOn={{
+            onResource: 'CUSTOMER_ID',
+            ...UserPermissionMap.createStorageConfiguration
+          }}
+          isControl
+        >
+          <Button bsClass="btn btn-orange btn-config" onClick={onCreateBackup}>
+            Create {currTab} Backup
+          </Button>
+        </RbacValidator>
       </FlexShrink>
     </FlexContainer>
   </>
@@ -77,12 +87,7 @@ export const BackupList = (props) => {
   // This method will handle all the required actions for
   // the particular row.
   const formatConfigActions = (cell, row) => {
-    const {
-      configName,
-      configUUID,
-      inUse,
-      universeDetails
-    } = row;
+    const { configName, configUUID, inUse, universeDetails } = row;
     return (
       <>
         <DropdownButton
@@ -91,39 +96,65 @@ export const BackupList = (props) => {
           id="bg-nested-dropdown"
           pullRight
         >
-          <MenuItem onClick={() => onEditConfig(row)}>
-            Edit Configuration
-          </MenuItem>
-          <MenuItem onClick={(e) => {
-            e.stopPropagation();
-            setShowAssociatedBackups(true);
-            setConfigData({ configUUID, configName });
-          }}>
+          <MenuItem
+            disabled={!hasNecessaryPerm({
+              onResource: 'CUSTOMER_ID',
+              ...UserPermissionMap.editStorageConfiguration
+            })}
+            onClick={() => {
+              if (!hasNecessaryPerm({
+                onResource: 'CUSTOMER_ID',
+                ...UserPermissionMap.editStorageConfiguration
+              })) {
+                return;
+              }
+              onEditConfig(row);
+            }}>Edit Configuration</MenuItem>
+          <MenuItem
+            onClick={(e) => {
+              if (!hasNecessaryPerm({
+                onResource: 'CUSTOMER_ID',
+                ...UserPermissionMap.backup
+              })) {
+                return;
+              }
+              e.stopPropagation();
+              setShowAssociatedBackups(true);
+              setConfigData({ configUUID, configName });
+            }}
+            disabled={!hasNecessaryPerm({
+              onResource: 'CUSTOMER_ID',
+              ...UserPermissionMap.backup
+            })}
+          >
             Show associated backups
           </MenuItem>
           <MenuItem
-            disabled={inUse}
+            disabled={inUse || !hasNecessaryPerm({
+              onResource: 'CUSTOMER_ID',
+              ...UserPermissionMap.deleteStorageConfiguration
+            })}
             onClick={() => {
+              if (!hasNecessaryPerm({
+                onResource: 'CUSTOMER_ID',
+                ...UserPermissionMap.deleteStorageConfiguration
+              })) {
+                return;
+              }
               if (!inUse) {
                 setConfigData(configUUID);
                 showDeleteStorageConfig(configName);
               }
             }}
           >
-            {!inUse && (
-              <>
-                Delete Configuration
-              </>
-            )}
+            {!inUse && <>Delete Configuration</>}
 
             {inUse && (
               <YBInfoTip
                 content="Storage configuration is in use and cannot be deleted until associated resources are removed."
                 placement="top"
               >
-                <span className="disable-delete">
-                  Delete Configuration
-                </span>
+                <span className="disable-delete">Delete Configuration</span>
               </YBInfoTip>
             )}
           </MenuItem>
@@ -189,7 +220,7 @@ export const BackupList = (props) => {
               columnClassName="yb-actions-cell"
               className="yb-actions-cell"
               width="10%"
-              dataAlign='center'
+              dataAlign="center"
             >
               Actions
             </TableHeaderColumn>
@@ -200,7 +231,11 @@ export const BackupList = (props) => {
             associatedUniverses={associatedUniverses}
             title={`Backup Configuration ${configData}`}
           />
-          <AssociatedBackups visible={showAssociatedBackups} onHide={() => setShowAssociatedBackups(false)} storageConfigData={configData} />
+          <AssociatedBackups
+            visible={showAssociatedBackups}
+            onHide={() => setShowAssociatedBackups(false)}
+            storageConfigData={configData}
+          />
         </>
       }
       noBackground

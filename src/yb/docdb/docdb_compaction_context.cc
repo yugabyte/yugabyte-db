@@ -17,11 +17,13 @@
 
 #include <glog/logging.h>
 
+#include "yb/common/schema.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_ttl_util.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/dockv/packed_row.h"
+#include "yb/dockv/packed_value.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/dockv/schema_packing.h"
 #include "yb/dockv/value.h"
@@ -41,12 +43,15 @@ using std::shared_ptr;
 using std::unique_ptr;
 
 DECLARE_bool(ycql_enable_packed_row);
+DECLARE_bool(ysql_use_packed_row_v2);
 
 DECLARE_uint64(ycql_packed_row_size_limit);
 DECLARE_uint64(ysql_packed_row_size_limit);
 
-namespace yb {
-namespace docdb {
+DEFINE_test_flag(bool, keep_intent_doc_ht, false,
+                 "Whether to keep intent doc hybrid time when packing column during compaction.");
+
+namespace yb::docdb {
 
 using dockv::Expiration;
 using dockv::ValueControlFields;
@@ -62,9 +67,16 @@ struct OverwriteData {
   }
 };
 
-Result<SchemaVersion> ParseValueHeader(Slice* value) {
-  value->consume_byte(); // TODO(packed_row) control_fields
-  return narrow_cast<SchemaVersion>(VERIFY_RESULT(util::FastDecodeUnsignedVarInt(value)));
+Result<std::pair<std::optional<dockv::PackedRowVersion>, SchemaVersion>> ParseValueHeader(
+    Slice* value) {
+  auto packed_row_version = dockv::GetPackedRowVersion(static_cast<dockv::ValueEntryType>(
+      value->consume_byte()));
+  if (!packed_row_version) {
+    return std::pair(packed_row_version, 0);
+  }
+  return std::pair(
+      packed_row_version,
+      narrow_cast<SchemaVersion>(VERIFY_RESULT(FastDecodeUnsignedVarInt(value))));
 }
 
 // Interface to pass packed rows to underlying key value feed.
@@ -100,11 +112,14 @@ class LazyHybridTime {
   std::optional<Result<HybridTime>> value_;
 };
 
+constexpr auto kUnlimitedTail = std::numeric_limits<ssize_t>::min();
+
 class PackedRowData {
  public:
   PackedRowData(PackedRowFeed* feed, SchemaPackingProvider* provider,
-                HybridTime history_cutoff)
-      : feed_(*feed), schema_packing_provider_(provider), history_cutoff_(history_cutoff) {
+                HistoryCutoff history_cutoff)
+      : feed_(*feed), schema_packing_provider_(provider),
+        history_cutoff_(history_cutoff) {
   }
 
   bool active() const {
@@ -116,7 +131,7 @@ class PackedRowData {
   }
 
   bool can_start_packing() const {
-    return can_start_packing_;
+    return new_packing_.packed_row_version.has_value();
   }
 
   bool ColumnDeleted(ColumnId column_id) const {
@@ -141,13 +156,12 @@ class PackedRowData {
 
   // Handle packed row that was forwarded to underlying feed w/o changes.
   Status ProcessForwardedPackedRow(Slice value) {
-    UsedSchemaVersion(VERIFY_RESULT(ParseValueHeader(&value)));
+    UsedSchemaVersion(VERIFY_RESULT(ParseValueHeader(&value)).second);
     return Status::OK();
   }
 
   Status ProcessPackedRow(
-      const Slice& internal_key, size_t doc_key_size,
-      const Slice& full_value, size_t control_fields_size,
+      Slice internal_key, size_t doc_key_size, Slice full_value, size_t control_fields_size,
       const EncodedDocHybridTime& encoded_row_doc_ht, size_t new_doc_key_serial) {
     VLOG_WITH_FUNC(4)
         << "Key: " << internal_key.ToDebugHexString() << ", full_value: "
@@ -165,7 +179,8 @@ class PackedRowData {
 
     old_value_.Assign(full_value);
     old_value_slice_ = old_value_.AsSlice().WithoutPrefix(control_fields_size);
-    old_schema_version_ = VERIFY_RESULT(ParseValueHeader(&old_value_slice_));
+    std::tie(old_packing_.packed_row_version, old_schema_version_) = VERIFY_RESULT(ParseValueHeader(
+        &old_value_slice_));
     if (old_schema_version_ != new_packing_.schema_version) {
       return StartRepacking();
     }
@@ -198,17 +213,18 @@ class PackedRowData {
   // Returns true if column was processed. Otherwise caller should handle this column.
   // lazy_ht - in/out parameter to access entry hybrid time.
   Result<bool> ProcessColumn(
-      ColumnId column_id, const Slice& value, const EncodedDocHybridTime& column_doc_ht,
-      const ValueControlFields& control_fields, bool has_intent_doc_ht,
+      ColumnId column_id, Slice value, const EncodedDocHybridTime& column_doc_ht,
+      const ValueControlFields& control_fields, Slice intent_doc_ht,
       size_t encoded_control_fields_size, LazyHybridTime* lazy_ht) {
     if (!packing_started_) {
       RETURN_NOT_OK(StartRepacking());
     }
-    auto next_column_id = packer_->NextColumnId();
+    auto& packer_base = PackerBase(&*packer_);
+    auto next_column_id = packer_base.NextColumnId();
     VLOG(4) << "Next column id: " << next_column_id << ", current column id: " << column_id;
     while (next_column_id < column_id) {
       RETURN_NOT_OK(PackOldValue(next_column_id));
-      next_column_id = packer_->NextColumnId();
+      next_column_id = packer_base.NextColumnId();
     }
     if (next_column_id > column_id) {
       if (new_packing_.schema_packing->SkippedColumn(column_id)) {
@@ -223,16 +239,21 @@ class PackedRowData {
 
     size_t tail_size = 0; // As usual, when not specified size is in bytes.
     if (!old_value_slice_.empty()) {
-      auto old_value = old_packing_.schema_packing->GetValue(column_id, old_value_slice_);
-      if (old_value) {
-        tail_size = old_value_slice_.end() - old_value->end();
+      auto* end = std::visit([column_id](auto& decoder) {
+        return decoder.GetEnd(column_id);
+      }, old_row_decoder_);
+      // If end is nullptr, it means that column_id does not present in old packing.
+      // It could happen only to columns that were added after this packing was created.
+      // So we could assume that there is no tail after it.
+      if (end) {
+        tail_size = old_value_slice_.end() - end;
       }
     }
 
     VLOG(4) << "Update value: " << column_id << ", " << value.ToDebugHexString() << ", tail size: "
             << tail_size;
     std::optional<ValueControlFields> control_fields_copy;
-    if (has_intent_doc_ht) {
+    if (!intent_doc_ht.empty()) {
       control_fields_copy = control_fields;
     }
     if (new_packing_.keep_write_time() && !control_fields.has_timestamp()) {
@@ -243,32 +264,77 @@ class PackedRowData {
     }
     if (control_fields_copy) {
       control_fields_buffer_.clear();
+      if (PREDICT_FALSE(FLAGS_TEST_keep_intent_doc_ht) && !intent_doc_ht.empty()) {
+        control_fields_buffer_.PushBack(dockv::KeyEntryTypeAsChar::kHybridTime);
+        control_fields_buffer_.Append(intent_doc_ht);
+      }
       control_fields_copy->AppendEncoded(&control_fields_buffer_);
-      return packer_->AddValue(
-          column_id, control_fields_buffer_.AsSlice(),
-          value.WithoutPrefix(encoded_control_fields_size), tail_size);
+      dockv::PackedValueV1 value_v1(value.WithoutPrefix(encoded_control_fields_size));
+      return std::visit([this, column_id, value_v1, tail_size](auto& packer) {
+        return packer.AddValue(column_id, control_fields_buffer_.AsSlice(), value_v1, tail_size);
+      }, *packer_);
     }
-    return packer_->AddValue(column_id, value, tail_size);
+    dockv::PackedValueV1 value_v1(value);
+    return std::visit([column_id, value_v1, tail_size](auto& packer) {
+      return packer.AddValue(column_id, value_v1, tail_size);
+    }, *packer_);
   }
 
   Status StartRepacking() {
     if (old_schema_version_ != old_packing_.schema_version) {
+      auto packed_row_version = old_packing_.packed_row_version;
+      HybridTime chosen_ht = GetHistoryCutoffForKey(
+          active_coprefix_.AsSlice(), history_cutoff_);
       old_packing_ = VERIFY_RESULT(schema_packing_provider_->CotablePacking(
-          new_packing_.cotable_id, old_schema_version_, history_cutoff_));
+          new_packing_.cotable_id, old_schema_version_, chosen_ht));
+      // CotablePacking returns desired packed row type, so keep type extracted from actual row.
+      old_packing_.packed_row_version = packed_row_version;
     }
     InitPacker();
-    return Status::OK();
+    switch (*old_packing_.packed_row_version) {
+      case dockv::PackedRowVersion::kV1:
+        CreateOldRowDecoderHelper<dockv::PackedRowDecoderV1>();
+        return Status::OK();
+      case dockv::PackedRowVersion::kV2:
+        CreateOldRowDecoderHelper<dockv::PackedRowDecoderV2>();
+        return Status::OK();
+    }
+    return dockv::UnexpectedPackedRowVersionStatus(*old_packing_.packed_row_version);
+  }
+
+  template <class Decoder>
+  void CreateOldRowDecoderHelper() {
+    old_row_decoder_.emplace<Decoder>(*old_packing_.schema_packing, old_value_slice_.data());
   }
 
   void InitPacker() {
     packing_started_ = true;
     if (!packer_) {
-      packer_.emplace(
-          new_packing_.schema_version, *new_packing_.schema_packing, new_packing_.pack_limit(),
-          old_value_.AsSlice().Prefix(control_fields_size_));
+      auto packed_row_version = *new_packing_.packed_row_version;
+      if (packed_row_version == dockv::PackedRowVersion::kV2 &&
+          !new_packing_.schema_packing->HasDataType()) {
+        LOG(DFATAL) << "Attempted to start V2 packing without data type";
+        packed_row_version = dockv::PackedRowVersion::kV1;
+      }
+      switch (packed_row_version) {
+        case dockv::PackedRowVersion::kV1:
+          InitPackerHelper<dockv::RowPackerV1>();
+          break;
+        case dockv::PackedRowVersion::kV2:
+          InitPackerHelper<dockv::RowPackerV2>();
+          break;
+      }
     } else {
-      packer_->Restart();
+      CHECK(false);
     }
+  }
+
+  template <class Packer>
+  void InitPackerHelper() {
+    packer_.emplace(
+        std::in_place_type_t<Packer>(), new_packing_.schema_version, *new_packing_.schema_packing,
+        new_packing_.pack_limit(), old_value_.AsSlice().Prefix(control_fields_size_),
+        *new_packing_.schema);
   }
 
   Status Flush() {
@@ -282,14 +348,16 @@ class PackedRowData {
     Slice value_slice;
 
     VLOG_WITH_FUNC(4)
-        << "Has packer: " << (packer_ && !packer_->Empty()) << ", packing_started: "
-        << packing_started_;
+        << "Has packer: " << (packer_ && !dockv::PackerBase(&*packer_).Empty())
+        << ", packing_started: " << packing_started_;
     if (packing_started_) {
-      // TODO(packed_row) control_fields
-      while (!packer_->Finished()) {
-        RETURN_NOT_OK(PackOldValue(packer_->NextColumnId()));
+      auto& base_packer = dockv::PackerBase(&*packer_);
+      while (!base_packer.Finished()) {
+        RETURN_NOT_OK(PackOldValue(base_packer.NextColumnId()));
       }
-      value_slice = VERIFY_RESULT(packer_->Complete());
+      value_slice = VERIFY_RESULT(std::visit([](auto& packer) {
+        return packer.Complete();
+      }, *packer_));
     } else {
       value_slice = old_value_.AsSlice();
     }
@@ -301,21 +369,39 @@ class PackedRowData {
   }
 
   Status PackOldValue(ColumnId column_id) {
-    auto column_value = old_value_slice_.empty()
-        ? std::optional<Slice>()
-        : old_packing_.schema_packing->GetValue(column_id, old_value_slice_);
-    if (!column_value) {
-      const auto& column_data = VERIFY_RESULT_REF(packer_->NextColumnData());
+    return std::visit([this, column_id](auto& decoder) {
+      if (old_value_slice_.empty() ||
+          decoder.GetPackedIndex(column_id) == dockv::SchemaPacking::kSkippedColumnIdx) {
+        VLOG(4) << "Packing missing value for column " << column_id;
+        const auto& missing_value = VERIFY_RESULT_REF(
+            dockv::PackerBase(&*packer_).schema().GetMissingValueByColumnId(column_id));
+        return CheckPackOldValueResult(
+            column_id, std::visit([column_id, missing_value](auto& packer) {
+          return packer.AddValue(column_id, missing_value);
+        }, *packer_));
+      }
+      return DoPackOldValue(column_id, decoder.FetchValue(decoder.GetPackedIndex(column_id)));
+    }, old_row_decoder_);
+  }
+
+  template <class Value>
+  Status DoPackOldValue(ColumnId column_id, Value column_value) {
+    if (column_value.IsNull()) {
+      const auto& column_data = VERIFY_RESULT_REF(dockv::PackerBase(&*packer_).NextColumnData());
       RSTATUS_DCHECK(column_data.varlen(), Corruption, Format(
           "Don't have value for fixed size column: $0, in $1, schema_version: $2",
           column_id, old_value_slice_.ToDebugHexString(), old_packing_.schema_version));
-      column_value = Slice();
     }
     VLOG(4) << "Keep value for column " << column_id << ": " << column_value->ToDebugHexString();
     // Use min ssize_t value to be sure that packing always succeed.
-    constexpr auto kUnlimitedTail = std::numeric_limits<ssize_t>::min();
-    auto result = VERIFY_RESULT(packer_->AddValue(column_id, *column_value, kUnlimitedTail));
-    RSTATUS_DCHECK(result, Corruption, "Unable to pack old value for $0", column_id);
+    return CheckPackOldValueResult(column_id, std::visit([column_id, column_value](auto& packer) {
+      return packer.AddValue(column_id, column_value, kUnlimitedTail);
+    }, *packer_));
+  }
+
+  Status CheckPackOldValueResult(ColumnId column_id, Result<bool> result) {
+    RETURN_NOT_OK(result);
+    RSTATUS_DCHECK(*result, Corruption, "Unable to pack old value for $0", column_id);
     return Status::OK();
   }
 
@@ -356,26 +442,26 @@ class PackedRowData {
     active_coprefix_ = coprefix;
     active_coprefix_dropped_ = false;
     new_packing_ = *packing;
-    can_start_packing_ = packing->enabled;
     used_schema_versions_it_ = used_schema_versions_.find(new_packing_.cotable_id);
     return Status::OK();
   }
 
   Result<CompactionSchemaInfo> GetCompactionSchemaInfo(Slice coprefix) {
+    HybridTime chosen_ht = GetHistoryCutoffForKey(coprefix, history_cutoff_);
     if (coprefix.empty()) {
       return schema_packing_provider_->CotablePacking(
-          Uuid::Nil(), kLatestSchemaVersion, history_cutoff_);
+          Uuid::Nil(), kLatestSchemaVersion, chosen_ht);
     } else if (coprefix.TryConsumeByte(dockv::KeyEntryTypeAsChar::kColocationId)) {
       if (coprefix.size() != sizeof(ColocationId)) {
         return STATUS_FORMAT(Corruption, "Wrong colocation size: $0", coprefix.ToDebugHexString());
       }
       uint32_t colocation_id = BigEndian::Load32(coprefix.data());
       return schema_packing_provider_->ColocationPacking(
-          colocation_id, kLatestSchemaVersion, history_cutoff_);
+          colocation_id, kLatestSchemaVersion, chosen_ht);
     } else if (coprefix.TryConsumeByte(dockv::KeyEntryTypeAsChar::kTableId)) {
       auto cotable_id = VERIFY_RESULT(Uuid::FromComparable(coprefix));
       return schema_packing_provider_->CotablePacking(
-          cotable_id, kLatestSchemaVersion, history_cutoff_);
+          cotable_id, kLatestSchemaVersion, chosen_ht);
     } else {
       return STATUS_FORMAT(Corruption, "Wrong coprefix: $0", coprefix.ToDebugHexString());
     }
@@ -398,6 +484,7 @@ class PackedRowData {
   Slice old_value_slice_;
   SchemaVersion old_schema_version_;
   CompactionSchemaInfo old_packing_;
+  dockv::PackedRowDecoderVariant old_row_decoder_;
 
   bool packing_started_ = false; // Whether we have started packing the row.
 
@@ -409,10 +496,9 @@ class PackedRowData {
   bool active_coprefix_dropped_ = false;
 
   CompactionSchemaInfo new_packing_;
-  boost::optional<dockv::RowPacker> packer_;
-  bool can_start_packing_ = false; // Whether we could start packing row with current schema.
+  std::optional<dockv::RowPackerVariant> packer_;
 
-  HybridTime history_cutoff_;
+  HistoryCutoff history_cutoff_;
 
   using UsedSchemaVersionsMap =
       std::unordered_map<Uuid, std::pair<SchemaVersion, SchemaVersion>, UuidHash>;
@@ -438,21 +524,22 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
       const KeyBounds* key_bounds,
       SchemaPackingProvider* schema_packing_provider)
       : next_feed_(*next_feed),
-        retention_(retention),
+        retention_directive_(retention),
         // Use max write id, to be sure that entries with hybrid time equals to history cutoff
         // would not be garbage collected.
-        encoded_history_cutoff_(retention_.history_cutoff, kMaxWriteId),
+        encoded_history_cutoff_information_(retention_directive_.history_cutoff),
         key_bounds_(key_bounds),
         // We use min write id for two fields below to correctly handle entries with
         // matching hybrid time.
         encoded_min_other_data_ht_(
-            retention_.retain_delete_markers_in_major_compaction
+            retention_directive_.retain_delete_markers_in_major_compaction
                 ? HybridTime::kMin : min_other_data_ht,
             kMinWriteId),
         could_change_key_range_(
             !CanHaveOtherDataBefore(EncodedDocHybridTime(min_input_hybrid_time, kMinWriteId))),
         boundary_extractor_(boundary_extractor),
-        packed_row_(this, schema_packing_provider, retention_.history_cutoff) {
+        packed_row_(this, schema_packing_provider,
+                    retention_directive_.history_cutoff) {
   }
 
   Status Feed(const Slice& internal_key, const Slice& value) override;
@@ -579,8 +666,8 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
   }
 
   rocksdb::CompactionFeed& next_feed_;
-  const HistoryRetentionDirective retention_;
-  EncodedDocHybridTime encoded_history_cutoff_;
+  const HistoryRetentionDirective retention_directive_;
+  EncodedHistoryCutoff encoded_history_cutoff_information_;
   const KeyBounds* key_bounds_;
   const EncodedDocHybridTime encoded_min_other_data_ht_;
   const bool could_change_key_range_;
@@ -663,7 +750,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     // TODO: switch this to VLOG if it becomes too chatty.
     LOG(INFO) << "DocDB compaction feed, min_other_data_ht: "
               << encoded_min_other_data_ht_.ToString()
-              << ", history_cutoff=" << retention_.history_cutoff;
+              << ", history_cutoff = " << retention_directive_.history_cutoff;
     feed_usage_logged_ = true;
   }
 
@@ -725,6 +812,12 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
 
   if (packed_row_.active_coprefix_dropped()) {
     return Status::OK();
+  }
+
+  bool key_contains_cotable_prefix = false;
+  if (key[0] == dockv::KeyEntryTypeAsChar::kTableId) {
+    VLOG(4) << "Key " << key.ToDebugHexString() << " contains cotable prefix";
+    key_contains_cotable_prefix = true;
   }
 
   const size_t new_stack_size = sub_key_ends_.size();
@@ -809,15 +902,28 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   // In case of ht > history_cutoff_, we just keep the parent document's highest known overwrite
   // hybrid time that does not exceed the cutoff hybrid time. In that case this entry is obviously
   // too new to be garbage-collected.
-  if (encoded_doc_ht > encoded_history_cutoff_) {
+  HybridTime chosen_doc_ht =
+      retention_directive_.history_cutoff.primary_cutoff_ht;
+  EncodedDocHybridTime encoded_chosen_doc_ht =
+      encoded_history_cutoff_information_.primary_cutoff_encoded;
+  // For cotables on master, use the cotables_cutoff_ht.
+  if (key_contains_cotable_prefix &&
+      retention_directive_.history_cutoff.cotables_cutoff_ht) {
+    encoded_chosen_doc_ht =
+        encoded_history_cutoff_information_.cotables_cutoff_encoded;
+    chosen_doc_ht =
+        retention_directive_.history_cutoff.cotables_cutoff_ht;
+  }
+  VLOG(4) << "Chosen hybrid time cutoff: " << encoded_chosen_doc_ht.ToString();
+  if (encoded_doc_ht > encoded_chosen_doc_ht) {
     AssignPrevSubDocKey(key.cdata(), same_bytes);
     overwrite_.push_back({prev_overwrite_ht, LastExpiration()});
     VLOG_WITH_FUNC(4)
         << "Feed to next because of history cutoff: " << encoded_doc_ht.ToString() << ", "
-        << encoded_history_cutoff_.ToString();
+        << encoded_chosen_doc_ht.ToString();
     auto value_slice = value;
     RETURN_NOT_OK(ValueControlFields::Decode(&value_slice));
-    if (dockv::DecodeValueEntryType(value_slice) == dockv::ValueEntryType::kPackedRow) {
+    if (IsPackedRow(dockv::DecodeValueEntryType(value_slice))) {
       // Check packed row version for rows left untouched.
       RETURN_NOT_OK(packed_row_.ProcessForwardedPackedRow(value_slice));
     }
@@ -846,7 +952,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     if (key_type == dockv::KeyEntryType::kColumnId ||
         key_type == dockv::KeyEntryType::kSystemColumnId) {
       Slice column_id_slice = key.WithoutPrefix(doc_key_size + 1);
-      auto column_id_as_int64 = VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(&column_id_slice));
+      auto column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(&column_id_slice));
       ColumnId column_id;
       RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id));
 
@@ -880,7 +986,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
         // Return if column was processed by packed row.
         auto encoded_control_fields_size = value_slice.data() - value.data();
         if (VERIFY_RESULT(packed_row_.ProcessColumn(
-                column_id, value, encoded_doc_ht, control_fields, !intent_doc_ht.empty(),
+                column_id, value, encoded_doc_ht, control_fields, intent_doc_ht,
                 encoded_control_fields_size, &lazy_ht))) {
           return Status::OK();
         }
@@ -891,8 +997,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   const auto& overwrite_ht = is_ttl_row || prev_overwrite_ht > encoded_doc_ht
       ? prev_overwrite_ht : encoded_doc_ht;
 
-  const auto value_type = static_cast<dockv::ValueEntryType>(
-      value_slice.FirstByteOr(dockv::ValueEntryTypeAsChar::kInvalid));
+  const auto value_type = dockv::DecodeValueEntryType(value_slice);
 
   // If within the merge block.
   //     If the row is a TTL row, delete it.
@@ -933,11 +1038,10 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
 
   // Only check for expiration if the current hybrid time is at or below history cutoff.
   // The key could not have possibly expired by history_cutoff_ otherwise.
-  MonoDelta true_ttl = dockv::ComputeTTL(expiration.ttl, retention_.table_ttl);
+  MonoDelta true_ttl = dockv::ComputeTTL(expiration.ttl, retention_directive_.table_ttl);
   const auto has_expired = dockv::HasExpiredTTL(
       true_ttl == expiration.ttl ? expiration.write_ht : VERIFY_RESULT(lazy_ht.Get()),
-      true_ttl,
-      retention_.history_cutoff);
+      true_ttl, chosen_doc_ht);
   // As of 02/2017, we don't have init markers for top level documents in QL. As a result, we can
   // compact away each column if it has expired, including the liveness system column. The init
   // markers in Redis wouldn't be affected since they don't have any TTL associated with them and
@@ -968,7 +1072,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     new_value_buffer_.Append(value_slice);
     new_value = new_value_buffer_.AsSlice();
     within_merge_block_ = false;
-  } else if (value_type == dockv::ValueEntryType::kPackedRow) {
+  } else if (IsPackedRow(value_type)) {
     return packed_row_.ProcessPackedRow(
         internal_key, sub_key_ends_.back(), value, value_slice.data() - value.data(),
         encoded_doc_ht, doc_key_serial_);
@@ -1035,7 +1139,7 @@ class DocDBCompactionContext : public rocksdb::CompactionContext {
   }
 
  private:
-  HybridTime history_cutoff_;
+  HistoryCutoff history_cutoff_;
   const KeyBounds* key_bounds_;
   std::unique_ptr<DocDBCompactionFeed> feed_;
 };
@@ -1057,7 +1161,7 @@ DocDBCompactionContext::DocDBCompactionContext(
 
 rocksdb::UserFrontierPtr DocDBCompactionContext::GetLargestUserFrontier() const {
   auto* consensus_frontier = new ConsensusFrontier();
-  consensus_frontier->set_history_cutoff(history_cutoff_);
+  consensus_frontier->set_history_cutoff_information(history_cutoff_);
   return rocksdb::UserFrontierPtr(consensus_frontier);
 }
 
@@ -1092,15 +1196,22 @@ HybridTime MinHybridTime(const std::vector<rocksdb::FileMetaData*>& inputs) {
 
 } // namespace
 
-bool PackedRowEnabled(TableType table_type, bool is_colocated) {
+std::optional<dockv::PackedRowVersion> PackedRowVersion(TableType table_type, bool is_colocated) {
   switch (table_type) {
     case TableType::YQL_TABLE_TYPE:
-      return FLAGS_ycql_enable_packed_row;
+      if (FLAGS_ycql_enable_packed_row) {
+        return dockv::PackedRowVersion::kV1;
+      }
+      return std::nullopt;
     case TableType::PGSQL_TABLE_TYPE:
-      return ShouldYsqlPackRow(is_colocated);
+      if (!ShouldYsqlPackRow(is_colocated)) {
+        return std::nullopt;
+      }
+      return FLAGS_ysql_use_packed_row_v2 ? dockv::PackedRowVersion::kV2
+                                          : dockv::PackedRowVersion::kV1;
     case TableType::REDIS_TABLE_TYPE: [[fallthrough]];
     case TableType::TRANSACTION_STATUS_TABLE_TYPE:
-      return false;
+      return std::nullopt;
   }
   FATAL_INVALID_ENUM_VALUE(TableType, table_type);
 }
@@ -1158,22 +1269,55 @@ std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactor
 // ------------------------------------------------------------------------------------------------
 
 HistoryRetentionDirective ManualHistoryRetentionPolicy::GetRetentionDirective() {
-  return {history_cutoff_.load(std::memory_order_acquire),
+  std::lock_guard<std::mutex> l(history_cutoff_mutex_);
+  LOG(INFO) << "Retention directive from manual policy " << history_cutoff_;
+  return { history_cutoff_,
           table_ttl_.load(std::memory_order_acquire),
-          ShouldRetainDeleteMarkersInMajorCompaction::kFalse};
+          ShouldRetainDeleteMarkersInMajorCompaction::kFalse };
 }
 
+// TODO(Sanket): Is this even used anywhere?
 HybridTime ManualHistoryRetentionPolicy::ProposedHistoryCutoff() {
-  return history_cutoff_.load(std::memory_order_acquire);
+  std::lock_guard<std::mutex> l(history_cutoff_mutex_);
+  return history_cutoff_.primary_cutoff_ht;
 }
 
 void ManualHistoryRetentionPolicy::SetHistoryCutoff(HybridTime history_cutoff) {
-  history_cutoff_.store(history_cutoff, std::memory_order_release);
+  // Set primary cutoff by default.
+  std::lock_guard<std::mutex> l(history_cutoff_mutex_);
+  history_cutoff_ = { HybridTime::kInvalid, history_cutoff };
+}
+
+void ManualHistoryRetentionPolicy::SetHistoryCutoff(HistoryCutoff history_cutoff) {
+  std::lock_guard<std::mutex> l(history_cutoff_mutex_);
+  history_cutoff_ = history_cutoff;
 }
 
 void ManualHistoryRetentionPolicy::SetTableTTLForTests(MonoDelta ttl) {
   table_ttl_.store(ttl, std::memory_order_release);
 }
 
-}  // namespace docdb
-}  // namespace yb
+HistoryCutoff ConstructMinCutoff(HistoryCutoff a, HistoryCutoff b) {
+  return { std::min(a.cotables_cutoff_ht, b.cotables_cutoff_ht),
+           std::min(a.primary_cutoff_ht, b.primary_cutoff_ht) };
+}
+
+bool operator==(HistoryCutoff lhs, HistoryCutoff rhs) {
+  return YB_STRUCT_EQUALS(primary_cutoff_ht, cotables_cutoff_ht);
+}
+
+std::ostream& operator<<(std::ostream& out, HistoryCutoff cutoff) {
+  return out << cutoff.ToString();
+}
+
+HybridTime GetHistoryCutoffForKey(Slice coprefix, HistoryCutoff cutoff_info) {
+  // True only for cotables on the master.
+  if (!coprefix.empty() && cutoff_info.cotables_cutoff_ht) {
+    VLOG(4) << "Cotable on the master, cutoff " << cutoff_info.cotables_cutoff_ht;
+    return cutoff_info.cotables_cutoff_ht;
+  }
+  VLOG(4) << "Primary cutoff " << cutoff_info.primary_cutoff_ht;
+  return cutoff_info.primary_cutoff_ht;
+}
+
+}  // namespace yb::docdb

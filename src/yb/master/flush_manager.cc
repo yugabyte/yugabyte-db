@@ -33,7 +33,9 @@ using std::map;
 using std::vector;
 
 Status FlushManager::FlushTables(const FlushTablesRequestPB* req,
-                                 FlushTablesResponsePB* resp) {
+                                 FlushTablesResponsePB* resp,
+                                 rpc::RpcContext* rpc,
+                                 const LeaderEpoch& epoch) {
   LOG(INFO) << "Servicing FlushTables request: " << req->ShortDebugString();
 
   // Check request.
@@ -96,14 +98,14 @@ Status FlushManager::FlushTables(const FlushTablesRequestPB* req,
   if (is_compaction) {
     for (const auto& table_description : tables) {
       RETURN_NOT_OK(catalog_manager_->UpdateLastFullCompactionRequestTime(
-          table_description.table_info->id()));
+          table_description.table_info->id(), epoch));
     }
   }
 
   // Send FlushTablets requests to all Tablet Servers (one TS - one request).
   for (const auto& ts : ts_tablet_map) {
     // Using last table async task queue.
-    SendFlushTabletsRequest(ts.first, table, ts.second, flush_id, is_compaction);
+    SendFlushTabletsRequest(ts.first, table, ts.second, flush_id, is_compaction, epoch);
   }
 
   resp->set_flush_request_id(flush_id);
@@ -142,10 +144,11 @@ void FlushManager::SendFlushTabletsRequest(const TabletServerId& ts_uuid,
                                            const scoped_refptr<TableInfo>& table,
                                            const vector<TabletId>& tablet_ids,
                                            const FlushRequestId& flush_id,
-                                           const bool is_compaction) {
+                                           const bool is_compaction,
+                                           const LeaderEpoch& epoch) {
   auto call = std::make_shared<AsyncFlushTablets>(
       master_, catalog_manager_->AsyncTaskPool(), ts_uuid, table, tablet_ids, flush_id,
-      is_compaction);
+      is_compaction, epoch);
   table->AddTask(call);
   WARN_NOT_OK(catalog_manager_->ScheduleTask(call), "Failed to send flush tablets request");
 }

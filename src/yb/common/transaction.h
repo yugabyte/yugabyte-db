@@ -63,9 +63,6 @@ Result<TransactionId> DecodeTransactionId(Slice* slice);
 
 using SubtxnSet = UnsignedIntSet<SubTransactionId>;
 
-// True for transactions present on the consumer's participant that originated on the producer.
-YB_STRONGLY_TYPED_BOOL(IsExternalTransaction);
-
 // SubtxnSetAndPB avoids repeated serialization of SubtxnSet, required for rpc calls, by storing
 // the serialized proto form (SubtxnSetPB). A shared_ptr to a SubtxnSetAndPB object can be obtained
 // by calling SubtxnSetAndPB::Create(const T& set_pb), where T should be some type where
@@ -139,6 +136,10 @@ struct TransactionStatusResult {
 
   static TransactionStatusResult Aborted() {
     return TransactionStatusResult(TransactionStatus::ABORTED, HybridTime());
+  }
+
+  static TransactionStatusResult Deadlocked(Status deadlock_status) {
+    return TransactionStatusResult(TransactionStatus::ABORTED, HybridTime(), {}, deadlock_status);
   }
 
   std::string ToString() const {
@@ -241,9 +242,6 @@ class TransactionStatusManager {
   virtual Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) = 0;
 
   virtual const TabletId& tablet_id() const = 0;
-
-  virtual Result<IsExternalTransaction> IsExternalTransactionResult(
-      const TransactionId& transaction_id) = 0;
 
   virtual void RecordConflictResolutionKeysScanned(int64_t num_keys) = 0;
 
@@ -387,8 +385,6 @@ struct TransactionMetadata {
   // Former transaction status tablet that the transaction was using prior to a move.
   TabletId old_status_tablet;
 
-  IsExternalTransaction external_transaction = IsExternalTransaction::kFalse;
-
   static Result<TransactionMetadata> FromPB(const LWTransactionMetadataPB& source);
   static Result<TransactionMetadata> FromPB(const TransactionMetadataPB& source);
 
@@ -401,9 +397,9 @@ struct TransactionMetadata {
   std::string ToString() const {
     return Format(
         "{ transaction_id: $0 isolation: $1 status_tablet: $2 priority: $3 start_time: $4"
-        " locality: $5 old_status_tablet: $6 external_transaction: $7}",
+        " locality: $5 old_status_tablet: $6}",
         transaction_id, IsolationLevel_Name(isolation), status_tablet, priority, start_time,
-        TransactionLocality_Name(locality), old_status_tablet, external_transaction);
+        TransactionLocality_Name(locality), old_status_tablet);
   }
 
  private:
@@ -421,13 +417,28 @@ std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata)
 
 MonoDelta TransactionRpcTimeout();
 CoarseTimePoint TransactionRpcDeadline();
-MonoDelta ExternalTransactionRpcTimeout();
-CoarseTimePoint ExternalTransactionRpcDeadline();
 
 extern const char* kGlobalTransactionsTableName;
 extern const std::string kMetricsSnapshotsTableName;
 extern const std::string kTransactionTablePrefix;
 
 YB_DEFINE_ENUM(CleanupType, (kGraceful)(kImmediate))
+
+// Provides a unified efficient interface for accessing lock info in a TabletLockInfoPB message.
+// Single-shard waiter info is created and returned, and TransactionLockInfoPB instances are made
+// accessible by TransactionId.
+class TransactionLockInfoManager {
+ public:
+  explicit TransactionLockInfoManager(TabletLockInfoPB* tablet_lock_info);
+
+  TabletLockInfoPB::TransactionLockInfoPB* GetOrAddTransactionLockInfo(const TransactionId& id);
+
+  TabletLockInfoPB::WaiterInfoPB* GetSingleShardLockInfo();
+
+ private:
+  TabletLockInfoPB* tablet_lock_info_;
+  std::unordered_map<
+      TransactionId, TabletLockInfoPB::TransactionLockInfoPB*> transaction_lock_infos_;
+};
 
 } // namespace yb

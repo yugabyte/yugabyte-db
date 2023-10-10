@@ -1,4 +1,4 @@
-import React, { FocusEvent, ReactElement } from 'react';
+import { FocusEvent, ReactElement } from 'react';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';

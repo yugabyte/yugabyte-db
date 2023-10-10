@@ -1,4 +1,4 @@
-import React, { FC, useContext } from 'react';
+import { FC, useContext, useState } from 'react';
 import _ from 'lodash';
 import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
@@ -6,6 +6,7 @@ import { useWatch, useFormContext } from 'react-hook-form';
 import { Box, Typography, makeStyles } from '@material-ui/core';
 import { GFlagsField } from '../../fields';
 import { YBToggleField } from '../../../../../../components';
+import { ReadOnlyGflagsModal } from './ReadOnlyGflagsModal';
 import { CloudType, ClusterModes, ClusterType, UniverseFormData } from '../../../utils/dto';
 import {
   PROVIDER_FIELD,
@@ -24,7 +25,8 @@ const useStyles = makeStyles((theme) => ({
     height: '68px',
     border: '1px solid #E5E5E9',
     borderRadius: theme.spacing(1),
-    padding: theme.spacing(2)
+    padding: theme.spacing(2),
+    marginTop: theme.spacing(1)
   },
   defaultBox: {
     height: '20px',
@@ -40,7 +42,8 @@ const useStyles = makeStyles((theme) => ({
     textDecoration: 'underline',
     fontSize: '12px',
     fontWeight: 400,
-    color: '#67666C'
+    color: '#67666C',
+    cursor: 'pointer'
   },
   noteText: {
     fontSize: '12px',
@@ -53,10 +56,11 @@ export const GFlags: FC = () => {
   const classes = useSectionStyles();
   const gflagClasses = useStyles();
   const { t } = useTranslation();
+  const [openReadOnlyModal, setReadOnlyModal] = useState(false);
   const featureFlags = useSelector((state: any) => state.featureFlags);
   const enableRRGflags = featureFlags.test.enableRRGflags || featureFlags.released.enableRRGflags;
   //form context
-  const { clusterType, mode } = useContext(UniverseFormContext)[0];
+  const { clusterType, mode, primaryFormData } = useContext(UniverseFormContext)[0];
   const isPrimary = clusterType === ClusterType.PRIMARY;
   const isEditMode = mode === ClusterModes.EDIT; //Form is in edit mode
   const isEditPrimary = isEditMode && isPrimary; //Editing Primary Cluster
@@ -73,7 +77,7 @@ export const GFlags: FC = () => {
   return (
     <Box className={classes.sectionContainer} flexDirection="column" data-testid="Gflags-Section">
       <Typography variant="h4">{t('universeForm.gFlags.title')}</Typography>
-      {!isPrimary && enableRRGflags && provider?.code !== CloudType.kubernetes && (
+      {!isPrimary && enableRRGflags && (
         <Box className={gflagClasses.inheritFlagsContainer}>
           <Box flexShrink={1}>
             <YBToggleField
@@ -91,7 +95,10 @@ export const GFlags: FC = () => {
               <span className={gflagClasses.defaultBox}>
                 <Typography variant="subtitle1">Default</Typography>
               </span>
-              <Typography className={gflagClasses.primaryFlagsLink}>
+              <Typography
+                className={gflagClasses.primaryFlagsLink}
+                onClick={() => setReadOnlyModal(true)}
+              >
                 {t('universeForm.gFlags.primaryClusterFlags')}
               </Typography>
             </Box>
@@ -121,6 +128,11 @@ export const GFlags: FC = () => {
           />
         </Box>
       )}
+      <ReadOnlyGflagsModal
+        open={openReadOnlyModal}
+        onClose={() => setReadOnlyModal(false)}
+        gFlags={primaryFormData?.gFlags}
+      />
     </Box>
   );
 };

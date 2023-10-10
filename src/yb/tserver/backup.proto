@@ -89,6 +89,11 @@ message TabletSnapshotOpRequestPB {
 
   // Metadata of all colocated tables in the case of RESTORE_ON_TABLET rpc.
   repeated TableMetadataPB colocated_tables_metadata = 19;
+
+  // Number of hours the snapshot needs to be kept around
+  // before it is deleted. Set only for CREATE_ON_MASTER for non-pitr use-cases.
+  // Set to -1 to retain indefinitely until an explicit delete_snapshot.
+  int32 retention_duration_hours = 20;
 }
 
 message TabletSnapshotOpResponsePB {

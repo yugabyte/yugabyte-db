@@ -178,6 +178,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     when(mockConfig.getInt("yb.fs_stateless.max_files_count_persist")).thenReturn(100);
     when(mockConfig.getBoolean("yb.fs_stateless.suppress_error")).thenReturn(true);
     when(mockConfig.getLong("yb.fs_stateless.max_file_size_bytes")).thenReturn((long) 10000);
+    when(mockConfig.getString("ybc.compatible_db_version")).thenReturn("2.15.0.0-b1");
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
 
     return new GuiceApplicationBuilder()
@@ -866,6 +867,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     String url =
         "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/tls";
     ObjectNode bodyJson = prepareRequestBodyForTlsToggle(false, false, null);
+    bodyJson.put("upgradeOption", "Non-Rolling");
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
@@ -887,6 +889,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     String url =
         "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/tls";
     ObjectNode bodyJson = prepareRequestBodyForTlsToggle(true, false, UUID.randomUUID());
+    bodyJson.put("upgradeOption", "Non-Rolling");
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
@@ -911,6 +914,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     String url =
         "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/tls";
     ObjectNode bodyJson = prepareRequestBodyForTlsToggle(false, true, certUUID2);
+    bodyJson.put("upgradeOption", "Non-Rolling");
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
@@ -954,6 +958,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     String url =
         "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/tls";
     ObjectNode bodyJson = prepareRequestBodyForTlsToggle(true, true, null);
+    bodyJson.put("upgradeOption", "Non-Rolling");
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
     assertOk(result);
@@ -964,13 +969,35 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     verify(mockCommissioner, times(1)).submit(eq(TaskType.TlsToggle), argCaptor.capture());
 
     TlsToggleParams taskParams = argCaptor.getValue();
-    assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
+    assertEquals(UpgradeOption.NON_ROLLING_UPGRADE, taskParams.upgradeOption);
     assertTrue(taskParams.enableNodeToNodeEncrypt);
     assertTrue(taskParams.enableClientToNodeEncrypt);
     assertNotNull(taskParams.rootCA);
 
     assertNotNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
     assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testTlsToggleRollingUpgrade() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = prepareUniverseForTlsToggle(false, false, null);
+
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/tls";
+    ObjectNode bodyJson = prepareRequestBodyForTlsToggle(true, true, null);
+    bodyJson.put("upgradeOption", "Rolling");
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(result, "TLS toggle can only be performed in a non-rolling manner.");
+
+    ArgumentCaptor<TlsToggleParams> argCaptor = ArgumentCaptor.forClass(TlsToggleParams.class);
+    verify(mockCommissioner, times(0)).submit(eq(TaskType.TlsToggle), argCaptor.capture());
+
+    assertNull(CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne());
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -990,7 +1017,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-    assertBadRequest(result, "VM image upgrade is only supported for AWS / GCP");
+    assertBadRequest(result, "VM image upgrade is only supported for cloud providers");
 
     ArgumentCaptor<VMImageUpgradeParams> argCaptor =
         ArgumentCaptor.forClass(VMImageUpgradeParams.class);
@@ -1318,6 +1345,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
             node.cloudInfo = new CloudSpecificInfo();
             node.cloudInfo.private_ip = "1.2.3." + idx;
             node.cloudInfo.az = availabilityZone.getCode();
+            node.cloudInfo.instance_type = instanceTypeString;
             node.azUuid = availabilityZone.getUuid();
             universeDetails.nodeDetailsSet.add(node);
           }

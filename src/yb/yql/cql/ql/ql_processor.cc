@@ -34,60 +34,60 @@
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_require_drop_privs_for_truncate);
 
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_ParseRequest,
     "Time spent parsing the SQL query", yb::MetricUnit::kMicroseconds,
     "Time spent parsing the SQL query", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_AnalyzeRequest,
     "Time spent to analyze the parsed SQL query", yb::MetricUnit::kMicroseconds,
     "Time spent to analyze the parsed SQL query", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_ExecuteRequest,
     "Time spent executing the parsed SQL query", yb::MetricUnit::kMicroseconds,
     "Time spent executing the parsed SQL query", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_NumRoundsToAnalyze,
     "Number of rounds to successfully parse a SQL query", yb::MetricUnit::kOperations,
     "Number of rounds to successfully parse a SQL query", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_NumRetriesToExecute,
     "Number of retries to successfully execute a SQL query", yb::MetricUnit::kOperations,
     "Number of retries to successfully execute a SQL query", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_NumFlushesToExecute,
     "Number of flushes to successfully execute a SQL query", yb::MetricUnit::kOperations,
     "Number of flushes to successfully execute a SQL query", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_SelectStmt,
     "Time spent processing a SELECT statement", yb::MetricUnit::kMicroseconds,
     "Time spent processing a SELECT statement", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_InsertStmt,
     "Time spent processing an INSERT statement", yb::MetricUnit::kMicroseconds,
     "Time spent processing an INSERT statement", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_UpdateStmt,
     "Time spent processing an UPDATE statement", yb::MetricUnit::kMicroseconds,
     "Time spent processing an UPDATE statement", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_DeleteStmt,
     "Time spent processing a DELETE statement", yb::MetricUnit::kMicroseconds,
     "Time spent processing a DELETE statement", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_UseStmt,
     "Time spent processing a USE statement", yb::MetricUnit::kMicroseconds,
     "Time spent processing a USE statement", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_OtherStmts,
     "Time spent processing any statement other than SELECT/INSERT/UPDATE/DELETE",
     yb::MetricUnit::kMicroseconds,
     "Time spent processing any statement other than SELECT/INSERT/UPDATE/DELETE", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_Transaction,
     "Time spent processing a transaction", yb::MetricUnit::kMicroseconds,
     "Time spent processing a transaction", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_ResponseSize,
     "Size of the returned response blob (in bytes)", yb::MetricUnit::kBytes,
     "Size of the returned response blob (in bytes)", 60000000LU, 2);
@@ -310,11 +310,8 @@ Status QLProcessor::CheckNodePermissions(const TreeNode* tnode) {
     case TreeNodeOpcode::kPTGrantRevokeRole: {
       const auto grant_revoke_role_stmt = static_cast<const PTGrantRevokeRole*>(tnode);
       const string granted_role = grant_revoke_role_stmt->granted_role_name();
-      const string recipient_role = grant_revoke_role_stmt->recipient_role_name();
       s = ql_env_.HasRolePermission(granted_role, PermissionType::AUTHORIZE_PERMISSION);
-      if (s.ok()) {
-        s = ql_env_.HasRolePermission(recipient_role, PermissionType::AUTHORIZE_PERMISSION);
-      }
+      // Access to 'recipient_role_name' is not reqired.
       break;
     }
     case TreeNodeOpcode::kPTGrantRevokePermission: {

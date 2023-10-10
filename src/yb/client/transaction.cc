@@ -112,8 +112,6 @@ METRIC_DEFINE_counter(server, transaction_promotions,
                       yb::MetricUnit::kTransactions,
                       "Number of transactions being promoted to global transactions");
 
-DECLARE_bool(enable_wait_queues);
-
 namespace yb {
 namespace client {
 
@@ -461,7 +459,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       running_requests_ -= ops.size();
 
       if (status.ok()) {
-        if (used_read_time && metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
+        if (used_read_time && metadata_.isolation != IsolationLevel::SERIALIZABLE_ISOLATION) {
           const bool read_point_already_set = static_cast<bool>(read_point_.GetReadTime());
 #ifndef NDEBUG
           if (read_point_already_set) {
@@ -476,7 +474,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           LOG_IF_WITH_PREFIX(DFATAL, read_point_already_set)
               << "Read time already picked (" << read_point_.GetReadTime()
               << ", but server replied with used read time: " << used_read_time;
+          // TODO: Update local limit for the tablet id which sent back the used read time
           read_point_.SetReadTime(used_read_time, ConsistentReadPoint::HybridTimeMap());
+          VLOG_WITH_PREFIX(3)
+              << "Update read time from used read time: " << read_point_.GetReadTime();
         }
         const std::string* prev_tablet_id = nullptr;
         for (const auto& op : ops) {
@@ -1085,6 +1086,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     if (!read_point_.GetReadTime() && do_it &&
         (metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
          metadata_.isolation == IsolationLevel::READ_COMMITTED)) {
+      VLOG_WITH_PREFIX(2) << "Setting current read time as read point for distributed txn";
       read_point_.SetCurrentReadTime();
     }
   }
@@ -1156,6 +1158,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         }
       }
     }
+    auto* local_ts = manager_->client()->GetLocalTabletServer();
+    if (local_ts) {
+      state.set_host_node_uuid(local_ts->permanent_uuid());
+    }
 
     if (aborted_set_for_rollback_heartbeat) {
       VLOG_WITH_PREFIX(4) << "Setting aborted_set_for_rollback_heartbeat: "
@@ -1175,11 +1181,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   void DoCommit(
       CoarseTimePoint deadline, SealOnly seal_only, const Status& status,
       const YBTransactionPtr& transaction) EXCLUDES(mutex_) {
+    UniqueLock lock(mutex_);
     VLOG_WITH_PREFIX(1)
         << Format("Commit, seal_only: $0, tablets: $1, status: $2",
                   seal_only, tablets_, status);
-
-    UniqueLock lock(mutex_);
 
     if (!status.ok()) {
       VLOG_WITH_PREFIX(4) << "Commit failed: " << status;
@@ -1505,9 +1510,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         client::UseCache::kTrue);
   }
 
-  void LookupTabletDone(const Result<client::internal::RemoteTabletPtr>& result,
-                        const YBTransactionPtr& transaction,
-                        TransactionPromoting promoting) {
+  void LookupTabletDone(
+      const Result<client::internal::RemoteTabletPtr>& result, const YBTransactionPtr& transaction,
+      TransactionPromoting promoting) EXCLUDES(mutex_) {
     TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(1) << "Lookup tablet done: " << yb::ToString(result);
 
@@ -1521,7 +1526,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     if (status == TransactionStatus::ABORTED) {
       DCHECK(promoting);
-      SendAbortToOldStatusTabletIfNeeded(TransactionRpcDeadline(), transaction, old_status_tablet_);
+      decltype(old_status_tablet_) old_status_tablet;
+      {
+        SharedLock lock(mutex_);
+        old_status_tablet = old_status_tablet_;
+      }
+      SendAbortToOldStatusTabletIfNeeded(TransactionRpcDeadline(), transaction, old_status_tablet);
     } else {
       SendHeartbeat(status, metadata_.transaction_id, transaction_->shared_from_this(),
                     SendHeartbeatToNewTablet(promoting));

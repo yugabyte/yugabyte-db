@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { useContext } from 'react';
+import { useContext } from 'react';
 import Select from 'react-select';
 import { Box, Typography, makeStyles } from '@material-ui/core';
 import { Controller, useFormContext } from 'react-hook-form';
@@ -17,8 +17,8 @@ import { IGeneralSettings } from './GeneralSettings';
 import { YBLabel } from '../../../../../common/descriptors';
 import { YBCheckboxField } from '../../../../../../redesign/components';
 import { RestoreContextMethods, RestoreFormContext } from '../../RestoreContext';
-import Checked from '../../icons/checkbox/Checked.svg';
-import UnChecked from '../../icons/checkbox/UnChecked.svg';
+import Checked from '../../../../../../redesign/assets/checkbox/Checked.svg';
+import UnChecked from '../../../../../../redesign/assets/checkbox/UnChecked.svg';
 
 const useStyles = makeStyles((theme) => ({
   controls: {
@@ -52,12 +52,12 @@ const SelectKeyspaceConfig = () => {
   const { t } = useTranslation();
 
   const forceKeyspaceRename = watch('forceKeyspaceRename');
+  const renameKeyspace = watch('renameKeyspace');
 
   useMount(() => {
     if (
-      !generalSettings?.incrementalBackupProps.isRestoreEntireBackup ||
-      (backupDetails?.hasIncrementalBackups &&
-        generalSettings?.incrementalBackupProps.singleKeyspaceRestore === true)
+      !generalSettings?.incrementalBackupProps.isRestoreEntireBackup &&
+      generalSettings?.incrementalBackupProps.singleKeyspaceRestore
     ) {
       setValue('selectedKeyspace', {
         label: backupDetails!.commonBackupInfo.responseList[0].keyspace,
@@ -93,6 +93,7 @@ const SelectKeyspaceConfig = () => {
                 ? t('newRestoreModal.generalSettings.selectKeyspaceForm.optional')
                 : ''
             })}
+            checked={renameKeyspace}
             control={control}
             name="renameKeyspace"
             disabled={forceKeyspaceRename}
@@ -102,7 +103,7 @@ const SelectKeyspaceConfig = () => {
           {forceKeyspaceRename && (
             <span className={classes.renameKeyspaceHelperText}>
               <Trans
-                i18nKey="newRestoreModal.generalSettings.universeSelection.kmsConfigHelpText"
+                i18nKey="newRestoreModal.generalSettings.selectKeyspaceForm.forceRenameHelpText"
                 components={{ b: <b /> }}
               />
             </span>

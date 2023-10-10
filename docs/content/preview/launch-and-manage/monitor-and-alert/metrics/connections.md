@@ -16,14 +16,14 @@ Connection metrics represent the cumulative number of connections to the YSQL ba
 
 Connection metrics are only available in Prometheus format.
 
-The following table describes key connection metrics.
+The following table describes key connection metrics. All units are in number of connections.
 
-| Metric | Unit | Type | Description |
-| :------ | :--- | :--- | :---------- |
-| `yb_ysqlserver_active_connection_total` | connections | gauge | The number of active client backend connections to YSQL server. If a client connection is executing a statement, it is considered an active connection. Any client connection not executing a statement is considered an idle connection.|
-| `yb_ysqlserver_connection_total` | connections | gauge | The total number of all connections to YSQL, which includes active connections, idle connections, and background connections. |
-| `yb_ysqlserver_max_connection_total` | connections | gauge | The maximum number of concurrent connections that a YSQL server can support at any given time. The default is 300. This value can be changed using the `--ysql_max_connections` YB-TServer flag. |
-| `yb_ysqlserver_connection_over_limit_total` | connections | counter | The number of connection requests rejected by the YSQL server over the maximum connection limit, based on `yb_ysqlserver_max_connection_total`.  |
-| `yb_ysqlserver_new_connection_total` | connections | counter | The total number of connections established with the YSQL server since the start of the process.  |
+| Metric | Type | Description |
+| :----- | :--- | :---------- |
+| `yb_ysqlserver_active_connection_total` | gauge | The number of active client backend connections to YSQL server. If a client connection is executing a statement, it is considered an active connection. Any client connection not executing a statement is considered an idle connection.|
+| `yb_ysqlserver_connection_total` | gauge | The total number of all connections to YSQL, which includes active connections, idle connections, and background connections. |
+| `yb_ysqlserver_max_connection_total` | gauge | The maximum number of concurrent connections that a YSQL server can support at any given time. The default is 300. This value can be changed using the `--ysql_max_connections` YB-TServer flag. |
+| `yb_ysqlserver_connection_over_limit_total` | counter | The number of connection requests rejected by the YSQL server over the maximum connection limit, based on `yb_ysqlserver_max_connection_total`.  |
+| `yb_ysqlserver_new_connection_total` | counter | The total number of connections established with the YSQL server since the start of the process.  |
 
 These metrics can be aggregated across the entire cluster using appropriate aggregations.

@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Use the `role` resource to create and manage YugabyteDB Managed account [roles](../../../../cloud-admin/managed-roles/).
+Use the `role` resource to create and manage YugabyteDB Managed account [roles](../../../../managed-security/managed-roles/).
 
 ## Syntax
 

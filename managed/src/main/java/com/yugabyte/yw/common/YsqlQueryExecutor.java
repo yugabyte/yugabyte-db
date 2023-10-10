@@ -16,6 +16,7 @@ import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserDropFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -189,7 +190,32 @@ public class YsqlQueryExecutor {
   }
 
   public JsonNode executeQueryInNodeShell(
+      Universe universe, RunQueryFormData queryParams, NodeDetails node, boolean authEnabled) {
+    return executeQueryInNodeShell(
+        universe,
+        queryParams,
+        node,
+        runtimeConfigFactory.forUniverse(universe).getLong("yb.ysql_timeout_secs"),
+        authEnabled);
+  }
+
+  public JsonNode executeQueryInNodeShell(
       Universe universe, RunQueryFormData queryParams, NodeDetails node, long timeoutSec) {
+
+    return executeQueryInNodeShell(
+        universe,
+        queryParams,
+        node,
+        runtimeConfigFactory.forUniverse(universe).getLong("yb.ysql_timeout_secs"),
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled());
+  }
+
+  public JsonNode executeQueryInNodeShell(
+      Universe universe,
+      RunQueryFormData queryParams,
+      NodeDetails node,
+      long timeoutSec,
+      boolean authEnabled) {
     ObjectNode response = newObject();
     response.put("type", "ysql");
     String queryType = getQueryType(queryParams.query);
@@ -200,7 +226,8 @@ public class YsqlQueryExecutor {
     try {
       shellResponse =
           nodeUniverseManager
-              .runYsqlCommand(node, universe, queryParams.db_name, queryString, timeoutSec)
+              .runYsqlCommand(
+                  node, universe, queryParams.db_name, queryString, timeoutSec, authEnabled)
               .processErrors("Ysql Query Execution Error");
     } catch (RuntimeException e) {
       response.put("error", ShellResponse.cleanedUpErrorMessage(e.getMessage()));
@@ -225,8 +252,9 @@ public class YsqlQueryExecutor {
   }
 
   public void dropUser(Universe universe, DatabaseUserDropFormData data) {
+    Customer customer = Customer.get(universe.getCustomerId());
     boolean isCloudEnabled =
-        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled");
+        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
 
     if (!isCloudEnabled) {
       throw new PlatformServiceException(Http.Status.METHOD_NOT_ALLOWED, "Feature not allowed.");
@@ -260,8 +288,9 @@ public class YsqlQueryExecutor {
   }
 
   public void createRestrictedUser(Universe universe, DatabaseUserFormData data) {
+    Customer customer = Customer.get(universe.getCustomerId());
     boolean isCloudEnabled =
-        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled");
+        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
 
     if (!isCloudEnabled) {
       throw new PlatformServiceException(Http.Status.METHOD_NOT_ALLOWED, "Feature not allowed.");
@@ -310,8 +339,9 @@ public class YsqlQueryExecutor {
 
   public void createUser(Universe universe, DatabaseUserFormData data) {
 
+    Customer customer = Customer.get(universe.getCustomerId());
     boolean isCloudEnabled =
-        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled");
+        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
 
     StringBuilder allQueries = new StringBuilder();
     String query;

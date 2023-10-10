@@ -76,6 +76,14 @@
       explode: false
       schema:
         type: string
+    - name: zone
+      in: query
+      description: Zone to filter for the given cluster
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: string
     - name: start_time
       in: query
       description: Start of range of time series data (in epoch seconds)
@@ -123,6 +131,22 @@
       in: query
       description: Which activities data to retrieve
       required: true
+      style: form
+      explode: false
+      schema:
+        type: string
+    - name: status
+      in: query
+      description: Completed or In-Progress
+      required: true
+      style: form
+      explode: false
+      schema:
+        type: string
+    - name: database
+      in: query
+      description: Which database's activities data is to be retrived.
+      required: false
       style: form
       explode: false
       schema:
@@ -175,6 +199,14 @@
       - name: id
         in: query
         description: UUID of the table
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+      - name: node_address
+        in: query
+        description: Specify the node ip-address from where the table info is retrieved
         required: true
         style: form
         explode: false

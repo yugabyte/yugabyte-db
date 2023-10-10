@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import { MenuItem, Dropdown } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import moment from 'moment';
@@ -21,6 +21,8 @@ import { getUniverseStatus, UniverseState } from '../helpers/universeHelpers';
 
 import './NodeDetailsTable.scss';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
+import { hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 
 const NODE_TYPE = [
   {
@@ -111,14 +113,26 @@ export default class NodeDetailsTable extends Component {
     };
 
     const getIpPortLinks = (cell, row) => {
+      const cluster =
+        clusterType === 'primary'
+          ? getPrimaryCluster(currentUniverse.data?.universeDetails?.clusters)
+          : getReadOnlyCluster(currentUniverse.data?.universeDetails?.clusters);
+      const isKubernetes = cluster?.userIntent?.providerType === 'kubernetes';
+
       return (
         <Fragment>
-          {row.dedicatedTo === NodeType.Master.toUpperCase() &&
+          {isDedicatedNodes &&
+            !isKubernetes &&
+            row.dedicatedTo === NodeType.Master.toUpperCase() &&
             formatIpPort(row.isMaster, row, NodeType.Master.toLowerCase())}
-          {row.dedicatedTo === NodeType.TServer.toUpperCase() &&
+          {isDedicatedNodes &&
+            !isKubernetes &&
+            row.dedicatedTo === NodeType.TServer.toUpperCase() &&
             formatIpPort(row.isTServer, row, NodeType.TServer.toLowerCase())}
-          {!row.dedicatedTo && formatIpPort(row.isMaster, row, NodeType.Master.toLowerCase())}
-          {!row.dedicatedTo && formatIpPort(row.isTServer, row, NodeType.TServer.toLowerCase())}
+          {(!isDedicatedNodes || isKubernetes) &&
+            formatIpPort(row.isMaster, row, NodeType.Master.toLowerCase())}
+          {(!isDedicatedNodes || isKubernetes) &&
+            formatIpPort(row.isTServer, row, NodeType.TServer.toLowerCase())}
         </Fragment>
       );
     };
@@ -300,7 +314,12 @@ export default class NodeDetailsTable extends Component {
     const displayNodeActions =
       !this.props.isReadOnlyUniverse &&
       universeStatus.state !== UniverseState.PAUSED &&
-      isNotHidden(customer.currentCustomer.data.features, 'universes.tableActions');
+      isNotHidden(customer.currentCustomer.data.features, 'universes.tableActions') && 
+      hasNecessaryPerm({
+        onResource: currentUniverse.data.universeUUID,
+        ...UserPermissionMap.editUniverse
+      })
+      ;
 
     return (
       <div className="node-details-table-container">

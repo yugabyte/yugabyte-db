@@ -18,6 +18,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -37,6 +38,10 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.rbac.Permission;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
@@ -48,6 +53,7 @@ import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Restore;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
@@ -57,8 +63,16 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import com.yugabyte.yw.models.rbac.ResourceGroup;
+import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
+import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.Role.RoleType;
+import com.yugabyte.yw.models.rbac.RoleBinding;
+import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -74,6 +88,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
+import org.springframework.test.util.ReflectionTestUtils;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -88,6 +103,10 @@ public class BackupsControllerTest extends FakeDBApplication {
   private BackupTableParams backupTableParams;
   private UUID taskUUID;
   private TaskInfo taskInfo;
+  private Role role;
+  private ResourceDefinition rd1;
+
+  Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.BACKUP_RESTORE);
 
   @Before
   public void setUp() {
@@ -95,6 +114,18 @@ public class BackupsControllerTest extends FakeDBApplication {
     defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
     defaultUniverse = ModelFactory.addNodesToUniverse(defaultUniverse.getUniverseUUID(), 1);
+    role =
+        Role.create(
+            defaultCustomer.getUuid(),
+            "FakeRole1",
+            "testDescription",
+            RoleType.Custom,
+            new HashSet<>(Arrays.asList(permission1)));
+    rd1 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.UNIVERSE)
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(defaultUniverse.getUniverseUUID())))
+            .build();
     taskUUID = UUID.randomUUID();
     backupTableParams = new BackupTableParams();
     backupTableParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
@@ -224,7 +255,12 @@ public class BackupsControllerTest extends FakeDBApplication {
   public void testCreateBackup() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST21");
     UUID fakeTaskUUID = UUID.randomUUID();
+    CustomerConfigService mockCCS = mock(CustomerConfigService.class);
+    when(mockCCS.getOrBadRequest(any(), any())).thenReturn(customerConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    when(mockBackupHelper.createBackupTask(any(), any())).thenCallRealMethod();
+    ReflectionTestUtils.setField(mockBackupHelper, "customerConfigService", mockCCS);
+    ReflectionTestUtils.setField(mockBackupHelper, "commissioner", mockCommissioner);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
     bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
@@ -724,6 +760,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   public void testCreateBackupValidationFailed() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST25");
     UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockBackupHelper.createBackupTask(any(), any())).thenCallRealMethod();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     doThrow(new PlatformServiceException(BAD_REQUEST, "error"))
         .when(mockBackupHelper)
@@ -744,6 +781,8 @@ public class BackupsControllerTest extends FakeDBApplication {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST25");
     ObjectNode bodyJson = Json.newObject();
     Map<String, String> config = defaultUniverse.getConfig();
+    when(mockBackupHelper.createBackupTask(any(), any())).thenCallRealMethod();
+
     config.put(Universe.TAKE_BACKUPS, "false");
     defaultUniverse.updateConfig(config);
     defaultUniverse.update();
@@ -761,6 +800,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   public void testCreateBackupWithoutTimeUnit() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST26");
     UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockBackupHelper.createBackupTask(any(), any())).thenCallRealMethod();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
@@ -885,6 +925,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   public void testRestoreBackupWithInvalidUniverseUUID() {
     UUID universeUUID = UUID.randomUUID();
     JsonNode bodyJson = Json.newObject();
+    when(mockBackupHelper.createRestoreTask(any(), any())).thenCallRealMethod();
 
     Result result = assertPlatformException(() -> restoreBackup(universeUUID, bodyJson, null));
     assertEquals(BAD_REQUEST, result.status());
@@ -898,6 +939,8 @@ public class BackupsControllerTest extends FakeDBApplication {
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = UUID.randomUUID();
     bp.setUniverseUUID(UUID.randomUUID());
+    when(mockBackupHelper.createRestoreTask(any(), any())).thenCallRealMethod();
+
     Backup.create(defaultCustomer.getUuid(), bp);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("actionType", "RESTORE");
@@ -915,6 +958,8 @@ public class BackupsControllerTest extends FakeDBApplication {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST2");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.getConfigUUID();
+    when(mockBackupHelper.createRestoreTask(any(), any())).thenCallRealMethod();
+
     bp.setUniverseUUID(UUID.randomUUID());
     Backup.create(defaultCustomer.getUuid(), bp);
     ObjectNode bodyJson = Json.newObject();
@@ -936,6 +981,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = UUID.randomUUID();
     bp.setUniverseUUID(UUID.randomUUID());
+    when(mockBackupHelper.createRestoreTask(any(), any())).thenCallRealMethod();
     Backup b = Backup.create(defaultCustomer.getUuid(), bp);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("keyspace", "mock_ks");
@@ -956,6 +1002,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   public void testRestoreBackupWithReadOnlyUser() {
     Users user = ModelFactory.testUser(defaultCustomer, "tc@test.com", Users.Role.ReadOnly);
     BackupTableParams bp = new BackupTableParams();
+    when(mockBackupHelper.createRestoreTask(any(), any())).thenCallRealMethod();
     bp.storageConfigUUID = UUID.randomUUID();
     bp.setUniverseUUID(UUID.randomUUID());
     Backup b = Backup.create(defaultCustomer.getUuid(), bp);
@@ -979,6 +1026,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     bp.setUniverseUUID(defaultUniverse.getUniverseUUID());
     Backup b = Backup.create(defaultCustomer.getUuid(), bp);
     ObjectNode bodyJson = Json.newObject();
+    when(mockBackupHelper.createRestoreTask(any(), any())).thenCallRealMethod();
 
     long maxReqSizeInBytes =
         app.config().getMemorySize("play.http.parser.maxMemoryBuffer").toBytes();
@@ -1021,6 +1069,8 @@ public class BackupsControllerTest extends FakeDBApplication {
   public void testRestoreBackupRequestTooLarge() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST5");
     BackupTableParams bp = new BackupTableParams();
+    when(mockBackupHelper.createRestoreTask(any(), any())).thenCallRealMethod();
+
     bp.storageConfigUUID = customerConfig.getConfigUUID();
     bp.setUniverseUUID(UUID.randomUUID());
     Backup.create(defaultCustomer.getUuid(), bp);
@@ -1049,6 +1099,9 @@ public class BackupsControllerTest extends FakeDBApplication {
   public void testRestoreBackupWithInvalidOwner() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST5");
     BackupTableParams bp = new BackupTableParams();
+    when(mockBackupHelper.createRestoreTask(any(), any())).thenCallRealMethod();
+    when(mockBackupHelper.getValidOwnerRegex()).thenCallRealMethod();
+
     bp.storageConfigUUID = customerConfig.getConfigUUID();
     bp.setUniverseUUID(defaultUniverse.getUniverseUUID());
     Backup.create(defaultCustomer.getUuid(), bp);
@@ -1211,6 +1264,8 @@ public class BackupsControllerTest extends FakeDBApplication {
   public void testDeleteBackupYbWithValidState(BackupState state) {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST6");
     BackupTableParams bp = new BackupTableParams();
+    ReflectionTestUtils.setField(mockBackupHelper, "commissioner", mockCommissioner);
+    when(mockBackupHelper.createDeleteBackupTasks(any(), any())).thenCallRealMethod();
     bp.storageConfigUUID = customerConfig.getConfigUUID();
     bp.setUniverseUUID(UUID.randomUUID());
     Backup backup = Backup.create(defaultCustomer.getUuid(), bp);
@@ -1241,6 +1296,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   public void testDeleteBackupYbWithInvalidState(BackupState state) {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST6");
     BackupTableParams bp = new BackupTableParams();
+    when(mockBackupHelper.createDeleteBackupTasks(any(), any())).thenCallRealMethod();
     bp.storageConfigUUID = customerConfig.getConfigUUID();
     bp.setUniverseUUID(UUID.randomUUID());
     Backup backup = Backup.create(defaultCustomer.getUuid(), bp);
@@ -1265,6 +1321,8 @@ public class BackupsControllerTest extends FakeDBApplication {
     UUID invalidStorageConfigUUID = UUID.randomUUID();
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = invalidStorageConfigUUID;
+    ReflectionTestUtils.setField(mockBackupHelper, "commissioner", mockCommissioner);
+    when(mockBackupHelper.createDeleteBackupTasks(any(), any())).thenCallRealMethod();
     bp.setUniverseUUID(UUID.randomUUID());
     Backup backup = Backup.create(defaultCustomer.getUuid(), bp);
     backup.transitionState(BackupState.Completed);
@@ -1300,6 +1358,8 @@ public class BackupsControllerTest extends FakeDBApplication {
     bp.setUniverseUUID(defaultUniverse.getUniverseUUID());
     Backup backup = Backup.create(defaultCustomer.getUuid(), bp);
     backup.transitionState(BackupState.Completed);
+    when(mockBackupHelper.createDeleteBackupTasks(any(), any())).thenCallRealMethod();
+
     List<String> backupUUIDList = new ArrayList<>();
     backupUUIDList.add(backup.getBackupUUID().toString());
     UUID fakeTaskUUID = UUID.randomUUID();
@@ -1347,7 +1407,46 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testStopBackupWithPermissions()
+      throws IOException, InterruptedException, ExecutionException {
+
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
+    RoleBinding.create(defaultUser, RoleBindingType.Custom, role, rG);
+
+    ProcessBuilder processBuilderObject = new ProcessBuilder("test");
+    Process process = processBuilderObject.start();
+    Util.setPID(defaultBackup.getBackupUUID(), process);
+
+    taskInfo = new TaskInfo(TaskType.CreateTable);
+    taskInfo.setDetails(Json.newObject());
+    taskInfo.setOwner("");
+    taskInfo.setTaskUUID(taskUUID);
+    taskInfo.save();
+
+    defaultBackup.setTaskUUID(taskUUID);
+    defaultBackup.save();
+    ExecutorService executorService = Executors.newSingleThreadExecutor();
+
+    Callable<Result> callable =
+        () -> {
+          return stopBackup(null, defaultBackup.getBackupUUID());
+        };
+    Future<Result> future = executorService.submit(callable);
+    Thread.sleep(1000);
+    taskInfo.setTaskState(State.Failure);
+    taskInfo.save();
+
+    Result result = future.get();
+    executorService.shutdown();
+    assertEquals(200, result.status());
+    assertAuditEntry(1, defaultCustomer.getUuid());
+  }
+
+  @Test
   public void testStopBackupCompleted() {
+    when(mockBackupHelper.stopBackup(any(), any())).thenCallRealMethod();
+
     defaultBackup.transitionState(BackupState.Completed);
     Result result =
         assertThrows(
@@ -1364,7 +1463,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     ProcessBuilder processBuilderObject = new ProcessBuilder("test");
     Process process = processBuilderObject.start();
     Util.setPID(defaultBackup.getBackupUUID(), process);
-
+    when(mockBackupHelper.stopBackup(any(), any())).thenCallRealMethod();
     taskInfo = new TaskInfo(TaskType.CreateTable);
     taskInfo.setDetails(Json.newObject());
     taskInfo.setOwner("");
@@ -1814,6 +1913,8 @@ public class BackupsControllerTest extends FakeDBApplication {
     List<String> backupUUIDList = new ArrayList<>();
     backupUUIDList.add(backup.getBackupUUID().toString());
     UUID fakeTaskUUID = UUID.randomUUID();
+    ReflectionTestUtils.setField(mockBackupHelper, "commissioner", mockCommissioner);
+    when(mockBackupHelper.createDeleteBackupTasks(any(), any())).thenCallRealMethod();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     ObjectNode resultNode = Json.newObject();
     ArrayNode arrayNode = resultNode.putArray("backups");

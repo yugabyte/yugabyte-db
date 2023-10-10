@@ -20,6 +20,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
@@ -71,7 +72,9 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
             allowedBuckets,
             mockStorageUtilFactory,
             app.injector().instanceOf(RuntimeConfGetter.class),
-            mockAWSUtil));
+            mockAWSUtil,
+            mockGCPUtil));
+    doCallRealMethod().when(mockAWSUtil).getConfigLocationInfo(any());
   }
 
   @Test
@@ -470,8 +473,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Result result = assertPlatformException(() -> testPasswordPolicy(8, 3, 3, 2, 1));
     assertBadRequest(
         result,
-        "{\"data\":[\"Minimal length should be not less than"
-            + " the sum of minimal counts for upper case, lower case, digits and special characters\"]}");
+        "{\"data\":[\"Minimal length should be not less than the sum of minimal counts for upper"
+            + " case, lower case, digits and special characters\"]}");
     assertEquals(0, CustomerConfig.getAll(defaultCustomer.getUuid()).size());
     assertAuditEntry(0, defaultCustomer.getUuid());
   }

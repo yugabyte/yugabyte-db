@@ -25,6 +25,7 @@
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_util.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -38,9 +39,11 @@
 
 using namespace std::literals;
 
+DECLARE_bool(enable_fast_pitr);
 DECLARE_bool(enable_history_cutoff_propagation);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 
@@ -121,8 +124,10 @@ TEST_F(SnapshotScheduleTest, Snapshot) {
         "T $0 P $1 Table $2", peer->tablet_id(), peer->permanent_uuid(),
         peer->tablet_metadata()->table_name()));
     auto tablet = peer->tablet();
-    auto history_cutoff = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
-    ASSERT_LE(history_cutoff, first_snapshot_hybrid_time);
+    auto history_cutoff =
+        tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+    ASSERT_LE(history_cutoff.primary_cutoff_ht, first_snapshot_hybrid_time);
+    ASSERT_EQ(history_cutoff.cotables_cutoff_ht, HybridTime::kInvalid);
   }
 
   ASSERT_OK(WaitFor([this]() -> Result<bool> {
@@ -135,8 +140,12 @@ TEST_F(SnapshotScheduleTest, Snapshot) {
   ASSERT_OK(WaitFor([first_snapshot_hybrid_time, peers]() -> Result<bool> {
     for (const auto& peer : peers) {
       auto tablet = peer->tablet();
-      auto history_cutoff = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
-      if (history_cutoff <= first_snapshot_hybrid_time) {
+      auto history_cutoff =
+          tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+      if (history_cutoff.primary_cutoff_ht <= first_snapshot_hybrid_time) {
+        return false;
+      }
+      if (history_cutoff.cotables_cutoff_ht != HybridTime::kInvalid) {
         return false;
       }
     }
@@ -218,7 +227,7 @@ TEST_F(SnapshotScheduleTest, TablegroupGC) {
       nullptr, YQLDatabase::YQL_DATABASE_PGSQL, namespace_name, WaitSnapshot::kTrue,
       kSnapshotInterval, kSnapshotInterval * 2));
 
-  ASSERT_OK(client_->DeleteTablegroup(tablegroup_id));
+  ASSERT_OK(client_->DeleteTablegroup(tablegroup_id, nullptr /* txn */));
 
   // We give 2 rounds of retention period for cleanup.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
@@ -277,8 +286,10 @@ TEST_F(SnapshotScheduleTest, Index) {
           "T $0 P $1 Table $2", peer->tablet_id(), peer->permanent_uuid(),
           peer->tablet_metadata()->table_name()));
       auto tablet = peer->tablet();
-      auto history_cutoff = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
-      SCHECK_LE(history_cutoff, hybrid_time, IllegalState, "Too big history cutoff");
+      auto history_cutoff =
+          tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+      SCHECK_LE(history_cutoff.primary_cutoff_ht,
+                hybrid_time, IllegalState, "Too big history cutoff");
     }
 
     return false;
@@ -397,6 +408,109 @@ TEST_F(SnapshotScheduleTest, DeletedNamespace) {
   auto snapshot_id = ASSERT_RESULT(snapshot_util_->PickSuitableSnapshot(
       schedule_id, hybrid_time));
   ASSERT_OK(snapshot_util_->RestoreSnapshot(snapshot_id, hybrid_time));
+}
+
+TEST_F(SnapshotScheduleTest, MasterHistoryRetentionNoSchedule) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_history_cutoff_propagation) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_fast_pitr) = true;
+  // Without snapshot schedule, the retention should be
+  // min(t - timestamp_history_retention_interval_sec,
+  //     t - timestamp_syscatalog_history_retention_interval_sec).
+  // Case: 1
+  // timestamp_history_retention_interval_sec <
+  // timestamp_syscatalog_history_retention_interval_sec.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) = 120;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 60;
+  // Since FLAGS_timestamp_syscatalog_history_retention_interval_sec is 120,
+  // history retention should be t-120 where t is the current time obtained by
+  // GetRetentionDirective() call.
+  auto& sys_catalog = cluster_->mini_master(0)->master()->sys_catalog();
+  auto tablet = ASSERT_RESULT(sys_catalog.tablet_peer()->shared_tablet_safe());
+  auto directive = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+  // current_time-120 should be >= t-120 since current_time >= t.
+  // We bound this error by 1s * kTimeMultiplier.
+  HybridTime expect = cluster_->mini_master(0)->master()->clock()->Now().AddSeconds(
+      -FLAGS_timestamp_syscatalog_history_retention_interval_sec);
+  ASSERT_GE(expect, directive.primary_cutoff_ht);
+  ASSERT_LE(expect, directive.primary_cutoff_ht.AddSeconds(1 * kTimeMultiplier));
+  // Cotables should also have the same cutoff.
+  ASSERT_EQ(directive.cotables_cutoff_ht, directive.primary_cutoff_ht);
+  LOG(INFO) << "History retention directive - primary: "
+            << directive.primary_cutoff_ht << ", cotables: "
+            << directive.cotables_cutoff_ht
+            << ", expected primary: " << expect
+            << ", expected cotables: " << expect;
+  // Case: 2
+  // timestamp_history_retention_interval_sec >
+  // timestamp_syscatalog_history_retention_interval_sec.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) = 120;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 240;
+  // Since FLAGS_timestamp_history_retention_interval_sec is 240,
+  // history retention should be t-240 where t is the current time obtained by
+  // GetRetentionDirective() call.
+  directive = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+  // current_time-120 should be >= t-120 since current_time >= t.
+  // We bound this error by 1s * kTimeMultiplier.
+  expect = cluster_->mini_master(0)->master()->clock()->Now().AddSeconds(
+      -FLAGS_timestamp_history_retention_interval_sec);
+  ASSERT_GE(expect, directive.primary_cutoff_ht);
+  ASSERT_LE(expect, directive.primary_cutoff_ht.AddSeconds(1 * kTimeMultiplier));
+  // Cotables should also have the same cutoff.
+  ASSERT_EQ(directive.cotables_cutoff_ht, directive.primary_cutoff_ht);
+  LOG(INFO) << "History retention directive - primary: "
+            << directive.primary_cutoff_ht << ", cotables: "
+            << directive.cotables_cutoff_ht
+            << ", expected primary retention: " << expect
+            << ", expected cotables retention: " << expect;
+}
+
+TEST_F(SnapshotScheduleTest, MasterHistoryRetentionWithSchedule) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_history_cutoff_propagation) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_fast_pitr) = true;
+  // Create a snapshot schedule and wait for a snapshot.
+  const auto kInterval = 10s * kTimeMultiplier;
+  const auto kRetention = kInterval * 4;
+  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
+      table_, kTableName.namespace_type(), kTableName.namespace_name(),
+      WaitSnapshot::kTrue, kInterval, kRetention));
+  // Since both the above flags is 0, history retention should be
+  // last_snapshot_time for all the tables except docdb metadata table
+  // for which it should be t-kRetention where t is the current time
+  // obtained by AllowedHistoryCutoffProvider().
+  auto& sys_catalog = cluster_->mini_master(0)->master()->sys_catalog();
+  auto tablet = ASSERT_RESULT(sys_catalog.tablet_peer()->shared_tablet_safe());
+  // Because the snapshot interval is quite high (10s), at some point
+  // the returned history retention should become equal to last snapshot time.
+  // This takes care of races between GetRetentionDirective() calls and
+  // snapshot creation that happens in the background; because we are calling
+  // GetRetentionDirective() very frequently, at some point it should catch up.
+  ASSERT_OK(WaitFor([&tablet, this, schedule_id, kRetention]() -> Result<bool> {
+    auto directive = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+    auto expect = cluster_->mini_master(0)->master()->clock()->Now().AddDelta(-kRetention);
+    auto schedules = VERIFY_RESULT(snapshot_util_->ListSchedules(schedule_id));
+    RSTATUS_DCHECK_EQ(schedules.size(), 1, Corruption, "There should be only one schedule");
+    HybridTime most_recent = HybridTime::kMin;
+    for (const auto& s : schedules[0].snapshots()) {
+      if (s.entry().state() == master::SysSnapshotEntryPB::COMPLETE) {
+        most_recent.MakeAtLeast(HybridTime::FromPB(s.entry().snapshot_hybrid_time()));
+      }
+    }
+    LOG(INFO) << "History retention directive - primary: "
+              << directive.primary_cutoff_ht
+              << ", cotables: " << directive.cotables_cutoff_ht
+              << ", expected primary retention: " << most_recent
+              << ", expected cotables retention: " << expect;
+    if (directive.primary_cutoff_ht != most_recent) {
+      return false;
+    }
+    if (expect >= directive.cotables_cutoff_ht &&
+        expect <= directive.cotables_cutoff_ht.AddSeconds(1 * kTimeMultiplier)) {
+      return true;
+    }
+    return false;
+  }, 120s, "Wait for history retention to stablilize"));
 }
 
 } // namespace client

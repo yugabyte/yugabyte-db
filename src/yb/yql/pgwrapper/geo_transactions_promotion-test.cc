@@ -26,7 +26,6 @@ DECLARE_bool(TEST_select_all_status_tablets);
 DECLARE_bool(TEST_txn_status_moved_rpc_force_fail);
 DECLARE_bool(auto_create_local_transaction_tables);
 DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
-DECLARE_bool(enable_deadlock_detection);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(force_global_transactions);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
@@ -342,7 +341,6 @@ class GeoPartitionedDeadlockTest : public GeoTransactionsPromotionTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
         "statement_timeout=$0", kClientStatementTimeoutSeconds);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = true;
 
     GeoTransactionsPromotionTest::SetUp();
   }

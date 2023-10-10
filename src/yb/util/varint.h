@@ -18,7 +18,6 @@
 #include "yb/util/slice.h"
 
 namespace yb {
-namespace util {
 
 class BigNumDeleter {
  public:
@@ -189,6 +188,4 @@ class VarInt {
 
 std::ostream& operator<<(std::ostream& os, const VarInt& v);
 
-
-} // namespace util
 } // namespace yb

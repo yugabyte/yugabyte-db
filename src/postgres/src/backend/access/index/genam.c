@@ -134,6 +134,7 @@ RelationGetIndexScan(Relation indexRelation, int nkeys, int norderbys)
 	scan->yb_idx_pushdown = NULL;
 	scan->yb_aggrefs = NIL;
 	scan->yb_agg_slot = NULL;
+	scan->yb_distinct_prefixlen = 0;
 	return scan;
 }
 
@@ -437,10 +438,9 @@ systable_getnext(SysScanDesc sysscan)
 {
 	HeapTuple	htup;
 
-	if (IsYugaByteEnabled())
-	{
-		return ybc_systable_getnext(sysscan);
-	}
+	YbSysScanBase ybscan = sysscan->ybscan;
+	if (ybscan)
+		return ybscan->vtable->next(ybscan);
 
 	if (sysscan->irel)
 	{
@@ -523,10 +523,9 @@ systable_recheck_tuple(SysScanDesc sysscan, HeapTuple tup)
 void
 systable_endscan(SysScanDesc sysscan)
 {
-	if (IsYugaByteEnabled())
-	{
-		return ybc_systable_endscan(sysscan);
-	}
+	YbSysScanBase ybscan = sysscan->ybscan;
+	if (ybscan)
+		return ybscan->vtable->end(ybscan);
 
 	if (sysscan->irel)
 	{

@@ -37,6 +37,7 @@
 
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_protocol.pb.h"
+#include "yb/common/read_hybrid_time.h"
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/metadata.pb.h"
@@ -45,6 +46,7 @@
 
 #include "yb/gutil/callback.h"
 
+#include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/sys_catalog_constants.h"
 
@@ -56,6 +58,7 @@
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/unique_lock.h"
 
 namespace yb {
 
@@ -86,6 +89,7 @@ struct PgTableReadData {
   TableId table_id;
   tablet::TabletPtr tablet;
   tablet::TableInfoPtr table_info;
+  ReadHybridTime read_hybrid_time;
 
   const Schema& schema() const;
   Result<ColumnId> ColumnByName(const std::string& name) const;
@@ -135,15 +139,30 @@ class SysCatalogTable {
   template <class... Items>
   Status Upsert(int64_t leader_term, Items&&... items);
 
+  // Required to write TableInfo or TabletInfo. This method checks the `namespace` parameter to
+  // prevent writes of stale data read before a PITR to clobber object state overwritten by PITR.
+  template <class... Items>
+  Status Upsert(const LeaderEpoch& epoch, Items&&... items);
+
   template <class... Items>
   Status ForceUpsert(int64_t leader_term, Items&&... items);
 
   template <class... Items>
   Status Delete(int64_t leader_term, Items&&... items);
 
+  // Required to delete TableInfo or TabletInfo. This method checks the `namespace` parameter to
+  // prevent deletes of stale data read before a PITR to clobber object state overwritten by PITR.
+  template <class... Items>
+  Status Delete(const LeaderEpoch& epoch, Items&&... items);
+
+  template <class... Items>
+  Status Mutate(QLWriteRequestPB::QLStmtType op_type, int64_t leader_term, Items&&... items);
+
+  // Required to mutate TableInfo or TabletInfo. This method checks the `namespace` parameter to
+  // prevent mutations of stale data read before a PITR to clobber object state overwritten by PITR.
   template <class... Items>
   Status Mutate(
-      QLWriteRequestPB::QLStmtType op_type, int64_t leader_term, Items&&... items);
+      QLWriteRequestPB::QLStmtType op_type, const LeaderEpoch& epoch, Items&&... items);
 
   template <class... Items>
   Status ForceMutate(
@@ -156,6 +175,10 @@ class SysCatalogTable {
   static std::string schema_column_id();
   static std::string schema_column_metadata();
 
+  // Return the schema of the table.
+  // NOTE: This is the "server-side" schema, so it must have the column IDs.
+  static Schema BuildTableSchema();
+
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* append_pool() const { return append_pool_.get(); }
@@ -167,8 +190,10 @@ class SysCatalogTable {
 
   Result<tablet::TabletPtr> Tablet() const;
 
-  Result<PgTableReadData> TableReadData(const TableId& table_id) const;
-  Result<PgTableReadData> TableReadData(uint32_t database_oid, uint32_t table_oid) const;
+  Result<PgTableReadData> TableReadData(
+      const TableId& table_id, const ReadHybridTime& read_ht) const;
+  Result<PgTableReadData> TableReadData(
+      uint32_t database_oid, uint32_t table_oid, const ReadHybridTime& read_ht) const;
 
   // Create a new tablet peer with information from the metadata
   void SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetadata>& metadata);
@@ -186,6 +211,11 @@ class SysCatalogTable {
       int64_t current_term);
 
   Status Visit(VisitorBase* visitor);
+
+  typedef std::function<Status(const ReadHybridTime&, HybridTime*)> ReadRestartFn;
+  Status ReadWithRestarts(
+      const ReadRestartFn& fn,
+      tablet::RequireLease require_lease = tablet::RequireLease::kTrue) const;
 
   // Read the global ysql catalog version info from the pg_yb_catalog_version catalog table.
   Status ReadYsqlCatalogVersion(const TableId& ysql_catalog_table_id,
@@ -272,16 +302,24 @@ class SysCatalogTable {
       Schema* schema,
       uint32_t* schema_version);
 
+  PitrCount pitr_count() {
+    return pitr_count_.load();
+  }
+
+  void IncrementPitrCount() EXCLUDES(pitr_count_lock_) {
+    // We acquire pitr_count_lock_ to synchronize with sys catalog writes to tables or tablets.
+    // We want to be sure such writes complete before PITR updates any sys catalog state.
+    UniqueLock<std::shared_mutex> l(pitr_count_lock_);
+    pitr_count_.fetch_add(1);
+  }
+
  private:
   friend class CatalogManager;
+  friend class ScopedLeaderSharedLock;
 
   inline std::unique_ptr<SysCatalogWriter> NewWriter(int64_t leader_term);
 
   const char *table_name() const { return kSysCatalogTableName; }
-
-  // Return the schema of the table.
-  // NOTE: This is the "server-side" schema, so it must have the column IDs.
-  Schema BuildTableSchema();
 
   // Returns 'Status::OK()' if the WriteTranasction completed
   Status SyncWrite(SysCatalogWriter* writer);
@@ -330,6 +368,14 @@ class SysCatalogTable {
       uint64_t* catalog_version,
       uint64_t* last_breaking_version,
       DbOidToCatalogVersionMap* versions);
+  Status ReadYsqlDBCatalogVersionImplWithReadTime(
+      const TableId& ysql_catalog_table_id,
+      uint32_t db_oid,
+      const ReadHybridTime& read_time,
+      HybridTime* read_restart_ht,
+      uint64_t* catalog_version,
+      uint64_t* last_breaking_version,
+      DbOidToCatalogVersionMap* versions);
 
   // Table schema, with IDs, used for the YQL write path.
   std::unique_ptr<docdb::DocReadContext> doc_read_context_;
@@ -361,7 +407,13 @@ class SysCatalogTable {
 
   consensus::RaftPeerPB local_peer_pb_;
 
-  scoped_refptr<Histogram> setup_config_dns_histogram_;
+  std::atomic<PitrCount> pitr_count_{0};
+
+  // This lock is used to synchronize increments of pitr_count_ and sys catalog writes to ensure any
+  // in flight sys catalog writes are complete before PITR updates any state.
+  mutable std::shared_mutex pitr_count_lock_;
+
+  scoped_refptr<EventStats> setup_config_dns_stats_;
 
   scoped_refptr<Counter> peer_write_count;
 

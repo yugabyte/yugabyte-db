@@ -207,7 +207,8 @@ class DocOperationTest : public DocDBTestBase {
       .read_operation_data = ReadOperationData(),
       .restart_read_ht = &restart_read_ht,
       .iterator = nullptr,
-      .restart_seek = true
+      .restart_seek = true,
+      .schema_packing_provider = nullptr,
     }));
     ASSERT_OK(WriteToRocksDB(doc_write_batch, hybrid_time));
   }
@@ -391,7 +392,8 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
       .read_operation_data = {},
       .restart_read_ht = nullptr,
       .iterator = nullptr,
-      .restart_seek = true
+      .restart_seek = true,
+      .schema_packing_provider = nullptr,
   }));
 
   ASSERT_OK(WriteToRocksDB(doc_write_batch, HybridTime::FromMicros(1000)));
@@ -459,7 +461,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ <max> w: 2 }]) -> DEL
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 3 }]) -> DEL
       )#",
       R"#(
-SubDocKey(DocKey(0x0000, [1], []), [HT<max>]) -> { 1: DEL 2: DEL 3: DEL }
+SubDocKey(DocKey(0x0000, [1], []), [HT<max>]) -> { 1: NULL 2: NULL 3: NULL }
       )#");
 }
 
@@ -467,7 +469,7 @@ TEST_F(DocOperationTest, WritePackedNulls) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_enable_packed_row) = true;
   TestWriteNulls();
   AssertDocDbDebugDumpStrEq(R"#(
-SubDocKey(DocKey(0x0000, [1], []), [HT<max>]) -> { 1: DEL 2: DEL 3: DEL }
+SubDocKey(DocKey(0x0000, [1], []), [HT<max>]) -> { 1: NULL 2: NULL 3: NULL }
   )#");
 }
 

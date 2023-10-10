@@ -40,7 +40,9 @@ class PggateTestSequence : public PggateTest {
 
   // Drop sequence
   static YBCStatus DropSequence() {
-    return YBCDeleteSequenceTuple(db_oid_, seq_oid_);
+    YBCPgStatement pg_stmt(nullptr);
+    CHECK_YBC_STATUS(YBCPgNewDropSequence(db_oid_, seq_oid_, &pg_stmt));
+    return YBCPgExecDropSequence(pg_stmt);
   }
 
   // Read the value and "called" status from sequence

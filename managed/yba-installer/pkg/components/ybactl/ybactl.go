@@ -22,7 +22,8 @@ func New() *YbaCtlComponent {
 
 // Setup will create the base install directory needed for initialization.
 func (yc *YbaCtlComponent) Setup() error {
-	err := common.MkdirAll(common.YbactlInstallDir(), 0755)
+	common.Version = yc.Version()
+	err := common.MkdirAll(common.YbactlInstallDir(), common.DirMode)
 	return err
 }
 
@@ -33,8 +34,15 @@ func (yc *YbaCtlComponent) Install() error {
 	log.Info("Installing yba-ctl")
 
 	for _, file := range []string{common.GoBinaryName, common.VersionMetadataJSON} {
-		if err := common.Copy(file, common.YbactlInstallDir(), false, true); err != nil {
-			return fmt.Errorf("failed to copy %s during yba-ctl install: %w", file, err)
+		// Remove the existing file and ignore not exists errors.
+		err := os.Remove(filepath.Join(common.YbactlInstallDir(), file))
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("failed to remove existing file %s: %w",
+				filepath.Join(common.YbactlInstallDir(), file), err)
+		}
+		fp := common.AbsoluteBundlePath(file)
+		if err := common.Copy(fp, common.YbactlInstallDir(), false, true); err != nil {
+			return fmt.Errorf("failed to copy %s during yba-ctl install: %w", fp, err)
 		}
 	}
 
@@ -119,7 +127,7 @@ func createHomeBinDir() (string, error) {
 		return "", fmt.Errorf("could not determine home directory: %w", err)
 	}
 	usrBin := filepath.Join(home, ".local", "bin")
-	if err := common.MkdirAll(usrBin, 0755); err != nil {
+	if err := common.MkdirAll(usrBin, common.DirMode); err != nil {
 		return usrBin, fmt.Errorf("could not create directory '%s': %w", usrBin, err)
 	}
 	return usrBin, nil

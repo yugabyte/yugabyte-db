@@ -9,6 +9,7 @@ import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.yugabyte.operator.v1alpha1.Release;
+import io.yugabyte.operator.v1alpha1.ReleaseStatus;
 import io.yugabyte.operator.v1alpha1.releasespec.config.DownloadConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.util.Pair;
@@ -20,12 +21,12 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
   private final MixedOperation<Release, KubernetesResourceList<Release>, Resource<Release>>
       resourceClient;
   private final ReleaseManager releaseManager;
+  private final String namespace;
 
   public static Pair<String, ReleaseMetadata> crToReleaseMetadata(Release release) {
     DownloadConfig downloadConfig = release.getSpec().getConfig().getDownloadConfig();
     String version = release.getSpec().getConfig().getVersion();
     ReleaseMetadata metadata = ReleaseMetadata.create(version);
-
     if (downloadConfig.getS3() != null) {
       metadata.s3 = new ReleaseMetadata.S3Location();
       metadata.s3.paths = new ReleaseMetadata.PackagePaths();
@@ -66,11 +67,13 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
   public ReleaseReconciler(
       SharedIndexInformer<Release> releaseInformer,
       MixedOperation<Release, KubernetesResourceList<Release>, Resource<Release>> resourceClient,
-      ReleaseManager releaseManager) {
+      ReleaseManager releaseManager,
+      String namespace) {
     this.resourceClient = resourceClient;
     this.informer = releaseInformer;
     this.lister = new Lister<>(informer.getIndexer());
     this.releaseManager = releaseManager;
+    this.namespace = namespace;
   }
 
   @Override
@@ -81,8 +84,10 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
       releaseManager.addReleaseWithMetadata(releasePair.getFirst(), releasePair.getSecond());
       releaseManager.addGFlagsMetadataFiles(releasePair.getFirst(), releasePair.getSecond());
       releaseManager.updateCurrentReleases();
+      updateStatus(release, "Available", true);
     } catch (RuntimeException re) {
       log.error("Error in adding release", re);
+      updateStatus(release, "Failed to Download", false);
     }
     log.info("Added release {} ", release);
   }
@@ -91,12 +96,31 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
   public void onUpdate(Release oldRelease, Release newRelease) {
     Pair<String, ReleaseMetadata> releasePair = crToReleaseMetadata(newRelease);
     try {
-      releaseManager.updateReleaseMetadata(releasePair.getFirst(), releasePair.getSecond());
+      String version = releasePair.getFirst();
+      ReleaseMetadata metadata = releasePair.getSecond();
+      // copy chartPath because it already exists.
+      ReleaseMetadata existing_rm = releaseManager.getReleaseByVersion(version);
+      if (existing_rm != null) {
+        if (existing_rm.chartPath != null) {
+          log.info("Updating the chartPath because existing metadata has chart path");
+          metadata.chartPath = existing_rm.chartPath;
+        } else {
+          log.info("No existing chart path found, downloading chart");
+          releaseManager.downloadYbHelmChart(version, metadata);
+        }
+      } else {
+        log.info("No existing metadata found, adding new release metadata");
+        // We never downloaded the helm chart for the previous release, so lets add the releasee
+        releaseManager.addReleaseWithMetadata(version, metadata);
+      }
+      releaseManager.updateReleaseMetadata(version, metadata);
       releaseManager.updateCurrentReleases();
+      updateStatus(newRelease, "Available", true);
     } catch (RuntimeException re) {
+      updateStatus(newRelease, "Failed to Download", false);
       log.error("Error in updating release", re);
     }
-    log.info("finished update release old: {}, new: {}", oldRelease, newRelease);
+    log.info("finished update CR release old: {}, new: {}", oldRelease, newRelease);
   }
 
   @Override
@@ -116,5 +140,13 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
   public void run() {
     informer.addEventHandler(this);
     informer.run();
+  }
+
+  private void updateStatus(Release release, String status, Boolean success) {
+    ReleaseStatus releaseStatus = new ReleaseStatus();
+    releaseStatus.setMessage(status);
+    releaseStatus.setSuccess(success);
+    release.setStatus(releaseStatus);
+    resourceClient.inNamespace(namespace).resource(release).replaceStatus();
   }
 }

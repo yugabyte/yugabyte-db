@@ -103,8 +103,10 @@ export function areIntentsEqual(userIntent1, userIntent2) {
     _.isEqual(userIntent1.numNodes, userIntent2.numNodes) &&
     _.isEqual(userIntent1.regionList.sort(), userIntent2.regionList.sort()) &&
     // there was a bug with storageClass absent on server
-    _.isEqual(_.omit(userIntent1.deviceInfo, ['storageClass']),
-      _.omit(userIntent2.deviceInfo, ['storageClass'])) &&
+    _.isEqual(
+      _.omit(userIntent1.deviceInfo, ['storageClass']),
+      _.omit(userIntent2.deviceInfo, ['storageClass'])
+    ) &&
     _.isEqual(userIntent1.replicationFactor, userIntent2.replicationFactor) &&
     _.isEqual(userIntent1.provider, userIntent2.provider) &&
     _.isEqual(userIntent1.universeName, userIntent2.universeName) &&
@@ -285,25 +287,6 @@ export function insertSpacesFromCamelCase(string) {
   return string;
 }
 
-// Official Version string is x.x.x.x-bx
-export function sortVersionStrings(arr) {
-  const regExp = /^(\d+).(\d+).(\d+).(\d+)(?:-[a-z]+)?(\d+)?/;
-  const matchedVersions = arr.filter((a) => a.match(regExp));
-  const abnormalVersions = arr.filter((a) => !a.match(regExp));
-  return matchedVersions
-    .sort((a, b) => {
-      const a_arr = a.split(regExp).filter(Boolean);
-      const b_arr = b.split(regExp).filter(Boolean);
-      for (let idx = 0; idx < a_arr.length; idx++) {
-        if (a_arr[idx] !== b_arr[idx]) {
-          return parseInt(b_arr[idx], 10) - parseInt(a_arr[idx], 10);
-        }
-      }
-      return 0;
-    })
-    .concat(abnormalVersions.sort((a, b) => a.localeCompare(b)));
-}
-
 export function getPointsOnCircle(numPoints, center, radius) {
   const x0 = center[0];
   const y0 = center[1];
@@ -382,3 +365,5 @@ export const createErrorMessage = (payload) => {
   }
   return payload.message;
 };
+
+export const objToQueryParams = (obj) => new URLSearchParams(obj).toString();

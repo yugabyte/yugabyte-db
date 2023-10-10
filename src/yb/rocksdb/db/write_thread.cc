@@ -238,13 +238,13 @@ void WriteThread::JoinBatchGroup(Writer* w) {
   bool linked_as_leader;
   LinkOne(w, &linked_as_leader);
 
-  TEST_SYNC_POINT_CALLBACK("WriteThread::JoinBatchGroup:Wait", w);
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("WriteThread::JoinBatchGroup:Wait", w);
 
   if (!linked_as_leader) {
     AwaitState(w,
                STATE_GROUP_LEADER | STATE_PARALLEL_FOLLOWER | STATE_COMPLETED,
                &ctx);
-    TEST_SYNC_POINT_CALLBACK("WriteThread::JoinBatchGroup:DoneWaiting", w);
+    DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("WriteThread::JoinBatchGroup:DoneWaiting", w);
   }
 }
 
@@ -445,7 +445,7 @@ void WriteThread::EnterUnbatched(Writer* w, InstrumentedMutex* mu) {
   LinkOne(w, &linked_as_leader);
   if (!linked_as_leader) {
     mu->Unlock();
-    TEST_SYNC_POINT("WriteThread::EnterUnbatched:Wait");
+    DEBUG_ONLY_TEST_SYNC_POINT("WriteThread::EnterUnbatched:Wait");
     AwaitState(w, STATE_GROUP_LEADER, &ctx);
     mu->Lock();
   }

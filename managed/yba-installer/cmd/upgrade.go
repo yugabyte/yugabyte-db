@@ -39,7 +39,7 @@ var upgradeCmd = &cobra.Command{
 			if err != nil {
 				log.Fatal("Cannot upgrade: " + err.Error())
 			}
-			targetVersion := common.GetVersion()
+			targetVersion := ybactl.Version
 			if !common.LessVersions(installedVersion, targetVersion) {
 				log.Fatal(fmt.Sprintf("upgrade target version '%s' must be greater then the installed "+
 					"YugabyteDB Anywhere version '%s'", targetVersion, installedVersion))
@@ -47,14 +47,19 @@ var upgradeCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		state, err := ybactlstate.LoadState()
+		state, err := ybactlstate.Initialize()
 		// Can have no state if upgrading from a version before state existed.
 		if err != nil {
 			state = ybactlstate.New()
 			state.CurrentStatus = ybactlstate.InstalledStatus
-			if err := ybactlstate.StoreState(state); err != nil {
-				log.Fatal("error initializing new state: " + err.Error())
-			}
+		}
+
+		if err := state.TransitionStatus(ybactlstate.UpgradingStatus); err != nil {
+			log.Fatal("cannot upgrade, invalid status transition: " + err.Error())
+		}
+
+		if err := state.ValidateReconfig(); err != nil {
+			log.Fatal("invalid reconfigure during upgrade: " + err.Error())
 		}
 
 		// Upgrade yba-ctl first.
@@ -81,7 +86,7 @@ var upgradeCmd = &cobra.Command{
 		services[YbPlatformServiceName].Stop()
 		services[PrometheusServiceName].Stop()
 
-		common.Upgrade(common.GetVersion())
+		common.Upgrade(ybactl.Version)
 
 		for _, name := range serviceOrder {
 			services[name].Upgrade()
@@ -96,7 +101,7 @@ var upgradeCmd = &cobra.Command{
 		*/
 
 		// Here is the postgres minor version/no upgrade workflow
-		common.Upgrade(common.GetVersion())
+		common.Upgrade(ybactl.Version)
 
 		// Check if upgrading requires DB migration.
 
@@ -133,6 +138,8 @@ var upgradeCmd = &cobra.Command{
 			}
 			log.Info("Completed restart of component " + name)
 		}
+
+		common.WaitForYBAReady(ybactl.Version)
 
 		var statuses []common.Status
 		//serviceOrder = append([]string{newDbServiceName}, serviceOrder...)

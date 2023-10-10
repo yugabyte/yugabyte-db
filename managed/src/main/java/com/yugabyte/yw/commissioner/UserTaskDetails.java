@@ -27,8 +27,11 @@ public class UserTaskDetails {
     // newly deployed machines, etc.
     Provisioning,
 
-    // Running software upgrade on YugaByte clusters.
+    // Running software upgrade on Yugabyte clusters.
     UpgradingSoftware,
+
+    // Finalizing Yugabyte db software upgrade on Yugabyte clusters.
+    FinalizingUpgrade,
 
     // Download YB software locally but not install it.
     DownloadingSoftware,
@@ -70,6 +73,9 @@ public class UserTaskDetails {
 
     // Deleting all the xCluster replications and cleaning up their states on the universes.
     DeleteXClusterReplication,
+
+    // Deleting DR config.
+    DeleteDrConfig,
 
     // Rotate access key to all nodes of a universe
     RotateAccessKey,
@@ -258,6 +264,10 @@ public class UserTaskDetails {
         title = "Upgrading software";
         description = "Upgrading YugaByte software on existing clusters.";
         break;
+      case FinalizingUpgrade:
+        title = "Finalizing upgrade";
+        description = "Finalizing Yugabyte DB Software version upgrade on universe";
+        break;
       case InstallingSoftware:
         title = "Installing software";
         description =
@@ -327,6 +337,10 @@ public class UserTaskDetails {
         description =
             "Deleting xCluster replications and cleaning up their corresponding states "
                 + "on the participating universes.";
+        break;
+      case DeleteDrConfig:
+        title = "Deleting Dr Config";
+        description = "Deleting the disaster recovery config.";
         break;
       case InitializeCloudMetadata:
         title = "Initializing Cloud Metadata";

@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -23,11 +24,12 @@ import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
@@ -42,12 +44,16 @@ import lombok.extern.slf4j.Slf4j;
 public class DestroyKubernetesUniverse extends DestroyUniverse {
 
   private final XClusterUniverseService xClusterUniverseService;
+  private final KubernetesOperatorStatusUpdater kubernetesStatus;
 
   @Inject
   public DestroyKubernetesUniverse(
-      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+      BaseTaskDependencies baseTaskDependencies,
+      XClusterUniverseService xClusterUniverseService,
+      KubernetesOperatorStatusUpdater kubernetesStatus) {
     super(baseTaskDependencies, xClusterUniverseService);
     this.xClusterUniverseService = xClusterUniverseService;
+    this.kubernetesStatus = kubernetesStatus;
   }
 
   @Override
@@ -62,7 +68,8 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       } else {
         universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
       }
-
+      kubernetesStatus.createYBUniverseEventStatus(
+          universe, params().getKubernetesResourceDetails(), getName(), getUserTaskUUID());
       // Delete xCluster configs involving this universe and put the locked universes to
       // lockedUniversesUuidList.
       createDeleteXClusterConfigSubtasksAndLockOtherUniverses();
@@ -75,6 +82,14 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
           xClusterUniverseService,
           new HashSet<>() /* excludeXClusterConfigSet */,
           params().isForceDelete);
+
+      if (params().isDeleteBackups) {
+        List<Backup> backupList =
+            Backup.fetchBackupToDeleteByUniverseUUID(
+                params().customerUUID, universe.getUniverseUUID());
+        createDeleteBackupYbTasks(backupList, params().customerUUID)
+            .setSubTaskGroupType(SubTaskGroupType.DeletingBackup);
+      }
 
       preTaskActions();
 
@@ -189,13 +204,18 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
 
       // Run all the tasks.
       getRunnableTask().runSubTasks();
-      updateYBUniverseStatus(getUniverse(), null);
+      kubernetesStatus.updateYBUniverseStatus(
+          getUniverse(),
+          params().getKubernetesResourceDetails(),
+          getName(),
+          getUserTaskUUID(),
+          null);
     } catch (Throwable t) {
-      updateYBUniverseStatus(getUniverse(), t);
+      kubernetesStatus.updateYBUniverseStatus(
+          getUniverse(), params().getKubernetesResourceDetails(), getName(), getUserTaskUUID(), t);
       // If for any reason destroy fails we would just unlock the universe for update
       try {
         unlockUniverseForUpdate();
-        updateYBUniverseStatusAfterUnlock();
       } catch (Throwable t1) {
         // Ignore the error
       }
@@ -205,26 +225,6 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       unlockXClusterUniverses(lockedXClusterUniversesUuidSet, params().isForceDelete);
     }
     log.info("Finished {} task.", getName());
-  }
-
-  private void updateYBUniverseStatus(Universe universe, Throwable t) {
-    if (getUniverse().getUniverseDetails().isKubernetesOperatorControlled) {
-      try {
-        String name = TaskType.DestroyKubernetesUniverse.name();
-        // Updating Kubernetes Custom Resource (if done through operator).
-        String status = (t != null ? "Failed" : "Success");
-        log.info("ybUniverseStatus info: {}: {}", name, status);
-        KubernetesOperatorStatusUpdater.updateStatus(universe, name.concat(" ").concat(status));
-      } catch (Exception e) {
-        log.warn("Error in creating Kubernetes Operator Universe", e);
-      }
-    }
-  }
-
-  private void updateYBUniverseStatusAfterUnlock() {
-    if (getUniverse().getUniverseDetails().isKubernetesOperatorControlled) {
-      KubernetesOperatorStatusUpdater.updateStatus(getUniverse(), "Completed task");
-    }
   }
 
   protected KubernetesCommandExecutor createDestroyKubernetesTask(
@@ -254,7 +254,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
           KubernetesUtil.getKubernetesNamespace(
               nodePrefix, az, config, newNamingStyle, isReadOnlyCluster);
     }
-    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.setUniverseUUID(params().getUniverseUUID());
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     return task;

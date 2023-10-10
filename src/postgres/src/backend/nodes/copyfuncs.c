@@ -521,6 +521,8 @@ _copyIndexScan(const IndexScan *from)
 	COPY_NODE_FIELD(yb_idx_pushdown.colrefs);
 	COPY_NODE_FIELD(yb_rel_pushdown.quals);
 	COPY_NODE_FIELD(yb_rel_pushdown.colrefs);
+	COPY_SCALAR_FIELD(yb_distinct_prefixlen);
+	COPY_SCALAR_FIELD(yb_lock_mechanism);
 
 	return newnode;
 }
@@ -549,6 +551,7 @@ _copyIndexOnlyScan(const IndexOnlyScan *from)
 	COPY_NODE_FIELD(yb_pushdown.quals);
 	COPY_NODE_FIELD(yb_pushdown.colrefs);
 	COPY_NODE_FIELD(yb_indexqual_for_recheck);
+	COPY_SCALAR_FIELD(yb_distinct_prefixlen);
 
 	return newnode;
 }
@@ -907,7 +910,7 @@ _copyYbBatchedNestLoop(const YbBatchedNestLoop *from)
 		COPY_POINTER_FIELD(
 			hashClauseInfos,
 			from->num_hashClauseInfos * sizeof(YbBNLHashClauseInfo));
-	
+
 	for (int i = 0; i < from->num_hashClauseInfos; i++)
 	{
 		newnode->hashClauseInfos[i].outerParamExpr =
@@ -5869,7 +5872,7 @@ copyObjectImpl(const void *from)
 		case T_YbExprColrefDesc:
 			retval = _copyYbExprColrefDesc(from);
 			break;
-		
+
 		case T_YbBatchedExpr:
 			retval = _copyYbBatchedExpr(from);
 			break;

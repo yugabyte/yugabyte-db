@@ -90,8 +90,8 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
           TaskType.WaitForServerReady,
           TaskType.ModifyBlackList,
           TaskType.LoadBalancerStateChange,
-          TaskType.RunYsqlUpgrade,
           TaskType.PromoteAutoFlags,
+          TaskType.RunYsqlUpgrade,
           TaskType.UpdateSoftwareVersion,
           TaskType.UniverseUpdateSucceeded,
           TaskType.ModifyBlackList);

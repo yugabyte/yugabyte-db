@@ -42,9 +42,8 @@
 #include "yb/util/tsan_util.h"
 
 DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
-DECLARE_bool(allow_ycql_transactional_xcluster);
+DECLARE_bool(TEST_allow_ycql_transactional_xcluster);
 DECLARE_bool(check_bootstrap_required);
-DECLARE_bool(parallelize_bootstrap_producer);
 DECLARE_int64(rpc_throttle_threshold_bytes);
 
 namespace yb {
@@ -63,6 +62,10 @@ using master::SysCDCStreamEntryPB;
 using rpc::RpcController;
 
 namespace {
+
+const string kFakeUuid = "11111111111111111111111111111111";
+const string kBootstrapArg = "bootstrap";
+
 Result<string> GetRecentStreamId(MiniCluster* cluster, TabletId target_table_id = "") {
   // Return the first stream with tablet_id matching target_table_id using ListCDCStreams.
   // If target_table_id is not specified, return the first stream.
@@ -356,11 +359,11 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationFailsWithInvalidBootstr
       kProducerClusterId,
       producer_cluster_->GetMasterAddresses(),
       producer_cluster_table->id(),
-      "fake-bootstrap-id"));
+      kFakeUuid));
 
   // Verify that error message has relevant information.
   ASSERT_TRUE(
-      error_msg.find("Could not find CDC stream: stream_id: \"fake-bootstrap-id\"") !=
+      error_msg.find("Could not find CDC stream: stream_id: \"" + kFakeUuid + "\"") !=
       string::npos);
 }
 
@@ -381,7 +384,7 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationCleanupOnFailure) {
       kProducerClusterId,
       producer_cluster_->GetMasterAddresses(),
       producer_cluster_table->id(),
-      "fake-bootstrap-id"));
+      kFakeUuid));
 
   // Wait for the universe to be cleaned up
   ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kProducerClusterId));
@@ -458,6 +461,111 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationCleanupOnFailure) {
 
   // Delete universe.
   ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
+}
+
+TEST_F(XClusterAdminCliTest, TestSetupNamespaceReplicationWithBootstrap) {
+  client::TableHandle producer_cluster_table;
+  const client::YBTableName kTestTableName(YQL_DATABASE_CQL, "my_keyspace", "test_table");
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_cluster_table,
+      kTestTableName);
+
+  const auto& producer_namespace = "ycql.my_keyspace";
+  // Setup universe replication, this should only return once complete.
+  ASSERT_OK(RunAdminToolCommand(
+      "setup_namespace_universe_replication", kProducerClusterId,
+      producer_cluster_->GetMasterAddresses(), producer_namespace, kBootstrapArg));
+
+  // Check that the stream was properly created for this table.
+  ASSERT_OK(CheckTableIsBeingReplicated({producer_cluster_table->id()}));
+
+  // Delete this universe so shutdown can proceed.
+  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
+}
+
+TEST_F(XClusterAdminCliTest, TestSetupNamespaceReplicationWithBootstrapFailTransactionalCQL) {
+  client::TableHandle producer_cluster_table;
+  const client::YBTableName kTestTableName(YQL_DATABASE_CQL, "my_keyspace", "test_table");
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_cluster_table,
+      kTestTableName);
+
+  const auto& producer_namespace = "ycql.my_keyspace";
+  ASSERT_NOK(RunAdminToolCommand(
+      "setup_namespace_universe_replication", kProducerClusterId,
+      producer_cluster_->GetMasterAddresses(), producer_namespace, kBootstrapArg, "transactional"));
+}
+
+TEST_F(XClusterAdminCliTest, TestSetupNamespaceReplicationWithBootstrapFailInvalidArgumentOrder) {
+  client::TableHandle producer_cluster_table;
+  const client::YBTableName kTestTableName(YQL_DATABASE_CQL, "my_keyspace", "test_table");
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_cluster_table,
+      kTestTableName);
+
+  const auto& producer_namespace = "ycql.my_keyspace";
+
+  ASSERT_NOK(RunAdminToolCommand(
+      "setup_namespace_universe_replication", producer_cluster_->GetMasterAddresses(),
+      kProducerClusterId, producer_namespace, kBootstrapArg));
+
+  ASSERT_NOK(RunAdminToolCommand(
+      "setup_namespace_universe_replication", producer_cluster_->GetMasterAddresses(),
+      producer_namespace, kProducerClusterId, kBootstrapArg));
+
+  ASSERT_NOK(RunAdminToolCommand(
+      "setup_namespace_universe_replication", producer_namespace,
+      producer_cluster_->GetMasterAddresses(), kProducerClusterId, kBootstrapArg));
+
+  ASSERT_NOK(RunAdminToolCommand(
+      "setup_namespace_universe_replication", producer_namespace, kProducerClusterId,
+      producer_cluster_->GetMasterAddresses(), kBootstrapArg));
+}
+
+TEST_F(XClusterAdminCliTest, TestSetupNamespaceReplicationWithBootstrapFailInvalidNamespace) {
+  client::TableHandle producer_cluster_table;
+  const client::YBTableName kTestTableName(YQL_DATABASE_CQL, "my_keyspace", "test_table");
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_cluster_table,
+      kTestTableName);
+
+
+  ASSERT_NOK(RunAdminToolCommand(
+      "setup_namespace_universe_replication", kProducerClusterId,
+      producer_cluster_->GetMasterAddresses(), "my_keyspace.ycql", kBootstrapArg));
+
+  ASSERT_NOK(RunAdminToolCommand(
+      "setup_namespace_universe_replication", kProducerClusterId,
+      producer_cluster_->GetMasterAddresses(), "my_keyspace.ysql", kBootstrapArg));
+}
+
+TEST_F(XClusterAdminCliTest, TestSetupNamespaceReplicationWithBootstrapFailInvalidNumArgs) {
+  client::TableHandle producer_cluster_table;
+  const client::YBTableName kTestTableName(YQL_DATABASE_CQL, "my_keyspace", "test_table");
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_cluster_table,
+      kTestTableName);
+
+  ASSERT_NOK(RunAdminToolCommand("setup_namespace_universe_replication", kProducerClusterId));
+
+  ASSERT_NOK(RunAdminToolCommand(
+      "setup_namespace_universe_replication", kProducerClusterId,
+      producer_cluster_->GetMasterAddresses()));
+
+  ASSERT_NOK(RunAdminToolCommand(
+      "setup_namespace_universe_replication", kProducerClusterId,
+      producer_cluster_->GetMasterAddresses(), "my_keyspace.ysql", kBootstrapArg, kBootstrapArg,
+      kBootstrapArg));
 }
 
 TEST_F(XClusterAdminCliTest, TestListCdcStreamsWithBootstrappedStreams) {
@@ -874,7 +982,7 @@ TEST_F(XClusterAdminCliTest, SetupTransactionalReplicationWithYCQLTable) {
 TEST_F(XClusterAdminCliTest, AllowAddTransactionTablet) {
   // We normally disable setting up transactional replication for CQL tables because the
   // implementation isn't quite complete yet.  It's fine to use it in tests, however.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_ycql_transactional_xcluster) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_allow_ycql_transactional_xcluster) = true;
 
   // Create an identical table on the producer.
   client::TableHandle producer_table;
@@ -962,8 +1070,6 @@ TEST_F(XClusterAdminCliTest_Large, TestBootstrapProducerPerformance) {
   // Add delays to all rpc calls to simulate live environment.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms) = 5;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_throttle_threshold_bytes) = 0;
-  // Enable parallelized version of BootstrapProducer.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_parallelize_bootstrap_producer) = true;
 
   // Check that bootstrap_cdc_producer returns within time limit.
   ASSERT_OK(WaitFor(

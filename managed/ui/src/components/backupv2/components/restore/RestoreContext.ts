@@ -12,13 +12,14 @@ import { IBackup } from "../../common/IBackup";
 import { IGeneralSettings } from "./pages/generalSettings/GeneralSettings";
 import { ISelectTables } from "./pages/selectTables/TablesSelect";
 import { PreflightResponseParams } from "./api";
-import { getNextPage } from "./RestoreUtils";
+import { getNextPage, getPrevPage } from "./RestoreUtils";
 import { IRenameKeyspace } from "./pages/renameKeyspace/RenameKeyspace";
 
 
 const SubmitLabels = [
     'Next',
-    'Restore'
+    'Restore',
+    "Verifying"
 ] as const;
 
 //list of pages 'SwitchRestoreContextPages' component loops through
@@ -33,9 +34,10 @@ export const Pages = [
 export type Page = typeof Pages[number];
 
 export type formWizardProps = {
-    currentPage: Page; 
+    currentPage: Page;
     submitLabel: typeof SubmitLabels[number]; // label of the ybmodal submit 
     disableSubmit: boolean; //disable the submit button
+    isSubmitting: boolean;
 }
 
 export type RestoreContext = {
@@ -61,6 +63,7 @@ export const initialRestoreContextState: RestoreContext = {
             tableSelectionType: 'ALL_TABLES',
             parallelThreads: 1,
             selectedKeyspace: null,
+            useTablespaces: false,
             incrementalBackupProps: {
 
             }
@@ -76,7 +79,8 @@ export const initialRestoreContextState: RestoreContext = {
     formProps: {
         currentPage: 'PREFETCH_CONFIGS', // default page to show
         submitLabel: "Restore",
-        disableSubmit: false
+        disableSubmit: false,
+        isSubmitting: false
     }
 };
 
@@ -86,6 +90,7 @@ export const RestoreFormContext = createContext<RestoreContext>(initialRestoreCo
 
 export const restoreMethods = (context: RestoreContext) => ({
     moveToNextPage: () => getNextPage(context),
+    moveToPrevPage: () => getPrevPage(context),
     moveToPage: (page: Page): RestoreContext => ({
         ...context,
         formProps: {
@@ -125,7 +130,7 @@ export const restoreMethods = (context: RestoreContext) => ({
         ...context,
         backupDetails
     }),
-    savePreflightResponse: (preflightResponse: PreflightResponseParams): RestoreContext => ({
+    savePreflightResponse: (preflightResponse: PreflightResponseParams | undefined): RestoreContext => ({
         ...context,
         formData: {
             ...context.formData,
@@ -137,6 +142,13 @@ export const restoreMethods = (context: RestoreContext) => ({
         formProps: {
             ...context.formProps,
             disableSubmit: flag
+        }
+    }),
+    setisSubmitting: (flag: boolean): RestoreContext => ({
+        ...context,
+        formProps: {
+            ...context.formProps,
+            isSubmitting: flag
         }
     })
 });
@@ -151,4 +163,5 @@ export type RestoreContextMethods = [
 
 export type PageRef = {
     onNext: () => void;
+    onPrev: () => void;
 }

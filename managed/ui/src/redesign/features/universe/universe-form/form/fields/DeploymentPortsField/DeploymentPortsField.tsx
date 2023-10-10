@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import { FC } from 'react';
 import _ from 'lodash';
 import { useEffectOnce } from 'react-use';
 import { useTranslation } from 'react-i18next';

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, mixed, object, string } from 'yup';
@@ -418,9 +418,9 @@ const constructProviderPayload = async (
     },
     regions: formValues.regions.map<OnPremRegionMutation>((regionFormValues) => ({
       code: regionFormValues.code,
-      name: regionFormValues.code,
-      latitude: regionFormValues.location.value.latitude,
-      longitude: regionFormValues.location.value.longitude,
+      name: regionFormValues.name,
+      latitude: regionFormValues.latitude,
+      longitude: regionFormValues.longitude,
       zones: regionFormValues.zones.map((zone) => ({ code: zone.code, name: zone.code }))
     }))
   };

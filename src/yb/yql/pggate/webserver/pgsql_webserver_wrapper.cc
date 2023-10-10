@@ -12,9 +12,13 @@
 
 #include "yb/yql/pggate/webserver/pgsql_webserver_wrapper.h"
 
+#include <sys/ipc.h>
+#include <sys/shm.h>
 #include <math.h>
 
 #include <map>
+#include <vector>
+#include <string>
 
 #include "yb/gutil/map-util.h"
 
@@ -26,6 +30,7 @@
 #include "yb/util/status_log.h"
 
 #include "yb/yql/pggate/util/ybc-internal.h"
+#include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
 using std::string;
 
@@ -117,6 +122,66 @@ void initSqlServerDefaultLabels(const char *metric_node_name) {
   prometheus_attr[METRIC_ID] = METRIC_ID_YB_YSQLSERVER;
 }
 
+static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats) {
+  char *stats_shm_key = getenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
+  if(stats_shm_key == NULL)
+    return;
+
+  key_t key = (key_t)atoi(stats_shm_key);
+  std::ostringstream errMsg;
+  int shmid = shmget(key, 0, 0666);
+  if (shmid == -1) {
+    errMsg << "Unable to find the stats from the shared memory segment, " << strerror(errno);
+    return;
+  }
+
+  static const uint32_t num_pools = YSQL_CONN_MGR_MAX_POOLS;
+
+  struct ConnectionStats *shmp = (struct ConnectionStats *)shmat(shmid, NULL, 0);
+  if (shmp == NULL) {
+    errMsg << "Unable to find the stats from the shared memory segment, " << strerror(errno);
+    return;
+  }
+
+  for (uint32_t itr = 0; itr < num_pools; itr++) {
+    if (strcmp(shmp[itr].pool_name, "") == 0)
+      break;
+    stats->push_back(shmp[itr]);
+  }
+
+  shmdt(shmp);
+}
+
+
+static void GetYsqlConnMgrMetrics(std::vector<std::pair<std::string, uint64_t>> *metrics) {
+  std::vector<ConnectionStats> stats_list;
+  GetYsqlConnMgrStats(&stats_list);
+
+  for (ConnectionStats stats : stats_list) {
+    std::string pool_name = stats.pool_name;
+    metrics->push_back({pool_name + "_active_clients", stats.active_clients});
+    metrics->push_back({pool_name + "_queued_clients", stats.queued_clients});
+    metrics->push_back({pool_name + "_idle_or_pending_clients", stats.idle_or_pending_clients});
+    metrics->push_back({pool_name + "_active_servers", stats.active_servers});
+    metrics->push_back({pool_name + "_idle_servers", stats.idle_servers});
+    metrics->push_back({pool_name + "_query_rate", stats.query_rate});
+    metrics->push_back({pool_name + "_transaction_rate", stats.transaction_rate});
+    metrics->push_back({pool_name + "_avg_wait_time_ns", stats.avg_wait_time_ns});
+  }
+}
+
+void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
+  std::vector <std::pair<std::string, uint64_t>> ysql_conn_mgr_metrics;
+  GetYsqlConnMgrMetrics(&ysql_conn_mgr_metrics);
+
+  for (auto entry : ysql_conn_mgr_metrics) {
+    WARN_NOT_OK(
+        pwriter->WriteSingleEntry(
+            prometheus_attr, "ysql_conn_mgr_" + entry.first, entry.second,
+            AggregationFunction::kSum),
+        "Cannot publish Ysql Connection Manager metric to Promethesu-metrics endpoint");
+  }
+}
 }  // namespace
 
 static void PgMetricsHandler(const Webserver::WebRequest &req, Webserver::WebResponse *resp) {
@@ -312,6 +377,69 @@ static void PgRpczHandler(const Webserver::WebRequest &req, Webserver::WebRespon
   pgCallbacks.freeRpczEntries();
 }
 
+static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::WebResponse *resp) {
+  JsonWriter::Mode json_mode;
+  string arg = FindWithDefault(req.parsed_args, "compact", "false");
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
+  std::stringstream *output = &resp->output;
+  JsonWriter writer(output, json_mode);
+  std::vector<ConnectionStats> stats_list;
+  GetYsqlConnMgrStats(&stats_list);
+
+  writer.StartObject();
+  writer.String("pools");
+  writer.StartArray();
+
+  for (const auto &stat : stats_list) {
+    writer.StartObject();
+
+    // The type of pool. There are two types of pool in Ysql Connection Manager, "gloabl" and
+    // "control".
+    writer.String("pool");
+    writer.String(stat.pool_name);
+
+    // Number of logical connections that are attached to any physical connection. A logical
+    // connection gets attached to a physical connection during lifetime of a transaction.
+    writer.String("active_logical_connections");
+    writer.Int64(stat.active_clients);
+
+    // Number of logical connections waiting in the queue to get a physical connection.
+    writer.String("queued_logical_connections");
+    writer.Int64(stat.queued_clients);
+
+    // Number of logical connections which are either idle (i.e. no ongoing transaction) or waiting
+    // for the worker thread to be processed (i.e. waiting for od_router_attach to be called).
+    writer.String("idle_or_pending_logical_connections");
+    writer.Int64(stat.idle_or_pending_clients);
+
+    // Number of physical connections which currently attached to a logical connection.
+    writer.String("active_physical_connections");
+    writer.Int64(stat.active_servers);
+
+    // Number of physical connections which are not attached to any logical connection.
+    writer.String("idle_physical_connections");
+    writer.Int64(stat.idle_servers);
+
+    // Avg wait time for a logical connection to be attached to a physical connection.
+    // i.e. queue time + time taken to search and attach a server.
+    // This average is taken for the last "stats_interval" (odyssey config) period of time.
+    writer.String("avg_wait_time_ns");
+    writer.Int64(stat.avg_wait_time_ns);
+
+    // Query rate for last  "stats_interval" (set in odyssey config) period of time.
+    writer.String("qps");
+    writer.Int64(stat.query_rate);
+
+    // Transaction rate for last "stats_interval" (set in odyssey config) period of time.
+    writer.String("tps");
+    writer.Int64(stat.transaction_rate);
+
+    writer.EndObject();
+  }
+  writer.EndArray();
+  writer.EndObject();
+}
+
 static void PgPrometheusMetricsHandler(
     const Webserver::WebRequest &req, Webserver::WebResponse *resp) {
   std::stringstream *output = &resp->output;
@@ -334,15 +462,47 @@ static void PgPrometheusMetricsHandler(
 
   // Publish sql server connection related metrics
   emitConnectionMetrics(&writer);
+
+  // Publish Ysql Connection Manager related metrics
+  emitYsqlConnectionManagerMetrics(&writer);
 }
 
 extern "C" {
+void WriteStartObjectToJson(void *p1) {
+  JsonWriter *writer = static_cast<JsonWriter *>(p1);
+  writer->StartObject();
+}
+
 void WriteStatArrayElemToJson(void *p1, void *p2) {
   JsonWriter *writer = static_cast<JsonWriter *>(p1);
   YsqlStatementStat *stat = static_cast<YsqlStatementStat *>(p2);
 
-  writer->StartObject();
   DoWriteStatArrayElemToJson(writer, stat);
+}
+
+void WriteHistArrayBeginToJson(void *p1) {
+  JsonWriter *writer = static_cast<JsonWriter *>(p1);
+  writer->String("yb_latency_histogram");
+  writer->StartArray();
+}
+
+void WriteHistElemToJson(void *p1, void *p2, void *p3) {
+  JsonWriter *writer = static_cast<JsonWriter *>(p1);
+  char *key = static_cast<char*>(p2);
+  int64_t *value = static_cast<int64_t *>(p3);
+  writer->StartObject();
+  writer->String(key);
+  writer->Int64(*value);
+  writer->EndObject();
+}
+
+void WriteHistArrayEndToJson(void* p1) {
+  JsonWriter *writer = static_cast<JsonWriter *>(p1);
+  writer->EndArray();
+}
+
+void WriteEndObjectToJson(void *p1) {
+  JsonWriter *writer = static_cast<JsonWriter *>(p1);
   writer->EndObject();
 }
 
@@ -381,6 +541,8 @@ void RegisterRpczEntries(
 
 YBCStatus StartWebserver(WebserverWrapper *webserver_wrapper) {
   Webserver *webserver = reinterpret_cast<Webserver *>(webserver_wrapper);
+  webserver->RegisterPathHandler(
+      "/connections", "Ysql Connection Manager Stats", PgLogicalRpczHandler, false, false);
   webserver->RegisterPathHandler("/metrics", "Metrics", PgMetricsHandler, false, false);
   webserver->RegisterPathHandler("/jsonmetricz", "Metrics", PgMetricsHandler, false, false);
   webserver->RegisterPathHandler(

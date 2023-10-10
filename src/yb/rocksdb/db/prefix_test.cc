@@ -93,7 +93,7 @@ class TestKeyComparator : public Comparator {
 
   // Compare needs to be aware of the possibility of a and/or b is
   // prefix only
-  int Compare(const Slice& a, const Slice& b) const override {
+  int Compare(Slice a, Slice b) const override {
     const TestKey* key_a = SliceToTestKey(a);
     const TestKey* key_b = SliceToTestKey(b);
     if (key_a->prefix != key_b->prefix) {

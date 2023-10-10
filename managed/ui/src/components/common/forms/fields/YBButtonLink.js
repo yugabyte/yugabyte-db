@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { PureComponent, Fragment } from 'react';
+import { PureComponent, Fragment } from 'react';
 import { YBLoadingLinearIcon } from '../../indicators';
 import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
 

@@ -35,7 +35,7 @@ To enable inbound network access from your application environment to a cluster,
 
 If your cluster is deployed in a peered VPC, you need to add the IP addresses of the peered application VPC to the cluster IP allow list.
 
-By default, clusters deployed in a VPC do not expose any publicly-accessible IP addresses. To add public IP addresses, enable **Public Access** on the cluster **Settings** tab.
+By default, clusters deployed in a VPC do not expose any publicly-accessible IP addresses. To add public IP addresses, enable **Public Access** on the cluster **Settings > Network Access** tab.
 
 For more information, refer to [IP allow list](../../cloud-secure-clusters/add-connections).
 
@@ -43,11 +43,11 @@ For more information, refer to [IP allow list](../../cloud-secure-clusters/add-c
 
 If your cluster is deployed in a VPC, deploy your application in a VPC that is [peered](../../cloud-basics/cloud-vpcs/cloud-add-peering/) or [linked](../../cloud-basics/cloud-vpcs/cloud-add-endpoint/) with your cluster's VPC. Peered application VPCs also need to be added to the cluster IP allow list.
 
-Clusters deployed in VPCs don't expose public IP addresses unless you explicitly turn on [Public Access](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access). If you are connecting from a public IP address (for example, for testing, development, or running sample applications), enable Public Access on the cluster **Settings** tab. Then use the public address in your application connection string. (This configuration is not recommended for production.)
+Clusters deployed in VPCs don't expose public IP addresses unless you explicitly turn on [Public Access](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access). If you are connecting from a public IP address (for example, for testing, development, or running sample applications), enable Public Access on the cluster **Settings > Network Access** tab. Then use the public address in your application connection string. (This configuration is not recommended for production.)
 
 #### Using smart drivers
 
-To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers _must_ be deployed in a VPC that has been peered or linked with the cluster VPC. For more information on smart drivers and using smart drivers with YugabyteDB Managed, refer to [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/).
+To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers _must_ be deployed in a VPC that has been peered with the cluster VPC. If not deployed in a peered VPC, the smart driver falls back to the upstream driver behavior. For more information on smart drivers and using smart drivers with YugabyteDB Managed, refer to [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/).
 
 ### Cluster certificate
 

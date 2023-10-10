@@ -26,7 +26,7 @@ YugabyteDB provides the following methods and features for searching text.
 
 Pattern matching is accomplished by specifying a pattern using the `%, _, *, .` characters and using the `LIKE`, `ILIKE`, and `~` operators. The patterns can range from basic prefix/suffix expressions to complex regular expressions. For example:
 
-```sql{class=nocopy}
+```sql{.nocopy}
 'abc' LIKE 'a%'             --> true
 'abc' LIKE '_bc'            --> true
 'abc' LIKE 'c'              --> false
@@ -52,13 +52,13 @@ To learn more about similarity search, see [Similarity search](./similarity-matc
 
 Almost all of today's search engines use [Inverted indexes](https://en.wikipedia.org/wiki/Inverted_index) extensively. An inverted index parses a document and stores the individual words (that is, tokens) and their corresponding position in the document. For example:
 
-```sql{class=nocopy}
+```sql{.nocopy}
 'The quick brown fox jumps jumps over the lazy dog'
 ```
 
 would be parsed as follows:
 
-```sql{class=nocopy}
+```sql{.nocopy}
  'brown':3 'dog':10 'fox':4 'jump':5,6 'lazi':9 'quick':2
 ```
 

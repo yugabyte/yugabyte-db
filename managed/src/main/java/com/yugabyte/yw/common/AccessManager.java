@@ -88,13 +88,19 @@ public class AccessManager extends DevopsBase {
 
   @Transactional
   private void writeKeyFileData(AccessKey.KeyInfo keyInfo) {
-    FileData.writeFileToDB(keyInfo.vaultFile);
-    FileData.writeFileToDB(keyInfo.vaultPasswordFile);
-    if (keyInfo.privateKey != null) {
-      FileData.writeFileToDB(keyInfo.privateKey);
-    }
-    if (keyInfo.publicKey != null) {
-      FileData.writeFileToDB(keyInfo.publicKey);
+    try {
+      FileData.upsertFileInDB(keyInfo.vaultFile);
+      FileData.upsertFileInDB(keyInfo.vaultPasswordFile);
+      if (keyInfo.privateKey != null) {
+        FileData.upsertFileInDB(keyInfo.privateKey);
+      }
+      if (keyInfo.publicKey != null) {
+        FileData.upsertFileInDB(keyInfo.publicKey);
+      }
+    } catch (IOException e) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format("Failed to write key file in DB: %s", e.getMessage()));
     }
   }
 
@@ -343,6 +349,7 @@ public class AccessManager extends DevopsBase {
 
     return key;
   }
+
   // This method would create a public/private key file and upload that to
   // the provider cloud account. And store the credentials file in the keyFilePath
   // and return the file names. It will also create the vault file.
@@ -602,7 +609,7 @@ public class AccessManager extends DevopsBase {
       ObjectMapper mapper = new ObjectMapper();
       String credentialsFilePath = getOrCreateKeyFilePath(providerUUID) + "/credentials.json";
       mapper.writeValue(new File(credentialsFilePath), credentials);
-      FileData.writeFileToDB(credentialsFilePath);
+      FileData.upsertFileInDB(credentialsFilePath);
       return credentialsFilePath;
     } catch (Exception e) {
       throw new RuntimeException("Failed to create credentials file", e);
@@ -644,7 +651,7 @@ public class AccessManager extends DevopsBase {
     try {
       Files.write(configFile, configFileContent.getBytes());
       Files.setPosixFilePermissions(configFile, ownerRW);
-      FileData.writeFileToDB(configFile.toAbsolutePath().toString());
+      FileData.upsertFileInDB(configFile.toAbsolutePath().toString());
       return configFile.toAbsolutePath().toString();
     } catch (Exception e) {
       throw new RuntimeException("Failed to create kubernetes config", e);
@@ -669,10 +676,30 @@ public class AccessManager extends DevopsBase {
     }
     try {
       Files.write(pullSecretFile, pullSecretFileContent.getBytes());
-      FileData.writeFileToDB(pullSecretFile.toAbsolutePath().toString());
+      FileData.upsertFileInDB(pullSecretFile.toAbsolutePath().toString());
       return pullSecretFile.toAbsolutePath().toString();
     } catch (Exception e) {
       throw new RuntimeException("Failed to create pull secret", e);
+    }
+  }
+
+  public String createKubernetesAuthDataFile(
+      String path, String name, String content, boolean edit) {
+    String filePath = getOrCreateKeyFilePath(path);
+    Path file = Paths.get(filePath, FileUtils.getFileName(name));
+    if (!edit && Files.exists(file)) {
+      throw new RuntimeException("File " + file.getFileName() + " already exists.");
+    }
+
+    Set<PosixFilePermission> ownerRW = PosixFilePermissions.fromString(KUBECONFIG_PERMISSIONS);
+    try {
+      Files.write(file, content.getBytes());
+      Files.setPosixFilePermissions(file, ownerRW);
+      FileData.upsertFileInDB(file.toAbsolutePath().toString());
+      return file.toAbsolutePath().toString();
+    } catch (Exception e) {
+      log.error(e.getMessage());
+      throw new RuntimeException("Failed to create kubernetes authentication files", e);
     }
   }
 

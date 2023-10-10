@@ -29,7 +29,239 @@ tags:
   name: cluster
 - description: APIs for getting information about an existing cluster
   name: cluster-info
+- description: APIs for getting information about Voyager migrations
+  name: voyager-info
+- description: APIs for getting Voyager data migrations metrics
+  name: voyager-metrics
 paths:
+  /migrations:
+    get:
+      description: Get the list of Voyager migrations
+      operationId: GetVoyagerMigrationTasks
+      parameters:
+      - description: uuid of the voyager migration task
+        explode: false
+        in: query
+        name: uuid
+        required: false
+        schema:
+          format: uuid
+          type: string
+        style: form
+      - description: specify the migration phase for which details are required
+        explode: false
+        in: query
+        name: migration_phase
+        required: false
+        schema:
+          format: int64
+          minimum: 0
+          type: integer
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoyagerMigrationsInfo'
+          description: List of the Voyager migrations
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get the list of Voyager migrations
+      tags:
+      - voyager-info
+  /migration_assesment:
+    get:
+      description: Get Voyager data migration metrics
+      operationId: GetVoyagerMigrationAssesmentDetails
+      parameters:
+      - description: uuid of the voyager migration task
+        explode: false
+        in: query
+        name: uuid
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/API_for_Plan_and_Asses_page'
+          description: Response for Plan and Asses page
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get Voyager data migration metrics
+      tags:
+      - voyager-info
+  /migrate_schema:
+    get:
+      description: Get Voyager data migration metrics
+      operationId: GetVoyagerMigrateSchemaTasks
+      parameters:
+      - description: uuid of the voyager migration task
+        explode: false
+        in: query
+        name: uuid
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Individual_Migration_Task_Info'
+          description: Response for individual migration task
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get Voyager data migration metrics
+      tags:
+      - voyager-info
+  /migration_metrics:
+    get:
+      description: Get Voyager data migration metrics
+      operationId: GetVoyagerDataMigrationMetrics
+      parameters:
+      - description: uuid of the voyager migration task
+        explode: false
+        in: query
+        name: uuid
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoyagerMigrateDataMetrics'
+          description: Voyager data migration metrics response
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get Voyager data migration metrics
+      tags:
+      - voyager-metrics
+  /cluster:
+    delete:
+      description: Submit task to delete a Yugabyte Cluster
+      operationId: deleteCluster
+      responses:
+        "200":
+          description: Successfully submitted delete cluster request
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Submit task to delete a cluster
+      tags:
+      - cluster
+    get:
+      description: Get a Yugabyte Cluster
+      operationId: getCluster
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cluster_Response'
+          description: Cluster response
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get a cluster
+      tags:
+      - cluster
+    put:
+      description: Submit task to edit a Yugabyte Cluster
+      operationId: editCluster
+      requestBody:
+        $ref: '#/components/requestBodies/ClusterSpec'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cluster_Response'
+          description: Cluster response
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Submit task to edit a cluster
+      tags:
+      - cluster
   /live_queries:
     get:
       description: Get the Live Queries in a Yugabyte Cluster
@@ -149,6 +381,14 @@ paths:
         schema:
           type: string
         style: form
+      - description: Zone to filter for the given cluster
+        explode: false
+        in: query
+        name: zone
+        required: false
+        schema:
+          type: string
+        style: form
       - description: Start of range of time series data (in epoch seconds)
         explode: false
         in: query
@@ -209,6 +449,22 @@ paths:
         in: query
         name: activities
         required: true
+        schema:
+          type: string
+        style: form
+      - description: Completed or In-Progress
+        explode: false
+        in: query
+        name: status
+        required: true
+        schema:
+          type: string
+        style: form
+      - description: Which database's activities data is to be retrived.
+        explode: false
+        in: query
+        name: database
+        required: false
         schema:
           type: string
         style: form
@@ -281,6 +537,14 @@ paths:
         explode: false
         in: query
         name: id
+        required: true
+        schema:
+          type: string
+        style: form
+      - description: Specify the node ip-address from where the table info is retrieved
+        explode: false
+        in: query
+        name: node_address
         required: true
         schema:
           type: string
@@ -472,80 +736,6 @@ paths:
       summary: Get any alerts for the cluster
       tags:
       - cluster-info
-  /cluster:
-    delete:
-      description: Submit task to delete a Yugabyte Cluster
-      operationId: deleteCluster
-      responses:
-        "200":
-          description: Successfully submitted delete cluster request
-        "400":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiError'
-          description: API Error
-        "500":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiError'
-          description: API Error
-      summary: Submit task to delete a cluster
-      tags:
-      - cluster
-    get:
-      description: Get a Yugabyte Cluster
-      operationId: getCluster
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Cluster_Response'
-          description: Cluster response
-        "400":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiError'
-          description: API Error
-        "500":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiError'
-          description: API Error
-      summary: Get a cluster
-      tags:
-      - cluster
-    put:
-      description: Submit task to edit a Yugabyte Cluster
-      operationId: editCluster
-      requestBody:
-        $ref: '#/components/requestBodies/ClusterSpec'
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Cluster_Response'
-          description: Cluster response
-        "400":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiError'
-          description: API Error
-        "500":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiError'
-          description: API Error
-      summary: Submit task to edit a cluster
-      tags:
-      - cluster
 components:
   requestBodies:
     ClusterSpec:
@@ -555,18 +745,48 @@ components:
             $ref: '#/components/schemas/ClusterSpec'
       description: DB Cluster to be updated
   responses:
-    LiveQueryResponse:
+    VoyagerMigrationsResponse:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/LiveQueryResponseSchema'
-      description: Live Queries of a Cluster
+            $ref: '#/components/schemas/VoyagerMigrationsInfo'
+      description: List of the Voyager migrations
     ApiError:
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ApiError'
       description: API Error
+    VoyagerAssesmentResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/API_for_Plan_and_Asses_page'
+      description: Response for Plan and Asses page
+    MigrateSchemaResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Individual_Migration_Task_Info'
+      description: Response for individual migration task
+    VoyagerDataMigrationMetricsResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/VoyagerMigrateDataMetrics'
+      description: Voyager data migration metrics response
+    ClusterResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Cluster_Response'
+      description: Cluster response
+    LiveQueryResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LiveQueryResponseSchema'
+      description: Live Queries of a Cluster
     SlowQueryResponse:
       content:
         application/json:
@@ -633,13 +853,619 @@ components:
           schema:
             $ref: '#/components/schemas/Alerts_Response'
       description: Alerts information
-    ClusterResponse:
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Cluster_Response'
-      description: Cluster response
   schemas:
+    VoyagerMigrationDetails:
+      description: Information regarding a specific voyager migration task
+      example:
+        complexity: complexity
+        database_name: database_name
+        migration_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        migration_phase: 0
+        source_db: source_db
+        invocation_sequence: 6
+        migration_name: migration_name
+        schema_name: schema_name
+        invocation_timestamp: invocation_timestamp
+        status: status
+      properties:
+        migration_uuid:
+          format: uuid
+          type: string
+        migration_name:
+          type: string
+        migration_phase:
+          type: integer
+        invocation_sequence:
+          type: integer
+        source_db:
+          type: string
+        complexity:
+          type: string
+        database_name:
+          type: string
+        schema_name:
+          type: string
+        status:
+          type: string
+        invocation_timestamp:
+          type: string
+      title: Voyager task details
+      type: object
+    VoyagerMigrationsInfo:
+      description: YB Voyager migrations Info
+      example:
+        migrations:
+        - complexity: complexity
+          database_name: database_name
+          migration_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          migration_phase: 0
+          source_db: source_db
+          invocation_sequence: 6
+          migration_name: migration_name
+          schema_name: schema_name
+          invocation_timestamp: invocation_timestamp
+          status: status
+        - complexity: complexity
+          database_name: database_name
+          migration_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          migration_phase: 0
+          source_db: source_db
+          invocation_sequence: 6
+          migration_name: migration_name
+          schema_name: schema_name
+          invocation_timestamp: invocation_timestamp
+          status: status
+      properties:
+        migrations:
+          items:
+            $ref: '#/components/schemas/VoyagerMigrationDetails'
+          type: array
+      title: YB Voyager migrations Info
+      type: object
+    ApiError:
+      properties:
+        error:
+          $ref: '#/components/schemas/ApiError_error'
+      title: API Error
+      type: object
+    AssesmentComplexityInfo:
+      description: Assesment complexity details
+      example:
+        schema: schema
+        table_count: 6
+        complexity: complexity
+        sql_objects_count: 0
+      properties:
+        schema:
+          type: string
+        sql_objects_count:
+          type: integer
+        table_count:
+          type: integer
+        complexity:
+          type: string
+      title: Assesment complexity details
+      type: object
+    MigrationAssesmentInfo:
+      description: Details for Voyager migrations assesment
+      example:
+        complexity_overview:
+        - schema: schema
+          table_count: 6
+          complexity: complexity
+          sql_objects_count: 0
+        - schema: schema
+          table_count: 6
+          complexity: complexity
+          sql_objects_count: 0
+        assesment_status: true
+        top_errors:
+        - top_errors
+        - top_errors
+        top_suggestions:
+        - top_suggestions
+        - top_suggestions
+      properties:
+        assesment_status:
+          type: boolean
+        top_errors:
+          items:
+            type: string
+          type: array
+        top_suggestions:
+          items:
+            type: string
+          type: array
+        complexity_overview:
+          items:
+            $ref: '#/components/schemas/AssesmentComplexityInfo'
+          type: array
+      title: Details for Voyager migrations assesment
+      type: object
+    ErrorsAndSuggestionsDetails:
+      description: Errors and suggestions details
+      example:
+        reason: reason
+        GH: GH
+        sqlStatement: sqlStatement
+        filePath: filePath
+        suggestion: suggestion
+        objectName: objectName
+        objectType: objectType
+      properties:
+        objectType:
+          type: string
+        objectName:
+          type: string
+        reason:
+          type: string
+        sqlStatement:
+          type: string
+        filePath:
+          type: string
+        suggestion:
+          type: string
+        GH:
+          type: string
+      title: Errors and Suggestions details
+      type: object
+    SqlObjectsDetails:
+      description: Sql obejcts type and count
+      example:
+        invalidCount: 6
+        totalCount: 0
+        objectNames: objectNames
+        objectDetails: objectDetails
+        objectType: objectType
+      properties:
+        objectType:
+          type: string
+        totalCount:
+          type: integer
+        invalidCount:
+          type: integer
+        objectNames:
+          type: string
+        objectDetails:
+          type: string
+      title: Sql Objects
+      type: object
+    MigrateSchemaTaskInfo:
+      description: Voyager data migration metrics details
+      example:
+        import_schema: import_schema
+        suggestions_errors:
+        - reason: reason
+          GH: GH
+          sqlStatement: sqlStatement
+          filePath: filePath
+          suggestion: suggestion
+          objectName: objectName
+          objectType: objectType
+        - reason: reason
+          GH: GH
+          sqlStatement: sqlStatement
+          filePath: filePath
+          suggestion: suggestion
+          objectName: objectName
+          objectType: objectType
+        migration_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        overall_status: overall_status
+        analyze_schema: analyze_schema
+        sql_objects:
+        - invalidCount: 6
+          totalCount: 0
+          objectNames: objectNames
+          objectDetails: objectDetails
+          objectType: objectType
+        - invalidCount: 6
+          totalCount: 0
+          objectNames: objectNames
+          objectDetails: objectDetails
+          objectType: objectType
+        export_schema: export_schema
+      properties:
+        migration_uuid:
+          format: uuid
+          type: string
+        overall_status:
+          type: string
+        export_schema:
+          type: string
+        analyze_schema:
+          type: string
+        import_schema:
+          type: string
+        suggestions_errors:
+          items:
+            $ref: '#/components/schemas/ErrorsAndSuggestionsDetails'
+          type: array
+        sql_objects:
+          items:
+            $ref: '#/components/schemas/SqlObjectsDetails'
+          type: array
+      title: Details for export schema, import schema and analyze schema steps
+      type: object
+    VoyagerMigrateDataMetricsDetails:
+      description: Voyager data migration metrics details
+      example:
+        count_total_rows: 5
+        migration_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        migration_phase: 0
+        schema_name: schema_name
+        count_live_rows: 1
+        invocation_timestamp: invocation_timestamp
+        table_name: table_name
+        status: 6
+      properties:
+        migration_uuid:
+          format: uuid
+          type: string
+        table_name:
+          type: string
+        schema_name:
+          type: string
+        migration_phase:
+          type: integer
+        status:
+          type: integer
+        count_live_rows:
+          type: integer
+        count_total_rows:
+          type: integer
+        invocation_timestamp:
+          type: string
+      title: Voyager Migrate Data Metrics details
+      type: object
+    VoyagerMigrateDataMetrics:
+      description: List of YB Voyager Data migrations metrics
+      example:
+        metrics:
+        - count_total_rows: 5
+          migration_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          migration_phase: 0
+          schema_name: schema_name
+          count_live_rows: 1
+          invocation_timestamp: invocation_timestamp
+          table_name: table_name
+          status: 6
+        - count_total_rows: 5
+          migration_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          migration_phase: 0
+          schema_name: schema_name
+          count_live_rows: 1
+          invocation_timestamp: invocation_timestamp
+          table_name: table_name
+          status: 6
+      properties:
+        metrics:
+          items:
+            $ref: '#/components/schemas/VoyagerMigrateDataMetricsDetails'
+          type: array
+      title: YB Voyager Migrate Data metrics Info
+      type: object
+    CloudEnum:
+      default: MANUAL
+      description: Which cloud the cluster is deployed in
+      enum:
+      - AWS
+      - GCP
+      - MANUAL
+      title: Cloud Enum
+      type: string
+    CloudInfo:
+      description: Cloud deployment information
+      example:
+        region: us-west2
+      properties:
+        code:
+          $ref: '#/components/schemas/CloudEnum'
+        region:
+          default: us-west2
+          minLength: 1
+          type: string
+      required:
+      - code
+      - region
+      title: Cloud Info
+      type: object
+    ClusterFaultTolerance:
+      default: ZONE
+      description: The level of fault tolerance for the cluster
+      enum:
+      - NONE
+      - NODE
+      - ZONE
+      - REGION
+      title: Cluster Fault Tolerance
+      type: string
+    ClusterNodeInfo:
+      description: Node level information
+      example:
+        disk_size_used_gb: 5.637376656633329
+        num_cores: 7
+        memory_mb: 1.4658129805029452
+        ram_provisioned_gb: 9.301444243932576
+        cpu_usage: 2.3021358869347655
+        disk_size_gb: 5.962133916683182
+      properties:
+        memory_mb:
+          default: 0
+          description: The total amount of RAM (MB) used by all nodes
+          format: double
+          type: number
+        disk_size_gb:
+          default: 0
+          description: The total size of disk (GB)
+          format: double
+          type: number
+        disk_size_used_gb:
+          default: 0
+          description: The total size of used disk space (GB)
+          format: double
+          type: number
+        cpu_usage:
+          default: 0
+          description: The average CPU usage over all nodes
+          format: double
+          type: number
+        num_cores:
+          default: 0
+          description: The number of CPU cores per node
+          type: integer
+        ram_provisioned_gb:
+          default: 0
+          description: The total size of provisioned ram (GB)
+          format: double
+          type: number
+      required:
+      - disk_size_gb
+      - memory_mb
+      - num_cores
+      - ram_provisioned_gb
+      title: Cluster Node Info
+      type: object
+    ClusterInfo:
+      description: Cluster level information
+      example:
+        replication_factor: 14
+        node_info:
+          disk_size_used_gb: 5.637376656633329
+          num_cores: 7
+          memory_mb: 1.4658129805029452
+          ram_provisioned_gb: 9.301444243932576
+          cpu_usage: 2.3021358869347655
+          disk_size_gb: 5.962133916683182
+        is_production: false
+        version: 3
+        num_nodes: 2
+      properties:
+        num_nodes:
+          default: 3
+          description: How many nodes are in the cluster
+          maximum: 24
+          minimum: 1
+          type: integer
+        fault_tolerance:
+          $ref: '#/components/schemas/ClusterFaultTolerance'
+        replication_factor:
+          description: The replication factor applied on the cluster
+          maximum: 24
+          minimum: 1
+          type: integer
+        node_info:
+          $ref: '#/components/schemas/ClusterNodeInfo'
+        is_production:
+          default: false
+          description: Describes if the cluster is a production cluster
+          type: boolean
+        version:
+          description: cluster data version
+          nullable: true
+          type: integer
+      required:
+      - cluster_tier
+      - fault_tolerance
+      - is_production
+      - node_info
+      - num_nodes
+      title: Cluster Info
+      type: object
+    PlacementInfo:
+      example:
+        cloud_info:
+          region: us-west2
+        num_nodes: 5
+      properties:
+        cloud_info:
+          $ref: '#/components/schemas/CloudInfo'
+        num_nodes:
+          default: 3
+          description: How many nodes are in the region
+          maximum: 24
+          minimum: 1
+          type: integer
+      required:
+      - cloud_info
+      - num_nodes
+      type: object
+    ClusterRegionInfo:
+      description: Cluster region info list
+      example:
+        placement_info:
+          cloud_info:
+            region: us-west2
+          num_nodes: 5
+      properties:
+        placement_info:
+          $ref: '#/components/schemas/PlacementInfo'
+      required:
+      - placement_info
+      title: Cluster Region Info
+      type: object
+    EncryptionInfo:
+      description: Cluster encryption info
+      example:
+        encryption_in_transit: false
+        encryption_at_rest: false
+      properties:
+        encryption_at_rest:
+          default: false
+          type: boolean
+        encryption_in_transit:
+          default: false
+          type: boolean
+      title: Encryption Info
+      type: object
+    ClusterSpec:
+      description: Cluster spec
+      example:
+        cluster_region_info:
+        - placement_info:
+            cloud_info:
+              region: us-west2
+            num_nodes: 5
+        - placement_info:
+            cloud_info:
+              region: us-west2
+            num_nodes: 5
+        name: name
+        cloud_info:
+          region: us-west2
+        encryption_info:
+          encryption_in_transit: false
+          encryption_at_rest: false
+        cluster_info:
+          replication_factor: 14
+          node_info:
+            disk_size_used_gb: 5.637376656633329
+            num_cores: 7
+            memory_mb: 1.4658129805029452
+            ram_provisioned_gb: 9.301444243932576
+            cpu_usage: 2.3021358869347655
+            disk_size_gb: 5.962133916683182
+          is_production: false
+          version: 3
+          num_nodes: 2
+      properties:
+        name:
+          description: The name of the cluster
+          maxLength: 63
+          minLength: 3
+          pattern: ^(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?)$
+          type: string
+        cloud_info:
+          $ref: '#/components/schemas/CloudInfo'
+        cluster_info:
+          $ref: '#/components/schemas/ClusterInfo'
+        cluster_region_info:
+          items:
+            $ref: '#/components/schemas/ClusterRegionInfo'
+          nullable: true
+          type: array
+          uniqueItems: true
+        encryption_info:
+          $ref: '#/components/schemas/EncryptionInfo'
+      required:
+      - cloud_info
+      - cluster_info
+      - encryption_info
+      - name
+      - network_info
+      - software_info
+      title: Cluster Specification
+      type: object
+    EntityMetadata:
+      description: Common metadata for entities
+      example:
+        updated_on: updated_on
+        created_on: created_on
+      properties:
+        created_on:
+          description: Timestamp when the entity was created (UTC)
+          nullable: true
+          type: string
+        updated_on:
+          description: Timestamp when the entity was last updated (UTC)
+          nullable: true
+          type: string
+      title: Entity Metadata
+      type: object
+    ClusterDataInfo:
+      example:
+        metadata:
+          updated_on: updated_on
+          created_on: created_on
+        id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        state: state
+        software_version: software_version
+      properties:
+        id:
+          description: The UUID of the cluster
+          format: uuid
+          type: string
+        state:
+          description: The current state of the cluster
+          type: string
+        software_version:
+          description: The current version of YugabyteDB installed on the cluster
+          type: string
+        metadata:
+          $ref: '#/components/schemas/EntityMetadata'
+      required:
+      - id
+      - metadata
+      - project_id
+      - state
+      type: object
+    ClusterData:
+      description: Cluster data
+      example:
+        spec:
+          cluster_region_info:
+          - placement_info:
+              cloud_info:
+                region: us-west2
+              num_nodes: 5
+          - placement_info:
+              cloud_info:
+                region: us-west2
+              num_nodes: 5
+          name: name
+          cloud_info:
+            region: us-west2
+          encryption_info:
+            encryption_in_transit: false
+            encryption_at_rest: false
+          cluster_info:
+            replication_factor: 14
+            node_info:
+              disk_size_used_gb: 5.637376656633329
+              num_cores: 7
+              memory_mb: 1.4658129805029452
+              ram_provisioned_gb: 9.301444243932576
+              cpu_usage: 2.3021358869347655
+              disk_size_gb: 5.962133916683182
+            is_production: false
+            version: 3
+            num_nodes: 2
+        info:
+          metadata:
+            updated_on: updated_on
+            created_on: created_on
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          state: state
+          software_version: software_version
+      properties:
+        spec:
+          $ref: '#/components/schemas/ClusterSpec'
+        info:
+          $ref: '#/components/schemas/ClusterDataInfo'
+      required:
+      - info
+      - spec
+      title: Cluster Data
+      type: object
     LiveQueryResponseYSQLQueryItem:
       description: Schema for Live Query Response YSQL Query Item
       example:
@@ -878,12 +1704,6 @@ components:
         data:
           $ref: '#/components/schemas/LiveQueryResponseData'
       title: Live Query Response Schema
-      type: object
-    ApiError:
-      properties:
-        error:
-          $ref: '#/components/schemas/ApiError_error'
-      title: API Error
       type: object
     SlowQueryResponseYSQLQueryItem:
       description: Schema for Slow Query Response YSQL Query Item
@@ -1181,12 +2001,17 @@ components:
         keyspace: keyspace
         size_bytes: 0
         name: name
+        uuid: uuid
       properties:
         name:
           minLength: 1
           nullable: false
           type: string
         keyspace:
+          minLength: 1
+          nullable: false
+          type: string
+        uuid:
           minLength: 1
           nullable: false
           type: string
@@ -1201,6 +2026,7 @@ components:
       - name
       - size_bytes
       - type
+      - uuid
       title: Cluster Table Object
       type: object
     ClusterTableData:
@@ -1609,317 +2435,111 @@ components:
       - name
       title: Alerts Info
       type: object
-    CloudEnum:
-      default: MANUAL
-      description: Which cloud the cluster is deployed in
-      enum:
-      - AWS
-      - GCP
-      - MANUAL
-      title: Cloud Enum
-      type: string
-    CloudInfo:
-      description: Cloud deployment information
+    API_for_Plan_and_Asses_page:
       example:
-        region: us-west2
+        data:
+          complexity_overview:
+          - schema: schema
+            table_count: 6
+            complexity: complexity
+            sql_objects_count: 0
+          - schema: schema
+            table_count: 6
+            complexity: complexity
+            sql_objects_count: 0
+          assesment_status: true
+          top_errors:
+          - top_errors
+          - top_errors
+          top_suggestions:
+          - top_suggestions
+          - top_suggestions
       properties:
-        code:
-          $ref: '#/components/schemas/CloudEnum'
-        region:
-          default: us-west2
-          minLength: 1
-          type: string
-      required:
-      - code
-      - region
-      title: Cloud Info
+        data:
+          $ref: '#/components/schemas/MigrationAssesmentInfo'
+      title: API for Plan and Asses page
       type: object
-    ClusterFaultTolerance:
-      default: ZONE
-      description: The level of fault tolerance for the cluster
-      enum:
-      - NONE
-      - NODE
-      - ZONE
-      - REGION
-      title: Cluster Fault Tolerance
-      type: string
-    ClusterNodeInfo:
-      description: Node level information
+    Individual_Migration_Task_Info:
       example:
-        disk_size_used_gb: 5.637376656633329
-        num_cores: 7
-        memory_mb: 1.4658129805029452
-        cpu_usage: 2.3021358869347655
-        disk_size_gb: 5.962133916683182
+        data:
+          import_schema: import_schema
+          suggestions_errors:
+          - reason: reason
+            GH: GH
+            sqlStatement: sqlStatement
+            filePath: filePath
+            suggestion: suggestion
+            objectName: objectName
+            objectType: objectType
+          - reason: reason
+            GH: GH
+            sqlStatement: sqlStatement
+            filePath: filePath
+            suggestion: suggestion
+            objectName: objectName
+            objectType: objectType
+          migration_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          overall_status: overall_status
+          analyze_schema: analyze_schema
+          sql_objects:
+          - invalidCount: 6
+            totalCount: 0
+            objectNames: objectNames
+            objectDetails: objectDetails
+            objectType: objectType
+          - invalidCount: 6
+            totalCount: 0
+            objectNames: objectNames
+            objectDetails: objectDetails
+            objectType: objectType
+          export_schema: export_schema
       properties:
-        memory_mb:
-          default: 0
-          description: The total amount of RAM (MB) used by all nodes
-          format: double
-          type: number
-        disk_size_gb:
-          default: 0
-          description: The total size of disk (GB)
-          format: double
-          type: number
-        disk_size_used_gb:
-          default: 0
-          description: The total size of used disk space (GB)
-          format: double
-          type: number
-        cpu_usage:
-          default: 0
-          description: The average CPU usage over all nodes
-          format: double
-          type: number
-        num_cores:
-          default: 0
-          description: The number of CPU cores per node
-          type: integer
-      required:
-      - disk_size_gb
-      - memory_mb
-      - num_cores
-      title: Cluster Node Info
+        data:
+          $ref: '#/components/schemas/MigrateSchemaTaskInfo'
+      title: Individual Migration Task Info
       type: object
-    ClusterInfo:
-      description: Cluster level information
+    Cluster_Response:
       example:
-        replication_factor: 14
-        node_info:
-          disk_size_used_gb: 5.637376656633329
-          num_cores: 7
-          memory_mb: 1.4658129805029452
-          cpu_usage: 2.3021358869347655
-          disk_size_gb: 5.962133916683182
-        is_production: false
-        version: 9
-        num_nodes: 2
-      properties:
-        num_nodes:
-          default: 3
-          description: How many nodes are in the cluster
-          maximum: 24
-          minimum: 1
-          type: integer
-        fault_tolerance:
-          $ref: '#/components/schemas/ClusterFaultTolerance'
-        replication_factor:
-          description: The replication factor applied on the cluster
-          maximum: 24
-          minimum: 1
-          type: integer
-        node_info:
-          $ref: '#/components/schemas/ClusterNodeInfo'
-        is_production:
-          default: false
-          description: Describes if the cluster is a production cluster
-          type: boolean
-        version:
-          description: cluster data version
-          nullable: true
-          type: integer
-      required:
-      - cluster_tier
-      - fault_tolerance
-      - is_production
-      - node_info
-      - num_nodes
-      title: Cluster Info
-      type: object
-    PlacementInfo:
-      example:
-        cloud_info:
-          region: us-west2
-        num_nodes: 9
-      properties:
-        cloud_info:
-          $ref: '#/components/schemas/CloudInfo'
-        num_nodes:
-          default: 3
-          description: How many nodes are in the region
-          maximum: 24
-          minimum: 1
-          type: integer
-      required:
-      - cloud_info
-      - num_nodes
-      type: object
-    ClusterRegionInfo:
-      description: Cluster region info list
-      example:
-        placement_info:
-          cloud_info:
-            region: us-west2
-          num_nodes: 9
-      properties:
-        placement_info:
-          $ref: '#/components/schemas/PlacementInfo'
-      required:
-      - placement_info
-      title: Cluster Region Info
-      type: object
-    EncryptionInfo:
-      description: Cluster encryption info
-      example:
-        encryption_in_transit: false
-        encryption_at_rest: false
-      properties:
-        encryption_at_rest:
-          default: false
-          type: boolean
-        encryption_in_transit:
-          default: false
-          type: boolean
-      title: Encryption Info
-      type: object
-    ClusterSpec:
-      description: Cluster spec
-      example:
-        cluster_region_info:
-        - placement_info:
+        data:
+          spec:
+            cluster_region_info:
+            - placement_info:
+                cloud_info:
+                  region: us-west2
+                num_nodes: 5
+            - placement_info:
+                cloud_info:
+                  region: us-west2
+                num_nodes: 5
+            name: name
             cloud_info:
               region: us-west2
-            num_nodes: 9
-        - placement_info:
-            cloud_info:
-              region: us-west2
-            num_nodes: 9
-        name: name
-        cloud_info:
-          region: us-west2
-        encryption_info:
-          encryption_in_transit: false
-          encryption_at_rest: false
-        cluster_info:
-          replication_factor: 14
-          node_info:
-            disk_size_used_gb: 5.637376656633329
-            num_cores: 7
-            memory_mb: 1.4658129805029452
-            cpu_usage: 2.3021358869347655
-            disk_size_gb: 5.962133916683182
-          is_production: false
-          version: 9
-          num_nodes: 2
+            encryption_info:
+              encryption_in_transit: false
+              encryption_at_rest: false
+            cluster_info:
+              replication_factor: 14
+              node_info:
+                disk_size_used_gb: 5.637376656633329
+                num_cores: 7
+                memory_mb: 1.4658129805029452
+                ram_provisioned_gb: 9.301444243932576
+                cpu_usage: 2.3021358869347655
+                disk_size_gb: 5.962133916683182
+              is_production: false
+              version: 3
+              num_nodes: 2
+          info:
+            metadata:
+              updated_on: updated_on
+              created_on: created_on
+            id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            state: state
+            software_version: software_version
       properties:
-        name:
-          description: The name of the cluster
-          maxLength: 63
-          minLength: 3
-          pattern: ^(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?)$
-          type: string
-        cloud_info:
-          $ref: '#/components/schemas/CloudInfo'
-        cluster_info:
-          $ref: '#/components/schemas/ClusterInfo'
-        cluster_region_info:
-          items:
-            $ref: '#/components/schemas/ClusterRegionInfo'
-          nullable: true
-          type: array
-          uniqueItems: true
-        encryption_info:
-          $ref: '#/components/schemas/EncryptionInfo'
-      required:
-      - cloud_info
-      - cluster_info
-      - encryption_info
-      - name
-      - network_info
-      - software_info
-      title: Cluster Specification
-      type: object
-    EntityMetadata:
-      description: Common metadata for entities
-      example:
-        updated_on: updated_on
-        created_on: created_on
-      properties:
-        created_on:
-          description: Timestamp when the entity was created (UTC)
-          nullable: true
-          type: string
-        updated_on:
-          description: Timestamp when the entity was last updated (UTC)
-          nullable: true
-          type: string
-      title: Entity Metadata
-      type: object
-    ClusterDataInfo:
-      example:
-        metadata:
-          updated_on: updated_on
-          created_on: created_on
-        id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-        state: state
-        software_version: software_version
-      properties:
-        id:
-          description: The UUID of the cluster
-          format: uuid
-          type: string
-        state:
-          description: The current state of the cluster
-          type: string
-        software_version:
-          description: The current version of YugabyteDB installed on the cluster
-          type: string
-        metadata:
-          $ref: '#/components/schemas/EntityMetadata'
-      required:
-      - id
-      - metadata
-      - project_id
-      - state
-      type: object
-    ClusterData:
-      description: Cluster data
-      example:
-        spec:
-          cluster_region_info:
-          - placement_info:
-              cloud_info:
-                region: us-west2
-              num_nodes: 9
-          - placement_info:
-              cloud_info:
-                region: us-west2
-              num_nodes: 9
-          name: name
-          cloud_info:
-            region: us-west2
-          encryption_info:
-            encryption_in_transit: false
-            encryption_at_rest: false
-          cluster_info:
-            replication_factor: 14
-            node_info:
-              disk_size_used_gb: 5.637376656633329
-              num_cores: 7
-              memory_mb: 1.4658129805029452
-              cpu_usage: 2.3021358869347655
-              disk_size_gb: 5.962133916683182
-            is_production: false
-            version: 9
-            num_nodes: 2
-        info:
-          metadata:
-            updated_on: updated_on
-            created_on: created_on
-          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-          state: state
-          software_version: software_version
-      properties:
-        spec:
-          $ref: '#/components/schemas/ClusterSpec'
-        info:
-          $ref: '#/components/schemas/ClusterDataInfo'
-      required:
-      - info
-      - spec
-      title: Cluster Data
+        data:
+          $ref: '#/components/schemas/ClusterData'
+      title: Cluster Response
       type: object
     Cluster_Nodes_Response:
       example:
@@ -2052,15 +2672,34 @@ components:
       type: object
     Cluster_table_list_response:
       example:
-        data:
+        tables:
         - keyspace: keyspace
           size_bytes: 0
           name: name
+          uuid: uuid
         - keyspace: keyspace
           size_bytes: 0
           name: name
+          uuid: uuid
+        indexes:
+        - keyspace: keyspace
+          size_bytes: 0
+          name: name
+          uuid: uuid
+        - keyspace: keyspace
+          size_bytes: 0
+          name: name
+          uuid: uuid
       properties:
-        data:
+        tables:
+          description: List of cluster tables
+          items:
+            $ref: '#/components/schemas/ClusterTable'
+          nullable: false
+          title: Cluster Table Data
+          type: array
+          uniqueItems: true
+        indexes:
           description: List of cluster tables
           items:
             $ref: '#/components/schemas/ClusterTable'
@@ -2069,7 +2708,8 @@ components:
           type: array
           uniqueItems: true
       required:
-      - data
+      - indexes
+      - tables
       title: Cluster table list response
       type: object
     Health_Check_Response:
@@ -2136,48 +2776,6 @@ components:
       required:
       - data
       title: Alerts Response
-      type: object
-    Cluster_Response:
-      example:
-        data:
-          spec:
-            cluster_region_info:
-            - placement_info:
-                cloud_info:
-                  region: us-west2
-                num_nodes: 9
-            - placement_info:
-                cloud_info:
-                  region: us-west2
-                num_nodes: 9
-            name: name
-            cloud_info:
-              region: us-west2
-            encryption_info:
-              encryption_in_transit: false
-              encryption_at_rest: false
-            cluster_info:
-              replication_factor: 14
-              node_info:
-                disk_size_used_gb: 5.637376656633329
-                num_cores: 7
-                memory_mb: 1.4658129805029452
-                cpu_usage: 2.3021358869347655
-                disk_size_gb: 5.962133916683182
-              is_production: false
-              version: 9
-              num_nodes: 2
-          info:
-            metadata:
-              updated_on: updated_on
-              created_on: created_on
-            id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-            state: state
-            software_version: software_version
-      properties:
-        data:
-          $ref: '#/components/schemas/ClusterData'
-      title: Cluster Response
       type: object
     ApiError_error:
       properties:

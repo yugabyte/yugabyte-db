@@ -56,25 +56,7 @@ func initAfterFlagsParsed(cmdName string) {
 	log.AddOutputFile(common.YbactlLogFile())
 	log.Trace(fmt.Sprintf("yba-ctl started with cmd %s", cmdName))
 
-	initServices(cmdName)
-
-}
-
-func writeDefaultConfig() {
-	cfgFile, err := os.Create(common.InputFile())
-	if err != nil {
-		log.Fatal("could not create input file: " + err.Error())
-	}
-	defer cfgFile.Close()
-
-	_, err = cfgFile.WriteString(config.ReferenceYbaCtlConfig)
-	if err != nil {
-		log.Fatal("could not create input file: " + err.Error())
-	}
-	err = os.Chmod(common.InputFile(), 0644)
-	if err != nil {
-		log.Warn("failed to update config file permissions: " + err.Error())
-	}
+	initServices()
 }
 
 func ensureInstallerConfFile() {
@@ -92,7 +74,7 @@ func ensureInstallerConfFile() {
 			common.DefaultNo)
 
 		// Copy over reference yaml before checking the user choice.
-		writeDefaultConfig()
+		config.WriteDefaultConfig()
 
 		if !userChoice {
 			log.Info(fmt.Sprintf(
@@ -102,15 +84,15 @@ func ensureInstallerConfFile() {
 	}
 }
 
-func initServices(cmdName string) {
+func initServices() {
 	// services is an ordered map so services that depend on others should go later in the chain.
 	services = make(map[string]common.Component)
 	installPostgres := viper.GetBool("postgres.install.enabled")
 	installYbdb := viper.GetBool("ybdb.install.enabled")
-	services[PostgresServiceName] = NewPostgres("10.23")
-	services[YbdbServiceName] = NewYbdb("2.17.2.0")
-	services[PrometheusServiceName] = NewPrometheus("2.44.0")
-	services[YbPlatformServiceName] = NewPlatform(common.GetVersion())
+	services[PostgresServiceName] = NewPostgres("14.9")
+	// services[YbdbServiceName] = NewYbdb("2.17.2.0")
+	services[PrometheusServiceName] = NewPrometheus("2.46.0")
+	services[YbPlatformServiceName] = NewPlatform(ybactl.Version)
 	// serviceOrder = make([]string, len(services))
 	if installPostgres {
 		serviceOrder = []string{PostgresServiceName, PrometheusServiceName, YbPlatformServiceName}

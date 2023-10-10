@@ -92,10 +92,6 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   const TransactionStatus last_known_status() const { return last_known_status_; }
 
-  const IsExternalTransaction external_transaction() const {
-    return metadata_.external_transaction;
-  }
-
   void SetLocalCommitData(HybridTime time, const SubtxnSet& aborted_subtxn_set);
   void AddReplicatedBatch(
       size_t batch_idx, boost::container::small_vector_base<uint8_t>* encoded_replicated_batches);
@@ -138,8 +134,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   static boost::optional<TransactionStatus> GetStatusAt(
       HybridTime time,
       HybridTime last_known_status_hybrid_time,
-      TransactionStatus last_known_status,
-      bool external_transaction);
+      TransactionStatus last_known_status);
 
   void SendStatusRequest(int64_t serial_no, const RunningTransactionPtr& shared_self);
 
@@ -200,6 +195,9 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   // Time of the next check whether this transaction has been aborted.
   HybridTime abort_check_ht_;
+
+  // Number of outstanding status request rpcs.
+  std::atomic<int64_t> outstanding_status_requests_{0};
 };
 
 Status MakeAbortedStatus(const TransactionId& id);

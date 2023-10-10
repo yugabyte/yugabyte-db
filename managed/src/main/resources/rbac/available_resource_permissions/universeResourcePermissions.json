@@ -1,0 +1,75 @@
+[
+  {
+    "resourceType": "UNIVERSE",
+    "action": "CREATE",
+    "name": "Create Universe",
+    "description": "Allows user to create a universe.",
+    "permissionValidOnResource": false,
+    "prerequisitePermissions": [
+      {
+        "resourceType": "UNIVERSE",
+        "action": "READ"
+      }
+    ]
+  },
+  {
+    "resourceType": "UNIVERSE",
+    "action": "READ",
+    "name": "View Universe",
+    "description": "Allows user to view a universe.",
+    "permissionValidOnResource": true,
+    "prerequisitePermissions": []
+  },
+  {
+    "resourceType": "UNIVERSE",
+    "action": "UPDATE",
+    "name": "Update Universe",
+    "description": "Allows user to update a universe.",
+    "permissionValidOnResource": true,
+    "prerequisitePermissions": [
+      {
+        "resourceType": "UNIVERSE",
+        "action": "READ"
+      }
+    ]
+  },
+  {
+    "resourceType": "UNIVERSE",
+    "action": "DELETE",
+    "name": "Delete Universe",
+    "description": "Allows user to DELETE a universe.",
+    "permissionValidOnResource": true,
+    "prerequisitePermissions": [
+      {
+        "resourceType": "UNIVERSE",
+        "action": "READ"
+      }
+    ]
+  },
+  {
+    "resourceType": "UNIVERSE",
+    "action": "PAUSE_RESUME",
+    "name": "Pause/Resume Universe",
+    "description": "Allows user to pause and resume a universe.",
+    "permissionValidOnResource": true,
+    "prerequisitePermissions": [
+      {
+        "resourceType": "UNIVERSE",
+        "action": "READ"
+      }
+    ]
+  },
+  {
+    "resourceType": "UNIVERSE",
+    "action": "BACKUP_RESTORE",
+    "name": "Backup/Restore Universe",
+    "description": "Allows user to create a backup on a universe.",
+    "permissionValidOnResource": true,
+    "prerequisitePermissions": [
+      {
+        "resourceType": "UNIVERSE",
+        "action": "READ"
+      }
+    ]
+  }
+]

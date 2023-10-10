@@ -63,6 +63,9 @@ RunningTransaction::RunningTransaction(TransactionMetadata metadata,
 }
 
 RunningTransaction::~RunningTransaction() {
+  LOG_IF(WARNING, !status_waiters_.empty()) << "RunningTransaction with active status_waiters_ "
+                                            << "being destroyed. This could lead to stuck "
+                                            << "WriteQuery object(s).";
   if (WasAborted()) {
     context_.NotifyAbortedTransactionDecrement(id());
   }
@@ -114,8 +117,7 @@ void RunningTransaction::RequestStatusAt(const StatusRequest& request,
 
   if (last_known_status_hybrid_time_ > HybridTime::kMin) {
     auto transaction_status =
-        GetStatusAt(request.global_limit_ht, last_known_status_hybrid_time_, last_known_status_,
-                    external_transaction());
+        GetStatusAt(request.global_limit_ht, last_known_status_hybrid_time_, last_known_status_);
     // If we don't have status at global_limit_ht, then we should request updated status.
     if (transaction_status) {
       HybridTime last_known_status_hybrid_time = last_known_status_hybrid_time_;
@@ -194,10 +196,13 @@ void RunningTransaction::Abort(client::YBClient* client,
 }
 
 std::string RunningTransaction::ToString() const {
-  return Format("{ metadata: $0 last_batch_data: $1 replicated_batches: $2 local_commit_time: $3 "
-                    "last_known_status: $4 last_known_status_hybrid_time: $5 }",
-                metadata_, last_batch_data_, replicated_batches_, local_commit_time_,
-                TransactionStatus_Name(last_known_status_), last_known_status_hybrid_time_);
+  return Format(
+      "{ metadata: $0 last_batch_data: $1 replicated_batches: $2 local_commit_time: $3 "
+      "last_known_status: $4 last_known_status_hybrid_time: $5 status_waiters_size: $6 "
+      "outstanding_status_requests: $7}",
+      metadata_, last_batch_data_, replicated_batches_, local_commit_time_,
+      TransactionStatus_Name(last_known_status_), last_known_status_hybrid_time_,
+      status_waiters_.size(), outstanding_status_requests_.load(std::memory_order_relaxed));
 }
 
 void RunningTransaction::ScheduleRemoveIntents(
@@ -209,20 +214,10 @@ void RunningTransaction::ScheduleRemoveIntents(
 }
 
 boost::optional<TransactionStatus> RunningTransaction::GetStatusAt(
-    HybridTime time,
-    HybridTime last_known_status_hybrid_time,
-    TransactionStatus last_known_status,
-    bool external_transaction) {
+    HybridTime time, HybridTime last_known_status_hybrid_time,
+    TransactionStatus last_known_status) {
   switch (last_known_status) {
     case TransactionStatus::ABORTED: {
-      if (external_transaction) {
-        // If this is an xcluster/external transaction, it is possible that a transaction with
-        // ABORTED state may later be committed. This can happen when the txn status table is
-        // lagging behind the user table, and the consumer coordinator hasn't yet recieved a CREATED
-        // or COMMITTED record for an intent already present in intents db. To account for this
-        // situation, always re-resolve intents that have state ABORTED.
-        return boost::none;
-      }
       return TransactionStatus::ABORTED;
     }
     case TransactionStatus::COMMITTED:
@@ -248,6 +243,7 @@ void RunningTransaction::SendStatusRequest(
     LOG(WARNING) << "Shutting down. Cannot get GetTransactionStatus: " << metadata_;
     return;
   }
+  outstanding_status_requests_.fetch_add(1, std::memory_order_relaxed);
   tserver::GetTransactionStatusRequestPB req;
   req.set_tablet_id(metadata_.status_tablet);
   req.add_transaction_id()->assign(
@@ -300,6 +296,11 @@ bool RunningTransaction::UpdateStatus(
   }
   last_known_status_hybrid_time_ = time_of_status;
 
+  // Reset last_known_deadlock_status_ with the latest status. deadlock status is currently
+  // used in wait-queues alone and shouldn't cause any correctness issues.
+  DCHECK(expected_deadlock_status.ok() || transaction_status == TransactionStatus::ABORTED);
+  last_known_deadlock_status_ = expected_deadlock_status;
+
   if (transaction_status == last_known_status_) {
     return false;
   }
@@ -307,8 +308,6 @@ bool RunningTransaction::UpdateStatus(
     context_.NotifyAbortedTransactionDecrement(id());
   }
   last_known_status_ = transaction_status;
-  DCHECK(expected_deadlock_status.ok() || transaction_status == TransactionStatus::ABORTED);
-  last_known_deadlock_status_ = expected_deadlock_status;
 
   return transaction_status == TransactionStatus::ABORTED;
 }
@@ -321,6 +320,7 @@ void RunningTransaction::DoStatusReceived(const Status& status,
   VLOG_WITH_PREFIX(4) << __func__ << "(" << status << ", " << response.ShortDebugString() << ", "
                       << serial_no << ")";
 
+  outstanding_status_requests_.fetch_sub(1, std::memory_order_relaxed);
   if (response.has_propagated_hybrid_time()) {
     context_.participant_context_.UpdateClock(HybridTime(response.propagated_hybrid_time()));
   }
@@ -345,9 +345,8 @@ void RunningTransaction::DoStatusReceived(const Status& status,
       return;
     }
 
-    if (response.status_hybrid_time().size() != 1 ||
-        response.status().size() != 1 || response.deadlock_reason().size() != 1 ||
-        (response.aborted_subtxn_set().size() != 0 && response.aborted_subtxn_set().size() != 1)) {
+    if (response.status_hybrid_time().size() != 1 || response.status().size() != 1 ||
+        response.aborted_subtxn_set().size() > 1 || response.deadlock_reason().size() > 1) {
       LOG_WITH_PREFIX(DFATAL)
           << "Wrong number of status, status hybrid time, deadlock_reason, or aborted subtxn "
           << "set entries, exactly one entry expected: "
@@ -363,7 +362,8 @@ void RunningTransaction::DoStatusReceived(const Status& status,
         time_of_status = HybridTime(response.status_hybrid_time()[0]);
         transaction_status = response.status(0);
         aborted_subtxn_set = aborted_subtxn_set_or_status.get();
-        if (response.deadlock_reason(0).code() != AppStatusPB::OK) {
+        if (!response.deadlock_reason().empty() &&
+            response.deadlock_reason(0).code() != AppStatusPB::OK) {
           // response contains a deadlock specific error.
           expected_deadlock_status = StatusFromPB(response.deadlock_reason(0));
         }
@@ -385,7 +385,8 @@ void RunningTransaction::DoStatusReceived(const Status& status,
         expected_deadlock_status);
     if (did_abort_txn) {
       context_.NotifyAbortedTransactionIncrement(id());
-      context_.EnqueueRemoveUnlocked(id(), RemoveReason::kStatusReceived, &min_running_notifier);
+      context_.EnqueueRemoveUnlocked(
+          id(), RemoveReason::kStatusReceived, &min_running_notifier, expected_deadlock_status);
     }
 
     time_of_status = last_known_status_hybrid_time_;
@@ -397,26 +398,6 @@ void RunningTransaction::DoStatusReceived(const Status& status,
     if (!status_waiters_.empty()) {
       new_request_id = context_.NextRequestIdUnlocked();
       VLOG_WITH_PREFIX(4) << "Waiters still present, send new status request: " << new_request_id;
-    }
-
-    if (external_transaction()) {
-      // The time of the status from a GetStatus resp is typically the non-xcluster safe time on the
-      // coordinator. It is possible that txn COMMIT record comes in at earlier time. The ideal fix
-      // is to use the coordinator's xcluster safe time in the GetStatus response. But the quick fix
-      // is to just use the smallest read time of the waiters as the resolved status time.
-      for (const auto& waiter : status_waiters) {
-        auto status_for_waiter = GetStatusAt(
-            waiter.global_limit_ht, time_of_status, transaction_status, external_transaction());
-        if (status_for_waiter && *status_for_waiter == TransactionStatus::PENDING) {
-          if (last_known_status_hybrid_time_ > waiter.read_ht) {
-            time_of_status = last_known_status_hybrid_time_ = waiter.read_ht;
-          }
-          if (last_known_status_ == TransactionStatus::ABORTED) {
-            context_.NotifyAbortedTransactionDecrement(id());
-          }
-          transaction_status = last_known_status_ = TransactionStatus::PENDING;
-        }
-      }
     }
   }
   if (new_request_id >= 0) {
@@ -437,8 +418,7 @@ std::vector<StatusRequest> RunningTransaction::ExtractFinishedStatusWaitersUnloc
   auto w = status_waiters_.begin();
   for (auto it = status_waiters_.begin(); it != status_waiters_.end(); ++it) {
     if (it->serial_no <= serial_no ||
-        GetStatusAt(
-            it->global_limit_ht, time_of_status, transaction_status, external_transaction()) ||
+        GetStatusAt(it->global_limit_ht, time_of_status, transaction_status) ||
         time_of_status < it->read_ht) {
       result.push_back(std::move(*it));
     } else {
@@ -458,8 +438,8 @@ void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_sta
                                        const std::vector<StatusRequest>& status_waiters,
                                        const Status& expected_deadlock_status) {
   for (const auto& waiter : status_waiters) {
-    auto status_for_waiter = GetStatusAt(
-        waiter.global_limit_ht, time_of_status, transaction_status, external_transaction());
+    auto status_for_waiter =
+        GetStatusAt(waiter.global_limit_ht, time_of_status, transaction_status);
     if (status_for_waiter) {
       // We know status at global_limit_ht, so could notify waiter.
       auto result = TransactionStatusResult{*status_for_waiter, time_of_status};
@@ -527,7 +507,9 @@ void RunningTransaction::AbortReceived(const Status& status,
           result->status, result->status_time, coordinator_safe_time, result->aborted_subtxn_set,
           result->expected_deadlock_status)) {
         context_.NotifyAbortedTransactionIncrement(id());
-        context_.EnqueueRemoveUnlocked(id(), RemoveReason::kAbortReceived, &min_running_notifier);
+        context_.EnqueueRemoveUnlocked(
+            id(), RemoveReason::kAbortReceived, &min_running_notifier,
+            result->expected_deadlock_status);
       }
     }
   }
@@ -586,7 +568,8 @@ void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_
 
     MinRunningNotifier min_running_notifier(&context_.applier_);
     std::lock_guard lock(context_.mutex_);
-    context_.RemoveUnlocked(id(), RemoveReason::kLargeApplied, &min_running_notifier);
+    context_.RemoveUnlocked(
+        id(), RemoveReason::kLargeApplied, &min_running_notifier);
   }
 }
 

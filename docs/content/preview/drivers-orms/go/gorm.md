@@ -5,6 +5,8 @@ linkTitle: Use an ORM
 description: Go GORM support for YugabyteDB
 headcontent: Go ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
+aliases:
+  - /integrations/gorm/
 menu:
   preview:
     identifier: go-orm

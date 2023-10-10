@@ -81,7 +81,7 @@ class AutoRollLogger : public Logger {
       // pin down the current logger_ instance before releasing the mutex.
       logger = logger_;
     }
-    TEST_SYNC_POINT("AutoRollLogger::Flush:PinnedLogger");
+    DEBUG_ONLY_TEST_SYNC_POINT("AutoRollLogger::Flush:PinnedLogger");
     if (logger) {
       logger->Flush();
     }

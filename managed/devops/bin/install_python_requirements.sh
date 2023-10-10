@@ -12,6 +12,7 @@
 should_create_package="0"
 should_use_package="0"
 use_dynamic_paths="0"
+should_use_pex="0"
 show_usage() {
   cat <<-EOT
 Usage: ${0##*/} [<options>]
@@ -75,12 +76,6 @@ else
 
   run_pip install --upgrade pip > /dev/null
 
-  if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
-    # looks like there is some issue with setuptools and virtualenv on python2.
-    # https://github.com/pypa/virtualenv/issues/1493, adding this requirement
-    pip_install "setuptools<45"
-  fi
-
   # faster pip install of yb-cassandra-driver without a full compilation
   # https://docs.datastax.com/en/developer/python-driver/3.16/installation/
   export CASS_DRIVER_NO_CYTHON=1
@@ -124,4 +119,8 @@ else
           "$virtualenv_dir."
     fi
   fi
+
+  log "Activating pex environment $pex_venv_dir"
+  activate_pex
+  rm $pex_lock
 fi

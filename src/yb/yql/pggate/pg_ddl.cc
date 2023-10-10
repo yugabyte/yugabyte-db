@@ -352,12 +352,17 @@ PgAlterTable::PgAlterTable(PgSession::ScopedRefPtr pg_session,
 
 Status PgAlterTable::AddColumn(const char *name,
                                const YBCPgTypeEntity *attr_type,
-                               int order) {
+                               int order,
+                               YBCPgExpr missing_value) {
   auto& col = *req_.mutable_add_columns()->Add();
   col.set_attr_name(name);
   col.set_attr_ybtype(attr_type->yb_type);
   col.set_attr_num(order);
   col.set_attr_pgoid(attr_type->type_oid);
+  if (missing_value) {
+    auto value = VERIFY_RESULT(missing_value->Eval());
+    value->ToGoogleProtobuf(col.mutable_attr_missing_val());
+  }
   return Status::OK();
 }
 
@@ -398,6 +403,38 @@ Status PgAlterTable::Exec() {
 }
 
 PgAlterTable::~PgAlterTable() {
+}
+
+//--------------------------------------------------------------------------------------------------
+// PgDropSequence
+//--------------------------------------------------------------------------------------------------
+
+PgDropSequence::PgDropSequence(PgSession::ScopedRefPtr pg_session,
+                               PgOid database_oid,
+                               PgOid sequence_oid)
+  : PgDdl(std::move(pg_session)),
+    database_oid_(database_oid),
+    sequence_oid_(sequence_oid) {
+}
+
+PgDropSequence::~PgDropSequence() {
+}
+
+Status PgDropSequence::Exec() {
+  return pg_session_->pg_client().DeleteSequenceTuple(database_oid_, sequence_oid_);
+}
+
+PgDropDBSequences::PgDropDBSequences(PgSession::ScopedRefPtr pg_session,
+                                     PgOid database_oid)
+  : PgDdl(std::move(pg_session)),
+    database_oid_(database_oid) {
+}
+
+PgDropDBSequences::~PgDropDBSequences() {
+}
+
+Status PgDropDBSequences::Exec() {
+  return pg_session_->pg_client().DeleteDBSequences(database_oid_);
 }
 
 }  // namespace pggate

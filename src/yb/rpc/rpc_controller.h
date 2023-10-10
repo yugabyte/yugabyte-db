@@ -149,6 +149,8 @@ class RpcController {
   // Assign sidecar with specified index to out.
   Result<RefCntSlice> ExtractSidecar(size_t idx) const;
 
+  size_t GetSidecarsCount() const;
+
   // Transfer all sidecars to specified context.
   size_t TransferSidecars(Sidecars* dest);
 
@@ -157,6 +159,14 @@ class RpcController {
   CallResponsePtr response() const;
 
   Result<CallResponsePtr> CheckedResponse() const;
+
+  std::string CallStateDebugString() const;
+  // When call is present, marks the call as Failed by passing Forced timeout status.
+  void MarkCallAsFailed();
+
+  // Test only flag which is transferred to OutboundCall during its preparation time. This is used
+  // to reproduce the stuck RPC scenario seen in production.
+  void TEST_force_stuck_outbound_call() { TEST_disable_outbound_call_response_processing = true; }
 
  private:
   friend class OutboundCall;
@@ -172,6 +182,7 @@ class RpcController {
   InvokeCallbackMode invoke_callback_mode_ = InvokeCallbackMode::kThreadPoolNormal;
 
   std::unique_ptr<Sidecars> outbound_sidecars_;
+  bool TEST_disable_outbound_call_response_processing = false;
 
   DISALLOW_COPY_AND_ASSIGN(RpcController);
 };

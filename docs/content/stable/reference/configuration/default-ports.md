@@ -34,11 +34,12 @@ To enable login to the machines running these servers, the SSH port 22 should be
 
 xCluster uses the YB-Master port 7100 for the initial communication, and then uses the YB-TServer port 9100 to get data changes. Note that YugabyteDB Anywhere obtains the replication lag information using Prometheus metrics from YB-TServer at port 9000. If this port is closed, the xCluster replication is not affected, but YugabyteDB Anywhere would not be able to display the replication lag.
 
-Before installing YugabyteDB or YugabyteDB Anywhere, or upgrading the YugabyteDB software on YugabyteDB Anywhere, the YB Controller port 18018 must be open on all YugabyteDB nodes and be reachable from YugabyteDB Anywhere nodes:
+Before installing YugabyteDB or YugabyteDB Anywhere, or upgrading the YugabyteDB software on YugabyteDB Anywhere, the following ports must be open on all YugabyteDB nodes, and be reachable from YugabyteDB Anywhere nodes:
 
 | Service       | Port  |
 | ------------- | ----- |
 | YB Controller | 18018 |
+| [Node agent](../../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/#install-node-agent) | 9070 |
 
 ## Admin web server
 
@@ -47,7 +48,7 @@ Admin web server UI can be viewed at the following addresses:
 | Server    | Port  | Flag (default)                             |
 | ---------- | ----- | ------------------------------------------------------------ |
 | YB-Master  | 7000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br>[`--webserver_port 7000`](../yb-master/#webserver-port) |
-| YB-TServer | 9000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br>[`--webserver_port 9000`](../yb-master/#webserver-port) |
+| YB-TServer | 9000  |  [`--webserver_interface 0.0.0.0`](../yb-tserver/#webserver-interface)<br>[`--webserver_port 9000`](../yb-tserver/#webserver-port) |
 
 ## Firewall rules
 
@@ -66,9 +67,9 @@ The following common ports are required for firewall rules:
 
 ## Prometheus monitoring
 
-YugabyteDB servers expose time-series performance metrics in the [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format) on multiple HTTP endpoints that have the following structure:
+YugabyteDB servers expose time series performance metrics in the [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format) on multiple HTTP endpoints that have the following structure:
 
-```
+```output
 <target>/prometheus-metrics
 ```
 

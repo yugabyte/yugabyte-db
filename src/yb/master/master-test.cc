@@ -70,6 +70,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
@@ -90,6 +91,8 @@ DECLARE_bool(TEST_tablegroup_master_only);
 DECLARE_bool(TEST_simulate_port_conflict_error);
 DECLARE_bool(master_register_ts_check_desired_host_port);
 DECLARE_string(use_private_ip);
+DECLARE_bool(master_join_existing_universe);
+DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
 
 METRIC_DECLARE_counter(block_cache_misses);
 METRIC_DECLARE_counter(block_cache_hits);
@@ -107,14 +110,22 @@ class MasterTest : public MasterTestBase {
 
   Result<TSHeartbeatResponsePB> SendHeartbeat(
       TSToMasterCommonPB common, TSRegistrationPB registration);
+
+  Result<scoped_refptr<NamespaceInfo>> FindNamespaceByName(
+      YQLDatabase db_type, const std::string& name);
 };
 
 Result<TSHeartbeatResponsePB> MasterTest::SendHeartbeat(
     TSToMasterCommonPB common, TSRegistrationPB registration) {
+  SysClusterConfigEntryPB config;
+  RETURN_NOT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  auto universe_uuid = config.universe_uuid();
+
   TSHeartbeatRequestPB req;
   TSHeartbeatResponsePB resp;
   req.mutable_common()->Swap(&common);
   req.mutable_registration()->Swap(&registration);
+  req.set_universe_uuid(universe_uuid);
   RETURN_NOT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
   return resp;
 }
@@ -179,6 +190,148 @@ TEST_F(MasterTest, TestHeartbeatRequestWithEmptyUUID) {
   ASSERT_STR_CONTAINS(status.message().ToBuffer(), "Recevied Empty UUID");
 }
 
+class MasterTestSkipUniverseUuidCheck : public MasterTest {
+  void SetUp() override {
+    FLAGS_master_enable_universe_uuid_heartbeat_check = false;
+    MasterTest::SetUp();
+  }
+};
+
+TEST_F(MasterTestSkipUniverseUuidCheck, TestUniverseUuidUpgrade) {
+  // Start the master with FLAGS_master_enable_universe_uuid_heartbeat_check set to false,
+  // restart master, and set this flag to true (to simulate autoflag behavior). Ensure that after
+  // setting the flag to true, universe_uuid is eventually set.
+  master::SysClusterConfigEntryPB config;
+  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  ASSERT_EQ(config.universe_uuid(), "");
+
+  ASSERT_OK(mini_master_->Restart());
+  ASSERT_OK(mini_master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+
+  FLAGS_master_enable_universe_uuid_heartbeat_check = true;
+
+  config.Clear();
+  ASSERT_OK(WaitFor([&]() {
+    if (!mini_master_->catalog_manager().GetClusterConfig(&config).ok()) {
+      return false;
+    }
+    return !config.universe_uuid().empty();
+  }, MonoDelta::FromSeconds(30), "Wait for universe_uuid set in cluster config"));
+}
+
+TEST_F(MasterTest, TestUniverseUuidDisabled) {
+  const string kTsUUID = "my-ts-uuid";
+
+  TSToMasterCommonPB common;
+  common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
+  common.mutable_ts_instance()->set_instance_seqno(1);
+
+  {
+    // Try a heartbeat with an invalid universe_uuid passed into the request. When
+    // FLAGS_master_enable_universe_uuid_heartbeat_check is false, the response should still be
+    // valid.
+    FLAGS_master_enable_universe_uuid_heartbeat_check = false;
+    TSHeartbeatRequestPB req;
+    TSHeartbeatResponsePB resp;
+    req.mutable_common()->CopyFrom(common);
+    auto fake_uuid = Uuid::Generate();
+    req.set_universe_uuid(fake_uuid.ToString());
+    ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
+    ASSERT_FALSE(resp.has_error());
+  }
+}
+
+TEST_F(MasterTest, TestUniverseUuidMismatch) {
+  const string kTsUUID = "my-ts-uuid";
+
+  TSToMasterCommonPB common;
+  common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
+  common.mutable_ts_instance()->set_instance_seqno(1);
+
+  {
+    // Try a heartbeat with an invalid universe_uuid passed into the request.
+    TSHeartbeatRequestPB req;
+    TSHeartbeatResponsePB resp;
+    req.mutable_common()->CopyFrom(common);
+    auto fake_uuid = Uuid::Generate();
+    req.set_universe_uuid(fake_uuid.ToString());
+    auto status = proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController());
+    ASSERT_FALSE(status.ok());
+    ASSERT_STR_CONTAINS(status.message().ToBuffer(), "wrong universe_uuid");
+  }
+}
+
+TEST_F(MasterTest, TestNoUniverseUuid) {
+  const string kTsUUID = "my-ts-uuid";
+
+  TSToMasterCommonPB common;
+  common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
+  common.mutable_ts_instance()->set_instance_seqno(1);
+
+  SysClusterConfigEntryPB config;
+  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  auto universe_uuid = config.universe_uuid();
+  ASSERT_NE(universe_uuid, "");
+  {
+    // Try a heartbeat with no universe_uuid passed into the request.
+    TSHeartbeatRequestPB req;
+    TSHeartbeatResponsePB resp;
+    req.mutable_common()->CopyFrom(common);
+    ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
+    // The response should contain the universe_uuid.
+    ASSERT_EQ(resp.universe_uuid(), universe_uuid);
+    ASSERT_TRUE(resp.has_error());
+    ASSERT_EQ(resp.error().code(), MasterErrorPB::INVALID_REQUEST);
+  }
+}
+
+TEST_F(MasterTest, TestEmptyStringUniverseUuid) {
+  const string kTsUUID = "my-ts-uuid";
+
+  TSToMasterCommonPB common;
+  common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
+  common.mutable_ts_instance()->set_instance_seqno(1);
+
+  SysClusterConfigEntryPB config;
+  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  auto universe_uuid = config.universe_uuid();
+  ASSERT_NE(universe_uuid, "");
+  {
+    // Try a heartbeat with an empty universe_uuid passed into the request.
+    TSHeartbeatRequestPB req;
+    TSHeartbeatResponsePB resp;
+    req.mutable_common()->CopyFrom(common);
+    req.set_universe_uuid("");
+    ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
+    // The response should contain the universe_uuid, but the response should have an error.
+    ASSERT_EQ(resp.universe_uuid(), universe_uuid);
+    ASSERT_TRUE(resp.has_error());
+    ASSERT_EQ(resp.error().code(), MasterErrorPB::INVALID_REQUEST);
+  }
+}
+
+TEST_F(MasterTest, TestMatchingUniverseUuid) {
+  const string kTsUUID = "my-ts-uuid";
+
+  TSToMasterCommonPB common;
+  common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
+  common.mutable_ts_instance()->set_instance_seqno(1);
+
+  SysClusterConfigEntryPB config;
+  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  auto universe_uuid = config.universe_uuid();
+  ASSERT_NE(universe_uuid, "");
+  {
+    // Try a heartbeat with the correct universe_uuid passed into the request.
+    TSHeartbeatRequestPB req;
+    TSHeartbeatResponsePB resp;
+    req.mutable_common()->CopyFrom(common);
+    req.set_universe_uuid(universe_uuid);
+    ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
+    ASSERT_FALSE(resp.has_error());
+  }
+}
+
 TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   const char *kTsUUID = "my-ts-uuid";
 
@@ -186,11 +339,16 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   common.mutable_ts_instance()->set_permanent_uuid(kTsUUID);
   common.mutable_ts_instance()->set_instance_seqno(1);
 
+  SysClusterConfigEntryPB config;
+  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  auto universe_uuid = config.universe_uuid();
+
   // Try a heartbeat. The server hasn't heard of us, so should ask us to re-register.
   {
     TSHeartbeatRequestPB req;
     TSHeartbeatResponsePB resp;
     req.mutable_common()->CopyFrom(common);
+    req.set_universe_uuid(universe_uuid);
     ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
 
     ASSERT_TRUE(resp.needs_reregister());
@@ -214,6 +372,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     TSHeartbeatResponsePB resp;
     req.mutable_common()->CopyFrom(common);
     req.mutable_registration()->CopyFrom(fake_reg);
+    req.set_universe_uuid(universe_uuid);
     ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
 
     ASSERT_FALSE(resp.needs_reregister());
@@ -243,6 +402,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     TSHeartbeatResponsePB resp;
     req.mutable_common()->CopyFrom(common);
     req.mutable_registration()->CopyFrom(fake_reg);
+    req.set_universe_uuid(universe_uuid);
     ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
 
     ASSERT_FALSE(resp.needs_reregister());
@@ -255,6 +415,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     TSHeartbeatRequestPB req;
     TSHeartbeatResponsePB resp;
     req.mutable_common()->CopyFrom(common);
+    req.set_universe_uuid(universe_uuid);
     TabletReportPB* tr = req.mutable_tablet_report();
     tr->set_is_incremental(false);
     tr->set_sequence_number(0);
@@ -270,6 +431,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     TSHeartbeatRequestPB req;
     TSHeartbeatResponsePB resp;
     req.mutable_common()->CopyFrom(common);
+    req.set_universe_uuid(universe_uuid);
     TabletReportPB* tr = req.mutable_tablet_report();
     tr->set_is_incremental(false);
     tr->set_sequence_number(0);
@@ -328,6 +490,10 @@ void MasterTest::TestRegisterDistBroadcastDupPrivate(
   *cloud_info_ts4.mutable_placement_region() = "region-pqr";
   *cloud_info_ts4.mutable_placement_zone() = "zone-anything";
 
+  SysClusterConfigEntryPB config;
+  ASSERT_OK(mini_master_->catalog_manager().GetClusterConfig(&config));
+  auto universe_uuid = config.universe_uuid();
+
   // Try heartbeat from all the tservers. The master hasn't heard of them, so should ask them to
   // re-register.
   for (size_t i = 0; i < tsUUIDs.size(); i++) {
@@ -337,6 +503,7 @@ void MasterTest::TestRegisterDistBroadcastDupPrivate(
     TSHeartbeatRequestPB req;
     TSHeartbeatResponsePB resp;
     req.mutable_common()->CopyFrom(commons[i]);
+    req.set_universe_uuid(universe_uuid);
     ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
 
     ASSERT_TRUE(resp.needs_reregister());
@@ -384,6 +551,7 @@ void MasterTest::TestRegisterDistBroadcastDupPrivate(
       TSHeartbeatRequestPB req;
       TSHeartbeatResponsePB resp;
       req.mutable_common()->CopyFrom(commons[i]);
+      req.set_universe_uuid(universe_uuid);
       req.mutable_registration()->CopyFrom(fake_regs[i]);
 
       ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
@@ -1737,6 +1905,8 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
                  });
     ASSERT_NE(pos, namespace_internal.end());
     ASSERT_EQ((*pos)->state(), SysNamespaceEntryPB::PREPARING);
+    // Namespace should be in namespace name map to prevent creation races using the same name.
+    ASSERT_OK(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
   }
 
   // Restart the master (Shutdown kills Namespace BG Thread).
@@ -1758,6 +1928,8 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
         });
     ASSERT_NE(pos, namespace_internal.end());
     ASSERT_EQ((*pos)->state(), SysNamespaceEntryPB::DELETING);
+    // Namespace should not be in the by name map.
+    ASSERT_NOK(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
   }
 
   // Resume BG thread work and verify that the Namespace is eventually DELETED internally.
@@ -1788,6 +1960,52 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
   }, MonoDelta::FromSeconds(10), "Verify Namespace was completely removed"));
 }
 
+TEST_F(MasterTest, TestMultipleNamespacesWithSameName) {
+  NamespaceName test_name = "test_pgsql";
+  SetAtomicFlag(true, &FLAGS_TEST_hang_on_namespace_transition);
+
+  // Create a new PGSQL namespace.
+  CreateNamespaceResponsePB resp;
+  ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
+  NamespaceId failure_nsid = resp.id();
+
+  // Restart the master to fail the creation of the first namespace.
+  // The loader should enqueue an async deletion task.
+  ASSERT_OK(mini_master_->Restart());
+  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+
+  // Create the namespace again. The async deletion task for the first namespace shouldn't have run
+  // yet due to the test flag.
+  ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
+  NamespaceId success_nsid = resp.id();
+
+  // There should now be two namespaces with the same name in the system, one in the FAILED state
+  // and one in the PREPARING state. Allow the async work to run. The first namespace should be
+  // cleaned up and the second namespace should be running.
+  SetAtomicFlag(false, &FLAGS_TEST_hang_on_namespace_transition);
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
+    mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
+    bool failure_deleted = false;
+    bool success_running = false;
+    for (const auto& ns : namespace_internal) {
+      if (ns->id() == failure_nsid) {
+        failure_deleted = ns->state() == SysNamespaceEntryPB::DELETED;
+      } else if (ns->id() == success_nsid) {
+        success_running = ns->state() == SysNamespaceEntryPB::RUNNING;
+      }
+    }
+    LOG(INFO) << Format(
+        "First namespace is deleted: $0, second namespace is running: $1", failure_deleted,
+        success_running);
+    return failure_deleted && success_running;
+  }, MonoDelta::FromSeconds(15), "Timed out waiting for namespaces to enter expected states."));
+
+  // The by-name map should point to the successfully created namespace.
+  auto ns_by_name = ASSERT_RESULT(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
+  ASSERT_EQ(ns_by_name->id(), success_nsid);
+}
+
 class LoopedMasterTest : public MasterTest, public testing::WithParamInterface<int> {};
 INSTANTIATE_TEST_CASE_P(Loops, LoopedMasterTest, ::testing::Values(10));
 
@@ -1805,17 +2023,34 @@ TEST_P(LoopedMasterTest, TestNamespaceCreateSysCatalogFailure) {
   int loops = GetParam();
   LOG(INFO) << "Loops = " << loops;
 
+  std::unordered_set<NamespaceId> previously_created_namespaces;
   // Loop this to cover a spread of random failure situations.
   while (failures < loops) {
     // Inject Frequent failures into sys catalog commit.
     // The below code should eventually succeed but require a lot of restarts.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sys_catalog_write_rejection_percentage) = 50;
 
-    // CreateNamespace : Inject IO Errors.
     LOG(INFO) << "Iteration " << ++iter;
+
+    // There are 4 possibilities for the CreateNamespace call below.
+
+    // 1. CreateNamespace RPC returns not-OK status.
+    //    We expect no in-memory state to be persisted.
+    // 2. CreateNamespace RPC returns an OK status. Async namespace creation work fails.
+    //    We expect the namespace to be present in memory but not in the by name map.
+    //    Its status should be FAILED.
+    // 3. CreateNamespace RPC returns an OK status. Async namespace creation work succeeds.
+    //    We expect the namespace to be present in the maps with the state RUNNING.
+    // 4. CreateNamespace RPC returns an OK status. Test times out waiting for async work.
+    //    The test doesn't explicitly handle this case and would fail.
+    //    There may be a bug in production code related to this case as well.
+    //    If the async namespace creation does eventually succeed in CM after pgsql
+    //    times out waiting for it, the namespace might not be visible to pgsql
+    //    but it will exist in yb-master, preventing the creation of a database with that
+    //    name. In this case users will need to delete the database with yb-admin.
     Status s = CreateNamespace(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp);
     if (!s.ok()) {
-      WARN_NOT_OK(s, "CreateNamespace with injected failures");
+      LOG(INFO) << "CreateNamespace with injected failures: " << s;
       ++failures;
     }
 
@@ -1825,18 +2060,35 @@ TEST_P(LoopedMasterTest, TestNamespaceCreateSysCatalogFailure) {
     // Internal search of CatalogManager should reveal whether it was partially created.
     std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
     mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
-    auto was_internally_created = std::any_of(namespace_internal.begin(), namespace_internal.end(),
-        [&test_name](const scoped_refptr<NamespaceInfo>& ns) {
-          if (ns && ns->name() == test_name && ns->state() != SysNamespaceEntryPB::DELETED) {
-            LOG(INFO) << "Namespace " << ns->name() << " = " << ns->state();
-            return true;
-          }
-          return false;
+    auto new_ns_it = std::find_if(
+        namespace_internal.begin(), namespace_internal.end(),
+        [&test_name, &previously_created_namespaces](const scoped_refptr<NamespaceInfo>& ns) {
+          return ns && ns->name() == test_name && !previously_created_namespaces.contains(ns->id());
         });
+    scoped_refptr<NamespaceInfo> new_ns;
+    if (new_ns_it != namespace_internal.end()) {
+      // Namespace created. We're in case 2, 3, or 4.
+      new_ns = (*new_ns_it).get();
+      previously_created_namespaces.insert(new_ns->id());
+      ASSERT_TRUE(
+          new_ns->state() == SysNamespaceEntryPB::RUNNING ||
+          new_ns->state() == SysNamespaceEntryPB::PREPARING ||
+          new_ns->state() == SysNamespaceEntryPB::FAILED)
+          << Format(
+                 "Expected RUNNING, PREPARING, or FAILED, got: $0",
+                 SysNamespaceEntryPB::State_Name(new_ns->state()));
+    }
 
-    if (was_internally_created) {
+    // A pgsql connection will only commit state for this new namespace to the pg catalog if
+    // CreateNamespace and WaitForCreateNamespaceDone return OK statuses. Therefore if
+    // there is a failure in the complete create namespace flow any subsequent DROP DATABASE
+    // statement will fail because there is no metadata for the database in the pg catalogs.
+
+    // Because we cannot expect clients to issue a DROP DATABASE in this failure case we must
+    // ensure we can handle a subsequent CREATE DATABASE with the same name.
+    if (s.ok()) {
+      // Case 3.
       ++created;
-      // Ensure we can delete the failed namespace.
       DeleteNamespaceResponsePB del_resp;
       ASSERT_OK(proxy_ddl_->DeleteNamespace(del_req, &del_resp, ResetAndGetController()));
       if (del_resp.has_error()) {
@@ -1844,6 +2096,17 @@ TEST_P(LoopedMasterTest, TestNamespaceCreateSysCatalogFailure) {
       }
       ASSERT_FALSE(del_resp.has_error());
       ASSERT_OK(DeleteNamespaceWait(is_del_req));
+    } else if (s.IsTimedOut()) {
+      // Case 4.
+      // The namespace state should be PREPARING, but the CM is responsible for transitioning it to
+      // another state so asserting state is PREPARING here introduces a race. For now just fail the
+      // test.
+      FAIL() << "Timed out waiting for async namespace creation";
+    } else {
+      // Case 1 or 2.
+      LOG(INFO) << "Namespace should not be in by name map, state: "
+                << (new_ns ? SysNamespaceEntryPB::State_Name(new_ns->state()) : "n/a");
+      ASSERT_NOK(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, "default_namespace"));
     }
   }
   ASSERT_EQ(failures, loops);
@@ -1864,13 +2127,11 @@ TEST_P(LoopedMasterTest, TestNamespaceDeleteSysCatalogFailure) {
   int loops = GetParam();
   LOG(INFO) << "Loops = " << loops;
 
-// Loop this to cover a spread of random failure situations.
+  // Loop this to cover a spread of random failure situations.
   while (failures < loops) {
     // CreateNamespace to setup test
     CreateNamespaceResponsePB resp;
-    NamespaceId nsid;
-    ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
-    nsid = resp.id();
+    ASSERT_OK(CreateNamespace(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
 
     // The below code should eventually succeed but require a lot of restarts.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sys_catalog_write_rejection_percentage) = 50;
@@ -2358,6 +2619,69 @@ TEST_P(NamespaceTest, RenameNamespace) {
 INSTANTIATE_TEST_CASE_P(
     DatabaseType, NamespaceTest,
     ::testing::Values(YQLDatabase::YQL_DATABASE_CQL, YQLDatabase::YQL_DATABASE_PGSQL));
+
+Result<scoped_refptr<NamespaceInfo>> MasterTest::FindNamespaceByName(
+    YQLDatabase db_type, const std::string& name) {
+  NamespaceIdentifierPB ns_idpb;
+  ns_idpb.set_name(name);
+  ns_idpb.set_database_type(db_type);
+  return mini_master_->catalog_manager().FindNamespace(ns_idpb);
+}
+
+class MasterStartUpTest : public YBTest {
+ public:
+  std::unique_ptr<MiniMaster> CreateMiniMaster(std::string fs_root) {
+    return std::make_unique<MiniMaster>(
+        Env::Default(), std::move(fs_root), AllocateFreePort(), AllocateFreePort(),
+        /* index */ 0);
+  }
+};
+
+TEST_F(MasterStartUpTest, JoinExistingClusterWithoutMasterAddresses) {
+  // Confirm the master enters shell mode with:
+  //     master_addresses.empty() == true
+  //     master_join_existing_universe == true
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_join_existing_universe) = true;
+  auto fs_root = GetTestPath("Master");
+  auto mini_master = CreateMiniMaster(fs_root);
+  mini_master->set_pass_master_addresses(false);
+  ASSERT_OK(mini_master->Start());
+  auto cleanup = ScopeExit([&mini_master] { mini_master->Shutdown(); });
+  ASSERT_TRUE(mini_master->master()->IsShellMode());
+}
+
+TEST_F(MasterStartUpTest, JoinExistingClusterWithMasterAddresses) {
+  // Confirm the master enters shell mode with:
+  //     master_addresses.empty() == false
+  //     master_join_existing_universe == true
+  auto fs_root = GetTestPath("Master1");
+  auto mini_master = CreateMiniMaster(fs_root);
+  ASSERT_OK(mini_master->Start());
+  auto cleanup = ScopeExit([&mini_master] { mini_master->Shutdown(); });
+  // Confirm the master does not enter shell mode without the flag passed.
+  // The MiniMaster class by default sets master_addresses for a new master.
+  ASSERT_FALSE(mini_master->master()->IsShellMode());
+  // Delete the system catalog tablet and restart the master so the master runs through the
+  // initialization logic again.
+  mini_master->Shutdown();
+  ASSERT_OK(Env::Default()->DeleteRecursively(fs_root));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_join_existing_universe) = true;
+  ASSERT_OK(mini_master->Start());
+  ASSERT_TRUE(mini_master->master()->IsShellMode());
+}
+
+TEST_F(MasterStartUpTest, JoinExistingClusterUnsetWithoutMasterAddresses) {
+  // Confirm the master enters shell mode with:
+  //     master_addresses.empty() == true
+  //     master_join_existing_universe == false
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_join_existing_universe) = false;
+  auto fs_root = GetTestPath("Master");
+  auto mini_master = CreateMiniMaster(fs_root);
+  mini_master->set_pass_master_addresses(false);
+  ASSERT_OK(mini_master->Start());
+  auto cleanup = ScopeExit([&mini_master] { mini_master->Shutdown(); });
+  ASSERT_TRUE(mini_master->master()->IsShellMode());
+}
 
 } // namespace master
 } // namespace yb

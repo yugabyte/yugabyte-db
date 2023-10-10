@@ -1,5 +1,5 @@
 ---
-title: Transactions in YCQL
+title: ACID Transactions in YCQL
 headerTitle: Transactions
 linkTitle: Transactions
 description: Learn how ACID transactions work in YCQL on YugabyteDB.

@@ -31,10 +31,6 @@
 // Usage: yb_build.sh ... --test-args --verbose=true
 DEFINE_NON_RUNTIME_bool(verbose, false, "Add certain verbose logging");
 
-// TODO(#5030): resolve these when fixing the issue.  Likely want to get rid of the define and if
-// cases rather than set this to true.
-#define ISSUE_5030_IS_FIXED false
-
 using namespace std::chrono_literals;
 
 namespace yb {
@@ -71,6 +67,8 @@ class PgBackendsTest : public LibPqTestBase {
           "--replication_factor=1",
           "--TEST_master_ui_redirect_to_leader=false",
         });
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_yb_disable_wait_for_backends_catalog_version=false");
     if (FLAGS_verbose) {
       options->extra_master_flags.insert(
           options->extra_master_flags.end(),
@@ -665,11 +663,11 @@ Status PgBackendsTestRf3::TestConcurrentAlterFunc(
     SCHECK_EQ(5, PQnfields(res.get()), IllegalState, "unexpected num fields");
     int num_rows = PQntuples(res.get());
     for (int i = 0; i < num_rows; ++i) {
-      VLOG(1) << "Row: thread=" << GetInt32(res.get(), i, 0)
-              << ", true_version=" << GetInt32(res.get(), i, 1)
-              << ", backend_version=" << GetInt32(res.get(), i, 2)
-              << ", func_version=" << GetInt32(res.get(), i, 3)
-              << ", sleep_sec=" << GetInt32(res.get(), i, 4);
+      VLOG(1) << "Row: thread=" << GetValue<int32_t>(res.get(), i, 0)
+              << ", true_version=" << GetValue<int32_t>(res.get(), i, 1)
+              << ", backend_version=" << GetValue<int32_t>(res.get(), i, 2)
+              << ", func_version=" << GetValue<int32_t>(res.get(), i, 3)
+              << ", sleep_sec=" << GetValue<int32_t>(res.get(), i, 4);
     }
   }
   return Status::OK();
@@ -681,13 +679,6 @@ Status PgBackendsTestRf3::TestConcurrentAlterFunc(
 TEST_F_EX(PgBackendsTest, ConcurrentAlterFunc, PgBackendsTestRf3) {
   ASSERT_OK(TestConcurrentAlterFunc(
       [this](uint64_t cat_ver) -> Status {
-#if !ISSUE_5030_IS_FIXED
-        // TODO(jason): get rid of this when issue #5030 core issue is resolved.  This is here to
-        // add some delay so that the next WaitForYsqlBackendsCatalogVersion that has master read
-        // pg_yb_catalog_version would read up-to-date data.
-        RETURN_NOT_OK(GetCatalogVersion());
-#endif
-
         auto num_backends = VERIFY_RESULT(client_->WaitForYsqlBackendsCatalogVersion(
             "yugabyte",
             cat_ver,
@@ -832,35 +823,10 @@ TEST_F_EX(PgBackendsTest, YB_DISABLE_TEST_EXCEPT_RELEASE(Stress), PgBackendsTest
 
         const auto cat_ver_snapshot = cat_ver.load(std::memory_order_acquire);
         LOG(INFO) << "Wait thread " << i << " waiting on version " << cat_ver_snapshot;
-#if ISSUE_5030_IS_FIXED
         auto num_backends = ASSERT_RESULT(
             client_->WaitForYsqlBackendsCatalogVersion(
               "yugabyte", cat_ver_snapshot, kTestDuration + kMargin /* timeout */));
         ASSERT_EQ(0, num_backends) << "wait thread " << i << ", ver " << cat_ver_snapshot;
-#else
-        // TODO(#5030): get rid of this when issue #5030 is fixed.  This is to work around the case
-        // that the request failed because master thought catalog version was too high.
-        ASSERT_OK(WaitFor(
-            [this, cat_ver_snapshot, i, kTestDuration, kMargin]() -> Result<bool> {
-              auto res = client_->WaitForYsqlBackendsCatalogVersion(
-                  "yugabyte", cat_ver_snapshot, kTestDuration + kMargin /* timeout */);
-              if (res.ok()) {
-                SCHECK_EQ(0, *res,
-                          InternalError,
-                          Format("wait thread $0, ver $1, count $2", i, cat_ver_snapshot, *res));
-                return true;
-              }
-              Status s = res.status();
-              const auto msg = s.message().ToBuffer();
-              SCHECK(s.IsInvalidArgument(), InternalError, msg);
-              SCHECK(msg.find("catalog version is too high") != std::string::npos,
-                     InternalError,
-                     msg);
-              return false;
-            },
-            kTestDuration + kMargin,
-            "wait for ysql backends catalog version"));
-#endif
       }
       LOG(INFO) << "Wait thread " << i << " stopped";
     });
@@ -1029,13 +995,6 @@ Status PgBackendsTestRf3DeadFaster::TestTserverUnresponsive(bool keep_alive) {
   ts = cluster_->tserver_daemons()[(ts_idx + 1) % num_ts];
   PGConn conn = VERIFY_RESULT(ConnectToTs(*ts));
   LibPqTestBase::BumpCatalogVersion(1, &conn);
-
-#if !ISSUE_5030_IS_FIXED
-  // TODO(jason): get rid of this when issue #5030 core issue is resolved.  This is here to add some
-  // delay like the tests above so that the next WaitForYsqlBackendsCatalogVersion that has master
-  // read pg_yb_catalog_version would read up-to-date data.
-  RETURN_NOT_OK(GetCatalogVersion(&conn));
-#endif
 
   LOG(INFO) << "Verify that new wait requests when ts is already dead are immediate";
   num_backends = VERIFY_RESULT(client_->WaitForYsqlBackendsCatalogVersion("yugabyte", cat_ver + 1));

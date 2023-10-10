@@ -17,7 +17,8 @@ import play.libs.typedmap.TypedKey;
 
 @Slf4j
 public class RequestContext {
-  private static final ThreadLocal<Map<TypedKey<?>, Object>> context = new ThreadLocal<>();;
+  private static final ThreadLocal<Map<TypedKey<?>, Object>> context = new ThreadLocal<>();
+  ;
 
   public static <T> void put(TypedKey<T> key, T value) {
     Map<TypedKey<?>, Object> current = context.get();

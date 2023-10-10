@@ -16,16 +16,19 @@ You can install YugabyteDB Anywhere (YBA) using the following methods:
 
 | Method | Using | Use If |
 | :--- | :--- | :--- |
-| Replicated | Docker containers | You're able to use Docker containers. |
+| YBA Installer | yba-ctl CLI | You are performing a new installation. |
+| Replicated | Docker containers | Your installation already uses Replicated. |
 | Kubernetes | Helm chart | You're deploying in Kubernetes. |
-| YBA Installer | yba-ctl CLI | You can't use Docker containers.<br/>(Note: in Early Access, contact {{% support-platform %}}) |
 
 All installation methods support installing YBA with and without (airgapped) Internet connectivity.
 
 Licensing (such as a license file in the case of Replicated, or appropriate repository access in the case of Kubernetes) may be required prior to installation.  Contact {{% support-platform %}} for assistance.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
+  <li>
+    <a href="../installer/" class="nav-link">
+      <i class="fa-solid fa-building" aria-hidden="true"></i>YBA Installer</a>
+  </li>
   <li>
     <a href="../default/" class="nav-link">
       <i class="fa-solid fa-cloud"></i>Replicated</a>
@@ -34,11 +37,6 @@ Licensing (such as a license file in the case of Replicated, or appropriate repo
   <li>
     <a href="../kubernetes/" class="nav-link active">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
-  </li>
-
-  <li>
-    <a href="../installer/" class="nav-link">
-      <i class="fa-solid fa-building" aria-hidden="true"></i>YBA Installer</a>
   </li>
 
 </ul>
@@ -54,10 +52,15 @@ A Kubernetes node is expected to meet the following requirements:
 
 ## Prepare the cluster
 
-The YugabyteDB Anywhere Helm chart has been tested using the following software versions:
+The minimum version for a Kubernetes cluster and Helm chart are as follows:
 
 - Kubernetes 1.22
-- Helm 3.10
+- Helm 3.11.3
+
+The YugabyteDB Anywhere Helm chart has been tested using the following software versions:
+
+- Kubernetes - 1.22 to 1.25
+- Helm - 3.11.3
 
 Before installing YugabyteDB Anywhere, verify that you have the following:
 

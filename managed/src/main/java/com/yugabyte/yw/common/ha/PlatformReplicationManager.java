@@ -21,6 +21,7 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.PrometheusConfigHelper;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.utils.FileUtils;
@@ -62,14 +63,18 @@ public class PlatformReplicationManager {
 
   private final FileDataService fileDataService;
 
+  private final PrometheusConfigHelper prometheusConfigHelper;
+
   @Inject
   public PlatformReplicationManager(
       PlatformScheduler platformScheduler,
       PlatformReplicationHelper replicationHelper,
-      FileDataService fileDataService) {
+      FileDataService fileDataService,
+      PrometheusConfigHelper prometheusConfigHelper) {
     this.platformScheduler = platformScheduler;
     this.replicationHelper = replicationHelper;
     this.fileDataService = fileDataService;
+    this.prometheusConfigHelper = prometheusConfigHelper;
     this.schedule = new AtomicReference<>(null);
   }
 
@@ -375,8 +380,8 @@ public class PlatformReplicationManager {
     private final int dbPort;
 
     protected PlatformBackupParams() {
-      this.prometheusHost = replicationHelper.getPrometheusHost();
-      this.prometheusPort = replicationHelper.getPrometheusPort();
+      this.prometheusHost = prometheusConfigHelper.getPrometheusHost();
+      this.prometheusPort = prometheusConfigHelper.getPrometheusPort();
       this.dbUsername = replicationHelper.getDBUser();
       this.dbPassword = replicationHelper.getDBPassword();
       this.dbHost = replicationHelper.getDBHost();

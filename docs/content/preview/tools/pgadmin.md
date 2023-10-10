@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: pgadmin
     parent: tools
-    weight: 10
+    weight: 80
 type: docs
 ---
 

@@ -1,6 +1,7 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.models.XClusterConfig;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.UUID;
@@ -32,4 +33,6 @@ public class CreatePitrConfigParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Time interval between snapshots")
   @Constraints.Required
   public long intervalInSeconds = 86400L;
+
+  @JsonIgnore public XClusterConfig xClusterConfig;
 }

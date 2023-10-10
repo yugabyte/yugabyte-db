@@ -42,6 +42,7 @@ import play.libs.Json;
 public class Customer extends Model {
 
   public static final Logger LOG = LoggerFactory.getLogger(Customer.class);
+
   // A globally unique UUID for the customer.
   @Column(nullable = false, unique = true)
   @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)

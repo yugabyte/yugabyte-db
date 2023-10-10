@@ -34,6 +34,8 @@ import { YBLoadingCircleIcon } from '../../../../components/common/indicators';
 import { CustomVariable } from './ICustomVariables';
 import { createErrorMessage } from '../../../../utils/ObjectUtils';
 import AssignCustomVariableValueModal from './AssignCustomVariableValueModal';
+import { RbacValidator } from '../../rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../rbac/UserPermPathMapping';
 
 type CustomVariablesEditorProps = {};
 
@@ -147,15 +149,22 @@ const CustomVariablesEditor = (props: CustomVariablesEditorProps) => {
   }
 
   const createCustomVariablesButton = (
-    <YBButton
-      variant="secondary"
-      startIcon={<Add />}
-      onClick={() => setShowCreateCustomVariableModal(true)}
-      className={classes.createCustomVariableBut}
-      data-testid="create_custom_variable"
+    <RbacValidator
+      accessRequiredOn={{
+        ...UserPermissionMap.createAlertsConfig
+      }}
+      isControl
     >
-      {t('alertCustomTemplates.customVariables.createNewVariableButton')}
-    </YBButton>
+      <YBButton
+        variant="secondary"
+        startIcon={<Add />}
+        onClick={() => setShowCreateCustomVariableModal(true)}
+        className={classes.createCustomVariableBut}
+        data-testid="create_custom_variable"
+      >
+        {t('alertCustomTemplates.customVariables.createNewVariableButton')}
+      </YBButton>
+    </RbacValidator>
   );
 
   const emptyCustomVariables = (
@@ -208,7 +217,7 @@ const CustomVariablesEditor = (props: CustomVariablesEditorProps) => {
             }
           ]}
         >
-          <MoreHoriz className={commonStyles.clickable} data-testid={`alert-variable-${variable.name}`}/>
+          <MoreHoriz className={commonStyles.clickable} data-testid={`alert-variable-${variable.name}`} />
         </MoreOptionsMenu>
       </Grid>
     </Grid>

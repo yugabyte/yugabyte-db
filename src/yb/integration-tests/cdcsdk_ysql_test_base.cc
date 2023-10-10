@@ -34,7 +34,7 @@ namespace cdc {
   }
 
   void CDCSDKYsqlTest::VerifyCdcStateMatches(
-      client::YBClient* client, const CDCStreamId& stream_id, const TabletId& tablet_id,
+      client::YBClient* client, const xrepl::StreamId& stream_id, const TabletId& tablet_id,
       const uint64_t term, const uint64_t index) {
     CDCStateTable cdc_state_table(client);
 
@@ -42,7 +42,7 @@ namespace cdc {
         {tablet_id, stream_id}, CDCStateTableEntrySelector().IncludeCheckpoint()));
     ASSERT_TRUE(row);
 
-    LOG(INFO) << strings::Substitute(
+    LOG(INFO) << Format(
         "Verifying tablet: $0, stream: $1, op_id: $2", tablet_id, stream_id,
         OpId(term, index).ToString());
 
@@ -82,7 +82,7 @@ namespace cdc {
   }
 
   void CDCSDKYsqlTest::VerifyStreamDeletedFromCdcState(
-      client::YBClient* client, const CDCStreamId& stream_id, const TabletId& tablet_id,
+      client::YBClient* client, const xrepl::StreamId& stream_id, const TabletId& tablet_id,
       int timeout_secs) {
     CDCStateTable cdc_state_table(client);
 
@@ -98,7 +98,7 @@ namespace cdc {
   }
 
   Result<OpId> CDCSDKYsqlTest::GetStreamCheckpointInCdcState(
-      client::YBClient* client, const CDCStreamId& stream_id, const TabletId& tablet_id) {
+      client::YBClient* client, const xrepl::StreamId& stream_id, const TabletId& tablet_id) {
     CDCStateTable cdc_state_table(client);
     auto row = VERIFY_RESULT(cdc_state_table.TryFetchEntry(
         {tablet_id, stream_id}, CDCStateTableEntrySelector().IncludeCheckpoint()));
@@ -108,9 +108,8 @@ namespace cdc {
   }
 
   void CDCSDKYsqlTest::VerifyStreamCheckpointInCdcState(
-      client::YBClient* client, const CDCStreamId& stream_id, const TabletId& tablet_id,
-      OpIdExpectedValue op_id_expected_value,
-      int timeout_secs) {
+      client::YBClient* client, const xrepl::StreamId& stream_id, const TabletId& tablet_id,
+      OpIdExpectedValue op_id_expected_value, int timeout_secs) {
     CDCStateTable cdc_state_table(client);
 
     ASSERT_OK(WaitFor(
@@ -696,9 +695,10 @@ namespace cdc {
     yb::master::SplitTabletResponsePB resp;
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromSeconds(30.0) * kTimeMultiplier);
-
-    RETURN_NOT_OK(cluster->mini_cluster_->mini_master()->catalog_manager().SplitTablet(
-        tablet_id, master::ManualSplit::kTrue));
+    auto& cm = cluster->mini_cluster_->mini_master()->catalog_manager();
+    RETURN_NOT_OK(cm.SplitTablet(
+        tablet_id, master::ManualSplit::kTrue,
+        cm.GetLeaderEpochInternal()));
 
     if (resp.has_error()) {
       RETURN_NOT_OK(StatusFromPB(resp.error().status()));
@@ -729,7 +729,7 @@ namespace cdc {
   }
 
   Result<GetChangesResponsePB> CDCSDKYsqlTest::UpdateSnapshotDone(
-      const CDCStreamId& stream_id,
+      const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const TableId table_id) {
     GetChangesRequestPB change_req2;
@@ -746,7 +746,7 @@ namespace cdc {
   }
 
   Result<GetChangesResponsePB> CDCSDKYsqlTest::UpdateCheckpoint(
-      const CDCStreamId& stream_id,
+      const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const GetChangesResponsePB* change_resp,
       const TableId table_id) {
@@ -786,18 +786,20 @@ namespace cdc {
   }
 
   void CDCSDKYsqlTest::PrepareChangeRequest(
-      GetChangesRequestPB* change_req, const CDCStreamId& stream_id,
+      GetChangesRequestPB* change_req, const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const int tablet_idx, int64 index, int64 term, std::string key, int32_t write_id,
       int64 snapshot_time, const TableId table_id, int64 safe_hybrid_time,
-      int32_t wal_segment_index) {
-    change_req->set_stream_id(stream_id);
+      int32_t wal_segment_index, const bool populate_checkpoint) {
+    change_req->set_stream_id(stream_id.ToString());
     change_req->set_tablet_id(tablets.Get(tablet_idx).tablet_id());
-    change_req->mutable_from_cdc_sdk_checkpoint()->set_index(index);
-    change_req->mutable_from_cdc_sdk_checkpoint()->set_term(term);
-    change_req->mutable_from_cdc_sdk_checkpoint()->set_key(key);
-    change_req->mutable_from_cdc_sdk_checkpoint()->set_write_id(write_id);
-    change_req->mutable_from_cdc_sdk_checkpoint()->set_snapshot_time(snapshot_time);
+    if (populate_checkpoint) {
+      change_req->mutable_from_cdc_sdk_checkpoint()->set_index(index);
+      change_req->mutable_from_cdc_sdk_checkpoint()->set_term(term);
+      change_req->mutable_from_cdc_sdk_checkpoint()->set_key(key);
+      change_req->mutable_from_cdc_sdk_checkpoint()->set_write_id(write_id);
+      change_req->mutable_from_cdc_sdk_checkpoint()->set_snapshot_time(snapshot_time);
+    }
     change_req->set_wal_segment_index(wal_segment_index);
     if (!table_id.empty()) {
       change_req->set_table_id(table_id);
@@ -806,10 +808,10 @@ namespace cdc {
   }
 
   void CDCSDKYsqlTest::PrepareChangeRequest(
-      GetChangesRequestPB* change_req, const CDCStreamId& stream_id, const TabletId& tablet_id,
-      const int tablet_idx, int64 index, int64 term, std::string key,
-      int32_t write_id, int64 snapshot_time) {
-    change_req->set_stream_id(stream_id);
+      GetChangesRequestPB* change_req, const xrepl::StreamId& stream_id, const TabletId& tablet_id,
+      const int tablet_idx, int64 index, int64 term, std::string key, int32_t write_id,
+      int64 snapshot_time) {
+    change_req->set_stream_id(stream_id.ToString());
     change_req->set_tablet_id(tablet_id);
     change_req->mutable_from_cdc_sdk_checkpoint()->set_index(index);
     change_req->mutable_from_cdc_sdk_checkpoint()->set_term(term);
@@ -819,11 +821,11 @@ namespace cdc {
   }
 
   void CDCSDKYsqlTest::PrepareChangeRequest(
-      GetChangesRequestPB* change_req, const CDCStreamId& stream_id,
+      GetChangesRequestPB* change_req, const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const CDCSDKCheckpointPB& cp, const int tablet_idx, const TableId table_id,
       int64 safe_hybrid_time, int32_t wal_segment_index) {
-    change_req->set_stream_id(stream_id);
+    change_req->set_stream_id(stream_id.ToString());
     change_req->set_tablet_id(tablets.Get(tablet_idx).tablet_id());
     change_req->mutable_from_cdc_sdk_checkpoint()->set_term(cp.term());
     change_req->mutable_from_cdc_sdk_checkpoint()->set_index(cp.index());
@@ -837,9 +839,9 @@ namespace cdc {
   }
 
   void CDCSDKYsqlTest::PrepareChangeRequest(
-      GetChangesRequestPB* change_req, const CDCStreamId& stream_id, const TabletId& tablet_id,
+      GetChangesRequestPB* change_req, const xrepl::StreamId& stream_id, const TabletId& tablet_id,
       const CDCSDKCheckpointPB& cp, const int tablet_idx) {
-    change_req->set_stream_id(stream_id);
+    change_req->set_stream_id(stream_id.ToString());
     change_req->set_tablet_id(tablet_id);
     change_req->mutable_from_cdc_sdk_checkpoint()->set_term(cp.term());
     change_req->mutable_from_cdc_sdk_checkpoint()->set_index(cp.index());
@@ -848,10 +850,10 @@ namespace cdc {
   }
 
   void CDCSDKYsqlTest::PrepareChangeRequestWithExplicitCheckpoint(
-      GetChangesRequestPB* change_req, const CDCStreamId& stream_id,
+      GetChangesRequestPB* change_req, const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const CDCSDKCheckpointPB& cp, const int tablet_idx) {
-    change_req->set_stream_id(stream_id);
+    change_req->set_stream_id(stream_id.ToString());
     change_req->set_tablet_id(tablets.Get(tablet_idx).tablet_id());
 
     change_req->mutable_from_cdc_sdk_checkpoint()->set_term(cp.term());
@@ -867,7 +869,7 @@ namespace cdc {
 
   void CDCSDKYsqlTest::PrepareSetCheckpointRequest(
       SetCDCCheckpointRequestPB* set_checkpoint_req,
-      const CDCStreamId stream_id,
+      const xrepl::StreamId stream_id,
       google::protobuf::RepeatedPtrField<master::TabletLocationsPB>
           tablets,
       const int tablet_idx,
@@ -875,7 +877,7 @@ namespace cdc {
       bool initial_checkpoint,
       const uint64_t cdc_sdk_safe_time,
       bool bootstrap) {
-    set_checkpoint_req->set_stream_id(stream_id);
+    set_checkpoint_req->set_stream_id(stream_id.ToString());
     set_checkpoint_req->set_initial_checkpoint(initial_checkpoint);
     set_checkpoint_req->set_cdc_sdk_safe_time(cdc_sdk_safe_time);
     set_checkpoint_req->set_bootstrap(bootstrap);
@@ -885,7 +887,7 @@ namespace cdc {
   }
 
   Result<SetCDCCheckpointResponsePB> CDCSDKYsqlTest::SetCDCCheckpoint(
-      const CDCStreamId& stream_id,
+      const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const OpId& op_id, const uint64_t cdc_sdk_safe_time, bool initial_checkpoint,
       const int tablet_idx, bool bootstrap) {
@@ -926,14 +928,14 @@ namespace cdc {
   }
 
   Result<std::vector<OpId>> CDCSDKYsqlTest::GetCDCCheckpoint(
-      const CDCStreamId& stream_id,
+      const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets) {
     GetCheckpointRequestPB get_checkpoint_req;
 
     std::vector<OpId> op_ids;
     op_ids.reserve(tablets.size());
     for (const auto& tablet : tablets) {
-      get_checkpoint_req.set_stream_id(stream_id);
+      get_checkpoint_req.set_stream_id(stream_id.ToString());
       get_checkpoint_req.set_tablet_id(tablet.tablet_id());
 
       RETURN_NOT_OK(WaitFor(
@@ -964,13 +966,13 @@ namespace cdc {
   }
 
   Result<GetCheckpointResponsePB> CDCSDKYsqlTest::GetCDCSnapshotCheckpoint(
-      const CDCStreamId& stream_id, const TabletId& tablet_id, const TableId& table_id ) {
+      const xrepl::StreamId& stream_id, const TabletId& tablet_id, const TableId& table_id) {
     RpcController get_checkpoint_rpc;
     GetCheckpointRequestPB get_checkpoint_req;
     GetCheckpointResponsePB get_checkpoint_resp;
     auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
     get_checkpoint_rpc.set_deadline(deadline);
-    get_checkpoint_req.set_stream_id(stream_id);
+    get_checkpoint_req.set_stream_id(stream_id.ToString());
 
     if (!table_id.empty()) {
       get_checkpoint_req.set_table_id(table_id);
@@ -984,7 +986,7 @@ namespace cdc {
   }
 
   Result<GetTabletListToPollForCDCResponsePB> CDCSDKYsqlTest::GetTabletListToPollForCDC(
-      const CDCStreamId& stream_id, const TableId& table_id, const TabletId& tablet_id) {
+      const xrepl::StreamId& stream_id, const TableId& table_id, const TabletId& tablet_id) {
     RpcController rpc;
     GetTabletListToPollForCDCRequestPB get_tablet_list_req;
     GetTabletListToPollForCDCResponsePB get_tablet_list_resp;
@@ -993,10 +995,10 @@ namespace cdc {
 
     TableInfo table_info;
     table_info.set_table_id(table_id);
-    table_info.set_stream_id(stream_id);
+    table_info.set_stream_id(stream_id.ToString());
 
     get_tablet_list_req.mutable_table_info()->set_table_id(table_id);
-    get_tablet_list_req.mutable_table_info()->set_stream_id(stream_id);
+    get_tablet_list_req.mutable_table_info()->set_stream_id(stream_id.ToString());
     get_tablet_list_req.set_tablet_id(tablet_id);
 
     RETURN_NOT_OK(
@@ -1066,7 +1068,7 @@ namespace cdc {
   }
 
   int CDCSDKYsqlTest::FindTserversWithCacheHit(
-      const CDCStreamId stream_id, const TabletId tablet_id, uint32_t num_tservers) {
+      const xrepl::StreamId stream_id, const TabletId tablet_id, uint32_t num_tservers) {
     int count = 0;
     // check the CDC Service Cache of all the tservers.
     for (uint32_t i = 0; i < num_tservers; ++i) {
@@ -1178,7 +1180,8 @@ namespace cdc {
         count[2]++;
       } break;
       case RowMessage::DELETE: {
-        ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(), expected_records.key);
+        ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(),
+          expected_before_image_records.key);
         if (validate_old_tuple) {
           if (validate_third_column) {
             ASSERT_EQ(record.row_message().old_tuple_size(), 3);
@@ -1263,19 +1266,20 @@ namespace cdc {
   }
 
   Result<GetChangesResponsePB> CDCSDKYsqlTest::GetChangesFromCDC(
-      const CDCStreamId& stream_id,
+      const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const CDCSDKCheckpointPB* cp,
       int tablet_idx,
       int64 safe_hybrid_time,
-      int wal_segment_index) {
+      int wal_segment_index,
+      const bool populate_checkpoint) {
     GetChangesRequestPB change_req;
     GetChangesResponsePB change_resp;
 
     if (cp == nullptr) {
       PrepareChangeRequest(
           &change_req, stream_id, tablets, tablet_idx, 0, 0, "", 0, 0, "", safe_hybrid_time,
-          wal_segment_index);
+          wal_segment_index, populate_checkpoint);
     } else {
       PrepareChangeRequest(
           &change_req, stream_id, tablets, *cp, tablet_idx, "", safe_hybrid_time,
@@ -1306,7 +1310,7 @@ namespace cdc {
   }
 
   Result<GetChangesResponsePB> CDCSDKYsqlTest::GetChangesFromCDC(
-      const CDCStreamId& stream_id,
+      const xrepl::StreamId& stream_id,
       const TabletId& tablet_id,
       const CDCSDKCheckpointPB* cp,
       int tablet_idx) {
@@ -1344,7 +1348,7 @@ namespace cdc {
 
   CDCSDKYsqlTest::GetAllPendingChangesResponse
   CDCSDKYsqlTest::GetAllPendingChangesWithRandomReqSafeTimeChanges(
-      const CDCStreamId& stream_id,
+      const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const CDCSDKCheckpointPB* cp,
       int tablet_idx,
@@ -1410,7 +1414,7 @@ namespace cdc {
   }
 
   CDCSDKYsqlTest::GetAllPendingChangesResponse CDCSDKYsqlTest::GetAllPendingChangesFromCdc(
-      const CDCStreamId& stream_id,
+      const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const CDCSDKCheckpointPB* cp,
       int tablet_idx,
@@ -1455,7 +1459,7 @@ namespace cdc {
   }
 
   Result<GetChangesResponsePB> CDCSDKYsqlTest::GetChangesFromCDCWithExplictCheckpoint(
-      const CDCStreamId& stream_id,
+      const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const CDCSDKCheckpointPB* cp,
       int tablet_idx) {
@@ -1491,13 +1495,13 @@ namespace cdc {
     return change_resp;
   }
 
-  bool CDCSDKYsqlTest::DeleteCDCStream(const std::string& db_stream_id) {
+  bool CDCSDKYsqlTest::DeleteCDCStream(const xrepl::StreamId& db_stream_id) {
     RpcController delete_rpc;
     delete_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
 
     DeleteCDCStreamRequestPB delete_req;
     DeleteCDCStreamResponsePB delete_resp;
-    delete_req.add_stream_id(db_stream_id);
+    delete_req.add_stream_id(db_stream_id.ToString());
 
     // The following line assumes that cdc_proxy_ has been initialized in the test already
     auto result = cdc_proxy_->DeleteCDCStream(delete_req, &delete_resp, &delete_rpc);
@@ -1505,7 +1509,7 @@ namespace cdc {
   }
 
   Result<GetChangesResponsePB> CDCSDKYsqlTest::GetChangesFromCDCSnapshot(
-      const CDCStreamId& stream_id,
+      const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const TableId& colocated_table_id) {
     GetChangesRequestPB change_req;
@@ -1541,7 +1545,7 @@ namespace cdc {
     ASSERT_EQ(tablets.size(), 1);
 
     std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-    CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
 
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
@@ -1586,7 +1590,7 @@ namespace cdc {
         test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
 
     TabletId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-    CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
+    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
 
@@ -1681,7 +1685,7 @@ namespace cdc {
         test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
 
     TabletId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-    CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
+    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
     auto checkpoints = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
@@ -1704,7 +1708,7 @@ namespace cdc {
   }
 
   Result<GetChangesResponsePB> CDCSDKYsqlTest::VerifyIfDDLRecordPresent(
-      const CDCStreamId& stream_id,
+      const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       bool expect_ddl_record, bool is_first_call, const CDCSDKCheckpointPB* cp) {
     GetChangesRequestPB req;
@@ -1773,10 +1777,10 @@ namespace cdc {
   }
 
   Result<GetCDCDBStreamInfoResponsePB> CDCSDKYsqlTest::GetDBStreamInfo(
-      const CDCStreamId db_stream_id) {
+      const xrepl::StreamId db_stream_id) {
     GetCDCDBStreamInfoRequestPB get_req;
     GetCDCDBStreamInfoResponsePB get_resp;
-    get_req.set_db_stream_id(db_stream_id);
+    get_req.set_db_stream_id(db_stream_id.ToString());
 
     RpcController get_rpc;
     get_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
@@ -1821,7 +1825,7 @@ namespace cdc {
       if (peer->tablet()->metadata()->table_id() != table_id) {
         continue;
       }
-      auto db = peer->tablet()->TEST_db();
+      auto db = peer->tablet()->regular_db();
       rocksdb::ReadOptions read_opts;
       read_opts.query_id = rocksdb::kDefaultQueryId;
       std::unique_ptr<rocksdb::Iterator> iter(db->NewIterator(read_opts));
@@ -1916,7 +1920,7 @@ namespace cdc {
   }
 
   Result<int64_t> CDCSDKYsqlTest::GetLastActiveTimeFromCdcStateTable(
-      const CDCStreamId& stream_id, const TabletId& tablet_id, client::YBClient* client) {
+      const xrepl::StreamId& stream_id, const TabletId& tablet_id, client::YBClient* client) {
     CDCStateTable cdc_state_table(client);
 
     auto row = VERIFY_RESULT(cdc_state_table.TryFetchEntry(
@@ -1929,7 +1933,7 @@ namespace cdc {
   }
 
   Result<std::tuple<uint64, std::string>> CDCSDKYsqlTest::GetSnapshotDetailsFromCdcStateTable(
-      const CDCStreamId& stream_id, const TabletId& tablet_id, client::YBClient* client) {
+      const xrepl::StreamId& stream_id, const TabletId& tablet_id, client::YBClient* client) {
     CDCStateTable cdc_state_table(client);
     auto row = VERIFY_RESULT(cdc_state_table.TryFetchEntry(
         {tablet_id, stream_id},
@@ -1948,7 +1952,7 @@ namespace cdc {
   }
 
   Result<int64_t> CDCSDKYsqlTest::GetSafeHybridTimeFromCdcStateTable(
-      const CDCStreamId& stream_id, const TabletId& tablet_id, client::YBClient* client) {
+      const xrepl::StreamId& stream_id, const TabletId& tablet_id, client::YBClient* client) {
     CDCStateTable cdc_state_table(client);
     auto row = VERIFY_RESULT(cdc_state_table.TryFetchEntry(
         {tablet_id, stream_id}, CDCStateTableEntrySelector().IncludeCDCSDKSafeTime()));
@@ -2008,7 +2012,7 @@ namespace cdc {
 
   void CDCSDKYsqlTest::CheckTabletsInCDCStateTable(
       const std::unordered_set<TabletId> expected_tablet_ids, client::YBClient* client,
-      const CDCStreamId& stream_id) {
+      const xrepl::StreamId& stream_id) {
     CDCStateTable cdc_state_table(test_client());
     Status s;
     auto table_range = ASSERT_RESULT(cdc_state_table.GetTableRange({}, &s));
@@ -2020,7 +2024,7 @@ namespace cdc {
           for (auto row_result : table_range) {
             RETURN_NOT_OK(row_result);
             auto& row = *row_result;
-            if (row.key.stream_id != stream_id && stream_id != "") {
+            if (stream_id && row.key.stream_id != stream_id) {
               continue;
             }
             seen_tablet_ids.insert(row.key.tablet_id);
@@ -2035,7 +2039,8 @@ namespace cdc {
         "Tablets in cdc_state table associated with the stream are not the same as expected"));
   }
 
-  Result<std::vector<TableId>> CDCSDKYsqlTest::GetCDCStreamTableIds(const CDCStreamId& stream_id) {
+  Result<std::vector<TableId>> CDCSDKYsqlTest::GetCDCStreamTableIds(
+      const xrepl::StreamId& stream_id) {
     NamespaceId ns_id;
     std::vector<TableId> stream_table_ids;
     std::unordered_map<std::string, std::string> options;
@@ -2046,9 +2051,9 @@ namespace cdc {
   }
 
   uint32_t CDCSDKYsqlTest::GetTotalNumRecordsInTablet(
-      const CDCStreamId& stream_id,
+      const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-      const CDCSDKCheckpointPB* cp ) {
+      const CDCSDKCheckpointPB* cp) {
     uint32_t total_seen_records = 0;
     GetChangesResponsePB change_resp;
     bool first_iter = true;
@@ -2088,7 +2093,7 @@ namespace cdc {
     ASSERT_EQ(tablets.size(), num_tablets);
 
     TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-    CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
 
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
@@ -2154,7 +2159,7 @@ namespace cdc {
     ASSERT_EQ(tablets.size(), num_tablets);
 
     TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-    CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
 
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
@@ -2232,7 +2237,7 @@ namespace cdc {
     ASSERT_OK(DropColumn(&test_cluster_, kNamespaceName, kTableName, kValue2ColumnName));
     ASSERT_OK(WriteRows(11 /* start */, 20 /* end */, &test_cluster_));
 
-    CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
 
@@ -2277,7 +2282,7 @@ namespace cdc {
     ASSERT_EQ(tablets.size(), num_tablets);
 
     TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-    CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
 
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
@@ -2342,7 +2347,7 @@ namespace cdc {
     ASSERT_EQ(tablets.size(), num_tablets);
 
     TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-    CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
 
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
@@ -2414,7 +2419,7 @@ namespace cdc {
     ASSERT_EQ(tablets.size(), num_tablets);
 
     TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-    CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
 
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
@@ -2478,7 +2483,7 @@ namespace cdc {
     ASSERT_EQ(tablets.size(), num_tablets);
 
     TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-    CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
 
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
@@ -2578,7 +2583,7 @@ namespace cdc {
         16 /* start */, 21 /* end */, &test_cluster_,
         {kValue2ColumnName, kValue3ColumnName, kValue4ColumnName}));
 
-    CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
 
@@ -2641,7 +2646,7 @@ namespace cdc {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
     // Create CDC stream.
-    CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
 
@@ -2743,9 +2748,9 @@ namespace cdc {
         301 /* start */, 401 /* end */, &test_cluster_,
         {kValue2ColumnName, kValue3ColumnName, kValue4ColumnName}));
 
-    test_cluster()->mini_master(0)->tablet_peer()->tablet()->TEST_ForceRocksDBCompact();
+    CHECK_OK(test_cluster()->mini_master(0)->tablet_peer()->tablet()->ForceManualRocksDBCompact());
 
-    CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
 
@@ -2800,7 +2805,7 @@ namespace cdc {
     ASSERT_EQ(tablets.size(), num_tablets);
 
     // Create CDC stream.
-    CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
 
@@ -2837,13 +2842,6 @@ namespace cdc {
     ValidateColumnCounts(change_resp, 2);
   }
 
-  void CDCSDKYsqlTest::EnableVerboseLoggingForModule(const std::string& module, int level) {
-    if (!FLAGS_vmodule.empty()) {
-      FLAGS_vmodule += Format(",$0=$1", module, level);
-    } else {
-      ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = Format("$0=$1", module, level);
-    }
-  }
 
   Result<std::string> CDCSDKYsqlTest::GetValueFromMap(const QLMapValuePB& map_value,
     const std::string& key) {
@@ -2865,7 +2863,7 @@ namespace cdc {
 
   // Read the cdc_state table
   Result<CDCSDKYsqlTest::CdcStateTableRow> CDCSDKYsqlTest::ReadFromCdcStateTable(
-      const CDCStreamId stream_id, const std::string& tablet_id) {
+      const xrepl::StreamId stream_id, const std::string& tablet_id) {
     // Read the cdc_state table safe should be set to valid value.
     CdcStateTableRow expected_row;
     CDCStateTable cdc_state_table(test_client());
@@ -2971,7 +2969,7 @@ namespace cdc {
   }
 
   void CDCSDKYsqlTest::GetRecordsAndSplitCount(
-      const CDCStreamId& stream_id, const TabletId& tablet_id, const TableId& table_id,
+      const xrepl::StreamId& stream_id, const TabletId& tablet_id, const TableId& table_id,
       int* record_count, int* total_records, int* total_splits) {
     std::vector<pair<TabletId, CDCSDKCheckpointPB>> tablets;
     tablets.push_back({tablet_id, {}});
@@ -3086,5 +3084,32 @@ namespace cdc {
       }
     }
   }
+
+  Status CDCSDKYsqlTest::WaitForGetChangesToFetchRecords(
+      GetChangesResponsePB* get_changes_resp, const xrepl::StreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const int& expected_count, const CDCSDKCheckpointPB* cp, const int& tablet_idx,
+      const int64& safe_hybrid_time, const int& wal_segment_index, const double& timeout_secs) {
+    int actual_count = 0;
+    return WaitFor(
+        [&]() -> Result<bool> {
+          auto get_changes_resp_result = GetChangesFromCDC(
+              stream_id, tablets, cp, tablet_idx, safe_hybrid_time, wal_segment_index);
+          if (get_changes_resp_result.ok()) {
+            *get_changes_resp = (*get_changes_resp_result);
+            for (const auto& record : get_changes_resp->cdc_sdk_proto_records()) {
+              if (record.row_message().op() == RowMessage::INSERT ||
+                  record.row_message().op() == RowMessage::UPDATE ||
+                  record.row_message().op() == RowMessage::DELETE) {
+                actual_count += 1;
+              }
+            }
+          }
+          return actual_count == expected_count;
+        },
+        MonoDelta::FromSeconds(timeout_secs),
+        "Waiting for GetChanges to fetch: " + std::to_string(expected_count) + " records");
+  }
+
 } // namespace cdc
 } // namespace yb

@@ -88,28 +88,35 @@ void SetupKeyValueBatch(const tserver::WriteRequestPB& client_request, LWWritePB
 
 template <class Code, class Resp>
 bool CheckSchemaVersion(
-    TableInfo* table_info, int schema_version, bool compatible_with_previous_version, Code code,
+    TableInfo* table_info, int schema_version,
+    const std::optional<bool>& compatible_with_previous_version, Code code,
     int index, Resp* resp_batch) {
-  if (IsSchemaVersionCompatible(
-          table_info->schema_version, schema_version, compatible_with_previous_version)) {
+  const bool compat = compatible_with_previous_version.has_value() ?
+                      *compatible_with_previous_version : false;
+  if (IsSchemaVersionCompatible(table_info->schema_version, schema_version, compat)) {
     return true;
   }
 
   VLOG(1) << " On " << table_info->table_name
-           << " Setting status for write as YQL_STATUS_SCHEMA_VERSION_MISMATCH tserver's: "
-           << table_info->schema_version << " vs req's : " << schema_version
-           << " is req compatible with prev version: "
-           << compatible_with_previous_version;
+          << " Setting status for write as " << code << " tserver's: "
+          << table_info->schema_version << " vs req's : " << schema_version
+          << " is req compatible with prev version: "
+          << yb::ToString(compatible_with_previous_version);
   while (index >= resp_batch->size()) {
     resp_batch->Add();
   }
   auto resp = resp_batch->Mutable(index);
   resp->Clear();
   resp->set_status(code);
+
+  std::string compat_str;
+  if (compatible_with_previous_version.has_value()) {
+    compat_str = Format(" (compt with prev: $0)", compat);
+  }
   resp->set_error_message(Format(
-      "schema version mismatch for table $0: expected $1, got $2 (compt with prev: $3)",
+      "schema version mismatch for table $0: expected $1, got $2$3",
       table_info->table_id, table_info->schema_version, schema_version,
-      compatible_with_previous_version));
+      compat_str));
   return false;
 }
 
@@ -129,7 +136,8 @@ WriteQuery::WriteQuery(
     TabletPtr tablet,
     rpc::RpcContext* rpc_context,
     tserver::WriteResponsePB* response)
-    : operation_(std::make_unique<WriteOperation>(std::move(tablet))),
+    : tablet_(tablet),
+      operation_(std::make_unique<WriteOperation>(std::move(tablet))),
       term_(term),
       deadline_(deadline),
       context_(context),
@@ -137,6 +145,7 @@ WriteQuery::WriteQuery(
       response_(response),
       start_time_(CoarseMonoClock::Now()),
       execute_mode_(ExecuteMode::kSimple) {
+  IncrementActiveWriteQueryObjectsBy(1);
 }
 
 LWWritePB& WriteQuery::request() {
@@ -187,6 +196,7 @@ void WriteQuery::Release() {
 }
 
 WriteQuery::~WriteQuery() {
+  IncrementActiveWriteQueryObjectsBy(-1);
 }
 
 void WriteQuery::set_client_request(std::reference_wrapper<const tserver::WriteRequestPB> req) {
@@ -218,8 +228,8 @@ void WriteQuery::Finished(WriteOperation* operation, const Status& status) {
     TabletMetrics* metrics = tablet->metrics();
     if (metrics) {
       auto op_duration_usec =
-          MonoDelta(CoarseMonoClock::now() - start_time_).ToMicroseconds();
-      metrics->ql_write_latency->Increment(op_duration_usec);
+          make_unsigned(MonoDelta(CoarseMonoClock::now() - start_time_).ToMicroseconds());
+      metrics->Increment(tablet::TabletEventStats::kQlWriteLatency, op_duration_usec);
     }
   }
 
@@ -249,6 +259,7 @@ void WriteQuery::Complete(const Status& status) {
 }
 
 void WriteQuery::ExecuteDone(const Status& status) {
+  docdb_locks_ = std::move(prepare_result_.lock_batch);
   scoped_read_operation_.Reset();
   switch (execute_mode_) {
     case ExecuteMode::kSimple:
@@ -362,12 +373,8 @@ Result<bool> WriteQuery::CqlPrepareExecute() {
   for (const auto& req : ql_write_batch) {
     QLResponsePB* resp = response_->add_ql_response_batch();
     auto write_op = std::make_unique<docdb::QLWriteOperation>(
-        req,
-        table_info->schema_version,
-        table_info->doc_read_context,
-        table_info->index_map,
-        table_info->unique_index_key_projection,
-        txn_op_ctx);
+        req, table_info->schema_version, table_info->doc_read_context, table_info->index_map,
+        table_info->unique_index_key_projection, txn_op_ctx);
     RETURN_NOT_OK(write_op->Init(resp));
     doc_ops_.emplace_back(std::move(write_op));
   }
@@ -508,12 +515,11 @@ Status WriteQuery::DoExecute() {
 
   dockv::PartialRangeKeyIntents partial_range_key_intents(metadata.UsePartialRangeKeyIntents());
   prepare_result_ = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
-      doc_ops_, write_batch.read_pairs(), tablet->metrics()->write_lock_latency,
-      tablet->metrics()->failed_batch_lock, isolation_level_, row_mark_type,
+      doc_ops_, write_batch.read_pairs(), tablet->metrics(), isolation_level_, row_mark_type,
       transactional_table, write_batch.has_transaction(), deadline(), partial_range_key_intents,
       tablet->shared_lock_manager()));
 
-  TEST_SYNC_POINT("WriteQuery::DoExecute::PreparedDocWriteOps");
+  DEBUG_ONLY_TEST_SYNC_POINT("WriteQuery::DoExecute::PreparedDocWriteOps");
 
   auto* transaction_participant = tablet->transaction_participant();
   docdb::WaitQueue* wait_queue = nullptr;
@@ -542,7 +548,7 @@ Status WriteQuery::DoExecute() {
     return docdb::ResolveOperationConflicts(
         doc_ops_, conflict_management_policy, now, tablet->doc_db(),
         partial_range_key_intents, transaction_participant,
-        tablet->metrics()->transaction_conflicts.get(), &prepare_result_.lock_batch,
+        tablet->metrics(), &prepare_result_.lock_batch,
         wait_queue,
         [this, now](const Result<HybridTime>& result) {
           if (!result.ok()) {
@@ -581,7 +587,7 @@ Status WriteQuery::DoExecute() {
       doc_ops_, conflict_management_policy, write_batch, tablet->clock()->Now(),
       read_time_ ? read_time_.read : HybridTime::kMax,
       tablet->doc_db(), partial_range_key_intents,
-      transaction_participant, tablet->metrics()->transaction_conflicts.get(),
+      transaction_participant, tablet->metrics(),
       &prepare_result_.lock_batch, wait_queue,
       [this](const Result<HybridTime>& result) {
         if (!result.ok()) {
@@ -642,6 +648,9 @@ void WriteQuery::CompleteExecute(HybridTime safe_time) {
 
 Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
   auto tablet = VERIFY_RESULT(tablet_safe());
+  if (prepare_result_.need_read_snapshot && !read_time_) {
+    tablet->metrics()->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
+  }
   auto read_op = prepare_result_.need_read_snapshot
       ? VERIFY_RESULT(ScopedReadOperation::Create(tablet.get(),
                                                   RequireLease::kTrue,
@@ -668,10 +677,9 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
       : docdb::InitMarkerBehavior::kOptional;
   for (;;) {
     RETURN_NOT_OK(docdb::AssembleDocWriteBatch(
-        doc_ops_, read_operation_data, tablet->doc_db(), scoped_read_operation_,
-        request().mutable_write_batch(), init_marker_behavior,
-        tablet->monotonic_counter(), &restart_read_ht_,
-        tablet->metadata()->table_name()));
+        doc_ops_, read_operation_data, tablet->doc_db(), &tablet->GetSchemaPackingProvider(),
+        scoped_read_operation_, request().mutable_write_batch(), init_marker_behavior,
+        tablet->monotonic_counter(), &restart_read_ht_, tablet->metadata()->table_name()));
 
     // For serializable isolation we don't fix read time, so could do read restart locally,
     // instead of failing whole transaction.
@@ -707,13 +715,17 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
     return Status::OK();
   }
 
-  docdb_locks_ = std::move(prepare_result_.lock_batch);
-
   return Status::OK();
 }
 
 Result<TabletPtr> WriteQuery::tablet_safe() const {
-  return operation_->tablet_safe();
+  // We cannot rely on using operation_->tablet_safe() as operation_ is moved to TabletPeer::Submit
+  // at some point in the lifecycle of the WriteQuery, and wouldn't be a valid dereference/access.
+  auto tablet = tablet_.lock();
+  if (!tablet) {
+    return STATUS_FORMAT(IllegalState, "Underlying tablet object might have been deallocated");
+  }
+  return tablet;
 }
 
 void WriteQuery::AdjustYsqlQueryTransactionality(size_t ysql_batch_size) {
@@ -865,8 +877,7 @@ struct UpdateQLIndexesTask {
 
   Status Init(const TabletPtr& tablet, docdb::QLWriteOperation* write_op) {
     client = &tablet->client();
-    session = std::make_shared<client::YBSession>(client);
-    session->SetDeadline(query->deadline());
+    session = client->NewSession(query->deadline());
     if (write_op->request().has_child_transaction_data()) {
       child_transaction_data = &write_op->request().child_transaction_data();
       auto child_data = VERIFY_RESULT(client::ChildTransactionData::FromPB(
@@ -1062,7 +1073,8 @@ bool WriteQuery::PgsqlCheckSchemaVersion() {
       return false;
     }
     if (!CheckSchemaVersion(
-            table_info->get(), req.schema_version(), /* compatible_with_previous_version= */ false,
+            table_info->get(), req.schema_version(),
+            std::nullopt /* compatible_with_previous_version= */,
             error_code, index, &resp_batch)) {
       ++num_mismatches;
     }
@@ -1099,6 +1111,17 @@ void WriteQuery::PgsqlExecuteDone(const Status& status) {
 
 void WriteQuery::SimpleExecuteDone(const Status& status) {
   StartSynchronization(std::move(self_), status);
+}
+
+void WriteQuery::IncrementActiveWriteQueryObjectsBy(int64_t value) {
+  auto res = tablet_safe();
+  if (res.ok() && (*res)->metrics()) {
+    (*res)->metrics()->IncrementBy(tablet::TabletGauges::kActiveWriteQueryObjects, value);
+    did_update_active_write_queries_metric_ = true;
+  } else if (PREDICT_FALSE(did_update_active_write_queries_metric_)) {
+    LOG(DFATAL) << "Unable to update kActiveWriteQueryObjects metric but had "
+                << "previosuly contributed to it.";
+  }
 }
 
 }  // namespace tablet

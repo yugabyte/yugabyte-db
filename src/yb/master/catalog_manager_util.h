@@ -22,6 +22,8 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_snapshot_coordinator.h"
+#include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/ts_descriptor.h"
 
 // Utility functions that can be shared between test and code for catalog manager.
@@ -176,6 +178,11 @@ class CatalogManagerUtil {
       const Schema& schema, uint32_t schema_version, const dockv::PartitionSchema& partition_schema,
       tablet::TableInfoPB* pb);
 
+  static bool RetainTablet(
+      const google::protobuf::RepeatedPtrField<std::string>& retaining_snapshot_schedules,
+      const ScheduleMinRestoreTime& schedule_to_min_restore_time,
+      HybridTime hide_hybrid_time, const TabletId& tablet_id);
+
  private:
   CatalogManagerUtil();
 
@@ -238,6 +245,11 @@ bool IsIndex(const PB& pb) {
 inline bool IsTable(const SysTablesEntryPB& pb) {
   return !IsIndex(pb);
 }
+
+// Gets the number of tablet replicas for the placement specified in the PlacementInfoPB.  If the
+// PlacementInfoPB does not set the number of tablet replicas to create for the placement, default
+// to the replication_factor flag.
+int32_t GetNumReplicasOrGlobalReplicationFactor(const PlacementInfoPB& placement_info);
 
 } // namespace master
 } // namespace yb

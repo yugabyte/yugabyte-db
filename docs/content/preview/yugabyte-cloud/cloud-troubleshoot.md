@@ -29,7 +29,7 @@ ysqlsh: could not connect to server: Operation timed out
 
 If you are trying to connect to a cluster from your local computer, add your computer to the cluster [IP allow list](../cloud-secure-clusters/add-connections/). If your IP address has changed, add the new IP address.
 
-If your cluster is deployed in a VPC and you are trying to connect from a public address (that is, outside your VPC network), you need to enable **Public Access** on the **Settings** tab and connect to the cluster public IP address that is exposed.
+If your cluster is deployed in a VPC and you are trying to connect from a public address (that is, outside your VPC network), you need to enable **Public Access** on the **Settings > Network Access** tab and connect to the cluster public IP address that is exposed.
 
 If your cluster is deployed in a VPC and you are trying to connect from a peered VPC, add one or more IP addresses from the peered VPC to the cluster IP allow list.
 
@@ -69,8 +69,8 @@ org.postgresql.util.PSQLException: FATAL: remaining connection slots are reserve
 
 Your application has reached the limit of available connections for the cluster:
 
-- Sandbox clusters support up to 10 simultaneous connections.
-- Dedicated clusters support 10 simultaneous connections per vCPU. For example, a 3-node cluster with 4 vCPUs per node can support 10 x 3 x 4 = 120 connections.
+- Sandbox clusters support up to 15 simultaneous connections.
+- Dedicated clusters support 15 simultaneous connections per vCPU. For example, a 3-node cluster with 4 vCPUs per node can support 15 x 3 x 4 = 180 connections.
 
 A solution would be to use a connection pooler. Depending on your use case, you may also want to consider scaling your cluster.
 

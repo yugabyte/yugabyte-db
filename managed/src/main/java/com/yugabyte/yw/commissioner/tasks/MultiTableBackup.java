@@ -28,6 +28,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BackupTableParams.ActionType;
@@ -97,7 +98,7 @@ public class MultiTableBackup extends UniverseTaskBase {
       universe = lockUniverseForUpdate(-1);
 
       try {
-        String masterAddresses = universe.getMasterAddresses(true);
+        String masterAddresses = universe.getMasterAddresses();
         String certificate = universe.getCertificateNodetoNode();
 
         YBClient client = null;
@@ -248,7 +249,8 @@ public class MultiTableBackup extends UniverseTaskBase {
           installThirdPartyPackagesTask(universe)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
         } else {
-          installThirdPartyPackagesTaskK8s(universe)
+          installThirdPartyPackagesTaskK8s(
+                  universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.XXHSUM)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
         }
 

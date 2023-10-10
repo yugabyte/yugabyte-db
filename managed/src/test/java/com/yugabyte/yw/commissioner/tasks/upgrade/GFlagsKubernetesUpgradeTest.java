@@ -15,7 +15,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.common.RegexMatcher;
-import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.List;
@@ -73,10 +73,11 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
           TaskType.WaitForServerReady,
           TaskType.ModifyBlackList,
           TaskType.LoadBalancerStateChange,
+          TaskType.InstallingThirdPartySoftware,
           TaskType.UniverseUpdateSucceeded,
           TaskType.ModifyBlackList);
 
-  private TaskInfo submitTask(GFlagsUpgradeParams taskParams) {
+  private TaskInfo submitTask(KubernetesGFlagsUpgradeParams taskParams) {
     return submitTask(taskParams, TaskType.GFlagsKubernetesUpgrade, commissioner);
   }
 
@@ -146,6 +147,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()));
   }
 
@@ -164,7 +166,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
     String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
 
-    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    KubernetesGFlagsUpgradeParams taskParams = new KubernetesGFlagsUpgradeParams();
     taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
     TaskInfo taskInfo = submitTask(taskParams);
@@ -212,7 +214,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
     String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
 
-    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    KubernetesGFlagsUpgradeParams taskParams = new KubernetesGFlagsUpgradeParams();
     taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
     TaskInfo taskInfo = submitTask(taskParams);

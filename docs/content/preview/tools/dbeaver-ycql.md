@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: dbeaver-2-ycql
     parent: tools
-    weight: 40
+    weight: 50
 type: docs
 ---
 

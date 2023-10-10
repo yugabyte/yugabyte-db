@@ -131,6 +131,8 @@ class RestorationState : public StateWithTablets {
       TabletRestoreOperations* operations, const std::unordered_set<TabletId>& snapshot_tablets,
       std::optional<int64_t> db_oid);
 
+  Status Abort();
+
   Status StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_batch);
 
   Status StoreToKeyValuePair(docdb::KeyValuePairPB* pair);

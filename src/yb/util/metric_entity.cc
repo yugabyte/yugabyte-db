@@ -142,8 +142,9 @@ MetricEntityPrototype::~MetricEntityPrototype() {
 scoped_refptr<MetricEntity> MetricEntityPrototype::Instantiate(
     MetricRegistry* registry,
     const std::string& id,
-    const MetricEntity::AttributeMap& initial_attrs) const {
-  return registry->FindOrCreateEntity(this, id, initial_attrs);
+    const MetricEntity::AttributeMap& initial_attrs,
+    std::shared_ptr<MemTracker> mem_tracker) const {
+  return registry->FindOrCreateEntity(this, id, initial_attrs, std::move(mem_tracker));
 }
 
 scoped_refptr<MetricEntity> MetricEntityPrototype::Instantiate(
@@ -156,14 +157,15 @@ scoped_refptr<MetricEntity> MetricEntityPrototype::Instantiate(
 //
 
 MetricEntity::MetricEntity(const MetricEntityPrototype* prototype,
-                           std::string id, AttributeMap attributes)
+                           std::string id, AttributeMap attributes,
+                           std::shared_ptr<MemTracker> mem_tracker)
     : prototype_(prototype),
       id_(std::move(id)),
-      attributes_(std::move(attributes)) {
+      attributes_(std::move(attributes)),
+      mem_tracker_(std::move(mem_tracker)) {
 }
 
-MetricEntity::~MetricEntity() {
-}
+MetricEntity::~MetricEntity() = default;
 
 const std::regex& PrometheusNameRegex() {
   return prometheus_name_regex;
@@ -421,83 +423,6 @@ void MetricEntity::SetAttributes(const AttributeMap& attrs) {
 void MetricEntity::SetAttribute(const string& key, const string& val) {
   std::lock_guard l(lock_);
   attributes_[key] = val;
-}
-
-scoped_refptr<Counter> MetricEntity::FindOrCreateCounter(
-    const CounterPrototype* proto) {
-  CheckInstantiation(proto);
-  std::lock_guard l(lock_);
-  scoped_refptr<Counter> m = down_cast<Counter*>(FindPtrOrNull(metric_map_, proto).get());
-  if (!m) {
-    m = new Counter(proto);
-    InsertOrDie(&metric_map_, proto, m);
-  }
-  return m;
-}
-
-scoped_refptr<Counter> MetricEntity::FindOrCreateCounter(
-    std::unique_ptr<CounterPrototype> proto) {
-  CheckInstantiation(proto.get());
-  std::lock_guard l(lock_);
-  auto m = down_cast<Counter*>(FindPtrOrNull(metric_map_, proto.get()).get());
-  if (!m) {
-    m = new Counter(std::move(proto));
-    InsertOrDie(&metric_map_, m->prototype(), m);
-  }
-  return m;
-}
-
-scoped_refptr<MillisLag> MetricEntity::FindOrCreateMillisLag(
-    const MillisLagPrototype* proto) {
-  CheckInstantiation(proto);
-  std::lock_guard l(lock_);
-  scoped_refptr<MillisLag> m = down_cast<MillisLag*>(FindPtrOrNull(metric_map_, proto).get());
-  if (!m) {
-    m = new MillisLag(proto);
-    InsertOrDie(&metric_map_, proto, m);
-  }
-  return m;
-}
-
-scoped_refptr<AtomicMillisLag> MetricEntity::FindOrCreateAtomicMillisLag(
-    const MillisLagPrototype* proto) {
-  CheckInstantiation(proto);
-  std::lock_guard l(lock_);
-  scoped_refptr<AtomicMillisLag> m = down_cast<AtomicMillisLag*>(
-      FindPtrOrNull(metric_map_, proto).get());
-  if (!m) {
-    m = new AtomicMillisLag(proto);
-    InsertOrDie(&metric_map_, proto, m);
-  }
-  return m;
-}
-
-scoped_refptr<Histogram> MetricEntity::FindOrCreateHistogram(
-    const HistogramPrototype* proto) {
-  CheckInstantiation(proto);
-  std::lock_guard l(lock_);
-  scoped_refptr<Histogram> m = down_cast<Histogram*>(FindPtrOrNull(metric_map_, proto).get());
-  if (!m) {
-    m = new Histogram(proto);
-    InsertOrDie(&metric_map_, proto, m);
-  }
-  return m;
-}
-
-scoped_refptr<Histogram> MetricEntity::FindOrCreateHistogram(
-    std::unique_ptr<HistogramPrototype> proto) {
-  CheckInstantiation(proto.get());
-  std::lock_guard l(lock_);
-  auto m = down_cast<Histogram*>(FindPtrOrNull(metric_map_, proto.get()).get());
-  if (!m) {
-    uint64_t highest_trackable_value = proto->max_trackable_value();
-    int num_significant_digits = proto->num_sig_digits();
-    const ExportPercentiles export_percentile = proto->export_percentiles();
-    m = new Histogram(std::move(proto), highest_trackable_value, num_significant_digits,
-                      export_percentile);
-    InsertOrDie(&metric_map_, m->prototype(), m);
-  }
-  return m;
 }
 
 void WriteRegistryAsJson(JsonWriter* writer) {

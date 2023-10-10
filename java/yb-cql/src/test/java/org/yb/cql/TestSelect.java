@@ -1544,6 +1544,61 @@ public class TestSelect extends BaseCQLTest {
     LOG.info("TEST IN KEYWORD - End");
   }
 
+  @Test
+  public void testFilteringUsingIN() throws Exception {
+    session.execute("CREATE TABLE test(h int, r int, v int, PRIMARY KEY (h, r))");
+    session.execute("INSERT INTO test (h,r,v) values (1,1,1)");
+    session.execute("INSERT INTO test (h,r,v) values (1,2,2)");
+    session.execute("INSERT INTO test (h,r,v) values (1,3,3)");
+    session.execute("INSERT INTO test (h,r,v) values (2,1,2)");
+    session.execute("INSERT INTO test (h,r,v) values (2,2,3)");
+    session.execute("INSERT INTO test (h,r,v) values (2,3,1)");
+    session.execute("INSERT INTO test (h,r,v) values (3,1,3)");
+    session.execute("INSERT INTO test (h,r,v) values (3,2,1)");
+    session.execute("INSERT INTO test (h,r,v) values (3,3,2)");
+
+    // Filter by hash & range columns.
+    assertQuery("SELECT * FROM test WHERE h IN (1,2) AND r IN (1,2)",
+        "Row[1, 1, 1]" +
+        "Row[1, 2, 2]" +
+        "Row[2, 1, 2]" +
+        "Row[2, 2, 3]");
+    // Filter by hash & non-key columns.
+    assertQuery("SELECT * FROM test WHERE h IN (1,2) AND v IN (1,2)",
+        "Row[1, 1, 1]" +
+        "Row[1, 2, 2]" +
+        "Row[2, 1, 2]" +
+        "Row[2, 3, 1]");
+    assertQuery("SELECT * FROM test WHERE h IN (1,2) AND v = 2",
+        "Row[1, 2, 2]" +
+        "Row[2, 1, 2]");
+    // Filter by range & non-key columns.
+    assertQuery("SELECT * FROM test WHERE r IN (1,2) AND v IN (1,2)",
+        "Row[1, 1, 1]" +
+        "Row[1, 2, 2]" +
+        "Row[2, 1, 2]" +
+        "Row[3, 2, 1]");
+    assertQuery("SELECT * FROM test WHERE r IN (1,2) AND v = 2",
+        "Row[1, 2, 2]" +
+        "Row[2, 1, 2]");
+    // Filter by hash & range & non-key columns.
+    assertQuery("SELECT * FROM test WHERE h IN (1,2) AND r IN (1,2) AND v IN (1,2)",
+        "Row[1, 1, 1]" +
+        "Row[1, 2, 2]" +
+        "Row[2, 1, 2]");
+    assertQuery("SELECT * FROM test WHERE h IN (1,2) AND r IN (1,2) AND v = 2",
+        "Row[1, 2, 2]" +
+        "Row[2, 1, 2]");
+    // Filter by hash & range columns + IF by non-key columns.
+    assertQuery("SELECT * FROM test WHERE h IN (1,2) AND r IN (1,2) IF v IN (1,2)",
+        "Row[1, 1, 1]" +
+        "Row[1, 2, 2]" +
+        "Row[2, 1, 2]");
+    assertQuery("SELECT * FROM test WHERE h IN (1,2) AND r IN (1,2) IF v = 2",
+        "Row[1, 2, 2]" +
+        "Row[2, 1, 2]");
+  }
+
   private void assertSelectWithFlushes(String stmt,
                                        List<String> expectedRows,
                                        int expectedFlushesCount) throws Exception {
@@ -2892,15 +2947,40 @@ public class TestSelect extends BaseCQLTest {
     selectAndVerify("SELECT tojson(u) FROM test_udt7",
         "{\"\\\"V  4\\\"\":44,\"\\\"V2\\\"\":22,\"v  3\":33,\"v1\":11}");
 
-    // Test UDT2<int, UDT>.
-    // Feature Not Supported: UDT field types cannot refer to other user-defined types.
-    // https://github.com/YugaByte/yugabyte-db/issues/1630
-    runInvalidQuery("CREATE TYPE udt8(i1 int, u1 udt)");
-    // Uncomment the following block if we support UDT2<UDT1,..> types.
-    //    session.execute("CREATE TABLE test_udt8 (h int PRIMARY KEY, u udt8)");
-    //    session.execute("INSERT INTO test_udt8 (h, u) values (1, {i1:33,u1:{v1:44,v2:55}})");
-    //    selectAndVerify("SELECT tojson(u) FROM test_udt8",
-    //        "{\"i1\":33,\"u1\":{\"v1\":44,\"v2\":55}}");
+    // Test UDT field which refers to another user-defined type.
+    session.execute("CREATE TYPE udt8(i1 int, u1 frozen<udt>)");
+    session.execute("CREATE TABLE test_udt_in_udt (h int PRIMARY KEY, u udt8)");
+    session.execute("INSERT INTO test_udt_in_udt (h, u) values (1, {i1:33,u1:{v1:44,v2:55}})");
+    // Apply ToJson() to the UDT< FROZEN<UDT> > column.
+    selectAndVerify("SELECT tojson(u) FROM test_udt_in_udt",
+        "{\"i1\":33,\"u1\":{\"v1\":44,\"v2\":55}}");
+
+    session.execute("DROP TABLE test_udt_in_udt");
+    session.execute("DROP TYPE udt8"); // Unblock type 'udt' dropping.
+
+    // Test UDT field which refers to a FROZEN<LIST>.
+    session.execute("CREATE TYPE udt9(i1 int, l1 frozen<list<int>>)");
+    session.execute("CREATE TABLE test_list_in_udt (h int PRIMARY KEY, u udt9)");
+    session.execute("INSERT INTO test_list_in_udt (h, u) values (1, {i1:77,l1:[4,5,6]})");
+    // Apply ToJson() to the UDT< FROZEN<LIST> > column.
+    selectAndVerify("SELECT tojson(u) FROM test_list_in_udt",
+        "{\"i1\":77,\"l1\":[4,5,6]}");
+
+    // Test UDT field which refers to a FROZEN<SET>.
+    session.execute("CREATE TYPE udt10(i1 int, s1 frozen<set<int>>)");
+    session.execute("CREATE TABLE test_set_in_udt (h int PRIMARY KEY, u udt10)");
+    session.execute("INSERT INTO test_set_in_udt (h, u) values (1, {i1:66,s1:{3,2,1}})");
+    // Apply ToJson() to the UDT< FROZEN<SET> > column.
+    selectAndVerify("SELECT tojson(u) FROM test_set_in_udt",
+        "{\"i1\":66,\"s1\":[1,2,3]}");
+
+    // Test UDT field which refers to a FROZEN<MAP>.
+    session.execute("CREATE TYPE udt11(i1 int, m1 frozen<map<int, text>>)");
+    session.execute("CREATE TABLE test_map_in_udt (h int PRIMARY KEY, u udt11)");
+    session.execute("INSERT INTO test_map_in_udt (h, u) values (1, {i1:88,m1:{99:'t1',11:'t2'}})");
+    // Apply ToJson() to the UDT< FROZEN<MAP> > column.
+    selectAndVerify("SELECT tojson(u) FROM test_map_in_udt",
+        "{\"i1\":88,\"m1\":{\"11\":\"t2\",\"99\":\"t1\"}}");
 
     // Test TUPLE.
     // Feature Not Supported

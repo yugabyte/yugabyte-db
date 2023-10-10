@@ -12,6 +12,7 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertConflict;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
@@ -65,6 +66,8 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -108,6 +111,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
+import org.mockito.MockitoAnnotations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -121,12 +125,14 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
       ImmutableList.of("region1", "region2");
 
   @Mock Config mockConfig;
+  @Mock RuntimeConfGetter mockConfGetter;
 
   Customer customer;
   Users user;
 
   @Before
   public void setUp() {
+    MockitoAnnotations.initMocks(this);
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     try {
@@ -139,6 +145,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     }
     String gcpCredentialFile = createTempFile("gcpCreds.json", "test5678");
     when(mockAccessManager.createGCPCredentialsFile(any(), any())).thenReturn(gcpCredentialFile);
+    when(mockConfGetter.getConfForScope(customer, CustomerConfKeys.cloudEnabled)).thenReturn(false);
+    when(mockConfGetter.getStaticConf()).thenReturn(mockConfig);
   }
 
   private Result listProviders() {
@@ -463,7 +471,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
                     buildProviderReq("aws", "Amazon"),
                     ImmutableList.of("region1", "region2"),
                     UUID.randomUUID()));
-    assertBadRequest(result, "Provider with the name Amazon already exists");
+    assertConflict(result, "Provider with the name Amazon already exists");
   }
 
   @Test
@@ -642,7 +650,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     Result result = deleteProvider(p.getUuid());
     assertYBPSuccess(result, "Deleted provider: " + p.getUuid());
 
-    assertEquals(0, InstanceType.findByProvider(p, mockConfig).size());
+    assertEquals(0, InstanceType.findByProvider(p, mockConfGetter).size());
     assertNull(Provider.get(p.getUuid()));
   }
 
@@ -1134,11 +1142,58 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     ImageBundle ib1 = new ImageBundle();
     ib1.setName("ImageBundle-1");
     ib1.setProvider(provider);
+    ib1.setDetails(details);
     ib1.setUseAsDefault(true);
     ib1.save();
 
-    ImageBundle bundle = ImageBundle.getDefaultForProvider(provider.getUuid());
+    List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
+    ImageBundle bundle =
+        bundles.stream()
+            .filter(ib -> ib.getDetails().getArch().equals(Architecture.x86_64))
+            .findFirst()
+            .get();
     assertEquals(ib1.getUuid(), bundle.getUuid());
+  }
+
+  @Test
+  public void testAWSCreateDefaultImageBundlesBothArch() {
+    Provider awsProvider = ModelFactory.awsProvider(customer);
+
+    ImageBundleDetails details = new ImageBundleDetails();
+    details.setRegions(null);
+    details.setArch(Architecture.x86_64);
+    ImageBundle ib1 = new ImageBundle();
+    ib1.setName("ImageBundle-1-x86");
+    ib1.setProvider(awsProvider);
+    ib1.setDetails(details);
+    ib1.setUseAsDefault(true);
+    ib1.save();
+
+    ImageBundleDetails detailsAarch64 = new ImageBundleDetails();
+    detailsAarch64.setRegions(null);
+    detailsAarch64.setArch(Architecture.aarch64);
+    ImageBundle ib2 = new ImageBundle();
+    ib2.setName("ImageBundle-1-aarch64");
+    ib2.setProvider(awsProvider);
+    ib2.setDetails(detailsAarch64);
+    ib2.setUseAsDefault(true);
+    ib2.save();
+
+    List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(awsProvider.getUuid());
+    assertEquals(2, bundles.size());
+    ImageBundle x86Bundle =
+        bundles.stream()
+            .filter(ib -> ib.getDetails().getArch().equals(Architecture.x86_64))
+            .findFirst()
+            .get();
+    assertEquals(x86Bundle.getName(), "ImageBundle-1-x86");
+
+    ImageBundle AarchBundle =
+        bundles.stream()
+            .filter(ib -> ib.getDetails().getArch().equals(Architecture.aarch64))
+            .findFirst()
+            .get();
+    assertEquals(AarchBundle.getName(), "ImageBundle-1-aarch64");
   }
 
   private void assertBadRequestValidationResult(Result result, String errorCause, String errrMsg) {

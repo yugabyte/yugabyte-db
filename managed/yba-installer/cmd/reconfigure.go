@@ -27,7 +27,7 @@ var reconfigureCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		state, err := ybactlstate.LoadState()
+		state, err := ybactlstate.Initialize()
 		if err != nil {
 			log.Fatal("unable to load yba installer state: " + err.Error())
 		}
@@ -74,7 +74,7 @@ var configGenCmd = &cobra.Command{
 	Short:   "Create the default config file.",
 	Aliases: []string{"gen-config", "create-config"},
 	Run: func(cmd *cobra.Command, args []string) {
-		writeDefaultConfig()
+		config.WriteDefaultConfig()
 	},
 }
 

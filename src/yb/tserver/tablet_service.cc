@@ -117,6 +117,7 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/write_buffer.h"
 
@@ -209,6 +210,7 @@ DEFINE_UNKNOWN_bool(enable_ysql, true,
             "server as a child process.");
 
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
+DECLARE_bool(ysql_yb_disable_wait_for_backends_catalog_version);
 
 DEFINE_test_flag(bool, fail_alter_schema_after_abort_transactions, false,
                  "If true, setup an error status in AlterSchema and respond success to rpc call. "
@@ -233,6 +235,9 @@ DEFINE_test_flag(bool, skip_aborting_active_transactions_during_schema_change, f
 DEFINE_test_flag(
     bool, skip_force_superblock_flush, false,
     "Used in tests to skip superblock flush on tablet flush.");
+
+DEFINE_test_flag(
+    uint64, wait_row_mark_exclusive_count, 0, "Number of row mark exclusive reads to wait for.");
 
 double TEST_delay_create_transaction_probability = 0;
 
@@ -515,16 +520,29 @@ void TabletServiceAdminImpl::GetSafeTime(
   HybridTime min_hybrid_time(HybridTime::kMin);
   if (req->has_min_hybrid_time_for_backfill()) {
     min_hybrid_time = HybridTime(req->min_hybrid_time_for_backfill());
-    // For Transactional tables, wait until there are no pending transactions that started
+
+    // For YSQL, it is not possible for transactions to exist that use the old permissions.  This is
+    // especially the case after commit a1729c352896e919f462c614770da443b9982c0a introduces
+    // ysql_yb_disable_wait_for_backends_catalog_version=false, which explicitly waits on all
+    // possible transactions.  Before that commit, the best-effort, unsafe
+    // ysql_yb_index_state_flags_update_delay=1000 setting was used to guarantee that.  Even though
+    // correctness guarantees are generally flawed when solely relying on
+    // ysql_yb_index_state_flags_update_delay=1000, make a best effort to reduce the scope of that
+    // flaw by aborting transactions in case ysql_yb_disable_wait_for_backends_catalog_version=true.
+    //
+    // For YCQL Transactional tables, wait until there are no pending transactions that started
     // prior to min_hybrid_time. These may not have updated the index correctly, if they
     // happen to commit after the backfill scan, it is possible that they may miss updating
     // the index because the some operations may have taken place prior to min_hybrid_time.
     //
-    // For Non-Txn tables, it is impossible to know at the tservers whether or not an "old
+    // For YCQL Non-Txn tables, it is impossible to know at the tservers whether or not an "old
     // transaction" is still active. To avoid having such old transactions, we assume a
     // bound on the length of such transactions (during the backfill process) and wait it
     // out.
-    if (!tablet.tablet->transaction_participant()) {
+    if (tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE &&
+        !FLAGS_ysql_yb_disable_wait_for_backends_catalog_version) {
+      // No need to wait-for/abort transactions.
+    } else if (!tablet.tablet->transaction_participant()) {
       min_hybrid_time = min_hybrid_time.AddMilliseconds(
           FLAGS_index_backfill_upperbound_for_user_enforced_txn_duration_ms);
       VLOG(2) << "GetSafeTime called on a user enforced transaction tablet "
@@ -1077,28 +1095,6 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   state->AllocateRequest()->CopyFrom(req->state());
   state->set_completion_callback(MakeRpcOperationCompletionCallback(
       std::move(context), resp, server_->Clock()));
-
-  if (req->is_external() && req->state().status() == TransactionStatus::APPLYING) {
-    auto namespace_name = tablet.peer->tablet_metadata()->namespace_name();
-    auto namespace_id_result = tablet.peer->GetNamespaceId();
-    if (!namespace_id_result.ok()) {
-      state->CompleteWithStatus(STATUS(TryAgain, namespace_id_result.status().message()));
-      return;
-    }
-    auto commit_ht = HybridTime(req->state().commit_hybrid_time());
-    auto tablet_caught_up_result =
-        server_->tablet_manager()->server()->XClusterSafeTimeCaughtUpToCommitHt(
-            *namespace_id_result, commit_ht);
-    if (!tablet_caught_up_result.ok()) {
-      state->CompleteWithStatus(STATUS(TryAgain, tablet_caught_up_result.status().message()));
-      return;
-    }
-    if (!*tablet_caught_up_result) {
-      state->CompleteWithStatus(STATUS(TryAgain, Format("Commit time greater than safe "
-                                                        "time for xcluster replication.")));
-      return;
-    }
-  }
 
   if (req->state().status() == TransactionStatus::APPLYING || cleanup) {
     auto* participant = tablet.tablet->transaction_participant();
@@ -2077,6 +2073,22 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
 void TabletServiceImpl::Read(const ReadRequestPB* req,
                              ReadResponsePB* resp,
                              rpc::RpcContext context) {
+#ifndef NDEBUG
+  if (PREDICT_FALSE(FLAGS_TEST_wait_row_mark_exclusive_count > 0)) {
+    for (const auto& pgsql_req : req->pgsql_batch()) {
+      if (pgsql_req.has_row_mark_type() &&
+          pgsql_req.row_mark_type() == RowMarkType::ROW_MARK_EXCLUSIVE) {
+        static CountDownLatch row_mark_exclusive_latch(FLAGS_TEST_wait_row_mark_exclusive_count);
+        row_mark_exclusive_latch.CountDown();
+        row_mark_exclusive_latch.Wait();
+        DEBUG_ONLY_TEST_SYNC_POINT("TabletServiceImpl::Read::RowMarkExclusive:1");
+        DEBUG_ONLY_TEST_SYNC_POINT("TabletServiceImpl::Read::RowMarkExclusive:2");
+        break;
+      }
+    }
+  }
+#endif // NDEBUG
+
   if (FLAGS_TEST_tserver_noop_read_write) {
     context.RespondSuccess();
     return;
@@ -2387,8 +2399,12 @@ void ConsensusServiceImpl::LeaderStepDown(const LeaderStepDownRequestPB* req,
     return;
   }
   Status s = scope->StepDown(req, resp);
-  LOG(INFO) << "Leader stepdown request " << req->ShortDebugString() << " success. Resp code="
-            << TabletServerErrorPB::Code_Name(resp->error().code());
+  if (!resp->has_error()) {
+    LOG(INFO) << "Leader stepdown request " << req->ShortDebugString() << " failed. Resp code="
+              << TabletServerErrorPB::Code_Name(resp->error().code());
+  } else {
+    LOG(INFO) << "Leader stepdown request " << req->ShortDebugString() << " succeeded";
+  }
   scope.CheckStatus(s, resp);
 }
 
@@ -2726,43 +2742,82 @@ void TabletServiceImpl::ListMasterServers(const ListMasterServersRequestPB* req,
 void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
                                       GetLockStatusResponsePB* resp,
                                       rpc::RpcContext context) {
-  std::set<TransactionId> transaction_ids;
+  TRACE("GetLockStatus");
+
+  // Only one among transactions_by_tablet and transaction_ids should be set.
+  if (req->transactions_by_tablet().empty() == (req->transaction_ids_size() == 0)) {
+    auto s = STATUS(
+        IllegalState,
+        "Request must specify either txns_by_tablet or txn_ids, and cannot specify both.");
+    LOG(DFATAL) << s;
+    SetupErrorAndRespond(resp->mutable_error(), s, &context);
+    return;
+  }
+
+  TabletPeers tablet_peers;
+  std::map<TransactionId, SubtxnSet> limit_resp_to_txns;
+  for (const auto& [tablet_id, _] : req->transactions_by_tablet()) {
+    // GetLockStatusRequestPB may include tablets that aren't hosted at this tablet server.
+    auto res = LookupTabletPeer(server_->tablet_manager(), tablet_id);
+    if (!res.ok()) {
+      continue;
+    }
+    tablet_peers.push_back(res->tablet_peer);
+  }
+
+  if (req->transaction_ids().size() > 0) {
+    // If this request specifies transaction_ids, then we check every tablet leader at this tserver
+    // TODO(pglocks): We should have involved tablet info in this case as well. See
+    // https://github.com/yugabyte/yugabyte-db/issues/16913
+    tablet_peers = server_->tablet_manager()->GetTabletPeers();
+  }
   for (auto& txn_id : req->transaction_ids()) {
     auto id_or_status = FullyDecodeTransactionId(txn_id);
     if (!id_or_status.ok()) {
       SetupErrorAndRespond(resp->mutable_error(), id_or_status.status(), &context);
       return;
     }
-    transaction_ids.insert(*id_or_status);
+    // TODO(pglocks): Include aborted_subtxn info here as well.
+    limit_resp_to_txns.emplace(std::make_pair(*id_or_status, SubtxnSet()));
   }
 
-  if (req->has_tablet_id() && !req->tablet_id().empty()) {
-    PerformAtLeader(req, resp, &context,
-      [resp, &transaction_ids](const LeaderTabletPeer& tablet_peer) -> Status {
-        auto s = tablet_peer.tablet->GetLockStatus(transaction_ids, resp->add_tablet_lock_infos());
-        if (!s.ok()) {
-          resp->Clear();
-        }
-        return s;
-      });
-    return;
-  }
-
-  auto tablet_peers = server_->tablet_manager()->GetTabletPeers();
   for (const auto& tablet_peer : tablet_peers) {
     auto leader_term = tablet_peer->LeaderTerm();
     if (leader_term != OpId::kUnknownTerm &&
         tablet_peer->tablet_metadata()->table_type() == PGSQL_TABLE_TYPE) {
-      // TODO(pglocks): https://github.com/yugabyte/yugabyte-db/issues/15647
-      // Include leader_term in response so client may pick only the latest leader if multiple
-      // tablets respond.
-      auto s = tablet_peer->shared_tablet()->GetLockStatus(
-          transaction_ids, resp->add_tablet_lock_infos());
+      const auto& tablet_id = tablet_peer->tablet_id();
+      auto* tablet_lock_info = resp->add_tablet_lock_infos();
+      Status s = Status::OK();
+      if (req->transactions_by_tablet().count(tablet_id) > 0) {
+        std::map<TransactionId, SubtxnSet> transactions;
+        for (auto& txn : req->transactions_by_tablet().at(tablet_id).transactions()) {
+          auto& txn_id = txn.id();
+          auto id_or_status = FullyDecodeTransactionId(txn_id);
+          if (!id_or_status.ok()) {
+            resp->Clear();
+            SetupErrorAndRespond(resp->mutable_error(), id_or_status.status(), &context);
+            return;
+          }
+          auto aborted_subtxns_or_status = SubtxnSet::FromPB(txn.aborted().set());
+          if (!aborted_subtxns_or_status.ok()) {
+            resp->Clear();
+            SetupErrorAndRespond(
+                resp->mutable_error(), aborted_subtxns_or_status.status(), &context);
+            return;
+          }
+          transactions.emplace(std::make_pair(*id_or_status, *aborted_subtxns_or_status));
+        }
+        s = tablet_peer->shared_tablet()->GetLockStatus(transactions, tablet_lock_info);
+      } else {
+        DCHECK(!limit_resp_to_txns.empty());
+        s = tablet_peer->shared_tablet()->GetLockStatus(limit_resp_to_txns, tablet_lock_info);
+      }
       if (!s.ok()) {
         resp->Clear();
         SetupErrorAndRespond(resp->mutable_error(), s, &context);
         return;
       }
+      tablet_lock_info->set_term(leader_term);
     }
   }
   context.RespondSuccess();
@@ -2867,6 +2922,47 @@ void TabletServiceImpl::CancelTransaction(
   }
 
   context.RespondSuccess();
+}
+
+void TabletServiceImpl::StartRemoteSnapshotTransfer(
+    const StartRemoteSnapshotTransferRequestPB* req, StartRemoteSnapshotTransferResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(
+          server_->tablet_manager(), "StartRemoteSnapshotTransfer", req, resp, &context)) {
+    return;
+  }
+
+  Status s = server_->tablet_manager()->StartRemoteSnapshotTransfer(*req);
+  if (!s.ok()) {
+    // Using Status::AlreadyPresent for a remote snapshot transfer operation that is already in
+    // progress.
+    if (s.IsAlreadyPresent()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 30) << "Start remote snapshot transfer failed: " << s;
+      SetupErrorAndRespond(
+          resp->mutable_error(), s, TabletServerErrorPB::ALREADY_IN_PROGRESS, &context);
+      return;
+    } else {
+      LOG(WARNING) << "Start remote snapshot transfer failed: " << s;
+    }
+  }
+
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
+  context.RespondSuccess();
+}
+
+void TabletServiceImpl::GetTabletKeyRanges(
+    const GetTabletKeyRangesRequestPB* req, GetTabletKeyRangesResponsePB* resp,
+    rpc::RpcContext context) {
+  PerformAtLeader(
+      req, resp, &context,
+      [req, &context](const LeaderTabletPeer& leader_tablet_peer) -> Status {
+        const auto& tablet = leader_tablet_peer.tablet;
+        RETURN_NOT_OK(tablet->GetTabletKeyRanges(
+            req->lower_bound_key(), req->upper_bound_key(), req->max_num_ranges(),
+            req->range_size_bytes(), tablet::IsForward(req->is_forward()), req->max_key_length(),
+            &context.sidecars().Start()));
+        return Status::OK();
+      });
 }
 
 void TabletServiceAdminImpl::TestRetry(

@@ -28,7 +28,7 @@ class TabletServerIf;
 // YsqlConnMgrWrapper: managing one instance of a Ysql Connection Manager child process
 namespace ysql_conn_mgr_wrapper {
 
-class YsqlConnMgrConf {
+class YsqlConnMgrConf : public yb::ProcessWrapperCommonConfig {
  public:
   explicit YsqlConnMgrConf(const std::string& data_path);
 
@@ -39,31 +39,32 @@ class YsqlConnMgrConf {
   std::string data_dir_;
   std::string log_file_;
   std::string pid_file_;
+  std::string ysql_pgconf_file_;
   std::string quantiles_ = "0.99,0.95,0.5";
   HostPort postgres_address_;
 
   uint16_t global_pool_size_ = 10;
   uint16_t control_connection_pool_size_;
-  uint num_worker_threads_ = 16;
   uint num_resolver_threads_ = 1;
-  uint16_t server_lifetime_ = 3600;
 
   bool application_name_add_host_ = true;
   bool log_debug_ = false;
 
   void UpdateConfigFromGFlags();
   std::string GetBindAddress();
+  void AddSslConfig(std::map<std::string, std::string>* ysql_conn_mgr_configs);
 };
 
 class YsqlConnMgrWrapper : public yb::ProcessWrapper {
  public:
-  explicit YsqlConnMgrWrapper(const YsqlConnMgrConf& conf);
+  explicit YsqlConnMgrWrapper(const YsqlConnMgrConf& conf, key_t stat_shm_key);
   Status PreflightCheck() override;
   Status Start() override;
 
  private:
   std::string GetYsqlConnMgrExecutablePath();
   YsqlConnMgrConf conf_;
+  key_t stat_shm_key_;
 
   // TODO(janand) GH #17877 Support for reloading config.
   Status ReloadConfig() override {
@@ -79,13 +80,14 @@ class YsqlConnMgrWrapper : public yb::ProcessWrapper {
 // and restarting if needed.
 class YsqlConnMgrSupervisor : public yb::ProcessSupervisor {
  public:
-  explicit YsqlConnMgrSupervisor(const YsqlConnMgrConf& conf);
+  explicit YsqlConnMgrSupervisor(const YsqlConnMgrConf& conf, key_t stat_shm_key);
   ~YsqlConnMgrSupervisor() {}
 
   std::shared_ptr<ProcessWrapper> CreateProcessWrapper() override;
 
  private:
   YsqlConnMgrConf conf_;
+  key_t stat_shm_key_;
   std::string GetProcessName() override {
     return "Ysql Connection Manager";
   }

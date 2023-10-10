@@ -18,20 +18,26 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCertificate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -51,6 +57,11 @@ public class DestroyUniverse extends UniverseTaskBase {
     public Boolean isForceDelete;
     public Boolean isDeleteBackups;
     public Boolean isDeleteAssociatedCerts;
+
+    @ApiModelProperty(hidden = true)
+    @Getter
+    @Setter
+    KubernetesResourceDetails kubernetesResourceDetails;
   }
 
   public Params params() {
@@ -287,8 +298,15 @@ public class DestroyUniverse extends UniverseTaskBase {
 
       // Create the subtasks to delete all the xCluster configs.
       xClusterConfigs.forEach(
-          xClusterConfig ->
-              createDeleteXClusterConfigSubtasks(xClusterConfig, params().isForceDelete));
+          xClusterConfig -> {
+            DrConfig drConfig = xClusterConfig.getDrConfig();
+            createDeleteXClusterConfigSubtasks(
+                xClusterConfig, false /* keepEntry */, params().isForceDelete);
+            if (Objects.nonNull(drConfig) && drConfig.getXClusterConfigs().size() == 1) {
+              createDeleteDrConfigEntryTask(drConfig)
+                  .setSubTaskGroupType(SubTaskGroupType.DeleteDrConfig);
+            }
+          });
       log.debug("Subtasks created to delete these xCluster configs: {}", xClusterConfigs);
     } catch (Exception e) {
       log.error(

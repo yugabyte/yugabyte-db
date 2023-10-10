@@ -1,4 +1,3 @@
-import React from 'react';
 import { FormHelperText, TextareaAutosize, TextareaAutosizeProps } from '@material-ui/core';
 import { FieldValues, useController, UseControllerProps } from 'react-hook-form';
 

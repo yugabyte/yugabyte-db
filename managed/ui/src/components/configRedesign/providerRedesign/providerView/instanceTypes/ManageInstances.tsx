@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { makeStyles, Typography } from '@material-ui/core';
 import { useDispatch, useSelector } from 'react-redux';

@@ -5,7 +5,7 @@ description: Use Akka Persistence Cassandra with YCQL API
 menu:
   preview_integrations:
     identifier: ycql-akka
-    parent: integrations
+    parent: data-integration
     weight: 572
 type: docs
 ---
@@ -26,10 +26,10 @@ type: docs
 
 Akka is a toolkit for building highly concurrent, distributed, and resilient message-driven applications for Java and Scala.
 
-Akka's approach to handling concurrency is based on the Actor Model.
-An actor is essentially an object that receives messages and takes actions to handle them. It is a higher level construct that helps to write concurrent code without the trouble of dealing with low-level concurrency primitives when writing multi-threaded high performance applications.
+Akka's approach to handling concurrency is based on the Actor Model. An actor is essentially an object that receives messages and takes actions to handle them. It is a higher level construct that helps to write concurrent code without the trouble of dealing with low-level concurrency primitives when writing multi-threaded high performance applications.
 
 Akka Persistence enables stateful akka-actors to persist their state so that it can be recovered when an actor is either restarted, such as after a JVM crash by a supervisor or a manual stop-start, or migrated in a cluster.
+
 The Akka Persistence Cassandra plugin allows you to use Apache Cassandra as a backend for Akka Persistence and Akka Persistence Query. It uses Alpakka Cassandra for Cassandra access which is based on the Datastax Java Driver.
 Alpakka Cassandra offers an Akka Streams API on top of a `CqlSession` from the Datastax Java Driver version 4.0 and later.
 

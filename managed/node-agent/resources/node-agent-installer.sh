@@ -66,15 +66,22 @@ setup_node_agent_dir() {
   #Create node-agent directory.
   mkdir -p "$NODE_AGENT_HOME"
   #Change permissions.
-  chmod 754 "$NODE_AGENT_HOME"
+  chmod 755 "$NODE_AGENT_HOME"
   echo "* Changing directory to node agent."
   #Change directory.
   pushd "$NODE_AGENT_HOME"
   echo "* Creating Sub Directories."
   mkdir -p cert config logs release
-  chmod -R 754 .
+  chmod -R 755 .
   popd
   add_path "$NODE_AGENT_PKG_DIR/bin"
+  popd
+}
+
+set_log_dir_permission() {
+  #Change directory.
+  pushd "$NODE_AGENT_HOME"
+  chmod 755 logs
   popd
 }
 
@@ -312,6 +319,7 @@ main() {
   elif [ "$COMMAND" = "upgrade" ]; then
     extract_package > /dev/null
     setup_symlink > /dev/null
+    set_log_dir_permission > /dev/null
   elif [ "$COMMAND" = "install" ]; then
     local NODE_AGENT_CONFIG_ARGS=()
     if [ "$DISABLE_EGRESS" = "false" ]; then
@@ -382,6 +390,17 @@ main() {
       if [ ! -d "$NODE_AGRNT_CERT_PATH" ]; then
         echo "$NODE_AGRNT_CERT_PATH is not found."
         exit 1
+      fi
+      if [ "$SUDO_ACCESS" = "true" ]; then
+        # Disable existing node-agent if sudo access is available.
+        local RUNNING=""
+        set +e
+        RUNNING=$(systemctl list-units | grep -F yb-node-agent.service)
+        if [ -n "$RUNNING" ]; then
+          sudo systemctl stop yb-node-agent
+          sudo systemctl disable yb-node-agent
+        fi
+        set -e
       fi
       NODE_AGENT_CONFIG_ARGS+=(--disable_egress --id "$NODE_AGENT_ID" --customer_id "$CUSTOMER_ID" \
       --cert_dir "$CERT_DIR" --node_name "$NODE_NAME" --node_ip "$NODE_IP" \

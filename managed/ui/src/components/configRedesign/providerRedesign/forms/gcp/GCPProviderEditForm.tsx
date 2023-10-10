@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -66,7 +66,8 @@ import {
   GCPAvailabilityZoneMutation,
   YBProviderMutation,
   GCPProvider,
-  GCPRegion
+  GCPRegion,
+  ImageBundle
 } from '../../types';
 
 interface GCPProviderEditFormProps {
@@ -86,6 +87,7 @@ interface GCPProviderEditFormFieldValues {
   ntpSetupType: NTPSetupType;
   providerCredentialType: ProviderCredentialType;
   providerName: string;
+  imageBundles: ImageBundle[];
   regions: CloudVendorRegionField[];
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
@@ -271,6 +273,9 @@ export const GCPProviderEditForm = ({
     'editCloudCredentials',
     defaultValues.editCloudCredentials
   );
+  const serviceAccountIdentifer = providerConfig.details.cloudInfo.gcp.useHostCredentials
+    ? 'YBA Host Instance'
+    : providerConfig.details.cloudInfo.gcp.gceApplicationCredentials?.client_email;
   const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
   const existingRegions = providerConfig.regions.map((region) => region.code);
   const isFormDisabled = getIsFormDisabled(formMethods.formState, isProviderInUse, providerConfig);
@@ -294,14 +299,8 @@ export const GCPProviderEditForm = ({
           <Box width="100%" display="flex" flexDirection="column" gridGap="32px">
             <FieldGroup heading="Cloud Info">
               <FormField>
-                <FieldLabel>Current Service Account Email</FieldLabel>
-                <YBInput
-                  value={
-                    providerConfig.details.cloudInfo.gcp.gceApplicationCredentials.client_email
-                  }
-                  disabled={true}
-                  fullWidth
-                />
+                <FieldLabel>Current Service Account</FieldLabel>
+                <YBInput value={serviceAccountIdentifer} disabled={true} fullWidth />
               </FormField>
               <FormField>
                 <FieldLabel>Current GCE Project Name</FieldLabel>
@@ -587,6 +586,7 @@ const constructDefaultFormValues = (
   providerCredentialType: providerConfig.details.cloudInfo.gcp.useHostCredentials
     ? ProviderCredentialType.HOST_INSTANCE_SERVICE_ACCOUNT
     : ProviderCredentialType.SPECIFIED_SERVICE_ACCOUNT,
+  imageBundles: providerConfig.imageBundles,
   regions: providerConfig.regions.map((region) => ({
     code: region.code,
     fieldId: generateLowerCaseAlphanumericId(),
@@ -698,6 +698,7 @@ const constructProviderPayload = async (
       ...(formValues.sshPort && { sshPort: formValues.sshPort }),
       ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
+    imageBundles: formValues.imageBundles,
     regions: [
       ...formValues.regions.map<GCPRegionMutation>((regionFormValues) => {
         const existingRegion = findExistingRegion<GCPProvider, GCPRegion>(

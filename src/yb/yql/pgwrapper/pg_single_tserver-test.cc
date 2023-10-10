@@ -36,6 +36,8 @@ DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Write);
 
+DEFINE_RUNTIME_int32(TEST_scan_reads, 3, "Number of reads in scan tests");
+
 namespace yb::pgwrapper {
 
 class PgSingleTServerTest : public PgMiniTestBase {
@@ -58,8 +60,9 @@ class PgSingleTServerTest : public PgMiniTestBase {
     ASSERT_OK(conn.Execute(create_table_cmd));
 
     {
-      auto write_histogram = cluster_->mini_tablet_server(0)->metric_entity().FindOrCreateHistogram(
-          &METRIC_handler_latency_yb_tserver_TabletServerService_Write)->histogram();
+      auto write_histogram =
+          cluster_->mini_tablet_server(0)->metric_entity().FindOrCreateMetric<Histogram>(
+              &METRIC_handler_latency_yb_tserver_TabletServerService_Write)->underlying();
       auto metric_start = write_histogram->TotalSum();
       auto start = MonoTime::Now();
       auto last_row = 0;
@@ -96,8 +99,9 @@ class PgSingleTServerTest : public PgMiniTestBase {
       google::SetVLOGLevel("docdb", 4);
     }
 
-    auto read_histogram = cluster_->mini_tablet_server(0)->metric_entity().FindOrCreateHistogram(
-        &METRIC_handler_latency_yb_tserver_TabletServerService_Read)->histogram();
+    auto read_histogram =
+        cluster_->mini_tablet_server(0)->metric_entity().FindOrCreateMetric<Histogram>(
+            &METRIC_handler_latency_yb_tserver_TabletServerService_Read)->underlying();
 
     for (int i = 0; i != reads; ++i) {
       int64_t fetched_rows;
@@ -175,14 +179,13 @@ namespace {
 
 constexpr int kScanRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000);
 constexpr int kScanBlockSize = 1000;
-constexpr int kScanReads = 3;
 
 }
 
 TEST_F_EX(PgSingleTServerTest, Scan, PgMiniBigPrefetchTest) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = false;
-  Run(kScanRows, kScanBlockSize, kScanReads, /* compact= */ false, /* select= */ true);
+  Run(kScanRows, kScanBlockSize, FLAGS_TEST_scan_reads, /* compact= */ false, /* select= */ true);
 }
 
 TEST_F_EX(PgSingleTServerTest, ScanWithPackedRow, PgMiniBigPrefetchTest) {
@@ -201,12 +204,12 @@ TEST_F_EX(PgSingleTServerTest, ScanWithPackedRow, PgMiniBigPrefetchTest) {
   insert_cmd += ")";
   const std::string select_cmd = "SELECT * FROM t";
   SetupColocatedTableAndRunBenchmark(
-      create_cmd, insert_cmd, select_cmd, kScanRows, kScanBlockSize, kScanReads,
+      create_cmd, insert_cmd, select_cmd, kScanRows, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
 }
 
 TEST_F_EX(PgSingleTServerTest, ScanWithCompaction, PgMiniBigPrefetchTest) {
-  Run(kScanRows, kScanBlockSize, kScanReads, /* compact= */ true, /* select= */ true);
+  Run(kScanRows, kScanBlockSize, FLAGS_TEST_scan_reads, /* compact= */ true, /* select= */ true);
 }
 
 TEST_F_EX(PgSingleTServerTest, ScanSkipPK, PgMiniBigPrefetchTest) {
@@ -231,7 +234,7 @@ TEST_F_EX(PgSingleTServerTest, ScanSkipPK, PgMiniBigPrefetchTest) {
   insert_cmd += "generate_series($0, $1))";
   const std::string select_cmd = "SELECT value FROM t";
   SetupColocatedTableAndRunBenchmark(
-      create_cmd, insert_cmd, select_cmd, kNumRows, kScanBlockSize, kScanReads,
+      create_cmd, insert_cmd, select_cmd, kNumRows, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
 }
 
@@ -253,7 +256,33 @@ TEST_F_EX(PgSingleTServerTest, ScanBigPK, PgMiniBigPrefetchTest) {
   insert_cmd += ", generate_series($0, $1))";
   const std::string select_cmd = "SELECT k FROM t";
   SetupColocatedTableAndRunBenchmark(
-      create_cmd, insert_cmd, select_cmd, kNumRows, kScanBlockSize, kScanReads,
+      create_cmd, insert_cmd, select_cmd, kNumRows, kScanBlockSize, FLAGS_TEST_scan_reads,
+      /* compact= */ false, /* aggregate = */ false);
+}
+
+TEST_F_EX(PgSingleTServerTest, ScanComplexPK, PgMiniBigPrefetchTest) {
+  constexpr auto kNumRows = kScanRows / 2;
+  constexpr int kNumKeyColumns = 10;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
+
+  std::string create_cmd = "CREATE TABLE t (";
+  std::string pk = "";
+  std::string insert_cmd = "INSERT INTO t VALUES (generate_series($0, $1)";
+  for (const auto column : Range(kNumKeyColumns)) {
+    create_cmd += Format("r$0 INT, ", column);
+    if (!pk.empty()) {
+      pk += ", ";
+    }
+    pk += Format("r$0", column);
+    insert_cmd += ", trunc(random()*100000000)";
+  }
+  create_cmd += "value INT, PRIMARY KEY (" + pk + "))";
+  insert_cmd += ")";
+  const std::string select_cmd = "SELECT * FROM t";
+  SetupColocatedTableAndRunBenchmark(
+      create_cmd, insert_cmd, select_cmd, kNumRows, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
 }
 
@@ -278,7 +307,7 @@ TEST_F_EX(PgSingleTServerTest, ScanSkipValues, PgMiniBigPrefetchTest) {
   insert_cmd += ")";
   const std::string select_cmd = "SELECT value FROM t";
   SetupColocatedTableAndRunBenchmark(
-      create_cmd, insert_cmd, select_cmd, kNumRows, kScanBlockSize, kScanReads,
+      create_cmd, insert_cmd, select_cmd, kNumRows, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
 }
 
@@ -390,9 +419,9 @@ TEST_F_EX(
     auto res = ASSERT_RESULT(read_conn.FetchMatrix("SELECT v FROM test", kNumRows, 1));
 
     // Ensure that all rows in the table have the same value.
-    auto common_value_for_all_rows = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+    auto common_value_for_all_rows = ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0));
     for (auto i = 1u; i < kNumRows; ++i) {
-      ASSERT_EQ(common_value_for_all_rows, ASSERT_RESULT(GetInt32(res.get(), i, 0)));
+      ASSERT_EQ(common_value_for_all_rows, ASSERT_RESULT(GetValue<int32_t>(res.get(), i, 0)));
     }
     ASSERT_OK(read_conn.Execute("COMMIT"));
   }

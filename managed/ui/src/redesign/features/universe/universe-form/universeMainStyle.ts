@@ -79,12 +79,16 @@ export const useFormMainStyles = makeStyles((theme) => ({
   },
 
   clearRRButton: {
-    padding: '1px !important',
     '& span': {
-      color: theme.palette.orange[300],
       marginLeft: theme.spacing(0),
-      fontSize: '12px !important',
-      textDecoration: 'underline'
+      fontSize: '15px',
+      color: theme.palette.ybacolors.ybDarkGray
+    }
+  },
+
+  universeFormButtons: {
+    ['@media screen and (min-width: 500px) and (max-width: 1260px)']: {
+      marginTop: theme.spacing(2)
     }
   }
 }));

@@ -113,14 +113,13 @@ DEFINE_UNKNOWN_bool(ycql_serial_operation_in_transaction_block, true,
 
 extern ErrorCode QLStatusToErrorCode(QLResponsePB::QLStatus status);
 
-Executor::Executor(QLEnv* ql_env, AuditLogger* audit_logger, Rescheduler* rescheduler,
-                   const QLMetrics* ql_metrics)
+Executor::Executor(
+    QLEnv* ql_env, AuditLogger* audit_logger, Rescheduler* rescheduler, const QLMetrics* ql_metrics)
     : ql_env_(ql_env),
       audit_logger_(*audit_logger),
       rescheduler_(rescheduler),
-      session_(ql_env_->NewSession()),
-      ql_metrics_(ql_metrics) {
-}
+      session_(ql_env_->NewSession(rescheduler->GetDeadline())),
+      ql_metrics_(ql_metrics) {}
 
 Executor::~Executor() {
   LOG_IF(DFATAL, HasAsyncCalls())
@@ -2701,7 +2700,8 @@ Executor::ResetAsyncCalls::ResetAsyncCalls(ResetAsyncCalls&& rhs)
 }
 
 void Executor::ResetAsyncCalls::operator=(ResetAsyncCalls&& rhs) {
-  Perform();
+  std::lock_guard guard(num_async_calls_mutex_);
+  PerformUnlocked();
   num_async_calls_ = rhs.num_async_calls_;
   rhs.num_async_calls_ = nullptr;
   LOG_IF(DFATAL, num_async_calls_ && num_async_calls_->load(std::memory_order_acquire))
@@ -2709,6 +2709,7 @@ void Executor::ResetAsyncCalls::operator=(ResetAsyncCalls&& rhs) {
 }
 
 void Executor::ResetAsyncCalls::Cancel() {
+  std::lock_guard guard(num_async_calls_mutex_);
   num_async_calls_ = nullptr;
 }
 
@@ -2717,6 +2718,11 @@ Executor::ResetAsyncCalls::~ResetAsyncCalls() {
 }
 
 void Executor::ResetAsyncCalls::Perform() {
+  std::lock_guard guard(num_async_calls_mutex_);
+  PerformUnlocked();
+}
+
+void Executor::ResetAsyncCalls::PerformUnlocked() {
   if (!num_async_calls_) {
     return;
   }

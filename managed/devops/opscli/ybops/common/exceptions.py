@@ -54,6 +54,11 @@ class YBOpsRecoverableError(YBOpsExitCodeException):
         return 3  # also see ShellResponse#ERROR_CODE_RECOVERABLE_ERROR in Java
 
 
+class YBOpsFaultInjectionError(YBOpsException):
+    def __init__(self, message):
+        super().__init__("Fault injected", message)
+
+
 def get_exception_message(exc):
     """Method to get exception message independent from python version.
     """

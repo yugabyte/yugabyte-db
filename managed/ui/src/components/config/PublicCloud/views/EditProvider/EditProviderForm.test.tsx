@@ -1,4 +1,3 @@
-import React from 'react';
 import userEvent from '@testing-library/user-event';
 import EditProviderForm from './EditProviderForm';
 import { render } from '../../../../../test-utils';

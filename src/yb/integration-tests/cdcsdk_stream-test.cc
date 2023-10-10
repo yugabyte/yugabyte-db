@@ -84,24 +84,24 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
     std::string value;
   };
 
-  Status DeleteCDCStream(const std::string& db_stream_id) {
+  Status DeleteCDCStream(const xrepl::StreamId& db_stream_id) {
     RpcController delete_rpc;
     delete_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
 
     DeleteCDCStreamRequestPB delete_req;
     DeleteCDCStreamResponsePB delete_resp;
-    delete_req.add_stream_id(db_stream_id);
+    delete_req.add_stream_id(db_stream_id.ToString());
 
     // The following line assumes that cdc_proxy_ has been initialized in the test already
     return cdc_proxy_->DeleteCDCStream(delete_req, &delete_resp, &delete_rpc);
   }
 
-  Result<std::vector<std::string>> CreateDBStreams(const int num_streams) {
-    std::vector<std::string> created_streams;
+  Result<std::vector<xrepl::StreamId>> CreateDBStreams(const int num_streams) {
+    std::vector<xrepl::StreamId> created_streams;
     // We will create some DB Streams to be listed out later.
     for (int i = 0; i < num_streams; i++) {
-      std::string db_stream_id = VERIFY_RESULT(CreateDBStream());
-      SCHECK(!db_stream_id.empty(), IllegalState, "The created db_stream_id is empty!");
+      auto db_stream_id = VERIFY_RESULT(CreateDBStream());
+      SCHECK(db_stream_id, IllegalState, "The created db_stream_id is empty!");
       created_streams.push_back(db_stream_id);
     }
 
@@ -142,10 +142,11 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
     return list_resp.streams();
   }
 
-  Result<master::GetCDCDBStreamInfoResponsePB> GetDBStreamInfo(std::string db_stream_id) {
+  Result<master::GetCDCDBStreamInfoResponsePB> GetDBStreamInfo(
+      const xrepl::StreamId& db_stream_id) {
     master::GetCDCDBStreamInfoRequestPB get_req;
     master::GetCDCDBStreamInfoResponsePB get_resp;
-    get_req.set_db_stream_id(db_stream_id);
+    get_req.set_db_stream_id(db_stream_id.ToString());
 
     RpcController get_rpc;
     get_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
@@ -181,7 +182,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
     const uint32_t num_streams = list_streams.size();
     ASSERT_EQ(total_created_streams, num_streams);
 
-    std::vector<std::string> resp_stream_ids;
+    std::vector<xrepl::StreamId> resp_stream_ids;
     for (uint32_t i = 0; i < num_streams; ++i) {
       if (with_table) {
         // Since there is one table, all the streams would contain one table_id in their response.
@@ -192,7 +193,8 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
         // Since there are no tables in DB, there would be no table_ids in the response.
         ASSERT_EQ(0, list_streams.Get(i).table_id_size());
       }
-      resp_stream_ids.push_back(list_streams.Get(i).stream_id());
+      resp_stream_ids.push_back(
+          ASSERT_RESULT(xrepl::StreamId::FromString(list_streams.Get(i).stream_id())));
     }
     // Sorting to simplify assertion.
     std::sort(resp_stream_ids.begin(), resp_stream_ids.end());
@@ -227,7 +229,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
 
     // Sorting would make assertion easier later on.
     std::sort(created_table_ids_with_pk.begin(), created_table_ids_with_pk.end());
-    std::string db_stream_id = ASSERT_RESULT(CreateDBStream());
+    auto db_stream_id = ASSERT_RESULT(CreateDBStream());
 
     auto get_resp = ASSERT_RESULT(GetDBStreamInfo(db_stream_id));
     ASSERT_FALSE(get_resp.has_error());
@@ -246,7 +248,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
     std::vector<std::string> table_ids_in_resp;
     for (uint32_t i = 0; i < table_info_size; ++i) {
       // Also assert that all the table_info(s) contain the same db_stream_id.
-      ASSERT_EQ(db_stream_id, get_resp.table_info(i).stream_id());
+      ASSERT_EQ(db_stream_id.ToString(), get_resp.table_info(i).stream_id());
 
       table_ids_in_resp.push_back(get_resp.table_info(i).table_id());
     }
@@ -264,8 +266,8 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(CreateCDCSDKStreamImplicit)) {
   // Create a cluster.
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
-  std::string db_stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
-  ASSERT_NE(0, db_stream_id.length());
+  auto db_stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
+  ASSERT_NE(0, db_stream_id.size());
 }
 
 TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(CreateCDCSDKStreamExplicit)) {
@@ -273,8 +275,8 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(CreateCDCSDKStreamExplicit)) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   // The function CreateDBStream() creates a stream with EXPLICIT checkpointing by default.
-  std::string db_stream_id = ASSERT_RESULT(CreateDBStream());
-  ASSERT_NE(0, db_stream_id.length());
+  auto db_stream_id = ASSERT_RESULT(CreateDBStream());
+  ASSERT_NE(0, db_stream_id.size());
 }
 
 // This test is to verify the fix for the following:
@@ -293,16 +295,16 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(TestStreamCreation)) {
   // We have a table with primary key and one without primary key so while creating
   // the DB Stream ID, the latter one will be ignored and will not be a part of streaming with CDC.
   // Now we just need to ensure that everything is working fine.
-  std::string db_stream_id = ASSERT_RESULT(CreateDBStream());
-  ASSERT_NE(0, db_stream_id.length());
+  auto db_stream_id = ASSERT_RESULT(CreateDBStream());
+  ASSERT_NE(0, db_stream_id.size());
 }
 
 TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(TestOnSingleRF)) {
   // Create a cluster.
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
-  std::string db_stream_id = ASSERT_RESULT(CreateDBStream());
-  ASSERT_NE(0, db_stream_id.length());
+  auto db_stream_id = ASSERT_RESULT(CreateDBStream());
+  ASSERT_NE(0, db_stream_id.size());
 }
 
 TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(DeleteDBStream)) {
@@ -310,8 +312,8 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(DeleteDBStream)) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   // Create a DB Stream ID to be deleted later on.
-  std::string db_stream_id = ASSERT_RESULT(CreateDBStream());
-  ASSERT_NE(0, db_stream_id.length());
+  auto db_stream_id = ASSERT_RESULT(CreateDBStream());
+  ASSERT_NE(0, db_stream_id.size());
 
   // Deleting the created DB Stream ID.
   ASSERT_OK(DeleteCDCStream(db_stream_id));
@@ -396,10 +398,10 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(CDCWithXclusterEnabled)) {
 
   // Creating CDC DB streams on the table.
   // We get a sorted vector from CreateDBStreams() function already.
-  std::vector<CDCStreamId> created_db_streams = ASSERT_RESULT(CreateDBStreams(num_of_streams));
+  std::vector<xrepl::StreamId> created_db_streams = ASSERT_RESULT(CreateDBStreams(num_of_streams));
 
   // Creating xCluster streams now.
-  std::vector<CDCStreamId> created_xcluster_streams;
+  std::vector<xrepl::StreamId> created_xcluster_streams;
   for (uint32_t i = 0; i < num_of_streams; ++i) {
     RpcController rpc;
     CreateCDCStreamRequestPB create_req;
@@ -411,7 +413,8 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(CDCWithXclusterEnabled)) {
     // Assert that there is no DB stream ID in the response while creating xCluster stream.
     ASSERT_FALSE(create_resp.has_db_stream_id());
 
-    created_xcluster_streams.push_back(create_resp.stream_id());
+    created_xcluster_streams.emplace_back(
+        ASSERT_RESULT(xrepl::StreamId::FromString(create_resp.stream_id())));
   }
   std::sort(created_xcluster_streams.begin(), created_xcluster_streams.end());
 
@@ -450,8 +453,8 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(ImplicitCheckPointValidate)) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   // Create a DB Stream.
-  std::string db_stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
-  ASSERT_NE(0, db_stream_id.length());
+  auto db_stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
+  ASSERT_NE(0, db_stream_id.size());
 
   // Get the list of dbstream.
   google::protobuf::RepeatedPtrField<yb::master::CDCStreamInfoPB> list_streams =
@@ -460,7 +463,7 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(ImplicitCheckPointValidate)) {
 
   for (uint32_t i = 0; i < num_streams; ++i) {
     // Validate the streamid.
-    ASSERT_EQ(db_stream_id, list_streams.Get(i).stream_id());
+    ASSERT_EQ(db_stream_id.ToString(), list_streams.Get(i).stream_id());
 
     const uint32_t options_sz = list_streams.Get(i).options_size();
     for (uint32_t j = 0; j < options_sz; j++) {
@@ -479,8 +482,8 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(ExplicitCheckPointValidate)) {
     ASSERT_OK(SetUpWithParams(3, 1, false));
 
     // Create a DB Stream.
-    std::string db_stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::EXPLICIT));
-    ASSERT_NE(0, db_stream_id.length());
+    auto db_stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::EXPLICIT));
+    ASSERT_NE(0, db_stream_id.size());
 
     // Get the list of dbstream.
     google::protobuf::RepeatedPtrField<yb::master::CDCStreamInfoPB> list_streams =
@@ -489,7 +492,7 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(ExplicitCheckPointValidate)) {
 
     for (uint32_t i = 0; i < num_streams; ++i) {
       // Validate the streamid.
-      ASSERT_EQ(db_stream_id, list_streams.Get(i).stream_id());
+      ASSERT_EQ(db_stream_id.ToString(), list_streams.Get(i).stream_id());
 
       const uint32_t options_sz = list_streams.Get(i).options_size();
       for (uint32_t j = 0; j < options_sz; j++) {

@@ -328,9 +328,12 @@ class ClusterAdminClient {
   // Snapshot operations.
   Result<master::ListSnapshotsResponsePB> ListSnapshots(const ListSnapshotsFlags& flags);
   Status CreateSnapshot(const std::vector<client::YBTableName>& tables,
+                        std::optional<int32_t> retention_duration_hours,
                         const bool add_indexes = true,
                         const int flush_timeout_secs = 0);
-  Status CreateNamespaceSnapshot(const TypedNamespaceName& ns);
+  Status CreateNamespaceSnapshot(
+      const TypedNamespaceName& ns, std::optional<int32_t> retention_duration_hours,
+      bool add_indexes = true);
   Result<master::ListSnapshotRestorationsResponsePB> ListSnapshotRestorations(
       const TxnSnapshotRestorationId& restoration_id);
   Result<rapidjson::Document> CreateSnapshotSchedule(const client::YBTableName& keyspace,
@@ -347,6 +350,7 @@ class ClusterAdminClient {
       std::optional<MonoDelta> new_retention);
 
   Status DeleteSnapshot(const std::string& snapshot_id);
+  Status AbortSnapshotRestore(const TxnSnapshotRestorationId& restoration_id);
 
   Status CreateSnapshotMetaFile(const std::string& snapshot_id,
                                 const std::string& file_name);
@@ -391,6 +395,11 @@ class ClusterAdminClient {
 
   Status GetCDCDBStreamInfo(const std::string& db_stream_id);
 
+  Status SetupNamespaceReplicationWithBootstrap(const std::string& replication_id,
+                                  const std::vector<std::string>& producer_addresses,
+                                  const TypedNamespaceName& ns,
+                                  bool transactional);
+
   Status SetupUniverseReplication(const std::string& producer_uuid,
                                   const std::vector<std::string>& producer_addresses,
                                   const std::vector<TableId>& tables,
@@ -412,6 +421,8 @@ class ClusterAdminClient {
   Status RenameUniverseReplication(const std::string& old_universe_name,
                                    const std::string& new_universe_name);
 
+  Status WaitForReplicationBootstrapToFinish(const std::string& replication_id);
+
   Status WaitForSetupUniverseReplicationToFinish(const std::string& producer_uuid);
 
   Status ChangeXClusterRole(cdc::XClusterRole role);
@@ -424,8 +435,8 @@ class ClusterAdminClient {
 
   Status BootstrapProducer(const std::vector<TableId>& table_id);
 
-  Status WaitForReplicationDrain(const std::vector<CDCStreamId>& stream_ids,
-                                 const std::string& target_time);
+  Status WaitForReplicationDrain(
+      const std::vector<xrepl::StreamId>& stream_ids, const std::string& target_time);
 
   Status SetupNSUniverseReplication(const std::string& producer_uuid,
                                     const std::vector<std::string>& producer_addresses,

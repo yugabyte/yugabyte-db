@@ -617,8 +617,10 @@ The following backup and snapshot commands are available:
 * [**list_snapshots**](#list-snapshots) returns a list of all snapshots, restores, and their states
 * [**create_snapshot**](#create-snapshot) creates a snapshot of one or more YCQL tables and indexes
 * [**restore_snapshot**](#restore-snapshot) restores a snapshot
+* [**list_snapshot_restorations**](#list-snapshot-restorations) returns a list of all snapshot restorations
 * [**export_snapshot**](#export-snapshot) creates a snapshot metadata file
 * [**import_snapshot**](#import-snapshot) imports a snapshot metadata file
+* [**import_snapshot_selective**](#import-snapshot-selective) imports a specified snapshot metadata file
 * [**delete_snapshot**](#delete-snapshot) deletes a snapshot's information
 * [**create_snapshot_schedule**](#create-snapshot-schedule) sets the schedule for snapshot creation
 * [**list_snapshot_schedules**](#list-snapshot-schedules) returns a list of all snapshot schedules
@@ -847,6 +849,49 @@ Restoration UUID                      State
 5a9bc559-2155-4c38-ac8b-b6d0f7aa1af6  FAILED
 ```
 
+#### list_snapshot_restorations
+
+Lists the snapshots restorations.
+
+Returns one or more restorations in JSON format.
+
+**restorations list** entries contain:
+
+* the restoration's unique ID
+* the snapshot's unique ID
+* state of the restoration
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    list_snapshot_restorations <restoration_id>
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *restoration_id*: the snapshot restoration's unique identifier. The ID is optional; omit the ID to return all restorations in the system.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    list_snapshot_restorations 26ed9053-0c26-4277-a2b8-c12d0fa4c8cf
+```
+
+```output.json
+{
+    "restorations": [
+        {
+            "id": "26ed9053-0c26-4277-a2b8-c12d0fa4c8cf",
+            "snapshot_id": "ca8f3763-5437-4594-818d-713fb0cddb96",
+            "state": "RESTORED"
+        }
+    ]
+}
+```
+
 #### export_snapshot
 
 Generates a metadata file for the specified snapshot, listing all the relevant internal UUIDs for various objects (table, tablet, etc.).
@@ -907,6 +952,52 @@ The *keyspace* and the *table* can be different from the exported one.
 ./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     import_snapshot test_tb.snapshot ydb test_tb
+```
+
+```output
+Read snapshot meta file test_tb.snapshot
+Importing snapshot 4963ed18fc1e4f1ba38c8fcf4058b295 (COMPLETE)
+Target imported table name: ydb.test_tb
+Table being imported: ydb.test_tb
+Successfully applied snapshot.
+Object            Old ID                            New ID
+Keyspace          c478ed4f570841489dd973aacf0b3799  c478ed4f570841489dd973aacf0b3799
+Table             ff4389ee7a9d47ff897d3cec2f18f720  ff4389ee7a9d47ff897d3cec2f18f720
+Tablet 0          cea3aaac2f10460a880b0b4a2a4b652a  cea3aaac2f10460a880b0b4a2a4b652a
+Tablet 1          e509cf8eedba410ba3b60c7e9138d479  e509cf8eedba410ba3b60c7e9138d479
+Snapshot          4963ed18fc1e4f1ba38c8fcf4058b295  4963ed18fc1e4f1ba38c8fcf4058b295
+```
+
+#### import_snapshot_selective
+
+Imports only the specified tables from the specified snapshot metadata file.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    import_snapshot_selective <file_name> \
+    [<keyspace> <table_name> [<keyspace> <table_name>]...]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *file_name*: The name of the snapshot file to import
+* *keyspace*: The name of the database or keyspace
+* *table_name*: The name of the table
+
+{{< note title="Note" >}}
+
+The *keyspace* can be different from the exported one. The name of the table needs to be the same.
+
+{{< /note >}}
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    import_snapshot_selective test_tb.snapshot ydb test_tb
 ```
 
 ```output
@@ -1540,6 +1631,28 @@ yb-admin \
 * *namespace_name*: The namespace on which the DB stream ID is to be created.
 * `IMPLICIT`: Checkpointing type on the server.
 * `ALL`: Record type indicating the server that the stream should send the before image too.
+
+A successful operation of the above command returns a message with a DB stream ID:
+
+```output
+CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
+```
+
+##### Creating stream in EXPLICIT checkpointing mode
+
+To create a change data capture (CDC) DB stream which works in the EXPLICIT checkpointing mode where the client is responsible for managing the checkpoints, use the following command:
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    create_change_data_stream ysql.<namespace_name> EXPLICIT
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *namespace_name*: The namespace on which the DB stream ID is to be created.
+* `EXPLICIT`: Checkpointing type on the server.
 
 A successful operation of the above command returns a message with a DB stream ID:
 

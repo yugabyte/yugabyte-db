@@ -124,6 +124,9 @@ import org.yb.master.MasterClientOuterClass;
 import org.yb.master.MasterClientOuterClass.GetTableLocationsResponsePB;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.CatalogEntityInfo.ReplicationInfoPB;
+import org.yb.master.MasterReplicationOuterClass.GetXClusterSafeTimeResponsePB.NamespaceSafeTimePB;
+import org.yb.master.MasterReplicationOuterClass.ReplicationStatusPB;
 import org.yb.master.MasterTypes.MasterErrorPB;
 import org.yb.util.AsyncUtil;
 import org.yb.util.NetUtil;
@@ -364,6 +367,20 @@ public class AsyncYBClient implements AutoCloseable {
     return d;
   }
 
+  public Deferred<GetFlagResponse> getFlag(final HostAndPort hp, String flag) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    GetFlagRequest rpc = new GetFlagRequest(flag);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    Deferred<GetFlagResponse> d = rpc.getDeferred();
+    rpc.attempt++;
+    client.sendRpc(rpc);
+    return d;
+  }
+
   public Deferred<GetMasterAddressesResponse> getMasterAddresses(final HostAndPort hp) {
     checkIsClosed();
     TabletClient client = newSimpleClient(hp);
@@ -483,14 +500,15 @@ public class AsyncYBClient implements AutoCloseable {
                                                        boolean needSchemaInfo,
                                                        CdcSdkCheckpoint explicitCheckpoint) {
     return getChangesCDCSDK(table, streamId, tabletId, term, index, key, write_id, time,
-      needSchemaInfo, null, -1);
+      needSchemaInfo, explicitCheckpoint, -1);
   }
 
   public Deferred<GetChangesResponse> getChangesCDCSDK(YBTable table, String streamId,
       String tabletId, long term, long index, byte[] key, int write_id, long time,
       boolean needSchemaInfo, CdcSdkCheckpoint explicitCheckpoint, long safeHybridTime) {
     return getChangesCDCSDK(
-        table, streamId, tabletId, term, index, key, write_id, time, needSchemaInfo, null, -1, 0);
+        table, streamId, tabletId, term, index, key, write_id, time, needSchemaInfo,
+        explicitCheckpoint, safeHybridTime, 0);
   }
 
   /**
@@ -1363,6 +1381,56 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * It returns the replication status of the replication streams.
+   *
+   * @param replicationGroupName A string specifying a specific replication group; if null,
+   *                             all replication streams will be included in the response
+   * @return A deferred object that yields a {@link GetReplicationStatusResponse} which contains
+   *         a list of {@link ReplicationStatusPB} objects
+   */
+  public Deferred<GetReplicationStatusResponse> getReplicationStatus(
+        @Nullable String replicationGroupName) {
+    checkIsClosed();
+    GetReplicationStatusRequest request =
+        new GetReplicationStatusRequest(this.masterTable, replicationGroupName);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * It returns the safe time for each namespace in replication.
+   *
+   * @return A deferred object that yields a {@link GetXClusterSafeTimeResponse} which contains
+   *         a list of {@link NamespaceSafeTimePB} objects
+   */
+  public Deferred<GetXClusterSafeTimeResponse> getXClusterSafeTime() {
+    checkIsClosed();
+    GetXClusterSafeTimeRequest request = new GetXClusterSafeTimeRequest(this.masterTable);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * It waits for replication to complete to a point in time. If there were still undrained streams,
+   * it will return those.
+   *
+   * @param streamIds A list of stream ids to check whether the replication is drained for them
+   * @param targetTime An optional point in time to make sure the drain has happened up to that
+   *                   point; if null, it drains up to now
+   * @return A deferred object that yields a {@link GetXClusterSafeTimeResponse} which contains
+   *         a list of {@link NamespaceSafeTimePB} objects
+   */
+  public Deferred<WaitForReplicationDrainResponse> waitForReplicationDrain(
+      List<String> streamIds,
+      @Nullable Long targetTime) {
+    checkIsClosed();
+    WaitForReplicationDrainRequest request = new WaitForReplicationDrainRequest(
+        this.masterTable, streamIds, targetTime);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
    * It sets the universe role for transactional xClusters.
    *
    * @param role The role to set the universe to
@@ -1527,6 +1595,21 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     DeleteSnapshotRequest request =
         new DeleteSnapshotRequest(this.masterTable, snapshotUUID);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Validate given ReplicationInfo against current TS placement.
+   *
+   * @param replicationInfoPB ReplicationInfoPB object
+   * @return a deffered object that yeilds a Replication info validation response.
+   */
+  public Deferred<ValidateReplicationInfoResponse> validateReplicationInfo(
+    ReplicationInfoPB replicationInfoPB) {
+    checkIsClosed();
+    ValidateReplicationInfoRequest request =
+        new ValidateReplicationInfoRequest(this.masterTable, replicationInfoPB);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }

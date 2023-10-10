@@ -6,9 +6,12 @@ import {
   loginResponse,
   resetCustomerError,
   fetchYugaWareVersion,
-  fetchYugaWareVersionResponse
+  fetchYugaWareVersionResponse,
+  validateToken
 } from '../../../../actions/customers';
 import { connect } from 'react-redux';
+import { api } from '../../../../redesign/features/universe/universe-form/utils/api';
+import { RBAC_RUNTIME_FLAG, setIsRbacEnabled } from '../../../../redesign/features/rbac/common/RbacUtils';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -25,8 +28,28 @@ const mapDispatchToProps = (dispatch) => {
           localStorage.setItem('authToken', authToken);
           localStorage.setItem('customerId', customerUUID);
           localStorage.setItem('userId', userUUID);
+          validateToken();
+          api.fetchRunTimeConfigs().then((res) => {
+            const rbacKey = res.configEntries?.find(
+              (c) => c.key === RBAC_RUNTIME_FLAG
+            );
+            setIsRbacEnabled(rbacKey?.value === 'true');
+            dispatch(loginResponse(response.payload));
+          }).catch((res) => {
+            //Rbac is enabled and the user is connect only user
+            if (res.response.status === 401) {
+              setIsRbacEnabled(true);
+              dispatch(loginResponse(response.payload));
+            }
+            else {
+              setIsRbacEnabled(false);
+              dispatch(loginResponse(response.payload));
+            }
+          });
         }
-        dispatch(loginResponse(response.payload));
+        else {
+          dispatch(loginResponse(response.payload));
+        }
       });
     },
     resetCustomerError: () => dispatch(resetCustomerError())

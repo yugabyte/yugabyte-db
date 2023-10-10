@@ -163,6 +163,8 @@ using master::CreateSnapshotRequestPB;
 using master::CreateSnapshotResponsePB;
 using master::DeleteSnapshotRequestPB;
 using master::DeleteSnapshotResponsePB;
+using master::AbortSnapshotRestoreRequestPB;
+using master::AbortSnapshotRestoreResponsePB;
 using master::IdPairPB;
 using master::ImportSnapshotMetaRequestPB;
 using master::ImportSnapshotMetaResponsePB;
@@ -2105,8 +2107,8 @@ Status ClusterAdminClient::GetXClusterConfig() {
   MessageToJsonString(
       cluster_config.cluster_config().consumer_registry(), &consumer_registry_output);
   cout << Format(
-              "{\"version\":$0,\"xcluster_producer_registry\":$1,consumer_"
-              "registry:$2}",
+              "{\"version\":$0,\"xcluster_producer_registry\":$1,\"consumer_"
+              "registry\":$2}",
               xcluster_config.xcluster_config().version(), producer_registry_output,
               consumer_registry_output)
        << endl;
@@ -2391,7 +2393,8 @@ Result<ListSnapshotsResponsePB> ClusterAdminClient::ListSnapshots(const ListSnap
 }
 
 Status ClusterAdminClient::CreateSnapshot(
-    const vector<YBTableName>& tables, const bool add_indexes, const int flush_timeout_secs) {
+    const vector<YBTableName>& tables, std::optional<int32_t> retention_duration_hours,
+    const bool add_indexes, const int flush_timeout_secs) {
   if (flush_timeout_secs > 0) {
         const auto status = FlushTables(tables, add_indexes, flush_timeout_secs, false);
         if (status.IsTimedOut()) {
@@ -2411,6 +2414,11 @@ Status ClusterAdminClient::CreateSnapshot(
     req.set_add_indexes(add_indexes);
     req.set_add_ud_types(true);  // No-op for YSQL.
     req.set_transaction_aware(true);
+    if (retention_duration_hours && *retention_duration_hours <= 0) {
+      req.set_retention_duration_hours(-1);
+    } else if (retention_duration_hours) {
+      req.set_retention_duration_hours(*retention_duration_hours);
+    }
     return master_backup_proxy_->CreateSnapshot(req, &resp, rpc);
   }));
 
@@ -2418,7 +2426,9 @@ Status ClusterAdminClient::CreateSnapshot(
   return Status::OK();
 }
 
-Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns) {
+Status ClusterAdminClient::CreateNamespaceSnapshot(
+    const TypedNamespaceName& ns, std::optional<int32_t> retention_duration_hours,
+    bool add_indexes) {
   ListTablesResponsePB resp;
   RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
     ListTablesRequestPB req;
@@ -2427,7 +2437,9 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns)
     req.mutable_namespace_()->set_database_type(ns.db_type);
     req.set_exclude_system_tables(true);
     req.add_relation_type_filter(master::USER_TABLE_RELATION);
-    req.add_relation_type_filter(master::INDEX_TABLE_RELATION);
+    if (add_indexes) {
+      req.add_relation_type_filter(master::INDEX_TABLE_RELATION);
+    }
     req.add_relation_type_filter(master::MATVIEW_TABLE_RELATION);
     return master_ddl_proxy_->ListTables(req, &resp, rpc);
   }));
@@ -2458,7 +2470,7 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns)
                 YQLDatabase_Name(table.namespace_().database_type())));
   }
 
-  return CreateSnapshot(tables, /* add_indexes */ false);
+  return CreateSnapshot(tables, retention_duration_hours, /* add_indexes */ false);
 }
 
 Result<ListSnapshotRestorationsResponsePB> ClusterAdminClient::ListSnapshotRestorations(
@@ -2801,6 +2813,18 @@ Status ClusterAdminClient::DeleteSnapshot(const std::string& snapshot_id) {
   }));
 
   cout << "Deleted snapshot: " << snapshot_id << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::AbortSnapshotRestore(const TxnSnapshotRestorationId& restoration_id) {
+  AbortSnapshotRestoreResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    AbortSnapshotRestoreRequestPB req;
+    req.set_restoration_id(restoration_id.data(), restoration_id.size());
+    return master_backup_proxy_->AbortSnapshotRestore(req, &resp, rpc);
+  }));
+
+  cout << "Aborted snapshot restore: " << restoration_id.ToString() << endl;
   return Status::OK();
 }
 
@@ -3629,6 +3653,10 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
   req.set_db_type(ns.db_type);
   if (record_type == yb::ToString("ALL")) {
     req.set_record_type(cdc::CDCRecordType::ALL);
+  } else if (record_type == yb::ToString("FULL_ROW_NEW_IMAGE")) {
+    req.set_record_type(cdc::CDCRecordType::FULL_ROW_NEW_IMAGE);
+  } else if (record_type == yb::ToString("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES")) {
+    req.set_record_type(cdc::CDCRecordType::MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES);
   } else {
     req.set_record_type(cdc::CDCRecordType::CHANGE);
   }
@@ -3809,6 +3837,113 @@ Status ClusterAdminClient::WaitForSetupUniverseReplicationToFinish(
         // Still processing, wait and then loop again.
         std::this_thread::sleep_for(100ms);
   }
+}
+
+using ReplicationBootstrapState = master::SysUniverseReplicationBootstrapEntryPB::State;
+Status ClusterAdminClient::WaitForReplicationBootstrapToFinish(const std::string& replication_id) {
+  const auto initial_delay = MonoDelta::FromMilliseconds(100);
+  const auto delay_increment = MonoDelta::FromMilliseconds(250);
+  const auto max_delay_time = MonoDelta::FromSeconds(5);
+  auto delay_time = initial_delay;
+
+  master::IsSetupNamespaceReplicationWithBootstrapDoneRequestPB req;
+  ReplicationBootstrapState state =
+      ReplicationBootstrapState::SysUniverseReplicationBootstrapEntryPB_State_INITIALIZING;
+  req.set_replication_group_id(replication_id);
+  for (;;) {
+        master::IsSetupNamespaceReplicationWithBootstrapDoneResponsePB resp;
+        RpcController rpc;
+        rpc.set_timeout(timeout_);
+        Status s = master_replication_proxy_->IsSetupNamespaceReplicationWithBootstrapDone(
+            req, &resp, &rpc);
+
+        if (!s.ok() || resp.has_error()) {
+      LOG(WARNING) << Format(
+          "Encountered error while waiting for setup_namespace_replication_with_bootstrap to "
+          "complete : $0",
+          !s.ok() ? s.ToString() : resp.error().status().message());
+        }
+        if (resp.has_done() && resp.done()) {
+      return StatusFromPB(resp.bootstrap_error());
+        }
+        if (resp.state() != state) {
+      state = resp.state();
+      delay_time = initial_delay;
+      cout << Format(
+          "Replication bootstrap in state $0",
+          master::SysUniverseReplicationBootstrapEntryPB_State_Name(state)) << endl;
+        } else {
+      delay_time = std::min(max_delay_time, delay_time + delay_increment);
+        }
+        // Still processing, wait and then loop again.
+        SleepFor(delay_time);
+  }
+}
+
+Status ClusterAdminClient::SetupNamespaceReplicationWithBootstrap(
+    const std::string& replication_id, const std::vector<std::string>& producer_addresses,
+    const TypedNamespaceName& ns, bool transactional) {
+  if (ns.db_type == YQL_DATABASE_CQL && transactional) {
+        return STATUS(
+            InvalidArgument, "Transactional replication is not supported for non-YSQL namespace");
+  }
+
+  master::SetupNamespaceReplicationWithBootstrapRequestPB req;
+  master::SetupNamespaceReplicationWithBootstrapResponsePB resp;
+  req.set_replication_id(replication_id);
+  req.set_transactional(transactional);
+  req.mutable_producer_namespace()->set_name(ns.name);
+  req.mutable_producer_namespace()->set_database_type(ns.db_type);
+
+  req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_addresses.size()));
+  for (const auto& addr : producer_addresses) {
+        // HostPort::FromString() expects a default port.
+        auto hp = VERIFY_RESULT(HostPort::FromString(addr, master::kMasterDefaultPort));
+        HostPortToPB(hp, req.add_producer_master_addresses());
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  auto setup_result_status =
+      master_replication_proxy_->SetupNamespaceReplicationWithBootstrap(req, &resp, &rpc);
+
+  setup_result_status = WaitForReplicationBootstrapToFinish(replication_id);
+
+  if (resp.has_error()) {
+        cout << "Error bootstrapping replication: " << resp.error().status().message() << endl;
+        Status status_from_error = StatusFromPB(resp.error().status());
+
+        return status_from_error;
+  }
+
+  if (!setup_result_status.ok()) {
+        cout << "Error waiting for bootstrap replication to complete: "
+             << setup_result_status.message().ToBuffer() << endl;
+        return setup_result_status;
+  }
+
+  cout << "Replication bootstrap completed successfully, waiting for setup universe replication"
+       << endl;
+
+  setup_result_status = WaitForSetupUniverseReplicationToFinish(replication_id);
+
+  if (resp.has_error()) {
+        cout << "Error setting up universe replication: " << resp.error().status().message()
+             << endl;
+        Status status_from_error = StatusFromPB(resp.error().status());
+
+        return status_from_error;
+  }
+
+  if (!setup_result_status.ok()) {
+        cout << "Error waiting for universe replication setup to complete: "
+             << setup_result_status.message().ToBuffer() << endl;
+        return setup_result_status;
+  }
+
+  cout << "Replication setup successfully" << endl;
+
+  return Status::OK();
 }
 
 Status ClusterAdminClient::SetupUniverseReplication(
@@ -4074,11 +4209,11 @@ Status ClusterAdminClient::BootstrapProducer(const vector<TableId>& table_ids) {
 }
 
 Status ClusterAdminClient::WaitForReplicationDrain(
-    const std::vector<CDCStreamId>& stream_ids, const string& target_time) {
+    const std::vector<xrepl::StreamId>& stream_ids, const string& target_time) {
   master::WaitForReplicationDrainRequestPB req;
   master::WaitForReplicationDrainResponsePB resp;
   for (const auto& stream_id : stream_ids) {
-        req.add_stream_ids(stream_id);
+        req.add_stream_ids(stream_id.ToString());
   }
   // If target_time is not provided, it will be set to current time in the master API.
   if (!target_time.empty()) {
@@ -4097,9 +4232,10 @@ Status ClusterAdminClient::WaitForReplicationDrain(
         return StatusFromPB(resp.error().status());
   }
 
-  std::unordered_map<CDCStreamId, std::vector<TabletId>> undrained_streams;
+  std::unordered_map<xrepl::StreamId, std::vector<TabletId>> undrained_streams;
   for (const auto& stream_info : resp.undrained_stream_info()) {
-        undrained_streams[stream_info.stream_id()].push_back(stream_info.tablet_id());
+        undrained_streams[VERIFY_RESULT(xrepl::StreamId::FromString(stream_info.stream_id()))]
+            .push_back(stream_info.tablet_id());
   }
   if (!undrained_streams.empty()) {
         cout << "Found undrained replications:" << endl;

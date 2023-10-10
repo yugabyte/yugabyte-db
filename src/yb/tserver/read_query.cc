@@ -80,6 +80,28 @@ void HandleRedisReadRequestAsync(
   status_cb(tablet->HandleRedisReadRequest(read_operation_data, redis_read_request, response));
 }
 
+Result<IsolationLevel> GetIsolationLevel(
+    const ReadRequestPB& req, TabletServerIf* server, TabletPeerTablet* peer_tablet) {
+  if (!req.has_transaction()) {
+    return IsolationLevel::NON_TRANSACTIONAL;
+  }
+
+  // Unfortunately, determining the isolation level is not as straightforward as it seems. All but
+  // the first request to a given tablet by a particular transaction assume that the tablet already
+  // has the transaction metadata, including the isolation level, and those requests expect us to
+  // retrieve the isolation level from that metadata. Failure to do so was the cause of a
+  // serialization anomaly tested by TestOneOrTwoAdmins
+  // (https://github.com/yugabyte/yugabyte-db/issues/1572).
+
+  const auto& transaction = req.transaction();
+  if (transaction.has_isolation()) {
+    // This must be the first request to this tablet by this particular transaction.
+    return transaction.isolation();
+  }
+  *peer_tablet = VERIFY_RESULT(LookupTabletPeer(server->tablet_peer_lookup(), req.tablet_id()));
+  return peer_tablet->tablet->GetIsolationLevel(transaction);
+}
+
 class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::ThreadPoolTask {
  public:
   ReadQuery(
@@ -212,27 +234,10 @@ Status ReadQuery::DoPerform() {
   TRACE("Start Read");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Read", "tablet_id", req_->tablet_id());
   VLOG(2) << "Received Read RPC: " << req_->DebugString();
-  // Unfortunately, determining the isolation level is not as straightforward as it seems. All but
-  // the first request to a given tablet by a particular transaction assume that the tablet already
-  // has the transaction metadata, including the isolation level, and those requests expect us to
-  // retrieve the isolation level from that metadata. Failure to do so was the cause of a
-  // serialization anomaly tested by TestOneOrTwoAdmins
-  // (https://github.com/yugabyte/yugabyte-db/issues/1572).
 
-  bool serializable_isolation = false;
   TabletPeerTablet peer_tablet;
-  if (req_->has_transaction()) {
-    IsolationLevel isolation_level;
-    if (req_->transaction().has_isolation()) {
-      // This must be the first request to this tablet by this particular transaction.
-      isolation_level = req_->transaction().isolation();
-    } else {
-      peer_tablet = VERIFY_RESULT(LookupTabletPeer(
-          server_.tablet_peer_lookup(), req_->tablet_id()));
-      isolation_level = VERIFY_RESULT(peer_tablet.tablet->GetIsolationLevelFromPB(*req_));
-    }
-    serializable_isolation = isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION;
-
+  const auto isolation_level = VERIFY_RESULT(GetIsolationLevel(*req_, &server_, &peer_tablet));
+  if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
     if (PREDICT_FALSE(FLAGS_TEST_transactional_read_delay_ms > 0)) {
       LOG(INFO) << "Delaying transactional read for "
                 << FLAGS_TEST_transactional_read_delay_ms << " ms.";
@@ -248,13 +253,15 @@ Status ReadQuery::DoPerform() {
 #endif
   }
 
+  const auto serializable_isolation = isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION;
+
   // Get the most restrictive row mark present in the batch of PostgreSQL requests.
   // TODO: rather handle individual row marks once we start batching read requests (issue #2495)
-  RowMarkType batch_row_mark = RowMarkType::ROW_MARK_ABSENT;
+  auto batch_row_mark = RowMarkType::ROW_MARK_ABSENT;
   CatalogVersionChecker catalog_version_checker(server_);
   for (const auto& pg_req : req_->pgsql_batch()) {
     RETURN_NOT_OK(catalog_version_checker(pg_req));
-    RowMarkType current_row_mark = GetRowMarkTypeFromPB(pg_req);
+    auto current_row_mark = GetRowMarkTypeFromPB(pg_req);
     if (IsValidRowMarkType(current_row_mark)) {
       if (!req_->has_transaction()) {
         return STATUS(
@@ -264,7 +271,7 @@ Status ReadQuery::DoPerform() {
       batch_row_mark = GetStrongestRowMarkType({current_row_mark, batch_row_mark});
     }
   }
-  const bool has_row_mark = IsValidRowMarkType(batch_row_mark);
+  const auto has_row_mark = IsValidRowMarkType(batch_row_mark);
 
   LeaderTabletPeer leader_peer;
   auto tablet_peer = peer_tablet.tablet_peer;
@@ -287,7 +294,8 @@ Status ReadQuery::DoPerform() {
 
   if (req_->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX) {
     if (abstract_tablet_) {
-      tablet()->metrics()->consistent_prefix_read_requests->Increment();
+      tablet()->metrics()->Increment(
+          tablet::TabletCounters::kConsistentPrefixReadRequests);
     }
   }
 
@@ -331,11 +339,20 @@ Status ReadQuery::DoPerform() {
   require_lease_ = tablet::RequireLease(req_->consistency_level() == YBConsistencyLevel::STRONG);
   // TODO: should check all the tables referenced by the requests to decide if it is transactional.
   const bool transactional = this->transactional();
+
   // Should not pick read time for serializable isolation, since it is picked after read intents
   // are added. Also conflict resolution for serializable isolation should be done without read time
   // specified. So we use max hybrid time for conflict resolution in such case.
   // It was implemented as part of #655.
-  if (!serializable_isolation) {
+  //
+  // Similarly, for explicit row locking, if no read time is specified by the query layer, we can
+  // avoid picking one before conflict resolution. Instead we can pick one while reading i.e., after
+  // writing intents (see PickReadTime() in Run()). This helps in Wait-on-Conflict concurrency
+  // control mode by allowing retrying of conflict resolution on the tserver once the waiting
+  // transaction exits a wait queue, instead of throwing a kConflict error and expecting the query
+  // layer to maybe retry. It also helps retry kReadRestart errors which might occur during the
+  // reading phase in the context of this operation.
+  if (!serializable_isolation && !has_row_mark) {
     RETURN_NOT_OK(PickReadTime(server_.Clock()));
   }
 
@@ -381,8 +398,8 @@ Status ReadQuery::DoPerform() {
     // TODO(dtxn) write request id
 
     RETURN_NOT_OK(leader_peer.tablet->CreateReadIntents(
-        req_->transaction(), req_->subtransaction(), req_->ql_batch(), req_->pgsql_batch(),
-        &write_batch));
+        isolation_level, req_->transaction(), req_->subtransaction(),
+        req_->ql_batch(), req_->pgsql_batch(), &write_batch));
 
     query->AdjustYsqlQueryTransactionality(req_->pgsql_batch_size());
 
@@ -407,7 +424,9 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
   if (metrics) {
     start_time = MonoTime::Now();
   }
-  if (!read_time_) {
+
+  const auto read_time_was_empty = !read_time_;
+  if (read_time_was_empty) {
     safe_ht_to_read_ = VERIFY_RESULT(abstract_tablet_->SafeTime(require_lease_));
     // If the read time is not specified, then it is a single-shard read.
     // So we should restart it in server in case of failure.
@@ -441,7 +460,12 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
   }
   if (metrics) {
     auto safe_time_wait = MonoTime::Now() - start_time;
-    metrics->read_time_wait->Increment(safe_time_wait.ToMicroseconds());
+    metrics->Increment(
+         tablet::TabletEventStats::kReadTimeWait,
+         make_unsigned(safe_time_wait.ToMicroseconds()));
+    if (read_time_was_empty) {
+      metrics->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
+    }
   }
   return Status::OK();
 }
@@ -486,7 +510,7 @@ Status ReadQuery::Complete() {
           read_time_.local_limit.ToUint64());
       restart_read_time->set_local_limit_ht(read_time_.local_limit.ToUint64());
       // Global limit is ignored by caller, so we don't set it.
-      tablet()->metrics()->restart_read_requests->Increment();
+      tablet()->metrics()->Increment(tablet::TabletCounters::kRestartReadRequests);
       break;
     }
 
@@ -564,6 +588,9 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
   if (IsForBackfill()) {
     read_operation_data.read_time = read_time_;
   } else {
+    if (!read_time_) {
+      tablet()->metrics()->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
+    }
     read_tx = VERIFY_RESULT(
         tablet::ScopedReadOperation::Create(abstract_tablet_.get(), require_lease_, read_time_));
     read_operation_data.read_time = read_tx.read_time();
@@ -670,7 +697,8 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
 
     if (req_->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX &&
         total_num_rows_read > 0) {
-      tablet()->metrics()->pgsql_consistent_prefix_read_rows->IncrementBy(total_num_rows_read);
+      tablet()->metrics()->IncrementBy(
+          tablet::TabletCounters::kPgsqlConsistentPrefixReadRows, total_num_rows_read);
     }
     return ReadHybridTime();
   }

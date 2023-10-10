@@ -4,7 +4,6 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import React from 'react';
 import clsx from 'clsx';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { makeStyles, Typography } from '@material-ui/core';
@@ -64,11 +63,11 @@ export const ConfigureInstanceTypeModal = ({
         {...modalProps}
       >
         <div className={classes.formField}>
-          <Typography variant="body2">Machine Type</Typography>
+          <Typography variant="body2">Name</Typography>
           <YBInputField
             control={formMethods.control}
             name="instanceTypeCode"
-            rules={{ required: 'Machine type is required.' }}
+            rules={{ required: 'Instance type name is required.' }}
             fullWidth
           />
         </div>

@@ -28,6 +28,7 @@ module.exports = {
   parserOptions: {
     ecmaVersion: 2020,
     sourceType: 'module',
+    tsconfigRootDir: __dirname,
     ecmaFeatures: {
       jsx: true
     },
@@ -46,6 +47,7 @@ module.exports = {
     'plugin:react/recommended',
     'plugin:@typescript-eslint/recommended',
     'plugin:react-hooks/recommended',
+    'plugin:storybook/recommended',
     // Disable rules that conflict with Prettier
     // Prettier must be last to override other configs
     'prettier'
@@ -80,7 +82,7 @@ module.exports = {
     'no-extra-boolean-cast': 0,
     'no-unused-vars': 0,
     '@typescript-eslint/no-unused-vars': [
-      2,
+      0,
       { vars: 'all', args: 'none', ignoreRestSiblings: true }
     ],
     '@typescript-eslint/ban-types': 0,

@@ -131,27 +131,6 @@ export function getKMSConfigs() {
   return axios.get(requestUrl).then((resp) => resp.data);
 }
 
-export function createBackup(values: Record<string, any>, isIncrementalBackup = false) {
-  const cUUID = localStorage.getItem('customerId');
-  const requestUrl = `${ROOT_URL}/customers/${cUUID}/backups`;
-
-  const payload = prepareBackupCreationPayload(values, cUUID);
-
-  if (isIncrementalBackup) {
-    payload['baseBackupUUID'] = values['baseBackupUUID'];
-  }
-
-  return axios.post(requestUrl, payload);
-}
-
-export function editBackup(values: IBackupEditParams) {
-  const cUUID = localStorage.getItem('customerId');
-  const backupUUID = values.backupUUID;
-  const requestUrl = `${ROOT_URL}/customers/${cUUID}/backups/${backupUUID}`;
-
-  return axios.put(requestUrl, values);
-}
-
 export const prepareBackupCreationPayload = (values: Record<string, any>, cUUID: string | null) => {
   const backup_type = values['api_type'].value;
 
@@ -162,7 +141,8 @@ export const prepareBackupCreationPayload = (values: Record<string, any>, cUUID:
     sse: values['storage_config'].name === 'S3',
     storageConfigUUID: values['storage_config'].value,
     universeUUID: values['universeUUID'],
-    tableByTableBackup: values['isTableByTableBackup']
+    tableByTableBackup: values['isTableByTableBackup'],
+    useTablespaces: values['useTablespaces']
   };
 
   let dbMap: Dictionary<any> = [];
@@ -214,6 +194,27 @@ export const prepareBackupCreationPayload = (values: Record<string, any>, cUUID:
   }
   return payload;
 };
+
+export function createBackup(values: Record<string, any>, isIncrementalBackup = false) {
+  const cUUID = localStorage.getItem('customerId');
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/backups`;
+
+  const payload = prepareBackupCreationPayload(values, cUUID);
+
+  if (isIncrementalBackup) {
+    payload['baseBackupUUID'] = values['baseBackupUUID'];
+  }
+
+  return axios.post(requestUrl, payload);
+}
+
+export function editBackup(values: IBackupEditParams) {
+  const cUUID = localStorage.getItem('customerId');
+  const backupUUID = values.backupUUID;
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/backups/${backupUUID}`;
+
+  return axios.put(requestUrl, values);
+}
 
 export const assignStorageConfig = (backup: IBackup, storageConfig: IStorageConfig) => {
   const cUUID = localStorage.getItem('customerId');

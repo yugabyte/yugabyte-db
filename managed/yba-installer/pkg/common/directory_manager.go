@@ -53,6 +53,18 @@ const (
 // SystemdDir service file directory.
 const SystemdDir string = "/etc/systemd/system"
 
+// Version of yba-ctl
+var Version = ""
+
+// YbactlVersion returns the version of yba-ctl
+func YbactlVersion() string {
+	if Version != "" {
+		return Version
+	}
+	log.Fatal("Version unset in directory manager.")
+	return ""
+}
+
 // GetBaseInstall returns the base install directory, as defined by the user
 func GetBaseInstall() string {
 	return dm.BaseInstall()
@@ -128,7 +140,8 @@ func PrunePastInstalls() {
 
 // Default the directory manager to using the install workflow.
 var dm directoryManager = directoryManager{
-	Workflow: workflowInstall,
+	Workflow:          workflowInstall,
+	replicatedBaseDir: "/opt/yugabyte", // default replicated install directory
 }
 
 // SetWorkflowUpgrade changes the workflow from install to upgrade.
@@ -144,7 +157,8 @@ const (
 )
 
 type directoryManager struct {
-	Workflow workflow
+	Workflow          workflow
+	replicatedBaseDir string
 }
 
 func (dm directoryManager) BaseInstall() string {
@@ -155,12 +169,20 @@ func (dm directoryManager) BaseInstall() string {
 // the active directory for install case, and the inactive for upgrade case.
 func (dm directoryManager) WorkingDirectory() string {
 
-	return filepath.Join(dm.BaseInstall(), "software", GetVersion())
+	return filepath.Join(dm.BaseInstall(), "software", YbactlVersion())
 }
 
 // GetActiveSymlink will return the symlink file name
 func (dm directoryManager) ActiveSymlink() string {
 	return filepath.Join(dm.BaseInstall(), "software", InstallSymlink)
+}
+
+func (dm directoryManager) ReplicatedBaseDir() string {
+	return dm.replicatedBaseDir
+}
+
+func (dm directoryManager) SetReplicatedBaseDir(dir string) {
+	dm.replicatedBaseDir = dir
 }
 
 func GetPostgresPackagePath() string {
@@ -190,7 +212,7 @@ func MaybeGetYbdbPackagePath() string {
 func GetTemplatesDir() string {
 	// if we are being run from the installed dir, templates
 	// is in the same dir as the binary
-	installedPath := filepath.Join(GetBinaryDir(), ConfigDir)
+	installedPath := filepath.Join(GetInstallerSoftwareDir(), ConfigDir)
 	if _, err := os.Stat(installedPath); err == nil {
 		return installedPath
 	}
@@ -202,7 +224,7 @@ func GetTemplatesDir() string {
 func GetCronDir() string {
 	// if we are being run from the installed dir, cron
 	// is in the same dir as the binary
-	installedPath := filepath.Join(GetBinaryDir(), CronDir)
+	installedPath := filepath.Join(GetInstallerSoftwareDir(), CronDir)
 	if _, err := os.Stat(installedPath); err == nil {
 		return installedPath
 	}
@@ -216,4 +238,8 @@ func GetYBAInstallerDataDir() string {
 }
 func GetSelfSignedCertsDir() string {
 	return filepath.Join(GetYBAInstallerDataDir(), "certs")
+}
+
+func GetReplicatedBaseDir() string {
+	return dm.ReplicatedBaseDir()
 }

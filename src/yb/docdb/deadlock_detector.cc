@@ -21,6 +21,7 @@
 
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction.h"
+#include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/stl_util.h"
@@ -60,11 +61,13 @@ DEFINE_RUNTIME_int32(
     "Minimum number of transaction heartbeat periods for which a deadlocked transaction's info is "
     "retained, after it has been reported to be aborted. This ensures the memory used to track "
     "info of deadlocked transactions does not grow unbounded.");
+TAG_FLAG(clear_deadlocked_txns_info_older_than_heartbeats, hidden);
+TAG_FLAG(clear_deadlocked_txns_info_older_than_heartbeats, advanced);
 
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     tablet, deadlock_size, "Deadlock size", yb::MetricUnit::kTransactions,
     "The number of transactions involved in detected deadlocks");
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     tablet, deadlock_probe_latency, "Deadlock probe latency", yb::MetricUnit::kMicroseconds,
     "The time it takes to complete the probe from a waiting transaction to all of its blockers.");
 METRIC_DEFINE_gauge_uint64(
@@ -211,7 +214,7 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
   LocalProbeProcessor(
       const std::string& detector_log_prefix, const DetectorId& origin_detector_id,
       uint32_t probe_num, uint32_t min_probe_num, const TransactionId& waiter_id, rpc::Rpcs* rpcs,
-      client::YBClient* client, scoped_refptr<Histogram> probe_latency)
+      client::YBClient* client, scoped_refptr<EventStats> probe_latency)
       : detector_log_prefix_(detector_log_prefix), origin_detector_id_(origin_detector_id),
         waiter_(waiter_id), probe_num_(probe_num), min_probe_num_(min_probe_num), rpcs_(rpcs),
         client_(client), probe_latency_(std::move(probe_latency)) {
@@ -346,7 +349,7 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
   uint32_t min_probe_num_;
   rpc::Rpcs* rpcs_;
   client::YBClient* client_;
-  scoped_refptr<Histogram> probe_latency_;
+  scoped_refptr<EventStats> probe_latency_;
 
   CoarseTimePoint sent_at_;
 
@@ -369,7 +372,7 @@ using LocalProbeProcessorPtr = std::shared_ptr<LocalProbeProcessor>;
 } // namespace
 
 std::string ConstructDeadlockedMessage(const TransactionId& waiter,
-                                 const tserver::ProbeTransactionDeadlockResponsePB& resp) {
+                                       const tserver::ProbeTransactionDeadlockResponsePB& resp) {
   std::stringstream ss;
   ss << Format("Transaction $0 aborted due to a deadlock.\n$0", waiter.ToString());
   for (auto i = 1 ; i < resp.deadlocked_txn_ids_size() ; i++) {
@@ -380,7 +383,7 @@ std::string ConstructDeadlockedMessage(const TransactionId& waiter,
       ss << Format(" -> $0", *id_or_status);
     }
   }
-  ss << Format(" -> $0\n", waiter.ToString());
+  ss << Format(" -> $0 ", waiter.ToString());
   return ss.str();
 }
 
@@ -627,8 +630,10 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
     if (it == recently_deadlocked_txns_info_.end()) {
       return Status::OK();
     }
+    // Return Expired so that TabletInvoker does not retry. Also, query layer proactively sends
+    // clean up requests to transaction participant only for transactions with Expired status.
     return STATUS_EC_FORMAT(
-        Expired, PgsqlError(YBPgErrorCode::YB_PG_T_R_DEADLOCK_DETECTED), it->second.first);
+        Expired, TransactionError(TransactionErrorCode::kDeadlock), it->second.first);
   }
 
  private:
@@ -848,8 +853,8 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
   const DetectorId detector_id_;
   const std::string log_prefix_;
 
-  scoped_refptr<Histogram> deadlock_size_;
-  scoped_refptr<Histogram> probe_latency_;
+  scoped_refptr<EventStats> deadlock_size_;
+  scoped_refptr<EventStats> probe_latency_;
   scoped_refptr<AtomicGauge<uint64_t>> deadlock_detector_waiters_;
 
   mutable rw_spinlock mutex_;

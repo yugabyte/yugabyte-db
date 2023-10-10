@@ -20,13 +20,13 @@ You can scale the following cluster properties:
 - Number of vCPUs per node (vertical).
 - Disk size per node.
 
-Cluster edit operations are performed using the **Edit Infrastructure** option on the cluster **Settings** tab.
+Cluster edit operations are performed using the **Edit Infrastructure** option under **Regions** on the cluster **Settings > Infrastructure** tab.
 
-{{< youtube id="yL4WR6wpjPs" title="Perform a live infrastructure upgrade in YugabyteDB Managed" >}}
+{{< youtube id="Dhb-R-tlFKM" title="Perform a live infrastructure upgrade in YugabyteDB Managed" >}}
 
 For clusters with Region, Availability Zone, or Node Level fault tolerance, the scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
 
-The **Regions** section on the cluster **Settings** tab summarizes the cluster configuration, including the number of nodes, vCPUs, memory, and disk per node, and VPC for each region.
+The **Regions** section on the cluster **Settings > Infrastructure** tab summarizes the cluster configuration, including the number of nodes, vCPUs, memory, and disk per node, and VPC for each region.
 
 ## Recommendations
 
@@ -44,6 +44,7 @@ The **Regions** section on the cluster **Settings** tab summarizes the cluster c
 - You can't scale single node clusters (fault tolerance none), you can only increase disk size.
 - You can't scale Sandbox clusters.
 - If another [locking cluster operation](../#locking-operations) is already running, you must wait for it to finish.
+- On AWS, you can't make further modifications to disk (size, IOPS) for six hours after changing either disk size or IOPS (this includes a scaling operation that increases the number of vCPUs, as this also increases disk size).
 
 ## Scale and configure clusters
 
@@ -58,11 +59,11 @@ For Availability Zone Level fault tolerant clusters, you must scale nodes in inc
 To scale a single-region cluster:
 
 1. On the **Clusters** page, select your cluster.
-1. On the **Settings** tab or under **Actions**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
+1. Go to **Settings > Infrastructure** or click **Actions**, and choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
 
     ![Cluster Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit.png)
 
-1. Enter the number of nodes, vCPUs per node, and disk size in GB per node for the cluster.
+1. Enter the number of nodes, vCPUs per node, disk size in GB per node, and disk input output (I/O) operations per second (IOPS) per node (AWS only) for the cluster.
 
     Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
@@ -81,13 +82,13 @@ To add or remove read replicas, refer to [Read replicas](../managed-read-replica
 To scale nodes in a replicate-across-regions cluster:
 
 1. On the **Clusters** page, select your cluster.
-1. On the **Settings** tab or under **Actions**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
+1. Go to **Settings > Infrastructure** or click **Actions**, and choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
 
     ![Cluster Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit-sync.png)
 
     <!--1. To migrate nodes to a different region, select the region. When migrating a node, you can also deploy it in a different VPN.-->
 
-1. Enter the number of nodes, vCPUs per node, and disk size in GB per node for the cluster.
+1. Enter the number of nodes, vCPUs per node, disk size in GB per node, and disk input output (I/O) operations per second (IOPS) per node (AWS only) for the cluster.
 
     The same number of nodes and node sizes apply across all regions.
 
@@ -114,7 +115,7 @@ For Availability Zone Level fault tolerant clusters, you must scale nodes in eac
 To scale a partition-by-region cluster:
 
 1. On the **Clusters** page, select your cluster.
-1. On the **Settings** tab or under **Actions**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
+1. Go to **Settings > Infrastructure** or click **Actions**, and choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
 
     ![Cluster Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit-geo.png)
 
@@ -122,7 +123,7 @@ To scale a partition-by-region cluster:
 
 1. To scale the cluster horizontally, enter the number of nodes for each region.
 
-1. To scale the cluster vertically, enter the number of vCPUs per node, and disk size in GB per node.
+1. To scale the cluster vertically, enter the number of vCPUs per node, disk size in GB per node, and disk input output (I/O) operations per second (IOPS) per node (AWS only).
 
     You can scale the number of nodes in each region independently, however the same node sizes apply across all regions.
 

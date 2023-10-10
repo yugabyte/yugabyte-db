@@ -234,3 +234,12 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
 SELECT * FROM mv ORDER BY col;
 DROP MATERIALIZED VIEW mv;
 SELECT * FROM mv;
+
+-- Split options on indexes should not be copied after a non-concurrent refresh
+-- on a matview.
+\c yugabyte;
+CREATE TABLE test_yb(t int, j int);
+CREATE MATERIALIZED VIEW mv AS SELECT * FROM test_yb;
+CREATE INDEX idx ON mv(t) SPLIT INTO 5 TABLETS;
+REFRESH MATERIALIZED VIEW mv;
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('idx'::regclass);

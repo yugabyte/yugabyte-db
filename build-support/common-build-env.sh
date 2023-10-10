@@ -63,7 +63,6 @@ $YB_SRC_ROOT/python/yugabyte/gen_initial_sys_catalog_snapshot.py
   export YB_SCRIPT_PATH_IS_SAME_PATH=$YB_SRC_ROOT/python/yugabyte/is_same_path.py
   export YB_SCRIPT_PATH_KILL_LONG_RUNNING_MINICLUSTER_DAEMONS=\
 $YB_SRC_ROOT/python/yugabyte/kill_long_running_minicluster_daemons.py
-  export YB_SCRIPT_PATH_MAKE_RPATH_RELATIVE=$YB_SRC_ROOT/python/yugabyte/make_rpath_relative.py
   export YB_SCRIPT_PATH_PARSE_TEST_FAILURE=$YB_SRC_ROOT/python/yugabyte/parse_test_failure.py
   export YB_SCRIPT_PATH_POSTPROCESS_TEST_RESULT=\
 $YB_SRC_ROOT/python/yugabyte/postprocess_test_result.py
@@ -228,10 +227,12 @@ readonly -a VALID_COMPILER_TYPES=(
   gcc
   gcc11
   gcc12
+  gcc13
   clang
   clang14
   clang15
   clang16
+  clang17
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
 
@@ -387,13 +388,8 @@ decide_whether_to_use_linuxbrew() {
       if [[ ${predefined_build_root##*/} == *-linuxbrew-* ]]; then
         YB_USE_LINUXBREW=1
       fi
-    elif [[ -n ${YB_LINUXBREW_DIR:-} ||
-            ( ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ &&
-               $build_type =~ ^(release|prof_(gen|use))$ &&
-              "$( uname -m )" == "x86_64" &&
-              ${OSTYPE} =~ ^linux.*$ ) ]] && ! is_ubuntu; then
-      YB_USE_LINUXBREW=1
     fi
+    # Default is no linuxbrew
     export YB_USE_LINUXBREW=${YB_USE_LINUXBREW:-0}
   fi
 }
@@ -544,12 +540,7 @@ set_default_compiler_type() {
       adjust_compiler_type_on_mac
     elif [[ $OSTYPE =~ ^linux ]]; then
       detect_architecture
-      if [[ ${build_type} =~ ^(asan|debug|fastdebug)$ ]]; then
-        YB_COMPILER_TYPE=clang16
-      else
-        # Use Clang 15 for release builds and TSAN builds until perf evaluation and TSAN fixes.
-        YB_COMPILER_TYPE=clang15
-      fi
+      YB_COMPILER_TYPE=clang16
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi
@@ -2264,19 +2255,20 @@ check_python_script_syntax() {
 
 run_shellcheck() {
   local scripts_to_check=(
+    bin/release_package_docker_test.sh
     build-support/common-build-env.sh
     build-support/common-cli-env.sh
     build-support/common-test-env.sh
-    build-support/jenkins/common-lto.sh
     build-support/compiler-wrappers/compiler-wrapper.sh
     build-support/find_linuxbrew.sh
     build-support/jenkins/build.sh
+    build-support/jenkins/common-lto.sh
     build-support/jenkins/test.sh
     build-support/jenkins/yb-jenkins-build.sh
     build-support/jenkins/yb-jenkins-test.sh
     build-support/run-test.sh
-    yugabyted-ui/build.sh
     yb_build.sh
+    yugabyted-ui/build.sh
   )
   pushd "$YB_SRC_ROOT"
   local script_path

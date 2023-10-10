@@ -2,10 +2,6 @@ package helpers
 
 import (
     "encoding/json"
-    "fmt"
-    "io/ioutil"
-    "net/http"
-    "time"
 )
 
 type PlacementBlock struct {
@@ -43,23 +39,23 @@ type ClusterConfigFuture struct {
     Error         error
 }
 
-func GetClusterConfigFuture(nodeHost string, future chan ClusterConfigFuture) {
+func (h *HelperContainer) GetClusterConfigFuture(nodeHost string, future chan ClusterConfigFuture) {
     clusterConfig := ClusterConfigFuture{
         ClusterConfig: ClusterConfigStruct{},
         Error:         nil,
     }
-    httpClient := &http.Client{
-        Timeout: time.Second * 10,
-    }
-    url := fmt.Sprintf("http://%s:%s/api/v1/cluster-config", nodeHost, MasterUIPort)
-    resp, err := httpClient.Get(url)
+    urls, err := h.BuildMasterURLs("api/v1/cluster-config")
     if err != nil {
         clusterConfig.Error = err
         future <- clusterConfig
         return
     }
-    defer resp.Body.Close()
-    body, err := ioutil.ReadAll(resp.Body)
+    body, err := h.AttemptGetRequests(urls, true)
+    if err != nil {
+        clusterConfig.Error = err
+        future <- clusterConfig
+        return
+    }
     if err != nil {
         clusterConfig.Error = err
         future <- clusterConfig

@@ -24,7 +24,7 @@ Note that all the data in the colocation tablet is still replicated across nodes
 Colocation can make sense for high-performance, real-time data processing, where low-latency and fast access to data are critical. Colocation has the following benefits:
 
 - Improved performance and scalability: Using a single tablet instead of creating a tablet per relation reduces storage and compute overhead.
-- Faster access to data: By having all the data for all the databases from multiple tables stored in a single tablet, you can avoid the overhead of inter-node communication and data shuffling, which can result in faster access to data. For example, the speed of joins improves when data across the various colocated tables is local and you no longer have to read data over the network.
+- Faster access to data: By having all the data for a single database from multiple tables stored in a single tablet, you can avoid the overhead of inter-node communication and data shuffling, which can result in faster access to data. For example, the speed of joins improves when data across the various colocated tables is local and you no longer have to read data over the network.
 
 ### When to use colocation
 
@@ -63,11 +63,13 @@ Colocation can be enabled at the cluster, database, or table level. For a coloca
 
 ### Clusters
 
-A cluster can be configured to have colocation enabled for all the databases in the cluster at creation time. To do so set the following T-Server flag to true at the time of cluster creation as follows.
+To enable colocation for all databases in a cluster, when you create the cluster, set the following [flag](../../../reference/configuration/yb-master/#ysql-colocate-database-by-default) to true for [YB-Master](../../concepts/yb-master/) and [YB-TServer](../../concepts/yb-tserver/) services as follows:
 
 ```sql
 ysql_colocate_database_by_default = true
 ```
+
+You can also set this flag after creating the cluster, but you will need to restart the YB-Masters and YB-TServers.
 
 Note: For YugabyteDB Managed, you currently cannot enable colocation for a cluster. Enable colocation for [individual databases](#databases).
 
@@ -102,7 +104,7 @@ You can create a backup of a database that was colocated with the deprecated syn
 All the tables in a colocated database are colocated by default. There is no need to enable colocation when creating tables. You can choose to opt specific tables out of colocation in a colocated database. To do this, use the following command:
 
 ```sql
-CREATE TABLE <name> (WITH COLOCATION = false);
+CREATE TABLE <name> (columns) WITH (COLOCATION = false);
 ```
 
 Note that you cannot create a colocated table in a non-colocated database.
@@ -140,7 +142,7 @@ To view metrics such as table size, use the name of the parent colocation table.
 ## Limitations and considerations
 
 - Creating colocated tables with tablespaces is disallowed. This will be supported in future releases.
-- Metrics for table metrics such as table size are available for the colocation table, not for individual colocated tables that are part of the colocation.
+- Metrics for table metrics such as table size are available for the colocation tablet, not for individual colocated tables that are part of the colocation.
 - Tablet splitting is disabled for colocated tables.
 - You can't configure xCluster replication for colocated tables using the YugabyteDB Anywhere UI in the 2.18.0 release. This functionality will be available in a future release.
 
@@ -186,7 +188,7 @@ To set up xCluster for colocated tables, do the following:
     For example:
 
     ```sh
-    ./yb-admin -master_addresses 127.0.0.2 setup_universe_replication A1-B2 127.0.0.1 00004000000030008000000000004004.colocation.parent.uuid  
+    ./yb-admin -master_addresses 127.0.0.2 setup_universe_replication A1-B2 127.0.0.1 00004000000030008000000000004004.colocation.parent.uuid
     ```
 
     ```output

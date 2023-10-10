@@ -26,9 +26,11 @@ $(function() {
       if (tr.hasClass('collapse')) {
         tr.removeClass('collapse').addClass('expand');
         children.hide();
+        children.css("display","none");
       } else {
         tr.removeClass('expand').addClass('collapse');
         children.show();
+        children.css("display","table-row");
       }
       return children;
     });
@@ -42,12 +44,4 @@ $(function() {
   $(".level4 td:first-child").has(".toggle").css("padding-left", "66px");
   $(".level5 td:first-child").has(".toggle").css("padding-left", "81px");
   $(".level6 td:first-child").has(".toggle").css("padding-left", "96px");
-});
-
-$(function() {
-  $(".level6 td:first-child span.toggle").click();
-  $(".level5 td:first-child span.toggle").click();
-  $(".level4 td:first-child span.toggle").click();
-  $(".level3 td:first-child span.toggle").click();
-  $(".level2 td:first-child span.toggle").click();
 });

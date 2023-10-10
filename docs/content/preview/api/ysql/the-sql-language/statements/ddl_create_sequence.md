@@ -16,29 +16,11 @@ Use the `CREATE SEQUENCE` statement to create a sequence in the current schema.
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_sequence,sequence_name,sequence_options.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_sequence,sequence_name,sequence_options.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  create_sequence,
+  sequence_name,
+  sequence_options
+{{%/ebnf%}}
 
 ## Semantics
 
@@ -52,23 +34,23 @@ The sequence name must be distinct from any other sequences, tables, indexes, vi
 
 Using this qualifier will create a temporary sequence. Temporary sequences are visible only in the current client session in which they are created and are automatically dropped at the end of the session. See the section [Creating and using temporary schema-objects](../../creating-and-using-temporary-schema-objects/).
 
-#### INCREMENT BY *increment*
+#### INCREMENT BY *int_literal*
 
 Specify the *increment* value to add to the current sequence value to create a new value. The default value is `1`. A positive number
 
-#### MINVALUE *minvalue* | NO MINVALUE
+#### MINVALUE *int_literal* | NO MINVALUE
 
  Specify the minimum value allowed in the sequence. If this value is reached (in a sequence with a negative increment), `nextval()` will return an error. If `NO MINVALUE` is specified, the default value will be used. Default is 1.
 
-#### MAXVALUE *maxvalue* | NO MAXVALUE
+#### MAXVALUE *int_literal* | NO MAXVALUE
 
 Specify the maximum value allowed in the sequence. If this value is reached, `nextval()` will return an error. If `NO MAXVALUE` is specified, the default will be used. Default is `2⁶³-1`.
 
-#### START WITH *start*
+#### START WITH *int_literal*
 
 Specify the first value in the sequence. `start` cannot be less than `minvalue`. Default is `1`.
 
-#### CACHE *cache*
+#### CACHE *int_literal*
 
 Specify how many numbers from the sequence to cache in the client. Default is `100`.
 

@@ -93,7 +93,9 @@ class PlainTableReader: public TableReader {
 
   bool IsSplitSst() const override { return false; }
 
-  void SetDataFileReader(std::unique_ptr<RandomAccessFileReader>&& data_file) override { assert(false); }
+  void SetDataFileReader(std::unique_ptr<RandomAccessFileReader>&& data_file) override {
+    LOG(FATAL) << "PlainTableReader::SetDataFileReader is not supported";
+  }
 
   InternalIterator* NewIterator(const ReadOptions&, Arena* arena = nullptr,
                                 bool skip_filters = false) override;
@@ -115,6 +117,8 @@ class PlainTableReader: public TableReader {
   virtual size_t ApproximateMemoryUsage() const override {
     return arena_.MemoryAllocatedBytes();
   }
+
+  InternalIterator* NewIndexIterator(const ReadOptions& read_options) override;
 
   PlainTableReader(const ImmutableCFOptions& ioptions,
                    std::unique_ptr<RandomAccessFileReader>&& file,

@@ -485,6 +485,8 @@ public class TestPgSelect extends BasePgSQLTest {
     String createIndex = "CREATE INDEX ON %s(b %s)";
 
     try (Statement statement = connection.createStatement()) {
+      // We want to test planner under classical PG nodes.
+      statement.execute("set yb_bnl_batch_size = 1");
       statement.execute(String.format(createTable, "t1", colOrder));
       statement.execute(String.format(createTable, "t2", colOrder));
       statement.execute("insert into t1 values (1,1), (2,2), (3,3)");
@@ -1192,7 +1194,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(0, metrics.seekCount);
 
         metrics = assertFullDocDBFilter(statement, query, "idx");
-        assertEquals(2, metrics.seekCount);
+        assertEquals(1, metrics.seekCount);
       }
     }
   }
@@ -1645,6 +1647,56 @@ public class TestPgSelect extends BasePgSQLTest {
         Set<Row> expectedRows = new HashSet<>();
         expectedRows.add(new Row(1, 1));
         assertRowSet(statement, query + "IN (1, 3000000005)", expectedRows);
+    }
+  }
+
+  @Test
+  public void testFilteringUsingIN() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test(h int, r int, v int, PRIMARY KEY (h, r))");
+
+      statement.execute("INSERT INTO test (h,r,v) values (1,1,1)");
+      statement.execute("INSERT INTO test (h,r,v) values (1,2,2)");
+      statement.execute("INSERT INTO test (h,r,v) values (1,3,3)");
+      statement.execute("INSERT INTO test (h,r,v) values (2,1,2)");
+      statement.execute("INSERT INTO test (h,r,v) values (2,2,3)");
+      statement.execute("INSERT INTO test (h,r,v) values (2,3,1)");
+      statement.execute("INSERT INTO test (h,r,v) values (3,1,3)");
+      statement.execute("INSERT INTO test (h,r,v) values (3,2,1)");
+      statement.execute("INSERT INTO test (h,r,v) values (3,3,2)");
+
+      // Filter by hash & range columns.
+      assertQuery(statement, "SELECT * FROM test WHERE h IN (1,2) AND r IN (1,2)",
+          new Row(1, 1, 1),
+          new Row(1, 2, 2),
+          new Row(2, 1, 2),
+          new Row(2, 2, 3));
+      // Filter by hash & non-key columns.
+      assertQuery(statement, "SELECT * FROM test WHERE h IN (1,2) AND v IN (1,2)",
+          new Row(1, 1, 1),
+          new Row(1, 2, 2),
+          new Row(2, 1, 2),
+          new Row(2, 3, 1));
+      assertQuery(statement, "SELECT * FROM test WHERE h IN (1,2) AND v = 2",
+          new Row(1, 2, 2),
+          new Row(2, 1, 2));
+      // Filter by range & non-key columns.
+      assertQuery(statement, "SELECT * FROM test WHERE r IN (1,2) AND v IN (1,2)",
+          new Row(1, 1, 1),
+          new Row(1, 2, 2),
+          new Row(2, 1, 2),
+          new Row(3, 2, 1));
+      assertQuery(statement, "SELECT * FROM test WHERE r IN (1,2) AND v = 2",
+          new Row(1, 2, 2),
+          new Row(2, 1, 2));
+      // Filter by hash & range & non-key columns.
+      assertQuery(statement, "SELECT * FROM test WHERE h IN (1,2) AND r IN (1,2) AND v IN (1,2)",
+          new Row(1, 1, 1),
+          new Row(1, 2, 2),
+          new Row(2, 1, 2));
+      assertQuery(statement, "SELECT * FROM test WHERE h IN (1,2) AND r IN (1,2) AND v = 2",
+          new Row(1, 2, 2),
+          new Row(2, 1, 2));
     }
   }
 

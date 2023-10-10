@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
@@ -24,18 +25,20 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseTags;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
-import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -61,6 +64,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -142,14 +146,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * This sets the user intent from the task params to the universe in memory. Note that the changes
-   * are not saved to the DB in this method.
+   * This sets nodes details and some properties (that cannot be updated during edit) from the task
+   * params to the universe in memory. Note that the changes are not saved to the DB in this method.
    *
    * @param universe
    * @param taskParams
    * @param isNonPrimaryCreate
    */
-  public static void setUserIntentToUniverse(
+  public static void updateUniverseNodesAndSettings(
       Universe universe, UniverseDefinitionTaskParams taskParams, boolean isNonPrimaryCreate) {
     // Persist the updated information about the universe.
     // It should have been marked as being edited in lockUniverseForUpdate().
@@ -177,7 +181,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         if (EncryptionInTransitUtil.isClientRootCARequired(taskParams)) {
           universeDetails.setClientRootCA(taskParams.getClientRootCA());
         }
-        universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
         universeDetails.xClusterInfo = taskParams.xClusterInfo;
       } // else non-primary (read-only / add-on) cluster edit mode.
     } else {
@@ -185,28 +188,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       universeDetails.nodeDetailsSet.addAll(taskParams.nodeDetailsSet);
     }
 
-    setEncryptionIntentForNonPrimaryClusters(
-        taskParams.getClusterByType(ClusterType.ASYNC), taskParams, universeDetails);
-    setEncryptionIntentForNonPrimaryClusters(
-        taskParams.getClusterByType(ClusterType.ADDON), taskParams, universeDetails);
-
     universe.setUniverseDetails(universeDetails);
-  }
-
-  private static void setEncryptionIntentForNonPrimaryClusters(
-      List<Cluster> clusters,
-      UniverseDefinitionTaskParams taskParams,
-      UniverseDefinitionTaskParams universeDetails) {
-    clusters.forEach(
-        cluster -> {
-          // Update read replica cluster TLS params to be same as primary cluster
-          cluster.userIntent.enableNodeToNodeEncrypt =
-              universeDetails.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt;
-          cluster.userIntent.enableClientToNodeEncrypt =
-              universeDetails.getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
-          universeDetails.upsertCluster(
-              cluster.userIntent, cluster.placementInfo, cluster.uuid, cluster.clusterType);
-        });
   }
 
   /**
@@ -228,7 +210,23 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Create the update lambda.
     UniverseUpdater updater =
         universe -> {
-          setUserIntentToUniverse(universe, taskParams(), isReadOnlyCreate);
+          updateUniverseNodesAndSettings(universe, taskParams(), isReadOnlyCreate);
+          if (!isReadOnlyCreate) {
+            universe
+                .getUniverseDetails()
+                .upsertPrimaryCluster(
+                    taskParams().getPrimaryCluster().userIntent,
+                    taskParams().getPrimaryCluster().placementInfo);
+          } else {
+            for (Cluster readOnlyCluster : taskParams().getReadOnlyClusters()) {
+              universe
+                  .getUniverseDetails()
+                  .upsertCluster(
+                      readOnlyCluster.userIntent,
+                      readOnlyCluster.placementInfo,
+                      readOnlyCluster.uuid);
+            }
+          }
         };
     // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
     // catch as we want to fail.
@@ -474,8 +472,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public void setCloudNodeUuids(Universe universe) {
-    // Set random node UUIDs for nodes in the cloud.
-    universe.getUniverseDetails().clusters.stream()
+    // Set deterministic node UUIDs for nodes in the cloud.
+    taskParams().clusters.stream()
         .filter(c -> !c.userIntent.providerType.equals(CloudType.onprem))
         .flatMap(c -> taskParams().getNodesInCluster(c.uuid).stream())
         .filter(n -> n.state == NodeDetails.NodeState.ToBeAdded)
@@ -615,11 +613,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     createStartMasterProcessTasks(nodeSet);
 
     // Add master to the quorum.
-    createChangeConfigTask(currentNode, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+    createChangeConfigTasks(currentNode, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
 
     if (stoppingNode != null && stoppingNode.isMaster) {
       // Perform master change only after the new master is added.
-      createChangeConfigTask(stoppingNode, false /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+      createChangeConfigTasks(stoppingNode, false /* isAdd */, SubTaskGroupType.ConfigureUniverse);
       if (isStoppable) {
         createStopMasterTasks(Collections.singleton(stoppingNode))
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -693,7 +691,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     NodeDetails newMasterNode = replacementSupplier.get();
     if (newMasterNode == null) {
       log.info("No eligible node found to move master from node {}", currentNode.getNodeName());
-      createChangeConfigTask(
+      createChangeConfigTasks(
           currentNode, false /* isAdd */, SubTaskGroupType.StoppingNodeProcesses);
       // Stop the master process on this node after this current master is removed.
       if (isStoppable) {
@@ -1127,6 +1125,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       fillCreateParamsForNode(params, userIntent, node);
       params.creatingUser = taskParams().creatingUser;
       params.platformUrl = taskParams().platformUrl;
+      params.tags = userIntent.instanceTags;
       // Create the Ansible task to setup the server.
       AnsibleCreateServer ansibleCreateServer = createTask(AnsibleCreateServer.class);
       ansibleCreateServer.initialize(params);
@@ -1297,14 +1296,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
         if (cluster.userIntent.deviceInfo != null
             && cluster.userIntent.deviceInfo.volumeSize != null
-            && cluster.userIntent.deviceInfo.volumeSize
-                < univCluster.userIntent.deviceInfo.volumeSize) {
-          String errMsg =
-              String.format(
-                  "Cannot decrease disk size in a Kubernetes cluster (%dG to %dG)",
-                  univCluster.userIntent.deviceInfo.volumeSize,
-                  cluster.userIntent.deviceInfo.volumeSize);
-          throw new IllegalStateException(errMsg);
+            && cluster.userIntent.deviceInfo.numVolumes != null) {
+          int prevSize =
+              univCluster.userIntent.deviceInfo.volumeSize
+                  * univCluster.userIntent.deviceInfo.numVolumes;
+          int curSize =
+              cluster.userIntent.deviceInfo.volumeSize * cluster.userIntent.deviceInfo.numVolumes;
+          if (curSize < prevSize
+              && !confGetter.getConfForScope(universe, UniverseConfKeys.allowVolumeDecrease)) {
+            throw new IllegalArgumentException(
+                "Cannot decrease volume size from " + prevSize + " to " + curSize);
+          }
         }
       }
       PlacementInfoUtil.verifyNumNodesAndRF(
@@ -1319,8 +1321,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   && cluster.userIntent.azOverrides.size() != 0) {
             throw new IllegalArgumentException("Readonly cluster can't have overrides defined");
           }
-        } else { // During edit universe, overrides can't be changed.
+        } else {
           if (opType == UniverseOpType.EDIT) {
+            if (cluster.userIntent.deviceInfo != null
+                && cluster.userIntent.deviceInfo.volumeSize != null
+                && cluster.userIntent.deviceInfo.volumeSize
+                    < univCluster.userIntent.deviceInfo.volumeSize) {
+              String errMsg =
+                  String.format(
+                      "Cannot decrease disk size in a Kubernetes cluster (%dG to %dG)",
+                      univCluster.userIntent.deviceInfo.volumeSize,
+                      cluster.userIntent.deviceInfo.volumeSize);
+              throw new IllegalStateException(errMsg);
+            }
+            // During edit universe, overrides can't be changed.
             Map<String, String> curUnivOverrides =
                 HelmUtils.flattenMap(
                     HelmUtils.convertYamlToMap(univCluster.userIntent.universeOverrides));
@@ -1367,23 +1381,25 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
 
         if (confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
-          final Double cpuCoreCount = cluster.userIntent.masterK8SNodeResourceSpec.cpuCoreCount;
-          final Double memoryGib = cluster.userIntent.masterK8SNodeResourceSpec.memoryGib;
-          final boolean isCpuCoreCountOutOfRange =
-              (cpuCoreCount <= UserIntent.MIN_CPU || cpuCoreCount >= UserIntent.MAX_CPU);
-          final boolean isMemoryGibOutOfRange =
-              (memoryGib <= UserIntent.MIN_MEMORY || memoryGib >= UserIntent.MAX_MEMORY);
+          if (cluster.userIntent.masterK8SNodeResourceSpec != null) {
+            final Double cpuCoreCount = cluster.userIntent.masterK8SNodeResourceSpec.cpuCoreCount;
+            final Double memoryGib = cluster.userIntent.masterK8SNodeResourceSpec.memoryGib;
+            final boolean isCpuCoreCountOutOfRange =
+                (cpuCoreCount < UserIntent.MIN_CPU || cpuCoreCount > UserIntent.MAX_CPU);
+            final boolean isMemoryGibOutOfRange =
+                (memoryGib < UserIntent.MIN_MEMORY || memoryGib > UserIntent.MAX_MEMORY);
 
-          if (isCpuCoreCountOutOfRange || isMemoryGibOutOfRange) {
-            throw new IllegalArgumentException(
-                String.format(
-                    "CPU/Memory provided is out of range. Custom values for CPU should be between "
-                        + "%.2f and %.2f cores. Custom values for Memory should be between "
-                        + "%.2fGiB and %.2fGiB",
-                    UserIntent.MIN_CPU,
-                    UserIntent.MAX_CPU,
-                    UserIntent.MIN_MEMORY,
-                    UserIntent.MAX_MEMORY));
+            if (isCpuCoreCountOutOfRange || isMemoryGibOutOfRange) {
+              throw new IllegalArgumentException(
+                  String.format(
+                      "CPU/Memory provided is out of range. Values for CPU should be between "
+                          + "%.2f and %.2f cores. Custom values for Memory should be between "
+                          + "%.2fGiB and %.2fGiB",
+                      UserIntent.MIN_CPU,
+                      UserIntent.MAX_CPU,
+                      UserIntent.MIN_MEMORY,
+                      UserIntent.MAX_MEMORY));
+            }
           }
         }
       } else {
@@ -1591,20 +1607,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
     // Update the master addresses in memory.
-    createSetFlagInMemoryTasks(
-            tserverNodes,
-            ServerType.TSERVER,
-            true /* force flag update */,
-            null /* no gflag to update */,
-            true /* updateMasterAddr */)
+    createUpdateMasterAddrsInMemoryTasks(tserverNodes, ServerType.TSERVER)
         .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
 
-    createSetFlagInMemoryTasks(
-            masterNodes,
-            ServerType.MASTER,
-            true /* force flag update */,
-            null /* no gflag to update */,
-            true /* updateMasterAddr */)
+    createUpdateMasterAddrsInMemoryTasks(masterNodes, ServerType.MASTER)
         .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
 
     // Update the master addresses on the target universes whose source universe belongs to
@@ -1756,7 +1762,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param taskParams the given task params(details).
    */
   public void updateTaskDetailsInDB(UniverseDefinitionTaskParams taskParams) {
-    getRunnableTask().setTaskDetails(RedactingService.filterSecretFields(Json.toJson(taskParams)));
+    getRunnableTask()
+        .setTaskDetails(
+            RedactingService.filterSecretFields(Json.toJson(taskParams), RedactionTarget.APIS));
   }
 
   /**
@@ -2376,14 +2384,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return params;
   }
 
-  protected SubTaskGroup createUpdateUniverseTagsTask(
-      Cluster cluster, Map<String, String> instanceTags) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("InstanceActions");
-    UpdateUniverseTags.Params params = new UpdateUniverseTags.Params();
+  protected SubTaskGroup createUpdateUniverseIntentTask(Cluster cluster) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseUpdateDetails");
+    UpdateUniverseIntent.Params params = new UpdateUniverseIntent.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.clusterUUID = cluster.uuid;
-    params.instanceTags = instanceTags;
-    UpdateUniverseTags task = createTask(UpdateUniverseTags.class);
+    params.clusters = Collections.singletonList(cluster);
+    UpdateUniverseIntent task = createTask(UpdateUniverseIntent.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(task);
@@ -2441,6 +2447,47 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return subTaskGroup;
   }
 
+  protected void createNodePrecheckTasks(
+      NodeDetails node,
+      Set<ServerType> processTypes,
+      SubTaskGroupType subGroupType,
+      @Nullable String targetSoftwareVersion) {
+    boolean underReplicatedTabletsCheckEnabled =
+        confGetter.getConfForScope(
+            getUniverse(), UniverseConfKeys.underReplicatedTabletsCheckEnabled);
+    if (underReplicatedTabletsCheckEnabled && processTypes.contains(ServerType.TSERVER)) {
+      createCheckUnderReplicatedTabletsTask(node, targetSoftwareVersion)
+          .setSubTaskGroupType(subGroupType);
+    }
+  }
+
+  /**
+   * Checks whether cluster contains any under replicated tablets before proceeding.
+   *
+   * @param node node to check for under replicated tablets
+   * @param targetSoftwareVersion software version to check if under replicated tablets endpoint is
+   *     enabled. If null, will use the current software version of the node in the universe
+   * @return the created task group.
+   */
+  protected SubTaskGroup createCheckUnderReplicatedTabletsTask(
+      NodeDetails node, @Nullable String targetSoftwareVersion) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckUnderReplicatedTables");
+    Duration maxWaitTime =
+        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.underReplicatedTabletsTimeout);
+    CheckUnderReplicatedTablets.Params params = new CheckUnderReplicatedTablets.Params();
+    params.targetSoftwareVersion = targetSoftwareVersion;
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.maxWaitTime = maxWaitTime;
+    params.nodeName = node.nodeName;
+
+    CheckUnderReplicatedTablets checkUnderReplicatedTablets =
+        createTask(CheckUnderReplicatedTablets.class);
+    checkUnderReplicatedTablets.initialize(params);
+    subTaskGroup.addSubTask(checkUnderReplicatedTablets);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   /** Creates a task to reset api password from custom to default password. */
   protected void createResetAPIPasswordTask(
       ConfigureDBApiParams params, SubTaskGroupType subTaskGroupType) {
@@ -2453,7 +2500,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               null /* ysqlDbName */,
               Util.DEFAULT_YCQL_PASSWORD,
               params.ycqlPassword,
-              Util.DEFAULT_YCQL_USERNAME)
+              Util.DEFAULT_YCQL_USERNAME,
+              true /* validateCurrentPassword */)
           .setSubTaskGroupType(subTaskGroupType);
     }
     if (!params.enableYSQLAuth && !StringUtils.isEmpty(params.ysqlPassword)) {
@@ -2465,7 +2513,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               Util.YUGABYTE_DB,
               null /* ycqlPassword */,
               null /* ycqlCurrentPassword */,
-              null /* ycqlUserName */)
+              null /* ycqlUserName */,
+              true /* validateCurrentPassword */)
           .setSubTaskGroupType(subTaskGroupType);
     }
   }

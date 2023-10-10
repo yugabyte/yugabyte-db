@@ -18,6 +18,8 @@ Monitor performance metrics for your cluster to ensure the cluster configuration
 
 - The **Performance** tab **Metrics** displays a comprehensive array of more specific performance metrics, including for YSQL and YCQL API performance.
 
+{{< youtube id="Xv4y6wWSHJ8" title="Monitor cluster performance in YugabyteDB Managed" >}}
+
 Use these metrics to monitor the performance of your cluster and to determine whether the configuration needs to change. For information on changing or scaling your cluster, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
 You can enable alerts for some performance metrics. Refer to [Alerts](../cloud-alerts/).
@@ -43,7 +45,7 @@ The following table describes the metrics available on the **Overview**.
 
 ## Performance metrics
 
-To choose the metrics to display on the **Performance** tab, click **Metrics** and then click **Add Charts**. To rearrange the metrics, click **Add Charts** and **Reorder Charts**, then drag the chart to a new position. You can additionally view the metrics for specific nodes.
+To choose the metrics to display on the **Performance** tab, select **Metrics** and then click **Add Charts**. To rearrange the metrics, click **Add Charts** and **Reorder Charts**, then drag the chart to a new position. To [export metrics](../metrics-export/) to third-party tools, click **Export**. You can additionally view the metrics for specific nodes.
 
 The **Performance** tab provides the following metrics in addition to the Overview metrics.
 
@@ -53,7 +55,7 @@ The **Performance** tab provides the following metrics in addition to the Overvi
 | :---| :--- | :--- |
 | YSQL Operations/Sec | The count of DELETE, INSERT, SELECT, and UPDATE statements through the YSQL API. This does not include index writes. | If the count drops significantly lower than your average count, it might indicate an application connection failure. In addition, if the count is much higher than your average count, it could indicate a DDoS, security incident, and so on. You should coordinate with your application team because there could be legitimate reasons for dips and spikes. |
 | YSQL Average Latency (ms) | Average time (in milliseconds) of DELETE, INSERT, SELECT, and UPDATE statements through the YSQL API. | When latency is close to or higher than your application SLA, it may be a cause for concern. The overall latency metric is less helpful for troubleshooting specific queries. It is recommended that the application track query latency. There could be reasons your traffic experiences spikes in latency, such as when ad-hoc queries such as count(*) are executed. |
-| YSQL Connections | Cumulative number of connections to YSQL backend for all nodes. This includes various background connections, such as checkpointer, as opposed to an active connections count that only includes the client backend connections. | By default, you can have up to 10 simultaneous connections per vCPU. An [alert](../cloud-alerts/) is issued when the number of connections exceeds 60% (Warning) and 95% (Severe) of the limit. |
+| YSQL Connections | Cumulative number of connections to YSQL backend for all nodes. This includes various background connections, such as checkpointer, as opposed to an active connections count that only includes the client backend connections. | By default, you can have up to 15 simultaneous connections per vCPU. An [alert](../cloud-alerts/) is issued when the number of connections exceeds 60% (Warning) and 95% (Severe) of the limit. |
 
 ### YCQL Ops
 
@@ -73,7 +75,7 @@ The **Performance** tab provides the following metrics in addition to the Overvi
 | Memory Usage (GB) | Shows the amount of RAM (in GB) used and available to the cluster. | An [alert](../cloud-alerts/) is issued if memory use exceeds 70 (Warning) or 90 (Severe) per cent. Typically you would add vCPUs if load regularly exceeds 90 per cent. |
 | Network Bytes/Sec (MiB) | The size (in mebibytes) of network packets received (RX) and transmitted (TX) per second, averaged over nodes. | Shows the amount of network traffic to and from the server. |
 | Disk Bytes/Sec (MiB) | The number of mebibytes being read or written to disk per second, averaged over each node. | If the maximum IOPS for the instance volume type has high utilization, you should ensure that the schema and query are optimized. In addition, consider increasing the instance volume IOPS capacity. |
-| Disk IOPS/Sec | The number of disk input / output read and write operations per second averaged over each node. | Large spikes usually indicate large compactions. Rarely, in cases of a spiky workload, this could indicate block cache misses.<br>Because random reads always hit disk, you should increase IOPS capacity for this type of workload.<br>This value is averaged across all nodes in a cluster. |
+| Disk IOPS/Sec | The number of disk input / output read and write operations provisioned and used, per second averaged over each node. | Large spikes usually indicate large compactions. Rarely, in cases of a spiky workload, this could indicate block cache misses.<br>Because random reads always hit disk, you should increase IOPS capacity for this type of workload.<br>This value is averaged across all nodes in a cluster. |
 | Network Errors/Sec | The number of errors related to network packets received (RX) and transmitted (TX) per second, averaged over nodes. | If your environment produces a lot of errors, that could indicate an underlying infrastructure or operating system issue. |
 | Network Packets/Sec | The count of network packets received to the server (RX) and transmitted from the server (TX) per second, averaged over nodes. | Shows the amount of network traffic to and from the server. |
 | Clock Skew (ms) | The clock drift and skew across different nodes. | Important for performance and data consistency. An OSS product can refuse to come up or can crash at a default value of 500 milliseconds, as it is considered better to be down than inconsistent.<br>It should be considered a top priority to resolve clock skew. |

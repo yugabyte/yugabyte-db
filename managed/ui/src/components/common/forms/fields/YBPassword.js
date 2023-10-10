@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { InputGroup, Button } from 'react-bootstrap';
 import { YBLabel } from '../../../../components/common/descriptors';
 import { YBTextInput } from '.';

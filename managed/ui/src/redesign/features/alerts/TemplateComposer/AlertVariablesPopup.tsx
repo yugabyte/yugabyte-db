@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC } from 'react';
+import { FC } from 'react';
 import { Box, Divider, Grid, Grow, makeStyles, Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
@@ -82,7 +82,7 @@ export const AddAlertVariablesPopup: FC<AddAlertVariablesPopupProps> = ({
               onClick={() => {
                 onCustomVariableSelect(variable);
               }}
-              data-testid={`alert-custom-variable-${variable.name}`} 
+              data-testid={`alert-custom-variable-${variable.name}`}
             >
               <Typography variant="body2">{variable.name}</Typography>
             </Grid>

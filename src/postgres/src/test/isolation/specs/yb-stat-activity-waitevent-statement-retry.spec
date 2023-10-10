@@ -64,6 +64,6 @@ step "s2a" { BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ; }
 step "s2b" { update foo set v=10 where k=1; }
 step "s2c" { COMMIT; }
 
-# FLAG_enable_wait_queues must be false for this test, or the query will block in the wait queue instead of
+# FLAGS_enable_wait_queues must be false for this test, or the query will block in the wait queue
 # instead of returning TransactionErrorCode::kConflict.
 permutation "s1a" "s1b" "s2a" "s2b" "s1c" "s1d" "s2c"

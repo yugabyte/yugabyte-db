@@ -49,12 +49,15 @@
 #include "yb/util/slice.h"
 
 DECLARE_bool(never_fsync);
+DECLARE_bool(TEST_enable_sync_points);
+
 namespace rocksdb {
 class SequentialFileReader;
 
 class RocksDBTest : public ::testing::Test {
  public:
   RocksDBTest() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = true;
   }
 };
@@ -102,7 +105,7 @@ class PlainInternalKeyComparator : public InternalKeyComparator {
 
   virtual ~PlainInternalKeyComparator() {}
 
-  virtual int Compare(const Slice& a, const Slice& b) const override {
+  virtual int Compare(Slice a, Slice b) const override {
     return user_comparator()->Compare(a, b);
   }
   virtual void FindShortestSeparator(std::string* start,
@@ -128,7 +131,7 @@ class SimpleSuffixReverseComparator : public Comparator {
     return "SimpleSuffixReverseComparator";
   }
 
-  virtual int Compare(const Slice& a, const Slice& b) const override {
+  virtual int Compare(Slice a, Slice b) const override {
     Slice prefix_a = Slice(a.data(), 8);
     Slice prefix_b = Slice(b.data(), 8);
     int prefix_comp = prefix_a.compare(prefix_b);

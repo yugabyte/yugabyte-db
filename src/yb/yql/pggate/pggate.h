@@ -44,6 +44,7 @@
 #include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/uuid.h"
 
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_expr.h"
@@ -133,6 +134,8 @@ class PgApiImpl {
   // If database_name is empty, a session is created without connecting to any database.
   Status InitSession(const std::string& database_name, YBCPgExecStatsState* session_stats);
 
+  uint64_t GetSessionID() const;
+
   PgMemctx *CreateMemctx();
   Status DestroyMemctx(PgMemctx *memctx);
   Status ResetMemctx(PgMemctx *memctx);
@@ -213,8 +216,6 @@ class PgApiImpl {
                            bool is_db_catalog_version_mode,
                            int64_t *last_val,
                            bool *is_called);
-
-  Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
 
   void DeleteStatement(PgStatement *handle);
 
@@ -316,7 +317,8 @@ class PgApiImpl {
                        PgStatement **handle);
 
   Status AlterTableAddColumn(PgStatement *handle, const char *name,
-                             int order, const YBCPgTypeEntity *attr_type);
+                             int order, const YBCPgTypeEntity *attr_type,
+                             YBCPgExpr missing_value);
 
   Status AlterTableRenameColumn(PgStatement *handle, const char *oldname,
                                 const char *newname);
@@ -392,13 +394,26 @@ class PgApiImpl {
 
   Status ExecDropTable(PgStatement *handle);
 
+  Status ExecDropIndex(PgStatement *handle);
+
   Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version);
 
   Status BackfillIndex(const PgObjectId& table_id);
 
+  Status NewDropSequence(const YBCPgOid database_oid,
+                         const YBCPgOid sequence_oid,
+                         PgStatement **handle);
+
+  Status ExecDropSequence(PgStatement *handle);
+
+  Status NewDropDBSequences(const YBCPgOid database_oid,
+                            PgStatement **handle);
+
   //------------------------------------------------------------------------------------------------
   // All DML statements
   Status DmlAppendTarget(PgStatement *handle, PgExpr *expr);
+
+  Result<bool> DmlHasSystemTargets(PgStatement *handle);
 
   Status DmlAppendQual(PgStatement *handle, PgExpr *expr, bool is_primary);
 
@@ -540,6 +555,8 @@ class PgApiImpl {
 
   Status SetForwardScan(PgStatement *handle, bool is_forward_scan);
 
+  Status SetDistinctPrefixLength(PgStatement *handle, int distinct_prefix_length);
+
   Status ExecSelect(PgStatement *handle, const PgExecParameters *exec_params);
 
   //------------------------------------------------------------------------------------------------
@@ -583,6 +600,7 @@ class PgApiImpl {
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
   Status RestartReadPoint();
+  bool IsRestartReadPointRequested();
   Status CommitTransaction();
   Status AbortTransaction();
   Status SetTransactionIsolationLevel(int isolation);
@@ -598,6 +616,8 @@ class PgApiImpl {
   Status RollbackToSubTransaction(SubTransactionId id);
   double GetTransactionPriority() const;
   TxnPriorityRequirement GetTransactionPriorityType() const;
+  Result<Uuid> GetActiveTransaction() const;
+  Status GetActiveTransactions(YBCPgSessionTxnInfo* infos, size_t num_infos);
 
   //------------------------------------------------------------------------------------------------
   // Expressions.
@@ -668,6 +688,10 @@ class PgApiImpl {
   Result<bool> CheckIfPitrActive();
 
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
+
+  Result<boost::container::small_vector<RefCntSlice, 2>> GetTableKeyRanges(
+      const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
 
   MemTracker &GetMemTracker() { return *mem_tracker_; }
 

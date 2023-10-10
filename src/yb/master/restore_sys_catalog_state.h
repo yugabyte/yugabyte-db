@@ -54,7 +54,8 @@ class RestoreSysCatalogState {
 
   // Prepare write batch with object changes.
   Status PrepareWriteBatch(
-      const Schema& schema, docdb::DocWriteBatch* write_batch, const HybridTime& now_ht);
+      const Schema& schema, docdb::SchemaPackingProvider* schema_packing_provider,
+      docdb::DocWriteBatch* write_batch, const HybridTime& now_ht);
 
   void WriteToRocksDB(
       docdb::DocWriteBatch* write_batch,
@@ -66,6 +67,7 @@ class RestoreSysCatalogState {
       const docdb::DocDB& existing_db,
       docdb::DocWriteBatch* write_batch,
       const docdb::DocReadContext& doc_read_context,
+      docdb::SchemaPackingProvider* schema_packing_provider,
       const tablet::RaftGroupMetadata* metadata);
 
   Result<bool> TEST_MatchTable(const TableId& id, const SysTablesEntryPB& table);
@@ -139,15 +141,17 @@ class RestoreSysCatalogState {
   // Prepare write batch to delete obsolete tablet.
   Status PrepareTabletCleanup(
       const TabletId& id, SysTabletsEntryPB pb, const Schema& schema,
-      docdb::DocWriteBatch* write_batch);
+      docdb::SchemaPackingProvider* schema_packing_provider, docdb::DocWriteBatch* write_batch);
 
   // Prepare write batch to delete obsolete table.
   Status PrepareTableCleanup(
       const TableId& id, SysTablesEntryPB pb, const Schema& schema,
-      docdb::DocWriteBatch* write_batch, const HybridTime& now_ht);
+      docdb::SchemaPackingProvider* schema_packing_provider, docdb::DocWriteBatch* write_batch,
+      const HybridTime& now_ht);
 
   Status IncrementLegacyCatalogVersion(
-      const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
+      const docdb::DocReadContext& doc_read_context,
+      docdb::SchemaPackingProvider* schema_packing_provider, const docdb::DocDB& doc_db,
       docdb::DocWriteBatch* write_batch);
 
   Status PatchSequencesDataObjects(Objects* existing_objects, Objects* restoring_objects);

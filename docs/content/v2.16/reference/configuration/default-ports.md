@@ -49,7 +49,7 @@ Admin web server UI can be viewed at the following addresses:
 | Server    | Port  | Flag (default)                             |
 | ---------- | ----- | ------------------------------------------------------------ |
 | YB-Master  | 7000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br>[`--webserver_port 7000`](../yb-master/#webserver-port) |
-| YB-TServer | 9000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br>[`--webserver_port 9000`](../yb-master/#webserver-port) |
+| YB-TServer | 9000  |  [`--webserver_interface 0.0.0.0`](../yb-tserver/#webserver-interface)<br>[`--webserver_port 9000`](../yb-tserver/#webserver-port) |
 
 ## Firewall rules
 
@@ -68,9 +68,9 @@ The following common ports are required for firewall rules:
 
 ## Prometheus monitoring
 
-YugabyteDB servers expose time-series performance metrics in the [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format) on multiple HTTP endpoints that have the following structure:
+YugabyteDB servers expose time series performance metrics in the [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format) on multiple HTTP endpoints that have the following structure:
 
-```
+```output
 <target>/prometheus-metrics
 ```
 

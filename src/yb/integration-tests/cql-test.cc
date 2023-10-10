@@ -12,6 +12,7 @@
 //
 
 #include "yb/client/client_master_rpc.h"
+#include "yb/client/snapshot_test_util.h"
 #include "yb/client/table_info.h"
 
 #include "yb/consensus/raft_consensus.h"
@@ -49,11 +50,13 @@ using namespace std::literals;
 
 DECLARE_bool(cleanup_intents_sst_files);
 DECLARE_bool(TEST_timeout_non_leader_master_rpcs);
+DECLARE_bool(ycql_enable_packed_row);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int64(cql_processors_limit);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_int32(TEST_delay_tablet_export_metadata_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 
 DECLARE_int32(cql_unprepared_stmts_entries_limit);
@@ -466,7 +469,7 @@ TEST_F_EX(CqlTest, RangeGC, CqlRF1Test) {
   ASSERT_OK(cluster_->CompactTablets());
 
   for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    auto* db = peer->tablet()->TEST_db();
+    auto* db = peer->tablet()->regular_db();
     if (!db) {
       continue;
     }
@@ -567,26 +570,27 @@ TEST_F_EX(CqlTest, DocDBKeyMetrics, CqlRF1Test) {
   ASSERT_OK(session.ExecuteQuery("SELECT * FROM t;"));
 
   // Find the counters for the tablet leader.
-  scoped_refptr<Counter> total_keys;
-  scoped_refptr<Counter> obsolete_keys;
-  scoped_refptr<Counter> obsolete_past_cutoff;
+  tablet::TabletMetrics* tablet_metrics = nullptr;
   for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
     auto* metrics = peer->tablet()->metrics();
-    if (!metrics || metrics->docdb_keys_found->value() == 0) {
+    if (!metrics || metrics->Get(tablet::TabletCounters::kDocDBKeysFound) == 0) {
       continue;
     }
-    total_keys = metrics->docdb_keys_found;
-    obsolete_keys = metrics->docdb_obsolete_keys_found;
-    obsolete_past_cutoff = metrics->docdb_obsolete_keys_found_past_cutoff;
+    tablet_metrics = metrics;
   }
   // Ensure we've found the tablet leader, and that we've seen 10 total keys (no obsolete).
-  ASSERT_NE(total_keys, nullptr);
+  ASSERT_NE(tablet_metrics, nullptr);
   auto expected_total_keys = kNumRows;
   auto expected_obsolete_keys = 0;
   auto expected_obsolete_past_cutoff = 0;
-  ASSERT_EQ(total_keys->value(), expected_total_keys);
-  ASSERT_EQ(obsolete_keys->value(), expected_obsolete_keys);
-  ASSERT_EQ(obsolete_past_cutoff->value(), expected_obsolete_past_cutoff);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBKeysFound), expected_total_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFound),
+      expected_obsolete_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFoundPastCutoff),
+      expected_obsolete_past_cutoff);
 
   // Delete one row, then flush.
   ASSERT_OK(session.ExecuteQuery("DELETE FROM t WHERE i = 1;"));
@@ -598,9 +602,14 @@ TEST_F_EX(CqlTest, DocDBKeyMetrics, CqlRF1Test) {
   // the history cutoff window.
   ASSERT_OK(session.ExecuteQuery("SELECT * FROM t;"));
   expected_total_keys += kNumRows;
-  ASSERT_EQ(total_keys->value(), expected_total_keys);
-  ASSERT_EQ(obsolete_keys->value(), expected_obsolete_keys);
-  ASSERT_EQ(obsolete_past_cutoff->value(), expected_obsolete_past_cutoff);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBKeysFound), expected_total_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFound),
+      expected_obsolete_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFoundPastCutoff),
+      expected_obsolete_past_cutoff);
 
   // Wait 1 second for history retention to expire. Then try reading again. Expect 1 obsolete.
   std::this_thread::sleep_for(1s);
@@ -608,9 +617,14 @@ TEST_F_EX(CqlTest, DocDBKeyMetrics, CqlRF1Test) {
   expected_total_keys += kNumRows;
   expected_obsolete_keys += 1;
   expected_obsolete_past_cutoff += 1;
-  ASSERT_EQ(total_keys->value(), expected_total_keys);
-  ASSERT_EQ(obsolete_keys->value(), expected_obsolete_keys);
-  ASSERT_EQ(obsolete_past_cutoff->value(), expected_obsolete_past_cutoff);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBKeysFound), expected_total_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFound),
+      expected_obsolete_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFoundPastCutoff),
+      expected_obsolete_past_cutoff);
 
   // Set history retention to 900 for the rest of the test to make sure we don't exceed it.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 900;
@@ -622,17 +636,27 @@ TEST_F_EX(CqlTest, DocDBKeyMetrics, CqlRF1Test) {
   ASSERT_OK(cluster_->FlushTablets());
   expected_total_keys += 3;
   expected_obsolete_keys += 1;
-  ASSERT_EQ(total_keys->value(), expected_total_keys);
-  ASSERT_EQ(obsolete_keys->value(), expected_obsolete_keys);
-  ASSERT_EQ(obsolete_past_cutoff->value(), expected_obsolete_past_cutoff);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBKeysFound), expected_total_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFound),
+      expected_obsolete_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFoundPastCutoff),
+      expected_obsolete_past_cutoff);
 
   // Do another full range query. Obsolete keys increases by 3, total keys by 10.
   ASSERT_OK(session.ExecuteQuery("SELECT * FROM t;"));
   expected_total_keys += kNumRows;
   expected_obsolete_keys += 3;
-  ASSERT_EQ(total_keys->value(), expected_total_keys);
-  ASSERT_EQ(obsolete_keys->value(), expected_obsolete_keys);
-  ASSERT_EQ(obsolete_past_cutoff->value(), expected_obsolete_past_cutoff);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBKeysFound), expected_total_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFound),
+      expected_obsolete_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFoundPastCutoff),
+      expected_obsolete_past_cutoff);
 }
 
 TEST_F(CqlTest, ManyColumns) {
@@ -894,6 +918,19 @@ TEST_F(CqlTest, TestCQLUnpreparedStmtStats) {
       ASSERT_EQ(num_select_queries/2, obtained_num_calls);
     }
   }
+
+  // reset the counters and verify
+  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements-reset",
+                                              ToString(addrs[0])), &buf));
+  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements",
+                                              ToString(addrs[0])), &buf));
+
+  JsonReader json_post_reset(buf.ToString());
+  ASSERT_OK(json_post_reset.Init());
+  std::vector<const rapidjson::Value*> stmt_stats_post_reset;
+  ASSERT_OK(json_post_reset.ExtractObjectArray(json_post_reset.root(), "unprepared_statements",
+                                               &stmt_stats_post_reset));
+  ASSERT_EQ(stmt_stats_post_reset.size(), 0);
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
@@ -1415,6 +1452,34 @@ TEST_F(CqlTest, CheckStateAfterDrop) {
   }, CoarseMonoClock::now() + 30s, "Deleted table cleanup"));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(CqlTest, RetainSchemaPacking) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_tablet_export_metadata_ms) = 1000;
+
+  client::SnapshotTestUtil snapshot_util;
+  auto client = snapshot_util.InitWithCluster(cluster_.get());
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery("CREATE TABLE t (key INT PRIMARY KEY, value INT)"));
+  for (int i = 0; i != 1000; ++i) {
+    ASSERT_OK(session.ExecuteQueryFormat("INSERT INTO t (key, value) VALUES ($0, $1)", i, i * 2));
+  }
+
+  ASSERT_OK(session.ExecuteQuery("ALTER TABLE t ADD extra INT"));
+
+  auto snapshot_id = ASSERT_RESULT(snapshot_util.StartSnapshot(
+      client::YBTableName(YQLDatabase::YQL_DATABASE_CQL, "test", "t")));
+  ASSERT_OK(cluster_->CompactTablets());
+
+  ASSERT_OK(snapshot_util.WaitSnapshotDone(snapshot_id));
+
+  ASSERT_OK(snapshot_util.RestoreSnapshot(snapshot_id));
+
+  auto content = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM t"));
+  LOG(INFO) << "Content: " << content;
 }
 
 }  // namespace yb

@@ -13,9 +13,6 @@ useCoursier := false
 // Constants
 // ------------------------------------------------------------------------------------------------
 
-// This is used to decide whether to clean/build the py2 or py3 venvs.
-lazy val USE_PYTHON3 = strToBool(System.getenv("YB_MANAGED_DEVOPS_USE_PYTHON3"), default = true)
-
 // Use this to enable debug logging in this script.
 lazy val YB_DEBUG_ENABLED = strToBool(System.getenv("YB_BUILD_SBT_DEBUG"))
 
@@ -96,6 +93,8 @@ lazy val buildUI = taskKey[Int]("Build UI")
 lazy val buildModules = taskKey[Int]("Build modules")
 lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
 lazy val releaseModulesLocally = taskKey[Int]("Release modules locally")
+lazy val downloadThirdPartyDeps = taskKey[Int]("Downloading thirdparty dependencies")
+lazy val devSpaceReload = taskKey[Int]("Do a build without UI for DevSpace and reload")
 
 lazy val cleanUI = taskKey[Int]("Clean UI")
 lazy val cleanVenv = taskKey[Int]("Clean venv")
@@ -137,6 +136,11 @@ libraryDependencies ++= Seq(
   "com.google.inject.extensions" % "guice-assistedinject" % "5.1.0",
   "org.postgresql" % "postgresql" % "42.3.3",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
+  "com.typesafe.akka" %% "akka-actor-typed" % "2.8.3",
+  "com.typesafe.akka" %% "akka-slf4j" % "2.8.3",
+  "com.typesafe.akka" %% "akka-protobuf-v3" % "2.8.3",
+  "com.typesafe.akka" %% "akka-stream" % "2.8.3",
+  "com.typesafe.akka" %% "akka-serialization-jackson" % "2.8.3",
   "org.codehaus.janino" % "janino" % "3.1.9",
   "org.apache.commons" % "commons-compress" % "1.21",
   "org.apache.commons" % "commons-csv" % "1.9.0",
@@ -155,6 +159,8 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-s3" % "1.12.129",
   "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.12.327",
   "com.amazonaws" % "aws-java-sdk-route53" % "1.12.400",
+  "com.amazonaws" % "aws-java-sdk-cloudtrail" % "1.12.498",
+  "net.minidev" % "json-smart" % "2.5.0",
   "com.cronutils" % "cron-utils" % "9.1.6",
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.
@@ -163,7 +169,7 @@ libraryDependencies ++= Seq(
   "com.azure" % "azure-identity" % "1.6.0",
   "com.azure" % "azure-security-keyvault-keys" % "4.5.0",
   "com.azure" % "azure-storage-blob" % "12.19.1",
-  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.27.0",
+  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.28.0",
   "javax.mail" % "mail" % "1.4.7",
   "javax.validation" % "validation-api" % "2.0.1.Final",
   "io.prometheus" % "simpleclient" % "0.11.0",
@@ -186,6 +192,7 @@ libraryDependencies ++= Seq(
   "com.google.cloud" % "google-cloud-storage" % "2.2.1",
   "com.google.cloud" % "google-cloud-kms" % "2.4.4",
   "com.google.cloud" % "google-cloud-resourcemanager" % "1.4.0",
+  "com.google.cloud" % "google-cloud-logging" % "3.14.5",
   "com.google.oauth-client" % "google-oauth-client" % "1.34.1",
   "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.9.2",
@@ -194,11 +201,10 @@ libraryDependencies ++= Seq(
   "org.unix4j" % "unix4j-command" % "0.6",
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
   "org.apache.directory.api" % "api-all" % "2.1.0",
-  "io.fabric8" % "crd-generator-apt" % "6.4.1",
-  "io.fabric8" % "kubernetes-client" % "6.4.1",
-  "io.fabric8" % "kubernetes-client-api" % "6.4.1",
-  "io.fabric8" % "kubernetes-model" % "4.9.2",
-  "io.fabric8" % "kubernetes-api" % "3.0.12",
+  "io.fabric8" % "crd-generator-apt" % "6.8.0",
+  "io.fabric8" % "kubernetes-client" % "6.8.0",
+  "io.fabric8" % "kubernetes-client-api" % "6.8.0",
+  "io.fabric8" % "kubernetes-model" % "6.8.0",
   "org.modelmapper" % "modelmapper" % "2.4.4",
 
   "io.jsonwebtoken" % "jjwt-api" % "0.11.5",
@@ -223,6 +229,7 @@ libraryDependencies ++= Seq(
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
   "io.grpc" % "grpc-testing" % "1.48.0" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
+  "org.springframework" % "spring-test" % "5.3.9" % Test,
 )
 
 // Clear default resolvers.
@@ -319,6 +326,7 @@ externalResolvers := {
     ).value
   buildUI.value
   versionGenerate.value
+  downloadThirdPartyDeps.value
 }
 
 cleanPlatform := {
@@ -381,9 +389,21 @@ generateCrdObjects := {
   status
 }
 
+downloadThirdPartyDeps := {
+  ybLog("Downloading third-party dependencies...")
+  val status = Process("wget -qi thirdparty-dependencies.txt -P /opt/third-party -c", baseDirectory.value / "support").!
+  status
+}
+
 compileJavaGenClient := {
   val buildType = sys.env.getOrElse("BUILD_TYPE", "release")
   val status = Process("mvn install", new File(baseDirectory.value + "/client/java/generated")).!
+  status
+}
+
+devSpaceReload := {
+  (Universal / packageBin).value
+  val status = Process("devspace run extract-archive").!
   status
 }
 
@@ -400,7 +420,7 @@ cleanModules := {
 }
 
 def get_venv_dir(): String = {
-  if (USE_PYTHON3) "venv" else "python_virtual_env"
+  "venv"
 }
 
 cleanVenv := {
@@ -451,6 +471,11 @@ lazy val gogen = project.in(file("client/go"))
 
 Universal / packageZipTarball := (Universal / packageZipTarball).dependsOn(versionGenerate, buildDependentArtifacts).value
 
+// Being used by DevSpace tool to build an archive without building the UI
+Universal / packageBin := (Universal / packageBin).dependsOn(versionGenerate, buildDependentArtifacts).value
+
+Universal / javaOptions += "-J-XX:G1PeriodicGCInterval=120000"
+
 runPlatformTask := {
   (Compile / run).toTask("").value
 }
@@ -467,20 +492,19 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.60-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b6"
-libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b30"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.66-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b14"
+libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b31"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
   "io.netty" % "netty-codec-haproxy" % "4.1.89.Final",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
-  "net.minidev" % "json-smart" % "2.4.8",
   "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
 )
 
-dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.21.2"
-dependencyOverrides += "com.google.guava" % "guava" % "23.0"
+dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.21.7"
+dependencyOverrides += "com.google.guava" % "guava" % "32.1.1-jre"
 // SSO functionality only works on the older version of nimbusds.
 // Azure library upgrade tries to upgrade nimbusds to latest version.
 dependencyOverrides += "com.nimbusds" % "oauth2-oidc-sdk" % "7.1.1"

@@ -1,4 +1,3 @@
-import React from 'react';
 import { browserHistory } from 'react-router';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'react-toastify';
@@ -87,7 +86,11 @@ describe('HA promote instance modal', () => {
     // resolve mocked api call
     await waitFor(() => {
       promise.resolve();
-      expect(api.promoteHAInstance).toBeCalledWith(fakeConfigId, fakeInstanceId, fakeBackupsList[0]);
+      expect(api.promoteHAInstance).toBeCalledWith(
+        fakeConfigId,
+        fakeInstanceId,
+        fakeBackupsList[0]
+      );
       expect(browserHistoryPush).toBeCalledWith('/login');
     });
   });
@@ -109,7 +112,11 @@ describe('HA promote instance modal', () => {
     userEvent.click(component.getByRole('button', { name: /continue/i }));
 
     await waitFor(() => {
-      expect(api.promoteHAInstance).toBeCalledWith(fakeConfigId, fakeInstanceId, fakeBackupsList[0]);
+      expect(api.promoteHAInstance).toBeCalledWith(
+        fakeConfigId,
+        fakeInstanceId,
+        fakeBackupsList[0]
+      );
       expect(browserHistoryPush).not.toBeCalled();
       expect(toastError).toBeCalled();
       expect(consoleError).toBeCalled();

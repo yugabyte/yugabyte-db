@@ -172,6 +172,9 @@ YBPgErrorCode FetchErrorCode(YBCStatus s) {
         case TransactionErrorCode::kSnapshotTooOld:
           result = YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD;
           break;
+        case TransactionErrorCode::kDeadlock:
+          result = YBPgErrorCode::YB_PG_T_R_DEADLOCK_DETECTED;
+          break;
         case TransactionErrorCode::kNone: FALLTHROUGH_INTENDED;
         default:
           break;
@@ -274,6 +277,10 @@ bool YBCIsTxnConflictError(uint16_t txn_errcode) {
 
 bool YBCIsTxnSkipLockingError(uint16_t txn_errcode) {
   return txn_errcode == to_underlying(TransactionErrorCode::kSkipLocking);
+}
+
+bool YBCIsTxnDeadlockError(uint16_t txn_errcode) {
+  return txn_errcode == to_underlying(TransactionErrorCode::kDeadlock);
 }
 
 uint16_t YBCGetTxnConflictErrorCode() {

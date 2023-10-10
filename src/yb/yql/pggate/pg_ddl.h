@@ -247,7 +247,8 @@ class PgAlterTable : public PgDdl {
 
   Status AddColumn(const char *name,
                    const YBCPgTypeEntity *attr_type,
-                   int order);
+                   int order,
+                   YBCPgExpr missing_value);
 
   Status RenameColumn(const char *oldname, const char *newname);
 
@@ -271,6 +272,42 @@ class PgAlterTable : public PgDdl {
 
  private:
   tserver::PgAlterTableRequestPB req_;
+};
+
+//--------------------------------------------------------------------------------------------------
+// DROP SEQUENCE
+//--------------------------------------------------------------------------------------------------
+
+class PgDropSequence : public PgDdl {
+ public:
+  PgDropSequence(PgSession::ScopedRefPtr pg_session,
+                 PgOid database_oid,
+                 PgOid sequence_oid);
+  virtual ~PgDropSequence();
+
+  StmtOp stmt_op() const override { return StmtOp::STMT_DROP_SEQUENCE; }
+
+  // Execute.
+  Status Exec();
+
+ private:
+  PgOid database_oid_;
+  PgOid sequence_oid_;
+};
+
+class PgDropDBSequences : public PgDdl {
+ public:
+  PgDropDBSequences(PgSession::ScopedRefPtr pg_session,
+                    PgOid database_oid);
+  virtual ~PgDropDBSequences();
+
+  StmtOp stmt_op() const override { return StmtOp::STMT_DROP_DB_SEQUENCES; }
+
+  // Execute.
+  Status Exec();
+
+ private:
+  PgOid database_oid_;
 };
 
 }  // namespace pggate

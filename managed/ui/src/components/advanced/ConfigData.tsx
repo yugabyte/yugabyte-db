@@ -1,4 +1,4 @@
-import React, { FC, useEffect, useState } from 'react';
+import { FC, useEffect, useState } from 'react';
 import { DropdownButton, OverlayTrigger, MenuItem, Tooltip } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useTranslation } from 'react-i18next';
@@ -11,6 +11,8 @@ import { RunTimeConfigData } from '../../redesign/utils/dtos';
 import { getPromiseState } from '../../utils/PromiseUtils';
 import { isNonEmptyArray } from '../../utils/ObjectUtils';
 
+import { RbacValidator } from '../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../redesign/features/rbac/UserPermPathMapping';
 import './AdvancedConfig.scss';
 
 const DEFAULT_RUNTIME_TAG_FILTER = ['PUBLIC'];
@@ -148,14 +150,18 @@ export const ConfigData: FC<GlobalConfigProps> = ({
         id="runtime-config-nested-dropdown middle-aligned-table"
         pullRight
       >
-        <MenuItem
-          onClick={() => {
-            openEditConfig(row);
-          }}
+        <RbacValidator
+          accessRequiredOn={UserPermissionMap.editRuntimeConfig}
+          isControl
         >
-          {t('admin.advanced.globalConfig.ModelEditConfigTitle')}
-        </MenuItem>
-
+          <MenuItem
+            onClick={() => {
+              openEditConfig(row);
+            }}
+          >
+            {t('admin.advanced.globalConfig.ModelEditConfigTitle')}
+          </MenuItem>
+        </RbacValidator>
         {!row.isConfigInherited && (
           <MenuItem
             onClick={() => {

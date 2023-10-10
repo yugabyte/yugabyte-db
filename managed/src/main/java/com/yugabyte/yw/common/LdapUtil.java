@@ -12,6 +12,10 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.LdapDnToYbaRole;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
+import com.yugabyte.yw.models.rbac.ResourceGroup;
+import com.yugabyte.yw.models.rbac.RoleBinding;
+import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
+import io.ebean.DB;
 import io.ebean.DuplicateKeyException;
 import java.nio.charset.Charset;
 import java.security.KeyStore;
@@ -75,6 +79,18 @@ public class LdapUtil {
     boolean ldapGroupUseQuery;
     boolean ldapGroupUseRoleMapping;
     Role ldapDefaultRole;
+    TlsProtocol ldapTlsProtocol;
+    boolean useNewRbacAuthz;
+  }
+
+  public enum TlsProtocol {
+    TLSv1,
+    TLSv1_1,
+    TLSv1_2;
+
+    public String getVersionString() {
+      return this.toString().replace('_', '.');
+    }
   }
 
   public Users loginWithLdap(CustomerLoginFormData data) throws LdapException {
@@ -103,6 +119,8 @@ public class LdapUtil {
         confGetter.getGlobalConf(GlobalConfKeys.ldapGroupUseRoleMapping);
     String ldapGroupSearchBaseDn = confGetter.getGlobalConf(GlobalConfKeys.ldapGroupSearchBaseDn);
     Role ldapDefaultRole = confGetter.getGlobalConf(GlobalConfKeys.ldapDefaultRole);
+    TlsProtocol ldapTlsProtocol = confGetter.getGlobalConf(GlobalConfKeys.ldapTlsProtocol);
+    boolean useNewRbacAuthz = confGetter.getGlobalConf(GlobalConfKeys.useNewRbacAuthz);
 
     LdapConfiguration ldapConfiguration =
         new LdapConfiguration(
@@ -124,7 +142,9 @@ public class LdapUtil {
             ldapGroupMemberOfAttribute,
             ldapGroupUseQuery,
             ldapGroupUseRoleMapping,
-            ldapDefaultRole);
+            ldapDefaultRole,
+            ldapTlsProtocol,
+            useNewRbacAuthz);
     Users user = authViaLDAP(data.getEmail(), data.getPassword(), ldapConfiguration);
 
     if (user == null) {
@@ -230,6 +250,7 @@ public class LdapUtil {
             .eq("distinguished_name", group)
             .eq("customer_uuid", customerUuid)
             .findOne();
+
     if (ldapDnToYbaRole != null) {
       role = ldapDnToYbaRole.ybaRole;
     }
@@ -326,8 +347,11 @@ public class LdapUtil {
       config.setLdapPort(ldapConfiguration.getLdapPort());
       if (ldapConfiguration.isLdapUseSsl() || ldapConfiguration.isLdapUseTls()) {
 
+        config.setEnabledProtocols(
+            new String[] {ldapConfiguration.getLdapTlsProtocol().getVersionString()});
+
         boolean customCAUploaded = customCAStoreManager.areCustomCAsPresent();
-        if (customCAStoreManager.isEnabled()) {
+        if (customCAStoreManager.isEnabled() && isCertVerificationEnforced()) {
           if (customCAUploaded) {
             log.debug("Using YBA's custom trust-store manager along-with Java defaults");
             KeyStore ybaJavaKeyStore = customCAStoreManager.getYbaAndJavaKeyStore();
@@ -341,7 +365,11 @@ public class LdapUtil {
           }
         } else {
           if (customCAUploaded) {
-            log.warn("Skipping to use YBA's custom trust-store as the feature is disabled");
+            log.warn(
+                "Skipping to use YBA's trust-store as the feature is disabled. CA-store "
+                    + "feature flag: {}, certification-verfication for LDAP: {}",
+                customCAStoreManager.isEnabled(),
+                isCertVerificationEnforced());
           }
           config.setTrustManagers(new NoVerificationTrustManager());
         }
@@ -498,6 +526,8 @@ public class LdapUtil {
         }
       }
 
+      DB.beginTransaction();
+
       Users.Role roleToAssign;
       users.setLdapSpecifiedRole(true);
       switch (role) {
@@ -517,6 +547,7 @@ public class LdapUtil {
           roleToAssign = ldapConfiguration.getLdapDefaultRole();
           users.setLdapSpecifiedRole(false);
       }
+
       Users oldUser = Users.find.query().where().eq("email", email).findOne();
 
       if (oldUser != null) {
@@ -535,7 +566,7 @@ public class LdapUtil {
           oldUser.setRole(roleToAssign);
           oldUser.setLdapSpecifiedRole(false);
         }
-        return oldUser;
+        users = oldUser;
       } else {
         if (!users.isLdapSpecifiedRole()) {
           log.warn("No valid role could be ascertained, defaulting to {}.", roleToAssign);
@@ -551,10 +582,26 @@ public class LdapUtil {
         users.setPrimary(false);
         users.setRole(roleToAssign);
       }
+      users.save();
+
+      if (ldapConfiguration.isUseNewRbacAuthz()) {
+        List<RoleBinding> currentRoleBindings = RoleBinding.getAll(users.getUuid());
+        currentRoleBindings.stream().forEach(rB -> rB.delete());
+        com.yugabyte.yw.models.rbac.Role newRbacRole =
+            com.yugabyte.yw.models.rbac.Role.get(users.getCustomerUUID(), roleToAssign.name());
+        if (newRbacRole != null) {
+          ResourceGroup rG =
+              ResourceGroup.getSystemDefaultResourceGroup(users.getCustomerUUID(), users);
+          RoleBinding.create(users, RoleBindingType.System, newRbacRole, rG);
+        } else {
+          throw new RuntimeException(String.format("No role with the name: %s found", role));
+        }
+      }
+      DB.commitTransaction();
+
     } catch (LdapException e) {
       log.error(String.format("LDAP error while attempting to auth email %s", email), e);
-      String errorMessage = "LDAP parameters are not configured correctly. " + e.getMessage();
-      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+      throw e;
     } catch (Exception e) {
       log.error(String.format("Failed to authenticate with LDAP for email %s", email), e);
       String errorMessage = "Invalid LDAP credentials. " + e.getMessage();
@@ -564,7 +611,12 @@ public class LdapUtil {
         connection.unBind();
         connection.close();
       }
+      DB.endTransaction();
     }
     return users;
+  }
+
+  public boolean isCertVerificationEnforced() {
+    return confGetter.getGlobalConf(GlobalConfKeys.ldapsEnforceCertVerification);
   }
 }

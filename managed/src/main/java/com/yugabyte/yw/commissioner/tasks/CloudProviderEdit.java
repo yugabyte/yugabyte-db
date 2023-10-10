@@ -15,6 +15,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.google.common.base.Strings;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.common.CloudProviderHelper;
@@ -22,10 +23,11 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.controllers.handlers.AccessKeyHandler;
-import com.yugabyte.yw.controllers.handlers.ImageBundleHandler;
 import com.yugabyte.yw.controllers.handlers.RegionHandler;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.ImageBundleDetails;
+import com.yugabyte.yw.models.ImageBundleDetails.BundleInfo;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
@@ -49,7 +51,6 @@ public class CloudProviderEdit extends CloudTaskBase {
   private RegionHandler regionHandler;
   private AccessKeyHandler accessKeyHandler;
   private CloudProviderHelper cloudProviderHelper;
-  private ImageBundleHandler imageBundleHandler;
   private ProviderEditRestrictionManager providerEditRestrictionManager;
 
   @Inject
@@ -58,13 +59,11 @@ public class CloudProviderEdit extends CloudTaskBase {
       RegionHandler regionHandler,
       AccessKeyHandler accessKeyHandler,
       CloudProviderHelper cloudProviderHelper,
-      ImageBundleHandler imageBundleHandler,
       ProviderEditRestrictionManager providerEditRestrictionManager) {
     super(baseTaskDependencies);
     this.regionHandler = regionHandler;
     this.accessKeyHandler = accessKeyHandler;
     this.cloudProviderHelper = cloudProviderHelper;
-    this.imageBundleHandler = imageBundleHandler;
     this.providerEditRestrictionManager = providerEditRestrictionManager;
   }
 
@@ -99,6 +98,7 @@ public class CloudProviderEdit extends CloudTaskBase {
       provider = Provider.getOrBadRequest(taskParams().providerUUID);
       provider.setUsabilityState(Provider.UsabilityState.READY);
       provider.save();
+      cloudProviderHelper.updatePrometheusConfig(provider);
     } catch (RuntimeException e) {
       log.error("Received exception during edit", e);
       Provider p = Provider.getOrBadRequest(taskParams().providerUUID);
@@ -147,6 +147,7 @@ public class CloudProviderEdit extends CloudTaskBase {
           log.debug("Deleting region {}", region.getCode());
           regionHandler.deleteRegion(
               provider.getCustomerUUID(), provider.getUuid(), region.getUuid());
+          removeRegionReferenceFromImageBundles(editProviderReq, region.getCode());
         }
         cloudProviderHelper.updateAZs(provider, editProviderReq, region, oldRegion);
       }
@@ -194,6 +195,32 @@ public class CloudProviderEdit extends CloudTaskBase {
       return gcpCloudInfo.getDestVpcId();
     }
     return null;
+  }
+
+  /*
+   * Utility to remoe the region reference from the image Bundles
+   * for AWS providers on region deletion.
+   */
+  private void removeRegionReferenceFromImageBundles(Provider provider, String regionCode) {
+    if (provider.getCloudCode() != CloudType.aws) {
+      // continue;
+    }
+
+    List<ImageBundle> bundles = provider.getImageBundles();
+    if (bundles != null && bundles.size() > 0) {
+      for (ImageBundle bundle : bundles) {
+        if (bundle.getDetails() != null) {
+          ImageBundleDetails details = bundle.getDetails();
+          Map<String, BundleInfo> regionBundleInfo = details.getRegions();
+
+          if (regionBundleInfo != null && regionBundleInfo.containsKey(regionCode)) {
+            regionBundleInfo.remove(regionCode);
+            details.setRegions(regionBundleInfo);
+            bundle.setDetails(details);
+          }
+        }
+      }
+    }
   }
 
   private boolean updateProviderData(Provider provider, Provider editProviderReq) {
@@ -273,27 +300,7 @@ public class CloudProviderEdit extends CloudTaskBase {
     if (!provider.getCloudCode().imageBundleSupported()) {
       return;
     }
-
-    Map<UUID, ImageBundle> existingImageBundles =
-        provider.getImageBundles().stream().collect(Collectors.toMap(iB -> iB.getUuid(), iB -> iB));
-    for (ImageBundle bundle : editProviderReq.getImageBundles()) {
-      if (bundle.getUuid() == null) {
-        // Create a new imageBundle.
-        createImageBundleTask(provider, bundle);
-      } else {
-        ImageBundle existingBundle = existingImageBundles.get(bundle.getUuid());
-        if (bundle.isUpdateNeeded(existingBundle)) {
-          imageBundleHandler.doEdit(provider, bundle.getUuid(), bundle);
-        }
-        existingImageBundles.remove(bundle.getUuid());
-      }
-    }
-
-    // Delete the left over bundles.
-    existingImageBundles.forEach(
-        (uuid, bundle) -> {
-          imageBundleHandler.doDelete(provider.getUuid(), bundle.getUuid());
-        });
+    createUpdateImageBundleTask(provider, editProviderReq.getImageBundles());
   }
 
   private long getWaitDurationMs() {

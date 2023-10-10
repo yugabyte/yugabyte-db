@@ -487,10 +487,9 @@ EXPLAIN (costs off) SELECT count(*) FROM partial WHERE v @@ 'b';
 EXPLAIN (costs off) SELECT count(*) FROM partial WHERE v @@ 'c';
                       QUERY PLAN
 ------------------------------------------------------
- Finalize Aggregate
+ Aggregate
    ->  Index Only Scan using partial_v_idx on partial
-         Partial Aggregate: true
-(3 rows)
+(2 rows)
 
 SELECT count(*) FROM partial WHERE v @@ 'c';
 ERROR:  unsupported ybgin index scan

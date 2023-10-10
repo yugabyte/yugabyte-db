@@ -21,6 +21,8 @@ public class ReplaceRootVolume extends NodeTaskBase {
   public static class Params extends NodeTaskParams {
     public String replacementDisk;
     public Map<UUID, List<String>> bootDisksPerZone;
+    public String rootDeviceName;
+    public Map<UUID, String> rootDevicePerZone;
   }
 
   @Override
@@ -44,6 +46,10 @@ public class ReplaceRootVolume extends NodeTaskBase {
     deleteNodeAgent(getUniverse().getNode(taskParams().nodeName));
     // this won't be saved in taskDetails!
     taskParams().replacementDisk = bootDisks.remove(0);
+    if (taskParams().rootDevicePerZone != null) {
+      String rootDeviceName = taskParams().rootDevicePerZone.get(azUuid);
+      taskParams().rootDeviceName = rootDeviceName;
+    }
     getNodeManager()
         .nodeCommand(NodeManager.NodeCommandType.Replace_Root_Volume, taskParams())
         .processErrors();

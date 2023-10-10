@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Use the `permission` resource to list available permissions that can be assigned to [roles](../../../../cloud-admin/managed-roles/).
+Use the `permission` resource to list available permissions that can be assigned to [roles](../../../../managed-security/managed-roles/).
 
 ## Syntax
 

@@ -52,7 +52,13 @@ export const InheritRRDialog: FC<ModalProps> = ({ onCancel, onSubmit, open }) =>
             <img alt="" src={ErrorIcon} />
           </Box>
           <Box display="flex" flexDirection="column" ml={1}>
-            <Typography variant="body2">{t('universeForm.gFlags.inheritRRModalBody')}</Typography>
+            <Typography variant="body2">
+              {t('universeForm.gFlags.inheritRRModalLine1')}
+              <br />
+              {t('universeForm.gFlags.inheritRRModalLine2')}
+              <br />
+              {t('universeForm.gFlags.inheritRRModalLine3')}
+            </Typography>
           </Box>
         </Box>
         <Box mt={4}>

@@ -16,8 +16,21 @@ A virtual private cloud (VPC) is a virtual network that you can define in a clou
 
 A VPC is defined by a block of [private IP addresses](#private-ip-address-ranges), entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). In the context of your VPC network, each address is unique. A cluster deployed in a VPC can only be accessed from resources inside the VPC network (unless you explicitly enable public access). Resources that can be included in the network fall into two categories:
 
-- Peered application VPCs. Your applications reside in one or more VPCs on the same cloud provider, and are connected to your cluster VPC using [peering connections](../cloud-add-peering/). (AWS and GCP only.)
-- Privately linked services. Your applications reside in one or more VPCs on the same cloud provider, and are connected to your cluster over a private link to a [private service endpoint](../cloud-add-endpoint/). (AWS and Azure only.)
+- Peered application VPCs.
+  - Your applications reside in one or more VPCs on the same cloud provider, and are connected to your cluster VPC using [peering connections](../cloud-add-peering/).
+  - AWS and GCP only.
+  - Required for smart load balancing features of [YugabyteDB smart drivers](../../../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
+  - You need to add the IP address of your peered application VPC to the cluster [IP allow list](../../../cloud-secure-clusters/add-connections/).
+- Privately linked services.
+  - Your applications reside in one or more VPCs on the same cloud provider, and are connected to your cluster over a private link to a [private service endpoint](../cloud-add-endpoint/).
+  - AWS and Azure only.
+  - Smart load balancing features aren't supported. Smart driver falls back to upstream driver connection instead.
+  - No need to add the IP address of your application to the cluster IP allow list.
+
+|  | Provider | Secure private network | [Add IPs to allow list](../../../cloud-secure-clusters/add-connections/) | [Smart driver load balancing](../../../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-managed) |
+| :--- | :--- | :--- | :--- | :--- |
+| Peering | AWS, GCP | Yes | Yes | Yes |
+| Private link | AWS, Azure | Yes | No | No |
 
 ## Advantages
 
@@ -57,13 +70,11 @@ For GCP, you have the choice of selecting all regions automatically, or defining
 
 For AWS, you can only define a single region per VPC.
 
-Currently, you can only deploy single-region clusters in Azure.
-
 To avoid cross-region data transfer costs, deploy your VPC and cluster in the same region as the application VPC you intend peer or link.
 
 #### Multi-region clusters
 
-Each region in multi-region clusters must be deployed in a VPC. Depending on the cloud provider, you set up your VPCs in different configurations. (Currently, multi-region clusters are not supported for Azure.)
+Each region in multi-region clusters must be deployed in a VPC. Depending on the cloud provider, you set up your VPCs in different configurations.
 
 | Provider | Regional VPC setup
 | :--- | :--- |

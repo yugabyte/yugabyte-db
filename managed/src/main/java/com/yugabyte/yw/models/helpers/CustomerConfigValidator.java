@@ -23,18 +23,8 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.configs.CloudClientsFactory;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
-import com.yugabyte.yw.models.configs.data.CustomerConfigData;
-import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
-import com.yugabyte.yw.models.configs.validators.ConfigDataValidator;
-import com.yugabyte.yw.models.configs.validators.CustomerConfigPasswordPolicyValidator;
-import com.yugabyte.yw.models.configs.validators.CustomerConfigStorageAzureValidator;
-import com.yugabyte.yw.models.configs.validators.CustomerConfigStorageGCSValidator;
-import com.yugabyte.yw.models.configs.validators.CustomerConfigStorageNFSValidator;
-import com.yugabyte.yw.models.configs.validators.CustomerConfigStorageS3Validator;
+import com.yugabyte.yw.models.configs.data.*;
+import com.yugabyte.yw.models.configs.validators.*;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.util.HashMap;
@@ -61,7 +51,8 @@ public class CustomerConfigValidator extends BaseBeanValidator {
       BeanValidator beanValidator,
       StorageUtilFactory storageUtilFactory,
       RuntimeConfGetter runtimeConfGetter,
-      AWSUtil awsUtil) {
+      AWSUtil awsUtil,
+      GCPUtil gcpUtil) {
     super(beanValidator);
     this.factory = createCloudFactory();
     this.storageUtilFactory = storageUtilFactory;
@@ -70,10 +61,10 @@ public class CustomerConfigValidator extends BaseBeanValidator {
 
     validators.put(
         CustomerConfigStorageGCSData.class,
-        new CustomerConfigStorageGCSValidator(beanValidator, factory));
+        new CustomerConfigStorageGCSValidator(beanValidator, factory, gcpUtil));
     validators.put(
         CustomerConfigStorageS3Data.class,
-        new CustomerConfigStorageS3Validator(beanValidator, factory, runtimeConfGetter));
+        new CustomerConfigStorageS3Validator(beanValidator, factory, runtimeConfGetter, awsUtil));
     validators.put(
         CustomerConfigStorageNFSData.class, new CustomerConfigStorageNFSValidator(beanValidator));
     validators.put(
@@ -81,10 +72,13 @@ public class CustomerConfigValidator extends BaseBeanValidator {
         new CustomerConfigStorageAzureValidator(beanValidator, factory, storageUtilFactory));
     validators.put(
         CustomerConfigStorageGCSData.class,
-        new CustomerConfigStorageGCSValidator(beanValidator, factory));
+        new CustomerConfigStorageGCSValidator(beanValidator, factory, gcpUtil));
     validators.put(
         CustomerConfigPasswordPolicyData.class,
         new CustomerConfigPasswordPolicyValidator(beanValidator));
+    validators.put(
+        CustomerConfigAlertsPreferencesData.class,
+        new CustomerConfigAlertsPreferencesValidator(beanValidator));
   }
 
   /**

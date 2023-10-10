@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.10)
 
 project(machinarium C)
 
-add_compile_options(${OD_EXTRA_COMPILER_FLAGS})
+add_extra_yb_flags_in_odyssey()
 
 set(CLANGCOMPILERSTANDART gnu11)
 
@@ -28,7 +28,7 @@ include_directories("${PROJECT_SOURCE_DIR}/sources")
 include_directories("${PROJECT_BINARY_DIR}/sources")
 
 option(BUILD_SHARED "Enable SHARED" OFF)
-option(BUILD_VALGRIND "Enable VALGRIND" ON)
+option(BUILD_VALGRIND "Enable VALGRIND" OFF)
 
 set(mm_libraries "")
 

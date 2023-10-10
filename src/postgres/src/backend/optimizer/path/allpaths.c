@@ -525,19 +525,7 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 				else
 				{
 					/* Plain relation */
-					if (IsYBRelationById(rte->relid))
-					{
-						/*
-						 * Using a foreign scan which will use the YB FDW by
-						 * default.
-						 */
-						set_foreign_pathlist(root, rel, rte);
-					}
-					else
-					{
-						/* Use regular scan for initdb tables. */
-						set_plain_rel_pathlist(root, rel, rte);
-					}
+					set_plain_rel_pathlist(root, rel, rte);
 				}
 				break;
 			case RTE_SUBQUERY:
@@ -1123,6 +1111,7 @@ set_append_rel_size(PlannerInfo *root, RelOptInfo *rel,
 			{
 				Node	   *onecq = (Node *) lfirst(lc2);
 				bool		pseudoconstant;
+				RestrictInfo *childri;
 
 				/* check for pseudoconstant (no Vars or volatile functions) */
 				pseudoconstant =
@@ -1134,13 +1123,23 @@ set_append_rel_size(PlannerInfo *root, RelOptInfo *rel,
 					root->hasPseudoConstantQuals = true;
 				}
 				/* reconstitute RestrictInfo with appropriate properties */
-				childquals = lappend(childquals,
-									 make_restrictinfo((Expr *) onecq,
-													   rinfo->is_pushed_down,
-													   rinfo->outerjoin_delayed,
-													   pseudoconstant,
-													   rinfo->security_level,
-													   NULL, NULL, NULL));
+				childri = make_restrictinfo((Expr *) onecq,
+											rinfo->is_pushed_down,
+											rinfo->outerjoin_delayed,
+											pseudoconstant,
+											rinfo->security_level,
+											NULL, NULL, NULL);
+				if (childrel->is_yb_relation)
+				{
+					/*
+					 * Even if parent clause was not pushable, parts of it still
+					 * maybe after they have been split by make_ands_implicit.
+					 * Hence re-evaluate pushability.
+					 */
+					childri->yb_pushable = rinfo->yb_pushable ||
+						YbCanPushdownExpr(childri->clause, NULL);
+				}
+				childquals = lappend(childquals, childri);
 				/* track minimum security level among child quals */
 				cq_min_security = Min(cq_min_security, rinfo->security_level);
 			}

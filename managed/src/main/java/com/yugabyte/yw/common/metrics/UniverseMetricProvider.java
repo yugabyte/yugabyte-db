@@ -19,39 +19,28 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.AccessKeyRotationUtil;
-import com.yugabyte.yw.common.AccessManager;
-import com.yugabyte.yw.common.KubernetesUtil;
-import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AccessKeyId;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.InstanceTypeKey;
-import com.yugabyte.yw.models.KmsConfig;
-import com.yugabyte.yw.models.KmsHistory;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.ImageBundle.ImageBundleType;
 import com.yugabyte.yw.models.KmsHistoryId.TargetType;
-import com.yugabyte.yw.models.Metric;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import play.Environment;
 
 @Singleton
 @Slf4j
@@ -63,7 +52,13 @@ public class UniverseMetricProvider implements MetricsProvider {
 
   @Inject AccessManager accessManager;
 
+  @Inject ImageBundleUtil imageBundleUtil;
+
+  @Inject Environment environment;
+
   @Inject Config config;
+
+  @Inject RuntimeConfGetter confGetter;
 
   private static final List<PlatformMetrics> UNIVERSE_METRICS =
       ImmutableList.of(
@@ -89,8 +84,14 @@ public class UniverseMetricProvider implements MetricsProvider {
         KmsConfig.listAllKMSConfigs().stream()
             .collect(Collectors.toMap(config -> config.getConfigUUID(), Function.identity()));
     Map<AccessKeyId, AccessKey> allAccessKeys = accessKeyRotationUtil.createAllAccessKeysMap();
+    boolean vmOsPatchingEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
+    Map<UUID, ImageBundle> imageBundleMap = null;
+    if (vmOsPatchingEnabled) {
+      imageBundleMap = imageBundleUtil.collectUniversesImageBundles();
+    }
 
     Map<String, InstanceType> mapInstanceTypes = new HashMap<String, InstanceType>();
+    String ybaVersion = ConfigHelper.getCurrentVersion(environment);
     for (Customer customer : Customer.getAll()) {
       /*
       To prevent excessive memory usage when dealing with multiple providers
@@ -102,14 +103,15 @@ public class UniverseMetricProvider implements MetricsProvider {
       List<Provider> providers = Provider.getAll(customer.getUuid());
       // Build instanceTypeMap.
       for (Provider provider : providers) {
-        for (InstanceType instanceType : InstanceType.findByProvider(provider, config)) {
+        for (InstanceType instanceType : InstanceType.findByProvider(provider, confGetter)) {
           mapInstanceTypes.put(instanceType.getIdKey().toString(), instanceType);
         }
       }
       Map<UUID, NodeInstance> nodeInstances =
           NodeInstance.listByCustomer(customer.getUuid()).stream()
               .collect(Collectors.toMap(NodeInstance::getNodeUuid, Function.identity()));
-      for (Universe universe : Universe.getAllWithoutResources(customer)) {
+      Set<Universe> universes = Universe.getAllWithoutResources(customer);
+      for (Universe universe : universes) {
         try {
           MetricSaveGroup.MetricSaveGroupBuilder universeGroup = MetricSaveGroup.builder();
           universeGroup.metric(
@@ -126,6 +128,17 @@ public class UniverseMetricProvider implements MetricsProvider {
                   universe,
                   PlatformMetrics.UNIVERSE_UPDATE_IN_PROGRESS,
                   statusValue(universe.getUniverseDetails().updateInProgress)));
+          TaskType taskType =
+              universe.getUniverseDetails().updateInProgress
+                  ? universe.getUniverseDetails().updatingTask
+                  : null;
+          universeGroup.metric(
+              createUniverseMetric(
+                      customer,
+                      universe,
+                      PlatformMetrics.UNIVERSE_ACTIVE_TASK_CODE,
+                      taskType != null ? taskType.getCode() : 0)
+                  .setLabel(KnownAlertLabels.YBA_VERSION, ybaVersion));
           universeGroup.metric(
               createUniverseMetric(
                   customer,
@@ -168,6 +181,30 @@ public class UniverseMetricProvider implements MetricsProvider {
                       universe,
                       PlatformMetrics.UNIVERSE_SSH_KEY_EXPIRY_DAY,
                       sshKeyExpiryDays));
+            }
+          }
+          if (vmOsPatchingEnabled) {
+            // Assumption both the primary & rr cluster uses the same provider.
+            UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+            if (userIntent != null) {
+              UUID imageBundleUUID = userIntent.imageBundleUUID;
+              int universeOSUpdateRequired = 0;
+              if (imageBundleMap != null && imageBundleMap.containsKey(imageBundleUUID)) {
+                ImageBundle bundle = ImageBundle.get(imageBundleUUID);
+                if (bundle != null
+                    && bundle.getMetadata() != null
+                    && bundle.getMetadata().getType() != null
+                    && bundle.getMetadata().getType() == ImageBundleType.YBA_DEPRECATED) {
+                  universeOSUpdateRequired = 1;
+                }
+              }
+
+              universeGroup.metric(
+                  createUniverseMetric(
+                      customer,
+                      universe,
+                      PlatformMetrics.UNIVERSE_OS_UPDATE_REQUIRED,
+                      universeOSUpdateRequired));
             }
           }
 

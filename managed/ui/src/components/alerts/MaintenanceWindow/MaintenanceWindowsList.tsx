@@ -1,4 +1,4 @@
-import React, { ChangeEvent, FC, useState } from 'react';
+import { ChangeEvent, FC, useState } from 'react';
 import { Col, DropdownButton, MenuItem, OverlayTrigger, Popover, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
@@ -10,11 +10,17 @@ import {
   MaintenanceWindowState,
   updateMaintenanceWindow
 } from '.';
-import { convertToISODateString, dateStrToMoment, ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import {
+  convertToISODateString,
+  dateStrToMoment,
+  ybFormatDate
+} from '../../../redesign/helpers/DateUtils';
 import { YBButton, YBCheckBox } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
 
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 import './MaintenanceWindowsList.scss';
 
 /**
@@ -76,10 +82,7 @@ const GetMaintenanceWindowActions = ({
 
   const extendTime = useMutation(
     ({ window, minutesToExtend }: { window: MaintenanceWindowSchema; minutesToExtend: number }) => {
-      const currentEndTime = dateStrToMoment(window.endTime).add(
-        minutesToExtend,
-        'minute'
-      );
+      const currentEndTime = dateStrToMoment(window.endTime).add(minutesToExtend, 'minute');
       return updateMaintenanceWindow({
         ...window,
         endTime: convertToISODateString(currentEndTime.toDate())
@@ -232,14 +235,21 @@ export const MaintenanceWindowsList: FC<MaintenanceWindowsListProps> = ({
           />
         </Col>
         <Col lg={2}>
-          <YBButton
-            btnText="Add Maintenance Window"
-            btnClass="btn btn-orange"
-            onClick={() => {
-              setSelectedWindow(null);
-              showCreateView();
+          <RbacValidator
+            accessRequiredOn={{
+              ...UserPermissionMap.createMaintenenceWindow
             }}
-          />
+            isControl
+          >
+            <YBButton
+              btnText="Add Maintenance Window"
+              btnClass="btn btn-orange"
+              onClick={() => {
+                setSelectedWindow(null);
+                showCreateView();
+              }}
+            />
+          </RbacValidator>
         </Col>
       </Row>
       <Row>

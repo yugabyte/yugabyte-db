@@ -17,10 +17,6 @@
 
 #include "yb/util/flags.h"
 
-DEFINE_test_flag(bool, use_monotime_for_rpc_wait_time, false,
-                 "Flag to enable use of MonoTime::Now() instead of CoarseMonoClock::Now() "
-                 "in order to avoid 0 timings in the tests.");
-
 namespace yb::pggate {
 namespace {
 
@@ -46,25 +42,26 @@ YBCPgExecReadWriteStats& GetStat(YBCPgExecStatsState* state, TableType relation)
   FATAL_INVALID_ENUM_VALUE(TableType, relation);
 }
 
-uint64_t GetNow(bool use_zero_duration) {
+uint64_t GetNow(bool use_zero_duration, bool use_high_res_timer) {
   if (use_zero_duration) {
     return 0;
   }
-  return (PREDICT_FALSE(FLAGS_TEST_use_monotime_for_rpc_wait_time)
-      ? MonoTime::Now().ToSteadyTimePoint().time_since_epoch()
-      : CoarseMonoClock::Now().time_since_epoch()).count();
+  return (PREDICT_TRUE(use_high_res_timer) ? MonoTime::Now().ToSteadyTimePoint().time_since_epoch()
+                                           : CoarseMonoClock::Now().time_since_epoch())
+      .count();
 }
 
 } // namespace
 
-PgDocMetrics::DurationWatcher::DurationWatcher(uint64_t* duration, bool use_zero_duration)
+PgDocMetrics::DurationWatcher::DurationWatcher(
+    uint64_t* duration, bool use_zero_duration, bool use_high_res_timer)
     : duration_(duration),
       use_zero_duration_(use_zero_duration),
-      start_(GetNow(use_zero_duration_)) {
-}
+      use_high_res_timer_(use_high_res_timer),
+      start_(GetNow(use_zero_duration_, use_high_res_timer_)) {}
 
 PgDocMetrics::DurationWatcher::~DurationWatcher() {
-  *duration_ = GetNow(use_zero_duration_) - start_;
+  *duration_ = GetNow(use_zero_duration_, use_high_res_timer_) - start_;
 }
 
 PgDocMetrics::PgDocMetrics(YBCPgExecStatsState* state) : state_(*state) {}
@@ -80,6 +77,18 @@ void PgDocMetrics::WriteRequest(TableType relation) {
 void PgDocMetrics::FlushRequest(uint64_t wait_time) {
   state_.stats.num_flushes += 1;
   state_.stats.flush_wait += wait_time;
+}
+
+void PgDocMetrics::RecordRequestMetrics(const LWPgsqlRequestMetricsPB& metrics) {
+  for (const auto& storage_metric : metrics.gauge_metrics()) {
+    auto metric = storage_metric.metric();
+    // If there is a rolling restart in progress, it's possible for an unknown metric to be
+    // received, but since this is for optional output it's fine to just disregard it.
+    if (metric < 0 || metric >= YB_ANALYZE_METRIC_COUNT) {
+      continue;
+    }
+    state_.stats.storage_metrics[metric] += storage_metric.value();
+  }
 }
 
 }  // namespace yb::pggate

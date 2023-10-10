@@ -89,6 +89,15 @@ class AzureCloud(AbstractCloud):
         for region, metadata in perRegionMetadata.items():
             self.get_admin().network(metadata).cleanup(region)
 
+    def mount_disk(self, host_info, os_disk_id):
+        self.get_admin().update_os_disk(host_info["name"], os_disk_id)
+
+    def clone_disk(self, args, volume_id, num_disks):
+        zoneParts = args.zone.split('-')
+        zone = zoneParts[1] if len(zoneParts) > 1 else None
+        return self.get_admin().clone_disk(
+            args.search_pattern, args.region, zone, volume_id, num_disks)
+
     def create_or_update_instance(self, args, adminSSH, tags_to_remove=None):
         vmName = args.search_pattern
         region = args.region
@@ -118,18 +127,32 @@ class AzureCloud(AbstractCloud):
         spot_price = args.spot_price
         use_spot_instance = args.use_spot_instance
         tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
+        vm_params = json.loads(args.custom_vm_params).get(region) \
+            if args.custom_vm_params is not None else {}
+        if vm_params is None:
+            logging.warning("[app] VM parameters not specified for region {}.".format(region))
+        disk_params = json.loads(args.custom_disk_params).get(region) \
+            if args.custom_disk_params is not None else {}
+        if disk_params is None:
+            logging.warning("[app] Disk parameters not specified for region {}.".format(region))
+        network_params = json.loads(args.custom_network_params).get(region) \
+            if args.custom_network_params is not None else {}
+        if network_params is None:
+            logging.warning("[app] Network parameters not specified for region {}".format(region))
         nicId = self.get_admin().create_or_update_nic(
-            vmName, vnet, subnet, zone, nsg, region, public_ip, tags)
-        output = self.get_admin().create_or_update_vm(vmName, zone, numVolumes, private_key_file,
-                                                      volSize, instanceType, adminSSH, nsg, image,
-                                                      volType, args.type, region, nicId, tags,
-                                                      disk_iops, disk_throughput,
-                                                      spot_price, use_spot_instance)
+            vmName, vnet, subnet, zone, nsg, region, public_ip, tags, network_params)
+        output = self.get_admin()\
+            .create_or_update_vm(vmName, zone, numVolumes, private_key_file, volSize,
+                                 instanceType, adminSSH, image, volType, args.type, region,
+                                 nicId, tags, disk_iops, disk_throughput, spot_price,
+                                 use_spot_instance, vm_params, disk_params,
+                                 cloud_instance_types=args.cloud_instance_types)
         logging.info("[app] Updated Azure VM {}.".format(vmName, region, zone))
         return output
 
-    def change_instance_type(self, host_info, new_instance_type):
-        self.get_admin().change_instance_type(host_info['name'], new_instance_type)
+    def change_instance_type(self, host_info, instance_type, cloud_instance_types):
+        self.get_admin().change_instance_type(host_info['name'], instance_type,
+                                              cloud_instance_types)
 
     def destroy_instance(self, args):
         host_info = self.get_host_info(args)
@@ -215,7 +238,7 @@ class AzureCloud(AbstractCloud):
     def start_instance(self, host_info, server_ports):
         vm_name = host_info['name']
         vm_status = self.get_admin().get_vm_status(vm_name)
-        if vm_status != 'VM deallocated':
+        if vm_status != 'deallocated' or vm_status != 'stopped':
             logging.warning("Host {} is not stopped, VM status is {}".format(
                 vm_name, vm_status))
         else:

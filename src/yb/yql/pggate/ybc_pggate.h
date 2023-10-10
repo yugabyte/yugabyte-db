@@ -35,6 +35,8 @@ void YBCInterruptPgGate();
 // Initialize a session to process statements that come from the same client connection.
 YBCStatus YBCPgInitSession(const char* database_name, YBCPgExecStatsState* session_stats);
 
+uint64_t YBCPgGetSessionID();
+
 // Initialize YBCPgMemCtx.
 // - Postgres uses memory context to hold all of its allocated space. Once all associated operations
 //   are done, the context is destroyed.
@@ -88,6 +90,9 @@ bool YBCTryMemConsume(int64_t bytes);
 bool YBCTryMemRelease(int64_t bytes);
 
 YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc);
+
+// Validate the JWT based on the options including the identity matching based on the identity map.
+YBCStatus YBCValidateJWT(const char *token, const YBCPgJwtAuthOptions *options);
 
 //--------------------------------------------------------------------------------------------------
 // DDL Statements
@@ -146,7 +151,14 @@ YBCStatus YBCReadSequenceTuple(int64_t db_oid,
                                int64_t *last_val,
                                bool *is_called);
 
-YBCStatus YBCDeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
+YBCStatus YBCPgNewDropSequence(const YBCPgOid database_oid,
+                               const YBCPgOid sequence_oid,
+                               YBCPgStatement *handle);
+
+YBCStatus YBCPgExecDropSequence(YBCPgStatement handle);
+
+YBCStatus YBCPgNewDropDBSequences(const YBCPgOid database_oid,
+                                  YBCPgStatement *handle);
 
 // Create database.
 YBCStatus YBCPgNewCreateDatabase(const char *database_name,
@@ -233,7 +245,8 @@ YBCStatus YBCPgNewAlterTable(YBCPgOid database_oid,
                              YBCPgStatement *handle);
 
 YBCStatus YBCPgAlterTableAddColumn(YBCPgStatement handle, const char *name, int order,
-                                   const YBCPgTypeEntity *attr_type);
+                                   const YBCPgTypeEntity *attr_type,
+                                   YBCPgExpr missing_value);
 
 YBCStatus YBCPgAlterTableRenameColumn(YBCPgStatement handle, const char *oldname,
                                       const char *newname);
@@ -335,6 +348,8 @@ YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle);
 
 YBCStatus YBCPgExecDropTable(YBCPgStatement handle);
 
+YBCStatus YBCPgExecDropIndex(YBCPgStatement handle);
+
 YBCStatus YBCPgWaitForBackendsCatalogVersion(
     YBCPgOid dboid,
     uint64_t version,
@@ -352,6 +367,9 @@ YBCStatus YBCPgBackfillIndex(
 // - SELECT target_expr1, target_expr2, ...
 // - INSERT / UPDATE / DELETE ... RETURNING target_expr1, target_expr2, ...
 YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
+
+// Check if any statement target is a system column reference.
+YBCStatus YBCPgDmlHasSystemTargets(YBCPgStatement handle, bool *has_system_cols);
 
 // Add a WHERE clause condition to the statement.
 // Currently only SELECT statement supports WHERE clause conditions.
@@ -522,6 +540,9 @@ YBCStatus YBCPgNewSelect(YBCPgOid database_oid,
 // Set forward/backward scan direction.
 YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan);
 
+// Set prefix length for distinct index scans.
+YBCStatus YBCPgSetDistinctPrefixLength(YBCPgStatement handle, int distinct_prefix_length);
+
 YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params);
 
 // Functions----------------------------------------------------------------------------------------
@@ -543,6 +564,7 @@ YBCStatus YBCPgRecreateTransaction();
 YBCStatus YBCPgRestartTransaction();
 YBCStatus YBCPgResetTransactionReadPoint();
 YBCStatus YBCPgRestartReadPoint();
+bool YBCIsRestartReadPointRequested();
 YBCStatus YBCPgCommitTransaction();
 YBCStatus YBCPgAbortTransaction();
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation);
@@ -558,6 +580,8 @@ YBCStatus YBCPgSetActiveSubTransaction(uint32_t id);
 YBCStatus YBCPgRollbackToSubTransaction(uint32_t id);
 double YBCGetTransactionPriority();
 TxnPriorityRequirement YBCGetTransactionPriorityType();
+YBCStatus YBCPgGetSelfActiveTransaction(YBCPgUuid *txn_id, bool *is_null);
+YBCStatus YBCPgActiveTransactions(YBCPgSessionTxnInfo *infos, size_t num_infos);
 
 // System validation -------------------------------------------------------------------------------
 // Validate placement information
@@ -595,7 +619,7 @@ YBCStatus YBCPgUpdateConstInt8(YBCPgExpr expr, int64_t value, bool is_null);
 YBCStatus YBCPgUpdateConstFloat4(YBCPgExpr expr, float value, bool is_null);
 YBCStatus YBCPgUpdateConstFloat8(YBCPgExpr expr, double value, bool is_null);
 YBCStatus YBCPgUpdateConstText(YBCPgExpr expr, const char *value, bool is_null);
-YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value, int64_t bytes, bool is_null);
+YBCStatus YBCPgUpdateConstBinary(YBCPgExpr expr, const char *value, int64_t bytes, bool is_null);
 
 // Expressions with operators "=", "+", "between", "in", ...
 YBCStatus YBCPgNewOperator(
@@ -668,8 +692,11 @@ YBCStatus YBCGetIndexBackfillProgress(YBCPgOid* index_oids, YBCPgOid* database_o
                                       uint64_t** backfill_statuses,
                                       int num_indexes);
 
+void YBCStartSysTablePrefetchingNoCache();
+
 void YBCStartSysTablePrefetching(
-    uint64_t latest_known_ysql_catalog_version, YBCPgSysTablePrefetcherCacheMode cache_mode);
+    YBCPgLastKnownCatalogVersionInfo catalog_version,
+    YBCPgSysTablePrefetcherCacheMode cache_mode);
 
 void YBCStopSysTablePrefetching();
 
@@ -688,6 +715,19 @@ YBCStatus YBCIsObjectPartOfXRepl(YBCPgOid database_oid, YBCPgOid table_oid,
                                  bool* is_object_part_of_xrepl);
 
 YBCStatus YBCPgCancelTransaction(const unsigned char* transaction_id);
+
+// Breaks table data into ranges of approximately range_size_bytes each, at most into
+// `max_num_ranges`.
+// Returns (through callback) list of these ranges end keys.
+// It is guaranteed that returned keys are at most max_key_length bytes.
+// lower_bound_key is inclusive, upper_bound_key is exclusive.
+// Iff we've reached the end of the table (or upper bound) then empty key is returned as the last
+// key.
+YBCStatus YBCGetTableKeyRanges(
+    YBCPgOid database_oid, YBCPgOid table_oid, const char* lower_bound_key,
+    size_t lower_bound_key_size, const char* upper_bound_key, size_t upper_bound_key_size,
+    uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
+    void callback(void* callback_param, const char* key, size_t key_size), void* callback_param);
 
 #ifdef __cplusplus
 }  // extern "C"

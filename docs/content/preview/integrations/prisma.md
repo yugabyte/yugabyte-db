@@ -5,7 +5,7 @@ description: Prisma
 menu:
   preview_integrations:
     identifier: prisma-integration
-    parent: integrations
+    parent: schema-migration
     weight: 571
 type: docs
 ---

@@ -24,6 +24,7 @@ import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedResponse;
@@ -37,21 +38,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalUnit;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Optional;
-import java.util.Random;
-import java.util.Scanner;
-import java.util.Set;
-import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -109,7 +97,8 @@ public class CommonUtils {
           "HC_VAULT_KEY_NAME",
           "KEYSPACETABLELIST",
           // General API field
-          "KEYSPACE");
+          "KEYSPACE",
+          "APITOKENVERSION");
 
   public static final Map<Character, Character> CHAR_MAP =
       Map.ofEntries(
@@ -798,6 +787,7 @@ public class CommonUtils {
     }
     return new String(logTableName).trim();
   }
+
   /**
    * This method extracts the json from shell response where the shell executes a SQL Query that
    * aggregates the response as JSON e.g. select jsonb_agg() The resultant shell output has json
@@ -848,9 +838,18 @@ public class CommonUtils {
     return stateLogMsg;
   }
 
-  /** Get the user sending the API request from the HTTP context. */
+  /**
+   * Get the user sending the API request from the HTTP context. It throws exception if the context
+   * is not set.
+   */
   public static Users getUserFromContext() {
     return RequestContext.get(TokenAuthenticator.USER).getUser();
+  }
+
+  /** Get the user sending the API request from the HTTP context if present. */
+  public static Optional<Users> maybeGetUserFromContext() {
+    UserWithFeatures value = RequestContext.getIfPresent(TokenAuthenticator.USER);
+    return value == null ? Optional.empty() : Optional.ofNullable(value.getUser());
   }
 
   public static boolean isAutoFlagSupported(String dbVersion) {

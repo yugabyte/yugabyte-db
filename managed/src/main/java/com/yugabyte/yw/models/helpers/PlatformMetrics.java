@@ -89,6 +89,10 @@ public enum PlatformMetrics {
   UNIVERSE_PAUSED("Flag, indicating that universe is paused", Unit.STATUS, false),
   UNIVERSE_UPDATE_IN_PROGRESS(
       "Flag, indicating that universe update is in progress", Unit.STATUS, false),
+  UNIVERSE_ACTIVE_TASK_CODE(
+      "Code of the active task, running on the universe. If no task is running - value is 0",
+      Unit.STATUS,
+      false),
   UNIVERSE_BACKUP_IN_PROGRESS(
       "Flag, indicating that universe backup is in progress", Unit.STATUS, false),
   UNIVERSE_NODE_FUNCTION("Flag, indicating expected node functions", Unit.STATUS, false),
@@ -108,7 +112,9 @@ public enum PlatformMetrics {
   CONTAINER_RESOURCE_REQUESTS_CPU_CORES(
       "Requested number of CPU cores for the db process", Unit.COUNT, false),
   UNIVERSE_NODE_CRON_STATUS("Cron jobs status on the node", Unit.STATUS),
-  UNIVERSE_IS_SYSTEMD("Flag, indicating systemd universe", Unit.STATUS, false);
+  UNIVERSE_IS_SYSTEMD("Flag, indicating systemd universe", Unit.STATUS, false),
+  UNIVERSE_OS_UPDATE_REQUIRED(
+      "More recent OS version is recommended for this universe", Unit.STATUS, false);
   private final String help;
   private final Unit unit;
   private final Set<MetricSourceState> validForSourceStates;

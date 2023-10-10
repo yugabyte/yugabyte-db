@@ -1,4 +1,4 @@
-import React, { ReactElement } from 'react';
+import { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useFormContext, useFieldArray, useWatch, Controller } from 'react-hook-form';
@@ -230,7 +230,7 @@ export const PlacementsField = ({
           <Box flexShrink={1} mr={3}>
             <Typography variant="h4">{t('universeForm.cloudConfig.azHeader')}</Typography>
           </Box>
-          <YBButton variant="secondary" onClick={() => setValue(RESET_AZ_FIELD, true)}>
+          <YBButton variant="primary" size="medium" onClick={() => setValue(RESET_AZ_FIELD, true)}>
             {t('universeForm.cloudConfig.resetAZLabel')}
           </YBButton>
         </Box>

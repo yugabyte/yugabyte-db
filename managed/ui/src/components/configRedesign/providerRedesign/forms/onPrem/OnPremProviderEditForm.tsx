@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, mixed, object, string } from 'yup';
@@ -42,7 +42,6 @@ import {
   getNtpSetupType
 } from '../../utils';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
-import { ON_PREM_UNLISTED_LOCATION } from '../../providerRegionsData';
 import { getOnPremLocationOption } from '../configureRegion/utils';
 
 import {
@@ -431,7 +430,10 @@ const constructDefaultFormValues = (
   regions: providerConfig.regions.map((region) => ({
     fieldId: generateLowerCaseAlphanumericId(),
     code: region.code,
+    name: region.name || region.code,
     location: getOnPremLocationOption(region.latitude, region.longitude),
+    latitude: region.latitude,
+    longitude: region.longitude,
     zones: region.zones.map((zone) => ({
       code: zone.code
     }))
@@ -497,12 +499,10 @@ const constructProviderPayload = async (
             uuid: existingRegion.uuid,
             details: existingRegion.details
           }),
-          ...(regionFormValues.location.label !== ON_PREM_UNLISTED_LOCATION && {
-            latitude: regionFormValues.location.value.latitude,
-            longitude: regionFormValues.location.value.longitude
-          }),
+          latitude: regionFormValues.latitude,
+          longitude: regionFormValues.longitude,
           code: regionFormValues.code,
-          name: regionFormValues.code,
+          name: regionFormValues.name,
           zones: [
             ...regionFormValues.zones.map((azFormValues) => {
               const existingZone = findExistingZone<OnPremRegion, OnPremAvailabilityZone>(

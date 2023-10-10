@@ -1,6 +1,6 @@
-import React from 'react';
+import { forwardRef } from 'react';
 import * as Yup from 'yup';
-import { Box, MenuItem, IconButton, makeStyles } from '@material-ui/core';
+import { Box, MenuItem, IconButton, makeStyles, Slide } from '@material-ui/core';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { YBModal, YBButton, YBInputField, YBSelectField } from '../../../redesign/components';
@@ -14,7 +14,7 @@ const useStyles = makeStyles((theme) => ({
     height: 40
   },
   mapTable: {
-    background: theme.palette.ybacolors.backgroundGray.lightest,
+    background: theme.palette.ybacolors.backgroundGrayLightest,
     border: `1px solid #CCCCCC`,
     borderRadius: theme.spacing(1),
     padding: theme.spacing(3)
@@ -70,6 +70,10 @@ const DEFAULT_MAPPING_VALUE = [
   }
 ];
 
+const Transition = forwardRef(function Transition(props, ref) {
+  return <Slide direction="up" ref={ref} {...props} />;
+});
+
 export const LDAPMappingModal = ({ open, onClose, onSubmit, values }) => {
   const classes = useStyles();
 
@@ -111,6 +115,7 @@ export const LDAPMappingModal = ({ open, onClose, onSubmit, values }) => {
       dialogContentProps={{ style: { paddingTop: 20 } }}
       submitTestId="submit-ldap-groups"
       cancelTestId="close-ldap-groups"
+      TransitionComponent={Transition}
     >
       <Box
         display="flex"

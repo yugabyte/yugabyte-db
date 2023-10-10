@@ -17,6 +17,7 @@ import com.typesafe.config.Config;
 import java.time.Duration;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -71,12 +72,13 @@ public class PlatformExecutorFactory {
   public ExecutorService createExecutor(
       String poolName, int corePoolSize, int maxPoolSize, ThreadFactory namedThreadFactory) {
     return createExecutor(
-        poolName, corePoolSize, maxPoolSize, Duration.ZERO, 0, namedThreadFactory);
+        poolName, corePoolSize, maxPoolSize, Duration.ZERO, Integer.MAX_VALUE, namedThreadFactory);
   }
 
   public ExecutorService createFixedExecutor(
       String poolName, int poolSize, ThreadFactory namedThreadFactory) {
-    return createExecutor(poolName, poolSize, poolSize, Duration.ZERO, 0, namedThreadFactory);
+    return createExecutor(
+        poolName, poolSize, poolSize, Duration.ZERO, Integer.MAX_VALUE, namedThreadFactory);
   }
 
   public ExecutorService createExecutor(
@@ -92,7 +94,9 @@ public class PlatformExecutorFactory {
             maxPoolSize,
             keepAliveTime.getSeconds(),
             TimeUnit.SECONDS,
-            new LinkedBlockingQueue<>(queueCapacity == 0 ? Integer.MAX_VALUE : queueCapacity),
+            queueCapacity <= 0
+                ? new SynchronousQueue<>()
+                : new LinkedBlockingQueue<>(queueCapacity),
             namedThreadFactory);
     shutdownHookHandler.addShutdownHook(
         executor,

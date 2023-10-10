@@ -15,6 +15,7 @@ public abstract class PagedQuery<F, S extends PagedQuery.SortByIF> {
 
   public interface SortByIF {
     String getSortField();
+
     // Typically id or uuid. Is used to get consistent sort order in case sort field is equal.
     SortByIF getOrderField();
   }

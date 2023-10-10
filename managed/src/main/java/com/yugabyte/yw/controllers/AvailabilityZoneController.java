@@ -3,8 +3,10 @@
 package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.AvailabilityZoneHandler;
 import com.yugabyte.yw.forms.AvailabilityZoneData;
 import com.yugabyte.yw.forms.AvailabilityZoneEditData;
@@ -14,6 +16,11 @@ import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -50,6 +57,12 @@ public class AvailabilityZoneController extends AuthenticatedController {
       response = AvailabilityZone.class,
       responseContainer = "List",
       nickname = "listOfAZ")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result list(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
     Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
 
@@ -64,7 +77,10 @@ public class AvailabilityZoneController extends AuthenticatedController {
    * @return JSON response of newly created zone(s)
    */
   @ApiOperation(
-      value = "Create an availability zone",
+      value =
+          "Deprecated: sinceDate=2023-08-07, sinceYBAVersion=2.18.2.0, Use "
+              + "/api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions/:rUUID/region_zones"
+              + " instead",
       response = AvailabilityZone.class,
       responseContainer = "Map",
       nickname = "createAZ")
@@ -73,42 +89,74 @@ public class AvailabilityZoneController extends AuthenticatedController {
           name = "azFormData",
           value = "Availability zone form data",
           paramType = "body",
-          dataType = "com.yugabyte.yw.models.AvailabilityZone",
+          dataType = "com.yugabyte.yw.forms.AvailabilityZoneFormData",
           required = true))
+  @Deprecated
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result create(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
     Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
-    if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.useLegacyPayloadForRegionAndAZs)) {
-      Form<AvailabilityZoneFormData> formData =
-          formFactory.getFormDataOrBadRequest(request, AvailabilityZoneFormData.class);
-      List<AvailabilityZoneData> azDataList = formData.get().availabilityZones;
-      List<String> createdAvailabilityZonesUUID = new ArrayList<>();
-      Map<String, AvailabilityZone> availabilityZones = new HashMap<>();
-      List<AvailabilityZone> createdZones = availabilityZoneHandler.createZones(region, azDataList);
-      for (AvailabilityZone az : createdZones) {
-        availabilityZones.put(az.getCode(), az);
-        createdAvailabilityZonesUUID.add(az.getUuid().toString());
-      }
-      auditService()
-          .createAuditEntryWithReqBody(
-              request,
-              Audit.TargetType.AvailabilityZone,
-              createdAvailabilityZonesUUID.toString(),
-              Audit.ActionType.Create);
-      return PlatformResults.withData(availabilityZones);
-    } else {
-      AvailabilityZone zone =
-          formFactory.getFormDataOrBadRequest(request.body().asJson(), AvailabilityZone.class);
-      zone = availabilityZoneHandler.createZone(region, zone);
-
-      auditService()
-          .createAuditEntryWithReqBody(
-              request,
-              Audit.TargetType.AvailabilityZone,
-              zone.getUuid().toString(),
-              Audit.ActionType.Create);
-      return PlatformResults.withData(zone);
+    Form<AvailabilityZoneFormData> formData =
+        formFactory.getFormDataOrBadRequest(request, AvailabilityZoneFormData.class);
+    List<AvailabilityZoneData> azDataList = formData.get().availabilityZones;
+    List<String> createdAvailabilityZonesUUID = new ArrayList<>();
+    Map<String, AvailabilityZone> availabilityZones = new HashMap<>();
+    List<AvailabilityZone> createdZones = availabilityZoneHandler.createZones(region, azDataList);
+    for (AvailabilityZone az : createdZones) {
+      availabilityZones.put(az.getCode(), az);
+      createdAvailabilityZonesUUID.add(az.getUuid().toString());
     }
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.AvailabilityZone,
+            createdAvailabilityZonesUUID.toString(),
+            Audit.ActionType.Create);
+    return PlatformResults.withData(availabilityZones);
+  }
+
+  /**
+   * POST endpoint for creating new zone(s)
+   *
+   * @return JSON response of newly created zone(s)
+   */
+  @ApiOperation(
+      value = "Create an availability zone",
+      response = AvailabilityZone.class,
+      responseContainer = "Map",
+      nickname = "createZone")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "azData",
+          value = "Availability Zone to create",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.models.AvailabilityZone",
+          required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result createZoneNew(
+      UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
+    Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
+    AvailabilityZone zone =
+        formFactory.getFormDataOrBadRequest(request.body().asJson(), AvailabilityZone.class);
+    zone = availabilityZoneHandler.createZone(region, zone);
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.AvailabilityZone,
+            zone.getUuid().toString(),
+            Audit.ActionType.Create);
+    return PlatformResults.withData(zone);
   }
 
   /**
@@ -119,42 +167,83 @@ public class AvailabilityZoneController extends AuthenticatedController {
   @ApiOperation(
       value = "Modify an availability zone",
       response = AvailabilityZone.class,
+      nickname = "editZone")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "azData",
+          value = "Availability zone to edit",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.models.AvailabilityZone",
+          required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result editZoneNew(
+      UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID zoneUUID, Http.Request request) {
+    Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
+    AvailabilityZone raz =
+        formFactory.getFormDataOrBadRequest(request.body().asJson(), AvailabilityZone.class);
+    AvailabilityZone az =
+        availabilityZoneHandler.editZone(
+            zoneUUID,
+            regionUUID,
+            zone -> {
+              zone.setSubnet(raz.getSubnet());
+              zone.setSecondarySubnet(raz.getSecondarySubnet());
+              zone.setDetails(raz.getDetails());
+            });
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.AvailabilityZone,
+            az.getUuid().toString(),
+            Audit.ActionType.Edit);
+    return PlatformResults.withData(az);
+  }
+
+  /**
+   * PUT endpoint for editing an availability zone
+   *
+   * @return JSON response of the modified zone
+   */
+  @ApiOperation(
+      value =
+          "Deprecated: sinceDate=2023-08-07, sinceYBAVersion=2.18.2.0, Use "
+              + "/api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions/:rUUID/region_zones/:zUUID"
+              + " instead",
+      response = AvailabilityZone.class,
       nickname = "editAZ")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "azFormData",
           value = "Availability zone edit form data",
           paramType = "body",
-          dataType = "com.yugabyte.yw.models.AvailabilityZone",
+          dataType = "com.yugabyte.yw.forms.AvailabilityZoneFormData",
           required = true))
+  @Deprecated
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result edit(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID zoneUUID, Http.Request request) {
     Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
-    AvailabilityZone az;
-    if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.useLegacyPayloadForRegionAndAZs)) {
-      AvailabilityZoneEditData azData =
-          formFactory.getFormDataOrBadRequest(request, AvailabilityZoneEditData.class).get();
-      az =
-          availabilityZoneHandler.editZone(
-              zoneUUID,
-              regionUUID,
-              zone -> {
-                zone.setSubnet(azData.subnet);
-                zone.setSecondarySubnet(azData.secondarySubnet);
-              });
-    } else {
-      AvailabilityZone raz =
-          formFactory.getFormDataOrBadRequest(request.body().asJson(), AvailabilityZone.class);
-      az =
-          availabilityZoneHandler.editZone(
-              zoneUUID,
-              regionUUID,
-              zone -> {
-                zone.setSubnet(raz.getSubnet());
-                zone.setSecondarySubnet(raz.getSecondarySubnet());
-                zone.setDetails(raz.getDetails());
-              });
-    }
+    AvailabilityZoneEditData azData =
+        formFactory.getFormDataOrBadRequest(request, AvailabilityZoneEditData.class).get();
+    AvailabilityZone az =
+        availabilityZoneHandler.editZone(
+            zoneUUID,
+            regionUUID,
+            zone -> {
+              zone.setSubnet(azData.subnet);
+              zone.setSecondarySubnet(azData.secondarySubnet);
+            });
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -177,6 +266,12 @@ public class AvailabilityZoneController extends AuthenticatedController {
       value = "Delete an availability zone",
       response = YBPSuccess.class,
       nickname = "deleteAZ")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result delete(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID azUUID, Http.Request request) {
     Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);

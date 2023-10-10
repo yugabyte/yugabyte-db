@@ -35,6 +35,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/stol_utils.h"
 
+#include "yb/util/string_util.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 DEFINE_RUNTIME_int32(cdc_state_table_num_tablets, 0,
@@ -88,10 +89,10 @@ Result<std::optional<T>> GetIntValueFromMap(const QLMapValuePB& map_value, const
 
 void SerializeEntry(
     const CDCStateTableKey& key, client::TableHandle* cdc_table, QLWriteRequestPB* req) {
-  DCHECK(!key.stream_id.empty() && !key.tablet_id.empty());
+  DCHECK(key.stream_id && !key.tablet_id.empty());
 
   QLAddStringHashValue(req, key.tablet_id);
-  QLAddStringRangeValue(req, key.stream_id);
+  QLAddStringRangeValue(req, key.CompositeStreamId());
 }
 
 void SerializeEntry(
@@ -164,9 +165,10 @@ Status DeserializeColumn(
 Result<CDCStateTableEntry> DeserializeRow(
     const qlexpr::QLRow& row, const std::vector<std::string>& columns) {
   DCHECK_GE(columns.size(), 2);
-  CDCStateTableEntry entry(
-      row.column(kCdcTabletIdIdx).string_value(),
-      row.column(kCdcStreamIdIdx).string_value());
+  auto key = VERIFY_RESULT(CDCStateTableKey::FromString(
+      row.column(kCdcTabletIdIdx).string_value(), row.column(kCdcStreamIdIdx).string_value()));
+
+  CDCStateTableEntry entry(std::move(key));
 
   for (size_t i = 2; i < columns.size(); i++) {
     RETURN_NOT_OK(DeserializeColumn(row.column(i), columns[i], &entry));
@@ -176,7 +178,31 @@ Result<CDCStateTableEntry> DeserializeRow(
 }  // namespace
 
 std::string CDCStateTableKey::ToString() const {
-  return Format("TabletId: $0, StreamId: $1", tablet_id, stream_id);
+  return Format(
+      "TabletId: $0, StreamId: $1 $2", tablet_id, stream_id,
+      colocated_table_id.empty() ? "" : Format(", ColocatedTableId: $0", colocated_table_id));
+}
+
+std::string CDCStateTableKey::CompositeStreamId() const {
+  if (colocated_table_id.empty()) {
+    return stream_id.ToString();
+  }
+  return Format("$0_$1", stream_id, colocated_table_id);
+}
+
+Result<CDCStateTableKey> CDCStateTableKey::FromString(
+    const TabletId& tablet_id, const std::string& composite_stream_id) {
+  auto composite_stream_id_parts = StringSplit(composite_stream_id, '_');
+  SCHECK_LE(
+      composite_stream_id_parts.size(), static_cast<uint32_t>(2), IllegalState,
+      Format("Invalid stream id: $0", composite_stream_id));
+  auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(composite_stream_id_parts[0]));
+
+  CDCStateTableKey key{
+      tablet_id, std::move(stream_id),
+      composite_stream_id_parts.size() == 2 ? std::move(composite_stream_id_parts[1]) : ""};
+
+  return key;
 }
 
 std::string CDCStateTableEntry::ToString() const {
@@ -276,8 +302,7 @@ Result<client::YBClient*> CDCStateTable::GetClient() {
 
 Result<std::shared_ptr<client::YBSession>> CDCStateTable::GetSession() {
   auto* client = VERIFY_RESULT(GetClient());
-  auto session = client->NewSession();
-  session->SetTimeout(client->default_rpc_timeout());
+  auto session = client->NewSession(client->default_rpc_timeout());
   return session;
 }
 
@@ -307,7 +332,9 @@ Status CDCStateTable::WriteEntries(
 
     ops.push_back(std::move(op));
   }
-  return session->ApplyAndFlushSync(ops);
+
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  return session->TEST_ApplyAndFlush(ops);
 }
 
 Status CDCStateTable::InsertEntries(const std::vector<CDCStateTableEntry>& entries) {
@@ -343,7 +370,7 @@ Result<CDCStateTableRange> CDCStateTable::GetTableRange(
 
 Result<std::optional<CDCStateTableEntry>> CDCStateTable::TryFetchEntry(
     const CDCStateTableKey& key, CDCStateTableEntrySelector&& field_filter) {
-  DCHECK(!key.tablet_id.empty() && !key.stream_id.empty());
+  DCHECK(!key.tablet_id.empty() && key.stream_id);
 
   std::vector<std::string> columns;
   MoveCollection(&field_filter.columns_, &columns);
@@ -361,11 +388,12 @@ Result<std::optional<CDCStateTableEntry>> CDCStateTable::TryFetchEntry(
   QLAddStringHashValue(req_read, key.tablet_id);
   QLSetStringCondition(
       req_read->mutable_where_expr()->mutable_condition(), kCdcStreamIdColumnId, QL_OP_EQUAL,
-      key.stream_id);
+      key.CompositeStreamId());
   req_read->mutable_column_refs()->add_ids(kCdcStreamIdColumnId);
 
   cdc_table->AddColumns(columns, req_read);
-  RETURN_NOT_OK(session->ReadSync(read_op));
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  RETURN_NOT_OK(session->TEST_ApplyAndFlush(read_op));
   auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
   if (row_block->row_count() == 0) {
     return std::nullopt;

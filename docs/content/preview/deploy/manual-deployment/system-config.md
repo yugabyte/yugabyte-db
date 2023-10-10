@@ -111,8 +111,8 @@ On CentOS, /etc/security/limits.d/20-nproc.conf must also be configured to match
 
 {{< note title="Note" >}}
 
-If you're using [systemd](https://systemd.io/) to start the processes, and the ulimits are not propagated, you
- must add them also in the `Service` section in the configuration file.
+If you're using [systemd](https://systemd.io/) to start the processes, and the ulimits are not propagated, add the ulimts in the `Service` section of the configuration file. 
+For more details , see systemd example configuration for [yb-master.service](/code-samples/yb-master.service) , and [yb-tserver.service](/code-samples/yb-tserver.service).
 
 ```
 [Unit]
@@ -134,7 +134,7 @@ Directive       | ulimit equivalent    | Value |
 LimitCPU=       | ulimit -t            | infinity |
 LimitFSIZE=     | ulimit -f            | infinity |
 LimitDATA=      | ulimit -d            | infinity |
-LimitSTACK=     | ulimit -s            | 8192 |
+LimitSTACK=     | ulimit -s            | 8388608 |
 LimitCORE=      | ulimit -c            | infinity |
 LimitRSS=       | ulimit -m            | infinity |
 LimitNOFILE=    | ulimit -n            | 1048576  |
@@ -158,21 +158,18 @@ After changing a `ulimit` setting in `/etc/security/limits.conf`, you will need 
 {{< /note >}}
 
 {{< note title="Note" >}}
-If you're using a desktop-distribution, such as ubuntu-desktop, the settings above may not suffice.
-The OS needs additional steps to change `ulimit` for gui login. In the case of ubuntu-desktop:
+If you're using a desktop-distribution, such as ubuntu-desktop, the settings above may not suffice. The operating system needs additional steps to change `ulimit` for GUI login. In the case of ubuntu-desktop:
 
 In `/etc/systemd/user.conf` and `/etc/systemd/system.conf`, add at the end of file `DefaultLimitNOFILE=64000`.
 
 Something similar may be needed for other distributions.
 {{< /note >}}
 
-
 ## transparent hugepages
 
 Transparent hugepages should be enabled for optimal performance. By default, they are enabled.
 
 You can check with the following command:
-
 
 ```sh
 $ cat /sys/kernel/mm/transparent_hugepage/enabled

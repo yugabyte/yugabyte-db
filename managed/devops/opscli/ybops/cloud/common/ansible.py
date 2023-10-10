@@ -63,24 +63,6 @@ class AnsibleProcess(object):
                 playbook_args[key] = self.REDACT_STRING
         return playbook_args
 
-    def get_python_executable(self):
-        if "PYTHON_EXECUTABLE" in os.environ:
-            return os.environ["PYTHON_EXECUTABLE"]
-        raise YBOpsRuntimeError("Could not find python path in environment.")
-
-    def get_pex_path(self):
-        """
-        Method used to determine the pex path if script is being called with a PEX environment.
-        Returns path to env if available, False otherwise
-        """
-        if "PEX" in os.environ:
-            return os.environ.get("PEX")
-        return False
-
-    # Finds ansible playbook path. Only necessary in PEX environments.
-    def get_ansible_playbook_path(self):
-        return [x for x in sys.path if x.find('ansible-') >= 0][0]
-
     def run(self, filename, extra_vars=None, host_info=None, print_output=True,
             disable_offloading=False):
         """Method used to call out to the respective Ansible playbooks.
@@ -133,13 +115,6 @@ class AnsibleProcess(object):
             })
 
         process_args = ["ansible-playbook"]
-
-        # Determine PEX and override ansible-playbook path.
-        pex_path = self.get_pex_path()
-        if pex_path:
-            python = self.get_python_executable()
-            ansible_playbook = self.get_ansible_playbook_path()
-            process_args = [python, pex_path, ansible_playbook + "/.prefix/bin/ansible-playbook"]
 
         if ssh2_enabled:
             # Will be moved as part of task of license upload api.
@@ -287,14 +262,13 @@ class AnsibleProcess(object):
                                  env=env)
             stdout, stderr = p.communicate()
             rc = p.returncode
-            stdout = stdout.decode('utf-8')
         if print_output:
-            print(stdout)
+            print(stdout.decode('utf-8'))
 
         if rc != 0:
             errmsg = f"Playbook run of {filename} against {inventory_target} with args " \
                      f"{redacted_process_args} failed with return code {rc} " \
-                     f"and error '{stderr}'"
+                     f"and error '{stderr.decode('utf-8')}'"
 
             if rc == 4:  # host unreachable
                 raise YBOpsRecoverableError(errmsg)

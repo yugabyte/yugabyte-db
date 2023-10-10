@@ -1,4 +1,4 @@
-// Copyright (c) YugabyteDB, Inc.
+// Copyright (c) Yugabyte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -11,6 +11,8 @@
 // under the License.
 
 #include "yb/util/env_util.h"
+#include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_wrapper.h"
+
 #include "yb/yql/process_wrapper/process_wrapper.h"
 
 namespace yb {
@@ -64,14 +66,20 @@ void ProcessSupervisor::RunThread() {
       if (ret_code == 0) {
         LOG(INFO) << process_name << " exited normally";
       } else {
-        util::LogWaitCode(ret_code);
+        util::LogWaitCode(ret_code, process_name);
       }
       process_wrapper_.reset();
     } else {
-      LOG(WARNING) << "Failed when waiting for " << process_name
-                   << " to exit: " << wait_result.status() << ", waiting a bit";
-      SleepFor(std::chrono::seconds(1));
-      continue;
+      LOG(WARNING) << "Failed when waiting for process to exit: " << wait_result.status();
+
+      // Don't continue waiting in the loop if it is IllegalState as this means the process is not
+      // currently running at all, perhaps due to failure to start. In this case, the
+      // process_wrapper is not initilized. So there isn't a process to wait.
+      if (!wait_result.status().IsIllegalState()) {
+        LOG(INFO) << "Wait a bit next process_wrapper wait-check for " << process_name;
+        SleepFor(std::chrono::seconds(1));
+        continue;
+      }
     }
 
     {

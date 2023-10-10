@@ -5,7 +5,7 @@ description: Use Apache Atlas with YCQL API
 menu:
   preview_integrations:
     identifier: ycql-atlas
-    parent: integrations
+    parent: integrations-other
     weight: 571
 type: docs
 ---

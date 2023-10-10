@@ -60,6 +60,7 @@ class WriteBatch;
 class Env;
 class EventListener;
 
+YB_STRONGLY_TYPED_BOOL(SkipLastEntry);
 
 extern const char kDefaultColumnFamilyName[];
 
@@ -313,6 +314,16 @@ class DB {
   virtual Iterator* NewIterator(const ReadOptions& options) {
     return NewIterator(options, DefaultColumnFamily());
   }
+
+  virtual std::unique_ptr<Iterator> NewIndexIterator(
+      const ReadOptions& options, SkipLastEntry skip_last_index_entry,
+      ColumnFamilyHandle* column_family) = 0;
+
+  std::unique_ptr<Iterator> NewIndexIterator(
+      const ReadOptions& options, SkipLastEntry skip_last_index_entry) {
+    return NewIndexIterator(options, skip_last_index_entry, DefaultColumnFamily());
+  }
+
   // Returns iterators from a consistent database state across multiple
   // column families. Iterators are heap allocated and need to be deleted
   // before the db is deleted
@@ -720,6 +731,8 @@ class DB {
   // The sequence number of the most recent transaction.
   virtual SequenceNumber GetLatestSequenceNumber() const = 0;
 
+  // The file number that will be used for the next new file.
+  virtual uint64_t GetNextFileNumber() const = 0;
 
   // Prevent file deletions. Compactions will continue to occur,
   // but no obsolete files will be deleted. Calling this multiple
@@ -818,6 +831,8 @@ class DB {
 
   virtual FlushAbility GetFlushAbility() { return FlushAbility::kHasNewData; }
 
+  // Might return stale frontiers if invoked after records have been written to the memtable, but
+  // before frontiers are updated.
   virtual UserFrontierPtr GetMutableMemTableFrontier(UpdateUserValueType type) { return nullptr; }
 
   virtual UserFrontierPtr CalcMemTableFrontier(UpdateUserValueType type) {

@@ -51,8 +51,6 @@ DEFINE_UNKNOWN_uint32(external_intent_cleanup_secs, 60 * 60 * 24,  // 24 hours b
 DEFINE_UNKNOWN_uint64(intents_compaction_filter_max_errors_to_log, 100,
               "Maximum number of errors to log for life cycle of the intents compcation filter.");
 
-DECLARE_uint32(external_transaction_retention_window_secs);
-
 using std::unique_ptr;
 using rocksdb::CompactionFilter;
 
@@ -97,7 +95,6 @@ class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
   const MicrosTime compaction_start_time_;
 
   TransactionIdSet transactions_to_cleanup_;
-  TransactionIdSet external_transactions_to_cleanup_;
   int rejected_transactions_ = 0;
   uint64_t num_errors_ = 0;
 
@@ -127,13 +124,6 @@ Status DocDBIntentsCompactionFilter::CleanupTransactions() {
     RETURN_NOT_OK(manager->Cleanup(std::move(transactions_to_cleanup_)));
   }
 
-  if (!external_transactions_to_cleanup_.empty()) {
-    auto external_txn_intents_state = tablet_->GetExternalTxnIntentsState();
-    if (external_txn_intents_state) {
-      external_txn_intents_state->EraseEntries(external_transactions_to_cleanup_);
-    }
-  }
-
   return Status::OK();
 }
 
@@ -148,27 +138,25 @@ rocksdb::FilterDecision DocDBIntentsCompactionFilter::Filter(
     filter_usage_logged_ = true;
   }
 
-  bool is_external_intent = (GetKeyType(key, StorageDbType::kIntents) == KeyType::kExternalIntents);
-  if (is_external_intent ||
-      GetKeyType(key, StorageDbType::kIntents) == KeyType::kTransactionMetadata) {
-    // The first byte of the key is a special kExternalTransactionId char, so this is an external
-    // intent of the old data format. See https://phabricator.dev.yugabyte.com/D18669 for a
-    // description of the old vs new format for external intents. First, strip off the external
-    // intent byte from the key, and then check whether to keep the intent.
-    auto transaction_id_result = is_external_intent
-                                     ? FilterExternalIntent(key)
-                                     : FilterTransactionMetadata(key, existing_value);
+  const auto key_type = GetKeyType(key, StorageDbType::kIntents);
+  if (key_type == KeyType::kExternalIntents) {
+    auto transaction_id_result = FilterExternalIntent(key);
     MAYBE_LOG_ERROR_AND_RETURN_KEEP(transaction_id_result);
     auto transaction_id_optional = *transaction_id_result;
     if (!transaction_id_optional.has_value()) {
       return rocksdb::FilterDecision::kKeep;
     }
-    AddToSet(
-        *transaction_id_optional,
-        is_external_intent ? &external_transactions_to_cleanup_ : &transactions_to_cleanup_);
-    if (is_external_intent) {
-      return rocksdb::FilterDecision::kDiscard;
+    return rocksdb::FilterDecision::kDiscard;
+  }
+
+  if (key_type == KeyType::kTransactionMetadata) {
+    auto transaction_id_result = FilterTransactionMetadata(key, existing_value);
+    MAYBE_LOG_ERROR_AND_RETURN_KEEP(transaction_id_result);
+    auto transaction_id_optional = *transaction_id_result;
+    if (!transaction_id_optional.has_value()) {
+      return rocksdb::FilterDecision::kKeep;
     }
+    AddToSet(*transaction_id_optional, &transactions_to_cleanup_);
   }
 
   // TODO(dtxn): If/when we add processing of reverse index or intents here - we will need to
@@ -197,13 +185,6 @@ Result<boost::optional<TransactionId>> DocDBIntentsCompactionFilter::FilterTrans
   if (delta_micros <
       GetAtomicFlag(&FLAGS_aborted_intent_cleanup_ms) * MonoTime::kMillisecondsPerSecond) {
     return boost::none;
-  }
-
-  if (metadata_pb.external_transaction()) {
-    if (delta_micros < GetAtomicFlag(&FLAGS_external_transaction_retention_window_secs) *
-                       MonoTime::kMicrosecondsPerSecond) {
-      return boost::none;
-    }
   }
 
   Slice key_slice = key;

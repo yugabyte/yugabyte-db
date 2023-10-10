@@ -43,20 +43,21 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/thread.h"
 
+DECLARE_bool(TEST_enable_sync_points);
+
 using std::string;
 using std::vector;
 
 namespace yb {
 
-#ifndef NDEBUG
 static void RunThread(bool *var) {
   *var = true;
   TEST_SYNC_POINT("first");
 }
-#endif
 
 TEST(SyncPointTest, TestSyncPoint) {
-#ifndef NDEBUG
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+
   // Set up a sync point "second" that depends on "first".
   vector<SyncPoint::Dependency> dependencies;
   dependencies.push_back({"first", "second"});
@@ -74,9 +75,6 @@ TEST(SyncPointTest, TestSyncPoint) {
   ASSERT_TRUE(var);
 
   thread->Join();
-#else
-  LOG(INFO) << "Test skipped in release mode.";
-#endif // NDEBUG
 }
 
 } // namespace yb

@@ -72,7 +72,7 @@ class YQLRowwiseIteratorIf {
   virtual Status GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key);
 
   // Returns the tuple id of the current tuple. See DocRowwiseIterator for details.
-  virtual Result<Slice> GetTupleId() const;
+  virtual Slice GetTupleId() const;
 
   // Seeks to the given tuple by its id. See DocRowwiseIterator for details.
   virtual void SeekTuple(Slice tuple_id);

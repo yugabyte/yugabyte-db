@@ -5,13 +5,21 @@ package com.yugabyte.yw.controllers;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.CustomCACertParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CustomCaCertificateInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -47,6 +55,12 @@ public class CustomCAStoreController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.CustomCACertParams",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result addCA(UUID customerId, Http.Request request) {
     if (!customCAStoreManager.isEnabled()) {
       throw new PlatformServiceException(
@@ -88,6 +102,12 @@ public class CustomCAStoreController extends AuthenticatedController {
       responseContainer = "List",
       response = CustomCaCertificateInfo.class,
       nickname = "listAllCustomCaCertificates")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result listCAs(UUID customerId) {
     Customer.getOrBadRequest(customerId);
     return PlatformResults.withData(customCAStoreManager.getAll());
@@ -97,6 +117,12 @@ public class CustomCAStoreController extends AuthenticatedController {
       value = "Download a custom CA certificates of a customer",
       response = CustomCaCertificateInfo.class,
       nickname = "getAllCustomCaCertificates")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result downloadCA(UUID customerId, UUID certId, Http.Request request) {
     Customer.getOrBadRequest(customerId);
     CustomCaCertificateInfo cert = customCAStoreManager.get(customerId, certId);
@@ -111,6 +137,12 @@ public class CustomCAStoreController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.CustomCACertParams",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result updateCA(UUID customerId, UUID oldCertId, Http.Request request) {
     if (!customCAStoreManager.isEnabled()) {
       throw new PlatformServiceException(
@@ -150,6 +182,12 @@ public class CustomCAStoreController extends AuthenticatedController {
       value = "Delete a named custom CA certificate",
       response = YBPSuccess.class,
       nickname = "Delete custom CA certificate")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result deleteCA(UUID customerId, UUID certId, Http.Request request) {
     if (!customCAStoreManager.isEnabled()) {
       throw new PlatformServiceException(

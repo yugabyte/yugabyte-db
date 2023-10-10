@@ -8,6 +8,8 @@ import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfigCache;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.models.Customer;
@@ -80,6 +82,8 @@ public class TokenAuthenticator extends Action.Simple {
 
   private final RuntimeConfigFactory runtimeConfigFactory;
 
+  private final RuntimeConfigCache runtimeConfigCache;
+
   private final JWTVerifier jwtVerifier;
 
   @Inject
@@ -88,11 +92,13 @@ public class TokenAuthenticator extends Action.Simple {
       PlaySessionStore sessionStore,
       UserService userService,
       RuntimeConfigFactory runtimeConfigFactory,
+      RuntimeConfigCache runtimeConfigCache,
       JWTVerifier jwtVerifier) {
     this.config = config;
     this.sessionStore = sessionStore;
     this.userService = userService;
     this.runtimeConfigFactory = runtimeConfigFactory;
+    this.runtimeConfigCache = runtimeConfigCache;
     this.jwtVerifier = jwtVerifier;
   }
 
@@ -143,6 +149,10 @@ public class TokenAuthenticator extends Action.Simple {
 
   @Override
   public CompletionStage<Result> call(Http.Request request) {
+    boolean useNewAuthz = runtimeConfigCache.getBoolean(GlobalConfKeys.useNewRbacAuthz.getKey());
+    if (useNewAuthz) {
+      return delegate.call(request);
+    }
     try {
       String endPoint = "";
       String path = request.path();

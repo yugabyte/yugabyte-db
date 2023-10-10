@@ -138,6 +138,10 @@ class YBTableName {
     return namespace_type_ == YQL_DATABASE_CQL;
   }
 
+  bool is_pgsql_namespace() const {
+    return namespace_type_ == YQL_DATABASE_PGSQL;
+  }
+
   bool is_redis_namespace() const {
     return namespace_type_ == YQL_DATABASE_REDIS;
   }

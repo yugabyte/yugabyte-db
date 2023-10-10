@@ -31,7 +31,8 @@ public class TableDetails {
   // The default table-level time to live (in seconds).
   @ApiModelProperty(
       value =
-          "The default table-level time to live, in seconds. A value of `-1` represents an infinite TTL.")
+          "The default table-level time to live, in seconds. A value of `-1` represents an infinite"
+              + " TTL.")
   public long ttlInSeconds = -1;
 
   // Details of the columns that make up the table (to be used to create ColumnSchemas).

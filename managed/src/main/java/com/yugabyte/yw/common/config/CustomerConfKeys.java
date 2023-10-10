@@ -26,6 +26,14 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "We garbage collect stale tasks after this duration",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> cloudEnabled =
+      new ConfKeyInfo<>(
+          "yb.cloud.enabled",
+          ScopeType.CUSTOMER,
+          "Cloud Enabled",
+          "Enables YBM specific features",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> isAuthEnforced =
       new ConfKeyInfo<>(
           "yb.universe.auth.is_enforced",
@@ -110,14 +118,18 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
               + "view and improves the provider creation form for AWS, AZU, GCP, and K8s",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> useK8CustomResources =
+
+  public static final ConfKeyInfo<Boolean> showDrUi =
       new ConfKeyInfo<>(
-          "yb.ui.feature_flags.k8s_custom_resources",
+          "yb.ui.feature_flags.disaster_recovery",
           ScopeType.CUSTOMER,
-          "Use K8 custom resources",
-          "Allows user to select custom K8 memory(GB) and cpu cores",
+          "Show disaster recovery UI",
+          "YBA provides an active-active single-master disaster recovery (DR) solution "
+              + "through the API. This runtime config exposes a user interface for managing DR "
+              + "configurations.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> enforceUserTags =
       new ConfKeyInfo<>(
           "yb.universe.user_tags.is_enforced",
@@ -137,14 +149,5 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
               + " Ex: [\"yb_task:dev\",\"yb_task:test\",\"yb_owner:*\",\"yb_dept:eng\","
               + "\"yb_dept:qa\", \"yb_dept:product\", \"yb_dept:sales\"]",
           ConfDataType.KeyValuesSetMultimapType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-
-  public static final ConfKeyInfo<Boolean> enforceSecureUniversePassword =
-      new ConfKeyInfo<>(
-          "yb.security.enforce_secure_universe_passwords",
-          ScopeType.CUSTOMER,
-          "Enforce Secure Universe Passwords",
-          "Prevents universe creation when the Ysql/Ycql password isn't secure.",
-          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -204,6 +204,8 @@ export interface UniverseDetails {
   nodePrefix: string;
   resetAZConfig: boolean;
   rootCA: string;
+  clientRootCA: string;
+  rootAndClientRootCASame: boolean;
   universeUUID: string;
   updateInProgress: boolean;
   updateSucceeded: boolean;
@@ -282,8 +284,8 @@ export interface DeviceInfo {
 }
 
 export interface K8NodeSpec {
-  memory: number;
-  cpu: number;
+  memoryGib: number;
+  cpuCoreCount: number;
 }
 //-------------------------------------------------------- Most Used OR Common Types - Ends --------------------------------------------------------
 
@@ -672,6 +674,20 @@ export interface AccessKey {
     passwordlessSudoAccess: boolean;
     provisionInstanceScript: string;
   };
+}
+
+export interface YBSoftwareMetadata {
+    state: string;
+    notes: string[];
+    filePath: string[];
+    chartPath: string;
+    imageTag: string;
+    packages: YBSoftwareMetadataPackages[];
+}
+
+export interface YBSoftwareMetadataPackages {
+    path: string;
+    arch: string;
 }
 
 export interface Provider {

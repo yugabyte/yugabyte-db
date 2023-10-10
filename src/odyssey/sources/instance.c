@@ -9,6 +9,11 @@
 #include <odyssey.h>
 #include <sys/prctl.h>
 
+#include <sys/ipc.h>
+#include <sys/shm.h>
+
+#include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
+
 void od_instance_init(od_instance_t *instance)
 {
 	od_pid_init(&instance->pid);
@@ -18,6 +23,7 @@ void od_instance_init(od_instance_t *instance)
 
 	instance->config_file = NULL;
 	instance->shutdown_worker_id = INVALID_COROUTINE_ID;
+	instance->yb_stats = NULL;
 
 	sigset_t mask;
 	sigemptyset(&mask);
@@ -68,6 +74,31 @@ static inline od_retcode_t od_args_init(od_arguments_t *args,
 	return OK_RESPONSE;
 }
 
+struct ConnectionStats *yb_get_stats_ptr(od_instance_t *instance,
+					 char *stats_shm_key_str)
+{
+	key_t stats_shm_key = atoi(stats_shm_key_str);
+	int shmid = shmget(stats_shm_key, 0, 0666);
+	if (shmid == -1) {
+		od_error(
+			&instance->logger, "stats", NULL, NULL,
+			"Got error while updating the stats in the shared memory, %s",
+			strerror(errno));
+		return NULL;
+	}
+
+	struct shmid_ds shmid_ds;
+	if (shmctl(shmid, IPC_STAT, &shmid_ds) == -1) {
+		od_error(
+			&instance->logger, "stats", NULL, NULL,
+			"Got error while updating the stats in the shared memory, %s",
+			strerror(errno));
+		return NULL;
+	}
+
+	return (struct ConnectionStats *)shmat(shmid, NULL, 0);
+}
+
 int od_instance_main(od_instance_t *instance, int argc, char **argv)
 {
 	od_arguments_t args;
@@ -88,6 +119,21 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 	}
 
 	od_log(&instance->logger, "startup", NULL, NULL, "Starting Odyssey");
+
+	char *stats_shm_key = getenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
+	if (stats_shm_key != NULL) {
+		instance->yb_stats = yb_get_stats_ptr(instance, stats_shm_key);
+
+		if (instance->yb_stats == (void *)-1) {
+			od_error(
+				&instance->logger, "stats", NULL, NULL,
+				"Got error while updating the stats in the shared memory, %s",
+				strerror(errno));
+		}
+	}
+
+	od_log(&instance->logger, "startup", NULL, NULL, "Ysql Connection Manager stats is %s",
+		 instance->yb_stats != NULL ? "enabled" : "disabled");
 
 	/* prepare system services */
 	od_system_t system;

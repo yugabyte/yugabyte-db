@@ -2,7 +2,9 @@
 
 package com.yugabyte.yw.common;
 
+import static org.apache.commons.lang3.exception.ExceptionUtils.getStackTrace;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.EXPECTATION_FAILED;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
@@ -16,10 +18,20 @@ import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
 import com.amazonaws.regions.DefaultAwsRegionProviderChain;
+import com.amazonaws.services.cloudtrail.AWSCloudTrail;
+import com.amazonaws.services.cloudtrail.model.Event;
+import com.amazonaws.services.cloudtrail.model.LookupAttribute;
+import com.amazonaws.services.cloudtrail.model.LookupAttributeKey;
+import com.amazonaws.services.cloudtrail.model.LookupEventsRequest;
+import com.amazonaws.services.cloudtrail.model.LookupEventsResult;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
+import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
+import com.amazonaws.services.ec2.model.DescribeInstancesResult;
 import com.amazonaws.services.ec2.model.DescribeSpotPriceHistoryRequest;
 import com.amazonaws.services.ec2.model.DescribeSpotPriceHistoryResult;
+import com.amazonaws.services.ec2.model.Filter;
+import com.amazonaws.services.ec2.model.Instance;
 import com.amazonaws.services.ec2.model.SpotPrice;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
@@ -34,15 +46,23 @@ import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.cloud.aws.AWSCloudImpl;
+import com.yugabyte.yw.common.UniverseInterruptionResult.InterruptionStatus;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.ProxySetting;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.RegionLocations;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.io.IOException;
 import java.io.InputStream;
 import java.security.KeyStore;
 import java.security.SecureRandom;
@@ -51,6 +71,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -62,6 +83,7 @@ import javax.net.ssl.TrustManagerFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.http.conn.ssl.NoopHostnameVerifier;
 import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.yb.ybc.CloudStoreSpec;
 import org.yb.ybc.CloudType;
@@ -73,6 +95,7 @@ public class AWSUtil implements CloudUtil {
   @Inject IAMTemporaryCredentialsProvider iamCredsProvider;
   @Inject CustomCAStoreManager customCAStoreManager;
   @Inject RuntimeConfGetter runtimeConfGetter;
+  @Inject AWSCloudImpl awsCloudImpl;
 
   public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
   public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
@@ -100,10 +123,10 @@ public class AWSUtil implements CloudUtil {
       try {
         maybeDisableCertVerification();
         AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
-        String[] bucketSplit = getSplitLocationValue(location);
-        String bucketName = bucketSplit.length > 0 ? bucketSplit[0] : "";
-        String prefix = bucketSplit.length > 1 ? bucketSplit[1] : "";
-        if (bucketSplit.length == 1) {
+        ConfigLocationInfo configLocationInfo = getConfigLocationInfo(location);
+        String bucketName = configLocationInfo.bucket;
+        String prefix = configLocationInfo.cloudPath;
+        if (StringUtils.isEmpty(prefix)) {
           Boolean doesBucketExist = s3Client.doesBucketExistV2(bucketName);
           if (!doesBucketExist) {
             throw new RuntimeException(
@@ -253,7 +276,13 @@ public class AWSUtil implements CloudUtil {
           SecureRandom secureRandom = new SecureRandom();
           SSLContext sslContext = SSLContext.getInstance("TLS");
           sslContext.init(null, ybaJavaTrustManagers, secureRandom);
-          SSLConnectionSocketFactory sslSocketFactory = new SSLConnectionSocketFactory(sslContext);
+          SSLConnectionSocketFactory sslSocketFactory;
+          if (StringUtils.isBlank(endpoint) || isHostBaseS3Standard(s3Data.awsHostBase)) {
+            sslSocketFactory =
+                new SSLConnectionSocketFactory(sslContext, new NoopHostnameVerifier());
+          } else {
+            sslSocketFactory = new SSLConnectionSocketFactory(sslContext);
+          }
           if (clientConfig == null) {
             clientConfig = new ClientConfiguration();
           }
@@ -439,8 +468,7 @@ public class AWSUtil implements CloudUtil {
       throws AmazonS3Exception {
     List<S3ObjectSummary> objectSummary = listObjectsResult.getObjectSummaries();
     List<DeleteObjectsRequest.KeyVersion> objectKeys =
-        objectSummary
-            .parallelStream()
+        objectSummary.parallelStream()
             .map(o -> new KeyVersion(o.getKey()))
             .collect(Collectors.toList());
     DeleteObjectsRequest deleteRequest =
@@ -582,8 +610,7 @@ public class AWSUtil implements CloudUtil {
       }
       AmazonS3 client = createS3Client(s3Data);
       List<Bucket> buckets = client.listBuckets();
-      buckets
-          .parallelStream()
+      buckets.parallelStream()
           .forEach(
               b ->
                   bucketHostBaseMap.put(
@@ -659,6 +686,258 @@ public class AWSUtil implements CloudUtil {
   public void maybeEnableCertVerification() {
     if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enforceCertVerificationBackupRestore)) {
       System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
+    }
+  }
+
+  /**
+   * Validates create permissions on the S3 configuration on default region and other regions, apart
+   * read, list or delete permissions if specified.
+   */
+  @Override
+  public void validate(CustomerConfigData configData, List<ExtraPermissionToValidate> permissions)
+      throws Exception {
+    CustomerConfigStorageS3Data s3data = (CustomerConfigStorageS3Data) configData;
+    if (StringUtils.isEmpty(s3data.awsAccessKeyId)
+        || StringUtils.isEmpty(s3data.awsSecretAccessKey)) {
+      if (!s3data.isIAMInstanceProfile) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Aws credentials are null and IAM profile is not used.");
+      }
+    }
+
+    AmazonS3 s3Client = null;
+    String exceptionMsg = null;
+    try {
+      s3Client = createS3Client(s3data);
+    } catch (AmazonS3Exception s3Exception) {
+      exceptionMsg = s3Exception.getErrorMessage();
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, exceptionMsg);
+    }
+
+    validateOnLocation(s3Client, s3data.backupLocation, permissions);
+
+    if (s3data.regionLocations != null) {
+      for (RegionLocations location : s3data.regionLocations) {
+        if (StringUtils.isEmpty(location.region)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Region of RegionLocation: " + location.awsHostBase + " is empty.");
+        }
+        validateOnLocation(s3Client, location.location, permissions);
+      }
+    }
+  }
+
+  /** Validates S3 configuration on a specific location */
+  private void validateOnLocation(
+      AmazonS3 client, String location, List<ExtraPermissionToValidate> permissions) {
+    ConfigLocationInfo configLocationInfo = getConfigLocationInfo(location);
+    validateOnBucket(client, configLocationInfo.bucket, configLocationInfo.cloudPath, permissions);
+  }
+
+  /**
+   * Validates create permission on a bucket, apart from read, list or delete permissions if
+   * specified.
+   */
+  public void validateOnBucket(
+      AmazonS3 client,
+      String bucketName,
+      String prefix,
+      List<ExtraPermissionToValidate> permissions) {
+    Optional<ExtraPermissionToValidate> unsupportedPermission =
+        permissions.stream()
+            .filter(
+                permission ->
+                    permission != ExtraPermissionToValidate.READ
+                        && permission != ExtraPermissionToValidate.LIST)
+            .findAny();
+
+    if (unsupportedPermission.isPresent()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Unsupported permission "
+              + unsupportedPermission.get().toString()
+              + " validation is not supported!");
+    }
+
+    String objectName = getRandomUUID().toString() + ".txt";
+    String completeObjectPath = BackupUtil.getPathWithPrefixSuffixJoin(prefix, objectName);
+
+    createObject(client, bucketName, DUMMY_DATA, completeObjectPath);
+    log.debug("S3: Test object created");
+
+    if (permissions.contains(ExtraPermissionToValidate.READ)) {
+      validateReadObject(client, bucketName, completeObjectPath, DUMMY_DATA);
+      log.debug("S3: Test object read");
+    }
+
+    if (permissions.contains(ExtraPermissionToValidate.LIST)) {
+      validateListObjects(client, bucketName, completeObjectPath);
+      log.debug("S3: Test object listed");
+    }
+
+    validateDeleteObject(client, bucketName, completeObjectPath);
+    log.debug("S3: Test object deleted");
+  }
+
+  private void createObject(AmazonS3 client, String bucketName, String content, String fileName) {
+    client.putObject(bucketName, fileName, content);
+  }
+
+  private void validateReadObject(
+      AmazonS3 client, String bucketName, String objectName, String content) {
+    String readString = readObject(client, bucketName, objectName, content.getBytes().length);
+    if (!readString.equals(content)) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED,
+          "Error reading test object "
+              + objectName
+              + ", expected: \""
+              + content
+              + "\", got: \""
+              + readString
+              + "\"");
+    }
+  }
+
+  private String readObject(
+      AmazonS3 client, String bucketName, String objectName, int bytesToRead) {
+    S3Object object = client.getObject(bucketName, objectName);
+    if (object == null) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED,
+          "Created object " + objectName + " was not found in bucket " + bucketName);
+    }
+    InputStream ois = object.getObjectContent();
+    byte[] data = new byte[bytesToRead];
+    try {
+      ois.read(data);
+    } catch (IOException e) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED,
+          "Error reading test object " + objectName + ", exception occurred: " + getStackTrace(e));
+    }
+
+    return new String(data);
+  }
+
+  private void validateListObjects(AmazonS3 client, String bucketName, String objectName) {
+    if (!listContainsObject(client, bucketName, objectName)) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED,
+          "Test object "
+              + objectName
+              + " was not found in bucket "
+              + bucketName
+              + " objects list.");
+    }
+  }
+
+  private boolean listContainsObject(AmazonS3 client, String bucketName, String objectName) {
+    Optional<S3ObjectSummary> objSum;
+    ListObjectsV2Result objListing = client.listObjectsV2(bucketName, objectName);
+    objSum =
+        objListing.getObjectSummaries().parallelStream()
+            .filter(oS -> oS.getKey().equals(objectName))
+            .findAny();
+    return objSum.isPresent();
+  }
+
+  private void validateDeleteObject(AmazonS3 client, String bucketName, String objectName) {
+    client.deleteObject(bucketName, objectName);
+    if (client.doesObjectExist(bucketName, objectName)) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED, "Test object " + objectName + " was found in bucket " + bucketName);
+    }
+  }
+
+  public UniverseInterruptionResult spotInstanceUniverseStatus(Universe universe) {
+    UniverseInterruptionResult result = new UniverseInterruptionResult(universe.getName());
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    Provider primaryClusterProvider =
+        Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+    UUID primaryClusterUUID = universe.getUniverseDetails().getPrimaryCluster().uuid;
+
+    // For nodes in primary cluster
+    for (final NodeDetails nodeDetails : universe.getNodesInCluster(primaryClusterUUID)) {
+      result.addNodeStatus(
+          nodeDetails.nodeName,
+          isSpotInstanceInterrupted(nodeDetails, primaryClusterProvider)
+              ? InterruptionStatus.Interrupted
+              : InterruptionStatus.NotInterrupted);
+    }
+    // For nodes in read replicas
+    for (Cluster cluster : universe.getUniverseDetails().getReadOnlyClusters()) {
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      for (final NodeDetails nodeDetails : universe.getNodesInCluster(cluster.uuid)) {
+        result.addNodeStatus(
+            nodeDetails.nodeName,
+            isSpotInstanceInterrupted(nodeDetails, provider)
+                ? InterruptionStatus.Interrupted
+                : InterruptionStatus.NotInterrupted);
+      }
+    }
+    return result;
+  }
+
+  private boolean isSpotInstanceInterrupted(NodeDetails nodeDetails, Provider provider) {
+    try {
+      String instanceID = getInstanceIDFromName(nodeDetails, provider, nodeDetails.getRegion());
+      AWSCloudTrail client = awsCloudImpl.getCloudTrailClient(provider, nodeDetails.getRegion());
+      LookupEventsRequest request =
+          new LookupEventsRequest()
+              .withLookupAttributes(
+                  new LookupAttribute()
+                      .withAttributeKey(LookupAttributeKey.ResourceName)
+                      .withAttributeValue(instanceID));
+      LookupEventsResult response;
+      do {
+        response = client.lookupEvents(request);
+        for (Event event : response.getEvents()) {
+          if (event.getEventName().equalsIgnoreCase("StopInstances")
+              && event.getUsername().equalsIgnoreCase("InstanceTermination")) {
+            return true;
+          }
+        }
+        request = request.withNextToken(response.getNextToken());
+      } while (response.getNextToken() != null);
+    } catch (Exception e) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format("Fetch interruptions status for AWS failed with %s", e.getMessage()));
+    }
+    return false;
+  }
+
+  private String getInstanceIDFromName(NodeDetails nodeDetails, Provider provider, String region) {
+    try {
+      AmazonEC2 ec2Client = awsCloudImpl.getEC2Client(provider, region);
+      DescribeInstancesRequest request =
+          new DescribeInstancesRequest()
+              .withFilters(new Filter().withName("tag:Name").withValues(nodeDetails.getNodeName()));
+      DescribeInstancesResult response = ec2Client.describeInstances(request);
+      if (response.getReservations().isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format("No AWS instance found with name : ", nodeDetails.getNodeName()));
+      }
+      List<Instance> instances = response.getReservations().get(0).getInstances();
+      String result = "";
+      // Choose instance with same IP
+      for (Instance instance : instances) {
+        if (instance.getPrivateIpAddress().equals(nodeDetails.cloudInfo.private_ip)) {
+          result = instance.getInstanceId();
+          break;
+        }
+      }
+      if (result.equals("")) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "No AWS instance found with IP : " + nodeDetails.cloudInfo.private_ip);
+      }
+      return result;
+    } catch (Exception e) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format("Get instance id from name for aws failed with %s", e.getMessage()));
     }
   }
 }

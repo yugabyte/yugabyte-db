@@ -1,0 +1,310 @@
+CREATE TABLE test_remote_filter(a INT, t TEXT, ts TSVECTOR, tq TSQUERY, jb JSONB, js JSON);
+INSERT INTO test_remote_filter VALUES
+    (1, 'fat', to_tsvector('fat cat'), to_tsquery('cat'), '{"a": 1}', '{"b": 1}'),
+    (2, 'bat', to_tsvector('fat cat'), to_tsquery('cat'), '{"a": 2}', '{"b": 2}'),
+    (3, 'cat', to_tsvector('fat cat'), to_tsquery('cat'), '{"a": 3}', '{"b": 3}'),
+    (4, 'hat', to_tsvector('fat cat'), to_tsquery('cat'), '{"a": 4}', '{"b": 4}');
+-- test pushdown of col @@ tsvector
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE tq @@ 'cat'::tsvector;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=4 loops=1)
+   Remote Filter: (tq @@ '''cat'''::tsvector)
+(2 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE tq @@ ts;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=4 loops=1)
+   Remote Filter: (tq @@ ts)
+(2 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE tq @@ to_tsvector(t);
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=1 loops=1)
+   Filter: (tq @@ to_tsvector(t))
+   Rows Removed by Filter: 3
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE tq @@ to_tsvector(jb);
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=0 loops=1)
+   Filter: (tq @@ to_tsvector(jb))
+   Rows Removed by Filter: 4
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE tq @@ to_tsvector(js);
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=0 loops=1)
+   Filter: (tq @@ to_tsvector(js))
+   Rows Removed by Filter: 4
+(3 rows)
+
+-- test pushdown of const @@ tsvector
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE 'cat'::tsquery @@ 'cat'::tsvector;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=4 loops=1)
+(1 row)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE 'cat'::tsquery @@ ts;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=4 loops=1)
+   Remote Filter: ('''cat'''::tsquery @@ ts)
+(2 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE 'cat'::tsquery @@ to_tsvector(t);
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=1 loops=1)
+   Filter: ('''cat'''::tsquery @@ to_tsvector(t))
+   Rows Removed by Filter: 3
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE 'cat'::tsquery @@ to_tsvector(jb);
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=0 loops=1)
+   Filter: ('''cat'''::tsquery @@ to_tsvector(jb))
+   Rows Removed by Filter: 4
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE 'cat'::tsquery @@ to_tsvector(js);
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=0 loops=1)
+   Filter: ('''cat'''::tsquery @@ to_tsvector(js))
+   Rows Removed by Filter: 4
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE to_tsquery('simple', 'cat') @@ 'cat'::tsvector;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=4 loops=1)
+(1 row)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE to_tsquery('simple', 'cat') @@ ts;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=4 loops=1)
+   Remote Filter: ('''cat'''::tsquery @@ ts)
+(2 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE to_tsquery('simple', 'cat') @@ to_tsvector(t);
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=1 loops=1)
+   Filter: ('''cat'''::tsquery @@ to_tsvector(t))
+   Rows Removed by Filter: 3
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE to_tsquery('simple', 'cat') @@ to_tsvector(jb);
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=0 loops=1)
+   Filter: ('''cat'''::tsquery @@ to_tsvector(jb))
+   Rows Removed by Filter: 4
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE to_tsquery('simple', 'cat') @@ to_tsvector(js);
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=0 loops=1)
+   Filter: ('''cat'''::tsquery @@ to_tsvector(js))
+   Rows Removed by Filter: 4
+(3 rows)
+
+-- test pushdown of to_tsquery @@ col
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE to_tsquery(t) @@ ts;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=2 loops=1)
+   Filter: (to_tsquery(t) @@ ts)
+   Rows Removed by Filter: 2
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE plainto_tsquery(t) @@ ts;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=2 loops=1)
+   Filter: (plainto_tsquery(t) @@ ts)
+   Rows Removed by Filter: 2
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE phraseto_tsquery(t) @@ ts;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=2 loops=1)
+   Filter: (phraseto_tsquery(t) @@ ts)
+   Rows Removed by Filter: 2
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE websearch_to_tsquery(t) @@ ts;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=2 loops=1)
+   Filter: (websearch_to_tsquery(t) @@ ts)
+   Rows Removed by Filter: 2
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE to_tsquery('simple', t) @@ ts;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=2 loops=1)
+   Filter: (to_tsquery('simple'::regconfig, t) @@ ts)
+   Rows Removed by Filter: 2
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE plainto_tsquery('simple', t) @@ ts;
+                        QUERY PLAN
+-----------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=2 loops=1)
+   Filter: (plainto_tsquery('simple'::regconfig, t) @@ ts)
+   Rows Removed by Filter: 2
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE phraseto_tsquery('simple', t) @@ ts;
+                         QUERY PLAN
+------------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=2 loops=1)
+   Filter: (phraseto_tsquery('simple'::regconfig, t) @@ ts)
+   Rows Removed by Filter: 2
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE websearch_to_tsquery('simple', t) @@ ts;
+                           QUERY PLAN
+----------------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=2 loops=1)
+   Filter: (websearch_to_tsquery('simple'::regconfig, t) @@ ts)
+   Rows Removed by Filter: 2
+(3 rows)
+
+-- test pushdown of to_tsquery @@ const
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE to_tsquery(t) @@ 'cat'::tsvector;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=1 loops=1)
+   Filter: (to_tsquery(t) @@ '''cat'''::tsvector)
+   Rows Removed by Filter: 3
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE plainto_tsquery(t) @@ 'cat'::tsvector;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=1 loops=1)
+   Filter: (plainto_tsquery(t) @@ '''cat'''::tsvector)
+   Rows Removed by Filter: 3
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE phraseto_tsquery(t) @@ 'cat'::tsvector;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=1 loops=1)
+   Filter: (phraseto_tsquery(t) @@ '''cat'''::tsvector)
+   Rows Removed by Filter: 3
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE websearch_to_tsquery(t) @@ 'cat'::tsvector;
+                         QUERY PLAN
+------------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=1 loops=1)
+   Filter: (websearch_to_tsquery(t) @@ '''cat'''::tsvector)
+   Rows Removed by Filter: 3
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE to_tsquery('simple', t) @@ 'cat'::tsvector;
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=1 loops=1)
+   Filter: (to_tsquery('simple'::regconfig, t) @@ '''cat'''::tsvector)
+   Rows Removed by Filter: 3
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE plainto_tsquery('simple', t) @@ 'cat'::tsvector;
+                                 QUERY PLAN
+----------------------------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=1 loops=1)
+   Filter: (plainto_tsquery('simple'::regconfig, t) @@ '''cat'''::tsvector)
+   Rows Removed by Filter: 3
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE phraseto_tsquery('simple', t) @@ 'cat'::tsvector;
+                                 QUERY PLAN
+-----------------------------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=1 loops=1)
+   Filter: (phraseto_tsquery('simple'::regconfig, t) @@ '''cat'''::tsvector)
+   Rows Removed by Filter: 3
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE websearch_to_tsquery('simple', t) @@ 'cat'::tsvector;
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=1 loops=1)
+   Filter: (websearch_to_tsquery('simple'::regconfig, t) @@ '''cat'''::tsvector)
+   Rows Removed by Filter: 3
+(3 rows)
+
+-- test pushdown of ts_headline(col, col)
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE ts_headline(t, tq) = t;
+                       QUERY PLAN
+--------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=3 loops=1)
+   Filter: (ts_headline(t, tq) = t)
+   Rows Removed by Filter: 1
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE ts_headline(jb, tq)->>'a' = '1';
+                         QUERY PLAN
+-------------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=1 loops=1)
+   Filter: ((ts_headline(jb, tq) ->> 'a'::text) = '1'::text)
+   Rows Removed by Filter: 3
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE ts_headline(js, tq)->>'b' = '1';
+                         QUERY PLAN
+-------------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=1 loops=1)
+   Filter: ((ts_headline(js, tq) ->> 'b'::text) = '1'::text)
+   Rows Removed by Filter: 3
+(3 rows)
+
+-- test pushdown of ts_headline(const, const)
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE ts_headline('fat', 'cat'::tsquery) = t;
+                          QUERY PLAN
+--------------------------------------------------------------
+ Seq Scan on test_remote_filter (actual rows=1 loops=1)
+   Filter: (ts_headline('fat'::text, '''cat'''::tsquery) = t)
+   Rows Removed by Filter: 3
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE ts_headline('{"a": 1}'::jsonb, 'cat'::tsquery)->>'a' = '1';
+                                             QUERY PLAN
+-----------------------------------------------------------------------------------------------------
+ Result (actual rows=4 loops=1)
+   One-Time Filter: ((ts_headline('{"a": 1}'::jsonb, '''cat'''::tsquery) ->> 'a'::text) = '1'::text)
+   ->  Seq Scan on test_remote_filter (actual rows=4 loops=1)
+(3 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM test_remote_filter WHERE ts_headline('{"b": 1}'::json, 'cat'::tsquery)->>'b' = '1';
+                                             QUERY PLAN
+----------------------------------------------------------------------------------------------------
+ Result (actual rows=4 loops=1)
+   One-Time Filter: ((ts_headline('{"b": 1}'::json, '''cat'''::tsquery) ->> 'b'::text) = '1'::text)
+   ->  Seq Scan on test_remote_filter (actual rows=4 loops=1)
+(3 rows)
+
+-- test function
+CREATE OR REPLACE FUNCTION fn_test_pushdown(TEXT)
+RETURNS SETOF test_remote_filter AS $sql$
+  SELECT * FROM test_remote_filter WHERE to_tsquery('simple',$1) @@ ts;
+$sql$ LANGUAGE SQL;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM fn_test_pushdown('cat');
+                        QUERY PLAN
+-----------------------------------------------------------
+ Function Scan on fn_test_pushdown (actual rows=4 loops=1)
+(1 row)

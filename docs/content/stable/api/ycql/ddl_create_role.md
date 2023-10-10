@@ -66,7 +66,7 @@ ycqlsh:example> CREATE ROLE role1;
 ycqlsh:example> CREATE ROLE role2 WITH SUPERUSER = true;
 ```
 
-### Create a regular user with ability to login
+### Create a regular user with ability to log in
 
 You can create a regular user with login privileges as shown below. Note the `SUPERUSER` set to `false`.
 

@@ -123,14 +123,10 @@ Status StatefulServiceClientBase::InvokeRpcSync(
         rpc_func) {
   CoarseBackoffWaiter waiter(deadline, 1s /* max_wait */, 100ms /* base_delay */);
 
-#ifndef NDEBUG
   uint64 attempts = 0;
-#endif
   bool first_run = true;
   while (true) {
-#ifndef NDEBUG
     ++attempts;
-#endif
     if (!first_run) {
       SCHECK(
           waiter.Wait(), TimedOut, "RPC call to $0 timed out after $1 attempt(s)", service_name_,

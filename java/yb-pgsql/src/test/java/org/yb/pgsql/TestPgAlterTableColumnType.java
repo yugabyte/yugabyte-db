@@ -168,6 +168,7 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
   @Test
   public void testForeignKey() throws Exception {
     try (Statement statement = connection.createStatement()) {
+      // Test that altering the type of a foreign key column is not allowed.
       statement.execute("CREATE TABLE fk_table(c1 int, c2 int references int4_table(id))");
       statement.execute("ALTER TABLE fk_table ALTER c1 TYPE varchar");
 
@@ -178,6 +179,30 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
         "ERROR: Altering type of foreign key is not supported");
 
       statement.execute("DROP TABLE fk_table");
+    }
+  }
+
+  @Test
+  public void testForeignKey2() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      // Test that foreign key constraints are preserved when the type of a column is altered.
+      statement.executeUpdate("CREATE TABLE test (id int unique, col1 text)");
+      statement.execute("CREATE TABLE test_part (id int REFERENCES test(id))"
+        + " PARTITION BY RANGE(id)");
+      statement.executeUpdate("CREATE TABLE test_part_1 PARTITION OF test_part"
+        + " FOR VALUES FROM (1) TO (100)");
+      statement.execute("INSERT INTO test VALUES (1, 'hi')");
+      statement.execute("INSERT INTO test_part VALUES (1)");
+      statement.execute("ALTER TABLE test ALTER COLUMN col1 TYPE int USING length(col1)");
+
+      assertQuery(statement, "SELECT * FROM test", new Row(1, 2));
+      assertQuery(statement, "SELECT * FROM test_part", new Row(1));
+
+      // Verify that the foreign key constraints are preserved.
+      runInvalidQuery(statement, "INSERT INTO test_part VALUES (2)",
+        "violates foreign key constraint \"test_part_id_fkey\"");
+      runInvalidQuery(statement, "INSERT INTO test_part_1 VALUES (2)",
+        "violates foreign key constraint \"test_part_id_fkey\"");
     }
   }
 
@@ -281,6 +306,83 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
         + " AND attname='c3'", new Row(1));
       statement.execute("DROP COLLATION \"en_US\" CASCADE");
       assertQuery(statement, "SELECT * FROM test_table", new Row());
+    }
+  }
+
+  @Test
+  public void testSplitOptions() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test (c1 varchar, c2 varchar) SPLIT INTO 5 TABLETS");
+      statement.execute("CREATE INDEX idx1 ON test(c1) SPLIT INTO 5 TABLETS");
+      statement.execute("CREATE INDEX idx2 ON test(c1 HASH, c2 ASC) SPLIT INTO 5 TABLETS");
+      statement.execute("CREATE INDEX idx3 ON test(c2 ASC) INCLUDE(c1)"
+        + " SPLIT AT VALUES ((E'test123\"\"''\\\\\\u0068\\u0069'))");
+      statement.execute("CREATE INDEX idx4 ON test(c1 ASC) SPLIT AT VALUES (('h'))");
+      statement.execute("ALTER TABLE test ALTER c1 TYPE int USING length(c1)");
+      // Hash split options on the table should be preserved.
+      assertQuery(statement, "SELECT num_tablets, num_hash_key_columns FROM"
+        + " yb_table_properties('test'::regclass)", new Row(5, 1));
+      // Hash split options on the indexes should be preserved.
+      assertQuery(statement, "SELECT num_tablets, num_hash_key_columns FROM"
+        + " yb_table_properties('idx1'::regclass)", new Row(5, 1));
+      assertQuery(statement, "SELECT num_tablets, num_hash_key_columns FROM"
+        + " yb_table_properties('idx2'::regclass)", new Row(5, 1));
+      // Range split options on an index should be preserved only when the altered column
+      // is not a part of the index key.
+      assertQuery(statement, "SELECT yb_get_range_split_clause('idx3'::regclass)",
+          new Row("SPLIT AT VALUES ((E'test123\"\"''\\\\hi'))"));
+      assertQuery(statement, "SELECT yb_get_range_split_clause('idx4'::regclass)",
+          new Row(""));
+
+      statement.execute("CREATE TABLE test2 (c1 varchar, c2 varchar, PRIMARY KEY(c1 ASC, c2 DESC))"
+      + " SPLIT AT VALUES (('h', 20))");
+      statement.execute("ALTER TABLE test2 ALTER c1 TYPE int USING length(c1)");
+      statement.execute("CREATE TABLE test3 (c1 varchar, c2 varchar, PRIMARY KEY(c2 ASC))"
+      + " SPLIT AT VALUES ((E'test123\"\"''\\\\\\u0068\\u0069'))");
+      statement.execute("ALTER TABLE test3 ALTER c1 TYPE int USING length(c1)");
+      // Range split options on the table should be preserved only when the altered column
+      // is not a part of the index key.
+      assertQuery(statement, "SELECT yb_get_range_split_clause('test2'::regclass)",
+          new Row(""));
+      assertQuery(statement, "SELECT yb_get_range_split_clause('test3'::regclass)",
+          new Row("SPLIT AT VALUES ((E'test123\"\"''\\\\hi'))"));
+    }
+  }
+
+  @Test
+  public void testMultipleRewrites() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test (a float, b varchar(10))");
+      statement.execute("INSERT INTO test VALUES (1.0, 'abc'), (2.0, 'xyz')");
+      // Test multiple ALTER COLUMN TYPE subcommands.
+      statement.execute("ALTER TABLE test ALTER COLUMN a TYPE text USING a::text,"
+        + " ALTER COLUMN b TYPE varchar(5);");
+      assertRowList(statement, "SELECT * FROM test ORDER BY a", Arrays.asList(
+          new Row("1", "abc"),
+          new Row("2", "xyz")));
+      // Test multiple ALTER COLUMN TYPE subcommands with an ADD PRIMARY KEY subcommand.
+      statement.execute("ALTER TABLE test ALTER COLUMN a TYPE varchar(3),"
+        + " ALTER COLUMN b TYPE varchar(4), ADD PRIMARY KEY (b)");
+      assertRowList(statement, "SELECT * FROM test ORDER BY a", Arrays.asList(
+          new Row("1", "abc"),
+          new Row("2", "xyz")));
+    }
+  }
+
+  @Test
+  public void testTempTables() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TEMP TABLE test_table (col1 text UNIQUE)");
+      statement.execute("INSERT INTO test_table VALUES ('1'), ('01')");
+      runInvalidQuery(statement,
+          "ALTER TABLE test_table ALTER COLUMN col1 TYPE integer using col1::int",
+          "ERROR: could not create unique index \"test_table_col1_key\"" +
+              "\n  Detail: Key (col1)=(1) is duplicated.");
+      statement.execute("ALTER TABLE test_table DROP CONSTRAINT test_table_col1_key");
+      statement.execute("ALTER TABLE test_table ALTER COLUMN col1 TYPE integer using col1::int");
+      assertRowList(statement, "SELECT * FROM test_table", Arrays.asList(
+          new Row(1),
+          new Row(1)));
     }
   }
 }

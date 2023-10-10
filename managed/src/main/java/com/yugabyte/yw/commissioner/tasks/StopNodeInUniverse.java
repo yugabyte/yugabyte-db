@@ -114,6 +114,14 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Stopping)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
+      if (currentNode.isTserver) {
+        createNodePrecheckTasks(
+            currentNode,
+            EnumSet.of(ServerType.TSERVER),
+            SubTaskGroupType.StoppingNodeProcesses,
+            null);
+      }
+
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
       boolean instanceExists = instanceExists(taskParams());

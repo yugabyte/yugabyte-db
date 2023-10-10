@@ -104,11 +104,11 @@ message LockInfoPB {
 
   repeated bytes range_cols = 2;
 
-  optional uint32 column_id = 3;
+  optional int32 attnum = 3;
 
-  optional bool multiple_rows_locked = 4;
+  optional uint32 column_id = 4;
 
-  optional fixed64 wait_start_ht = 5;
+  optional bool multiple_rows_locked = 5;
 
   // If this is set, then the lock has been granted.
   optional fixed64 wait_end_ht = 6;
@@ -118,6 +118,10 @@ message LockInfoPB {
   optional bool is_explicit = 8;
 
   repeated LockMode modes = 9;
+
+  // Populated only when the lock belongs to a colocated table. When set, TabletLockInfoPB::table_id
+  // should be ignored.
+  optional bytes table_id = 10;
 }
 
 message TabletLockInfoPB {
@@ -125,12 +129,28 @@ message TabletLockInfoPB {
 
   optional bytes tablet_id = 2;
 
-  message TransactionLockInfoPB {
+  message WaiterInfoPB {
     repeated LockInfoPB locks = 1;
+
+    optional fixed64 wait_start_ht = 2;
+
+    repeated bytes blocking_txn_ids = 3;
   }
-  // A map with transaction id as key and the value holding the corresponding lock(s) information.
-  map<string, TransactionLockInfoPB> transaction_locks = 3;
+
+  // Lock info for a given transaction at this tablet.
+  message TransactionLockInfoPB {
+    optional bytes id = 1;
+
+    repeated LockInfoPB granted_locks = 2;
+
+    optional WaiterInfoPB waiting_locks = 3;
+  }
+  repeated TransactionLockInfoPB transaction_locks = 3;
 
   // Awaiting lock info of single shard waiters.
-  repeated TransactionLockInfoPB single_shard_waiters = 4;
+  repeated WaiterInfoPB single_shard_waiters = 4;
+
+  // Leader term of the peer populating the response. Used to filter out duplicate responses for
+  // the same tablet and ensure we pick the most recent results.
+  optional uint64 term = 5;
 }

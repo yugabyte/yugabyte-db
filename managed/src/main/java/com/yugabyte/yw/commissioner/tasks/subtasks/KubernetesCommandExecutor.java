@@ -561,10 +561,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               nodeDetail.cloudInfo.region = podVals.get("region_name").asText();
             }
             if (!confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
-              nodeDetail.cloudInfo.instance_type =
+              UserIntent userIntent =
                   taskParams().isReadOnlyCluster
-                      ? u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.instanceType
-                      : u.getUniverseDetails().getPrimaryCluster().userIntent.instanceType;
+                      ? u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent
+                      : u.getUniverseDetails().getPrimaryCluster().userIntent;
+              nodeDetail.cloudInfo.instance_type = userIntent.getInstanceTypeForNode(nodeDetail);
             }
             nodeDetail.azUuid = azUUID;
             nodeDetail.placementUuid = placementUuid;
@@ -653,9 +654,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             ? u.getUniverseDetails().getReadOnlyClusters().get(0)
             : u.getUniverseDetails().getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
+    // TODO Support overriden instance types
     InstanceType instanceType =
         InstanceType.get(UUID.fromString(userIntent.provider), userIntent.instanceType);
     if (instanceType == null && !confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+      log.info(
+          "Config parameter {}", confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources));
       log.error(
           "Unable to fetch InstanceType for {}, {}",
           userIntent.providerType,
@@ -892,9 +896,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           "cpu", String.format("%.2f", userIntent.tserverK8SNodeResourceSpec.cpuCoreCount));
     }
 
-    masterResource.put(
-        "cpu", KubernetesUtil.getCoreCountFromInstanceType(instanceType, true /* isMaster */));
-
     Map<String, Object> resourceOverrides = new HashMap();
     if (!masterResource.isEmpty() && !masterLimit.isEmpty()) {
       resourceOverrides.put(
@@ -1089,6 +1090,22 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       tserverOverrides.put("ysql_enable_auth", "true");
       Map<String, String> DEFAULT_YSQL_HBA_CONF_MAP =
           Collections.singletonMap(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
+      if (tserverOverrides.containsKey(GFlagsUtil.YSQL_HBA_CONF_CSV)
+          && confGetter.getGlobalConf(GlobalConfKeys.oidcFeatureEnhancements)) {
+        /*
+         * Preprocess the ysql_hba_conf_csv flag for IdP specific use case.
+         * Refer Design Doc:
+         * https://docs.google.com/document/d/1SJzZJrAqc0wkXTCuMS7UKi1-5xEuYQKCOOa3QWYpMeM/edit
+         */
+        GFlagsUtil.processHbaConfFlagIfRequired(
+            null,
+            tserverOverrides,
+            confGetter,
+            u.getUniverseUUID(),
+            taskParams().isReadOnlyCluster
+                ? u.getUniverseDetails().getReadOnlyClusters().get(0).uuid
+                : u.getUniverseDetails().getPrimaryCluster().uuid);
+      }
       GFlagsUtil.mergeCSVs(
           tserverOverrides, DEFAULT_YSQL_HBA_CONF_MAP, GFlagsUtil.YSQL_HBA_CONF_CSV);
       tserverOverrides.putIfAbsent(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");

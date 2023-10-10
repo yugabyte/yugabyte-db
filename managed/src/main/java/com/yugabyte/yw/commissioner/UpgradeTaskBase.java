@@ -262,7 +262,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       List<NodeDetails> singletonNodeList = Collections.singletonList(node);
       createSetNodeStateTask(node, nodeState).setSubTaskGroupType(subGroupType);
 
-      createNodePrecheckTasks(node, processTypes, subGroupType);
+      createNodePrecheckTasks(node, processTypes, subGroupType, context.targetSoftwareVersion);
 
       // Run pre node upgrade hooks
       createHookTriggerTasks(singletonNodeList, true, true);
@@ -289,13 +289,14 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           createWaitForServersTasks(singletonNodeList, processType)
               .setSubTaskGroupType(subGroupType);
           if (processType.equals(ServerType.TSERVER) && node.isYsqlServer) {
-            createWaitForServersTasks(singletonNodeList, ServerType.YSQLSERVER)
+            createWaitForServersTasks(
+                    singletonNodeList, ServerType.YSQLSERVER, context.getUserIntent())
                 .setSubTaskGroupType(subGroupType);
           }
 
           if (processType == ServerType.MASTER && context.reconfigureMaster) {
             // Add stopped master to the quorum.
-            createChangeConfigTask(node, true /* isAdd */, subGroupType);
+            createChangeConfigTasks(node, true /* isAdd */, subGroupType);
           }
           createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
               .setSubTaskGroupType(subGroupType);
@@ -310,10 +311,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         if (processTypes.contains(ServerType.TSERVER)) {
           removeFromLeaderBlackListIfAvailable(Collections.singletonList(node), subGroupType);
         }
-        for (ServerType processType : processTypes) {
-          createWaitForFollowerLagTask(node, processType).setSubTaskGroupType(subGroupType);
+        if (isFollowerLagCheckEnabled()) {
+          for (ServerType processType : processTypes) {
+            createCheckFollowerLagTask(node, processType).setSubTaskGroupType(subGroupType);
+          }
         }
-
         if (isYbcPresent) {
           if (!context.skipStartingProcesses) {
             createServerControlTask(node, ServerType.CONTROLLER, "start")
@@ -730,7 +732,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     boolean reconfigureMaster;
     boolean runBeforeStopping;
     boolean processInactiveMaster;
+    // Set this field to access client userIntent during runtime as
+    // usually universeDetails are updated only at the end of task.
+    UniverseDefinitionTaskParams.UserIntent userIntent;
     @Builder.Default boolean skipStartingProcesses = false;
+    String targetSoftwareVersion;
     Consumer<NodeDetails> postAction;
   }
 }

@@ -12,6 +12,7 @@ package com.yugabyte.yw.common.config;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.VersionCheckMode;
+import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.NodeManager.SkipCertValidationType;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
@@ -28,14 +29,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Default threshold for Clock Skew alert",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> cloudEnabled =
-      new ConfKeyInfo<>(
-          "yb.cloud.enabled",
-          ScopeType.UNIVERSE,
-          "Cloud Enabled",
-          "Enables YBM specific features",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> healthLogOutput =
       new ConfKeyInfo<>(
           "yb.health.logOutput",
@@ -131,26 +124,33 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Number Of Cloud Releases To Keep",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  @Deprecated
   public static final ConfKeyInfo<Integer> dbMemPostgresMaxMemMb =
       new ConfKeyInfo<>(
           "yb.dbmem.postgres.max_mem_mb",
           ScopeType.UNIVERSE,
-          "DB Postgres Max Mem",
-          "Amount of memory to limit the postgres process to via the ysql cgroup",
+          "DB Postgres Max Mem (DEPRECATED)",
+          "Amount of memory to limit the postgres process to via the ysql cgroup. "
+              + "DEPRECATED for now - use 'cgroupSize' in userIntent",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.BETA));
+
+  @Deprecated
   public static final ConfKeyInfo<Integer> dbMemPostgresReadReplicaMaxMemMb =
       new ConfKeyInfo<>(
           "yb.dbmem.postgres.rr_max_mem_mb",
           ScopeType.UNIVERSE,
-          "DB Postgres Max Mem for read replicas",
+          "DB Postgres Max Mem for read replicas (DEPRECATED)",
           "The amount of memory in MB to limit the postgres process in read replicas to via the "
               + "ysql cgroup. "
               + "If the value is -1, it will default to the 'yb.dbmem.postgres.max_mem_mb' value. "
               + "0 will not set any cgroup limits. "
-              + ">0 set max memory of postgres to this value for read replicas",
+              + ">0 set max memory of postgres to this value for read replicas."
+              + "DEPRECATED for now - use 'cgroupSize' in userIntent",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.BETA));
+
   public static final ConfKeyInfo<Long> dbMemAvailableLimit =
       new ConfKeyInfo<>(
           "yb.dbmem.checks.mem_available_limit_kb",
@@ -159,6 +159,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Minimum available memory required on DB nodes for software upgrade.",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Boolean> granularMetrics =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.granular_metrics",
+          ScopeType.UNIVERSE,
+          "Granular level metrics",
+          "View granular level metrics when user selects specific time period in a chart",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
+
   public static final ConfKeyInfo<Boolean> pgBasedBackup =
       new ConfKeyInfo<>(
           "yb.backup.pg_based",
@@ -701,6 +711,46 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Controls whether or not to perform the checkUnderReplicatedTablets subtask",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> changeMasterConfigCheckTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.change_master_config.timeout",
+          ScopeType.UNIVERSE,
+          "Master config change result check timeout",
+          "Controls the max time out when waiting for master config change to finish",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> changeMasterConfigCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.checks.change_master_config.enabled",
+          ScopeType.UNIVERSE,
+          "Enabling Master config change result check",
+          "Controls whether or not to wait for master config change to finish",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> followerLagCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.checks.follower_lag.enabled",
+          ScopeType.UNIVERSE,
+          "Enabling follower lag check",
+          "Controls whether or not to perform the follower lag checks",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> followerLagTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.follower_lag.timeout",
+          ScopeType.UNIVERSE,
+          "Follower lag check timeout",
+          "Controls the max time out when performing follower lag checks",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> followerLagMaxThreshold =
+      new ConfKeyInfo<>(
+          "yb.checks.follower_lag.max_threshold",
+          ScopeType.UNIVERSE,
+          "Max threshold for follower lag",
+          "The maximum time that we allow a tserver to be behind its peers",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Long> checkMemoryTimeoutSecs =
       new ConfKeyInfo<>(
           "yb.dbmem.checks.timeout",
@@ -725,7 +775,8 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "yb.backup.use_server_broadcast_address_for_yb_backup",
           ScopeType.UNIVERSE,
           "Use server broadcast address for yb_backup",
-          "Controls whether server_broadcast_address entry should be used during yb_backup.py backup/restore",
+          "Controls whether server_broadcast_address entry should be used during yb_backup.py"
+              + " backup/restore",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Long> slowQueryTimeoutSecs =
@@ -750,6 +801,139 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ScopeType.UNIVERSE,
           "Number of cores to keep",
           "Controls the configuration to set the number of cores to keep in the Ansible layer",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ensureSyncGetReplicationStatus =
+      new ConfKeyInfo<>(
+          "yb.xcluster.ensure_sync_get_replication_status",
+          ScopeType.UNIVERSE,
+          "Whether to check YBA xCluster object is in sync with DB replication group",
+          "It ensures that the YBA XCluster object for tables that are in replication is "
+              + "in sync with replication group in DB. If they are not in sync and this is true, "
+              + "getting the xCluster object will throw an exception and the user has to resync "
+              + "the xCluster config.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<List> customHealthCheckPorts =
+      new ConfKeyInfo<>(
+          "yb.universe.network_load_balancer.custom_health_check_ports",
+          ScopeType.UNIVERSE,
+          "Network Load balancer health check ports",
+          "Ports to use for health checks performed by the network load balancer. Invalid and "
+              + "duplicate ports will be ignored. For GCP, only the first health "
+              + "check port would be used.",
+          ConfDataType.IntegerListType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Protocol> customHealthCheckProtocol =
+      new ConfKeyInfo<>(
+          "yb.universe.network_load_balancer.custom_health_check_protocol",
+          ScopeType.UNIVERSE,
+          "Network Load balancer health check protocol",
+          "Protocol to use for health checks performed by the network load balancer",
+          ConfDataType.ProtocolEnum,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<List> customHealthCheckPaths =
+      new ConfKeyInfo<>(
+          "yb.universe.network_load_balancer.custom_health_check_paths",
+          ScopeType.UNIVERSE,
+          "Network Load balancer health check paths",
+          "Paths probed by HTTP/HTTPS health checks performed by the network load balancer. "
+              + "Paths are mapped one-to-one with the custom health check ports "
+              + "runtime configuration.",
+          ConfDataType.StringListType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableRollbackSupport =
+      new ConfKeyInfo<>(
+          "yb.upgrade.enable_rollback_support",
+          ScopeType.UNIVERSE,
+          "Enable Rollback Support",
+          "Enable Yugabyte DB Rollback support",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> txnXClusterPitrDefaultRetentionPeriod =
+      new ConfKeyInfo<>(
+          "yb.xcluster.transactional.pitr.default_retention_period",
+          ScopeType.UNIVERSE,
+          "Default PITR retention period for txn xCluster",
+          "The default retention period used to create PITR configs for transactional "
+              + "xCluster replication; it will be used when there is no existing PITR configs "
+              + "and it is not specified in the task parameters",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> txnXClusterPitrDefaultSnapshotInterval =
+      new ConfKeyInfo<>(
+          "yb.xcluster.transactional.pitr.default_snapshot_interval",
+          ScopeType.UNIVERSE,
+          "Default PITR snapshot interval for txn xCluster",
+          "The default snapshot interval used to create PITR configs for transactional "
+              + "xCluster replication; it will be used when there is no existing PITR configs "
+              + "and it is not specified in the task parameters",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipUpgradeFinalize =
+      new ConfKeyInfo<>(
+          "yb.upgrade.skip_finalize",
+          ScopeType.UNIVERSE,
+          "Skip Upgrade Finalize",
+          "Skip Auto-flags promotions and ysql upgrade during software upgrade",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> allowConfigureYSQL =
+      new ConfKeyInfo<>(
+          "yb.configure_db_api.ysql",
+          ScopeType.UNIVERSE,
+          "Configure YSQL DB API",
+          "Allow users to configure YSQL DB API from UI",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Boolean> allowConfigureYCQL =
+      new ConfKeyInfo<>(
+          "yb.configure_db_api.ycql",
+          ScopeType.UNIVERSE,
+          "Configure YCQL DB API",
+          "Allow users to configure YCQL DB API from UI",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Duration> waitForReplicationDrainTimeout =
+      new ConfKeyInfo<>(
+          "yb.xcluster.transactional.wait_for_replication_drain_timeout",
+          ScopeType.UNIVERSE,
+          "Timeout for the WaitForReplicationDrain subtask",
+          "The minimum amount of time that the waitForReplicationDrain subtask waits for the "
+              + "replication streams to completely drain from the source to the target universe",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> skipBackupMetadataValidation =
+      new ConfKeyInfo<>(
+          "yb.backup.skip_metadata_validation",
+          ScopeType.UNIVERSE,
+          "Skip backup metadata validation",
+          "Skip backup metadata based validation during restore",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> alwaysBackupTablespaces =
+      new ConfKeyInfo<>(
+          "yb.backup.always_backup_tablespaces",
+          ScopeType.UNIVERSE,
+          "Always backup tablespaces when taking YSQL backup",
+          "Always backup tablespaces when taking ysql backups. This is a UI flag"
+              + " used to appropriately send 'useTablespaces' parameter to backend in API.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Boolean> allowVolumeDecrease =
+      new ConfKeyInfo<>(
+          "yb.edit.allow_volume_decrease",
+          ScopeType.UNIVERSE,
+          "Allow decrease volume size",
+          "Allow decrease volume size for universe during full move",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> nodeAgentReinstallParallelism =
+      new ConfKeyInfo<>(
+          "yb.node_agent.reinstall_parallelism",
+          ScopeType.UNIVERSE,
+          "Parallelism for Node Agent Reinstallation",
+          "Number of parallel node agent reinstallations at a time",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

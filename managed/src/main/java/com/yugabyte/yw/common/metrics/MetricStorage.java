@@ -9,6 +9,8 @@
  */
 package com.yugabyte.yw.common.metrics;
 
+import static com.yugabyte.yw.common.Util.NULL_UUID;
+
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
@@ -16,9 +18,7 @@ import com.yugabyte.yw.models.MetricSourceKey;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.MetricSourceState;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +28,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
@@ -47,8 +49,6 @@ import org.apache.commons.collections.CollectionUtils;
 @Singleton
 @Slf4j
 public class MetricStorage {
-
-  private static final UUID NULL_UUID = UUID.fromString("00000000-0000-0000-0000-000000000000");
   private final Map<String, NamedMetricStore> metricsByKey = new ConcurrentHashMap<>();
   private final Map<String, Lock> metricNameLock = new ConcurrentHashMap<>();
   private final Map<Pair<UUID, UUID>, MetricSourceState> sourceStateMap = new ConcurrentHashMap<>();
@@ -174,10 +174,7 @@ public class MetricStorage {
       }
     }
 
-    NamedMetricStore store =
-        metricsByKey.computeIfAbsent(metric.getName(), n -> new NamedMetricStore());
-
-    store.save(metric);
+    metricsByKey.computeIfAbsent(metric.getName(), n -> new NamedMetricStore()).save(metric);
   }
 
   private static UUID getUuidKey(UUID uuid) {
@@ -186,7 +183,7 @@ public class MetricStorage {
 
   @Value
   private static class NamedMetricStore {
-    Map<UUID, CustomerMetricStore> customerMetrics = new HashMap<>();
+    ConcurrentMap<UUID, CustomerMetricStore> customerMetrics = new ConcurrentHashMap<>();
 
     private Optional<CustomerMetricStore> get(UUID uuid) {
       return Optional.ofNullable(customerMetrics.get(getUuidKey(uuid)));
@@ -227,7 +224,7 @@ public class MetricStorage {
 
   @Value
   private static class CustomerMetricStore {
-    Map<UUID, SourceMetricStore> sourceMetrics = new HashMap<>();
+    ConcurrentMap<UUID, SourceMetricStore> sourceMetrics = new ConcurrentHashMap<>();
 
     private Optional<SourceMetricStore> get(UUID uuid) {
       return Optional.ofNullable(sourceMetrics.get(getUuidKey(uuid)));
@@ -268,7 +265,7 @@ public class MetricStorage {
 
   @Value
   private static class SourceMetricStore {
-    List<Metric> sourceMetrics = new ArrayList<>();
+    List<Metric> sourceMetrics = new CopyOnWriteArrayList<>();
 
     private Optional<Metric> get(Map<String, String> labels) {
       return sourceMetrics.stream()

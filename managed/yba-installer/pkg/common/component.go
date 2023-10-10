@@ -10,6 +10,7 @@ package common
 type Component interface {
 	TemplateFile() string
 	Name() string
+	Version() string
 	Uninstall(cleanData bool) error
 	Upgrade() error
 	Status() (Status, error)
@@ -17,4 +18,6 @@ type Component interface {
 	Stop() error
 	Restart() error
 	Install() error
+	MigrateFromReplicated() error
+	FinishReplicatedMigrate() error
 }

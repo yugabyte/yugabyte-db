@@ -86,7 +86,7 @@ Performs a frontend (client) copy. This is an operation that runs an SQL `COPY` 
 
 When program is specified, *command* is executed by ysqlsh and the data passed from or to *command* is routed between the server and the client. Again, the execution privileges are those of the local user, not the server, and no SQL superuser privileges are required.
 
-For `\copy ... from stdin`, data rows are read from the same source that issued the command, continuing until `\.` is read or the stream reaches EOF. This option is useful for populating tables in-line in a SQL script file. For `\copy ... to stdout`, output is sent to the same place as ysqlsh command output, and the COPY count command status isn't printed (as it might be confused with a data row). To read or write ysqlsh's standard input or output, regardless of the current command source or `\o` option, write from `pstdin` or to `pstdout`.
+For `\copy ... from stdin`, data rows are read from the same source that issued the command, continuing until `\.` is read or the stream reaches EOF. You can use this option to populate tables in-line in a SQL script file. For `\copy ... to stdout`, output is sent to the same place as ysqlsh command output, and the COPY count command status isn't printed (as it might be confused with a data row). To read or write ysqlsh standard input or output, regardless of the current command source or `\o` option, write from `pstdin` or to `pstdout`.
 
 The syntax of this command is similar to that of the SQL `COPY` statement. All options other than the data source or destination are as specified for `COPY`. Because of this, special parsing rules apply to the `\copy` meta-command. Unlike most other meta-commands, the entire remainder of the line is always taken to be the arguments of `\copy`, and neither variable interpolation nor backquote expansion are performed in the arguments.
 
@@ -137,6 +137,10 @@ Lists aggregate functions, together with their return type and the data types th
 ##### \dA[+] [ [pattern](#patterns) ]
 
 Lists access methods. If *pattern* is specified, only access methods whose names match the pattern are shown. If `+` is appended to the command name, each access method is listed with its associated handler function and description.
+
+##### \db[+] [ [pattern](#patterns) ]
+
+Lists tablespaces. If *pattern* is specified, only tablespaces whose names match the pattern are listed. If `+` is appended to the command name, each tablespace is listed with its associated options, on-disk size, permissions, and description.
 
 ##### \dc[S+] [ [pattern](#patterns) ]
 
@@ -569,7 +573,7 @@ Resets (clears) the query buffer.
 
 ##### \s [ *filename* ]
 
-Print ysqlsh's command line history to *filename*. If filename is omitted, the history is written to the standard output (using the pager if appropriate). This command isn't available if ysqlsh was built without [Readline](../ysqlsh/#command-line-editing) support.
+Print ysqlsh command line history to *filename*. If filename is omitted, the history is written to the standard output (using the pager if appropriate). This command isn't available if ysqlsh was built without [Readline](../ysqlsh/#command-line-editing) support.
 
 ##### \set [ *name* [ *value* [ ... ] ] ]
 

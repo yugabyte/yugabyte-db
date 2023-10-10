@@ -48,6 +48,9 @@ class AutoFlagsManager {
 
   AutoFlagsConfigPB GetConfig() const EXCLUDES(config_mutex_);
 
+  // Returns all the AutoFlags associated with this process both promoted, and non-promoted ones.
+  Result<std::unordered_set<std::string>> GetAvailableAutoFlagsForServer() const;
+
  private:
   Status ApplyConfig(ApplyNonRuntimeAutoFlags apply_non_runtime) EXCLUDES(config_mutex_);
 

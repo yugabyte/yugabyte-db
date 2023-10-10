@@ -105,7 +105,7 @@ A YugabyteDB Managed account is limited to a single Sandbox cluster; you can add
 | Upgrades | Automatic | Automatic with customizable [maintenance windows](../../yugabyte-cloud/cloud-clusters/cloud-maintenance/) |
 | [VPC networking](../../yugabyte-cloud/cloud-basics/cloud-vpcs/) | No | Yes |
 | [Fault tolerance](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#fault-tolerance) | None (Single node, RF-1) | Multi node RF-3 clusters with region, availability zone, and node level |
-| [Connections](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#sizing) | Up to 10 simultaneous connections | 10 per vCPU per node |
+| [Connections](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#sizing) | Up to 15 simultaneous connections | 15 per vCPU per node |
 | [Scaling](../../yugabyte-cloud/cloud-clusters/configure-clusters/) | None | Horizontal and Vertical |
 | [Backups](../../yugabyte-cloud/cloud-clusters/backup-clusters/) | None | Scheduled and on-demand |
 | [YugabyteDB version](#what-version-of-yugabytedb-does-my-cluster-run-on) | Preview | Stable |
@@ -138,7 +138,7 @@ To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte
 
 Yugabyte only upgrades clusters during scheduled maintenance windows. Yugabyte notifies you in advance of any upcoming upgrade via email. The email includes the date and time of the maintenance window. An Upcoming Maintenance badge is also displayed on the cluster. You can start the upgrade any time by signing in to YugabyteDB Managed, selecting the cluster, clicking the **Upcoming Maintenance** badge, and clicking **Upgrade Now**. To delay the maintenance, click **Delay to next available window**. To manage maintenance windows, select the cluster [Maintenance tab](../../yugabyte-cloud/cloud-clusters/cloud-maintenance/).
 
-The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created (either preview or stable). Sandbox clusters are always in the preview track.
+The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created (Innovation or Production for dedicated clusters, or Preview for Sandbox clusters). Sandbox clusters are always in the preview track.
 
 Database upgrades of high-availability (multi-node) clusters are done on a rolling basis to avoid any downtime.
 
@@ -148,9 +148,12 @@ Database upgrades of high-availability (multi-node) clusters are done on a rolli
 
 Sandbox clusters are provisioned with a **preview** release, from the YugabyteDB [preview release](../../releases/versioning/#preview-releases) series.
 
-By default, new Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](../../releases/versioning/#stable-releases) series. You can choose the preview track when you create the cluster.
+Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](../../releases/versioning/#stable-releases) series. When creating a dedicated cluster, you can choose one of the following tracks:
 
-Once a cluster is created, it is upgraded with releases from the release track that was assigned at creation (that is, either preview or stable).
+- Innovation, which has more frequent updates for faster access to new features.
+- Production, which has a slower update cadence and features only select stable release builds.
+
+Once a cluster is created, it is upgraded with releases from the track that was assigned at creation (that is, either Innovation or Production for dedicated clusters, or Preview for Sandbox clusters).
 
 To view the database version running on a particular cluster, navigate to the **Clusters** page; the database version is displayed next to the cluster name; hover over the version to see the release track.
 
@@ -308,7 +311,7 @@ YugabyteDB Managed runs full backups, not incremental.
 
 Backups are retained in the same region as the cluster.
 
-Backups for AWS clusters are encrypted using AWS S3 server-side encryption. Backups for GCP clusters are encrypted using Google-managed server-side encryption keys.
+Backups for AWS clusters are encrypted using AWS S3 server-side encryption. Backups for GCP clusters are encrypted using Google-managed server-side encryption keys. Backups for Azure clusters are encrypted using Azure-managed server-side encryption keys and client-side encryption is done using [GCM mode with AES](https://learn.microsoft.com/en-us/azure/storage/common/storage-service-encryption#client-side-encryption-for-blobs-and-queues).
 
 Currently, YugabyteDB Managed does not support backups of Sandbox clusters.
 

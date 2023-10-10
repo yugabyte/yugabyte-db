@@ -164,7 +164,7 @@ Status TableCache::DoGetTableReader(
     }
     (*table_reader)->SetDataFileReader(std::move(data_file_reader));
   }
-  TEST_SYNC_POINT("TableCache::GetTableReader:0");
+  DEBUG_ONLY_TEST_SYNC_POINT("TableCache::GetTableReader:0");
   return s;
 }
 
@@ -178,8 +178,7 @@ Status TableCache::FindTable(const EnvOptions& env_options,
   uint64_t number = fd.GetNumber();
   Slice key = GetSliceForFileNumber(&number);
   *handle = cache_->Lookup(key, query_id);
-  TEST_SYNC_POINT_CALLBACK("TableCache::FindTable:0",
-      const_cast<bool*>(&no_io));
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("TableCache::FindTable:0", const_cast<bool*>(&no_io));
 
   if (*handle == nullptr) {
     if (no_io) {  // Don't do IO and return a not-found status
@@ -312,6 +311,24 @@ InternalIterator* TableCache::DoNewIterator(
 
   if (ioptions_.iterator_replacer) {
     result = (*ioptions_.iterator_replacer)(result, arena, filter);
+  }
+
+  trwh->Release();
+
+  return result;
+}
+
+InternalIterator* TableCache::NewIndexIterator(
+    const ReadOptions& options, TableReaderWithHandle* trwh) {
+  RecordTick(ioptions_.statistics, NO_TABLE_CACHE_ITERATORS);
+
+  InternalIterator* result = trwh->table_reader->NewIndexIterator(options);
+
+  if (trwh->created_new) {
+    DCHECK(trwh->handle == nullptr);
+    result->RegisterCleanup(&DeleteTableReader, trwh->table_reader, nullptr);
+  } else if (trwh->handle != nullptr) {
+    result->RegisterCleanup(&UnrefEntry, cache_, trwh->handle);
   }
 
   trwh->Release();

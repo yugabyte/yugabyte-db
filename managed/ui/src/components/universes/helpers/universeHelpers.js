@@ -1,4 +1,3 @@
-import React from 'react';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 

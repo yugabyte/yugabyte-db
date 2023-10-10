@@ -36,15 +36,11 @@ public class TestDefaultConfig extends BaseYsqlConnMgr {
   private final static String YSQL_CONN_MGR_CONFIG_FILE_NAME = "ysql_conn_mgr.conf";
   private final Map<String, String> DEFAULT_CONFIG = new HashMap<String, String>() {
     {
-      put("workers", "16");
+      put("workers", "\"auto\"");
       put("resolvers", "1");
       put("client_max", "10000");
       put("pool_discard", "no");
-      // By default Ysql Connection Manager pool size is 70.
-      // Pool size of global pool = Ysql Connection Manager pool size *
-      // (% of server connections allocated to global pool (90)).
-      // i.e. 70 * (90%).
-      put("pool_size", "63");
+      put("pool_size", "270");
       put("pool_reserve_prepared_statement", "yes");
     }
   };

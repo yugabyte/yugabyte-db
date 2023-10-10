@@ -115,6 +115,8 @@ Result<RefCntSlice> RpcController::ExtractSidecar(size_t idx) const {
   return call_->ExtractSidecar(idx);
 }
 
+size_t RpcController::GetSidecarsCount() const { return call_->GetSidecarsCount(); }
+
 size_t RpcController::TransferSidecars(Sidecars* dest) {
   return call_->TransferSidecars(dest);
 }
@@ -155,6 +157,22 @@ int32_t RpcController::call_id() const {
     return call_->call_id();
   }
   return -1;
+}
+
+std::string RpcController::CallStateDebugString() const {
+  std::lock_guard l(lock_);
+  if (call_) {
+    call_->QueueDumpConnectionState();
+    return call_->DebugString();
+  }
+  return "call not set";
+}
+
+void RpcController::MarkCallAsFailed() {
+  std::lock_guard l(lock_);
+  if (call_) {
+    call_->SetFailed(STATUS(TimedOut, "Forced timed out detected by sender."));
+  }
 }
 
 CallResponsePtr RpcController::response() const {

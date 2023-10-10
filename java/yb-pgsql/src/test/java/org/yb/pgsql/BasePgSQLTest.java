@@ -117,6 +117,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   // Non-standard PSQL states defined in yb_pg_errcodes.h
   protected static final String SERIALIZATION_FAILURE_PSQL_STATE = "40001";
   protected static final String SNAPSHOT_TOO_OLD_PSQL_STATE = "72000";
+  protected static final String DEADLOCK_DETECTED_PSQL_STATE = "40P01";
 
   // Postgres flags.
   private static final String MASTERS_FLAG = "FLAGS_pggate_master_addresses";
@@ -266,6 +267,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     flagMap.put("client_read_write_timeout_ms",
         String.valueOf(BuildTypeUtil.adjustTimeout(120000)));
     flagMap.put("memory_limit_hard_bytes", String.valueOf(2L * 1024 * 1024 * 1024));
+    flagMap.put("TEST_assert_no_future_catalog_version", "true");
     return flagMap;
   }
 

@@ -129,6 +129,7 @@ endif()
 
 set(UTIL_SRCS
   ${SEMAPHORE_CC}
+  aggregate_stats.cc
   allocation_tracker.cc
   async_util.cc
   flags/auto_flags.cc
@@ -153,6 +154,9 @@ set(UTIL_SRCS
   curl_util.cc
   date_time.cc
   debug-util.cc
+  symbolize.cc
+  libbacktrace_util.cc
+  source_location.cc
   debug/lock_debug.cc
   debug/long_operation_tracker.cc
   debug/trace_event_impl.cc
@@ -181,6 +185,8 @@ set(UTIL_SRCS
   init.cc
   jsonreader.cc
   jsonwriter.cc
+  jwt_util.cc
+  jwtcpp_util.cc
   locks.cc
   logging.cc
   malloc.cc
@@ -231,8 +237,8 @@ set(UTIL_SRCS
   spinlock_profiling.cc
   split.cc
   stack_trace.cc
-  stats/perf_level_imp.cc
   stats/iostats_context_imp.cc
+  stats/perf_level_imp.cc
   status.cc
   status_callback.cc
   stol_utils.cc
@@ -253,7 +259,6 @@ set(UTIL_SRCS
   timestamp.cc
   tostring.cc
   trace.cc
-  trilean.cc
   ulimit.cc
   ulimit_util.cc
   url-coding.cc
@@ -361,6 +366,8 @@ ADD_YB_TEST(hash_util-test)
 ADD_YB_TEST(hdr_histogram-test)
 ADD_YB_TEST(inline_slice-test)
 ADD_YB_TEST(jsonreader-test)
+ADD_YB_TEST(jwt_util-test)
+ADD_YB_TEST(jwtcpp_util-test)
 ADD_YB_TEST(lockfree-test)
 ADD_YB_TEST(lru_cache-test)
 ADD_YB_TEST(map-util-test)
@@ -387,9 +394,10 @@ ADD_YB_TEST(path_util-test)
 ADD_YB_TEST(priority_queue-test)
 ADD_YB_TEST(priority_thread_pool-test)
 ADD_YB_TEST(pstack_watcher-test)
-ADD_YB_TEST(ref_cnt_buffer-test)
 ADD_YB_TEST(random-test)
 ADD_YB_TEST(random_util-test)
+ADD_YB_TEST(range-test)
+ADD_YB_TEST(ref_cnt_buffer-test)
 ADD_YB_TEST(result-test)
 ADD_YB_TEST(rolling_log-test)
 ADD_YB_TEST(rw_mutex-test)
@@ -428,6 +436,7 @@ ADD_YB_TEST(uuid-test)
 ADD_YB_TEST(fast_varint-test)
 ADD_YB_TEST(shared_mem-test)
 ADD_YB_TEST(operation_counter-test)
+ADD_YB_TEST(write_buffer-test)
 
 #######################################
 # jsonwriter_test_proto

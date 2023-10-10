@@ -5,7 +5,7 @@ import { Link, withRouter, browserHistory } from 'react-router';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import momentLocalizer from 'react-widgets-moment';
 
-import moment from 'moment';
+import moment from 'moment-timezone';
 import { toast } from 'react-toastify';
 import _ from 'lodash';
 
@@ -23,6 +23,7 @@ import {
 import { YBButton, YBButtonLink } from '../../common/forms/fields';
 import { YBPanelItem } from '../../panels';
 import { FlexContainer, FlexGrow } from '../../common/flexbox/YBFlexBox';
+
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { isDedicatedNodePlacement, isKubernetesUniverse } from '../../../utils/UniverseUtils';
@@ -34,6 +35,7 @@ import { CustomDatePicker } from '../CustomDatePicker/CustomDatePicker';
 import { MetricsMeasureSelector } from '../MetricsMeasureSelector/MetricsMeasureSelector';
 import { OutlierSelector } from '../OutlierSelector/OutlierSelector';
 
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import './GraphPanelHeader.scss';
 
 require('react-widgets/dist/css/react-widgets.css');
@@ -247,6 +249,7 @@ class GraphPanelHeader extends Component {
 
   componentWillUnmount() {
     clearInterval(this.refreshInterval);
+    this.props.resetGraphFilter();
   }
 
   submitGraphFilters = (type, val) => {
@@ -708,10 +711,7 @@ class GraphPanelHeader extends Component {
                   <form name="GraphPanelFilterForm">
                     <div id="reportrange" className="pull-right">
                       <div className="timezone">
-                        Timezone:{' '}
-                        {currentUser.data.timezone
-                          ? moment.tz(currentUser.data.timezone).format('[UTC]ZZ')
-                          : moment().format('[UTC]ZZ')}
+                        Current Timestamp:&nbsp;{ybFormatDate(new Date())}
                       </div>
                       <div className="graph-interval-container">
                         <Dropdown

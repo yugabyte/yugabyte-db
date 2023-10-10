@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC, useContext } from 'react';
+import { FC, useContext } from 'react';
 import clsx from 'clsx';
 import { size } from 'lodash';
 import { makeStyles } from '@material-ui/core';
@@ -36,7 +36,6 @@ const useStyles = makeStyles((theme) => ({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(2),
-    cursor: 'pointer',
     fontSize: '11.5px',
     fontWeight: 500,
     textTransform: 'uppercase',
@@ -70,8 +69,7 @@ export const BackupRestoreStepper: FC<BackupRestoreStepperProps> = ({ className 
       backupDetails,
       formData: { generalSettings },
       formProps
-    },
-    { moveToPage }
+    }
   ]: RestoreContextMethods = (useContext(RestoreFormContext) as unknown) as RestoreContextMethods;
 
   const classes = useStyles();
@@ -116,13 +114,7 @@ export const BackupRestoreStepper: FC<BackupRestoreStepperProps> = ({ className 
   return (
     <div className={clsx(classes.root, className)}>
       {Object.keys(pages).map((p, index) => (
-        <div
-          className={classes.step}
-          key={p}
-          onClick={() => {
-            moveToPage(p as Page);
-          }}
-        >
+        <div className={classes.step} key={p}>
           {getStepIndicationComponent(index)}
           {pages[p]}
           {index !== size(pages) - 1 && <img alt="next" src={LeftArrow} />}

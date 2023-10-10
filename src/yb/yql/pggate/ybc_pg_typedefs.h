@@ -18,6 +18,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "yb/yql/pggate/pg_metrics_list.h"
+
 #ifdef __cplusplus
 
 #define YB_DEFINE_HANDLE_TYPE(name) \
@@ -28,8 +30,11 @@
     } \
     typedef class yb::pggate::name *YBC##name;
 
+#define YB_PGGATE_IDENTIFIER(name) yb::pggate::name
+
 #else
 #define YB_DEFINE_HANDLE_TYPE(name) typedef struct name *YBC##name;
+#define YB_PGGATE_IDENTIFIER(name) name
 #endif  // __cplusplus
 
 #ifdef __cplusplus
@@ -53,6 +58,10 @@ YB_DEFINE_HANDLE_TYPE(PgTableDesc);
 
 // Handle to a memory context.
 YB_DEFINE_HANDLE_TYPE(PgMemctx);
+
+// Represents STATUS_* definitions from src/postgres/src/include/c.h.
+#define YBC_STATUS_OK     (0)
+#define YBC_STATUS_ERROR  (-1)
 
 //--------------------------------------------------------------------------------------------------
 // Other definitions are the same between C++ and C.
@@ -291,29 +300,22 @@ typedef struct PgExecParameters {
   //     to Postgres code layer.
   // For now we only support one rowmark.
 
-  // yb_can_pushdown_distinct is true only when the DISTINCT operation can be pushed down
-  // - Param can be false when the operation is SELECT DISTINCT and
-  //   the operation cannot be pushed down.
-  //   examples:
-  //   - yb_enable_distinct_pushdown is switched off
-  //   - aggregate queries (cannot push down DISTINCT)
-  // - The operation may not be pushed down even when the param is true.
-  //   examples:
-  //   - index is secondary
-  //   - non key columns referenced in the query
 #ifdef __cplusplus
   uint64_t limit_count = 0;
   uint64_t limit_offset = 0;
   bool limit_use_default = true;
   int rowmark = -1;
-  int wait_policy = 2; // Cast to yb::WaitPolicy for C++ use. (2 is for yb::WAIT_ERROR)
+  // Cast these *_wait_policy fields to yb::WaitPolicy for C++ use. (2 is for yb::WAIT_ERROR)
+  // Note that WAIT_ERROR has a different meaning between pg_wait_policy and docdb_wait_policy.
+  // Please see the WaitPolicy enum in common.proto for details.
+  int pg_wait_policy = 2;
+  int docdb_wait_policy = 2;
   char *bfinstr = NULL;
   uint64_t backfill_read_time = 0;
   uint64_t* stmt_in_txn_limit_ht_for_reads = NULL;
   char *partition_key = NULL;
   PgExecOutParam *out_param = NULL;
   bool is_index_backfill = false;
-  bool yb_can_pushdown_distinct = false;
   int work_mem = 4096; // Default work_mem in guc.c
   int yb_fetch_row_limit = 1024; // Default yb_fetch_row_limit in guc.c
   int yb_fetch_size_limit = 0; // Default yb_fetch_size_limit in guc.c
@@ -322,14 +324,17 @@ typedef struct PgExecParameters {
   uint64_t limit_offset;
   bool limit_use_default;
   int rowmark;
-  int wait_policy; // Cast to LockWaitPolicy for C use
+  // Cast these *_wait_policy fields to LockWaitPolicy for C use.
+  // Note that WAIT_ERROR has a different meaning between pg_wait_policy and docdb_wait_policy.
+  // Please see the WaitPolicy enum in common.proto for details.
+  int pg_wait_policy;
+  int docdb_wait_policy;
   char *bfinstr;
   uint64_t backfill_read_time;
   uint64_t* stmt_in_txn_limit_ht_for_reads;
   char *partition_key;
   PgExecOutParam *out_param;
   bool is_index_backfill;
-  bool yb_can_pushdown_distinct;
   int work_mem;
   int yb_fetch_row_limit;
   int yb_fetch_size_limit;
@@ -355,9 +360,10 @@ typedef struct PgCallbacks {
   const char* (*GetDebugQueryString)();
   void (*WriteExecOutParam)(PgExecOutParam *, const YbcPgExecOutParamValue *);
   /* yb_type.c */
-  int64_t (*PostgresEpochToUnixEpoch)(int64_t);
   int64_t (*UnixEpochToPostgresEpoch)(int64_t);
-  void (*ConstructTextArrayDatum)(const char **, const int, char **, size_t *);
+  void (*ConstructArrayDatum)(YBCPgOid oid, const char **, const int, char **, size_t *);
+  /* hba.c */
+  int (*CheckUserMap)(const char *, const char *, const char *, bool case_insensitive);
 } YBCPgCallbacks;
 
 typedef struct PgGFlagsAccessor {
@@ -374,11 +380,12 @@ typedef struct PgGFlagsAccessor {
   const uint64_t* ysql_session_max_batch_size;
   const bool*     ysql_sleep_before_retry_on_txn_conflict;
   const bool*     ysql_colocate_database_by_default;
-  const bool*     ysql_ddl_rollback_enabled;
   const bool*     ysql_enable_read_request_caching;
   const bool*     ysql_enable_profile;
   const bool*     ysql_disable_global_impact_ddl_statements;
   const bool*     ysql_minimal_catalog_caches_preload;
+  const bool*     ysql_enable_create_database_oid_collision_retry;
+  const char*     ysql_catalog_preload_additional_table_list;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -441,12 +448,41 @@ typedef struct PgExecStats {
   uint64_t num_flushes;
   uint64_t flush_wait;
 
+  uint64_t storage_metrics[YB_PGGATE_IDENTIFIER(YB_ANALYZE_METRIC_COUNT)];
 } YBCPgExecStats;
+
+// Make sure this is in sync with PgsqlMetricsCaptureType in pgsql_protocol.proto.
+typedef enum PgMetricsCaptureType {
+  YB_YQL_METRICS_CAPTURE_NONE = 0,
+  YB_YQL_METRICS_CAPTURE_ALL = 1,
+} YBCPgMetricsCaptureType;
 
 typedef struct PgExecStatsState {
   YBCPgExecStats stats;
   bool is_timing_required;
+  YBCPgMetricsCaptureType metrics_capture;
 } YBCPgExecStatsState;
+
+typedef struct PgUuid {
+  unsigned char data[16];
+} YBCPgUuid;
+
+typedef struct PgSessionTxnInfo {
+  uint64_t session_id;
+  YBCPgUuid txn_id;
+  bool is_not_null;
+} YBCPgSessionTxnInfo;
+
+typedef struct PgJwtAuthOptions {
+  char* jwks;
+  char* matching_claim_key;
+  char** allowed_issuers;
+  size_t allowed_issuers_length;
+  char** allowed_audiences;
+  size_t allowed_audiences_length;
+  char* username;
+  char* usermap;
+} YBCPgJwtAuthOptions;
 
 // source:
 // https://github.com/gperftools/gperftools/blob/master/src/gperftools/malloc_extension.h#L154
@@ -470,9 +506,13 @@ static const int32_t kYBCMaxNumDbCatalogVersions = 10000;
 typedef enum PgSysTablePrefetcherCacheMode {
   YB_YQL_PREFETCHER_TRUST_CACHE,
   YB_YQL_PREFETCHER_RENEW_CACHE_SOFT,
-  YB_YQL_PREFETCHER_RENEW_CACHE_HARD,
-  YB_YQL_PREFETCHER_NO_CACHE
+  YB_YQL_PREFETCHER_RENEW_CACHE_HARD
 } YBCPgSysTablePrefetcherCacheMode;
+
+typedef struct PgLastKnownCatalogVersionInfo {
+  uint64_t version;
+  bool is_db_catalog_version_mode;
+} YBCPgLastKnownCatalogVersionInfo;
 
 #ifdef __cplusplus
 }  // extern "C"

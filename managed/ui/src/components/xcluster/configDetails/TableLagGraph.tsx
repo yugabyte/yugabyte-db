@@ -1,6 +1,6 @@
 import _ from 'lodash';
 import moment from 'moment';
-import React, { FC, useState } from 'react';
+import { FC, useState } from 'react';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';

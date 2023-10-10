@@ -1,4 +1,4 @@
-import React, { ReactElement } from 'react';
+import { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { Box } from '@material-ui/core';
@@ -20,10 +20,12 @@ const PROVIDER_FRIENDLY_NAME = {
 export const TimeSyncField = ({ disabled }: TimeSyncFieldProps): ReactElement => {
   const { control } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
-  const timeSyncTooltipText = t('universeForm.instanceConfig.useTimeSyncHelper');
 
   //watchers
   const provider = useWatch({ name: PROVIDER_FIELD });
+  const timeSyncTooltipText = t('universeForm.instanceConfig.useTimeSyncHelper', {
+    provider: PROVIDER_FRIENDLY_NAME[provider?.code]
+  });
 
   const stringMap = { provider: PROVIDER_FRIENDLY_NAME[provider?.code] };
 

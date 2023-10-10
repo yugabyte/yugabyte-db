@@ -11,10 +11,9 @@
 // under the License.
 
 #include "yb/common/wire_protocol.h"
-
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
-
+#include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 
 using std::string;
@@ -614,29 +613,20 @@ TEST_F(PgCatalogVersionTest, DBCatalogVersionPrematureOn) {
   RestartClusterWithoutDBCatalogVersionMode();
   auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   ASSERT_OK(PrepareDBCatalogVersion(&conn));
-  LOG(INFO) << "Preparing pg_yb_catalog_version to have a single row for template1";
-  ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
-  ASSERT_RESULT(conn.Fetch("SELECT yb_fix_catalog_version_table(false)"));
-  ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
-  const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn, kYugabyteDatabase));
+  ASSERT_OK(PrepareDBCatalogVersion(&conn, false));
 
   // Manually switch back to per-db catalog version mode, but this step is
-  // done prematurely before running the following script to prepare the
-  // table pg_yb_catalog_version to have one row per database.
+  // done prematurely before running the following call to PrepareDBCatalogVersion
+  // to prepare the table pg_yb_catalog_version to have one row per database.
   RestartClusterWithDBCatalogVersionMode();
 
   // Trying to connect to kYugabyteDatabase before it has a row in the table
-  // pg_yb_catalog_version should not cause master CHECK failure.
-  auto status = ResultToStatus(ConnectToDB(kYugabyteDatabase));
-  ASSERT_TRUE(status.IsNetworkError()) << status;
-  ASSERT_STR_CONTAINS(status.ToString(),
-                      Format("catalog version for database $0 was not found", yugabyte_db_oid));
+  // pg_yb_catalog_version should not cause per-db catalog version mode to
+  // be enabled because the PG backend will wait for pg_yb_catalog_version
+  // to get upgraded to have one row per database.
+  conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
 
   // Now prepare pg_yb_catalog_version to have one row per database.
-  // The pg_yb_catalog_version has only one row for template1. So connect to
-  // template1 to run yb_fix_catalog_version_table(true).
-  conn = ASSERT_RESULT(ConnectToDB("template1"));
-  // We should not see any master CHECK failure.
   ASSERT_OK(PrepareDBCatalogVersion(&conn));
   size_t num_initial_databases = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn)).size();
   LOG(INFO) << "num_initial_databases: " << num_initial_databases;
@@ -644,7 +634,7 @@ TEST_F(PgCatalogVersionTest, DBCatalogVersionPrematureOn) {
   // We should not see master CHECK failure if we try to get duplicate
   // db_oid into the same request.
   ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
-  status = conn.Execute(
+  auto status = conn.Execute(
       "INSERT INTO pg_catalog.pg_yb_catalog_version VALUES "
       "(16384, 1, 1), (16384, 2, 2)");
   ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
@@ -733,38 +723,75 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   ASSERT_TRUE(ASSERT_RESULT(
       VerifyCatalogVersionTableDbOids(&conn_template1, false /* single_row */)));
 
+  // Wait for the pg_yb_catalog_version to propagate to tserver so the next
+  // connection to "yugabyte" is in per-database catalog version mode.
+  WaitForCatalogVersionToPropagate();
+
   // Connect to database "yugabyte".
   auto conn_yugabyte = ASSERT_RESULT(ConnectToDB("yugabyte"));
   // Prepare the table pg_yb_catalog_version for global catalog version mode.
+  // Note that this is not a supported scenario where the table pg_yb_catalog_version
+  // shrinks while the gflag --TEST_enable_db_catalog_version_mode is still on.
+  // The correct order is to turn off the gflag first and then shrink the table.
+  // Nevertheless we test that this order violation will not cause unexpected
+  // yb-master/yb-tserver crashes and we can go back to per-database mode by
+  // re-syncing the table back to one row per database.
   ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte, false /* per_database_mode */));
   // Verify there is one row in pg_yb_catalog_version.
   ASSERT_TRUE(ASSERT_RESULT(
       VerifyCatalogVersionTableDbOids(&conn_yugabyte, true /* single_row */)));
 
-  // At this time, the cluster is still in per-db catalog version mode, but the table
-  // pg_yb_catalog_version has only one row for template1 and is out of sync with
-  // pg_database. Even though the row for "yugabyte" is gone, we can still execute
-  // queries on this connection. Try some simple queries to verify they still work.
+  // At this time, an existing connection is still in per-db catalog version mode
+  // but the table pg_yb_catalog_version has only one row for template1 and is out
+  // of sync with pg_database. Note that once a connection is in per-db catalog
+  // version mode, this mode persists till the end of the connection. Even though
+  // the row for "yugabyte" is gone, we can still execute queries on this connection.
+  // Try some simple queries to verify they still work.
   ASSERT_OK(conn_yugabyte.Execute("CREATE TABLE test_table(id int)"));
   ASSERT_OK(conn_yugabyte.Execute("INSERT INTO test_table VALUES(1), (2), (3)"));
   const auto max_id = ASSERT_RESULT(
       conn_yugabyte.FetchValue<int32_t>("SELECT max(id) FROM test_table"));
   ASSERT_EQ(max_id, 3);
-  // We cannot make a new connection to database "yugabyte".
-  auto status = ResultToStatus(ConnectToDB("yugabyte"));
-  ASSERT_TRUE(status.IsNetworkError()) << status;
-  ASSERT_STR_CONTAINS(status.ToString(), "Database might have been dropped by another user");
+  constexpr CatalogVersion kCurrentCatalogVersion{1, 1};
+  auto versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
+  // There is only one row in the table pg_yb_catalog_version now.
+  CHECK_EQ(versions.size(), 1);
+  ASSERT_OK(CheckMatch(versions.begin()->second, kCurrentCatalogVersion));
+  // A global-impact DDL statement that increments catalog version still works.
+  ASSERT_OK(conn_yugabyte.Execute("ALTER ROLE yugabyte SUPERUSER"));
+  constexpr CatalogVersion kNewCatalogVersion{2, 2};
+  versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
+  CHECK_EQ(versions.size(), 1);
+  ASSERT_OK(CheckMatch(versions.begin()->second, kNewCatalogVersion));
 
-  // We can only make a new connection to database "template1" because now it is the only
-  // database that has a row in pg_yb_catalog_version table.
+  ASSERT_OK(conn_yugabyte.Execute("ALTER TABLE test_table ADD COLUMN c2 INT"));
+
+  // The non-global-impact DDL statement does not have an effect on the
+  // table pg_yb_catalog_version when it tries to update the row of yugabyte
+  // because that row no longer exists. There is no user visible effect.
+  versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
+  CHECK_EQ(versions.size(), 1);
+  ASSERT_OK(CheckMatch(versions.begin()->second, kNewCatalogVersion));
+
+  // For a new connection, although --TEST_enable_db_catalog_version_mode is still
+  // true, the fact that the table pg_yb_catalog_version has only one row prevents
+  // a new connection to enter per-database catalog version mode. Verify that we
+  // can make a new connection to database "yugabyte".
+  ASSERT_RESULT(ConnectToDB("yugabyte"));
+
+  // We can also make a new connection to database "template1" but the fact that
+  // now it is the only database that has a row in pg_yb_catalog_version table is
+  // not relevant.
   conn_template1 = ASSERT_RESULT(ConnectToDB("template1"));
+
   // Sync up pg_yb_catalog_version with pg_database.
   ASSERT_OK(PrepareDBCatalogVersion(&conn_template1, true /* per_database_mode */));
   // Verify pg_database and pg_yb_catalog_version are in sync.
   ASSERT_TRUE(ASSERT_RESULT(
       VerifyCatalogVersionTableDbOids(&conn_template1, false /* single_row */)));
-  // Now we can connect to "yugabyte" again.
-  conn_yugabyte = ASSERT_RESULT(ConnectToDB("yugabyte"));
+  // Verify that we can connect to "yugabyte" and "template1".
+  ASSERT_RESULT(ConnectToDB("yugabyte"));
+  ASSERT_RESULT(ConnectToDB("template1"));
 }
 
 // This test exercises the wrap around logic in tserver shared memory free
@@ -908,6 +935,135 @@ TEST_P(PgCatalogVersionEnableAuthTest, ChangeUserPassword) {
   for (const auto& entry : expected_versions) {
     ASSERT_OK(CheckMatch(entry.second, kInitialCatalogVersion));
   }
+}
+
+class PgCatalogVersionFailOnConflictTest : public PgCatalogVersionTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    UpdateMiniClusterFailOnConflict(options);
+    PgCatalogVersionTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+// This is a sanity test for manual downgrade from per database catalog version mode to
+// global catalog version mode. First the gflag --TEST_enable_db_catalog_version_mode is
+// turned off and cluster is restarted. After that, the cluster will be running in
+// global catalog version mode despite the fact that pg_yb_catalog_version still has
+// multiple rows. At this time, we test that concurrently running DML transactions
+// behave well and will not be affected before and after the user performs the second
+// fix to make pg_yb_catalog_version to have only one row for template1.
+TEST_F_EX(PgCatalogVersionTest, SimulateDowngradeToGlobalMode,
+          PgCatalogVersionFailOnConflictTest) {
+  // Prepare an existing cluster that is in per-database catalog version mode.
+  auto conn_yugabyte = ASSERT_RESULT(Connect());
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte, true /* per_database_mode */));
+  RestartClusterWithDBCatalogVersionMode();
+  conn_yugabyte = ASSERT_RESULT(Connect());
+  auto initial_count = ASSERT_RESULT(conn_yugabyte.FetchValue<PGUint64>(
+      "SELECT COUNT(*) FROM pg_yb_catalog_version"));
+  ASSERT_GT(initial_count, 1);
+
+  // Now simulate downgrading the cluster to global catalog version mode.
+  // We first turn off the gflag, after the cluster restarts, the table
+  // pg_yb_catalog_version still has one row per database.
+  RestartClusterWithoutDBCatalogVersionMode();
+  conn_yugabyte = ASSERT_RESULT(ConnectToDB("yugabyte"));
+  initial_count = ASSERT_RESULT(conn_yugabyte.FetchValue<PGUint64>(
+      "SELECT COUNT(*) FROM pg_yb_catalog_version"));
+  ASSERT_GT(initial_count, 1);
+
+  bool downgraded = false;
+  // This test assumes that the actual downgrade script runs at most this many seconds.
+  constexpr int kMaxDowngradeSec = 5;
+  constexpr int kMaxSleepSec = 10;
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &downgraded] {
+    // Start a thread to simulate the situation where the user manually runs the YSQL
+    // downgrade script to make pg_yb_catalog_version one row per database. Wait for
+    // some random time so that it runs concurrently with SerializableColoringHelper().
+    const int sleep_sec = RandomUniformInt(1, kMaxSleepSec);
+    SleepFor(1s * sleep_sec);
+    const string ysql_downgrade_sql =
+        R"#(
+SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;
+SELECT pg_catalog.yb_fix_catalog_version_table(false);
+SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO false;
+        )#";
+    auto conn_ysql_downgrade = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn_ysql_downgrade.Execute(ysql_downgrade_sql));
+    downgraded = true;
+  });
+  // There's no strict guarantee of this, but it should be fine practically because
+  // of the call to SleepFor above.
+  ASSERT_FALSE(downgraded);
+  // Let the test run longer than the maximum time we assume that the downgrade can take.
+  SerializableColoringHelper(kMaxSleepSec + kMaxDowngradeSec);
+  // This can fail if downgrade takes longer than kMaxDowngradeSec but in practice
+  // this won't happen.
+  ASSERT_TRUE(downgraded);
+  const auto current_count = ASSERT_RESULT(conn_yugabyte.FetchValue<PGUint64>(
+      "SELECT COUNT(*) FROM pg_yb_catalog_version"));
+  ASSERT_EQ(current_count, 1);
+  thread_holder.Stop();
+}
+
+TEST_F_EX(PgCatalogVersionTest, SimulateUpgradeToPerdbMode,
+          PgCatalogVersionFailOnConflictTest) {
+  // Simulate an existing cluster that is in global catalog version mode
+  // by ensuring there is only one row in pg_yb_catalog_version.
+  auto conn_yugabyte = ASSERT_RESULT(Connect());
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte, false /* per_database_mode */));
+  // During cluster upgrade, we'll first upgrade the new binaries. Restart the
+  // cluster to simulate upgrading the binaries and we assume that in the new
+  // binaries the per-database catalog version mode gflag is turned on by default.
+  RestartClusterWithDBCatalogVersionMode();
+
+  conn_yugabyte = ASSERT_RESULT(Connect());
+  // After we upgrade the binaries, we should still only have one row
+  // in pg_yb_catalog_version.
+  const auto initial_count = ASSERT_RESULT(conn_yugabyte.FetchValue<PGUint64>(
+      "SELECT COUNT(*) FROM pg_yb_catalog_version"));
+  ASSERT_EQ(initial_count, 1);
+
+  bool upgraded = false;
+  // This test assumes that the actual upgrade script runs at most this many seconds.
+  constexpr int kMaxUpgradeSec = 5;
+  constexpr int kMaxSleepSec = 10;
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &upgraded] {
+    // Start a thread to simulate the situation where the YSQL upgrade script
+    // runs to upgrade pg_yb_catalog_version one row per database. Wait for some
+    // random time so that it runs concurrently with SerializableColoringHelper().
+    const int sleep_sec = RandomUniformInt(1, kMaxSleepSec);
+    SleepFor(1s * sleep_sec);
+    const string ysql_upgrade_sql =
+        R"#(
+SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;
+
+DO $$
+BEGIN
+  -- The pg_yb_catalog_version will be upgraded so that it has one row per database.
+  if (SELECT count(db_oid) from pg_catalog.pg_yb_catalog_version) = 1 THEN
+    PERFORM pg_catalog.yb_fix_catalog_version_table(true);
+  END IF;
+END $$;
+        )#";
+    auto conn_ysql_upgrade = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn_ysql_upgrade.Execute(ysql_upgrade_sql));
+    upgraded = true;
+  });
+  // There's no strict guarantee of this, but it should be fine practically because
+  // of the call to SleepFor above.
+  ASSERT_FALSE(upgraded);
+  // Let the test run longer than the maximum time we assume that the upgrade can take.
+  SerializableColoringHelper(kMaxSleepSec + kMaxUpgradeSec);
+  // This can fail if upgrade takes longer than kMaxUpgradeSec but in practice
+  // this won't happen.
+  ASSERT_TRUE(upgraded);
+  const auto current_count = ASSERT_RESULT(conn_yugabyte.FetchValue<PGUint64>(
+      "SELECT COUNT(*) FROM pg_yb_catalog_version"));
+  ASSERT_GT(current_count, 1);
+  thread_holder.Stop();
 }
 
 TEST_F(PgCatalogVersionTest, NonBreakingDDLMode) {

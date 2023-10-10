@@ -5,8 +5,8 @@ import (
     "fmt"
     "io/ioutil"
     "net/http"
-    "time"
     "regexp"
+    "time"
 
     "github.com/jackc/pgx/v4/pgxpool"
 )
@@ -56,7 +56,7 @@ type IndexInfoStruct struct {
 }
 
 // TODO: replace this with a call to a json endpoint so we don't have to parse html
-func ParseTasksFromHtml(body string) ([]IndexTaskStruct, error) {
+func (h *HelperContainer) ParseTasksFromHtml(body string) ([]IndexTaskStruct, error) {
     indexTasks := []IndexTaskStruct{}
 
     tasksRegex, err := regexp.Compile(`(?ms)Last 20 user-initiated jobs started` +
@@ -102,7 +102,53 @@ func ParseTasksFromHtml(body string) ([]IndexTaskStruct, error) {
     return indexTasks, nil
 }
 
-func GetIndexInfo(pgClient *pgxpool.Pool, indexRelId uint32, future chan IndexInfoStruct) {
+func (h *HelperContainer) GetCompletedIndexBackFillInfo() IndexBackFillInfoFuture {
+    completedIndexBackFillInfoFuture := IndexBackFillInfoFuture{
+        IndexBackFillInfo: []map[string]interface{}{},
+        Error:             nil,
+    }
+
+    httpClient := &http.Client{
+        Timeout: time.Second * 10,
+    }
+    url := fmt.Sprintf("http://%s:%s/tasks", HOST, MasterUIPort)
+    resp, err := httpClient.Get(url)
+    if err != nil {
+        completedIndexBackFillInfoFuture.Error = err
+        return completedIndexBackFillInfoFuture
+    }
+    defer resp.Body.Close()
+
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        completedIndexBackFillInfoFuture.Error = err
+        return completedIndexBackFillInfoFuture
+    }
+
+    backfilledIndexes, err := h.ParseTasksFromHtml(string(body))
+    if err != nil {
+        completedIndexBackFillInfoFuture.Error = err
+        return completedIndexBackFillInfoFuture
+    }
+
+    for _, backfilledIndex := range backfilledIndexes {
+        completedIndexBackFillInfoFuture.IndexBackFillInfo = append(
+            completedIndexBackFillInfoFuture.IndexBackFillInfo, map[string]interface{}{
+                "IndexName": backfilledIndex.IndexName,
+                "StartTime": backfilledIndex.StartTime,
+                "Duration":  backfilledIndex.Duration,
+                "Phase":     "Completed",
+            })
+    }
+
+    return completedIndexBackFillInfoFuture
+}
+
+func (h *HelperContainer) GetIndexInfo(
+    pgClient *pgxpool.Pool,
+    indexRelId uint32,
+    future chan IndexInfoStruct,
+) {
     indexInfo := IndexInfoStruct{
         Error: nil,
     }
@@ -137,35 +183,21 @@ func GetIndexInfo(pgClient *pgxpool.Pool, indexRelId uint32, future chan IndexIn
     future <- indexInfo
 }
 
-func GetIndexBackFillInfo(pgClient *pgxpool.Pool, future chan IndexBackFillInfoFuture) {
+func (h *HelperContainer) convertInterfaceToInt64(val interface{}) int64 {
+    if val == nil {
+        return 0
+    } else {
+        return val.(int64)
+    }
+}
+
+func (h *HelperContainer) GetIndexBackFillInfo(
+    pgClient *pgxpool.Pool,
+    future chan IndexBackFillInfoFuture,
+) {
     indexBackFillInfoFuture := IndexBackFillInfoFuture{
         IndexBackFillInfo: []map[string]interface{}{},
         Error:             nil,
-    }
-
-    httpClient := &http.Client{
-        Timeout: time.Second * 10,
-    }
-    url := fmt.Sprintf("http://%s:%s/tasks", HOST, MasterUIPort)
-    resp, err := httpClient.Get(url)
-    if err != nil {
-        indexBackFillInfoFuture.Error = err
-        future <- indexBackFillInfoFuture
-        return
-    }
-    defer resp.Body.Close()
-
-    body, err := ioutil.ReadAll(resp.Body)
-    if err != nil {
-        indexBackFillInfoFuture.Error = err
-        future <- indexBackFillInfoFuture
-        return
-    }
-
-    backfilledIndexes, err := ParseTasksFromHtml(string(body))
-    if err != nil {
-        future <- indexBackFillInfoFuture
-        return
     }
 
     rows, err := pgClient.Query(context.Background(), QUERY_INDEX_BACKFILL_PROGRESS_INFO)
@@ -198,7 +230,13 @@ func GetIndexBackFillInfo(pgClient *pgxpool.Pool, future chan IndexBackFillInfoF
         if indexBackFillInfo.Phase == "backfilling" {
             indexInfoFuture := make(chan IndexInfoStruct)
             indexInfoFutures = append(indexInfoFutures, indexInfoFuture)
-            go GetIndexInfo(pgClient, indexBackFillInfo.IndexRelId, indexInfoFuture)
+            if err != nil {
+                indexBackFillInfoFuture.Error = err
+                future <- indexBackFillInfoFuture
+                return
+            }
+            go h.GetIndexInfo(pgClient, indexBackFillInfo.IndexRelId, indexInfoFuture)
+            indexRelIdtoBackFillInfoMap[indexBackFillInfo.IndexRelId] = indexBackFillInfo
         }
 
         indexRelIdtoBackFillInfoMap[indexBackFillInfo.IndexRelId] =
@@ -211,16 +249,6 @@ func GetIndexBackFillInfo(pgClient *pgxpool.Pool, future chan IndexBackFillInfoF
         return
     }
 
-    for _, backfilledIndex := range backfilledIndexes {
-        indexBackFillInfoFuture.IndexBackFillInfo = append(
-            indexBackFillInfoFuture.IndexBackFillInfo, map[string]interface{}{
-                "IndexName": backfilledIndex.IndexName,
-                "StartTime": backfilledIndex.StartTime,
-                "Duration":  backfilledIndex.Duration,
-                "Phase":     "Completed",
-            })
-    }
-
     for _, indexInfoFuture := range indexInfoFutures {
         indexInfo := <- indexInfoFuture
         if indexInfo.Error != nil {
@@ -229,16 +257,24 @@ func GetIndexBackFillInfo(pgClient *pgxpool.Pool, future chan IndexBackFillInfoF
             return
         }
         indexBackFillInfo := indexRelIdtoBackFillInfoMap[indexInfo.IndexRelId]
+        indexBackFillInfo.TuplesTotal = h.convertInterfaceToInt64(indexBackFillInfo.TuplesTotal)
+        indexBackFillInfo.TuplesDone = h.convertInterfaceToInt64(indexBackFillInfo.TuplesDone)
+        indexBackFillInfo.PartitionsTotal = h.convertInterfaceToInt64(
+            indexBackFillInfo.PartitionsTotal)
+        indexBackFillInfo.PartitionsDone = h.convertInterfaceToInt64(
+            indexBackFillInfo.PartitionsDone)
+
+
         indexBackFillInfoFuture.IndexBackFillInfo = append(
             indexBackFillInfoFuture.IndexBackFillInfo, map[string]interface{}{
                 "IndexName":        indexInfo.IndexRelName,
                 "DBName":           indexBackFillInfo.DatName,
                 "Command":          indexBackFillInfo.Command,
                 "Phase":            indexBackFillInfo.Phase,
-                "TuplesTotal":      indexBackFillInfo.TuplesTotal.(int64),
-                "TuplesDone":       indexBackFillInfo.TuplesDone.(int64),
-                "PartitionsTotal":  indexBackFillInfo.PartitionsTotal.(int64),
-                "PartitionsDone":   indexBackFillInfo.TuplesDone.(int64),
+                "TuplesTotal":      indexBackFillInfo.TuplesTotal,
+                "TuplesDone":       indexBackFillInfo.TuplesDone,
+                "PartitionsTotal":  indexBackFillInfo.PartitionsTotal,
+                "PartitionsDone":   indexBackFillInfo.PartitionsDone,
             })
     }
 

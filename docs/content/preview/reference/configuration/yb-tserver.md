@@ -315,50 +315,53 @@ Default: The default value in `2.18.1` is `-1` - feature is disabled by default.
 
 ##### --yb_num_shards_per_tserver
 
-The number of shards per YB-TServer for each YCQL table when a user table is created.
+The number of shards (tablets) per YB-TServer for each YCQL table when a user table is created.
 
-Default: `-1` (the value based on the CPU cores is calculated at runtime).
-\
-For servers with up to two CPU cores, the default value is considered as `4`.
-\
-For three or more CPU cores, the default value is considered as `8`.
-\
-If [`enable_automatic_tablet_splitting`](#enable-automatic-tablet-splitting) is `true`, then the default value is considered as `1` and tables will begin with 1 tablet *per node*; for version `2.18` and later, for servers with up to 4 CPU cores, the value *is not defined* and tables will begin with 1 tablet (for servers with up to 2 CPU cores), or 2 tablets (for servers with up to 4 CPU cores) *per cluster*.
+Default: `-1`, where the number of shards is determined at runtime, as follows:
 
-Local cluster installations created with `yb-ctl` and `yb-docker-ctl` use a default value of `2` for this flag.
-\
-Clusters created with `yugabyted` always use a default value of `1`.
+- If [enable_automatic_tablet_splitting](#enable-automatic-tablet-splitting) is `true`
+  - The default value is considered as `1`.
+  - For servers with 4 CPU cores or less, the number of tablets for each table doesn't depend on the number of YB-TServers. Instead, for 2 CPU cores or less, 1 tablet per cluster is created; for 4 CPU cores or less, 2 tablets per cluster are created.
+
+- If `enable_automatic_tablet_splitting` is `false`
+  - For servers with up to two CPU cores, the default value is considered as `4`.
+  - For three or more CPU cores, the default value is considered as `8`.
+
+Local cluster installations created using `yb-ctl` and `yb-docker-ctl` use a default value of `2` for this flag.
+
+Clusters created using `yugabyted` always use a default value of `1`.
 
 {{< note title="Note" >}}
 
 - This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
-- If the value is set to *Default* (`-1`), then the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup prior to version `2.18` and the flag remains *unchanged* starting from version `2.18`.
+- If the value is set to *Default* (`-1`), then the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup prior to version 2.18 and the flag remains *unchanged* starting from version 2.18.
 - The [`CREATE TABLE ... WITH TABLETS = <num>`](../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets) clause can be used on a per-table basis to override the `yb_num_shards_per_tserver` value.
 
 {{< /note >}}
 
 ##### --ysql_num_shards_per_tserver
 
-The number of shards per YB-TServer for each YSQL table when a user table is created.
+The number of shards (tablets) per YB-TServer for each YSQL table when a user table is created.
 
-Default: `-1` (the value based on the CPU cores is calculated at runtime).
-\
-For servers with up to two CPU cores, the default value is considered as `2`.
-\
-For servers with three or four CPU cores, the default value is considered as `4`.
-\
-Beyond four cores, the default value is considered as `8`.
-\
-If [enable_automatic_tablet_splitting](#enable-automatic-tablet-splitting) is `true`, then the default value is *considered* as `1` and tables will begin with 1 tablet *per node*; for versions `2.18` and later, for servers with up to 4 CPU cores, the value *is not defined* and tables will begin with 1 tablet (for servers with up to 2 CPU cores), or 2 tablets (for servers with up to 4 CPU cores) *per cluster*.
+Default: `-1`, where the number of shards is determined at runtime, as follows:
 
-Local cluster installations created with `yb-ctl` and `yb-docker-ctl` use a default value of `2`.
-\
-Clusters created with `yugabyted` always use a default value of `1`.
+- If [enable_automatic_tablet_splitting](#enable-automatic-tablet-splitting) is `true`
+  - The default value is considered as `1`.
+  - For servers with 4 CPU cores or less, the number of tablets for each table doesn't depend on the number of YB-TServers. Instead, for 2 CPU cores or less, 1 tablet per cluster is created; for 4 CPU cores or less, 2 tablets per cluster are created.
+
+- If `enable_automatic_tablet_splitting` is `false`
+  - For servers with up to two CPU cores, the default value is considered as `2`.
+  - For servers with three or four CPU cores, the default value is considered as `4`.
+  - Beyond four cores, the default value is considered as `8`.
+
+Local cluster installations created using `yb-ctl` and `yb-docker-ctl` use a default value of `2` for this flag.
+
+Clusters created using `yugabyted` always use a default value of `1`.
 
 {{< note title="Note" >}}
 
 - This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
-- If the value is set to *Default* (`-1`), the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup prior to version `2.18.0` and the flag remains *unchanged* starting from version `2.18.0`.
+- If the value is set to *Default* (`-1`), the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup prior to version 2.18 and the flag remains *unchanged* starting from version 2.18.
 - The [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause can be used on a per-table basis to override the `ysql_num_shards_per_tserver` value.
 
 {{< /note >}}
@@ -456,6 +459,14 @@ Default: `33`
 Assigns an extra priority to automatic (minor) compactions when automatic tablet splitting is enabled. This deprioritizes post-split compactions and ensures that smaller compactions are not starved. Suggested values are between 0 and 50.
 
 Default: `50`
+
+##### --ysql_colocate_database_by_default
+
+When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
+
+For more details, see [clusters in colocated tables](../../../architecture/docdb-sharding/colocated-tables/#clusters).
+
+Default: `false`
 
 ## Geo-distribution flags
 
@@ -635,7 +646,7 @@ Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNC
 
 Default: `READ COMMITTED`<sup>$</sup>
 
-<sup>$</sup> Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+<sup>$</sup> Read Committed support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --ysql_disable_index_backfill
 
@@ -803,7 +814,12 @@ Default: `4`
 
 Maximum number of threads to do background compactions (used when compactions need to catch up.) Unless `rocksdb_disable_compactions=true`, this cannot be set to zero.
 
-Default: `-1` (the value is calculated at runtime). For servers with up to 4 CPU cores, the default value is considered as `1`. For servers with up to 8 CPU cores, the default value is considered as `2`. For servers with up to 32 CPU cores, the default value is considered as `3`. Beyond 32 cores, the default value is considered as `4`.
+Default: `-1`, where the value is calculated at runtime as follows:
+
+- For servers with up to 4 CPU cores, the default value is considered as `1`.
+- For servers with up to 8 CPU cores, the default value is considered as `2`.
+- For servers with up to 32 CPU cores, the default value is considered as `3`.
+- Beyond 32 cores, the default value is considered as `4`.
 
 ##### --rocksdb_compaction_size_threshold_bytes
 
@@ -834,6 +850,24 @@ Default: `900` (15 minutes)
 Rate control across all tablets being remote bootstrapped from or to this process.
 
 Default: `256MB` (256 MB/second)
+
+##### --remote_bootstrap_from_leader_only
+
+Based on the value (`true`/`false`) of the flag, the leader decides whether to instruct the new peer to attempt bootstrap from a closest caught-up peer. The leader too could be the closest peer depending on the new peer's geographic placement. Setting the flag to false will enable the feature of remote bootstrapping from a closest caught-up peer. The number of bootstrap attempts from a non-leader peer is limited by the flag [max_remote_bootstrap_attempts_from_non_leader](#max-remote-bootstrap-attempts-from-non-leader).
+
+Default: `false`
+
+{{< note title="Note" >}}
+
+The code for the feature is present from version 2.16 and later, and can be enabled explicitly if needed. Starting from version 2.19, the feature is on by default.
+
+{{< /note >}}
+
+##### --max_remote_bootstrap_attempts_from_non_leader
+
+When the flag [remote_bootstrap_from_leader_only](#remote-bootstrap-from-leader-only) is set to `false` (enabling the feature of bootstrapping from a closest peer), the number of attempts where the new peer tries to bootstrap from a non-leader peer is limited by the flag. After these failed bootstrap attempts for the new peer, the leader peer sets itself as the bootstrap source.
+
+Default: `5`
 
 ## Network compression flags
 
@@ -1224,21 +1258,21 @@ Default: `1GB`
 
 The Admin UI for the YB-TServer is available at `http://localhost:9000`.
 
-### Home
-
-Home page of the YB-TServer (`yb-tserver`) that gives a high level overview of this specific instance.
-
-![tserver-home](/images/admin/tserver-home.png)
-
 ### Dashboards
 
-Here's a list of all dashboards to review the ongoing operations:
+List of all dashboards to review ongoing operations.
 
 ![tserver-dashboards](/images/admin/tserver-dashboards.png)
 
+### Tables
+
+List of all tables managed by this specific instance, sorted by [namespace](../yb-master/#namespaces).
+
+![tserver-tablets](/images/admin/tserver-tables.png)
+
 ### Tablets
 
-List of all tablets managed by this specific instance, sorted by the table name.
+List of all tablets managed by this specific instance.
 
 ![tserver-tablets](/images/admin/tserver-tablets.png)
 

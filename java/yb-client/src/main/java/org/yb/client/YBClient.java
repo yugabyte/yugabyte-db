@@ -38,6 +38,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -60,6 +61,7 @@ import org.yb.annotations.InterfaceStability;
 import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.CatalogEntityInfo.ReplicationInfoPB;
 import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
 
@@ -521,23 +523,9 @@ public class YBClient implements AutoCloseable {
    */
   String getMasterUUID(String host, int port) {
     HostAndPort hostAndPort = HostAndPort.fromParts(host, port);
-    Deferred<GetMasterRegistrationResponse> d;
-    TabletClient clientForHostAndPort = asyncClient.newMasterClient(hostAndPort);
-    if (clientForHostAndPort == null) {
-      String message = "Couldn't resolve master's address at " + hostAndPort.toString();
-      LOG.warn(message);
-    } else {
-      d = asyncClient.getMasterRegistration(clientForHostAndPort);
-      try {
-        GetMasterRegistrationResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
-        return resp.getInstanceId().getPermanentUuid().toStringUtf8();
-      } catch (Exception e) {
-        LOG.warn("Couldn't get registration info for master {} due to error '{}'.",
-                 hostAndPort.toString(), e.getMessage());
-      }
-    }
-
-    return null;
+    return getMasterRegistrationResponse(hostAndPort).map(
+            resp -> resp.getInstanceId().getPermanentUuid().toStringUtf8()
+    ).orElse(null);
   }
 
   /**
@@ -546,26 +534,43 @@ public class YBClient implements AutoCloseable {
    */
   public String getLeaderMasterUUID() {
     for (HostAndPort hostAndPort : asyncClient.getMasterAddresses()) {
-      Deferred<GetMasterRegistrationResponse> d;
-      TabletClient clientForHostAndPort = asyncClient.newMasterClient(hostAndPort);
-      if (clientForHostAndPort == null) {
-        String message = "Couldn't resolve this master's address " + hostAndPort.toString();
-        LOG.warn(message);
-      } else {
-        d = asyncClient.getMasterRegistration(clientForHostAndPort);
-        try {
-          GetMasterRegistrationResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
-          if (resp.getRole() == CommonTypes.PeerRole.LEADER) {
-            return resp.getInstanceId().getPermanentUuid().toStringUtf8();
-          }
-        } catch (Exception e) {
-          LOG.warn("Couldn't get registration info for master {} due to error '{}'.",
-                   hostAndPort.toString(), e.getMessage());
-        }
+      Optional<GetMasterRegistrationResponse> resp = getMasterRegistrationResponse(hostAndPort);
+      if (resp.isPresent() && resp.get().getRole() == CommonTypes.PeerRole.LEADER) {
+        return resp.get().getInstanceId().getPermanentUuid().toStringUtf8();
       }
     }
 
     return null;
+  }
+
+  public List<GetMasterRegistrationResponse> getMasterRegistrationResponseList() {
+    List<GetMasterRegistrationResponse> result = new ArrayList<>();
+    for (HostAndPort hostAndPort : asyncClient.getMasterAddresses()) {
+      Optional<GetMasterRegistrationResponse> resp = getMasterRegistrationResponse(hostAndPort);
+      if (resp.isPresent()) {
+        result.add(resp.get());
+      }
+    }
+    return result;
+  }
+
+  private Optional<GetMasterRegistrationResponse> getMasterRegistrationResponse(
+          HostAndPort hostAndPort) {
+    Deferred<GetMasterRegistrationResponse> d;
+    TabletClient clientForHostAndPort = asyncClient.newMasterClient(hostAndPort);
+    if (clientForHostAndPort == null) {
+      String message = "Couldn't resolve this master's address " + hostAndPort.toString();
+      LOG.warn(message);
+    } else {
+      d = asyncClient.getMasterRegistration(clientForHostAndPort);
+      try {
+        return Optional.of(d.join(getDefaultAdminOperationTimeoutMs()));
+      } catch (Exception e) {
+        LOG.warn("Couldn't get registration info for master {} due to error '{}'.",
+                hostAndPort.toString(), e.getMessage());
+      }
+    }
+    return Optional.empty();
   }
 
   /**
@@ -954,6 +959,26 @@ public class YBClient implements AutoCloseable {
     }
     Deferred<SetFlagResponse> d = asyncClient.setFlag(hp, flag, value, force);
     return !d.join(getDefaultAdminOperationTimeoutMs()).hasError();
+  }
+
+  /**
+   * Get a gflag's value from a given server.
+   * @param hp the host and port of the server
+   * @param flag the flag to get.
+   * @return string value of flag if valid, else empty string
+   */
+  public String getFlag(HostAndPort hp, String flag) throws Exception {
+    if (flag == null || hp == null) {
+      LOG.warn("Invalid arguments for hp: {}, flag {}", hp.toString(), flag);
+      return "";
+    }
+    Deferred<GetFlagResponse> d = asyncClient.getFlag(hp, flag);
+    GetFlagResponse result = d.join(getDefaultAdminOperationTimeoutMs());
+    if (result.getValid()) {
+      LOG.warn("Invalid flag {}", flag);
+      return result.getValue();
+    }
+    return "";
   }
 
   /**
@@ -1444,6 +1469,23 @@ public class YBClient implements AutoCloseable {
                                                   String recordType) throws Exception {
     Deferred<CreateCDCStreamResponse> d = asyncClient.createCDCStream(table,
       nameSpaceName, format, checkpointType, recordType);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+  public CreateCDCStreamResponse createCDCStream(YBTable table,
+                                                  String nameSpaceName,
+                                                  String format,
+                                                  String checkpointType,
+                                                  String recordType,
+                                                  Boolean dbtype) throws Exception {
+    Deferred<CreateCDCStreamResponse> d;
+    if (dbtype) {
+      d = asyncClient.createCDCStream(table,
+        nameSpaceName, format, checkpointType, recordType,
+        CommonTypes.YQLDatabase.YQL_DATABASE_CQL);
+    } else {
+      d = asyncClient.createCDCStream(table,
+          nameSpaceName, format, checkpointType, recordType);
+    }
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -1944,6 +1986,31 @@ public class YBClient implements AutoCloseable {
     return isBootstrapRequiredList;
   }
 
+  public GetReplicationStatusResponse getReplicationStatus(
+      @Nullable String replicationGroupName) throws Exception {
+    Deferred<GetReplicationStatusResponse> d =
+        asyncClient.getReplicationStatus(replicationGroupName);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public GetXClusterSafeTimeResponse getXClusterSafeTime() throws Exception {
+    Deferred<GetXClusterSafeTimeResponse> d = asyncClient.getXClusterSafeTime();
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public WaitForReplicationDrainResponse waitForReplicationDrain(
+      List<String> streamIds,
+      @Nullable Long targetTime) throws Exception {
+    Deferred<WaitForReplicationDrainResponse> d =
+        asyncClient.waitForReplicationDrain(streamIds, targetTime);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public WaitForReplicationDrainResponse waitForReplicationDrain(
+      List<String> streamIds) throws Exception {
+    return waitForReplicationDrain(streamIds, null /* targetTime */);
+  }
+
   /**
    * @see AsyncYBClient#listCDCStreams(String, String, MasterReplicationOuterClass.IdTypePB)
    */
@@ -2046,6 +2113,13 @@ public class YBClient implements AutoCloseable {
       UUID snapshotUUID) throws Exception {
     Deferred<DeleteSnapshotResponse> d =
       asyncClient.deleteSnapshot(snapshotUUID);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public ValidateReplicationInfoResponse validateReplicationInfo(
+    ReplicationInfoPB replicationInfoPB) throws Exception {
+    Deferred<ValidateReplicationInfoResponse> d =
+      asyncClient.validateReplicationInfo(replicationInfoPB);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

@@ -192,7 +192,8 @@ MiniCluster::~MiniCluster() {
   Shutdown();
 }
 
-Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra_tserver_options) {
+Status MiniCluster::StartAsync(
+    const std::vector<tserver::TabletServerOptions>& extra_tserver_options) {
   CHECK(!fs_root_.empty()) << "No Fs root was provided";
   CHECK(!running_);
 
@@ -251,9 +252,6 @@ Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra
         RETURN_NOT_OK_PREPEND(AddTabletServer(), Substitute("Error adding TS $0", i));
       }
     }
-    RETURN_NOT_OK_PREPEND(
-        WaitForTabletServerCount(options_.num_tablet_servers),
-        "Waiting for tablet servers to start");
   } else {
     for (const shared_ptr<MiniTabletServer>& tablet_server : mini_tablet_servers_) {
       RETURN_NOT_OK(tablet_server->Start());
@@ -305,15 +303,9 @@ Status MiniCluster::StartMasters() {
   return Status::OK();
 }
 
-Status MiniCluster::StartSync() {
-  RETURN_NOT_OK(Start());
-  int count = 0;
-  for (const shared_ptr<MiniTabletServer>& tablet_server : mini_tablet_servers_) {
-    RETURN_NOT_OK_PREPEND(tablet_server->WaitStarted(),
-                          Substitute("TabletServer $0 failed to start.", count));
-    count++;
-  }
-  return Status::OK();
+Status MiniCluster::Start(const std::vector<tserver::TabletServerOptions>& extra_tserver_options) {
+  RETURN_NOT_OK(StartAsync(extra_tserver_options));
+  return WaitForAllTabletServers();
 }
 
 Status MiniCluster::RestartSync() {
@@ -688,23 +680,29 @@ Status MiniCluster::WaitForReplicaCount(const TableId& tablet_id,
 }
 
 Status MiniCluster::WaitForAllTabletServers() {
+  for (const shared_ptr<MiniTabletServer>& tablet_server : mini_tablet_servers_) {
+    RETURN_NOT_OK_PREPEND(
+        tablet_server->WaitStarted(), Format("TabletServer $0 failed to start.", tablet_server));
+  }
+  // Wait till all tablet servers are registered with master.
   return WaitForTabletServerCount(num_tablet_servers());
 }
 
 Status MiniCluster::WaitForTabletServerCount(size_t count) {
   vector<shared_ptr<master::TSDescriptor> > descs;
-  return WaitForTabletServerCount(count, &descs);
+  return WaitForTabletServerCount(count, &descs, false);
 }
 
 Status MiniCluster::WaitForTabletServerCount(size_t count,
-                                             vector<shared_ptr<TSDescriptor> >* descs) {
+                                             vector<shared_ptr<TSDescriptor> >* descs,
+                                             bool live_only) {
   Stopwatch sw;
   sw.start();
   while (sw.elapsed().wall_seconds() < FLAGS_TEST_mini_cluster_registration_wait_time_sec) {
     auto leader = GetLeaderMiniMaster();
     if (leader.ok()) {
       (*leader)->ts_manager().GetAllDescriptors(descs);
-      if (descs->size() == count) {
+      if (live_only || descs->size() == count) {
         // GetAllDescriptors() may return servers that are no longer online.
         // Do a second step of verification to verify that the descs that we got
         // are aligned (same uuid/seqno) with the TSs that we have in the cluster.
@@ -714,7 +712,9 @@ Status MiniCluster::WaitForTabletServerCount(size_t count,
             auto ts = mini_tablet_server->server();
             if (ts->instance_pb().permanent_uuid() == desc->permanent_uuid() &&
                 ts->instance_pb().instance_seqno() == desc->latest_seqno()) {
-              match_count++;
+              if (!live_only || desc->IsLive()) {
+                match_count++;
+              }
               break;
             }
           }
@@ -1179,9 +1179,9 @@ std::vector<rocksdb::DB*> GetAllRocksDbs(MiniCluster* cluster, bool include_inte
   for (auto& peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
     auto tablet = peer->shared_tablet();
     if (tablet) {
-      PushBackIfNotNull(tablet->TEST_db(), &dbs);
+      PushBackIfNotNull(tablet->regular_db(), &dbs);
       if (include_intents) {
-        PushBackIfNotNull(tablet->TEST_intents_db(), &dbs);
+        PushBackIfNotNull(tablet->intents_db(), &dbs);
       }
     }
   }
@@ -1369,7 +1369,7 @@ void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, const size_t byte
       continue;
     }
     auto tablet = *tablet_result;
-    for (auto* db : { tablet->TEST_db(), tablet->TEST_intents_db() }) {
+    for (auto* db : { tablet->regular_db(), tablet->intents_db() }) {
       if (db) {
         db->GetDBOptions().rate_limiter->SetBytesPerSecond(bytes_per_sec);
       }
@@ -1408,7 +1408,7 @@ Status WaitForAnySstFiles(tablet::TabletPeerPtr peer, MonoDelta timeout) {
       auto tablet = peer->shared_tablet();
       if (!tablet)
         return false;
-      return tablet->TEST_db()->GetCurrentVersionNumSSTFiles() > 0;
+      return tablet->regular_db()->GetCurrentVersionNumSSTFiles() > 0;
     },
     timeout,
     Format("Wait for SST files of peer: $0", peer->permanent_uuid()));
@@ -1423,7 +1423,7 @@ Status WaitForAnySstFiles(MiniCluster* cluster, const TabletId& tablet_id, MonoD
   return Status::OK();
 }
 
-Status WaitForPeersAreFullyCompacted(
+Status WaitForPeersPostSplitCompacted(
     MiniCluster* cluster, const std::vector<TabletId>& tablet_ids, MonoDelta timeout) {
   std::unordered_set<TabletId> ids(tablet_ids.begin(), tablet_ids.end());
   auto peers = ListTabletPeers(cluster, [&ids](const tablet::TabletPeerPtr& peer) {
@@ -1431,7 +1431,7 @@ Status WaitForPeersAreFullyCompacted(
   });
 
   std::stringstream description;
-  description << "Waiting for peers [" << CollectionToString(ids) << "] are fully compacted.";
+  description << "Waiting for peers [" << CollectionToString(ids) << "] are post split compacted.";
 
   const auto s = LoggedWaitFor([&peers, &ids](){
     for (size_t n = 0; n < peers.size(); ++n) {
@@ -1439,7 +1439,7 @@ Status WaitForPeersAreFullyCompacted(
       if (!peer) {
         continue;
       }
-      if (peer->tablet_metadata()->has_been_fully_compacted()) {
+      if (peer->tablet_metadata()->parent_data_compacted()) {
         ids.erase(peer->tablet_id());
         peers[n] = nullptr;
       }
@@ -1449,7 +1449,7 @@ Status WaitForPeersAreFullyCompacted(
 
   if (!s.ok() && !ids.empty()) {
     LOG(ERROR) <<
-      "Failed to wait for peers [" << CollectionToString(ids) << "] are fully compacted.";
+      "Failed to wait for peers [" << CollectionToString(ids) << "] are post split compacted.";
   }
   return s;
 }
@@ -1461,6 +1461,10 @@ Status WaitForTableIntentsApplied(
       return IsActive(*peer) && IsForTable(*peer, table_id);
     });
   }, timeout, "Did not apply write transactions from intents db in time.");
+}
+
+Status WaitForAllIntentsApplied(MiniCluster* cluster, MonoDelta timeout) {
+  return WaitForTableIntentsApplied(cluster, /* table_id = */ "", timeout);
 }
 
 void ActivateCompactionTimeLogging(MiniCluster* cluster) {

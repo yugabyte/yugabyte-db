@@ -11,6 +11,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/client/client-test-util.h"
 #include "yb/client/table_info.h"
 #include "yb/client/ql-dml-test-base.h"
 
@@ -19,6 +20,10 @@
 #include "yb/tools/yb-backup/yb-backup-test_base.h"
 
 #include "yb/util/backoff_waiter.h"
+
+#include "yb/yql/pgwrapper/libpq_test_base.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_ddl_atomicity_test_base.h"
 
 using namespace std::chrono_literals;
 using namespace std::literals;
@@ -1259,7 +1264,7 @@ TEST_F_EX(
 
   const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablets[0].tablet_id()));
   // Wait for compaction to complete.
-  ASSERT_OK(WaitForTabletFullyCompacted(leader_idx, tablets[0].tablet_id()));
+  ASSERT_OK(WaitForTabletPostSplitCompacted(leader_idx, tablets[0].tablet_id()));
   ASSERT_OK(test_admin_client_->SplitTabletAndWait(
       default_db_, table_name, /* wait_for_parent_deletion */ kWaitForParentDeletion,
       tablets[0].tablet_id()));
@@ -1315,48 +1320,40 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupChecksumsDisabled))
 }
 
 YB_STRONGLY_TYPED_BOOL(SourceDatabaseIsColocated);
+YB_STRONGLY_TYPED_BOOL(PackedRowsEnabled);
 
-class YBBackupCrossColocation : public YBBackupTest,
-                                public ::testing::WithParamInterface<SourceDatabaseIsColocated> {
- protected:
-  void SetUp() override {
-    YBBackupTest::SetUp();
-    if (GetParam()) {
-      ASSERT_NO_FATALS(RunPsqlCommand(
-          Format("CREATE DATABASE $0 WITH COLOCATION=TRUE", backup_db_name), "CREATE DATABASE"));
-      SetDbName(backup_db_name);
-    }
-  }
-
-  const std::string backup_db_name = GetParam() ? "colo_db" : "yugabyte";
-  const std::string restore_db_name = "restored_db";
-};
-
-class YBBackupTestWithPackedRows : public YBBackupCrossColocation {
+class YBBackupTestWithPackedRowsAndColocation :
+    public YBBackupTest,
+    public ::testing::WithParamInterface<std::tuple<PackedRowsEnabled, SourceDatabaseIsColocated>> {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     YBBackupTest::UpdateMiniClusterOptions(options);
-    // Add flags to enable packed row feature.
-    options->extra_master_flags.push_back("--enable_automatic_tablet_splitting=false");
-    options->extra_tserver_flags.push_back("--ysql_enable_packed_row=true");
-    options->extra_tserver_flags.push_back("--ysql_enable_packed_row_for_colocated_table=true");
+    if (std::get<0>(GetParam())) {
+      // Add flags to enable packed row feature.
+      options->extra_master_flags.push_back("--enable_automatic_tablet_splitting=false");
+      options->extra_tserver_flags.push_back("--ysql_enable_packed_row=true");
+      options->extra_tserver_flags.push_back("--ysql_enable_packed_row_for_colocated_table=true");
+    } else {
+      options->extra_tserver_flags.push_back("--ysql_enable_packed_row=false");
+      options->extra_tserver_flags.push_back("--ysql_enable_packed_row_for_colocated_table=false");
+    }
   }
 
   void SetUp() override {
     YBBackupTest::SetUp();
-    if (GetParam()) {
+    if (std::get<1>(GetParam())) {
       ASSERT_NO_FATALS(RunPsqlCommand(
           Format("CREATE DATABASE $0 WITH COLOCATION=TRUE", backup_db_name), "CREATE DATABASE"));
       SetDbName(backup_db_name);
     }
   }
 
-  const std::string backup_db_name = GetParam() ? "colo_db" : "yugabyte";
+  const std::string backup_db_name = std::get<1>(GetParam()) ? "colo_db" : "yugabyte";
   const std::string restore_db_name = "restored_db";
 };
 
 TEST_P(
-    YBBackupTestWithPackedRows,
+    YBBackupTestWithPackedRowsAndColocation,
     YB_DISABLE_TEST_IN_SANITIZERS(YSQLSchemaPackingWithSnapshotGreaterVersionThanRestore)) {
   const std::string table_name = "test1";
   // Create a table.
@@ -1436,7 +1433,7 @@ TEST_P(
 }
 
 TEST_P(
-    YBBackupTestWithPackedRows,
+    YBBackupTestWithPackedRowsAndColocation,
     YB_DISABLE_TEST_IN_SANITIZERS(YSQLSchemaPackingWithSnapshotLowerVersionThanRestore)) {
   const std::string table_name = "test1";
   // Create a table.
@@ -1493,8 +1490,11 @@ TEST_P(
 }
 
 INSTANTIATE_TEST_CASE_P(
-    PackedRows, YBBackupTestWithPackedRows,
-    ::testing::Values(SourceDatabaseIsColocated::kFalse, SourceDatabaseIsColocated::kTrue));
+    PackedRows, YBBackupTestWithPackedRowsAndColocation,
+    ::testing::Values(std::make_tuple(PackedRowsEnabled::kTrue, SourceDatabaseIsColocated::kFalse),
+        std::make_tuple(PackedRowsEnabled::kTrue, SourceDatabaseIsColocated::kTrue)));
+
+class YBBackupCrossColocation : public YBBackupTestWithPackedRowsAndColocation {};
 
 TEST_P(YBBackupCrossColocation, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreWithInvalidIndex)) {
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE t1 (id INT NOT NULL, c1 INT, PRIMARY KEY (id))"));
@@ -1539,7 +1539,187 @@ TEST_P(YBBackupCrossColocation, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreWit
 
 INSTANTIATE_TEST_CASE_P(
     CrossColocationTests, YBBackupCrossColocation,
-    ::testing::Values(SourceDatabaseIsColocated::kFalse, SourceDatabaseIsColocated::kTrue));
+    ::testing::Values(
+        std::make_tuple(PackedRowsEnabled::kFalse, SourceDatabaseIsColocated::kFalse),
+        std::make_tuple(PackedRowsEnabled::kFalse, SourceDatabaseIsColocated::kTrue)));
+
+class YBAddColumnDefaultBackupTest : public YBBackupTestWithPackedRowsAndColocation {};
+
+TEST_P(YBAddColumnDefaultBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLDefaultMissingValues)) {
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t1 (id INT)"));
+  ASSERT_NO_FATALS(InsertRows("INSERT INTO t1 VALUES (generate_series(1, 3))", 3));
+  ASSERT_NO_FATALS(
+      RunPsqlCommand("ALTER TABLE t1 ADD COLUMN c1 TEXT DEFAULT 'default'", "ALTER TABLE"));
+  ASSERT_NO_FATALS(InsertRows("INSERT INTO t1 VALUES (generate_series(4, 6), null)", 3));
+  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO t1 VALUES (7, 'not default')"));
+  ASSERT_NO_FATALS(RunPsqlCommand("UPDATE t1 SET c1 = null WHERE id = 1", "UPDATE 1"));
+  const std::string backup_dir = GetTempDir("backup");
+  const auto backup_keyspace = Format("ysql.$0", backup_db_name);
+  const auto restore_keyspace = Format("ysql.$0", restore_db_name);
+  ASSERT_OK(
+      RunBackupCommand({"--backup_location", backup_dir, "--keyspace", backup_keyspace, "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", restore_keyspace, "restore"}));
+
+  SetDbName(restore_db_name);
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT * from t1 ORDER BY id;",
+      R"#(
+                 id |     c1
+                ----+-------------
+                  1 |
+                  2 | default
+                  3 | default
+                  4 |
+                  5 |
+                  6 |
+                  7 | not default
+                (7 rows)
+      )#"));
+}
+
+INSTANTIATE_TEST_CASE_P(
+    AddColumnDefault, YBAddColumnDefaultBackupTest,
+    ::testing::Values(std::make_tuple(PackedRowsEnabled::kTrue, SourceDatabaseIsColocated::kFalse),
+        std::make_tuple(PackedRowsEnabled::kTrue, SourceDatabaseIsColocated::kTrue),
+        std::make_tuple(PackedRowsEnabled::kFalse, SourceDatabaseIsColocated::kFalse),
+        std::make_tuple(PackedRowsEnabled::kTrue, SourceDatabaseIsColocated::kFalse)));
+
+class YBDdlAtomicityBackupTest : public YBBackupTestBase, public pgwrapper::PgDdlAtomicityTestBase {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    LibPqTestBase::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        "--allowed_preview_flags_csv=ysql_ddl_rollback_enabled");
+    options->extra_tserver_flags.push_back("--ysql_ddl_rollback_enabled=true");
+    options->extra_tserver_flags.push_back("--report_ysql_ddl_txn_status_to_master=true");
+  }
+
+ public:
+  Status RunDdlAtomicityTest(pgwrapper::DdlErrorInjection inject_error);
+};
+
+Status YBDdlAtomicityBackupTest::RunDdlAtomicityTest(pgwrapper::DdlErrorInjection inject_error) {
+  // Setup required tables.
+  auto conn = VERIFY_RESULT(Connect());
+  const int num_rows = 5;
+  RETURN_NOT_OK(SetupTablesForAllDdls(&conn, num_rows));
+
+  auto client = VERIFY_RESULT(cluster_->CreateClient());
+
+  // Run all DDLs after pausing DDL rollback.
+  RETURN_NOT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
+
+  if (inject_error) {
+    RETURN_NOT_OK(RunAllDdlsWithErrorInjection(&conn));
+  } else {
+    RETURN_NOT_OK(RunAllDdls(&conn));
+  }
+
+  // Run backup and verify that it fails because DDL rollback is paused.
+  const auto kDatabase = "yugabyte";
+  const auto backup_keyspace = Format("ysql.$0", kDatabase);
+  const std::string backup_dir = GetTempDir("backup");
+  Status s = RunBackupCommand({"--backup_location", backup_dir, "--keyspace", backup_keyspace,
+                               "create"}, cluster_.get());
+  if (s.ok()) {
+    return STATUS(IllegalState, "Backup should have failed because DDL in progress");
+  }
+
+  // Re-enable DDL rollback, wait for rollback to finish and run backup again.
+  RETURN_NOT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "false"));
+
+  if (inject_error) {
+    RETURN_NOT_OK(WaitForDdlVerificationAfterDdlFailure(client.get(), kDatabase));
+  } else {
+    RETURN_NOT_OK(WaitForDdlVerificationAfterSuccessfulDdl(client.get(), kDatabase));
+  }
+
+  RETURN_NOT_OK(RunBackupCommand({"--backup_location", backup_dir, "--keyspace", backup_keyspace,
+                                  "create"}, cluster_.get()));
+
+  // Restore the backup.
+  const auto restore_db = "restored_db";
+  const auto restore_keyspace = Format("ysql.$0", restore_db);
+  RETURN_NOT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", restore_keyspace, "restore"},
+      cluster_.get()));
+
+  // Verify that the tables in the restored database have the expected schema and data.
+  auto restore_conn = VERIFY_RESULT(ConnectToDB(restore_db));
+
+  if (inject_error) {
+    RETURN_NOT_OK(VerifyAllFailingDdlsRolledBack(&restore_conn, client.get(), restore_db));
+    return VerifyRowsAfterDdlErrorInjection(&restore_conn, num_rows);
+  }
+  RETURN_NOT_OK(VerifyAllSuccessfulDdls(&restore_conn, client.get(), restore_db));
+  return VerifyRowsAfterDdlSuccess(&restore_conn, num_rows);
+}
+
+TEST_F(YBDdlAtomicityBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(SuccessfulDdlAtomicityTest)) {
+  ASSERT_OK(RunDdlAtomicityTest(pgwrapper::DdlErrorInjection::kFalse));
+}
+
+TEST_F(YBDdlAtomicityBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(DdlRollbackAtomicityTest)) {
+  ASSERT_OK(RunDdlAtomicityTest(pgwrapper::DdlErrorInjection::kTrue));
+}
+
+// 1. Create table
+// 2. Create index on table
+// 3. Insert 123 -> 456
+// 4. Backup
+// 5. Drop table and index.
+// 5. Restore, validate 123 -> 456, index isn't restored
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLKeyspaceBackupWithoutIndexes)) {
+  // Create table and index.
+  auto session = client_->NewSession(120s);
+  client::kv_table_test::CreateTable(
+      client::Transactional::kFalse, CalcNumTablets(cluster_->num_tablet_servers()), client_.get(),
+      &table_);
+
+  client::TableHandle index_table;
+  client::kv_table_test::CreateIndex(
+      yb::client::Transactional::kFalse, 1, false, table_, client_.get(), &index_table);
+
+  // Refresh table_ variable.
+  ASSERT_OK(table_.Reopen());
+
+  // Insert into table.
+  const int32_t key = 123;
+  const int32_t old_val = 456;
+  ASSERT_OK(client::kv_table_test::WriteRow(&table_, session, key, old_val));
+
+  // Backup.
+  const string& keyspace = table_.name().namespace_name();
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", keyspace, "create", "--skip_indexes"}));
+
+  // Drop table and index.
+  ASSERT_OK(client_->DeleteTable(table_.name()));
+  ASSERT_FALSE(ASSERT_RESULT(client_->TableExists(table_.name())));
+  ASSERT_FALSE(ASSERT_RESULT(client_->TableExists(index_table.name())));
+
+  // Restore.
+  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+
+  // Create new YBTableNames since the old ones' id are outdated.
+  const client::YBTableName table_name(YQL_DATABASE_CQL, keyspace, table_.name().table_name());
+  const client::YBTableName index_table_name(
+      YQL_DATABASE_CQL, keyspace, index_table.name().table_name());
+
+  // Refresh table variable to the one newly created by restore.
+  ASSERT_OK(table_.Open(table_name, client_.get()));
+
+  // Verify nothing changed.
+  auto rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&table_, session));
+  ASSERT_EQ(rows.size(), 1);
+  ASSERT_EQ(rows[key], old_val);
+  // Verify index table is not restored.
+  ASSERT_FALSE(ASSERT_RESULT(client_->TableExists(index_table_name)));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
 
 }  // namespace tools
 }  // namespace yb

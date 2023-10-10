@@ -10,7 +10,8 @@
 import React, { FC, useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { Link } from 'react-router';
-import { Backup_States, IBackup, ICommonBackupInfo, ITable, Keyspace_Table, fetchIncrementalBackup } from '..';
+import { Backup_States, IBackup, ICommonBackupInfo, ITable, Keyspace_Table } from '..';
+import { fetchIncrementalBackup } from '.././common/BackupAPI';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton } from '../../common/forms/fields';
 import { BACKUP_REFETCH_INTERVAL, RevealBadge, calculateDuration } from '../common/BackupUtils';
@@ -32,13 +33,17 @@ import { toast } from 'react-toastify';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { YBLoadingCircleIcon } from '../../common/indicators';
+import { handleCACertErrMsg } from '../../customCACerts';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 import './BackupDetails.scss';
 
 export type IncrementalBackupProps = {
   isRestoreEntireBackup?: boolean; // if the restore entire backup button is clicked
   incrementalBackupUUID?: string; // if restore to point button is clicked
   singleKeyspaceRestore?: boolean; // if restore button is clicked inside the incremental backup
-}
+  kmsConfigUUID?: string;
+};
 interface BackupDetailsProps {
   backupDetails: IBackup | null;
   onHide: () => void;
@@ -103,6 +108,18 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
       }
 
       if (backupDetails!.backupType === TableType.YQL_TABLE_TYPE) {
+        const atleastOneTableAvailableForBackup = responseList.every((r) => {
+          if (r.allTables) return true;
+          return r.tableUUIDList?.some((tableUUID) => find(tablesInUniverse, { tableUUID }));
+        });
+
+        if (!atleastOneTableAvailableForBackup) {
+          return Promise.reject({
+            response: {
+              data: { error: `None of selected tables to backup found in the keyspace` }
+            }
+          });
+        }
 
         const allTableAvailableForBackup = responseList.every((r) => {
           if (r.allTables) return true;
@@ -110,12 +127,20 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
         });
 
         if (!allTableAvailableForBackup) {
-          return Promise.reject({ response: { data: { error: `One or more of selected tables to backup do not exist in keyspace` } } });
+          toast.warning(
+            `One or more of selected tables to backup do not exist in keyspace. Proceeding backup without non-existent table.`,
+            { autoClose: false }
+          );
         }
 
         responseList = responseList.map((r) => {
           const backupTablesPresentInUniverse = r.tablesList.filter(
-            (tableName) => find(tablesInUniverse, { tableName, keySpace: r.keyspace })?.tableName
+            (tableName, index) =>
+              find(tablesInUniverse, {
+                tableName,
+                keySpace: r.keyspace,
+                tableUUID: r.tableUUIDList?.[index]
+              })?.tableName
           );
 
           return {
@@ -152,7 +177,6 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
         }
       });
 
-
       return addIncrementalBackup({
         ...backupDetails!,
         commonBackupInfo: {
@@ -171,7 +195,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
         setShowAddIncrementalBackupModal(false);
       },
       onError: (resp: any) => {
-        toast.error(createErrorMessage(resp));
+        !handleCACertErrMsg(resp) && toast.error(createErrorMessage(resp));
       }
     }
   );
@@ -222,58 +246,83 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
         </div>
         <div className="side-panel__content">
           <Row className="backup-details-actions">
-            <YBButton
-              btnText="Delete"
-              btnIcon="fa fa-trash-o"
-              onClick={() => onDelete()}
-              disabled={
-                backupDetails.commonBackupInfo.state === Backup_States.DELETED ||
-                backupDetails.commonBackupInfo.state === Backup_States.DELETE_IN_PROGRESS ||
-                backupDetails.commonBackupInfo.state === Backup_States.QUEUED_FOR_DELETION ||
-                !backupDetails.isStorageConfigPresent
-              }
-            />
-            {!hideRestore && (
+            <RbacValidator
+              accessRequiredOn={{
+                onResource: 'CUSTOMER_ID',
+                ...UserPermissionMap.deleteBackup
+              }}
+              isControl
+            >
               <YBButton
-                btnText="Restore Entire Backup"
-                btnIcon="fa fa-share"
-                onClick={() => {
-                  if (backupDetails.hasIncrementalBackups) {
-                    if (incrementalBackups?.data) {
-                      const recentBackup = incrementalBackups.data.filter(
-                        (e: ICommonBackupInfo) => e.state === Backup_States.COMPLETED
-                      )[0];
-                      onRestore({ ...backupDetails, commonBackupInfo: recentBackup }, {
+                btnText="Delete"
+                btnIcon="fa fa-trash-o"
+                onClick={() => onDelete()}
+                disabled={
+                  backupDetails.commonBackupInfo.state === Backup_States.DELETED ||
+                  backupDetails.commonBackupInfo.state === Backup_States.DELETE_IN_PROGRESS ||
+                  backupDetails.commonBackupInfo.state === Backup_States.QUEUED_FOR_DELETION ||
+                  !backupDetails.isStorageConfigPresent
+                }
+              />
+            </RbacValidator>
+            {!hideRestore && (
+              <RbacValidator
+                accessRequiredOn={{
+                  onResource: 'CUSTOMER_ID',
+                  ...UserPermissionMap.restoreBackup
+                }}
+                isControl
+              >
+                <YBButton
+                  btnText="Restore Entire Backup"
+                  btnIcon="fa fa-share"
+                  onClick={() => {
+                    if (backupDetails.hasIncrementalBackups) {
+                      if (incrementalBackups?.data) {
+                        const recentBackup = incrementalBackups.data.filter(
+                          (e: ICommonBackupInfo) => e.state === Backup_States.COMPLETED
+                        )[0];
+                        onRestore(
+                          { ...backupDetails, commonBackupInfo: recentBackup },
+                          {
+                            isRestoreEntireBackup: true,
+                            incrementalBackupUUID: recentBackup.backupUUID,
+                            singleKeyspaceRestore: false
+                          }
+                        );
+                      }
+                    } else {
+                      onRestore(undefined, {
                         isRestoreEntireBackup: true,
-                        incrementalBackupUUID: recentBackup.backupUUID,
                         singleKeyspaceRestore: false
                       });
                     }
-
+                  }}
+                  disabled={
+                    backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED ||
+                    !backupDetails.isStorageConfigPresent
                   }
-                  else {
-                    onRestore(undefined, {
-                      isRestoreEntireBackup: true,
-                      singleKeyspaceRestore: false
-                    });
-                  }
-                }}
-                disabled={
-                  backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED ||
-                  !backupDetails.isStorageConfigPresent
-                }
-              />
+                />
+              </RbacValidator>
             )}
             {onEdit && (
-              <YBButton
-                btnText="Change Retention Period"
-                btnIcon="fa fa-pencil"
-                onClick={() => onEdit()}
-                disabled={
-                  backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED ||
-                  !backupDetails.isStorageConfigPresent
-                }
-              />
+              <RbacValidator
+                accessRequiredOn={{
+                  onResource: 'CUSTOMER_ID',
+                  ...UserPermissionMap.editBackup
+                }}
+                isControl
+              >
+                <YBButton
+                  btnText="Change Retention Period"
+                  btnIcon="fa fa-pencil"
+                  onClick={() => onEdit()}
+                  disabled={
+                    backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED ||
+                    !backupDetails.isStorageConfigPresent
+                  }
+                />
+              </RbacValidator>
             )}
           </Row>
           <Row className="backup-details-info">
@@ -338,7 +387,6 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 <div className="header-text">Expiration</div>
                 <div>{ybFormatDate(backupDetails.expiryTime)}</div>
               </div>
-              <span className="flex-divider" />
               <div className="details-storage-config">
                 <div className="header-text">Storage Config</div>
                 <div className="universeLink">
@@ -355,6 +403,14 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 <div className="header-text">KMS Config</div>
                 <div>{kmsConfig ? kmsConfig.metadata?.name : '-'}</div>
               </div>
+              {
+                !backupDetails.onDemand && (
+                  <div>
+                    <div className='header-text'>Schedule Name</div>
+                    <div>{backupDetails.scheduleName}</div>
+                  </div>
+                )
+              }
             </div>
             {!storageConfigName && (
               <span className="assign-config-msg">
@@ -385,15 +441,26 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               </Col>
               {currentUniverseUUID && backupDetails.isStorageConfigPresent && (
                 <Col lg={6} className="no-padding">
-                  <YBButton
-                    btnText="Add Incremental Backup"
-                    btnIcon="fa fa-plus"
-                    className="add-increment-backup-btn"
-                    disabled={backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED}
-                    onClick={() => {
-                      setShowAddIncrementalBackupModal(true);
+                  <RbacValidator
+                    accessRequiredOn={{
+                      onResource: currentUniverseUUID,
+                      ...UserPermissionMap.createBackup
                     }}
-                  />
+                    overrideStyle={{
+                      display: 'unset'
+                    }}
+                    isControl
+                  >
+                    <YBButton
+                      btnText="Add Incremental Backup"
+                      btnIcon="fa fa-plus"
+                      className="add-increment-backup-btn"
+                      disabled={backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED}
+                      onClick={() => {
+                        setShowAddIncrementalBackupModal(true);
+                      }}
+                    />
+                  </RbacValidator>
                 </Col>
               )}
 
@@ -401,18 +468,27 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 <TableListComponent
                   backup={backupDetails}
                   keyspaceSearch={searchKeyspaceText}
-                  onRestore={(tablesList: Keyspace_Table[], incrementalBackupProps: IncrementalBackupProps) => {
-                    onRestore({
-                      ...backupDetails,
-                      commonBackupInfo: {
-                        ...backupDetails.commonBackupInfo,
-                        responseList: tablesList
+                  onRestore={(
+                    tablesList: Keyspace_Table[],
+                    incrementalBackupProps: IncrementalBackupProps
+                  ) => {
+                    const commonBackupInfo = {
+                      ...backupDetails.commonBackupInfo,
+                      responseList: tablesList
+                    };
+                    if (incrementalBackupProps.kmsConfigUUID)
+                      commonBackupInfo.kmsConfigUUID = incrementalBackupProps.kmsConfigUUID;
+                    onRestore(
+                      {
+                        ...backupDetails,
+                        commonBackupInfo
+                      },
+                      {
+                        isRestoreEntireBackup: incrementalBackupProps.isRestoreEntireBackup,
+                        incrementalBackupUUID: incrementalBackupProps.incrementalBackupUUID,
+                        singleKeyspaceRestore: incrementalBackupProps.singleKeyspaceRestore
                       }
-                    }, {
-                      isRestoreEntireBackup: true,
-                      incrementalBackupUUID: incrementalBackupProps.incrementalBackupUUID,
-                      singleKeyspaceRestore: incrementalBackupProps.singleKeyspaceRestore
-                    });
+                    );
                   }}
                   hideRestore={hideRestore}
                 />

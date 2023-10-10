@@ -1,4 +1,4 @@
-import React, { ReactElement } from 'react';
+import { ReactElement } from 'react';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
@@ -102,7 +102,7 @@ export const YSQLField = ({ disabled, enforceAuth }: YSQLFieldProps): ReactEleme
             </Box>
           )}
 
-          {ysqlAuthEnabled && !disabled && (
+          {(ysqlAuthEnabled || enforceAuth) && !disabled && (
             <Box display="flex" flexDirection="column" mt={3}>
               <Grid container spacing={3} direction="column">
                 <Grid item sm={12} lg={10}>

@@ -10,6 +10,8 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.BiMap;
 import com.google.common.collect.ImmutableBiMap;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
+import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import io.ebean.Finder;
@@ -18,6 +20,7 @@ import io.ebean.annotation.DbEnumValue;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
@@ -37,6 +40,7 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.JoinColumn;
+import javax.persistence.JoinTable;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import lombok.Getter;
@@ -61,8 +65,7 @@ public class XClusterConfig extends Model {
               TableType.YCQL,
               CommonTypes.TableType.YQL_TABLE_TYPE);
 
-  private static final Finder<UUID, XClusterConfig> find =
-      new Finder<UUID, XClusterConfig>(XClusterConfig.class) {};
+  private static final Finder<UUID, XClusterConfig> find = new Finder<>(XClusterConfig.class) {};
 
   @Id
   @ApiModelProperty(value = "XCluster config UUID")
@@ -86,6 +89,22 @@ public class XClusterConfig extends Model {
       value = "Status",
       allowableValues = "Initialized, Running, Updating, DeletedUniverse, DeletionFailed, Failed")
   private XClusterConfigStatusType status;
+
+  /**
+   * In the application logic, <em>NEVER<em/> read from the following variable. This is only used
+   * for UI purposes.
+   */
+  @ApiModelProperty(
+      value = "The replication status of the source universe; used for disaster recover")
+  private SourceUniverseState sourceUniverseState;
+
+  /**
+   * In the application logic, <em>NEVER<em/> read from the following variable. This is only used
+   * for UI purposes.
+   */
+  @ApiModelProperty(
+      value = "The replication status of the target universe; used for disaster recover")
+  private TargetUniverseState targetUniverseState;
 
   public enum XClusterConfigStatusType {
     Initialized("Initialized"),
@@ -174,6 +193,32 @@ public class XClusterConfig extends Model {
   @ApiModelProperty(value = "Whether the target is active in txn xCluster")
   private boolean targetActive;
 
+  @ManyToOne(cascade = {CascadeType.PERSIST, CascadeType.MERGE, CascadeType.REFRESH})
+  @JoinColumn(name = "dr_config_uuid", referencedColumnName = "uuid")
+  @JsonIgnore
+  private DrConfig drConfig;
+
+  @ApiModelProperty(
+      value = "Whether this xCluster config is used as a secondary config for a DR config")
+  private boolean secondary;
+
+  @OneToMany
+  @JoinTable(
+      name = "xcluster_pitr",
+      joinColumns = @JoinColumn(name = "xcluster_uuid", referencedColumnName = "uuid"),
+      inverseJoinColumns = @JoinColumn(name = "pitr_uuid", referencedColumnName = "uuid"))
+  private List<PitrConfig> pitrConfigs;
+
+  @JsonProperty
+  public boolean isUsedForDr() {
+    return maybeGetDrConfig().isPresent();
+  }
+
+  public void addPitrConfig(PitrConfig pitrConfig) {
+    this.pitrConfigs.add(pitrConfig);
+    this.update();
+  }
+
   @Override
   public String toString() {
     return this.getReplicationGroupName()
@@ -197,6 +242,10 @@ public class XClusterConfig extends Model {
     return this.getTableDetails().stream()
         .filter(tableConfig -> tableConfig.getTableId().equals(tableId))
         .findAny();
+  }
+
+  public Optional<DrConfig> maybeGetDrConfig() {
+    return Optional.ofNullable(this.drConfig);
   }
 
   @JsonIgnore
@@ -460,6 +509,21 @@ public class XClusterConfig extends Model {
   }
 
   @Transactional
+  public void syncTables(Set<String> tableIds) {
+    addTablesIfNotExist(tableIds);
+    removeExtraTables(tableIds);
+  }
+
+  @Transactional
+  public void removeExtraTables(Set<String> tableIds) {
+    Set<String> extraTableIds =
+        this.getTableIds().stream()
+            .filter(tableId -> !tableIds.contains(tableId))
+            .collect(Collectors.toSet());
+    removeTables(extraTableIds);
+  }
+
+  @Transactional
   public void removeTables(Set<String> tableIds) {
     if (this.getTables() == null) {
       log.debug("No tables is set for xCluster config {}", this.getUuid());
@@ -523,6 +587,19 @@ public class XClusterConfig extends Model {
         .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))
         .forEach(tableConfig -> tableConfig.setIndexTable(indexTable));
     update();
+  }
+
+  public void updateIndexTablesFromMainTableIndexTablesMap(
+      Map<String, List<String>> mainTableIndexTablesMap) {
+    Set<String> tableIdsInConfig = this.getTableIds();
+    mainTableIndexTablesMap.forEach(
+        (mainTableId, indexTableIds) -> {
+          if (this.maybeGetTableById(mainTableId).isPresent()) {
+            List<String> indexTableIdsInConfig = new ArrayList<>(indexTableIds);
+            indexTableIdsInConfig.retainAll(tableIdsInConfig);
+            this.updateIndexTableForTables(indexTableIdsInConfig, true /* indexTable */);
+          }
+        });
   }
 
   @Transactional
@@ -647,6 +724,8 @@ public class XClusterConfig extends Model {
     xClusterConfig.setTargetActive(
         XClusterConfigTaskBase.TRANSACTION_TARGET_UNIVERSE_ROLE_ACTIVE_DEFAULT);
     xClusterConfig.setReplicationGroupName(name);
+    xClusterConfig.setSourceUniverseState(SourceUniverseState.Unconfigured);
+    xClusterConfig.setTargetUniverseState(TargetUniverseState.Unconfigured);
     xClusterConfig.save();
     return xClusterConfig;
   }
@@ -786,6 +865,8 @@ public class XClusterConfig extends Model {
   public static List<XClusterConfig> getByTargetUniverseUUID(UUID targetUniverseUUID) {
     return find.query()
         .fetch("tables")
+        .fetch("drConfig")
+        .fetch("pitrConfigs")
         .where()
         .eq("target_universe_uuid", targetUniverseUUID)
         .findList();
@@ -794,6 +875,8 @@ public class XClusterConfig extends Model {
   public static List<XClusterConfig> getBySourceUniverseUUID(UUID sourceUniverseUUID) {
     return find.query()
         .fetch("tables")
+        .fetch("drConfig")
+        .fetch("pitrConfigs")
         .where()
         .eq("source_universe_uuid", sourceUniverseUUID)
         .findList();
@@ -810,6 +893,8 @@ public class XClusterConfig extends Model {
       UUID sourceUniverseUUID, UUID targetUniverseUUID) {
     return find.query()
         .fetch("tables")
+        .fetch("drConfig")
+        .fetch("pitrConfigs")
         .where()
         .eq("source_universe_uuid", sourceUniverseUUID)
         .eq("target_universe_uuid", targetUniverseUUID)
@@ -837,7 +922,7 @@ public class XClusterConfig extends Model {
         .findOne();
   }
 
-  private static void checkXClusterConfigInCustomer(
+  public static void checkXClusterConfigInCustomer(
       XClusterConfig xClusterConfig, Customer customer) {
     Set<UUID> customerUniverseUUIDs = customer.getUniverseUUIDs();
     if ((xClusterConfig.getSourceUniverseUUID() != null

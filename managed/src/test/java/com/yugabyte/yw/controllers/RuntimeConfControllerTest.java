@@ -446,12 +446,12 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     RuntimeConfigFactory runtimeConfigFactory =
         app.injector().instanceOf(RuntimeConfigFactory.class);
     assertFalse(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean(key));
-    setCloudEnabled(defaultUniverse.getUniverseUUID());
+    setCloudEnabled();
     assertTrue(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean(key));
   }
 
-  private void setCloudEnabled(UUID scopeUUID) {
-    setKey("yb.cloud.enabled", "true", scopeUUID);
+  private void setCloudEnabled() {
+    setKey("yb.cloud.enabled", "true", defaultCustomer.getUuid());
   }
 
   @Test
@@ -566,6 +566,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
             "yb.external_script",
             "yb.ha.ws",
             "yb.query_stats.live_queries.ws",
+            "yb.metrics.ws",
             "yb.perf_advisor",
             // TODO (PLAT-7110)
             "yb.releases.path",
@@ -573,7 +574,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     assertEquals(
         "Do not modify this list to get the test to pass without discussing "
             + "on #runtime-config channel.",
-        9,
+        10,
         excludedKeys.size());
     for (String key : excludedKeys) {
       if (path.startsWith(key)) return true;

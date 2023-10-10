@@ -13,11 +13,12 @@
 
 #include "yb/docdb/docdb_debug.h"
 
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/shared_lock_manager_fwd.h"
+#include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/kv_debug.h"
+#include "yb/docdb/shared_lock_manager_fwd.h"
 
 #include "yb/rocksdb/db.h"
 
@@ -105,10 +106,10 @@ std::string EntryToString(
   auto value_copy = value;
   if (value_res.ok()) {
     value_str = *value_res;
-  } else if (
-      value_res.status().IsNotFound() &&
-      value_copy.TryConsumeByte(dockv::ValueEntryTypeAsChar::kPackedRow)) {
-    auto version = util::FastDecodeUnsignedVarInt(&value_copy);
+  } else if (value_res.status().IsNotFound() &&
+             IsPackedRow(dockv::DecodeValueEntryType(value_copy))) {
+    value_copy.consume_byte();
+    auto version = FastDecodeUnsignedVarInt(&value_copy);
     if (!version.ok()) {
       value_str = version.status().ToString();
     } else {
@@ -154,6 +155,10 @@ std::string DocDBDebugDumpToStr(
   std::stringstream ss;
   DocDBDebugDump(rocksdb, ss, schema_packing_provider, db_type, include_binary);
   return ss.str();
+}
+
+std::string DocDBDebugDumpToStr(const DocOperationApplyData& data) {
+  return DocDBDebugDumpToStr(data.doc_write_batch->doc_db(), data.schema_packing_provider);
 }
 
 void AppendToContainer(const std::string& s, std::unordered_set<std::string>* out) {

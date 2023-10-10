@@ -3,7 +3,7 @@ import React, { Component } from 'react';
 import { Button, OverlayTrigger, Tooltip, DropdownButton, MenuItem } from 'react-bootstrap';
 import PropTypes from 'prop-types';
 import _ from 'lodash';
-import moment from 'moment';
+import moment from 'moment-timezone';
 
 import { MetricConsts, MetricMeasure, MetricTypes } from '../../metrics/constants';
 import { METRIC_FONT } from '../MetricsConfig';
@@ -223,6 +223,16 @@ export default class MetricsPanel extends Component {
   }
 
   componentDidUpdate(prevProps) {
+    // Enables user to view granular data based on selected time range within the graph
+    if (this.props.isGranularMetricsEnabled) {
+      const metricKeyContainer = document.getElementById(prevProps.metricKey);
+      metricKeyContainer?.on('plotly_relayout', function (eventData) {
+        const startTime = Math.floor(new Date(eventData['xaxis.range[0]']).getTime() / 1000);
+        const endTime = Math.floor(new Date(eventData['xaxis.range[1]']).getTime() / 1000);
+        prevProps.updateTimestamp(startTime, endTime);
+      });
+    }
+
     if (
       this.props.containerWidth !== prevProps.containerWidth ||
       this.props.width !== prevProps.width
@@ -306,9 +316,9 @@ export default class MetricsPanel extends Component {
       numButtonsInDropdown = 1;
       if (operations.length === 3) {
         numButtonsInDropdown = 2;
-      } else if (operations.length > 3 && operations.length <= 6) {
+      } else if (operations.length > 3 && operations.length < 6) {
         numButtonsInDropdown = 3;
-      } else if (operations.length >= 7) {
+      } else if (operations.length >= 6) {
         numButtonsInDropdown = 4;
       }
       showDropdown = true;
@@ -367,8 +377,10 @@ export default class MetricsPanel extends Component {
               target="_blank"
               rel="noopener noreferrer"
               className="prometheus-link"
-              href={getMetricsUrl(this.props.metric.directURLs[0],
-               this.props.metric.metricsLinkUseBrowserFqdn)}
+              href={getMetricsUrl(
+                this.props.metric.directURLs[0],
+                this.props.metric.metricsLinkUseBrowserFqdn
+              )}
             >
               <img
                 className="prometheus-link-icon"
