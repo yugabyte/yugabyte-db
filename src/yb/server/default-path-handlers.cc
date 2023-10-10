@@ -94,7 +94,6 @@ TAG_FLAG(web_log_bytes, advanced);
 DEFINE_RUNTIME_bool(export_help_and_type_in_prometheus_metrics, true,
     "Include #TYPE and #HELP in Prometheus metrics output by default");
 
-DECLARE_int32(max_tables_metrics_breakdowns);
 DECLARE_bool(TEST_mini_cluster_mode);
 
 namespace yb {
@@ -446,70 +445,39 @@ void SetParsedValue(Value* v, const Result<Value>& result) {
   }
 }
 
-bool ParseEntityOptions(const std::string& entity_prefix,
-                        const Webserver::WebRequest& req,
-                        MetricEntityOptions *metric_entity_options) {
-  bool found = false;
-  auto regex_p = FindOrNull(req.parsed_args, entity_prefix + "priority_regex");
-  if (regex_p != nullptr) {
-    found = true;
-    metric_entity_options->priority_regex = *regex_p;
-  }
-  const string* metrics_p = FindOrNull(req.parsed_args, entity_prefix + "metrics");
-  if (metrics_p != nullptr) {
-    found = true;
-    SplitStringUsing(*metrics_p, ",", &metric_entity_options->metrics);
-  } else {
-    metric_entity_options->metrics.push_back("*");
-  }
-  const string* exclude_metrics_p = FindOrNull(req.parsed_args, entity_prefix + "exclude_metrics");
-  if (exclude_metrics_p != nullptr) {
-    found = true;
-    SplitStringUsing(*exclude_metrics_p, ",", &metric_entity_options->exclude_metrics);
-  }
-  return found;
-}
-
 static void ParseRequestOptions(const Webserver::WebRequest& req,
-                                MeticEntitiesOptions *entities_options,
                                 MetricPrometheusOptions *prometheus_opts,
                                 MetricJsonOptions *json_opts = nullptr,
                                 JsonWriter::Mode *json_mode = nullptr) {
-  if (entities_options) {
-    MetricEntityOptions default_options;
-    if (ParseEntityOptions("", req, &default_options)) {
-      // Create an entry for each aggregation level with the filters from the request.
-      (*entities_options)[AggregationMetricLevel::kTable] = default_options;
-      (*entities_options)[AggregationMetricLevel::kStream] = default_options;
+  auto ParseMetricOptions = [](const Webserver::WebRequest& req,
+                               MetricOptions *metric_opts) {
+    if (const string* metrics_p = FindOrNull(req.parsed_args, "metrics")) {
+      metric_opts->general_metrics_allowlist = SplitStringUsing(*metrics_p, ",");
     }
-    MetricEntityOptions server_options;
-    if (ParseEntityOptions("server_", req, &server_options)) {
-      (*entities_options)[AggregationMetricLevel::kServer] = server_options;
-    }
-  }
+
+    string arg = FindWithDefault(req.parsed_args, "reset_histograms", "true");
+    metric_opts->reset_histograms = ParseLeadingBoolValue(arg.c_str(), true);
+
+    arg = FindWithDefault(req.parsed_args, "level", "debug");
+    SetParsedValue(&metric_opts->level, MetricLevelFromName(arg));
+  };
+
   string arg;
   if (json_opts) {
+    ParseMetricOptions(req, json_opts);
+
     arg = FindWithDefault(req.parsed_args, "include_raw_histograms", "false");
     json_opts->include_raw_histograms = ParseLeadingBoolValue(arg.c_str(), false);
 
     arg = FindWithDefault(req.parsed_args, "include_schema", "false");
     json_opts->include_schema_info = ParseLeadingBoolValue(arg.c_str(), false);
-
-    arg = FindWithDefault(req.parsed_args, "reset_histograms", "true");
-    json_opts->reset_histograms = ParseLeadingBoolValue(arg.c_str(), true);
-
-    arg = FindWithDefault(req.parsed_args, "level", "debug");
-    SetParsedValue(&json_opts->level, MetricLevelFromName(arg));
   }
 
   if (prometheus_opts) {
-    arg = FindWithDefault(req.parsed_args, "reset_histograms", "true");
-    prometheus_opts->reset_histograms = ParseLeadingBoolValue(arg.c_str(), true);
+    ParseMetricOptions(req, prometheus_opts);
 
-    SetParsedValue(&prometheus_opts->level,
-                   MetricLevelFromName(FindWithDefault(req.parsed_args, "level", "debug")));
-    prometheus_opts->max_tables_metrics_breakdowns = std::stoi(FindWithDefault(req.parsed_args,
-      "max_tables_metrics_breakdowns", std::to_string(FLAGS_max_tables_metrics_breakdowns)));
+    prometheus_opts->priority_regex_string = FindWithDefault(
+        req.parsed_args, "priority_regex", ".*");
 
     if (const std::string* arg_p = FindOrNull(req.parsed_args, "show_help")) {
       prometheus_opts->export_help_and_type =
@@ -526,50 +494,31 @@ static void ParseRequestOptions(const Webserver::WebRequest& req,
 
 static void WriteMetricsAsJson(const MetricRegistry* const metrics,
                                const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  MeticEntitiesOptions entities_opts;
   MetricJsonOptions opts;
   JsonWriter::Mode json_mode;
-  ParseRequestOptions(req, &entities_opts, /* prometheus opts */ nullptr, &opts, &json_mode);
-  if (entities_opts.empty()) {
-    // Using kTable to just group all the metrics together.
-    entities_opts[AggregationMetricLevel::kTable].metrics.push_back("*");
-  }
+  ParseRequestOptions(req, /* prometheus opts */ nullptr, &opts, &json_mode);
   std::stringstream* output = &resp->output;
   JsonWriter writer(output, json_mode);
 
-  WARN_NOT_OK(metrics->WriteAsJson(&writer,
-                                   entities_opts[AggregationMetricLevel::kTable], opts),
-              "Couldn't write JSON metrics over HTTP");
+  WARN_NOT_OK(metrics->WriteAsJson(&writer, opts), "Couldn't write JSON metrics over HTTP");
 }
 
 static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
-                               const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+                                      const Webserver::WebRequest& req,
+                                      Webserver::WebResponse* resp) {
   MetricPrometheusOptions opts;
   opts.export_help_and_type =
       ExportHelpAndType(GetAtomicFlag(&FLAGS_export_help_and_type_in_prometheus_metrics));
-  MeticEntitiesOptions entities_opts;
-  ParseRequestOptions(req, &entities_opts, &opts);
+  ParseRequestOptions(req, &opts);
 
   std::stringstream* output = &resp->output;
 
   std::set<std::string> prototypes;
   metrics->get_all_prototypes(prototypes);
 
-  if (entities_opts.empty()) {
-    if (prototypes.find("cdc") != prototypes.end() ||
-        prototypes.find("cdcsdk") != prototypes.end()) {
-      // Only need to process Stream metrics if we have any cdc or cdcsdk metrics.
-      entities_opts[AggregationMetricLevel::kStream].metrics.push_back("*");
-    }
-    entities_opts[AggregationMetricLevel::kTable].metrics.push_back("*");
-  }
-
-  for (const auto& entity_options : entities_opts) {
-    PrometheusWriter writer(output, opts.export_help_and_type,
-        entity_options.first);
-    WARN_NOT_OK(metrics->WriteForPrometheus(&writer, entity_options.second, opts),
-                "Couldn't write text metrics for Prometheus");
-  }
+  PrometheusWriter writer(output, opts);
+  WARN_NOT_OK(metrics->WriteForPrometheus(&writer, opts),
+      "Couldn't write text metrics for Prometheus");
 }
 
 static void HandleGetVersionInfo(
