@@ -192,12 +192,12 @@ Status DocRowwiseIteratorBase::DoInit(const T& doc_spec) {
   if (is_forward_scan_) {
     has_bound_key_ = !upper_doc_key.empty();
     if (has_bound_key_) {
-      bound_key_ = std::move(upper_doc_key);
+      bound_key_ = upper_doc_key;
     }
   } else {
     has_bound_key_ = !lower_doc_key.empty();
     if (has_bound_key_) {
-      bound_key_ = std::move(lower_doc_key);
+      bound_key_ = lower_doc_key;
     }
   }
 
