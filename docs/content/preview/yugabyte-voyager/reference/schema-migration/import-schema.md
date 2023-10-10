@@ -62,24 +62,24 @@ The valid *arguments* for import schema are described in the following table:
 ## Examples
 
 ```sh
-yb-voyager import schema --export-dir /path/to/yb/export/dir \
-        --target-db-host hostname \
-        --target-db-user username \
-        --target-db-password password \ # Enclose the password in single quotes if it contains special characters.
-        --target-db-name dbname \
-        --target-db-schema schemaName # MySQL and Oracle only
+yb-voyager import schema --export-dir /dir/export-dir \
+        --target-db-host 127.0.0.1 \
+        --target-db-user ybvoyager \
+        --target-db-password 'password' \
+        --target-db-name target_db \
+        --target-db-schema target_schema
 ```
 
 Example of [post-import data](../../../migrate/migrate-steps/#import-indexes-and-triggers) phase is as follows:
 
 ```sh
 
-yb-voyager import schema --export-dir /path/to/yb/export/dir \
-        --target-db-host hostname \
-        --target-db-user username \
-        --target-db-password password \ # Enclose the password in single quotes if it contains special characters.
-        --target-db-name dbname \
-        --target-db-schema schemaName # MySQL and Oracle only
+yb-voyager import schema --export-dir /dir/export-dir \
+        --target-db-host 127.0.0.1 \
+        --target-db-user ybvoyager \
+        --target-db-password 'password' \
+        --target-db-name target_db \
+        --target-db-schema target_schema
         --post-import-data
         --refresh-mviews
 ```

@@ -70,14 +70,14 @@ The `--data-dir` argument is a path to the local directory where all the CSV fil
 
 ```sh
 yb-voyager import data file --export-dir /dir/export-dir \
-        --target-db-host '127.0.0.1' \
-        --target-db-user 'ybvoyager' \
+        --target-db-host 127.0.0.1 \
+        --target-db-user ybvoyager \
         --target-db-password 'password' \
-        --target-db-name 'target_db' \
-        --target-db-schema 'target_schema' \
+        --target-db-name target_db \
+        --target-db-schema target_schema \
         --data-dir /dir/data-dir \
         --file-table-map 'accounts.csv:accounts,transactions.csv:transactions' \
-        --format 'csv' \
+        --format csv \
         --has-header=true
 ```
 
@@ -87,14 +87,14 @@ The `--data-dir` argument is the AWS S3 URL of the data directory on the S3 buck
 
 ```sh
 yb-voyager import data file --export-dir /dir/export-dir \
-        --target-db-host '127.0.0.1' \
-        --target-db-user 'ybvoyager' \
+        --target-db-host 127.0.0.1 \
+        --target-db-user ybvoyager \
         --target-db-password 'password' \
-        --target-db-name 'target_db' \
-        --target-db-schema 'target_schema' \
-        --data-dir 's3://abc-mart/data' \
+        --target-db-name target_db \
+        --target-db-schema target_schema \
+        --data-dir s3://abc-mart/data \
         --file-table-map 'orders.csv:"Orders",products.csv:"Products",users.csv:"Users",order-items.csv:"Order_items",payments.csv:"Payments",reviews.csv:"Reviews",categories.csv:"Categories"' \
-        --format 'csv' \
+        --format csv \
         --delimiter '\t' \
         --escape-char '\' \
         --quote-char "'"
@@ -106,14 +106,14 @@ The `--data-dir` argument is the GCS URL of the data directory on the GCS bucket
 
 ```sh
 yb-voyager import data file --export-dir /dir/export-dir \
-        --target-db-host '127.0.0.1' \
-        --target-db-user 'ybvoyager' \
+        --target-db-host 127.0.0.1 \
+        --target-db-user ybvoyager \
         --target-db-password 'password' \
-        --target-db-name 'target_db' \
-        --target-db-schema 'target_schema' \
-        --data-dir 'gs://abc-bank/data' \
+        --target-db-name target_db \
+        --target-db-schema target_schema \
+        --data-dir gs://abc-bank/data \
         --file-table-map 'accounts.csv:accounts,transactions.csv:transactions' \
-        --format 'csv' \
+        --format csv \
         --delimiter ' ' \
         --null-string 'NULL' \
         --escape-char '^' \
@@ -126,14 +126,14 @@ The `--data-dir` argument is the Azure blob URL of the data directory on the Azu
 
 ```sh
 yb-voyager import data file --export-dir /dir/export-dir \
-        --target-db-host '127.0.0.1' \
-        --target-db-user 'ybvoyager' \
+        --target-db-host 127.0.0.1 \
+        --target-db-user ybvoyager \
         --target-db-password 'password' \
-        --target-db-name 'target_db' \
-        --target-db-schema 'target_schema' \
-        --data-dir 'https://admin.blob.core.windows.net/air-world/data' \
+        --target-db-name target_db \
+        --target-db-schema target_schema \
+        --data-dir https://admin.blob.core.windows.net/air-world/data \
         --file-table-map 'airlines.csv:airlines,airports.csv:airports,flights.csv:flights,passengers.csv:passengers,bookings.csv:booking' \
-        --format 'csv' \
+        --format csv \
         --delimiter '#' \
         --null-string 'null' \
         --escape-char '%' \
@@ -150,14 +150,14 @@ Example for each file entry in --file-table-map (`foo1.csv:foo,foo2.csv:foo`) is
 
 ```sh
 yb-voyager import data file --export-dir /dir/export-dir \
-        --target-db-host '127.0.0.1' \
-        --target-db-user 'ybvoyager' \
+        --target-db-host 127.0.0.1 \
+        --target-db-user ybvoyager \
         --target-db-password 'password' \
-        --target-db-name 'target_db' \
-        --target-db-schema 'target_schema' \
+        --target-db-name target_db \
+        --target-db-schema target_schema \
         --data-dir /dir/data-dir \
         --file-table-map 'accounts.csv:accounts,transactions1.csv:transactions,transactions2.csv:transactions' \
-        --format 'csv' \
+        --format csv \
         --has-header=true
 ```
 
@@ -165,14 +165,14 @@ Example for glob expression of files in --file-table-map (`foo*.csv:foo`) is as 
 
 ```sh
 yb-voyager import data file --export-dir /dir/export-dir \
-        --target-db-host '127.0.0.1' \
-        --target-db-user 'ybvoyager' \
+        --target-db-host 127.0.0.1 \
+        --target-db-user ybvoyager \
         --target-db-password 'password' \
-        --target-db-name 'target_db' \
-        --target-db-schema 'target_schema' \
+        --target-db-name target_db \
+        --target-db-schema target_schema \
         --data-dir /dir/data-dir \
         --file-table-map 'accounts.csv:accounts,transactions*.csv:transactions' \
-        --format 'csv' \
+        --format csv \
         --has-header=true
 ```
 
@@ -188,14 +188,14 @@ The `--data-dir` argument is a path to the local directory where all the text fi
 
 ```sh
 yb-voyager import data file --export-dir /dir/export-dir \
-        --target-db-host '127.0.0.1' \
-        --target-db-user 'ybvoyager' \
+        --target-db-host 127.0.0.1 \
+        --target-db-user ybvoyager \
         --target-db-password 'password' \
-        --target-db-name 'target_db' \
-        --target-db-schema 'target_schema' \
+        --target-db-name target_db \
+        --target-db-schema target_schema \
         --data-dir /dir/data-dir \
         --file-table-map 'accounts.txt:accounts,transactions.txt:transactions' \
-        --format 'text'
+        --format text
 ```
 
 ### Import data file from AWS S3
@@ -204,14 +204,14 @@ The `--data-dir` argument is the AWS S3 URL of the data directory on the S3 buck
 
 ```sh
 yb-voyager import data file --export-dir /dir/export-dir \
-        --target-db-host '127.0.0.1' \
-        --target-db-user 'ybvoyager' \
+        --target-db-host 127.0.0.1 \
+        --target-db-user ybvoyager \
         --target-db-password 'password' \
-        --target-db-name 'target_db' \
-        --target-db-schema 'target_schema' \
-        --data-dir 's3://social-media/data' \
+        --target-db-name target_db \
+        --target-db-schema target_schema \
+        --data-dir s3://social-media/data \
         --file-table-map 'posts.txt:post,comments.txt:comments,profiles.txt:profiles,likes.txt:likes,messages.txt:messages,followers.txt:followers' \
-        --format 'text' \
+        --format text \
         --delimiter ',' \
         --null-string 'NULL'
 ```
@@ -222,14 +222,14 @@ The `--data-dir` argument is the GCS URL of the data directory on the GCS bucket
 
 ```sh
 yb-voyager import data file --export-dir /dir/export-dir \
-        --target-db-host '127.0.0.1' \
-        --target-db-user 'ybvoyager' \
+        --target-db-host 127.0.0.1 \
+        --target-db-user ybvoyager \
         --target-db-password 'password' \
-        --target-db-name 'target_db' \
-        --target-db-schema 'target_schema' \
-        --data-dir 'gs://xyz-hospital/data' \
+        --target-db-name target_db \
+        --target-db-schema target_schema \
+        --data-dir gs://xyz-hospital/data \
         --file-table-map 'patients.txt:"Patients",doctors.txt:"Doctors",appointments.txt:"Appointments"'\
-        --format 'text' \
+        --format text \
         --delimiter '-'
 ```
 
@@ -239,14 +239,14 @@ The `--data-dir` argument is the Azure blob URL of the data directory on the Azu
 
 ```sh
 yb-voyager import data file --export-dir /dir/export-dir \
-        --target-db-host '127.0.0.1' \
-        --target-db-user 'ybvoyager' \
+        --target-db-host 127.0.0.1 \
+        --target-db-user ybvoyager \
         --target-db-password 'password' \
-        --target-db-name 'target_db' \
-        --target-db-schema 'target_schema' \
-        --data-dir 'https://admin.blob.core.windows.net/weather-forecast/data' \
+        --target-db-name target_db \
+        --target-db-schema target_schema \
+        --data-dir https://admin.blob.core.windows.net/weather-forecast/data \
         --file-table-map 'locations.txt:locations,weather.txt:weather,data.txt:data,forecasts.txt:forecasts' \
-        --format 'text' \
+        --format text \
         --delimiter '#' \
         --null-string 'null'
 ```
@@ -257,33 +257,33 @@ Multiple files can be imported in one table (for example, `foo1.csv:foo,foo2.csv
 
 The `--data-dir` argument is a path to the local directory where all the text files are present, and the `--file-table-map` argument provides a comma-separated mapping between each text file in `--data-dir` to the corresponding table in the database  where each file has a header, delimiter as `'|'` (pipe character).
 
-Example for each file entry in --file-table-map (`foo1.csv:foo,foo2.csv:foo`) is as follows:
+Example for each file entry in --file-table-map (`foo1.txt:foo,foo2.txt:foo`) is as follows:
 
 ```sh
 yb-voyager import data file --export-dir /dir/export-dir \
-        --target-db-host '127.0.0.1' \
-        --target-db-user 'ybvoyager' \
+        --target-db-host 127.0.0.1 \
+        --target-db-user ybvoyager \
         --target-db-password 'password' \
-        --target-db-name 'target_db' \
-        --target-db-schema 'target_schema' \
-        --data-dir '/dir/academy-data' \
+        --target-db-name target_db \
+        --target-db-schema target_schema \
+        --data-dir /dir/academy-data \
         --file-table-map 'students1.txt:students,students2.txt:students,students3.txt:students,courses.txt:courses,instructors1.txt:instructors,instructors2.txt:instructors,enrollments.txt:enrollments,grades.txt:grades' \
-        --format 'text' \
+        --format text \
         --delimiter '|'
 ```
 
-Example for glob expression of files in --file-table-map (`foo*.csv:foo`) is as follows:
+Example for glob expression of files in --file-table-map (`foo*.txt:foo`) is as follows:
 
 ```sh
 yb-voyager import data file --export-dir /dir/export-dir \
-        --target-db-host '127.0.0.1' \
-        --target-db-user 'ybvoyager' \
+        --target-db-host 127.0.0.1 \
+        --target-db-user ybvoyager \
         --target-db-password 'password' \
-        --target-db-name 'target_db' \
-        --target-db-schema 'target_schema' \
-        --data-dir '/dir/academy-data' \
+        --target-db-name target_db \
+        --target-db-schema target_schema \
+        --data-dir /dir/academy-data \
         --file-table-map 'students*.txt:students,courses.txt:courses,instructors*.txt:instructors,enrollments.txt:enrollments,grades.txt:grades' \
-        --format 'text' \
+        --format text \
         --delimiter '|'
 ```
 

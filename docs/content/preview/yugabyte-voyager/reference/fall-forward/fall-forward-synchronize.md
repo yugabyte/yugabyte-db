@@ -48,11 +48,10 @@ The valid *arguments* for fall-forward synchronize are described in the followin
 ## Example
 
 ```sh
-yb-voyager fall-forward synchronize --export-dir /path/to/yb/export/dir \
-        --target-db-host hostname \
-        --target-db-port port \
-        --target-db-user username \
-        --target-db-password password \ # Enclose the password in single quotes if it contains special characters.
-        --target-db-name dbname \
-        --target-db-schema schemaName
+yb-voyager fall-forward synchronize --export-dir /dir/export-dir \
+        --target-db-host 127.0.0.1 \
+        --target-db-user ybvoyager \
+        --target-db-password 'password' \
+        --target-db-name target_db \
+        --target-db-schema target_schema
 ```

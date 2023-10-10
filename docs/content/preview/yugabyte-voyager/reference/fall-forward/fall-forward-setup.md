@@ -56,11 +56,11 @@ The valid *arguments* for fall-forward setup are described in the following tabl
 ### Example
 
 ```sh
-yb-voyager fall-forward setup --export-dir /path/to/yb/export/dir \
-        --ff-db-host hostname \
-        --ff-db-user username \
-        --ff-db-password password \ # Enclose the password in single quotes if it contains special characters.
-        --ff-db-name dbname \
-        --ff-db-schema schemaName \
-        --parallel-jobs connectionCount
+yb-voyager fall-forward setup --export-dir /dir/export-dir \
+        --ff-db-host 127.0.0.1 \
+        --ff-db-user ybvoyager \
+        --ff-db-password 'password' \
+        --ff-db-name ff_db \
+        --ff-db-schema ff_schema \
+        --parallel-jobs 12
 ```

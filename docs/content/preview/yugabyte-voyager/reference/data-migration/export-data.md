@@ -68,14 +68,14 @@ The valid *arguments* for export data are described in the following table:
 ### Example
 
 ```sh
-yb-voyager export data --export-dir /path/to/yb/export/dir \
-        --source-db-type sourceDB \
-        --source-db-host hostname \
-        --source-db-port port \
-        --source-db-user username \
-        --source-db-password password \ # Enclose the password in single quotes if it contains special characters.
-        --source-db-name dbname \
-        --source-db-schema schemaName # Not applicable for MySQL
+yb-voyager export data --export-dir /dir/export-dir \
+        --source-db-type oracle \
+        --source-db-host 127.0.0.1 \
+        --source-db-port 1521 \
+        --source-db-user ybvoyager \
+        --source-db-password 'password' \
+        --source-db-name source_db \
+        --source-db-schema source_schema
 ```
 
 ## export data status
@@ -102,5 +102,5 @@ The valid *arguments* for export data status are described in the following tabl
 ### Example
 
 ```sh
-yb-voyager export data status --export-dir /path/to/yb/export/dir
+yb-voyager export data status --export-dir /dir/export-dir
 ```

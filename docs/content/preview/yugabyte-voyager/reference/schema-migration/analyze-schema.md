@@ -35,5 +35,5 @@ The valid *arguments* for analyze schema are described in the following table:
 #### Example
 
 ```sh
-yb-voyager analyze-schema --export-dir /path/to/yb/export/dir --output-format txt
+yb-voyager analyze-schema --export-dir /dir/export-dir --output-format txt
 ```

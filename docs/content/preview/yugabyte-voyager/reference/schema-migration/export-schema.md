@@ -40,7 +40,7 @@ The valid *arguments* for export schema are described in the following table:
 | --source-db-name <name> | Source database name. |
 | --source-db-password <password>| Source database password. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. Alternatively, you can also specify the password by setting the environment variable `SOURCE_DB_PASSWORD`. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
 | --source-db-port <port> | Port number of the source database machine. |
-| --source-db-schema <schemaName> | Schema name of the source database. |
+| --source-db-schema <schemaName> | Schema name of the source database. Not applicable for MySQL. |
 | --source-db-type <databaseType> | One of `postgresql`, `mysql`, or `oracle`. |
 | --source-db-user <username> | Name of the source database user (typically `ybvoyager`). |
 | [--source-ssl-cert](../../yb-voyager-cli/#ssl-connectivity) <certificateName> | Name of the certificate which is part of the SSL `<cert,key>` pair. |
@@ -56,14 +56,14 @@ The valid *arguments* for export schema are described in the following table:
 ### Example
 
 ```sh
-yb-voyager export schema --export-dir /path/to/yb/export/dir \
-        --source-db-type sourceDB \
-        --source-db-host localhost \
-        --source-db-port port \
-        --source-db-user username \
-        --source-db-password password \ # Enclose the password in single quotes if it contains special characters.
-        --source-db-name dbname \
-        --source-db-schema schemaName \ # Not applicable for MySQL
+yb-voyager export schema --export-dir /dir/export-dir \
+        --source-db-type oracle \
+        --source-db-host 127.0.0.1 \
+        --source-db-port 1521 \
+        --source-db-user ybvoyager \
+        --source-db-password 'password'  \
+        --source-db-name source_db \
+        --source-db-schema source_schema \
         --start-clean
 
 ```
