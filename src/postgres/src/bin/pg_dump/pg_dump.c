@@ -361,7 +361,7 @@ static void setupDumpWorker(Archive *AHX);
 static bool catalogTableExists(Archive *fout, char *tablename);
 static TableInfo *getRootTableInfo(const TableInfo *tbinfo);
 static Oid getDatabaseOid(Archive *fout);
-static PGresult* queryDatabaseData(Archive *fout, PQExpBuffer dbQry);
+static PGresult* ybQueryDatabaseData(Archive *fout, PQExpBuffer dbQry);
 static void getYbTablePropertiesAndReloptions(Archive *fout,
 						YbTableProperties properties,
 						PQExpBuffer reloptions_buf, Oid reloid, const char* relname,
@@ -373,11 +373,6 @@ static char *getYbSplitClause(Archive *fout, const TableInfo *tbinfo);
 #endif
 static void ybDumpUpdatePgExtensionCatalog(Archive *fout);
 
-/* YB_TODO(neil) Need rework to match Pg15.
- * This variable should be obsolete.
- */
-/* subquery used to convert user ID (eg, datdba) to user name */
-static const char *username_subquery;
 
 int
 main(int argc, char **argv)
@@ -2961,7 +2956,7 @@ dumpDatabase(Archive *fout)
 
 	pg_log_info("saving database definition");
 
-	res = queryDatabaseData(fout, dbQry);
+	res = ybQueryDatabaseData(fout, dbQry);
 
 	i_tableoid = PQfnumber(res, "tableoid");
 	i_oid = PQfnumber(res, "oid");
@@ -18873,107 +18868,31 @@ appendReloptionsArrayAH(PQExpBuffer buffer, const char *reloptions,
 }
 
 static PGresult*
-queryDatabaseData(Archive *fout, PQExpBuffer dbQry)
+ybQueryDatabaseData(Archive *fout, PQExpBuffer dbQry)
 {
 	/*
 	 * Fetch the database-level properties for this database.
-	 *
-	 * The order in which privileges are in the ACL string (the order they
-	 * have been GRANT'd in, which the backend maintains) must be preserved to
-	 * ensure that GRANTs WITH GRANT OPTION and subsequent GRANTs based on
-	 * those are dumped in the correct order.  Note that initial privileges
-	 * (pg_init_privs) are not supported on databases, so this logic cannot
-	 * make use of buildACLQueries().
 	 */
-	if (fout->remoteVersion >= 90600)
-	{
-		appendPQExpBuffer(dbQry, "SELECT tableoid, oid, datname, "
-						  "(%s datdba) AS dba, "
-						  "pg_encoding_to_char(encoding) AS encoding, "
-						  "datcollate, datctype, datfrozenxid, datminmxid, "
-						  "(SELECT array_agg(acl ORDER BY row_n) FROM "
-						  "  (SELECT acl, row_n FROM "
-						  "     unnest(coalesce(datacl,acldefault('d',datdba))) "
-						  "     WITH ORDINALITY AS perm(acl,row_n) "
-						  "   WHERE NOT EXISTS ( "
-						  "     SELECT 1 "
-						  "     FROM unnest(acldefault('d',datdba)) "
-						  "       AS init(init_acl) "
-						  "     WHERE acl = init_acl)) AS datacls) "
-						  " AS datacl, "
-						  "(SELECT array_agg(acl ORDER BY row_n) FROM "
-						  "  (SELECT acl, row_n FROM "
-						  "     unnest(acldefault('d',datdba)) "
-						  "     WITH ORDINALITY AS initp(acl,row_n) "
-						  "   WHERE NOT EXISTS ( "
-						  "     SELECT 1 "
-						  "     FROM unnest(coalesce(datacl,acldefault('d',datdba))) "
-						  "       AS permp(orig_acl) "
-						  "     WHERE acl = orig_acl)) AS rdatacls) "
-						  " AS rdatacl, "
-						  "datistemplate, datconnlimit, "
-						  "(SELECT spcname FROM pg_tablespace t WHERE t.oid = dattablespace) AS tablespace, "
-						  "shobj_description(oid, 'pg_database') AS description "
-
-						  "FROM pg_database "
-						  "WHERE datname = current_database()",
-						  username_subquery);
-	}
-	else if (fout->remoteVersion >= 90300)
-	{
-		appendPQExpBuffer(dbQry, "SELECT tableoid, oid, datname, "
-						  "(%s datdba) AS dba, "
-						  "pg_encoding_to_char(encoding) AS encoding, "
-						  "datcollate, datctype, datfrozenxid, datminmxid, "
-						  "datacl, '' as rdatacl, datistemplate, datconnlimit, "
-						  "(SELECT spcname FROM pg_tablespace t WHERE t.oid = dattablespace) AS tablespace, "
-						  "shobj_description(oid, 'pg_database') AS description "
-
-						  "FROM pg_database "
-						  "WHERE datname = current_database()",
-						  username_subquery);
-	}
-	else if (fout->remoteVersion >= 80400)
-	{
-		appendPQExpBuffer(dbQry, "SELECT tableoid, oid, datname, "
-						  "(%s datdba) AS dba, "
-						  "pg_encoding_to_char(encoding) AS encoding, "
-						  "datcollate, datctype, datfrozenxid, 0 AS datminmxid, "
-						  "datacl, '' as rdatacl, datistemplate, datconnlimit, "
-						  "(SELECT spcname FROM pg_tablespace t WHERE t.oid = dattablespace) AS tablespace, "
-						  "shobj_description(oid, 'pg_database') AS description "
-
-						  "FROM pg_database "
-						  "WHERE datname = current_database()",
-						  username_subquery);
-	}
-	else if (fout->remoteVersion >= 80200)
-	{
-		appendPQExpBuffer(dbQry, "SELECT tableoid, oid, datname, "
-						  "(%s datdba) AS dba, "
-						  "pg_encoding_to_char(encoding) AS encoding, "
-						  "NULL AS datcollate, NULL AS datctype, datfrozenxid, 0 AS datminmxid, "
-						  "datacl, '' as rdatacl, datistemplate, datconnlimit, "
-						  "(SELECT spcname FROM pg_tablespace t WHERE t.oid = dattablespace) AS tablespace, "
-						  "shobj_description(oid, 'pg_database') AS description "
-
-						  "FROM pg_database "
-						  "WHERE datname = current_database()",
-						  username_subquery);
-	}
+	appendPQExpBuffer(dbQry, "SELECT tableoid, oid, datname, "
+					  "datdba, "
+					  "pg_encoding_to_char(encoding) AS encoding, "
+					  "datcollate, datctype, datfrozenxid, "
+					  "datacl, acldefault('d', datdba) AS acldefault, "
+					  "datistemplate, datconnlimit, ");
+	if (fout->remoteVersion >= 90300)
+		appendPQExpBuffer(dbQry, "datminmxid, ");
 	else
-	{
-		appendPQExpBuffer(dbQry, "SELECT tableoid, oid, datname, "
-						  "(%s datdba) AS dba, "
-						  "pg_encoding_to_char(encoding) AS encoding, "
-						  "NULL AS datcollate, NULL AS datctype, datfrozenxid, 0 AS datminmxid, "
-						  "datacl, '' as rdatacl, datistemplate, "
-						  "-1 as datconnlimit, "
-						  "(SELECT spcname FROM pg_tablespace t WHERE t.oid = dattablespace) AS tablespace "
+		appendPQExpBuffer(dbQry, "0 AS datminmxid, ");
+	if (fout->remoteVersion >= 150000)
+		appendPQExpBuffer(dbQry, "datlocprovider, daticulocale, datcollversion, ");
+	else
+		appendPQExpBuffer(dbQry, "'c' AS datlocprovider, NULL AS daticulocale, NULL AS datcollversion, ");
+	appendPQExpBuffer(dbQry,
+						  "(SELECT spcname FROM pg_tablespace t WHERE t.oid = dattablespace) AS tablespace, "
+						  "shobj_description(oid, 'pg_database') AS description "
+
 						  "FROM pg_database "
-						  "WHERE datname = current_database()",
-						  username_subquery);
-	}
+						  "WHERE datname = current_database()");
 
 	return ExecuteSqlQueryForSingleRow(fout, dbQry->data);
 }
@@ -18984,7 +18903,7 @@ getDatabaseOid(Archive *fout)
 	pg_log_info("reading database id");
 
 	PQExpBuffer dbQry = createPQExpBuffer();
-	PGresult* res = queryDatabaseData(fout, dbQry);
+	PGresult* res = ybQueryDatabaseData(fout, dbQry);
 	int i_oid = PQfnumber(res, "oid");
 	Oid db_oid = atooid(PQgetvalue(res, 0, i_oid));
 
