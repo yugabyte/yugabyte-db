@@ -777,13 +777,13 @@ ReadBufferExtended(Relation reln, ForkNumber forkNum, BlockNumber blockNum,
 				 errmsg("cannot access temporary tables of other sessions")));
 
 	/* Special handling for sequences */
-  if (RelationGetForm(reln)->relkind == RELKIND_SEQUENCE)
+  if (IsYugaByteEnabled() && RelationGetForm(reln)->relkind == RELKIND_SEQUENCE)
   {
     /* Get a sequence tuple */
     HeapTuple seqtuple = YBReadSequenceTuple(reln);
 
     /* Create an empty buffer to initialize with the sequence data */
-    buf = ReadBuffer_common(reln->rd_smgr, reln->rd_rel->relpersistence,
+    buf = ReadBuffer_common(RelationGetSmgr(reln), reln->rd_rel->relpersistence,
                             forkNum, blockNum, RBM_ZERO_AND_LOCK, strategy, &hit);
 
     /* Insert onto the page */
