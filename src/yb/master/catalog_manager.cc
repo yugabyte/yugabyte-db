@@ -556,6 +556,10 @@ DEFINE_RUNTIME_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
     "When set, it enables automatic tablet splitting for tables that are part of an "
     "xCluster replication setup and are currently being bootstrapped for xCluster.");
 
+DEFINE_RUNTIME_bool(enable_tablet_split_of_cdcsdk_streamed_tables, false,
+    "When set, it enables automatic tablet splitting for tables that are part of a "
+    "CDCSDK stream");
+
 METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_live,
                            "Number of live tservers in the cluster", yb::MetricUnit::kUnits,
                            "The number of tablet servers that have responded or done a heartbeat "
@@ -3166,12 +3170,12 @@ Status CatalogManager::SplitTablet(
   return SplitTablet(tablet, is_manual_split, epoch);
 }
 
-Status CatalogManager::ValidateSplitCandidateTableCdc(const TableInfo& table) const {
+Status CatalogManager::XreplValidateSplitCandidateTable(const TableInfo& table) const {
   SharedLock lock(mutex_);
-  return ValidateSplitCandidateTableCdcUnlocked(table);
+  return XreplValidateSplitCandidateTableUnlocked(table);
 }
 
-Status CatalogManager::ValidateSplitCandidateTableCdcUnlocked(const TableInfo& table) const {
+Status CatalogManager::XreplValidateSplitCandidateTableUnlocked(const TableInfo& table) const {
   // Check if this table is part of a cdc stream.
   if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_replicated_tables) &&
       IsXClusterEnabledUnlocked(table)) {
@@ -3188,6 +3192,14 @@ Status CatalogManager::ValidateSplitCandidateTableCdcUnlocked(const TableInfo& t
         "Tablet splitting is not supported for tables that are a part of"
         " a bootstrapping CDC stream, table_id: $0", table.id());
   }
+  // Check if this table is part of a cdcsdk stream.
+  if (!FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables &&
+      IsTablePartOfCDCSDK(table)) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for tables that are a part of"
+        " a CDCSDK stream, table_id: $0", table.id());
+  }
   return Status::OK();
 }
 
@@ -3202,7 +3214,7 @@ Status CatalogManager::ValidateSplitCandidateUnlocked(
   const IgnoreDisabledList ignore_disabled_list { is_manual_split.get() };
   RETURN_NOT_OK(tablet_split_manager_.ValidateSplitCandidateTable(
       tablet->table(), ignore_disabled_list));
-  RETURN_NOT_OK(ValidateSplitCandidateTableCdcUnlocked(*tablet->table()));
+  RETURN_NOT_OK(XreplValidateSplitCandidateTableUnlocked(*tablet->table()));
 
   const IgnoreTtlValidation ignore_ttl_validation { is_manual_split.get() };
 
