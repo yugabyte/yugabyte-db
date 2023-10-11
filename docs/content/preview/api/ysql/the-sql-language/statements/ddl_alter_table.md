@@ -184,13 +184,14 @@ Add the specified constraint to the table.
 
 #### [*alter_column_type*]
 
-Change the type of an existing column. If data on disk is required to change, a full table rewrite is needed.
-
-If the optional `COLLATE` clause is not specified, the default collation for the new column type will be used.
-
-If the optional `USING` clause is not provided, the default conversion for the new column value will be the same as an assignment cast from the old type to the new type.
-
-A `USING` clause must be included when there is no implicit assignment cast available from the old type to the new type.
+Change the type of an existing column. The following semantics apply:
+- If data on disk is required to change, a full table rewrite is needed.
+- If the optional `COLLATE` clause is not specified, the default collation for the new column type will be used.
+- If the optional `USING` clause is not provided, the default conversion for the new column value will be the same as an assignment cast from the old type to the new type.
+- A `USING` clause must be included when there is no implicit assignment cast available from the old type to the new type.
+- Alter type is not supported on partitioned tables [#16980](https://github.com/yugabyte/yugabyte-db/issues/16980).
+- Alter type is not supported on tables with rules.
+- Alter type on tables with CDC streams will result in garbage data for the changed column.
 
 ##### Alter type without table-rewrite
 
@@ -207,7 +208,6 @@ ALTER TABLE test ALTER COLUMN a TYPE VARCHAR(51);
 
 If the change requires data on disk to change, a full table rewrite will be done and the following semantics apply:
 - The action creates an entirely new table under the hood, and concurrent DMLs may not be reflected in the new table which can lead to correctness issues.
-- This action is not compatible with partitioned tables, tables with rules, and tables with CDC streams.
 - If the operation fails, it is possible that the existing table is renamed in DocDB. This may lead to issues like yb-admin commands that take table name.
 - If the operation fails, a new dangling table may exist in DocDB. Use `yb-admin delete_table` to drop it.
 - Altering the data type of a foreign key column is not supported.
