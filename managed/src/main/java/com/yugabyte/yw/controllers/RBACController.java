@@ -463,9 +463,13 @@ public class RBACController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(requestBody, RoleBindingFormData.class);
 
     // Validate the roles and resource group definitions.
-    roleBindingUtil.validateRoles(userUUID, roleBindingFormData.getRoleResourceDefinitions());
+    roleBindingUtil.validateRoles(customerUUID, roleBindingFormData.getRoleResourceDefinitions());
     roleBindingUtil.validateResourceGroups(
         customerUUID, roleBindingFormData.getRoleResourceDefinitions());
+
+    // Populate all the system default resource groups for all system defined roles.
+    roleBindingUtil.populateSystemRoleResourceGroups(
+        customerUUID, userUUID, roleBindingFormData.getRoleResourceDefinitions());
 
     // Delete all existing user role bindings and create new given role bindings.
     List<RoleBinding> createdRoleBindings =
