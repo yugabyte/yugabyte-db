@@ -482,7 +482,7 @@ restore_backup() {
 
       metadata_regex="**/yugaware/conf/${VERSION_METADATA}"
       if [[ "${yba_installer}" = true ]]; then
-        version=$(basename $(realpath /opt/yugabyte/software/active))
+        version=$(basename $(realpath ${data_dir}/software/active))
         metadata_regex="**/${version}/**/yugaware/conf/${VERSION_METADATA}"
       fi
       current_metadata_path=$(find ${destination} -wholename ${metadata_regex})
