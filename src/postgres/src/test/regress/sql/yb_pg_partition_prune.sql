@@ -925,6 +925,23 @@ from (
      ) s(a, b, c)
 where s.a = 1 and s.b = 1 and s.c = (select 1);
 
+prepare q (int, int) as
+select *
+from (
+      select * from p
+      union all
+      select * from q1
+      union all
+      select 1, 1, 1
+     ) s(a, b, c)
+where s.a = $1 and s.b = $2 and s.c = (select 1);
+
+set plan_cache_mode to force_generic_plan;
+
+explain (costs off) execute q (1, 1);
+execute q (1, 1);
+
+reset plan_cache_mode;
 drop table p, q;
 
 -- Ensure run-time pruning works correctly when we match a partitioned table
