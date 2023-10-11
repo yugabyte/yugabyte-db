@@ -10,7 +10,6 @@
 import { useContext, useState } from 'react';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'react-toastify';
 import { useToggle } from 'react-use';
 import { WithRouterProps } from 'react-router';
 import { find } from 'lodash';
@@ -24,13 +23,13 @@ import { YBLoadingCircleIcon } from '../../../../../components/common/indicators
 import { DeleteUserModal } from './DeleteUserModal';
 import { YBSearchInput } from '../../../../../components/common/forms/fields/YBSearchInput';
 
-import { RBAC_ERR_MSG_NO_PERM, RbacValidator, hasNecessaryPerm } from '../../common/RbacValidator';
+import { RbacValidator, hasNecessaryPerm } from '../../common/RbacValidator';
 import { UserPermissionMap } from '../../UserPermPathMapping';
 import { getAllUsers, getRoleBindingsForAllUsers } from '../../api';
 import { RbacBindings } from './UserUtils';
 import { RoleTypeComp } from '../../common/RbacUtils';
 import { ybFormatDate } from '../../../../helpers/DateUtils';
-import { UserContextMethods, UserViewContext } from './UserContext';
+import { UserContextMethods, UserPages, UserViewContext } from './UserContext';
 import { ForbiddenRoles, Role, RoleType } from '../../roles';
 import { RbacUser } from '../interface/Users';
 import { Add, ArrowDropDown } from '@material-ui/icons';
@@ -139,7 +138,7 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
     const user = find(users, { uuid: viewUserUUID });
     if (user) {
       setCurrentUser(user);
-      setCurrentPage('EDIT_USER');
+      setCurrentPage(UserPages.EDIT_USER);
     }
   }
 
@@ -150,8 +149,10 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
   }
 
   const getActions = (_: undefined, user: RbacUser) => {
-    const userRoles: Role[] = [...(roleBindings?.[user.uuid] ?? [])].map(r => r.role);
-    const isSuperAdmin = userRoles.some((role) => find(ForbiddenRoles, { name: role.name, roleType: role.roleType }));
+    const userRoles: Role[] = [...(roleBindings?.[user.uuid] ?? [])].map((r) => r.role);
+    const isSuperAdmin = userRoles.some((role) =>
+      find(ForbiddenRoles, { name: role.name, roleType: role.roleType })
+    );
 
     return (
       <MoreActionsMenu
@@ -161,9 +162,11 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
             icon: <User />,
             callback: () => {
               setCurrentUser(user);
-              setCurrentPage('EDIT_USER');
+              setCurrentPage(UserPages.EDIT_USER);
             },
-            disabled: !hasNecessaryPerm({ ...UserPermissionMap.updateUser, onResource: user.uuid }) || isSuperAdmin
+            disabled:
+              !hasNecessaryPerm({ ...UserPermissionMap.updateUser, onResource: user.uuid }) ||
+              isSuperAdmin
           },
           {
             text: t('table.moreActions.deleteUser'),
@@ -174,7 +177,7 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
               toggleDeleteModal(true);
             },
             disabled: user.uuid === localStorage.getItem('userId') || isSuperAdmin
-          },
+          }
         ]}
       >
         <span className={classes.moreActionsBut}>
@@ -204,7 +207,7 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
             variant="primary"
             onClick={() => {
               setCurrentUser(null);
-              setCurrentPage('CREATE_USER');
+              setCurrentPage(UserPages.CREATE_USER);
             }}
             data-testid={`rbac-resource-create-user`}
           >

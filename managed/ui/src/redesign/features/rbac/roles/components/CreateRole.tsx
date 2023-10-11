@@ -31,7 +31,7 @@ import { resourceOrderByRelevance } from '../../common/RbacUtils';
 import { Role } from '../IRoles';
 import { Permission, Resource } from '../../permission';
 import { createRole, editRole, getAllAvailablePermissions } from '../../api';
-import { RoleContextMethods, RoleViewContext } from '../RoleContext';
+import { Pages, RoleContextMethods, RoleViewContext } from '../RoleContext';
 import { createErrorMessage } from '../../../universe/universe-form/utils/helpers';
 import { isDefinedNotNull, isNonEmptyString } from '../../../../../utils/ObjectUtils';
 import { ArrowDropDown, Create } from '@material-ui/icons';
@@ -121,7 +121,7 @@ export const CreateRole = forwardRef((_, forwardRef) => {
     {
       onSuccess: (_resp, role) => {
         toast.success(t('successMsg', { role_name: role.name }));
-        setCurrentPage('LIST_ROLE');
+        setCurrentPage(Pages.LIST_ROLE);
       },
       onError: (err) => {
         toast.error(createErrorMessage(err));
@@ -136,7 +136,7 @@ export const CreateRole = forwardRef((_, forwardRef) => {
     {
       onSuccess: (_resp, role) => {
         toast.success(t('editSuccessMsg', { role_name: role.name }));
-        setCurrentPage('LIST_ROLE');
+        setCurrentPage(Pages.LIST_ROLE);
       },
       onError: (err) => {
         toast.error(createErrorMessage(err));
@@ -155,7 +155,7 @@ export const CreateRole = forwardRef((_, forwardRef) => {
   };
 
   const onCancel = () => {
-    setCurrentPage('LIST_ROLE');
+    setCurrentPage(Pages.LIST_ROLE);
   };
 
   useImperativeHandle(
