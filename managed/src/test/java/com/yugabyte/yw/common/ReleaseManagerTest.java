@@ -25,6 +25,8 @@ import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import java.io.File;
 import java.io.IOException;
@@ -59,11 +61,18 @@ public class ReleaseManagerTest extends FakeDBApplication {
 
   @Spy ConfigHelper configHelper;
 
+  @Mock RuntimeConfGetter confGetter;
+
   @Before
   public void beforeTest() throws IOException {
     new File(TMP_STORAGE_PATH).mkdirs();
     new File(TMP_REPLACE_STORAGE_PATH).mkdirs();
     new File(TMP_DOCKER_STORAGE_PATH).mkdirs();
+
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz");
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(.*)-helm.tar.gz");
   }
 
   @After
@@ -256,6 +265,10 @@ public class ReleaseManagerTest extends FakeDBApplication {
     createDummyReleases(versions, false, false);
     when(mockGFlagsValidation.getMissingGFlagFileList(any()))
         .thenReturn(GFlagsValidation.GFLAG_FILENAME_LIST);
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz");
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(.*)-helm.tar.gz");
     releaseManager.importLocalReleases();
     verify(mockGFlagsValidation, times(1))
         .fetchGFlagFilesFromTarGZipInputStream(any(), any(), any(), any());
@@ -285,6 +298,10 @@ public class ReleaseManagerTest extends FakeDBApplication {
     createDummyReleases(versions, false, false, true, true, false, "linux");
     when(mockGFlagsValidation.getMissingGFlagFileList(any()))
         .thenReturn(GFlagsValidation.GFLAG_FILENAME_LIST);
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz");
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(.*)-helm.tar.gz");
     releaseManager.importLocalReleases();
     verify(mockGFlagsValidation, times(1))
         .fetchGFlagFilesFromTarGZipInputStream(any(), any(), any(), any());
@@ -314,6 +331,10 @@ public class ReleaseManagerTest extends FakeDBApplication {
     createDummyReleases(versions, false, false, true, true, false, "el8");
     when(mockGFlagsValidation.getMissingGFlagFileList(any()))
         .thenReturn(GFlagsValidation.GFLAG_FILENAME_LIST);
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz");
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(.*)-helm.tar.gz");
     releaseManager.importLocalReleases();
     verify(mockGFlagsValidation, times(1))
         .fetchGFlagFilesFromTarGZipInputStream(any(), any(), any(), any());
@@ -343,6 +364,10 @@ public class ReleaseManagerTest extends FakeDBApplication {
     createDummyReleases(versions, false, false, true, false, false);
     when(mockGFlagsValidation.getMissingGFlagFileList(any()))
         .thenReturn(GFlagsValidation.GFLAG_FILENAME_LIST);
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz");
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(.*)-helm.tar.gz");
     releaseManager.importLocalReleases();
     verify(mockGFlagsValidation, times(1))
         .fetchGFlagFilesFromTarGZipInputStream(any(), any(), any(), any());
@@ -378,6 +403,10 @@ public class ReleaseManagerTest extends FakeDBApplication {
     createDummyReleases(dockerVersionsWithoutEe, false, true, false, true, false);
     List<String> multipleVersionRelease = ImmutableList.of("0.0.4-b4");
     createDummyReleases(multipleVersionRelease, false, false, false, true, true);
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz");
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(.*)-helm.tar.gz");
     releaseManager.importLocalReleases();
     ArgumentCaptor<ConfigHelper.ConfigType> configType;
     ArgumentCaptor<HashMap> releaseMap;
@@ -437,6 +466,10 @@ public class ReleaseManagerTest extends FakeDBApplication {
     createDummyReleases(dockerVersions, false, true);
     when(mockGFlagsValidation.getMissingGFlagFileList(any()))
         .thenReturn(GFlagsValidation.GFLAG_FILENAME_LIST);
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz");
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(.*)-helm.tar.gz");
     releaseManager.importLocalReleases();
     verify(mockGFlagsValidation, times(1))
         .fetchGFlagFilesFromTarGZipInputStream(any(), any(), any(), any());
@@ -467,6 +500,10 @@ public class ReleaseManagerTest extends FakeDBApplication {
     createDummyReleases(versions, false, false, false, true, true, "almalinux8");
     when(mockGFlagsValidation.getMissingGFlagFileList(any()))
         .thenReturn(GFlagsValidation.GFLAG_FILENAME_LIST);
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz");
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(.*)-helm.tar.gz");
     releaseManager.importLocalReleases();
     verify(mockGFlagsValidation, times(1))
         .fetchGFlagFilesFromTarGZipInputStream(any(), any(), any(), any());
@@ -530,8 +567,9 @@ public class ReleaseManagerTest extends FakeDBApplication {
   @Test
   public void testAddRelease() {
     ReleaseManager.ReleaseMetadata metadata =
-        ReleaseManager.ReleaseMetadata.fromLegacy("0.0.1", "/path/to/yugabyte-0.0.1.tar.gz");
-    releaseManager.addReleaseWithMetadata("0.0.1", metadata);
+        ReleaseManager.ReleaseMetadata.fromLegacy(
+            "0.0.0.1-b1", "/path/to/yyugabyte-0.0.0.1-b1.tar.gz");
+    releaseManager.addReleaseWithMetadata("0.0.0.1-b1", metadata);
     ArgumentCaptor<ConfigHelper.ConfigType> configType;
     ArgumentCaptor<HashMap> releaseMap;
     configType = ArgumentCaptor.forClass(ConfigHelper.ConfigType.class);
@@ -539,9 +577,9 @@ public class ReleaseManagerTest extends FakeDBApplication {
     Mockito.verify(configHelper, times(1))
         .loadConfigToDB(configType.capture(), releaseMap.capture());
     Map releaseInfo = releaseMap.getValue();
-    assertTrue(releaseInfo.containsKey("0.0.1"));
-    JsonNode releaseMetadata = Json.toJson(releaseInfo.get("0.0.1"));
-    assertValue(releaseMetadata, "imageTag", "0.0.1");
+    assertTrue(releaseInfo.containsKey("0.0.0.1-b1"));
+    JsonNode releaseMetadata = Json.toJson(releaseInfo.get("0.0.0.1-b1"));
+    assertValue(releaseMetadata, "imageTag", "0.0.0.1-b1");
   }
 
   @Test

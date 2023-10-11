@@ -11,6 +11,8 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.tasks.AddGFlagMetadata;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.utils.FileUtils;
@@ -75,6 +77,7 @@ public class ReleaseManager {
   private final AWSUtil awsUtil;
   private final GCPUtil gcpUtil;
   private final CloudUtilFactory cloudUtilFactory;
+  private final RuntimeConfGetter confGetter;
 
   @Inject
   public ReleaseManager(
@@ -83,13 +86,15 @@ public class ReleaseManager {
       GFlagsValidation gFlagsValidation,
       AWSUtil awsUtil,
       GCPUtil gcpUtil,
-      CloudUtilFactory cloudUtilFactory) {
+      CloudUtilFactory cloudUtilFactory,
+      RuntimeConfGetter confGetter) {
     this.configHelper = configHelper;
     this.appConfig = appConfig;
     this.gFlagsValidation = gFlagsValidation;
     this.awsUtil = awsUtil;
     this.gcpUtil = gcpUtil;
     this.cloudUtilFactory = cloudUtilFactory;
+    this.confGetter = confGetter;
   }
 
   public enum ReleaseState {
@@ -619,9 +624,11 @@ public class ReleaseManager {
 
       // Local copy pattern to account for the presence of characters prior to the file name itself.
       // (ensures that all local releases get imported prior to version checking).
-      Pattern ybPackagePatternCopy = Pattern.compile("[^.]+" + YB_PACKAGE_REGEX);
+      Pattern ybPackagePatternCopy =
+          Pattern.compile(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex));
 
-      Pattern ybHelmChartPatternCopy = Pattern.compile("[^.]+yugabyte-(.*)-helm.tar.gz");
+      Pattern ybHelmChartPatternCopy =
+          Pattern.compile(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex));
 
       copyFiles(ybReleasePath, ybReleasesPath, ybPackagePatternCopy, currentReleases.keySet());
       copyFiles(ybHelmChartPath, ybReleasesPath, ybHelmChartPatternCopy, currentReleases.keySet());
@@ -1029,6 +1036,7 @@ public class ReleaseManager {
     try {
       Files.walk(Paths.get(sourceDir))
           .map(String::valueOf)
+          .map(path -> path.substring(sourceDir.length()))
           .map(fileRegex::matcher)
           .filter(Matcher::matches)
           .forEach(
@@ -1038,7 +1046,7 @@ public class ReleaseManager {
                   log.debug("Skipping re-copy of release files for {}", version);
                   return;
                 }
-                File releaseFile = new File(match.group());
+                File releaseFile = new File(sourceDir + match.group());
                 File destinationFolder = new File(destinationDir, version);
                 File destinationFile = new File(destinationFolder, releaseFile.getName());
                 if (!destinationFolder.exists()) {

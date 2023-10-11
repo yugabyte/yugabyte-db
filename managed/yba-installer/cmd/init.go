@@ -11,9 +11,10 @@ import (
 	"os"
 
 	"github.com/spf13/viper"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/ybactl"
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
 // Get the commands that will require yba-ctl.yml to be setup before getting run
@@ -73,8 +74,7 @@ func ensureInstallerConfFile() {
 			common.DefaultNo)
 
 		// Copy over reference yaml before checking the user choice.
-		common.CopyFile(common.GetReferenceYaml(), common.InputFile())
-		os.Chmod(common.InputFile(), 0600)
+		config.WriteDefaultConfig()
 
 		if !userChoice {
 			log.Info(fmt.Sprintf(
@@ -88,9 +88,9 @@ func initServices() {
 	// services is an ordered map so services that depend on others should go later in the chain.
 	services = make(map[string]common.Component)
 	installPostgres := viper.GetBool("postgres.install.enabled")
-	services[PostgresServiceName] = NewPostgres("10.23")
+	services[PostgresServiceName] = NewPostgres("14.8")
 	services[PrometheusServiceName] = NewPrometheus("2.47.1")
-	services[YbPlatformServiceName] = NewPlatform(common.GetVersion())
+	services[YbPlatformServiceName] = NewPlatform(ybactl.Version)
 	// serviceOrder = make([]string, len(services))
 	if installPostgres {
 		serviceOrder = []string{PostgresServiceName, PrometheusServiceName, YbPlatformServiceName}

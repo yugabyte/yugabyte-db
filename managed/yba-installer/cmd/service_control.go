@@ -4,8 +4,8 @@ import (
 	"log"
 
 	"github.com/spf13/cobra"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/ybactl"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/yugaware"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/yugaware"
 )
 
 var startCmd = &cobra.Command{

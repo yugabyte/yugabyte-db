@@ -1,13 +1,15 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/ybactl"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/yugaware"
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/ybactlstate"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/yugaware"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
 var upgradeCmd = &cobra.Command{
@@ -28,24 +30,51 @@ var upgradeCmd = &cobra.Command{
 		// chose the correct workflow.
 		common.SetWorkflowUpgrade()
 
-		yugawareVersion, err := yugaware.InstalledVersionFromMetadata()
-		if err != nil {
-			log.Fatal("Cannot upgrade: " + err.Error())
+		if common.RunFromInstalled() {
+			log.Fatal("Upgrade must be executed from the target yba bundle, not the existing install")
 		}
-		if !common.LessVersions(yugawareVersion, ybactl.Version) {
-			log.Fatal("yba-ctl version must be greater then the installed YugabyteDB Anywhere version")
+
+		if !skipVersionChecks {
+			installedVersion, err := yugaware.InstalledVersionFromMetadata()
+			if err != nil {
+				log.Fatal("Cannot upgrade: " + err.Error())
+			}
+			targetVersion := ybactl.Version
+			if !common.LessVersions(installedVersion, targetVersion) {
+				log.Fatal(fmt.Sprintf("upgrade target version '%s' must be greater then the installed "+
+					"YugabyteDB Anywhere version '%s'", targetVersion, installedVersion))
+			}
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		state, err := ybactlstate.LoadState()
-		// Can have no stateif upgrading from a version before state existed
+		state, err := ybactlstate.Initialize()
+		// Can have no state if upgrading from a version before state existed.
 		if err != nil {
 			state = ybactlstate.New()
+			state.CurrentStatus = ybactlstate.InstalledStatus
+		}
+
+		if err := state.TransitionStatus(ybactlstate.UpgradingStatus); err != nil {
+			log.Fatal("cannot upgrade, invalid status transition: " + err.Error())
+		}
+
+		if err := state.ValidateReconfig(); err != nil {
+			log.Fatal("invalid reconfigure during upgrade: " + err.Error())
+		}
+
+		// Upgrade yba-ctl first.
+		if err := ybaCtl.Install(); err != nil {
+			log.Fatal("failed to upgrade yba-ctl")
 		}
 		results := preflight.Run(preflight.UpgradeChecks, skippedPreflightChecks...)
 		if preflight.ShouldFail(results) {
 			preflight.PrintPreflightResults(results)
 			log.Fatal("preflight failed")
+		}
+
+		state.CurrentStatus = ybactlstate.UpgradingStatus
+		if err := ybactlstate.StoreState(state); err != nil {
+			log.Fatal("could not update state: " + err.Error())
 		}
 
 		/* This is the postgres major version upgrade workflow!
@@ -54,7 +83,7 @@ var upgradeCmd = &cobra.Command{
 		services[YbPlatformServiceName].Stop()
 		services[PrometheusServiceName].Stop()
 
-		common.Upgrade(common.GetVersion())
+		common.Upgrade(ybactl.Version)
 
 		for _, name := range serviceOrder {
 			services[name].Upgrade()
@@ -69,7 +98,7 @@ var upgradeCmd = &cobra.Command{
 		*/
 
 		// Here is the postgres minor version/no upgrade workflow
-		common.Upgrade(common.GetVersion())
+		common.Upgrade(ybactl.Version)
 		for _, name := range serviceOrder {
 			log.Info("About to upgrade component " + name)
 			if err := services[name].Upgrade(); err != nil {
@@ -86,6 +115,8 @@ var upgradeCmd = &cobra.Command{
 			log.Info("Completed restart of component " + name)
 		}
 
+		common.WaitForYBAReady(ybactl.Version)
+
 		var statuses []common.Status
 		for _, service := range services {
 			status, err := service.Status()
@@ -100,10 +131,8 @@ var upgradeCmd = &cobra.Command{
 		common.PrintStatus(statuses...)
 		// Here ends the postgres minor version/no upgrade workflow
 
-		if err := ybaCtl.Install(); err != nil {
-			log.Fatal("failed to install yba-ctl")
-		}
-
+		state.CurrentStatus = ybactlstate.InstalledStatus
+		state.Version = ybactl.Version
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("failed to write state: " + err.Error())
 		}

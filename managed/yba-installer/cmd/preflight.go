@@ -4,13 +4,14 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight"
 )
 
 var (
 	skippedPreflightChecks []string
 	upgradePreflightChecks bool
+	migratePreflightChecks bool
 )
 
 var preflightCmd = &cobra.Command{
@@ -34,6 +35,8 @@ var preflightCmd = &cobra.Command{
 			checksToRun = preflight.InstallChecksWithPostgres
 			if upgradePreflightChecks {
 				checksToRun = preflight.UpgradeChecks
+			} else if migratePreflightChecks {
+				checksToRun = preflight.ReplicatedMigrateChecks
 			}
 			// TODO: We should allow the user to better specify which checks to run.
 			// Will do this as we implement a set of upgrade preflight checks
@@ -52,6 +55,8 @@ func init() {
 		[]string{}, "Preflight checks to skip by name")
 	preflightCmd.Flags().BoolVar(&upgradePreflightChecks, "upgrade", false,
 		"run preflight checks for upgrade")
+	preflightCmd.Flags().BoolVar(&migratePreflightChecks, "migrate", false,
+		"run preflight checks for replicted migration")
 
 	rootCmd.AddCommand(preflightCmd)
 }

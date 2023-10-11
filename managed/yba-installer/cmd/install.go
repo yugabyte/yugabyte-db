@@ -5,10 +5,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/ybactlstate"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
 var installCmd = &cobra.Command{
@@ -25,6 +25,17 @@ var installCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		state, err := ybactlstate.Initialize()
+		if err != nil {
+			log.Fatal("failed to initialize state " + err.Error())
+		}
+		if err := state.TransitionStatus(ybactlstate.InstallingStatus); err != nil {
+			log.Fatal("failed to start install: " + err.Error())
+		}
+
+		if err := ybaCtl.Install(); err != nil {
+			log.Fatal("failed to install yba-ctl: " + err.Error())
+		}
 
 		// Install the license if it is provided.
 		if licensePath != "" {
@@ -40,9 +51,13 @@ var installCmd = &cobra.Command{
 				"rerun the command with --skip_preflight <check name1>,<check name2>")
 		}
 
-		// Run install
-		ybaCtl.MarkYBAInstallStart()
-		common.Install(common.GetVersion())
+		// Mark install start.
+		state.CurrentStatus = ybactlstate.InstallingStatus
+		if err := ybactlstate.StoreState(state); err != nil {
+			log.Fatal("failed to write state: " + err.Error())
+		}
+
+		common.Install(ybaCtl.Version())
 
 		for _, name := range serviceOrder {
 			log.Info("About to install component " + name)
@@ -51,14 +66,11 @@ var installCmd = &cobra.Command{
 			}
 			log.Info("Completed installing component " + name)
 		}
-		if err := ybaCtl.Install(); err != nil {
-			log.Fatal("failed to install yba-ctl")
-		}
-		state := ybactlstate.New()
+		state.CurrentStatus = ybactlstate.InstalledStatus
 		if err := ybactlstate.StoreState(state); err != nil {
-			log.Fatal("failed to write state: " + err.Error())
+			log.Fatal("after full install, failed to update state: " + err.Error())
 		}
-		common.WaitForYBAReady()
+		common.WaitForYBAReady(ybaCtl.Version())
 
 		var statuses []common.Status
 		for _, service := range services {
