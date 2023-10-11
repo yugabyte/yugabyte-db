@@ -506,9 +506,9 @@ SELECT sum(salary),
 FROM empsalary GROUP BY depname;
   sum  | row_number |  sum
 -------+------------+-------
- 14600 |          3 | 14600
-  7400 |          2 | 22000
  25100 |          1 | 47100
+  7400 |          2 | 22000
+ 14600 |          3 | 14600
 (3 rows)
 
 -- identical windows with different names
@@ -3064,13 +3064,13 @@ SELECT * FROM
           min(salary) OVER (PARTITION BY depname || 'A', depname) depminsalary
    FROM empsalary) emp
 WHERE depname = 'sales';
-                             QUERY PLAN
----------------------------------------------------------------------
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
  Subquery Scan on emp
    ->  WindowAgg
-         ->  Sort
-               Sort Key: (((empsalary.depname)::text || 'A'::text))
-               ->  WindowAgg
+         ->  WindowAgg
+               ->  Sort
+                     Sort Key: (((empsalary.depname)::text || 'A'::text))
                      ->  Seq Scan on empsalary
                            Filter: ((depname)::text = 'sales'::text)
 (7 rows)
@@ -3083,16 +3083,16 @@ SELECT * FROM
           min(salary) OVER (PARTITION BY depname) depminsalary
    FROM empsalary) emp
 WHERE depname = 'sales';
-                        QUERY PLAN
------------------------------------------------------------
+                      QUERY PLAN                       
+-------------------------------------------------------
  Subquery Scan on emp
    Filter: ((emp.depname)::text = 'sales'::text)
    ->  WindowAgg
          ->  Sort
-               Sort Key: empsalary.depname
+               Sort Key: empsalary.enroll_date
                ->  WindowAgg
                      ->  Sort
-                           Sort Key: empsalary.enroll_date
+                           Sort Key: empsalary.depname
                            ->  Seq Scan on empsalary
 (9 rows)
 
