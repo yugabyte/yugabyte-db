@@ -1011,9 +1011,9 @@ YbCheckScanTypes(YbScanDesc ybScan, YbScanPlan scan_plan, int i)
 	       IsPolymorphicType(valtypid);
 }
 
-static void
+static bool
 YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
-						int skey_index)
+								int skey_index)
 {
 	int last_att_no = YBFirstLowInvalidAttributeNumber;
 	Relation index = ybScan->index;
@@ -1069,14 +1069,15 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 	 * to push down.
 	 */
 
-	for (int i = 0; i < index->rd_index->indnkeyatts; i++)
+	for (int i = 0; (i < index->rd_index->indnkeyatts) && can_pushdown; i++)
 	{
 		if (index->rd_indoption[i] & INDOPTION_HASH)
 		{
 			can_pushdown = false;
-			break;
 		}
 	}
+
+	bool needs_recheck = !can_pushdown;
 
 	if (can_pushdown)
 	{
@@ -1136,20 +1137,21 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 				subkey_index < subkey_count &&
 				(subkeys[subkey_index]->sk_attno - 1) == j;
 			/*
-				* Is the current column stored in ascending order in the
-				* underlying index?
-				*/
+			 * Is the current column stored in ascending order in the
+			 * underlying index?
+			 */
 			bool asc = (index->rd_indoption[j] & INDOPTION_DESC) == 0;
 
 			/*
-				* If this column has different directionality than the
-				* first column then we have to adjust the bounds on this
-				* column.
-				*/
+			 * If this column has different directionality than the
+			 * first column then we have to adjust the bounds on this
+			 * column.
+			 */
 			if(!is_column_specified ||
 				(asc != is_direction_asc && !is_point_scan))
 			{
 				col_values[j] = NULL;
+				needs_recheck = true;
 			}
 			else
 			{
@@ -1188,6 +1190,8 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 										 is_inclusive));
 		}
 	}
+
+	return needs_recheck;
 }
 
 static bool
@@ -1433,7 +1437,17 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 		if (YbIsRowHeader(key) &&
 			!YbIsSearchArray(key))
 		{
-			YbBindRowComparisonKeys(ybScan, scan_plan, i);
+			bool needs_recheck =
+				YbBindRowComparisonKeys(ybScan, scan_plan, i);
+			ybScan->is_full_cond_bound &= !needs_recheck;
+			/*
+			 * Full primary-key RowComparison bindings don't interact
+			 * or interfere with other bindings to the same columns. They
+			 * just set the upper/lower bounds of the requested scan. We
+			 * can just continue looking at the next keys without recording this
+			 * key in the offsets array below.
+			 */
+			continue;
 		}
 
 		/* Check if this is primary columns */
