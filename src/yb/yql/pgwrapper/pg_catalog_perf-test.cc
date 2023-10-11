@@ -46,12 +46,15 @@ METRIC_DECLARE_counter(pg_response_cache_entries_removed_by_gc);
 DECLARE_bool(ysql_enable_read_request_caching);
 DECLARE_bool(ysql_minimal_catalog_caches_preload);
 DECLARE_bool(ysql_catalog_preload_additional_tables);
+DECLARE_bool(ysql_use_relcache_file);
 DECLARE_string(ysql_catalog_preload_additional_table_list);
 DECLARE_uint64(TEST_pg_response_cache_catalog_read_time_usec);
 DECLARE_uint64(TEST_committed_history_cutoff_initial_value_usec);
 DECLARE_uint32(pg_cache_response_renew_soft_lifetime_limit_ms);
 DECLARE_uint64(pg_response_cache_size_bytes);
 DECLARE_uint32(pg_response_cache_size_percentage);
+
+using namespace std::literals;
 
 namespace yb::pgwrapper {
 namespace {
@@ -60,35 +63,14 @@ Status EnableCatCacheEventLogging(PGConn* conn) {
   return conn->Execute("SET yb_debug_log_catcache_events = ON");
 }
 
-class Configuration {
- public:
-  constexpr Configuration(bool minimal_catalog_caches_preload,
-                          std::optional<uint64_t> response_cache_size_bytes = std::nullopt)
-    : minimal_catalog_caches_preload_(minimal_catalog_caches_preload),
-      response_cache_size_bytes_(response_cache_size_bytes),
-      preload_additional_catalog_tables_(false) {}
+struct Configuration {
+  bool enable_read_request_caching() const { return response_cache_size_bytes.has_value(); }
 
-  constexpr Configuration(const std::string_view& preload_catalog_list,
-                          bool preload_catalog_tables,
-                          std::optional<uint64_t> response_cache_size_bytes = std::nullopt)
-      : minimal_catalog_caches_preload_(false),
-        response_cache_size_bytes_(response_cache_size_bytes),
-        preload_additional_catalog_list_(preload_catalog_list),
-        preload_additional_catalog_tables_(preload_catalog_tables) {}
-
-  bool minimal_catalog_caches_preload() const { return minimal_catalog_caches_preload_; }
-  bool enable_read_request_caching() const { return response_cache_size_bytes_.has_value(); }
-  std::optional<uint64_t> response_cache_size_bytes() const { return response_cache_size_bytes_; }
-  std::optional<std::string_view> preload_additional_catalog_list() const {
-    return preload_additional_catalog_list_;
-  }
-  bool preload_additional_catalog_tables() const { return preload_additional_catalog_tables_; }
-
- private:
-  bool minimal_catalog_caches_preload_;
-  std::optional<uint64_t> response_cache_size_bytes_;
-  std::optional<std::string_view> preload_additional_catalog_list_;
-  bool preload_additional_catalog_tables_;
+  const bool minimal_catalog_caches_preload = false;
+  const std::optional<uint64_t> response_cache_size_bytes = std::nullopt;
+  const std::string_view preload_additional_catalog_list = {};
+  const bool preload_additional_catalog_tables = false;
+  const bool use_relcache_file = true;
 };
 
 struct MetricCounters {
@@ -142,18 +124,19 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_read_request_caching) =
         config.enable_read_request_caching();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_minimal_catalog_caches_preload) =
-        config.minimal_catalog_caches_preload();
+        config.minimal_catalog_caches_preload;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_response_cache_size_percentage) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_tables) =
-        config.preload_additional_catalog_tables();
-    if (config.response_cache_size_bytes()) {
+        config.preload_additional_catalog_tables;
+    if (config.response_cache_size_bytes.has_value()) {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_response_cache_size_bytes) =
-          *config.response_cache_size_bytes();
+          *config.response_cache_size_bytes;
     }
-    if (config.preload_additional_catalog_list()) {
+    if (!config.preload_additional_catalog_list.empty()) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_table_list) =
-        std::string(*config.preload_additional_catalog_list());
+        std::string(config.preload_additional_catalog_list);
     }
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_relcache_file) = config.use_relcache_file;
     PgMiniTestBase::SetUp();
     metrics_.emplace(GetMetricMap(*cluster_->mini_master()->master()),
                      GetMetricMap(*cluster_->mini_tablet_server(0)->server()));
@@ -241,28 +224,39 @@ class PgCatalogPerfBasicTest : public PgCatalogPerfTestBase {
 };
 
 constexpr auto kResponseCacheSize5MB = 5 * 1024 * 1024;
-constexpr auto* kAdditionalTableList = "pg_statistic,pg_invalid";
+constexpr auto kPreloadCatalogList =
+    "pg_cast,pg_inherits,pg_policy,pg_proc,pg_tablespace,pg_trigger"sv;
+constexpr auto kExtendedTableList =
+    "pg_cast,pg_inherits,pg_policy,pg_proc,pg_tablespace,pg_trigger,pg_statistic,pg_invalid"sv;
 
-constexpr Configuration kConfigDefault(
-    /*minimal_catalog_caches_preload=*/false);
+constexpr Configuration kConfigDefault;
 
-constexpr Configuration kConfigMinPreload(
-    /*minimal_catalog_caches_preload=*/true);
+constexpr Configuration kConfigMinPreload{.minimal_catalog_caches_preload = true};
 
-const Configuration kConfigWithUnlimitedCache(
-    /*minimal_catalog_caches_preload=*/false, /*response_cache_size_bytes=*/0);
+constexpr Configuration kConfigWithUnlimitedCache{
+    .response_cache_size_bytes = 0, .preload_additional_catalog_list = kPreloadCatalogList};
 
-constexpr Configuration kConfigWithLimitedCache(
-    /*minimal_catalog_caches_preload=*/false, kResponseCacheSize5MB);
+constexpr Configuration kConfigWithLimitedCache{
+    .response_cache_size_bytes = kResponseCacheSize5MB,
+    .preload_additional_catalog_list = kPreloadCatalogList};
 
-constexpr Configuration kConfigWithPreloadAdditionalCatList(
-    kAdditionalTableList, /*preload_catalog_tables=*/false, kResponseCacheSize5MB);
+constexpr Configuration kConfigWithPreloadAdditionalCatList{
+    .response_cache_size_bytes = kResponseCacheSize5MB,
+    .preload_additional_catalog_list = kExtendedTableList};
 
-constexpr Configuration kConfigWithPreloadAdditionalCatTables(
-    "", /*preload_catalog_tables=*/true, kResponseCacheSize5MB);
+constexpr Configuration kConfigWithPreloadAdditionalCatTables{
+    .response_cache_size_bytes = kResponseCacheSize5MB,
+    .preload_additional_catalog_list = kPreloadCatalogList,
+    .preload_additional_catalog_tables = true};
 
-constexpr Configuration kConfigWithPreloadAdditionalCatBoth(
-    kAdditionalTableList, /*preload_catalog_tables=*/true, kResponseCacheSize5MB);
+constexpr Configuration kConfigWithPreloadAdditionalCatBoth{
+    .response_cache_size_bytes = kResponseCacheSize5MB,
+    .preload_additional_catalog_list = kExtendedTableList,
+    .preload_additional_catalog_tables = true};
+
+constexpr Configuration kConfigPredictableMemoryUsage{
+    .response_cache_size_bytes = 0,
+    .use_relcache_file = false};
 
 template<class Base, const Configuration& Config>
 class ConfigurableTest : public Base {
@@ -284,6 +278,8 @@ using PgPreloadAdditionalCatTablesTest =
     ConfigurableTest<PgCatalogPerfTestBase, kConfigWithPreloadAdditionalCatTables>;
 using PgPreloadAdditionalCatBothTest =
     ConfigurableTest<PgCatalogPerfTestBase, kConfigWithPreloadAdditionalCatBoth>;
+using PgPredictableMemoryUsageTest =
+    ConfigurableTest<PgCatalogPerfTestBase, kConfigPredictableMemoryUsage>;
 
 class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePerfTest {
  protected:
@@ -579,6 +575,15 @@ TEST_F_EX(PgCatalogPerfTest, ResponseCacheIsDBSpecific, PgCatalogWithUnlimitedCa
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDBName));
   ASSERT_OK(rpc_count_checker(kDBName));
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          RPCCountOnStartupPredictableMemoryUsage,
+          PgPredictableMemoryUsageTest) {
+  const auto first_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
+  ASSERT_EQ(first_connect_rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
+  const auto subsequent_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
+  ASSERT_EQ(subsequent_connect_rpc_count, kSubsequentConnectionRPCCount);
 }
 
 } // namespace yb::pgwrapper
