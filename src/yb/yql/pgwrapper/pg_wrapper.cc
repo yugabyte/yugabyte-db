@@ -44,6 +44,7 @@
 #include "yb/util/thread.h"
 #include "yb/util/to_stream.h"
 
+#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
 
@@ -390,6 +391,9 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   metricsLibs.push_back("yb_pg_metrics");
   metricsLibs.push_back("pgaudit");
   metricsLibs.push_back("pg_hint_plan");
+  if (FLAGS_enable_yb_auh) {
+    metricsLibs.push_back("yb_auh");
+  }
 
   vector<string> lines;
   string line;
