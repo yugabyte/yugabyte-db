@@ -7,7 +7,7 @@
 # <test_name>", output those lines and return exit code 2.
 #
 # Exit code 3: If ported tests of the schedule don't match the ordering of
-# serial_schedule, output those lines and return exit code 3.
+# parallel_schedule, output those lines and return exit code 3.
 
 # Switch to script dir.
 cd "${BASH_SOURCE%/*}" || exit 1
@@ -36,18 +36,20 @@ fi
 
 # Check schedule test ordering:
 # For ported tests (those beginning with "yb_pg_"), they should be ordered the
-# same way as in serial_schedule.  Ignore some tests:
+# same way as in parallel_schedule.  For now, also enforce ordering to be the
+# same as tests in the same group, even if it is not strictly required.  Ignore
+# some tests:
 # - yb_pg_hint_plan*: these are ported from thirdparty-extension
 # - yb_pg_hypopg: this is ported from thirdparty-extension
-# - yb_pg_numeric_big: this is in GNUmakefile instead of serial_schedule
+# - yb_pg_numeric_big: this is in GNUmakefile instead of parallel_schedule
 # - yb_pg_orafce*: these are ported from thirdparty-extension
 # - yb_pg_stat: this is a YB test, not ported: prefix "yb_" + name "pg_stat"
 # - yb_pg_stat_backend: this is a YB test, not ported
 TESTS=$(diff \
-          <(grep '^test: yb_pg_' "$schedule" | sed 's/: yb_pg_/: /') \
-          serial_schedule \
+          <(grep '^test: yb_pg_' "$schedule" | sed 's/test: yb_pg_//') \
+          <(grep '^test: ' parallel_schedule | sed 's/test: //' | tr ' ' '\n') \
         | grep '^<' \
-        | sed 's/< test: /test: yb_pg_/' \
+        | sed 's/< /test: yb_pg_/' \
         | grep -Ev '^test: yb_pg_(hint_plan|hypopg$|numeric_big$|orafce|stat$|stat_backend$)')
 if [ -n "$TESTS" ]; then
   echo "$TESTS"
