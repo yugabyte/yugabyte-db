@@ -31,7 +31,7 @@ The valid *arguments* for fall-forward setup are described in the following tabl
 | --enable-upsert | Enable UPSERT mode on tables while streaming changes to fall forward database. (default: true)<br>Usage for disabling the mode: `yb-voyager import data ... --enable-upsert=false` |
 | --exclude-table-list <tableNames> | Comma-separated list of tables to exclude while migrating data (ignored if `--table-list` is used). The `exclude-table-list` argument is unsupported for import data during live migration.|
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
-| --ff-db-host <hostname> | Domain name or IP address of the machine on which Fall-forward database server is running. (default: "127.0.0.1") |
+| --ff-db-host <hostname> | Domain name or IP address of the machine on which Fall-forward database server is running. (default: 127.0.0.1) |
 | --ff-db-name <name> | Name of the database in the fall-forward database server on which import needs to be done. |
 | --ff-db-password <password> | Password to connect to the fall-forward database server. Alternatively, you can also specify the password by setting the environment variable `FF_DB_PASSWORD`. If you don't provide a password via the CLI or environment variable during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
 | --ff-db-port <port> | Port number of the fall-forward database server. (default: 1521 (Oracle)) |

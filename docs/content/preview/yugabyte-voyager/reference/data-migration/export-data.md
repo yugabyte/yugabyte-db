@@ -12,7 +12,7 @@ type: docs
 ---
 
 
-This page describes the usage of the following export commands:
+This page describes the following export commands:
 
 - [export data](#export-data)
 - [export data status](#export-data-status)
