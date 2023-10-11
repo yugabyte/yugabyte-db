@@ -75,9 +75,9 @@ export const ConfigureBootstrapStep = ({
         target universe.
       </p>
       <p>
-        {`${bootstrapRequiredTableUUIDs.length} out of ${values.tableUUIDs.length} tables in
+        {`${bootstrapRequiredTableUUIDs.length} out of ${values.tableUUIDs.length} table(s) in
           ${keyspaces.size} `}
-        keyspaces selected for replication
+        database(s) selected for replication
         <b> contain data and need to be bootstrapped</b> to enable replication.
       </p>
       <div className={styles.formFieldContainer}>
