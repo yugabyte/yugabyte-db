@@ -182,10 +182,10 @@ restore_postgres_backup() {
 
   if [[ "${verbose}" = true ]]; then
     restore_cmd="${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c -v -d \
-      ${PLATFORM_DB_NAME} ${backup_path}"
+      ${PLATFORM_DB_NAME}"
   else
     restore_cmd="${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c -d \
-      ${PLATFORM_DB_NAME} ${backup_path}"
+      ${PLATFORM_DB_NAME}"
   fi
 
   # Run pg_restore.
@@ -193,7 +193,7 @@ restore_postgres_backup() {
   if [[ "$migration" = true ]]; then
     set +e
   fi
-  docker_aware_cmd "postgres" "${restore_cmd}"
+  docker_aware_cmd "postgres" "${restore_cmd}" < "${backup_path}"
   set -e
   echo "Done"
 }
