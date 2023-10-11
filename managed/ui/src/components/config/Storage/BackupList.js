@@ -114,7 +114,7 @@ export const BackupList = (props) => {
             onClick={(e) => {
               if (!hasNecessaryPerm({
                 onResource: 'CUSTOMER_ID',
-                ...UserPermissionMap.backup
+                ...UserPermissionMap.listBackup
               })) {
                 return;
               }
@@ -124,7 +124,7 @@ export const BackupList = (props) => {
             }}
             disabled={!hasNecessaryPerm({
               onResource: 'CUSTOMER_ID',
-              ...UserPermissionMap.backup
+              ...UserPermissionMap.listBackup
             })}
           >
             Show associated backups

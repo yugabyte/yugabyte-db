@@ -787,7 +787,7 @@
           "title": "Edit Role",
           "viewUsers": {
             "assignedUser": "Assigned users",
-            "noUsersAssgined": "No users assigned with this role"
+            "noUsersAssgined": "No users is assigned to this role"
           },
           "confirmModal": {
             "title": "Are you sure?",

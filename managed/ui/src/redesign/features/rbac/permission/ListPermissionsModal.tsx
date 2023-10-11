@@ -20,6 +20,7 @@ import {
   makeStyles
 } from '@material-ui/core';
 import { YBCheckbox, YBModal } from '../../../components';
+import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
 import { resourceOrderByRelevance } from '../common/RbacUtils';
 import { Action, Permission, Resource, ResourceType } from './IPermission';
 import { ArrowDropDown } from '@material-ui/icons';
@@ -135,6 +136,11 @@ function ListPermissionsModal({
   const classes = useStyles();
 
   const permissionGroups = groupBy(permissionsList, (perm) => perm.resourceType);
+  if (isDefinedNotNull(permissionGroups[Resource.DEFAULT])) {
+    permissionGroups[Resource.DEFAULT] = permissionGroups[Resource.DEFAULT].filter(
+      (p) => p.action !== Action.SUPER_ADMIN_ACTIONS
+    );
+  }
 
   const dependentPermissions = flattenDeep(
     values(selectedPermissions).map((permissions) => {
