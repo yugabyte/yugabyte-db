@@ -43,7 +43,7 @@ yb-voyager fall-forward switchover --export-dir /path/to/yb/export/dir
 
 ## fall-forward status
 
-Shows the status of the fall-forward switchover to the fall-forward database. Status can be "INITIATED", "NOT INITIATED", or "COMPLETED".
+Shows the status of the fall-forward switchover to the fall-forward database. Status can be INITIATED, NOT INITIATED, or COMPLETED.
 
 ### Syntax
 
@@ -63,5 +63,5 @@ The valid *arguments* for fall-forward switchover status are described in the fo
 ### Example
 
 ```sh
-yb-voyager fall-forward status --export-dir /dir/export-dir \
+yb-voyager fall-forward status --export-dir /dir/export-dir
 ```

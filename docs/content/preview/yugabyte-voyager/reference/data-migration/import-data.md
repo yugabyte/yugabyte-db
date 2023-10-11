@@ -36,7 +36,7 @@ The valid *arguments* for import data are described in the following table:
 | :------- | :------------------------ |
 | --batch-size <number> | Size of batches in the number of rows generated for ingestion during import data. (default: 20000 rows)<br>Example: `yb-voyager import data ... --batch-size 20000` |
 | --continue-on-error | Ignores the error while executing the DDLs for resuming sequences on target db after the data is imported. (default: false) |
-| --disable-pb | Use this argument to not display progress bars. For live migration, `--disable-pb` can also be used to hide metrics for import data. (default: false) |
+| --disable-pb | Turn off the display of progress bars. For live migration, `--disable-pb` can also be used to hide metrics for import data. (default: false) |
 | --enable-upsert | Enable UPSERT mode on target tables while importing data. (default: true)<br> Usage for disabling the mode: `yb-voyager import data ... --enable-upsert=false` |
 | --table-list | Comma-separated list of the tables for which data is exported. Do not use in conjunction with `--exclude-table-list`. This argument is unsupported for live migration. |
 | --exclude-table-list <tableNames> | Comma-separated list of tables to exclude while exporting data. For the import data command, the list of table names passed in the `--table-list` and `--exclude-table-list` are, by default, case sensitive. You don't need to enclose them in double quotes. This argument is unsupported for live migration. |

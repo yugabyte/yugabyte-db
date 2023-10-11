@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-This page describes the usage of the following cutover commands:
+This page describes the following cutover commands:
 
 - [cutover initiate](#cutover-initiate)
 - [cutover status](#cutover-status)
@@ -43,7 +43,7 @@ yb-voyager cutover initiate --export-dir /dir/export-dir
 
 ### cutover status
 
-Shows the status of the cutover to the YugabyteDB database. Status can be "INITIATED", "NOT INITIATED", or "COMPLETED".
+Shows the status of the cutover to the YugabyteDB database. Status can be INITIATED, NOT INITIATED, or COMPLETED.
 
 ## Syntax
 

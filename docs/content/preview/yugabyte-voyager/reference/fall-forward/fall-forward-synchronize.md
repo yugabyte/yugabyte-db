@@ -31,7 +31,7 @@ The valid *arguments* for fall-forward synchronize are described in the followin
 | -h, --help | Command line help for synchronize. |
 | --send-diagnostics | Send diagnostics information to Yugabyte. (default: true) |
 | --table-list | Comma-separated list of the tables to export data. Do not use in conjunction with `--exclude-table-list.`|
-| --target-db-host <hostname> | Domain name or IP address of the machine on which target database server is running. (default: "127.0.0.1")|
+| --target-db-host <hostname> | Domain name or IP address of the machine on which target database server is running. (default: 127.0.0.1)|
 | --target-db-name <name> | Target database name on which import needs to be done.|
 | --target-db-password <password>| Target database password. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |
 | --target-db-port <port> | Port number of the target database machine that runs the YugabyteDB YSQL API. (default: 5433)|

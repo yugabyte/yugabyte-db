@@ -21,7 +21,7 @@ Usage: yb-voyager archive changes [ <arguments> ... ]
 
 ### Arguments
 
-The valid *arguments* for archive changes status are described in the following table:
+The valid *arguments* for archive changes are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
