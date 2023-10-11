@@ -107,6 +107,10 @@ Install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisit
   </div>
 </div>
 
+### Collect diagnostics
+
+You can use the [--send-diagnostics flag](../diagnostics-report/#configuration-flag) along with yb-voyager for any migration step to send migration diagnostics to the YugabyteDB diagnostics service. For more details, refer to [Diagnostics report](../diagnostics-report/).
+
 ## Next step
 
 - [Migrate](../migrate/)
