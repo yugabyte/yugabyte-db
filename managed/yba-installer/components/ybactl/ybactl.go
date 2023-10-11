@@ -22,7 +22,7 @@ func New() *YbaCtlComponent {
 
 // Setup will create the base install directory needed for initialization.
 func (yc *YbaCtlComponent) Setup() error {
-	err := common.MkdirAll(common.YbactlInstallDir(), 0755)
+	err := common.MkdirAll(common.YbactlInstallDir(), common.DirMode)
 	return err
 }
 
