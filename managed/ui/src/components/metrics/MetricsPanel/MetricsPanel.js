@@ -181,7 +181,6 @@ export default class MetricsPanel extends Component {
       } else {
         metric.layout.yaxis = { range: [0, max] };
       }
-      metric.layout.yaxis.fixedrange = true;
       metric.layout.font = {
         family: METRIC_FONT
       };
