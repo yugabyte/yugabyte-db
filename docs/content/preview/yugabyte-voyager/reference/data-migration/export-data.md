@@ -47,7 +47,7 @@ The valid *arguments* for export data are described in the following table:
 | --oracle-db-sid <SID> | Oracle System Identifier you can use while exporting data from Oracle instances. Oracle migrations only.|
 | --oracle-home <path> | Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Not applicable during import phases or analyze schema. Oracle migrations only.|
 | [--oracle-tns-alias](../../yb-voyager-cli/#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
-| --parallel-jobs <connectionCount> | Number of parallel jobs to extract data from source database. (default: 4; exports 4 tables at a time by default.) If you use [BETA_FAST_DATA_EXPORT](../../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle) to accelerate data export, yb-voyager exports only one table at a time and the --parallel-jobs argument is ignored. |
+| --parallel-jobs <connectionCount> | Number of parallel jobs to extract data from source database. (default: 4; exports 4 tables at a time by default.) If you use [BETA_FAST_DATA_EXPORT](../../../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle) to accelerate data export, yb-voyager exports only one table at a time and the --parallel-jobs argument is ignored. |
 | --send-diagnostics | Send diagnostics information to Yugabyte. (default: true)|
 | --source-db-host <hostname> | Domain name or IP address of the machine on which the source database server is running. |
 | --source-db-name <name> | Source database name. |

@@ -341,7 +341,7 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
         --post-import-data
 ```
 
-Refer to [import schema](../../reference/schema-migration/import-data/#import-data-status) for details about the arguments.
+Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
 
 ### Verify migration
 
