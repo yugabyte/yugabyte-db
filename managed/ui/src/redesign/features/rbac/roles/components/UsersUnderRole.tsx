@@ -13,7 +13,7 @@ import { flattenDeep, values } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { Typography, makeStyles } from '@material-ui/core';
 import { getRoleBindingsForAllUsers } from '../../api';
-import { RoleContextMethods, RoleViewContext } from '../RoleContext';
+import { Pages, RoleContextMethods, RoleViewContext } from '../RoleContext';
 import { UsersTab } from '../../common/rbac_constants';
 
 const useStyles = makeStyles((theme) => ({
@@ -63,7 +63,7 @@ export const UsersUnderRole = forwardRef((_, forwardRef) => {
 
   const onCancel = () => {
     setCurrentRole(null);
-    setCurrentPage('LIST_ROLE');
+    setCurrentPage(Pages.LIST_ROLE);
   };
 
   useImperativeHandle(

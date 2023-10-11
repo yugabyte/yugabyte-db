@@ -11,7 +11,7 @@ import { FC, useEffect, useState } from 'react';
 import { useToggle } from 'react-use';
 import { Controller, useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import { find } from 'lodash';
+import { find, findIndex } from 'lodash';
 import { Box, makeStyles } from '@material-ui/core';
 import { YBTable } from '../../../../components/backupv2/components/restore/pages/selectTables/YBTable';
 import { YBCheckboxField, YBModal } from '../../../components';
@@ -92,8 +92,6 @@ const useStyle = makeStyles((theme) => ({
   }
 }));
 
-const ResourceGroupIndex = 0;
-
 export const SelectUniverseResource: FC<SelectUniverseResourceProps> = ({
   fieldIndex,
   universeList
@@ -108,6 +106,11 @@ export const SelectUniverseResource: FC<SelectUniverseResourceProps> = ({
 
   const role = watch(`roleResourceDefinitions.${fieldIndex}.role`);
   const roleMappings = watch(`roleResourceDefinitions.${fieldIndex}.resourceGroup`);
+
+  const ResourceGroupIndex = Math.max(
+    findIndex(roleMappings.resourceDefinitionSet, { resourceType: Resource.UNIVERSE }),
+    0
+  );
 
   const [selectedResources, setSelectedResources] = useState<UniverseNameAndUUIDMapping[]>(
     roleMappings.resourceDefinitionSet[ResourceGroupIndex].resourceUUIDSet

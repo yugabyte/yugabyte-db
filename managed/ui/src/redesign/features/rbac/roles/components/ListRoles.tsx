@@ -22,7 +22,7 @@ import { YBLoadingCircleIcon } from '../../../../../components/common/indicators
 import { YBSearchInput } from '../../../../../components/common/forms/fields/YBSearchInput';
 import { RoleTypeComp } from '../../common/RbacUtils';
 
-import { RoleContextMethods, RoleViewContext } from '../RoleContext';
+import { EditViews, Pages, RoleContextMethods, RoleViewContext } from '../RoleContext';
 import { ForbiddenRoles, Role, RoleType } from '../IRoles';
 import { getAllRoles, getRoleBindingsForAllUsers } from '../../api';
 import { RbacValidator, hasNecessaryPerm } from '../../common/RbacValidator';
@@ -115,12 +115,11 @@ const ListRoles = () => {
         icon: <User />,
         callback: () => {
           setCurrentRole(role);
-          setEditView("USERS");
-          setCurrentPage('EDIT_ROLE');
+          setEditView(EditViews.USERS);
+          setCurrentPage(Pages.EDIT_ROLE);
         }
       }
     ];
-
 
     if (
       hasNecessaryPerm({
@@ -128,14 +127,13 @@ const ListRoles = () => {
         onResource: role.roleUUID
       })
     ) {
-
       menuOptions.push({
         text: t('table.moreActions.editRole'),
         icon: <Create />,
         callback: () => {
           setCurrentRole(role);
-          setEditView("CONFIGURATIONS");
-          setCurrentPage('EDIT_ROLE');
+          setEditView(EditViews.CONFIGURATIONS);
+          setCurrentPage(Pages.EDIT_ROLE);
         }
       });
 
@@ -149,8 +147,8 @@ const ListRoles = () => {
               roleUUID: '',
               name: ''
             });
-            setEditView("CONFIGURATIONS");
-            setCurrentPage('CREATE_ROLE');
+            setEditView(EditViews.CONFIGURATIONS);
+            setCurrentPage(Pages.CREATE_ROLE);
           }
         });
 
@@ -213,7 +211,7 @@ const ListRoles = () => {
               variant="primary"
               onClick={() => {
                 setCurrentRole(null);
-                setCurrentPage('CREATE_ROLE');
+                setCurrentPage(Pages.CREATE_ROLE);
               }}
               data-testid={`rbac-resource-create-role`}
             >

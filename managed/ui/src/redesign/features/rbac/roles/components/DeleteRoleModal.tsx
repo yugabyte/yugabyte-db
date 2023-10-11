@@ -14,7 +14,7 @@ import { toast } from 'react-toastify';
 import { Trans, useTranslation } from 'react-i18next';
 import { makeStyles } from '@material-ui/core';
 import { YBInputField, YBModal } from '../../../../components';
-import { RoleContextMethods, RoleViewContext } from '../RoleContext';
+import { Pages, RoleContextMethods, RoleViewContext } from '../RoleContext';
 import { deleteRole } from '../../api';
 import { createErrorMessage } from '../../../universe/universe-form/utils/helpers';
 import { Role } from '../IRoles';
@@ -59,7 +59,7 @@ export const DeleteRoleModal: FC<DeleteRoleProps> = ({ open, onHide }) => {
     onSuccess: () => {
       toast.success(t('successMsg', { role_name: currentRole?.name }));
       queryClient.invalidateQueries('roles');
-      setCurrentPage('LIST_ROLE');
+      setCurrentPage(Pages.LIST_ROLE);
       onHide();
     },
     onError: (err) => {
