@@ -3650,6 +3650,47 @@ INSERT INTO pk_hash_range_int SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
  3 |  3 |  2 |  92
 (90 rows)
 
+/*+ IndexScan(pk_hash_range_int) */ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_hash_range_int WHERE h = 1 AND (r1, r2) <= (3, 2) AND r1 <= 2;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Index Scan using pk_hash_range_int_pkey on pk_hash_range_int (actual rows=15 loops=1)
+   Index Cond: ((h = 1) AND (ROW(r1, r2) <= ROW(3, 2)) AND (r1 <= 2))
+(2 rows)
+
+/*+ IndexScan(pk_hash_range_int) */ SELECT * FROM pk_hash_range_int WHERE h = 1 AND (r1, r2) <= (3, 2) AND r1 <= 2;
+ h | r1 | r2 | r3
+---+----+----+----
+ 1 |  0 |  0 | 25
+ 1 |  0 |  1 | 26
+ 1 |  0 |  2 | 27
+ 1 |  0 |  3 | 28
+ 1 |  0 |  4 | 29
+ 1 |  1 |  0 | 30
+ 1 |  1 |  1 | 31
+ 1 |  1 |  2 | 32
+ 1 |  1 |  3 | 33
+ 1 |  1 |  4 | 34
+ 1 |  2 |  0 | 35
+ 1 |  2 |  1 | 36
+ 1 |  2 |  2 | 37
+ 1 |  2 |  3 | 38
+ 1 |  2 |  4 | 39
+(15 rows)
+
+/*+ IndexScan(pk_hash_range_int) */ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT sum(r1) FROM pk_hash_range_int WHERE h = 1 AND (r1, r2) <= (3, 2) AND r1 <= 2;
+                                         QUERY PLAN
+---------------------------------------------------------------------------------------------
+ Aggregate (actual rows=1 loops=1)
+   ->  Index Scan using pk_hash_range_int_pkey on pk_hash_range_int (actual rows=15 loops=1)
+         Index Cond: ((h = 1) AND (ROW(r1, r2) <= ROW(3, 2)) AND (r1 <= 2))
+(3 rows)
+
+/*+ IndexScan(pk_hash_range_int) */ SELECT sum(r1) FROM pk_hash_range_int WHERE h = 1 AND (r1, r2) <= (3, 2) AND r1 <= 2;
+ sum
+-----
+  15
+(1 row)
+
 DROP TABLE pk_hash_range_int;
 -- Test index SPLIT AT with INCLUDE clause
 CREATE TABLE test_tbl (
