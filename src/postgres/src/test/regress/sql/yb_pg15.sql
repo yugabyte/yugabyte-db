@@ -186,3 +186,9 @@ CREATE TABLE pk_range_int_asc (r1 INT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 asc
 INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_series(1, 125) AS i;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (2,3,2);
 SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (2,3,2);
+
+-- SERIAL type
+CREATE TABLE serial_test (k int, v SERIAL);
+INSERT INTO serial_test VALUES (1), (1), (1);
+SELECT * FROM serial_test ORDER BY v;
+SELECT last_value, is_called FROM public.serial_test_v_seq;

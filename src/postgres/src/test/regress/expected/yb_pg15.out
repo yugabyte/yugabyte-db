@@ -467,3 +467,21 @@ SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (2,3,2);
   2 |  3 |  1 | 66
   2 |  3 |  2 | 67
 (67 rows)
+
+-- SERIAL type
+CREATE TABLE serial_test (k int, v SERIAL);
+INSERT INTO serial_test VALUES (1), (1), (1);
+SELECT * FROM serial_test ORDER BY v;
+ k | v
+---+---
+ 1 | 1
+ 1 | 2
+ 1 | 3
+(3 rows)
+
+SELECT last_value, is_called FROM public.serial_test_v_seq;
+ last_value | is_called
+------------+-----------
+        100 | t
+(1 row)
+
