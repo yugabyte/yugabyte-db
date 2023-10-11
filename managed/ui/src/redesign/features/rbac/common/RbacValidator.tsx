@@ -141,7 +141,7 @@ export const RbacValidator: FC<RbacValidatorProps> = ({
           }}
           data-testid="rbac-no-perm"
         >
-          <RBACPopover>{children as any}</RBACPopover>
+          <ButtonDisabledPopover>{children as any}</ButtonDisabledPopover>
         </div>
       </ErrorBoundary>
     );
@@ -203,7 +203,7 @@ export class ErrorBoundary extends Component {
   }
 }
 
-const RBACPopover = ({ children }: { children: React.ReactElement }) => {
+export const ButtonDisabledPopover = ({ children }: { children: React.ReactElement }) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -212,6 +212,7 @@ const RBACPopover = ({ children }: { children: React.ReactElement }) => {
   const handleClose = () => {
     setAnchorEl(null);
   };
+
   const reactChild = cloneElement(children, {
     onClick: (e: React.MouseEvent<HTMLButtonElement>) => {
       e.preventDefault();

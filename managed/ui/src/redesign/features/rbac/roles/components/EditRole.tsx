@@ -110,7 +110,8 @@ export const EditRole = () => {
       onSave={() => {
         toggleEditRoleConfirmModal(true);
       }}
-      hideSave={currentView === t('menu.users')}
+      hideSave={currentView === EditViews.USERS}
+      disableSave={currentRole?.roleType === RoleType.SYSTEM}
     >
       <Box className={classes.root}>
         <div className={classes.header}>
@@ -171,6 +172,7 @@ export const EditRole = () => {
             toggleEditRoleConfirmModal(false);
           }}
           onSubmit={() => {
+            toggleEditRoleConfirmModal(false);
             createRoleRef.current?.onSave();
           }}
         />
