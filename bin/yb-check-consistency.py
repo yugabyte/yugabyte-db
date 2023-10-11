@@ -46,7 +46,7 @@ def get_docdb_paths():
         paths.extend(glob.glob("{}/yb-data/tserver/data/rocksdb/table-*/tablet-*".format(dir)))
     if args.uuid:
         # Get only the paths that match the tablet uuid
-        paths = [path for path in paths if args.tablet in path]
+        paths = [path for path in paths if args.uuid in path]
     
     # Remove snapshots
     paths = [path for path in paths if not path.endswith("snapshots")]
