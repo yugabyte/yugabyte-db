@@ -494,17 +494,5 @@ TEST_F(MasterChangeConfigTest, TestPingShellMaster) {
   ASSERT_OK(cluster_->PingMaster(*new_shell_master));
 }
 
-// Process that stops/fails internal to external mini cluster is not allowing test to terminate.
-TEST_F(MasterChangeConfigTest, DISABLED_TestIncorrectMasterStart) {
-  string peers = cluster_->GetMasterAddresses();
-  // Master process start with master_addresses not containing a new master host/port should fail
-  // and become un-pingable.
-  Result<ExternalMaster *> new_master = cluster_->StartMasterWithPeers(peers);
-  ASSERT_OK(new_master);
-  LOG(INFO) << "Tried incorrect master " << (*new_master)->bound_rpc_hostport().ToString();
-  ASSERT_NOK(cluster_->PingMaster(*new_master));
-  (*new_master)->Shutdown();
-}
-
 } // namespace master
 } // namespace yb
