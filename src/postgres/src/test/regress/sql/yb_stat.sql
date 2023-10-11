@@ -53,7 +53,7 @@ SELECT
     D.datname AS databasename,
     S.query_text AS query_text
 FROM yb_pg_stat_get_queries(null) AS S
-LEFT JOIN pg_database AS D ON (S.db_oid = D.oid);
+LEFT JOIN pg_database AS D ON (S.db_oid = D.oid) ORDER BY S.db_oid;
 
 \c yugabyte yugabyte
 GRANT pg_read_all_stats TO test_user;
@@ -62,7 +62,7 @@ SELECT
     D.datname AS databasename,
     S.query_text AS query_text
 FROM yb_pg_stat_get_queries(null) AS S
-LEFT JOIN pg_database AS D ON (S.db_oid = D.oid);
+LEFT JOIN pg_database AS D ON (S.db_oid = D.oid) ORDER BY S.db_oid;
 
 \c yugabyte yugabyte
 REVOKE pg_read_all_stats FROM test_user;
@@ -72,7 +72,7 @@ SELECT
     D.datname AS databasename,
     S.query_text AS query_text
 FROM yb_pg_stat_get_queries(null) AS S
-LEFT JOIN pg_database AS D ON (S.db_oid = D.oid);
+LEFT JOIN pg_database AS D ON (S.db_oid = D.oid) ORDER BY S.db_oid;
 
 \c yugabyte yugabyte
 REVOKE yb_db_admin FROM test_user;

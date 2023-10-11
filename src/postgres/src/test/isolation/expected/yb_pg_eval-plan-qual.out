@@ -74,7 +74,7 @@ starting permutation: wx2 lockwithvalues c2 c1 read
 step wx2: UPDATE accounts SET balance = balance + 450 WHERE accountid = 'checking';
 step lockwithvalues: 
 	SELECT * FROM accounts a1, (values('checking'),('savings')) v(id)
-	  WHERE a1.accountid = v.id
+	  WHERE a1.accountid = v.id ORDER BY a1.accountid
 	  FOR UPDATE OF a1;
  <waiting ...>
 step c2: COMMIT;

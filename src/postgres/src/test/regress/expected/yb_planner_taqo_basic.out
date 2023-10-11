@@ -361,18 +361,19 @@ EXPLAIN (costs off) SELECT ts2.k1, ts2.k2, ts3.v1, ts3.v2 FROM ts2 JOIN ts3 on t
 (11 rows)
 
 EXPLAIN (costs off) SELECT t1.k1, t1.k2, t2.v1, t2.v2 FROM t1 JOIN t2 ON t1.k1 = t2.k1 AND t1.k2 = t2.k2 WHERE t1.k1 > (1200) AND t1.k1 <= (1300) GROUP BY t1.k1, t1.k2, t2.v1, t2.v2;
-                           QUERY PLAN
------------------------------------------------------------------
+                                                               QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------------------------
  Group
    Group Key: t1.k1, t1.k2, t2.v1, t2.v2
    ->  Sort
          Sort Key: t1.k1, t1.k2, t2.v1, t2.v2
-         ->  Nested Loop
+         ->  YB Batched Nested Loop Join
+               Join Filter: ((t1.k1 = t2.k1) AND (t1.k2 = t2.k2))
                ->  Index Scan using t1_pkey on t1
                      Index Cond: ((k1 > 1200) AND (k1 <= 1300))
                ->  Index Scan using t2_pkey on t2
-                     Index Cond: ((k1 = t1.k1) AND (k2 = t1.k2))
-(9 rows)
+                     Index Cond: (ROW(k1, k2) = ANY (ARRAY[ROW(t1.k1, t1.k2), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
+(10 rows)
 
 EXPLAIN (costs off) SELECT t1.k1, t1.k2, t2.v1, t2.v2 FROM t1 JOIN t2 ON t1.k1 = t2.k1 AND t1.k2 = t2.k2 WHERE t1.k1 > (1200) AND t1.k1 <= (1500) GROUP BY t1.k1, t1.k2, t2.v1, t2.v2;
                            QUERY PLAN
@@ -381,11 +382,11 @@ EXPLAIN (costs off) SELECT t1.k1, t1.k2, t2.v1, t2.v2 FROM t1 JOIN t2 ON t1.k1 =
    Group Key: t1.k1, t1.k2, t2.v1, t2.v2
    ->  Sort
          Sort Key: t1.k1, t1.k2, t2.v1, t2.v2
-         ->  Nested Loop
+         ->  Merge Join
+               Merge Cond: ((t1.k1 = t2.k1) AND (t1.k2 = t2.k2))
                ->  Index Scan using t1_pkey on t1
                      Index Cond: ((k1 > 1200) AND (k1 <= 1500))
                ->  Index Scan using t2_pkey on t2
-                     Index Cond: ((k1 = t1.k1) AND (k2 = t1.k2))
 (9 rows)
 
 EXPLAIN (costs off) SELECT ts2.k1, ts2.k2, ts3.v1, ts3.v2 FROM ts2 JOIN ts3 ON ts2.k1 = ts3.k1 AND ts2.k2 = ts3.k2 WHERE ts2.k1 > (1200) AND ts2.k1 <= (1300) GROUP BY ts2.k1, ts2.k2, ts3.v1, ts3.v2;
@@ -1746,23 +1747,24 @@ EXPLAIN (costs off) SELECT * FROM ts2 FULL JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts2
 (6 rows)
 
 EXPLAIN (costs off) SELECT * FROM t1 JOIN t2 ON t1.k1 = t2.k1 AND t1.k2 = t2.k2 WHERE t1.k1 > (1200) AND t1.k1 <= (1300);
-                     QUERY PLAN
------------------------------------------------------
- Nested Loop
+                                                         QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((t1.k1 = t2.k1) AND (t1.k2 = t2.k2))
    ->  Index Scan using t1_pkey on t1
          Index Cond: ((k1 > 1200) AND (k1 <= 1300))
    ->  Index Scan using t2_pkey on t2
-         Index Cond: ((k1 = t1.k1) AND (k2 = t1.k2))
-(5 rows)
+         Index Cond: (ROW(k1, k2) = ANY (ARRAY[ROW(t1.k1, t1.k2), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
+(6 rows)
 
 EXPLAIN (costs off) SELECT * FROM t1 JOIN t2 ON t1.k1 = t2.k1 AND t1.k2 = t2.k2 WHERE t1.k1 > (1200) AND t1.k1 <= (1500);
                      QUERY PLAN
 -----------------------------------------------------
- Nested Loop
+ Merge Join
+   Merge Cond: ((t1.k1 = t2.k1) AND (t1.k2 = t2.k2))
    ->  Index Scan using t1_pkey on t1
          Index Cond: ((k1 > 1200) AND (k1 <= 1500))
    ->  Index Scan using t2_pkey on t2
-         Index Cond: ((k1 = t1.k1) AND (k2 = t1.k2))
 (5 rows)
 
 EXPLAIN (costs off) SELECT * FROM ts2 JOIN ts3 ON ts2.k1 = ts3.k1 AND ts2.k2 = ts3.k2 WHERE ts2.k1 > (1200) AND ts2.k1 <= (1300);

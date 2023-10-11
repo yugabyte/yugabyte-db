@@ -1302,7 +1302,7 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 															baserel));
 
 	List *sel_clauses = pclauses;
-	if (!bms_is_empty(batchedrelids))
+	if (!bms_is_empty(batchedrelids) && yb_enable_base_scans_cost_model)
 	{
 		List *new_pclauses = NIL;
 		foreach (lc, pclauses)
