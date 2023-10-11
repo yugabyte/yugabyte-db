@@ -7,35 +7,50 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
+import { useSelector } from "react-redux";
 import { Tab } from "react-bootstrap";
-import { useSearchParam } from "react-use";
-import ManageRoles from "./roles/components/ManageRoles";
+import { WithRouterProps, withRouter } from "react-router";
 import { YBTabsPanel } from "../../../components/panels";
+import ManageRoles from "./roles/components/ManageRoles";
 import { ManageUsers } from "./users/components/ManageUsers";
+import UserAuthContainer from "../../../components/users/UserAuth/UserAuthContainer";
 
-export const RBACContainer = () => {
-    const activeTab = useSearchParam('tab') ?? 'users';
+const RBACComponent = (props: WithRouterProps) => {
+    const activeTab = props.params.section;
+    const currentUserInfo = useSelector((state: any) => state.customer.currentUser?.data);
+    const role = currentUserInfo?.role;
+    const isAdmin = ['SuperAdmin'].includes(role);
+
     return (
         <YBTabsPanel
             activeTab={activeTab}
-            defaultTab={'role'}
+            defaultTab={'users'}
             id="rbac-tab-panel"
             className="config-tabs"
         >
             <Tab
                 eventKey="users"
-                title="users"
+                title="Users"
                 unmountOnExit
             >
-                <ManageUsers />
+                <ManageUsers routerProps={props} />
             </Tab>
             <Tab
                 eventKey="role"
-                title={"Role"}
+                title={"Roles"}
                 unmountOnExit
             >
                 <ManageRoles />
             </Tab>
+            <Tab
+                eventKey="user-auth"
+                title={"User Authentication"}
+                unmountOnExit
+            >
+                <UserAuthContainer isAdmin={isAdmin} />
+            </Tab>
         </YBTabsPanel>
     );
 };
+
+export const RBACContainer = withRouter(RBACComponent);

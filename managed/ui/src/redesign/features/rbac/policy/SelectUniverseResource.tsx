@@ -11,12 +11,13 @@ import { FC, useEffect, useState } from 'react';
 import { useToggle } from 'react-use';
 import { Controller, useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import { find } from 'lodash';
+import { find, findIndex } from 'lodash';
 import { Box, makeStyles } from '@material-ui/core';
 import { YBTable } from '../../../../components/backupv2/components/restore/pages/selectTables/YBTable';
 import { YBCheckboxField, YBModal } from '../../../components';
 import { Universe } from '../../../helpers/dtos';
 import { UniverseNameAndUUIDMapping } from './IPolicy';
+import { Resource } from '../permission';
 import { RbacUserWithResources } from '../users/interface/Users';
 
 import Checked from '../../../assets/checkbox/Checked.svg';
@@ -49,8 +50,8 @@ const useStyle = makeStyles((theme) => ({
   noRole: {
     border: `1px dashed ${theme.palette.primary[300]}`,
     background: theme.palette.primary[100],
-    padding: `${theme.spacing(1.5)}px ${theme.spacing(2)}px`,
-    width: '454px',
+    padding: `8px 16px`,
+    minWidth: '458px',
     height: '42px',
     borderRadius: theme.spacing(1),
     color: '#67666C'
@@ -91,8 +92,6 @@ const useStyle = makeStyles((theme) => ({
   }
 }));
 
-const ResourceGroupIndex = 0;
-
 export const SelectUniverseResource: FC<SelectUniverseResourceProps> = ({
   fieldIndex,
   universeList
@@ -104,9 +103,15 @@ export const SelectUniverseResource: FC<SelectUniverseResourceProps> = ({
   const classes = useStyle();
 
   const { control, watch, setValue } = useFormContext<RbacUserWithResources>();
-  const roleUUID = watch(`roleResourceDefinitions.${fieldIndex}.roleUUID`);
+
+  const role = watch(`roleResourceDefinitions.${fieldIndex}.role`);
   const roleMappings = watch(`roleResourceDefinitions.${fieldIndex}.resourceGroup`);
-  
+
+  const ResourceGroupIndex = Math.max(
+    findIndex(roleMappings.resourceDefinitionSet, { resourceType: Resource.UNIVERSE }),
+    0
+  );
+
   const [selectedResources, setSelectedResources] = useState<UniverseNameAndUUIDMapping[]>(
     roleMappings.resourceDefinitionSet[ResourceGroupIndex].resourceUUIDSet
   );
@@ -129,8 +134,12 @@ export const SelectUniverseResource: FC<SelectUniverseResourceProps> = ({
     fieldIndex
   ]);
 
-  if (!roleUUID) {
+  if (!role) {
     return <div className={classes.noRole}>{t('noRole')}</div>;
+  }
+
+  if (!find(role.permissionDetails.permissionList, { resourceType: Resource.UNIVERSE })) {
+    return <div className={classes.noRole}>{t('noUniversePermInRole')}</div>;
   }
 
   const getUniverseSelectionText = () => {
@@ -154,6 +163,7 @@ export const SelectUniverseResource: FC<SelectUniverseResourceProps> = ({
         <span>{getUniverseSelectionText()}</span>
         <div
           className={classes.editSelection}
+          data-testid={`rbac-edit-universe-selection`}
           onClick={() => {
             toggleUniverseSelectionModal(true);
           }}

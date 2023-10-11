@@ -21,6 +21,8 @@ import { getUniverseStatus, UniverseState } from '../helpers/universeHelpers';
 
 import './NodeDetailsTable.scss';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
+import { hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 
 const NODE_TYPE = [
   {
@@ -312,7 +314,12 @@ export default class NodeDetailsTable extends Component {
     const displayNodeActions =
       !this.props.isReadOnlyUniverse &&
       universeStatus.state !== UniverseState.PAUSED &&
-      isNotHidden(customer.currentCustomer.data.features, 'universes.tableActions');
+      isNotHidden(customer.currentCustomer.data.features, 'universes.tableActions') && 
+      hasNecessaryPerm({
+        onResource: currentUniverse.data.universeUUID,
+        ...UserPermissionMap.editUniverse
+      })
+      ;
 
     return (
       <div className="node-details-table-container">

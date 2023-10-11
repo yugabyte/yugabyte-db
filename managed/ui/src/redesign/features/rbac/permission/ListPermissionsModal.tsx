@@ -7,13 +7,22 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
+import { useEffect } from 'react';
 import { useMap } from 'react-use';
-import { find, flatten, values } from 'lodash';
+import clsx from 'clsx';
+import { capitalize, concat, find, flattenDeep, groupBy, isEmpty, values } from 'lodash';
 import { useTranslation } from 'react-i18next';
-import { makeStyles } from '@material-ui/core';
+import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  Typography,
+  makeStyles
+} from '@material-ui/core';
 import { YBCheckbox, YBModal } from '../../../components';
-import { Permission } from './IPermission';
-import { getPermissionDisplayText } from '../rbacUtils';
+import { resourceOrderByRelevance } from '../common/RbacUtils';
+import { Action, Permission, Resource, ResourceType } from './IPermission';
+import { ArrowDropDown } from '@material-ui/icons';
 
 type ListPermissionsModalProps = {
   onHide: () => void;
@@ -27,11 +36,17 @@ const convertPermissionListToMap = (
   permissionList: Permission[],
   selectedPermissions: Permission[]
 ) => {
-  const permMap: Record<string, Permission> = {};
+  const permMap: Record<ResourceType, Permission[]> = {
+    UNIVERSE: [],
+    OTHER: [],
+    ROLE: [],
+    USER: []
+  };
   selectedPermissions.forEach((sp) => {
+    if (isEmpty(sp)) return;
     const p = find(permissionList, sp);
     if (p) {
-      permMap[getPermissionDisplayText(sp)] = p;
+      permMap[sp.resourceType] = concat(permMap[sp.resourceType], p);
     }
   });
   return permMap;
@@ -39,10 +54,66 @@ const convertPermissionListToMap = (
 
 const useStyles = makeStyles((theme) => ({
   permission_container: {
-    padding: theme.spacing(2),
-    borderRadius: theme.spacing(1),
-    border: `1px solid ${theme.palette.grey[200]}`,
-    background: theme.palette.common.white
+    '&:last-child': {
+      borderRadius: '0px 0px 8px 8px'
+    },
+    '&:first-child': {
+      borderRadius: '8px 8px 0px 0px'
+    },
+    '& .MuiAccordionSummary-root': {
+      background: theme.palette.ybacolors.backgroundGrayLightest,
+      padding: '24px 24px 18px 24px',
+      height: '35px',
+      borderRadius: theme.spacing(1),
+      '&.Mui-expanded': {
+        borderBottom: `1px solid ${theme.palette.ybacolors.backgroundGrayDark}`
+      }
+    },
+    '& .MuiAccordionDetails-root': {
+      display: 'flex',
+      flexDirection: 'column',
+      padding: `16px`,
+      gap: '8px'
+    },
+    '& .MuiAccordion-root.Mui-expanded,& .MuiAccordionSummary-root.Mui-expanded': {
+      minHeight: '40px',
+      margin: 0
+    }
+  },
+  resourceTitle: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    width: '100%'
+  },
+  selectedPermCount: {
+    padding: '2px 6px',
+    borderRadius: '4px',
+    background: theme.palette.primary[200],
+    color: theme.palette.primary[700]
+  },
+  permissionGroupTitle: {
+    textTransform: 'capitalize'
+  },
+  readReplica: {
+    color: '#67666C',
+    marginLeft: '5px'
+  },
+  expandMore: {
+    fontSize: '30px'
+  },
+  contentRoot: {
+    padding: '20px'
+  },
+  checkbox: {
+    transform: 'scale(1.3)'
+  },
+  insetCheckbox: {
+    marginLeft: '24px'
+  },
+  universeInfoText: {
+    textTransform: 'uppercase',
+    color: "#67666C",
+    marginLeft: '10px'
   }
 }));
 
@@ -53,7 +124,7 @@ function ListPermissionsModal({
   permissionsList,
   defaultPerm
 }: ListPermissionsModalProps) {
-  const [selectedPermissions, { set, get, remove, setAll, reset }] = useMap(
+  const [selectedPermissions, { set, setAll }] = useMap(
     convertPermissionListToMap(permissionsList, defaultPerm)
   );
 
@@ -63,21 +134,30 @@ function ListPermissionsModal({
 
   const classes = useStyles();
 
-  const dependentPermissions = flatten(
-    values(selectedPermissions).map((p: Permission) => {
-      return flatten(
-        p.prerequisitePermissions.map((s) => {
-          const label = getPermissionDisplayText(s);
-          if (!get(label)) {
-            set(label, find(permissionsList, s) as any);
+  const permissionGroups = groupBy(permissionsList, (perm) => perm.resourceType);
+
+  const dependentPermissions = flattenDeep(
+    values(selectedPermissions).map((permissions) => {
+      return permissions.map((p: Permission) => {
+        return p.prerequisitePermissions.map((s) => {
+          const perm = find(permissionGroups[s.resourceType], {
+            resourceType: s.resourceType,
+            action: s.action
+          });
+          if (perm && find(selectedPermissions[s.resourceType], perm) === undefined) {
+            set(s.resourceType, concat(selectedPermissions[s.resourceType], perm));
           }
-          return label;
-        })
-      );
+          return perm;
+        });
+      });
     })
   );
 
-  const selectedPermissionsCount = values(selectedPermissions).length;
+  useEffect(() => {
+    if (!visible) {
+      setAll(convertPermissionListToMap(permissionsList, defaultPerm));
+    }
+  }, [visible, setAll, permissionsList, defaultPerm, convertPermissionListToMap]);
 
   return (
     <YBModal
@@ -86,56 +166,118 @@ function ListPermissionsModal({
       submitLabel={t('confirm', { keyPrefix: 'common' })}
       cancelLabel={t('cancel', { keyPrefix: 'common' })}
       onSubmit={() => {
-        onSubmit(values(selectedPermissions));
+        onSubmit(flattenDeep(values(selectedPermissions)));
         onHide();
       }}
       onClose={onHide}
-      overrideHeight={'554px'}
+      overrideHeight={'730px'}
+      overrideWidth={'800px'}
+      style={{
+        maxWidth: 'unset',
+        maxHeight: 'unset'
+      }}
+      size="lg"
+      dialogContentProps={{
+        className: classes.contentRoot
+      }}
     >
       <div className={classes.permission_container}>
-        <div>
-          <YBCheckbox
-            label={t('selectAll', { keyPrefix: 'common' })}
-            indeterminate={
-              selectedPermissionsCount > 0 &&
-              permissionsList &&
-              selectedPermissionsCount < permissionsList.length
-            }
-            onChange={(_, state) => {
-              if (state) {
-                if (!permissionsList) return;
-                setAll(
-                  Object.fromEntries(
-                    permissionsList.map((obj) => [getPermissionDisplayText(obj), obj])
-                  )
-                );
-              } else {
-                reset();
-              }
-            }}
-            checked={selectedPermissionsCount === permissionsList?.length}
-          />
-        </div>
-
-        {permissionsList.map((permission, i) => {
-          const label = getPermissionDisplayText(permission);
+        {resourceOrderByRelevance.map((resourceType, i) => {
           return (
-            <div key={i}>
-              <YBCheckbox
-                key={i}
-                name={`selectedPermissions.${i}`}
-                label={label}
-                onChange={(_, state) => {
-                  if (state) {
-                    set(label, permission);
-                  } else {
-                    remove(label);
+            <Accordion key={i}>
+              <AccordionSummary
+                expandIcon={
+                  <ArrowDropDown
+                    className={classes.expandMore}
+                    data-testid={`rbac-resource-${resourceType}`}
+                  />
+                }
+              >
+                <div className={classes.resourceTitle}>
+                  <Typography variant="body1" className={classes.permissionGroupTitle}>
+                    {resourceType === Resource.DEFAULT
+                      ? t('otherResource')
+                      : t('resourceManagement', { resource: resourceType.toLowerCase() })}
+                    {resourceType === Resource.UNIVERSE && (
+                      <Typography
+                        variant="subtitle1"
+                        component={'span'}
+                        className={classes.readReplica}
+                      >
+                        {t('universePrimaryAndReplica')}
+                      </Typography>
+                    )}
+                  </Typography>
+                  <span className={classes.selectedPermCount}>
+                    {t('selectionCount', {
+                      count: selectedPermissions[resourceType].length,
+                      total: permissionGroups[resourceType].length
+                    })}
+                  </span>
+                </div>
+              </AccordionSummary>
+              <AccordionDetails>
+                <YBCheckbox
+                  label={
+                    resourceType === Resource.DEFAULT
+                      ? t('selectAllOtherPermissions')
+                      : t('selectAllPermissions', {
+                          resource: capitalize(resourceType.toLowerCase())
+                        })
                   }
-                }}
-                checked={!!get(label)}
-                disabled={dependentPermissions.includes(label)}
-              />
-            </div>
+                  indeterminate={
+                    selectedPermissions[resourceType].length > 0 &&
+                    permissionsList &&
+                    selectedPermissions[resourceType].length < permissionGroups[resourceType].length
+                  }
+                  data-testid={`rbac-resource-${resourceType}-selectAll`}
+                  onChange={(_, state) => {
+                    if (state) {
+                      if (!permissionsList) return;
+                      set(resourceType, permissionGroups[resourceType]);
+                    } else {
+                      set(resourceType, []);
+                    }
+                  }}
+                  checked={
+                    selectedPermissions[resourceType].length ===
+                    permissionGroups[resourceType].length
+                  }
+                  className={classes.checkbox}
+                />
+                {resourceType === Resource.UNIVERSE && (
+                  <Typography variant="subtitle1" className={classes.universeInfoText}>
+                    {t('universePrimaryAndReplica2')}
+                  </Typography>
+                )}
+                {permissionGroups[resourceType].map((permission, i) => {
+                  if (permission.action === Action.SUPER_ADMIN_ACTIONS) return null; // we cannot assign super-admin action
+                  return (
+                    <YBCheckbox
+                      key={i}
+                      name={`selectedPermissions.${i}`}
+                      label={permission.name}
+                      onChange={(_e, state) => {
+                        if (state) {
+                          set(resourceType, concat(selectedPermissions[resourceType], permission));
+                        } else {
+                          set(
+                            resourceType,
+                            selectedPermissions[resourceType].filter(
+                              (p) => p.name !== permission.name
+                            )
+                          );
+                        }
+                      }}
+                      checked={find(selectedPermissions[resourceType], permission) !== undefined}
+                      disabled={find(dependentPermissions, permission) !== undefined}
+                      data-testid={`rbac-resource-${resourceType}-${permission.name}`}
+                      className={clsx(classes.checkbox, classes.insetCheckbox)}
+                    />
+                  );
+                })}
+              </AccordionDetails>
+            </Accordion>
           );
         })}
       </div>

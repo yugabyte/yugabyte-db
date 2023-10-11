@@ -11,20 +11,29 @@ export const Action = {
   CREATE: 'CREATE',
   READ: 'READ',
   UPDATE: 'UPDATE',
-  DELETE: 'DELETE'
+  DELETE: 'DELETE',
+  PAUSE_RESUME: 'PAUSE_RESUME',
+  BACKUP_RESTORE: 'BACKUP_RESTORE',
+  UPDATE_ROLE_BINDINGS: 'UPDATE_ROLE_BINDINGS',
+  UPDATE_PROFILE: 'UPDATE_PROFILE',
+  SUPER_ADMIN_ACTIONS: 'SUPER_ADMIN_ACTIONS'
 } as const;
 
 export const Resource = {
   UNIVERSE: 'UNIVERSE',
-  DEFAULT: 'DEFAULT'
+  DEFAULT: 'OTHER',
+  ROLE: 'ROLE',
+  USER: 'USER'
 } as const;
 
 export type ResourceType = typeof Resource[keyof typeof Resource];
 export type ActionType = typeof Action[keyof typeof Action];
 
 export interface Permission {
+  name: string;
   description: string;
   action: ActionType;
   resourceType: ResourceType;
+  permissionValidOnResource: boolean;
   prerequisitePermissions: Pick<Permission, 'action' | 'resourceType'>[];
 }

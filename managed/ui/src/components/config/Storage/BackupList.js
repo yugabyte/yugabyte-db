@@ -16,6 +16,8 @@ import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { YBPanelItem } from '../../panels';
 
 import { StorageConfigDeleteModal } from './StorageConfigDeleteModal';
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 
 /**
  * This method is used to return the current in-use status
@@ -48,9 +50,17 @@ const header = (currTab, onCreateBackup) => (
     <h2 className="table-container-title pull-left">Backup List</h2>
     <FlexContainer className="pull-right">
       <FlexShrink>
-        <Button bsClass="btn btn-orange btn-config" onClick={onCreateBackup}>
-          Create {currTab} Backup
-        </Button>
+        <RbacValidator
+          accessRequiredOn={{
+            onResource: 'CUSTOMER_ID',
+            ...UserPermissionMap.createStorageConfiguration
+          }}
+          isControl
+        >
+          <Button bsClass="btn btn-orange btn-config" onClick={onCreateBackup}>
+            Create {currTab} Backup
+          </Button>
+        </RbacValidator>
       </FlexShrink>
     </FlexContainer>
   </>
@@ -86,19 +96,51 @@ export const BackupList = (props) => {
           id="bg-nested-dropdown"
           pullRight
         >
-          <MenuItem onClick={() => onEditConfig(row)}>Edit Configuration</MenuItem>
+          <MenuItem
+            disabled={!hasNecessaryPerm({
+              onResource: 'CUSTOMER_ID',
+              ...UserPermissionMap.editStorageConfiguration
+            })}
+            onClick={() => {
+              if (!hasNecessaryPerm({
+                onResource: 'CUSTOMER_ID',
+                ...UserPermissionMap.editStorageConfiguration
+              })) {
+                return;
+              }
+              onEditConfig(row);
+            }}>Edit Configuration</MenuItem>
           <MenuItem
             onClick={(e) => {
+              if (!hasNecessaryPerm({
+                onResource: 'CUSTOMER_ID',
+                ...UserPermissionMap.backup
+              })) {
+                return;
+              }
               e.stopPropagation();
               setShowAssociatedBackups(true);
               setConfigData({ configUUID, configName });
             }}
+            disabled={!hasNecessaryPerm({
+              onResource: 'CUSTOMER_ID',
+              ...UserPermissionMap.backup
+            })}
           >
             Show associated backups
           </MenuItem>
           <MenuItem
-            disabled={inUse}
+            disabled={inUse || !hasNecessaryPerm({
+              onResource: 'CUSTOMER_ID',
+              ...UserPermissionMap.deleteStorageConfiguration
+            })}
             onClick={() => {
+              if (!hasNecessaryPerm({
+                onResource: 'CUSTOMER_ID',
+                ...UserPermissionMap.deleteStorageConfiguration
+              })) {
+                return;
+              }
               if (!inUse) {
                 setConfigData(configUUID);
                 showDeleteStorageConfig(configName);

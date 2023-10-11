@@ -27,6 +27,8 @@ import documentationIcon from './images/documentation.svg';
 import EmptyTrayIcon from './images/empty-tray.svg';
 import WarningIcon from './images/warning.svg';
 
+import { RbacValidator } from '../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../redesign/features/rbac/UserPermPathMapping';
 import './PerfAdvisor.scss';
 
 interface RecommendationDetailProps {
@@ -356,8 +358,8 @@ export const PerfAdvisor: FC = () => {
                       isUniversePaused
                         ? 'Universe Paused'
                         : isUniverseUpdating
-                        ? 'Universe Updating'
-                        : ''
+                          ? 'Universe Updating'
+                          : ''
                     }
                   >
                     <i className="fa fa-search-minus" aria-hidden="true"></i>
@@ -410,12 +412,20 @@ export const PerfAdvisor: FC = () => {
                       isUniversePaused
                         ? 'Universe Paused'
                         : isUniverseUpdating
-                        ? 'Universe Updating'
-                        : ''
+                          ? 'Universe Updating'
+                          : ''
                     }
                   >
                     <i className="fa fa-search-minus" aria-hidden="true"></i>
-                    {t('clusterDetail.performance.advisor.ReScanBtn')}
+                    <RbacValidator
+                      isControl
+                      accessRequiredOn={{
+                        onResource: universeUUID,
+                        ...UserPermissionMap.rescan
+                      }}
+                    >
+                      {t('clusterDetail.performance.advisor.ReScanBtn')}
+                    </RbacValidator>
                   </Button>
                 </div>
               </div>
@@ -446,17 +456,25 @@ export const PerfAdvisor: FC = () => {
               {t('clusterDetail.performance.advisor.Separator')}
               {ybFormatDate(new Date())}
             </p>
-            <YBButton
-              btnClass="btn btn-orange rescanBtnRecPage"
-              disabled={isUniversePaused || isUniverseUpdating}
-              btnText="Re-Scan"
-              btnIcon="fa fa-search-minus"
-              onClick={handleScan}
-              data-placement="left"
-              title={
-                isUniversePaused ? 'Universe Paused' : isUniverseUpdating ? 'Universe Updating' : ''
-              }
-            />
+            <RbacValidator
+              isControl
+              accessRequiredOn={{
+                onResource: universeUUID,
+                ...UserPermissionMap.rescan
+              }}
+            >
+              <YBButton
+                btnClass="btn btn-orange rescanBtnRecPage"
+                disabled={isUniversePaused || isUniverseUpdating}
+                btnText="Re-Scan"
+                btnIcon="fa fa-search-minus"
+                onClick={handleScan}
+                data-placement="left"
+                title={
+                  isUniversePaused ? 'Universe Paused' : isUniverseUpdating ? 'Universe Updating' : ''
+                }
+              />
+            </RbacValidator>
           </div>
           <div className="perfAdvisor__containerRecommendationFlex">
             <YBSelect

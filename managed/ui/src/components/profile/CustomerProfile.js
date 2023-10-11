@@ -6,6 +6,7 @@ import { isNonAvailable, isNotHidden, showOrRedirect } from '../../utils/LayoutU
 import UserProfileForm from './UserProfileForm';
 import { YBLoading } from '../common/indicators';
 import { getPromiseState } from '../../utils/PromiseUtils';
+import { isRbacEnabled } from '../../redesign/features/rbac/common/RbacUtils';
 
 const BannerContent = () => (
   <>
@@ -50,9 +51,10 @@ export default class CustomerProfile extends Component {
         (c) => c.key === 'yb.security.oidc_feature_enhancements'
       ).value === 'true';
 
-    if (getPromiseState(customer).isLoading() || getPromiseState(customer).isInit()) {
+    if (!isRbacEnabled() && (getPromiseState(customer).isLoading() || getPromiseState(customer).isInit())) {
       return <YBLoading />;
     }
+
     showOrRedirect(customer.data.features, 'main.profile');
 
     let profileUpdateStatus = <span />;
