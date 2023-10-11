@@ -14,6 +14,8 @@
 
 #include "yb/cdc/cdc_state_table.h"
 
+#include "yb/master/catalog_manager.h"
+
 namespace yb {
 namespace cdc {
   Result<string> CDCSDKYsqlTest::GetUniverseId(Cluster* cluster) {
@@ -3109,6 +3111,12 @@ namespace cdc {
         },
         MonoDelta::FromSeconds(timeout_secs),
         "Waiting for GetChanges to fetch: " + std::to_string(expected_count) + " records");
+  }
+
+  Status CDCSDKYsqlTest::XreplValidateSplitCandidateTable(const TableId& table_id) {
+    auto& cm = test_cluster_.mini_cluster_->mini_master()->catalog_manager_impl();
+    auto table = cm.GetTableInfo(table_id);
+    return cm.XreplValidateSplitCandidateTable(*table);
   }
 
 } // namespace cdc

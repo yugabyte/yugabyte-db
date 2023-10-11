@@ -125,6 +125,7 @@ DECLARE_bool(cdc_enable_consistent_records);
 DECLARE_bool(cdc_populate_end_markers_transactions);
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_int64(cdc_resolve_intent_lag_threshold_ms);
+DECLARE_bool(enable_tablet_split_of_cdcsdk_streamed_tables);
 
 namespace yb {
 
@@ -553,6 +554,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const int& expected_count, const CDCSDKCheckpointPB* cp = nullptr, const int& tablet_idx = 0,
       const int64& safe_hybrid_time = -1, const int& wal_segment_index = 0,
       const double& timeout_secs = 5);
+
+  Status XreplValidateSplitCandidateTable(const TableId& table);
 };
 
 }  // namespace cdc
