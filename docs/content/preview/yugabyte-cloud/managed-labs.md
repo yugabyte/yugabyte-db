@@ -21,7 +21,7 @@ Each lab runs a live demo application, accessing real clusters deployed in a var
 
 The following lab is available (with more in development):
 
-- **Create Global Applications** - learn how you can minimize applications latencies for users in widely dispersed geographies using [read replicas](../cloud-basics/create-clusters-topology/#read-replicas) and [partition by region](../cloud-basics/create-clusters-topology/#partition-by-region) deployments.
+- **Create Global Applications** - learn how you can minimize application latencies for users in widely dispersed geographies using [read replicas](../cloud-basics/create-clusters-topology/#read-replicas) and [partition by region](../cloud-basics/create-clusters-topology/#partition-by-region) deployments.
 
 ![Product Lab](/images/yb-cloud/managed-lab.png)
 
