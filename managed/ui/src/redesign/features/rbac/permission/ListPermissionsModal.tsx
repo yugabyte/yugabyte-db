@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useMap } from 'react-use';
 import clsx from 'clsx';
 import { capitalize, concat, find, flattenDeep, groupBy, isEmpty, values } from 'lodash';
@@ -16,6 +16,7 @@ import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
+  Popover,
   Typography,
   makeStyles
 } from '@material-ui/core';
@@ -258,7 +259,7 @@ function ListPermissionsModal({
                 )}
                 {permissionGroups[resourceType].map((permission, i) => {
                   if (permission.action === Action.SUPER_ADMIN_ACTIONS) return null; // we cannot assign super-admin action
-                  return (
+                  const comp = (
                     <YBCheckbox
                       key={i}
                       name={`selectedPermissions.${i}`}
@@ -281,6 +282,14 @@ function ListPermissionsModal({
                       className={clsx(classes.checkbox, classes.insetCheckbox)}
                     />
                   );
+                  if (find(dependentPermissions, permission) !== undefined) {
+                    return (
+                      <DisabledCheckbox hoverMsg={t('disabledDependentPerm')}>
+                        {comp}
+                      </DisabledCheckbox>
+                    );
+                  }
+                  return comp;
                 })}
               </AccordionDetails>
             </Accordion>
@@ -290,5 +299,59 @@ function ListPermissionsModal({
     </YBModal>
   );
 }
+
+const disabledPopoverStyles = makeStyles((theme) => ({
+  popover: {
+    pointerEvents: 'none'
+  },
+  root: {
+    padding: theme.spacing(1),
+    width: '210px',
+    color: '#67666C'
+  }
+}));
+
+const DisabledCheckbox = ({ children, hoverMsg }: { children: JSX.Element; hoverMsg: string }) => {
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+
+  const classes = disabledPopoverStyles();
+
+  const handlePopoverOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handlePopoverClose = () => {
+    setAnchorEl(null);
+  };
+
+  const open = Boolean(anchorEl);
+
+  return (
+    <div onMouseEnter={handlePopoverOpen} onMouseLeave={handlePopoverClose}>
+      {children}
+      <Popover
+        id="dependent-perm-disabled"
+        className={classes.popover}
+        classes={{
+          paper: classes.root
+        }}
+        open={open}
+        anchorEl={anchorEl}
+        anchorOrigin={{
+          vertical: 'top',
+          horizontal: 'left'
+        }}
+        transformOrigin={{
+          vertical: 'bottom',
+          horizontal: 'left'
+        }}
+        onClose={handlePopoverClose}
+        disableRestoreFocus
+      >
+        <Typography variant="subtitle1">{hoverMsg}</Typography>
+      </Popover>
+    </div>
+  );
+};
 
 export default ListPermissionsModal;

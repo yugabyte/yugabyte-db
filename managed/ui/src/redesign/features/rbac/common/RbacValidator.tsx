@@ -104,11 +104,21 @@ export const RbacValidator: FC<RbacValidatorProps> = ({
     onEnd(resource);
   }
 
-  if (customValidateFunction && customValidateFunction((window as any).rbac_permissions)) {
-    return <>{children}</>;
-  } else if (resource && permissionRequired.every((p) => resource.actions.includes(p))) {
-    return <>{children}</>;
-  }
+  const controlComp = (
+    <ErrorBoundary>
+      <div
+        style={{
+          opacity: 0.5,
+          userSelect: 'none',
+          display: 'inline-block',
+          ...overrideStyle
+        }}
+        data-testid="rbac-no-perm"
+      >
+        <ButtonDisabledPopover>{children as any}</ButtonDisabledPopover>
+      </div>
+    </ErrorBoundary>
+  );
 
   const getWrappedChildren = () => {
     if (minimal) {
@@ -128,26 +138,7 @@ export const RbacValidator: FC<RbacValidatorProps> = ({
       </div>
     );
   };
-
-  if (isControl) {
-    return (
-      <ErrorBoundary>
-        <div
-          style={{
-            opacity: 0.5,
-            userSelect: 'none',
-            display: 'inline-block',
-            ...overrideStyle
-          }}
-          data-testid="rbac-no-perm"
-        >
-          <ButtonDisabledPopover>{children as any}</ButtonDisabledPopover>
-        </div>
-      </ErrorBoundary>
-    );
-  }
-
-  return (
+  const getErrorBoundary = (
     <ErrorBoundary>
       <div
         style={{
@@ -175,6 +166,22 @@ export const RbacValidator: FC<RbacValidatorProps> = ({
       </div>
     </ErrorBoundary>
   );
+  
+  if (customValidateFunction) {
+    if (customValidateFunction((window as any).rbac_permissions)) {
+      return <>{children}</>;
+    } else {
+      return isControl ? controlComp : getErrorBoundary;
+    }
+  } else if (resource && permissionRequired.every((p) => resource.actions.includes(p))) {
+    return <>{children}</>;
+  }
+
+  if (isControl) {
+    return controlComp;
+  }
+
+  return getErrorBoundary;
 };
 
 type ErrorBoundaryState = {

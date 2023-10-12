@@ -298,8 +298,19 @@ export const UserPermissionMap = {
     //LDAP
 
     updateLDAP: {
-        onResource: 'CUSTOMER_ID',
         resourceType: RbacResourceTypes.LDAP,
         permissionRequired: [Action.UPDATE]
+    },
+    importRelease: {
+        resourceType: RbacResourceTypes.RELEASES,
+        permissionRequired: [Action.CREATE]
+    },
+    disableRelease: {
+        resourceType: RbacResourceTypes.RELEASES,
+        permissionRequired: [Action.UPDATE]
+    },
+    deleteRelease: {
+        resourceType: RbacResourceTypes.RELEASES,
+        permissionRequired: [Action.DELETE]
     }
 } satisfies UserPermissionMapType;
