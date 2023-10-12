@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.ResizeNodeParams;
@@ -195,10 +196,19 @@ public class UpgradeUniverseController extends AuthenticatedController {
   })
   @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result upgradeGFlags(UUID customerUuid, UUID universeUuid, Http.Request request) {
+    Customer customer = Customer.getOrBadRequest(customerUuid);
+    Universe universe = Universe.getOrBadRequest(universeUuid, customer);
+    Class<? extends GFlagsUpgradeParams> flagParamType;
+    if (Util.isKubernetesBasedUniverse(universe)) {
+      flagParamType = KubernetesGFlagsUpgradeParams.class;
+    } else {
+      flagParamType = GFlagsUpgradeParams.class;
+    }
+
     return requestHandler(
         request,
         upgradeUniverseHandler::upgradeGFlags,
-        GFlagsUpgradeParams.class,
+        flagParamType,
         Audit.ActionType.UpgradeGFlags,
         customerUuid,
         universeUuid);
