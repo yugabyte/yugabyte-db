@@ -54,11 +54,9 @@ The local cluster setup on a single host is intended for development and learnin
   </li>
 </ul>
 
-## Install YugabyteDB
-
-Installing YugabyteDB involves completing [prerequisites](#prerequisites) and then performing the actual [installation](#install).
-
 Note that the Docker option to run local clusters is recommended only for advanced Docker users. This is due to the fact that running stateful applications such as YugabyteDB in Docker is more complex and error-prone than running stateless applications.
+
+## Install YugabyteDB
 
 ### Prerequisites
 
@@ -87,8 +85,8 @@ docker pull yugabytedb/yugabyte:{{< yb-version version="preview" format="build">
 To create a 1-node cluster with a replication factor (RF) of 1, run the following command:
 
 ```sh
-docker run -d --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042\
- yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} bin/yugabyted start\
+docker run -d --name yugabyte -p7000:7000 -p9000:9000 -p15433:15433 -p5433:5433 -p9042:9042 \
+ yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} bin/yugabyted start \
  --daemon=false
 ```
 
@@ -104,8 +102,6 @@ docker ps
 CONTAINER ID        IMAGE                 COMMAND                  CREATED             STATUS              PORTS                                                                                                                                                                     NAMES
 5088ca718f70        yugabytedb/yugabyte   "bin/yugabyted start…"   46 seconds ago      Up 44 seconds       0.0.0.0:5433->5433/tcp, 6379/tcp, 7100/tcp, 0.0.0.0:7000->7000/tcp, 0.0.0.0:9000->9000/tcp, 7200/tcp, 9100/tcp, 10100/tcp, 11000/tcp, 0.0.0.0:9042->9042/tcp, 12000/tcp   yugabyte
 ```
-
-Clients can now [connect to the YSQL and YCQL APIs](#connect-to-the-database) at `http://localhost:5433` and `http://localhost:9042` respectively.
 
 ### Run Docker in a persistent volume
 
@@ -129,25 +125,10 @@ In the preceding `docker run` command, the data stored in YugabyteDB does not pe
 
   If running macOS Monterey, replace `-p7000:7000` with `-p7001:7000`.
 
-## Use the Admin UI
+The cluster you have created consists of two processes:
 
-The cluster you have created consists of two processes: [YB-Master](../../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](../../architecture/concepts/yb-tserver/) which is responsible for the actual end user requests for data updates and queries.
-
-Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process, as well as perform certain administrative operations. The [yb-master Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at <http://localhost:7000> and the [yb-tserver Admin UI](../../reference/configuration/yb-tserver/#admin-ui) is available at <http://localhost:9000>. To avoid port conflicts, you should make sure other processes on your machine do not have these ports mapped to `localhost`.
-
-### Overview and YB-Master status
-
-The following illustration shows the YB-Master home page with a cluster with a replication factor of 1, a single node, and no tables. The YugabyteDB version is also displayed.
-
-![master-home](/images/admin/master-home-docker-rf1.png)
-
-The **Masters** section shows the 1 YB-Master along with its corresponding cloud, region, and zone placement.
-
-### YB-TServer status
-
-Click **See all nodes** to open the **Tablet Servers** page that lists the YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats, as per the following illustration:
-
-![master-home](/images/admin/master-tservers-list-docker-rf1.png)
+- [YB-Master](../../architecture/concepts/yb-master/) keeps track of various metadata (list of tables, users, roles, permissions, and so on).
+- [YB-TServer](../../architecture/concepts/yb-tserver/) is responsible for the actual end user requests for data updates and queries.
 
 ## Connect to the database
 
@@ -156,7 +137,7 @@ Using the YugabyteDB SQL shell, [ysqlsh](../../admin/ysqlsh/), you can connect t
 To open the YSQL shell, run `ysqlsh`.
 
 ```sh
-$ docker exec -it yugabyte /home/yugabyte/bin/ysqlsh --echo-queries
+docker exec -it yugabyte bash -c '/home/yugabyte/bin/ysqlsh --echo-queries --host $(hostname)'
 ```
 
 ```output
@@ -167,6 +148,14 @@ yugabyte=#
 ```
 
 To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](../../sample-data/retail-analytics/).
+
+## Monitor your cluster
+
+When you start a cluster using yugabyted, you can monitor the cluster using the YugabyteDB UI, available at [http://127.0.0.1:15433](http://127.0.0.1:15433).
+
+![YugabyteDB UI Cluster Overview](/images/quick_start/quick-start-ui-overview.png)
+
+The YugabyteDB UI provides cluster status, node information, performance metrics, and more.
 
 <!--## Build a Java application
 
