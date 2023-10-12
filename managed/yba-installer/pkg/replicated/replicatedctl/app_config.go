@@ -46,6 +46,7 @@ var replicatedToYbaCtl = map[string]string{
 	"db_external_port":             "postgres.install.port",
 	"dbuser":                       "postgres.install.username",
 	"dbldapauth":                   "postgres.install.ldap_enabled",
+	"dbpass":												"postgres.install.password",
 	"ldap_server":                  "postgres.install.ldap_server",
 	"ldap_dn_prefix":               "postgres.install.ldap_prefix",
 	"ldap_base_dn":                 "postgres.install.ldap_suffix",
