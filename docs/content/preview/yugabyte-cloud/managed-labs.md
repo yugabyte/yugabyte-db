@@ -1,8 +1,8 @@
 ---
-title: Product Labs
-linkTitle: Product Labs
+title: Product labs
+linkTitle: Product labs
 description: Discover how YugabyteDB solves latency and performance issues.
-headcontent: Explore YugabyteDB Managed features in real time
+headcontent: Test YugabyteDB Managed features using a demo application in real time
 menu:
   preview_yugabyte-cloud:
     identifier: managed-labs
@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Use Product Labs to explore core features of YugabyteDB using globally distributed test clusters in real time. Learn how YugabyteDB solves problems with:
+Use Product Labs to explore core features of YugabyteDB using a demo application connected to globally distributed test clusters in real time. Learn how YugabyteDB solves problems with:
 
 - Resilience
 - Geo-distribution
