@@ -111,7 +111,7 @@ namespace yb::client::internal {
 
 bool IsTracingEnabled() {
   auto *trace = Trace::CurrentTrace();
-  return FLAGS_collect_end_to_end_traces || (trace && trace->end_to_end_traces_requested());
+  return trace && (FLAGS_collect_end_to_end_traces || trace->end_to_end_traces_requested());
 }
 
 namespace {
