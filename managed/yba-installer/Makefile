@@ -36,9 +36,9 @@ VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
 #pre-reqs
 PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
 
-# https://github.com/yugabyte/yba-pg-build/releases/tag/2023-08-010-02-48
-PG_BINARY_NAME ?= postgres-linux-14.8.tar.gz
-PG_BINARY_URL := https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/yba-pg-build/postgres-linux-14.8.tar.gz
+# https://github.com/yugabyte/yba-pg-build/releases/tag/2023-10-10-23-40
+PG_BINARY_NAME ?= postgres-linux-14.9.tar.gz
+PG_BINARY_URL := https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/yba-pg-build/postgres-linux-14.9.tar.gz
 
 # https://adoptium.net/temurin/releases/
 JDK_BINARY_NAME ?= OpenJDK17U-jre_x64_linux_hotspot_17.0.7_7.tar.gz
