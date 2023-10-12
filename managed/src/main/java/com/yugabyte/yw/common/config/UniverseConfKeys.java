@@ -953,4 +953,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Notify peers in cluster on a master node removal",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> alwaysWaitForDataMove =
+      new ConfKeyInfo<>(
+          "yb.always_wait_for_data_move",
+          ScopeType.UNIVERSE,
+          "Always wait for data move on remove node",
+          "Always run wait for data move during remove node",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

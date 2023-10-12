@@ -226,6 +226,7 @@ import org.yb.CommonTypes;
 import org.yb.CommonTypes.TableType;
 import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.client.GetTableSchemaResponse;
+import org.yb.client.ListLiveTabletServersResponse;
 import org.yb.client.ListMastersResponse;
 import org.yb.client.ListNamespacesResponse;
 import org.yb.client.ListTablesResponse;
@@ -234,6 +235,7 @@ import org.yb.client.YBClient;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
 import org.yb.util.ServerInfo;
+import org.yb.util.TabletServerInfo;
 import play.libs.Json;
 
 @Slf4j
@@ -3912,6 +3914,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       throw new RuntimeException(msg);
     } finally {
       ybService.closeClient(client, masterAddresses);
+    }
+  }
+
+  // On master leader failover and tserver was already down, within the
+  // "follower_unavailable_considered_failed_sec" time, the tserver will be instantly marked as
+  // "dead" and not "live".
+  public List<TabletServerInfo> getLiveTabletServers(Universe universe) {
+    String masterAddresses = universe.getMasterAddresses();
+    try (YBClient client =
+        ybService.getClient(masterAddresses, universe.getCertificateNodetoNode())) {
+      ListLiveTabletServersResponse response = client.listLiveTabletServers();
+
+      return response.getTabletServers();
+    } catch (Exception e) {
+      String msg = String.format("Error while getting live tablet servers");
+      throw new RuntimeException(msg, e);
     }
   }
 
