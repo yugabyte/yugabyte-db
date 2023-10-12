@@ -50,6 +50,9 @@
     estate->es_output_cid--; \
     estate->es_snapshot->curcid--;
 
+#define DELETE_VERTEX_HTAB_NAME "delete_vertex_htab"
+#define DELETE_VERTEX_HTAB_SIZE 1000000
+
 typedef struct cypher_create_custom_scan_state
 {
     CustomScanState css;
@@ -76,6 +79,24 @@ typedef struct cypher_delete_custom_scan_state
     cypher_delete_information *delete_data;
     int flags;
     List *edge_labels;
+
+    /*
+     * Deleted vertex IDs are stored in this hashtable.
+     *
+     * When a vertex item is deleted, it must be checked if there is any edges
+     * connected to it. The connected edges are either deleted or an error is
+     * thrown depending on the DETACH option. However, the check for connected
+     * edges is not done immediately. Instead the deleted vertex IDs are stored
+     * in the hashtable. Once all vertices are deleted, this hashtable is used
+     * to process the connected edges with only one scan of the edge tables.
+     *
+     * Note on performance: Additional performance gain may be possible if
+     * the standard DELETE .. USING .. command can be used instead of this
+     * hashtable. Because Postgres may create a better plan to execute that
+     * command depending on the statistics and available indexes on start_id
+     * and end_id column.
+     */
+    HTAB *vertex_id_htab;
 } cypher_delete_custom_scan_state;
 
 typedef struct cypher_merge_custom_scan_state

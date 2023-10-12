@@ -62,9 +62,9 @@ SELECT * FROM cypher('cypher_delete', $$CREATE (:v)-[:e]->(:v)$$) AS (a agtype);
 
 --Should Fail
 SELECT * FROM cypher('cypher_delete', $$MATCH(n1)-[e]->(n2) DELETE n1 RETURN n1$$) AS (a agtype);
-ERROR:  Cannot delete vertex n1, because it still has edges attached. To delete this vertex, you must first delete the attached edges.
+ERROR:  Cannot delete a vertex that has edge(s). Delete the edge(s) first, or try DETACH DELETE.
 SELECT * FROM cypher('cypher_delete', $$MATCH(n1)-[e]->(n2) DELETE n2 RETURN n2$$) AS (a agtype);
-ERROR:  Cannot delete vertex n2, because it still has edges attached. To delete this vertex, you must first delete the attached edges.
+ERROR:  Cannot delete a vertex that has edge(s). Delete the edge(s) first, or try DETACH DELETE.
 SELECT * FROM cypher('cypher_delete', $$MATCH(n1)-[e]->(n2) DELETE e RETURN e$$) AS (a agtype);
                                                            a                                                            
 ------------------------------------------------------------------------------------------------------------------------
@@ -188,7 +188,7 @@ SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)-[:e]->(:v) CREATE (n)-[:e]-
 (0 rows)
 
 SELECT * FROM cypher('cypher_delete', $$MATCH(n1)-[]->() DELETE n1 RETURN n1$$) AS (a agtype);
-ERROR:  Cannot delete vertex n1, because it still has edges attached. To delete this vertex, you must first delete the attached edges.
+ERROR:  Cannot delete a vertex that has edge(s). Delete the edge(s) first, or try DETACH DELETE.
 --Cleanup
 SELECT * FROM cypher('cypher_delete', $$MATCH(n) DETACH DELETE n RETURN n$$) AS (a agtype);
                                 a                                
@@ -234,7 +234,7 @@ SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)-[:e]->(:v)$$) AS (a agtype)
 (0 rows)
 
 SELECT * FROM cypher('cypher_delete', $$MATCH(n1)-[e]->() DELETE n1, e RETURN n1$$) AS (a agtype);
-ERROR:  Cannot delete vertex n1, because it still has edges attached. To delete this vertex, you must first delete the attached edges.
+ERROR:  Cannot delete a vertex that has edge(s). Delete the edge(s) first, or try DETACH DELETE.
 --Cleanup
 SELECT * FROM cypher('cypher_delete', $$MATCH(n) DETACH DELETE n RETURN n$$) AS (a agtype);
                                 a                                
@@ -650,6 +650,113 @@ SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (resu
  result 
 --------
 (0 rows)
+
+--
+-- Detach Delete
+--
+SELECT create_graph('detach_delete');
+NOTICE:  graph "detach_delete" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('detach_delete',
+$$
+    CREATE (x:Label3{name:'x', delete: true}),
+           (y:Label3{name:'y', delete: true}),
+           (a:Label1{name:'a', delete: true}),
+           (b:Label5{name:'b'}),
+           (c:Label5{name:'c'}),
+           (d:Label5{name:'d'}),
+           (m:Label7{name:'m', delete: true}),
+           (n:Label2{name:'n'}),
+           (p:Label2{name:'p'}),
+           (q:Label2{name:'q'}),
+           (a)-[:rel1{name:'ab'}]->(b),
+           (c)-[:rel2{name:'cd'}]->(d),
+           (n)-[:rel3{name:'nm'}]->(m),
+           (a)-[:rel4{name:'am'}]->(m),
+           (p)-[:rel5{name:'pq'}]->(q)
+$$
+) as (a agtype);
+ a 
+---
+(0 rows)
+
+-- no vertices or edges are deleted (error is expected)
+SELECT * FROM cypher('detach_delete', $$ MATCH (x:Label1), (y:Label3), (z:Label7) DELETE x, y, z RETURN 1 $$) as (a agtype);
+ERROR:  Cannot delete a vertex that has edge(s). Delete the edge(s) first, or try DETACH DELETE.
+SELECT * FROM cypher('detach_delete', $$ MATCH (v) RETURN v.name $$) as (vname agtype);
+ vname 
+-------
+ "x"
+ "y"
+ "a"
+ "b"
+ "c"
+ "d"
+ "m"
+ "n"
+ "p"
+ "q"
+(10 rows)
+
+SELECT * FROM cypher('detach_delete', $$ MATCH ()-[e]->() RETURN e.name $$) as (ename agtype);
+ ename 
+-------
+ "ab"
+ "cd"
+ "nm"
+ "am"
+ "pq"
+(5 rows)
+
+-- x, y, a, m, ab, nm, am are deleted
+SELECT * FROM cypher('detach_delete', $$ MATCH (x:Label1), (y:Label3), (z:Label7) DETACH DELETE x, y, z RETURN 1 $$) as (a agtype);
+ a 
+---
+ 1
+ 1
+(2 rows)
+
+SELECT * FROM cypher('detach_delete', $$ MATCH (v) RETURN v.name $$) as (vname agtype);
+ vname 
+-------
+ "b"
+ "c"
+ "d"
+ "n"
+ "p"
+ "q"
+(6 rows)
+
+SELECT * FROM cypher('detach_delete', $$ MATCH ()-[e]->() RETURN e.name $$) as (ename agtype);
+ ename 
+-------
+ "cd"
+ "pq"
+(2 rows)
+
+SELECT drop_graph('detach_delete', true);
+NOTICE:  drop cascades to 12 other objects
+DETAIL:  drop cascades to table detach_delete._ag_label_vertex
+drop cascades to table detach_delete._ag_label_edge
+drop cascades to table detach_delete."Label3"
+drop cascades to table detach_delete."Label1"
+drop cascades to table detach_delete."Label5"
+drop cascades to table detach_delete."Label7"
+drop cascades to table detach_delete."Label2"
+drop cascades to table detach_delete.rel1
+drop cascades to table detach_delete.rel2
+drop cascades to table detach_delete.rel3
+drop cascades to table detach_delete.rel4
+drop cascades to table detach_delete.rel5
+NOTICE:  graph "detach_delete" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
 
 --
 -- Clean up
