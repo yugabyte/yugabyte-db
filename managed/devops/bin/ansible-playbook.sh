@@ -10,11 +10,6 @@
 
 set -euo pipefail
 
-if which python > /dev/null 2>&1 && \
-         python -c 'import sys; sys.exit(1) if sys.version_info[0] != 2 else sys.exit(0)'; then
-    export YB_MANAGED_DEVOPS_USE_PYTHON3=0
-fi
-
 . "${BASH_SOURCE%/*}/common.sh"
 
 detect_os

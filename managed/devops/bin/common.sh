@@ -85,7 +85,6 @@ set_python_executable() {
 # -------------------------------------------------------------------------------------------------
 readonly PYTHON2_EXECUTABLES=('python2' 'python2.7')
 readonly PYTHON3_EXECUTABLES=('python3.8' 'python3.11' 'python3.10' 'python3.9' 'python3')
-readonly PYTHON2_VERSIONS=('python2.7')
 readonly PYTHON3_VERSIONS=('python3.8' 'python3.9' 'python3.10' 'python3.11')
 readonly LINUX_PLATFORMS=('manylinux2014_x86_64-cp-38-cp38' 'manylinux2014_x86_64-cp-39-cp39' \
                          'manylinux2014_x86_64-cp-310-cp310' 'manylinux2014_x86_64-cp-311-cp311')
