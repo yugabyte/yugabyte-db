@@ -266,8 +266,10 @@ public class GFlagsUtil {
           getMasterDefaultGFlags(taskParam, universe, useHostname, useSecondaryIp, isDualNet));
     }
 
+    // Set on both master and tserver processes to allow db to validate inter-node RPCs.
+    extra_gflags.put(CLUSTER_UUID, String.valueOf(taskParam.getUniverseUUID()));
+
     if (taskParam.isMaster) {
-      extra_gflags.put(CLUSTER_UUID, String.valueOf(taskParam.getUniverseUUID()));
       extra_gflags.put(REPLICATION_FACTOR, String.valueOf(userIntent.replicationFactor));
     }
 
