@@ -89,7 +89,7 @@ An example of payload collected is as follows:
 You can use the `--send-diagnostics` flag along with the [yb-voyager](../reference/yb-voyager-cli/) command, or export an environment variable to control whether to send diagnostics to YugabyteDB as follows:
 
 ```sh
-yb-voyager ... --send-diagnostics [true|false]
+yb-voyager ... --send-diagnostics=[true|false]
 ```
 
 The default is true where yb-voyager captures the diagnostics and sends them to the YugabyteDB diagnostics service.

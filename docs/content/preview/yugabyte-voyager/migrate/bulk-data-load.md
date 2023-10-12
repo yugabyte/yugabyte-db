@@ -43,10 +43,30 @@ yb-voyager import data file --export-dir <EXPORT_DIR> \
 
 Refer to [import data file](../../reference/bulk-data-load/import-data-file/) for details about the arguments.
 
+### Load multiple files into the same table
+
+The import data file command also supports importing multiple files to the same table by providing the --file-table-map flag <fileName>:<tableName> entry for each file, or by passing a glob expression in place of the file name. For example, fileName1:tableName,fileName2:tableName or fileName*:tableName.
+
 ### Incremental data loading
 
-The `import data file` command also supports importing multiple files to the same table by providing the --file-table-map flag `<fileName>:<tableName>` entry for each file, or by passing a glob expression in place of the file name.
-For example, `fileName1:tableName,fileName2:tableName` OR `fileName*:tableName`.
+The import data file command also supports importing files to the same table across multiple runs. For example,
+
+```sh
+yb-voyager import data file --file-table-map 'orders1.csv:orders' ...
+yb-voyager import data file --file-table-map 'orders2.csv:orders' ...
+```
+
+If you want to import an updated version of the same file (that is, having the same file name and data-dir), use the `--start-clean` flag and proceed without truncating the table. `yb-voyager` will ingest the data present in the file in upsert mode. For example,
+
+```sh
+yb-voyager import data file --data-dir /dir/data-dir --file-table-map 'orders.csv:orders' ...`
+```
+
+After new rows are added to `orders.csv`, use the following command to load them with `--start-clean`:
+
+```sh
+yb-voyager import data file --data-dir /dir/data-dir --file-table-map 'orders.csv:orders' --start-clean ...`
+```
 
 For details about the argument, refer to the [arguments table](../../reference/bulk-data-load/import-data-file/#arguments).
 
