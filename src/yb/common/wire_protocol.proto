@@ -153,11 +153,18 @@ message ServerEntryPB {
   optional PeerRole role = 4;
 }
 
-// AutoFlags configuration
+message PromotedFlagInfoPB {
+  required uint32 promoted_version = 1;
+}
+
 message PromotedFlagsPerProcessPB {
   // Ex: yb-master, yb-tserver.
   required string process_name = 1;
   repeated string flags = 2;
+  // flag_infos is only populated after version 2.20.
+  // AutoFlags that were promoted before this version will be backfilled with
+  // default values.
+  repeated PromotedFlagInfoPB flag_infos = 3;
 }
 
 message AutoFlagsConfigPB {

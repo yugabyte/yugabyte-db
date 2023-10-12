@@ -62,7 +62,7 @@ string AutoFlagsJsonParseErrorMsg() {
 }  // namespace
 
 namespace AutoFlagsUtil {
-string DumpAutoFlagsToJSON(const std::string& program_name) {
+string DumpAutoFlagsToJSON(const ProcessName& program_name) {
   // Format:
   //  {
   //     "auto_flags": [

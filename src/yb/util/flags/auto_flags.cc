@@ -79,39 +79,35 @@ std::vector<const AutoFlagDescription*> GetAllAutoFlagsDescription() {
   return AutoFlagsRegistry::GetInstance()->GetAll();
 }
 
-namespace {
-Status PromoteAutoFlag(const AutoFlagDescription& flag_desc) {
+void PromoteAutoFlag(const AutoFlagDescription& flag_desc) {
   auto res = flags_internal::SetFlagInternal(
-      flag_desc.flag_ptr,
-      flag_desc.name.c_str(),
-      flag_desc.target_val.c_str(),
+      flag_desc.flag_ptr, flag_desc.name.c_str(), flag_desc.target_val.c_str(),
       gflags::FlagSettingMode::SET_FLAGS_DEFAULT);
 
   // This can fail only on flag validation errors. DumpAutoFlagsJSONAndExit promotes all AutoFlags
   // to run the validations, and it is always called at build time, so this will never fail during
   // actual process runtime.
-  SCHECK(
-      !res.empty(),
-      InvalidArgument,
-      "Failed to set AutoFlag $0 to target value $1", flag_desc.name, flag_desc.target_val);
-  return Status::OK();
-}
-}  // namespace
-
-Status PromoteAutoFlag(const string& flag_name) {
-  auto flag_desc = GetAutoFlagDescription(flag_name);
-  SCHECK(flag_desc, NotFound, "AutoFlag '$0' not found", flag_name);
-
-  return PromoteAutoFlag(*flag_desc);
+  LOG_IF(FATAL, res.empty()) << "Failed to set AutoFlag " << flag_desc.name << " to target value"
+                             << flag_desc.target_val;
 }
 
-Status PromoteAllAutoFlags() {
+void PromoteAllAutoFlags() {
   auto auto_flags = GetAllAutoFlagsDescription();
   for (const auto& flag_desc : auto_flags) {
-    RETURN_NOT_OK(PromoteAutoFlag(*flag_desc));
+    PromoteAutoFlag(*flag_desc);
   }
+}
 
-  return Status::OK();
+void DemoteAutoFlag(const AutoFlagDescription& flag_desc) {
+  auto res = flags_internal::SetFlagInternal(
+      flag_desc.flag_ptr, flag_desc.name.c_str(), flag_desc.initial_val.c_str(),
+      gflags::FlagSettingMode::SET_FLAGS_DEFAULT);
+
+  // This can fail only on flag validation errors. DumpAutoFlagsJSONAndExit promotes all AutoFlags
+  // to run the validations, and it is always called at build time, so this will never fail during
+  // actual process runtime.
+  LOG_IF(FATAL, res.empty()) << "Failed to set AutoFlag " << flag_desc.name << " to initial value"
+                             << flag_desc.initial_val;
 }
 
 bool IsFlagPromoted(
