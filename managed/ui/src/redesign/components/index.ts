@@ -12,6 +12,7 @@ export * from './YBModal/YBModal';
 export * from './YBPassword/YBPasswordField';
 export * from './YBRadio/YBRadio';
 export * from './YBRadio/YBRadioGroupField';
+export * from './YBButtonGroup/YBButtonGroup';
 export * from './YBSelect/YBSelect';
 export * from './YBSelect/YBSelectField';
 export * from './YBToggle/YBToggle';
