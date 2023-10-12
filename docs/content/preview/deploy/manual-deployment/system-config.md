@@ -13,7 +13,7 @@ type: docs
 
 Perform the following configuration on each node in the cluster:
 
-- ntp and chrony
+- ntp or chrony
 - ulimits
 - transparent hugepages
 
@@ -88,7 +88,7 @@ $ ulimit -n <value>
 
 {{< note title="Restart servers" >}}
 
-After changing a ulimit setting, the YB-Master and YB-TServer servers must be restarted in order for the new settings to take effect. Check the `/proc/<process pid>` file to see the current settings.
+After changing a ulimit setting, the YB-Master and YB-TServer servers must be restarted in order for the new settings to take effect. Check the [yb-tserver.INFO](../start-tservers/#verify-health) file to verify that the ulimits are applied. You can also check the `/proc/<process pid>` file to see the current settings.
 
 {{< /note >}}
 
@@ -188,7 +188,7 @@ You should consult your operating system documentation to determine the best way
 
 On RHEL or CentOS 7 or 8, using grub2, the following steps are one solution:
 
-1. Append "transparent_hugepage=always" to `GRUB_CMDLINE_LINUX` in `/etc/default/grub`
+1. Append "transparent_hugepage=always" to `GRUB_CMDLINE_LINUX` in `/etc/default/grub`.
 
     ```sh
     GRUB_CMDLINE_LINUX="rd.lvm.lv=rhel/root rd.lvm.lv=rhel/swap ... transparent_hugepage=always"
