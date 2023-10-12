@@ -131,6 +131,9 @@ When using an index without transactions enabled, it is the responsibility of th
 - Use the `AND` operator to use multiple index properties.
 - When setting a TTL on the index using `default_time_to_live`, please ensure that the TTL value is the same as that of the table's TTL. If they are different, it would lead to the index and the table being out of sync and would lead to unexpected behavior.
 
+{{<warning>}}
+**Caveat** : Row level TTL cannot be set on a table with a secondary indexes during INSERTS/UPDATES. {{<issue 10992>}}
+{{</warning>}}
 
 ### INCLUDED COLUMNS
 
