@@ -1567,6 +1567,12 @@ Read Committed interacts with the following feature:
 
 * Non-transactional side-effects can occur more than once when a `conflict` or `read restart` occurs in functions or procedures in read committed isolation. This is because in read committed isolation, the retry logic in the database will undo all work done as part of that statement and re-attempt the whole client-issued statement. (See [#12958](https://github.com/yugabyte/yugabyte-db/issues/12958))
 
+Read Committed isolation has the following additional limitations when `enable_wait_queues=false` (see [Wait-on-Conflict](../concurrency-control/#wait-on-conflict) and [Interaction with concurrency control](#interaction-with-concurrency-control)):
+
+* You may have to manually tune the exponential backoff parameters for performance, as explained in [Performance tuning](#performance-tuning).
+* The app may have to rely on statement timeouts to [avoid deadlocks](#avoid-deadlocks-in-read-committed-transactions).
+* There may be unfairness during contention due to the retry-backoff mechanism, resulting in high P99 latencies.
+
 ## Considerations
 
 This isolation level allows both phantom and non-repeatable reads (as demonstrated in [SELECT behavior without explicit locking](#select-behavior-without-explicit-locking)).
