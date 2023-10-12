@@ -10,7 +10,9 @@ menu:
 type: docs
 ---
 
-YugabyteDB Voyager reports migration diagnostics to the YugabyteDB diagnostics service every time any migration starts through YugabyteDB Voyager. User data migrated or any personally identifiable information about the user, or source/target database configuration is _never_ collected or reported.
+YugabyteDB Voyager reports migration diagnostics to the YugabyteDB diagnostics service every time any migration starts through YugabyteDB Voyager. YugabyteDB diagnostics service runs when yb-voyager commands are executed, and stores the data yb-voyager captures with the [--send-diagnostics flag](#configuration-flag).
+
+User data migrated or any personally identifiable information about the user, or source/target database configuration is _never_ collected or reported.
 
 ## Data collected
 

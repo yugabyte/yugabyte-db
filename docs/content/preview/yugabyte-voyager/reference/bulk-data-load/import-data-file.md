@@ -140,7 +140,7 @@ yb-voyager import data file --export-dir /dir/export-dir \
         --quote-char '"'
 ```
 
-### Load Multiple files into the same table
+### Load multiple files to the same table
 
 Multiple files can be imported in one table (for example, `foo1.csv:foo,foo2.csv:foo` or `foo*.csv:foo`).
 
@@ -251,7 +251,7 @@ yb-voyager import data file --export-dir /dir/export-dir \
         --null-string 'null'
 ```
 
-### Incremental loading
+### Load multiple files to the same table
 
 Multiple files can be imported in one table (for example, `foo1.csv:foo,foo2.csv:foo` or `foo*.csv:foo`).
 
