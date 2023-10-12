@@ -4004,6 +4004,8 @@ Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForXCluster(
     CDCStateTableEntry entry(child_tablet, producer_tablet.stream_id);
     // No need to update the timestamp here as we haven't started replicating the child yet.
     entry.checkpoint = OpId(split_op_msg.id().term(), split_op_msg.id().index());
+    LOG(INFO) << "Updating cdc_state entry for split child tablet: " << entry.ToString();
+    entries.push_back(std::move(entry));
   }
   return cdc_state_table_->UpdateEntries(entries);
 }

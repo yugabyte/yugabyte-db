@@ -32,21 +32,23 @@ yb-voyager import data file --export-dir <EXPORT_DIR> \
        --target-db-schema <TARGET_DB_SCHEMA> \
        --data-dir </path/to/files/dir/> \
        --file-table-map <filename1:table1,filename2:table2> \
+       --format csv|text \ # default csv
        # Optional arguments as per data format
-       --delimiter <DELIMITER> \
-       --escape-char <ESCAPE_CHAR> \
-       --quote-char <QUOTE_CHAR> \
-       --has-header \
+       --delimiter <DELIMITER> \ # default ',' for csv and '\t' for text
+       --escape-char <ESCAPE_CHAR> \ # for csv format only. default: '"'
+       --quote-char <QUOTE_CHAR> \ # for csv format only. default: '"'
+       --has-header \ # for csv format only. default: false
        --null-string "<NULL_STRING>"
 ```
 
-Refer to [import data file](../../reference/yb-voyager-cli/#import-data-file) for details about the arguments.
+Refer to [import data file](../../reference/bulk-data-load/import-data-file/) for details about the arguments.
 
 ### Incremental data loading
 
-The `import data file` command also supports importing multiple files to the same table by providing the [--file-table-map](../../reference/yb-voyager-cli/#file-table-map) flag `<fileName>:<tableName>` entry for each file, or by passing a glob expression in place of the file name.
-
+The `import data file` command also supports importing multiple files to the same table by providing the --file-table-map flag `<fileName>:<tableName>` entry for each file, or by passing a glob expression in place of the file name.
 For example, `fileName1:tableName,fileName2:tableName` OR `fileName*:tableName`.
+
+For details about the argument, refer to the [arguments table](../../reference/bulk-data-load/import-data-file/#arguments).
 
 ## Import data files from cloud storage
 

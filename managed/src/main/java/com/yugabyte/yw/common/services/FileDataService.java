@@ -81,6 +81,15 @@ public class FileDataService {
     Boolean disableSyncDBStateToFS =
         confGetter.getGlobalConf(GlobalConfKeys.disableSyncDbToFsStartup);
     try {
+      if (ywFileDataSynced && disableSyncDBStateToFS) {
+        /*
+         * Need not to do any computation for cases.
+         * 1. FS -> DB is already done, determined by ywFileDataSynced
+         * 2. DB -> FS is disabled by runtime config (usually for YBM)
+         */
+        return;
+      }
+
       long fileSyncStartTime = System.currentTimeMillis();
       Collection<File> diskFiles = Collections.emptyList();
 
