@@ -3779,19 +3779,24 @@ OptSplit *
 YbGetSplitOptions(Relation rel)
 {
 	OptSplit *split_options = makeNode(OptSplit);
-	split_options->split_type = NUM_TABLETS;
-	split_options->num_tablets = rel->yb_table_properties->num_tablets;
 	/*
-	 * Copy split points if we have a live range key.
-	 * (RelationGetPrimaryKeyIndex returns InvalidOid if pkey is currently
-	 * being dropped).
+	 * The split type is NUM_TABLETS when the relation has hash key columns
+	 * OR if the relation's range key is currently being dropped. Otherwise,
+	 * the split type is SPLIT_POINTS.
 	 */
-	if (rel->yb_table_properties->num_hash_key_columns == 0
-		&& rel->yb_table_properties->num_tablets > 1
-		&& !(rel->rd_rel->relkind == RELKIND_RELATION
-		&& RelationGetPrimaryKeyIndex(rel) == InvalidOid))
+	split_options->split_type =
+		rel->yb_table_properties->num_hash_key_columns > 0 ||
+		(rel->rd_rel->relkind == RELKIND_RELATION &&
+		 RelationGetPrimaryKeyIndex(rel) == InvalidOid) ? NUM_TABLETS :
+		SPLIT_POINTS;
+	split_options->num_tablets = rel->yb_table_properties->num_tablets;
+
+	/*
+	 * Copy split points for range keys with more than one tablet.
+	 */
+	if (split_options->split_type == SPLIT_POINTS
+		&& rel->yb_table_properties->num_tablets > 1)
 	{
-		split_options->split_type = SPLIT_POINTS;
 		YBCPgTableDesc yb_desc = NULL;
 		HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId,
 						RelationGetRelid(rel), &yb_desc));
