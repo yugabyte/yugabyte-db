@@ -91,7 +91,7 @@ Where
 
 ## Semantics
 
--  An error is raised if transactions have not be enabled using the `WITH transactions = { 'enabled' : true }` clause on the table to be indexed. This is because secondary indexes internally use distributed transactions to ensure ACID guarantees in the updates to the secondary index and the associated primary key. More details [here](https://www.yugabyte.com/blog/yugabyte-db-1-1-new-feature-speeding-up-queries-with-secondary-indexes/).
+- An error is raised if transactions have not be enabled using the `WITH transactions = { 'enabled' : true }` clause on the table to be indexed. This is because secondary indexes internally use distributed transactions to ensure ACID guarantees in the updates to the secondary index and the associated primary key. More details [here](https://www.yugabyte.com/blog/yugabyte-db-1-1-new-feature-speeding-up-queries-with-secondary-indexes/).
 - An error is raised if `index_name` already exists in the associated keyspace unless the `IF NOT EXISTS` option is used.
 
 {{< note title="Note" >}}
@@ -111,7 +111,7 @@ CREATE INDEX ON orders (warehouse)
 ```
 
 {{< warning >}}
-When using an index without transactions enabled, it is the responsibility of the application to retry any insert/update failures to make sure that the table and index are in sync.
+When using an index without transactions enabled, it is the responsibility of the application to retry any insert/update/delete failures to make sure that the table and index are in sync.
 {{< /warning >}}
 
 ### PARTITION KEY
@@ -129,7 +129,7 @@ When using an index without transactions enabled, it is the responsibility of th
 - The `CLUSTERING ORDER BY` property can be used to set the ordering for each clustering column individually (default is `ASC`).
 - The `TABLETS = <num>` property specifies the number of tablets to be used for the specified YCQL index. Setting this property overrides the value from the [`--yb_num_shards_per_tserver`](../../../reference/configuration/yb-tserver/#yb-num-shards-per-tserver) option. For an example, see [Create an index specifying the number of tablets](#create-an-index-specifying-the-number-of-tablets).
 - Use the `AND` operator to use multiple index properties.
-- When setting a ttl on the index using `default_time_to_live`, please ensure that the ttl value is the same as that of the table's ttl. If they are different, it would lead to the index and the table being out of sync and would lead to unexpected behavior.
+- When setting a TTL on the index using `default_time_to_live`, please ensure that the TTL value is the same as that of the table's TTL. If they are different, it would lead to the index and the table being out of sync and would lead to unexpected behavior.
 
 
 ### INCLUDED COLUMNS
