@@ -13154,9 +13154,6 @@ Status CatalogManager::SubmitToSysCatalog(std::unique_ptr<tablet::Operation> ope
 
 Status CatalogManager::PromoteAutoFlags(
     const PromoteAutoFlagsRequestPB* req, PromoteAutoFlagsResponsePB* resp) {
-  bool non_runtime_flags_promoted = false;
-  uint32_t new_config_version = 0;
-
   const auto max_class = VERIFY_RESULT_PREPEND(
       ParseEnumInsensitive<AutoFlagClass>(req->max_flag_class()),
       "Invalid value provided for flag class");
@@ -13165,15 +13162,49 @@ Status CatalogManager::PromoteAutoFlags(
   // to avoid promotion of flags with AutoFlagClass::kNewInstallsOnly class.
   SCHECK_LT(
       max_class, AutoFlagClass::kNewInstallsOnly, InvalidArgument,
-      Format("It is not allowed to promote with max_class set to $0.",
-      ToString(AutoFlagClass::kNewInstallsOnly)));
+      Format(
+          "max_class cannot be set to $0.",
+          ToString(AutoFlagClass::kNewInstallsOnly)));
 
-  RETURN_NOT_OK(master::PromoteAutoFlags(
+  auto [new_config_version, outcome] = VERIFY_RESULT(master::PromoteAutoFlags(
       max_class, PromoteNonRuntimeAutoFlags(req->promote_non_runtime_flags()), req->force(),
-      *master_->auto_flags_manager(), this, &new_config_version, &non_runtime_flags_promoted));
+      *master_->auto_flags_manager(), this));
 
   resp->set_new_config_version(new_config_version);
-  resp->set_non_runtime_flags_promoted(non_runtime_flags_promoted);
+  resp->set_flags_promoted(outcome != PromoteAutoFlagsOutcome::kNoFlagsPromoted);
+  resp->set_non_runtime_flags_promoted(
+      outcome == PromoteAutoFlagsOutcome::kNonRuntimeFlagsPromoted);
+  return Status::OK();
+}
+
+Status CatalogManager::RollbackAutoFlags(
+    const RollbackAutoFlagsRequestPB* req, RollbackAutoFlagsResponsePB* resp) {
+  auto [new_config_version, outcome] = VERIFY_RESULT(
+      master::RollbackAutoFlags(req->rollback_version(), *master_->auto_flags_manager(), this));
+
+  resp->set_new_config_version(new_config_version);
+  resp->set_flags_rolledback(outcome);
+  return Status::OK();
+}
+
+Status CatalogManager::PromoteSingleAutoFlag(
+    const PromoteSingleAutoFlagRequestPB* req, PromoteSingleAutoFlagResponsePB* resp) {
+  auto [new_config_version, outcome] = VERIFY_RESULT(master::PromoteSingleAutoFlag(
+      req->process_name(), req->auto_flag_name(), *master_->auto_flags_manager(), this));
+
+  resp->set_new_config_version(new_config_version);
+  resp->set_flag_promoted(outcome != PromoteAutoFlagsOutcome::kNoFlagsPromoted);
+  resp->set_non_runtime_flag_promoted(outcome == PromoteAutoFlagsOutcome::kNonRuntimeFlagsPromoted);
+  return Status::OK();
+}
+
+Status CatalogManager::DemoteSingleAutoFlag(
+    const DemoteSingleAutoFlagRequestPB* req, DemoteSingleAutoFlagResponsePB* resp) {
+  auto [new_config_version, outcome] = VERIFY_RESULT(master::DemoteSingleAutoFlag(
+      req->process_name(), req->auto_flag_name(), *master_->auto_flags_manager(), this));
+
+  resp->set_new_config_version(new_config_version);
+  resp->set_flag_demoted(outcome);
   return Status::OK();
 }
 

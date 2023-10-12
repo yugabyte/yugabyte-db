@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <shared_mutex>
+
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/server/server_base_options.h"
 #include "yb/util/locks.h"
@@ -31,28 +33,28 @@ class AutoFlagsManager {
 
   // Returns true if the load was successful, false if the file was not found.
   // Returns true without doing any work if AutoFlags management is disabled.
-  Result<bool> LoadFromFile() EXCLUDES(update_mutex_, config_mutex_);
+  Result<bool> LoadFromFile() EXCLUDES(mutex_);
 
   // local_hosts is a comma separated list of ip addresses and ports.
   // Returns Status::OK without doing any work if AutoFlags management is disabled.
   Status LoadFromMaster(
       const std::string& local_hosts, const server::MasterAddresses& master_addresses,
-      ApplyNonRuntimeAutoFlags apply_non_runtime) EXCLUDES(update_mutex_, config_mutex_);
+      ApplyNonRuntimeAutoFlags apply_non_runtime) EXCLUDES(mutex_);
 
   // Returns Status::OK without doing any work if AutoFlags management is disabled.
   Status LoadFromConfig(
       const AutoFlagsConfigPB new_config, ApplyNonRuntimeAutoFlags apply_non_runtime)
-      EXCLUDES(update_mutex_, config_mutex_);
+      EXCLUDES(mutex_);
 
-  uint32_t GetConfigVersion() const EXCLUDES(config_mutex_);
+  uint32_t GetConfigVersion() const EXCLUDES(mutex_);
 
-  AutoFlagsConfigPB GetConfig() const EXCLUDES(config_mutex_);
+  AutoFlagsConfigPB GetConfig() const EXCLUDES(mutex_);
 
   // Returns all the AutoFlags associated with this process both promoted, and non-promoted ones.
   Result<std::unordered_set<std::string>> GetAvailableAutoFlagsForServer() const;
 
  private:
-  Status ApplyConfig(ApplyNonRuntimeAutoFlags apply_non_runtime) EXCLUDES(config_mutex_);
+  Status ApplyConfig(ApplyNonRuntimeAutoFlags apply_non_runtime) REQUIRES(mutex_);
 
   const std::string process_name_;
 
@@ -60,11 +62,7 @@ class AutoFlagsManager {
   FsManager* fs_manager_;
 
   // Expected to be held for a short time to either read or update current_config_.
-  mutable rw_spinlock config_mutex_;
-  AutoFlagsConfigPB current_config_ GUARDED_BY(config_mutex_);
-
-  // Mutex to ensure only one thread can Update AutoFlagsConfig at a time. Expected to be held for a
-  // long time as we may make RPC calls and file IOs.
-  mutable std::mutex update_mutex_ ACQUIRED_BEFORE(config_mutex_);
+  mutable std::shared_mutex mutex_;
+  AutoFlagsConfigPB current_config_ GUARDED_BY(mutex_);
 };
 }  // namespace yb
