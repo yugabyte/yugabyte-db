@@ -60,3 +60,5 @@ export const resourceOrderByRelevance = [
   Resource.ROLE,
   Resource.DEFAULT
 ];
+
+export const RBAC_USER_MNG_ROUTE = '/admin/rbac?tab=users';

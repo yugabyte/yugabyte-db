@@ -108,11 +108,10 @@ export const SelectUniverseResource: FC<SelectUniverseResourceProps> = ({
     let universes = [];
     // we get only the uuid from the backend
     if (uuid.length > 0 && typeof uuid[0] === 'string') {
-      universes = universeList?.filter(u => all || uuid.includes(u.universeUUID as any));
-    }
-    else {
+      universes = universeList?.filter((u) => all || uuid.includes(u.universeUUID as any));
+    } else {
       // we maintain uuid + label in the front end
-      universes = universeList?.filter(u => all || find(uuid, { universeUUID: u.universeUUID }));
+      universes = universeList?.filter((u) => all || find(uuid, { universeUUID: u.universeUUID }));
     }
     return universes.map((t) => ({ name: t.name, universeUUID: t.universeUUID }));
   };
@@ -125,10 +124,16 @@ export const SelectUniverseResource: FC<SelectUniverseResourceProps> = ({
     0
   );
 
-  const [allowAll, setAllowAll] = useToggle(roleMappings.resourceDefinitionSet[ResourceGroupIndex].allowAll);
+  const [allowAll, setAllowAll] = useToggle(
+    roleMappings.resourceDefinitionSet[ResourceGroupIndex].allowAll
+  );
 
   const [selectedResources, setSelectedResources] = useState<UniverseNameAndUUIDMapping[]>(
-    !allowAll ? getUniverseLabelAndValue(roleMappings.resourceDefinitionSet[ResourceGroupIndex].resourceUUIDSet) : getUniverseLabelAndValue([], true)
+    !allowAll
+      ? getUniverseLabelAndValue(
+          roleMappings.resourceDefinitionSet[ResourceGroupIndex].resourceUUIDSet
+        )
+      : getUniverseLabelAndValue([], true)
   );
 
   if (!role) {
@@ -173,7 +178,11 @@ export const SelectUniverseResource: FC<SelectUniverseResourceProps> = ({
         title={t('title.selectUniverse')}
         onClose={() => {
           toggleUniverseSelectionModal(false);
-          const oldValues = !roleMappings.resourceDefinitionSet[ResourceGroupIndex].allowAll ? getUniverseLabelAndValue(roleMappings.resourceDefinitionSet[ResourceGroupIndex].resourceUUIDSet) : getUniverseLabelAndValue([], true);
+          const oldValues = !roleMappings.resourceDefinitionSet[ResourceGroupIndex].allowAll
+            ? getUniverseLabelAndValue(
+                roleMappings.resourceDefinitionSet[ResourceGroupIndex].resourceUUIDSet
+              )
+            : getUniverseLabelAndValue([], true);
           setAllowAll(roleMappings.resourceDefinitionSet[ResourceGroupIndex].allowAll);
           setSelectedResources(oldValues);
         }}
@@ -198,51 +207,48 @@ export const SelectUniverseResource: FC<SelectUniverseResourceProps> = ({
           toggleUniverseSelectionModal(false);
         }}
       >
-        {
-          showUniverseSelectionModal && (
-            <YBTable<UniverseNameAndUUIDMapping>
-              defaultValues={selectedResources}
-              name={`universeUUIDList`}
-              table={universeList?.map((t) => ({ name: t.name, universeUUID: t.universeUUID }))}
-              setValue={(val) => {
-                if (isEqual(val, selectedResources)) return;
+        {showUniverseSelectionModal && (
+          <YBTable<UniverseNameAndUUIDMapping>
+            defaultValues={selectedResources}
+            name={`universeUUIDList`}
+            table={universeList?.map((t) => ({ name: t.name, universeUUID: t.universeUUID }))}
+            setValue={(val) => {
+              if (isEqual(val, selectedResources)) return;
 
-                setSelectedResources(val);
-                if (val.length !== universeList.length) {
-                  setAllowAll(false);
-                }
-              }}
-              tableHeader={[t('universeName')]}
-              searchPlaceholder={t('searchPlaceholder')}
-              renderBodyFn={(universe) => <div>{universe.name}</div>}
-              searchFn={(universe, searchText) => universe.name.includes(searchText)}
-              tableCountInfo={(selected) => (
-                <>
-                  {selected.length} / {universeList?.length}&nbsp;
-                  {t('selected', { keyPrefix: 'common' })}
-                </>
-              )}
-              customComponents={() => (
-                <Box className={classes.includeUniverses}>
-                  <YBCheckbox
-                    name={`allowAll`}
-                    checked={allowAll}
-                    onChange={(e) => setAllowAll(e.target.value)}
-                    label={t('includeFutureUniverse')}
-                    icon={<img src={UnChecked} alt="unchecked" />}
-                    checkedIcon={<img src={Checked} alt="checked" />}
-                    indeterminateIcon={<img src={Intermediate} alt="intermediate" />}
-                    disabled={selectedResources.length !== universeList.length}
-                  />
-                </Box>
-              )}
-              overrideStyles={{
-                actionsClassname: classes.tableActions
-              }}
-            />
-          )
-        }
-
+              setSelectedResources(val);
+              if (val.length !== universeList.length) {
+                setAllowAll(false);
+              }
+            }}
+            tableHeader={[t('universeName')]}
+            searchPlaceholder={t('searchPlaceholder')}
+            renderBodyFn={(universe) => <div>{universe.name}</div>}
+            searchFn={(universe, searchText) => universe.name.includes(searchText)}
+            tableCountInfo={(selected) => (
+              <>
+                {selected.length} / {universeList?.length}&nbsp;
+                {t('selected', { keyPrefix: 'common' })}
+              </>
+            )}
+            customComponents={() => (
+              <Box className={classes.includeUniverses}>
+                <YBCheckbox
+                  name={`allowAll`}
+                  checked={allowAll}
+                  onChange={(e) => setAllowAll(e.target.value)}
+                  label={t('includeFutureUniverse')}
+                  icon={<img src={UnChecked} alt="unchecked" />}
+                  checkedIcon={<img src={Checked} alt="checked" />}
+                  indeterminateIcon={<img src={Intermediate} alt="intermediate" />}
+                  disabled={selectedResources.length !== universeList.length}
+                />
+              </Box>
+            )}
+            overrideStyles={{
+              actionsClassname: classes.tableActions
+            }}
+          />
+        )}
       </YBModal>
     </div>
   );
