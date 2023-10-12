@@ -232,6 +232,49 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
   }
 
   @Test
+  public void testNotNullConstraints() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      // Test that we can't perform ALTER TYPE ... USING null when the column is not nullable.
+      statement.execute("CREATE TABLE not_null_table(c1 int not null)");
+      statement.execute("INSERT INTO not_null_table VALUES (1), (2)");
+      runInvalidQuery(statement, "ALTER TABLE not_null_table ALTER c1 TYPE float USING null",
+        "ERROR: column \"c1\" contains null values");
+      statement.execute("ALTER TABLE not_null_table ALTER c1 TYPE float USING 0");
+      assertRowList(statement, "SELECT * from not_null_table", Arrays.asList(
+          new Row(0.0),
+          new Row(0.0)));
+      // Verify that not null constraints are preserved after an ALTER TYPE operation.
+      runInvalidQuery(statement, "INSERT INTO not_null_table VALUES (null)",
+        "ERROR: null value in column \"c1\" violates not-null constraint");
+      // Test that we can perform ALTER TYPE ... USING null when the column is nullable.
+      statement.execute("ALTER TABLE not_null_table ALTER c1 DROP NOT NULL");
+      statement.execute("ALTER TABLE not_null_table ALTER c1 TYPE float USING null");
+      assertRowList(statement, "SELECT * from not_null_table", Arrays.asList(
+          new Row(new Object[]{null}),
+          new Row(new Object[]{null})));
+    }
+  }
+
+  @Test
+  public void testUniqueConstraints() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      // Test that we can't perform ALTER TYPE when the operation would result in duplicate values
+      // in a unique column.
+      statement.execute("CREATE TABLE unique_table(c1 text unique)");
+      statement.execute("INSERT INTO unique_table VALUES ('row1'), ('row2')");
+      runInvalidQuery(statement, "ALTER TABLE unique_table ALTER c1 TYPE int USING length(c1)",
+        "ERROR: duplicate key value violates unique constraint \"unique_table_c1_key\"");
+      statement.execute("DELETE FROM unique_table WHERE c1 = 'row2'");
+      statement.execute("ALTER TABLE unique_table ALTER c1 TYPE int USING length(c1)");
+      assertRowList(statement, "SELECT * from unique_table ORDER BY c1 ASC", Arrays.asList(
+          new Row(4)));
+      // Verify that unique constraints are preserved after an ALTER TYPE operation.
+      runInvalidQuery(statement, "INSERT INTO unique_table VALUES (4)",
+        "ERROR: duplicate key value violates unique constraint \"unique_table_c1_key\"");
+    }
+  }
+
+  @Test
   public void testDefaults() throws Exception {
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE TABLE default_table(c1 int, c2 varchar default 'a')");
@@ -346,6 +389,19 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
           new Row(""));
       assertQuery(statement, "SELECT yb_get_range_split_clause('test3'::regclass)",
           new Row("SPLIT AT VALUES ((E'test123\"\"''\\\\hi'))"));
+    }
+  }
+
+  @Test
+  public void testRangeKey() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE range_key_table(id text, PRIMARY KEY(id asc))");
+      statement.execute("INSERT INTO range_key_table(id) VALUES ('abc'), ('abcd')");
+      statement.execute("CREATE INDEX ON range_key_table(id ASC)");
+      statement.execute("ALTER TABLE range_key_table ALTER id TYPE int USING length(id)");
+      assertRowList(statement, "SELECT * FROM range_key_table ORDER BY id", Arrays.asList(
+          new Row(3),
+          new Row(4)));
     }
   }
 

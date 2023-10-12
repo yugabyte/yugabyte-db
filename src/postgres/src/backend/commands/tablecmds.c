@@ -17778,7 +17778,7 @@ YbATCopyFkAndCheckConstraints(const Relation old_rel, Relation new_rel,
 
 /*
  * Copy all rows from one table to the other.
- * Does not perform any constraint checks.
+ * Performs constraint checks when a column type is altered.
  *
  * This is a based on ATRewriteTable, but adopted for YB and with attribute
  * remapping, accounting for old_rel columns dropped in new_rel (we don't expect
@@ -17831,6 +17831,7 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 	EState		   *estate;
 	ExprContext	   *econtext;
 	ListCell	   *cell;
+	List		   *notnull_attrs = NIL;
 
 	Assert(IsYBRelation(new_rel));
 
@@ -17865,6 +17866,13 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 			ExecInitExpr((Expr *) new_column_value->expr, NULL);
 	}
 
+	for (int i = 0; i < newTupDesc->natts; i++)
+	{
+		Form_pg_attribute attr = TupleDescAttr(newTupDesc, i);
+		if (attr->attnotnull && !attr->attisdropped)
+			notnull_attrs = lappend_int(notnull_attrs, i);
+	}
+
 	/*
 	 * Scan through the rows, generating a new row if needed and then
 	 * checking all the constraints.
@@ -17878,6 +17886,7 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 	 */
 	oldcxt = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 
+	/* The following while loop is similar to the one in ATRewriteTable. */
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		Oid tupOid = InvalidOid;
@@ -17938,6 +17947,50 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 		if (newTupDesc->tdhasoid)
 			HeapTupleSetOid(tuple, tupOid);
 
+		/* If we performed type conversions, re-check constraints */
+		if (has_altered_column_type)
+		{
+			foreach(cell, notnull_attrs)
+			{
+				int			attn = lfirst_int(cell);
+
+				if (heap_attisnull(tuple, attn + 1, newTupDesc))
+				{
+					Form_pg_attribute attr = TupleDescAttr(newTupDesc, attn);
+
+					ereport(ERROR,
+							(errcode(ERRCODE_NOT_NULL_VIOLATION),
+							 errmsg("column \"%s\" contains null values",
+									NameStr(attr->attname)),
+							 errtablecol(old_rel, attn + 1)));
+				}
+			}
+
+			foreach(cell, new_check_constraints)
+			{
+				CookedConstraint *constraint = lfirst(cell);
+				ExprState *exprstate = ExecPrepareExpr(
+					(Expr *) constraint->expr, estate);
+				econtext->ecxt_scantuple = newslot;
+				ExecStoreHeapTuple(tuple, newslot, false);
+				if (!ExecCheck(exprstate, econtext))
+					ereport(ERROR,
+							(errcode(ERRCODE_CHECK_VIOLATION),
+							 errmsg("check constraint \"%s\""
+									" is violated by some row",
+									constraint->name),
+							 errtableconstraint(new_rel,
+												constraint->name)));
+			}
+
+		/*
+		 * TODO(fizaa): When we add support for altering the type of a foreign
+		 * key column, we should check the foreign key constraints here. See
+		 * https://github.com/yugabyte/yugabyte-db/issues/17037.
+		 */
+
+		}
+
 		ExecStoreHeapTuple(tuple, newslot, false);
 
 		/* Write the tuple out to the new relation */
@@ -17947,36 +18000,6 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 		MemoryContextReset(econtext->ecxt_per_tuple_memory);
 
 		CHECK_FOR_INTERRUPTS();
-	}
-
-	/* If we performed type conversions, re-check check and FK constraints */
-	if (has_altered_column_type)
-	{
-		Relation constrRel = heap_open(ConstraintRelationId, AccessShareLock);
-		foreach(cell, new_check_constraints)
-		{
-			CookedConstraint *cooked_constraint = lfirst(cell);
-			HeapTuple		  constrTup =
-				get_catalog_object_by_oid(constrRel, cooked_constraint->conoid);
-			validateCheckConstraint(new_rel, constrTup);
-		}
-
-		foreach(cell, new_fk_constraint_oids)
-		{
-			Oid		  constraint_oid = lfirst_oid(cell);
-			HeapTuple constrTup =
-				get_catalog_object_by_oid(constrRel, constraint_oid);
-			Form_pg_constraint constraint =
-				(Form_pg_constraint) GETSTRUCT(constrTup);
-
-			Relation pk_rel = heap_open(constraint->confrelid, AccessShareLock);
-			validateForeignKeyConstraint(NameStr(constraint->conname), new_rel,
-										 pk_rel, constraint->conindid,
-										 constraint_oid);
-			heap_close(pk_rel, AccessShareLock);
-		}
-
-		heap_close(constrRel, AccessShareLock);
 	}
 
 	/*
