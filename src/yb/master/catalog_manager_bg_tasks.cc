@@ -301,7 +301,8 @@ void CatalogManagerBgTasks::Run() {
       catalog_manager_->StartCDCParentTabletDeletionTaskIfStopped();
 
       // Run background tasks related to XCluster & CDC Schema.
-      WARN_NOT_OK(catalog_manager_->RunXClusterBgTasks(), "Failed XCluster Background Task");
+      WARN_NOT_OK(
+          catalog_manager_->RunXClusterBgTasks(l.epoch()), "Failed XCluster Background Task");
 
       // Abort inactive YSQL BackendsCatalogVersionJob jobs.
       catalog_manager_->master_->ysql_backends_manager()->AbortInactiveJobs();
