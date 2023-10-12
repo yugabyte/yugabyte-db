@@ -497,12 +497,9 @@ public class ShellKubernetesManager extends KubernetesManager {
                     pvcConditions.get(0));
               }
               return pvcConditions.isEmpty();
-            },
-            // delay between retry of task
-            2,
-            // timeout for retry in secs
-            getTimeoutSecs(universeUUID));
-    return waitForExpand.retryUntilCond();
+            });
+    return waitForExpand.retryUntilCond(
+        2 /* delayBetweenRetrySecs */, getTimeoutSecs(universeUUID) /* timeoutSecs */);
   }
 
   @Override

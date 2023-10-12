@@ -87,12 +87,9 @@ public class CheckMemory extends UniverseTaskBase {
                         "Insufficient memory " + availMemory + "kB available on node " + nodeIp);
                   }
                   return true;
-                },
-                // delay between retry of task in sec
-                2,
-                // timeout for retry in secs
-                timeout);
-        if (!waitForCheck.retryUntilCond()) {
+                });
+        if (!waitForCheck.retryUntilCond(
+            2 /* delayBetweenRetrySecs */, timeout /* timeoutSecs */)) {
           throw new PlatformServiceException(
               INTERNAL_SERVER_ERROR,
               "Failed to fetch " + params().memoryType + " on node " + nodeIp);
