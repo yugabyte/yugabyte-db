@@ -176,7 +176,10 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
               setCurrentUser(user);
               toggleDeleteModal(true);
             },
-            disabled: user.uuid === localStorage.getItem('userId') || isSuperAdmin
+            disabled:
+              !hasNecessaryPerm({ ...UserPermissionMap.deleteUser, onResource: user.uuid }) ||
+              user.uuid === localStorage.getItem('userId') ||
+              isSuperAdmin
           }
         ]}
       >
