@@ -169,9 +169,10 @@ void XClusterSafeTimeService::ProcessTaskPeriodically() {
 }
 
 Status XClusterSafeTimeService::GetXClusterSafeTimeInfoFromMap(
-    GetXClusterSafeTimeResponsePB* resp) {
+    const LeaderEpoch& epoch, GetXClusterSafeTimeResponsePB* resp) {
   // Recompute safe times again before fetching maps.
-  const auto& current_safe_time_map = VERIFY_RESULT(RefreshAndGetXClusterNamespaceToSafeTimeMap());
+  const auto& current_safe_time_map =
+      VERIFY_RESULT(RefreshAndGetXClusterNamespaceToSafeTimeMap(epoch));
   XClusterNamespaceToSafeTimeMap max_safe_time_map;
   {
     std::lock_guard lock(mutex_);
@@ -211,9 +212,10 @@ Status XClusterSafeTimeService::GetXClusterSafeTimeInfoFromMap(
 }
 
 Result<std::unordered_map<NamespaceId, uint64_t>>
-XClusterSafeTimeService::GetEstimatedDataLossMicroSec() {
+XClusterSafeTimeService::GetEstimatedDataLossMicroSec(const LeaderEpoch& epoch) {
   // Recompute safe times again before fetching maps.
-  const auto& current_safe_time_map = VERIFY_RESULT(RefreshAndGetXClusterNamespaceToSafeTimeMap());
+  const auto& current_safe_time_map =
+      VERIFY_RESULT(RefreshAndGetXClusterNamespaceToSafeTimeMap(epoch));
   XClusterNamespaceToSafeTimeMap max_safe_time_map;
   {
     std::lock_guard lock(mutex_);
@@ -243,8 +245,8 @@ XClusterSafeTimeService::GetEstimatedDataLossMicroSec() {
 }
 
 Result<XClusterNamespaceToSafeTimeMap>
-XClusterSafeTimeService::RefreshAndGetXClusterNamespaceToSafeTimeMap() {
-  RETURN_NOT_OK(ComputeSafeTime(VERIFY_RESULT(GetLeaderTermFromCatalogManager())));
+XClusterSafeTimeService::RefreshAndGetXClusterNamespaceToSafeTimeMap(const LeaderEpoch& epoch) {
+  RETURN_NOT_OK(ComputeSafeTime(epoch.leader_term));
   return GetXClusterNamespaceToSafeTimeMap();
 }
 

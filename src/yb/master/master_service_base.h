@@ -34,6 +34,7 @@ class YsqlBackendsManager;
 class PermissionsManager;
 class EncryptionManager;
 struct LeaderEpoch;
+class XClusterManager;
 
 // Tells HandleIn/HandleOnLeader to either acquire the lock briefly to check leadership (kFalse)
 // or to hold it throughout the handler invocation (kTrue).
@@ -115,6 +116,7 @@ class MasterServiceBase {
   YsqlBackendsManager* handler(YsqlBackendsManager*);
   PermissionsManager* handler(PermissionsManager*);
   EncryptionManager* handler(EncryptionManager*);
+  XClusterManager* handler(XClusterManager*);
 
   Master* server_;
 
