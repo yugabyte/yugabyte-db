@@ -62,10 +62,9 @@ import algoliasearch from 'algoliasearch';
 
     let content = '';
     hitIs.forEach(hit => {
-      let pageTitle = '';
       let pageBreadcrumb = '';
       let pageHash = '';
-      let highlightedText = '';
+      let pageTitle = '';
 
       if (hit.headers[0]) {
         pageTitle = hit.headers[0];
@@ -77,39 +76,40 @@ import algoliasearch from 'algoliasearch';
         pageBreadcrumb = hit.breadcrumb;
       }
 
-      hit._highlightResult.headers.every(pageHeader => {
-        if (pageHeader.matchLevel && pageHeader.fullyHighlighted) {
-          if (pageHeader.matchLevel === 'full') {
-            pageHash = `#${pageHeader.value.toLowerCase().trim()}`;
-            pageHash = pageHash.replace(/<em>|<\/em>/g, '').replace(/ /g, '-');
-
-            return false;
-          }
-        }
-
-        return true;
-      });
-
       let highlightContent = '';
-      if (pageHash === '') {
-        if (hit._highlightResult.title.matchLevel === 'full' || hit._highlightResult.description.matchLevel === 'full') {
-          highlightContent = '';
-        } else {
-          const contentValue = hit.content;
-          const sectionsMatched = contentValue.split(searchedQuery).length - 1;
-
-          if (hit._highlightResult.content.matchLevel !== 'full' || sectionsMatched < 3) {
-            if (hit._highlightResult.content.matchLevel === 'full') {
-              highlightContent = hit._highlightResult.content.value;
-              highlightContent = highlightContent.replace(/<em>|<\/em>/g, '');
-            } else if (hit.content) {
-              if (contentValue.indexOf(searchedQuery) !== -1) {
-                highlightContent = searchedQuery;
+      if (hit._highlightResult.title.matchLevel !== 'full' && hit._highlightResult.description.matchLevel !== 'full') {
+        let partialHeaderMatched = 0;
+        hit._highlightResult.headers.every(pageHeader => {
+          if (pageHeader.matchLevel) {
+            if (pageHeader.matchLevel === 'full') {
+              pageHash = `#${pageHeader.value.toLowerCase().trim()}`;
+              pageHash = pageHash.replace(/<em>|<\/em>/g, '').replace(/ /g, '-');
+            } else if (pageHeader.matchLevel === 'partial') {
+              if (pageHeader.matchedWords.length > partialHeaderMatched) {
+                partialHeaderMatched = pageHeader.matchedWords.length;
+                pageHash = `#${pageHeader.value.toLowerCase().trim()}`;
+                pageHash = pageHash.replace(/<em>|<\/em>/g, '').replace(/ /g, '-');
               }
             }
 
+            if (pageHeader.matchLevel === 'full') {
+              return false;
+            }
+          }
+
+          return true;
+        });
+
+        if (pageHash === '' && hit._highlightResult.content.matchLevel === 'full') {
+          const contentValue = hit.content;
+          const sectionsMatched = contentValue.split(searchedQuery).length - 1;
+
+          if (sectionsMatched < 3) {
+            highlightContent = hit._highlightResult.content.value;
+            highlightContent = highlightContent.replace(/<em>|<\/em>/g, '');
+
             if (highlightContent.length > 0) {
-              highlightedText = `#:~:text=${encodeURIComponent(highlightContent.replace(/-/g, '%2D'))}`;
+              pageHash = `#:~:text=${encodeURIComponent(highlightContent.replace(/-/g, '%2D'))}`;
             }
           }
         }
@@ -117,7 +117,7 @@ import algoliasearch from 'algoliasearch';
 
       content += `<li>
         <div class="search-title">
-          <a href="${hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/')}${pageHash}${highlightedText}">
+          <a href="${hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/')}${pageHash}">
             <span class="search-title-inner">${pageTitle}</span>
             <div class="breadcrumb-item">${pageBreadcrumb}</div>
           </a>
