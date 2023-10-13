@@ -20,9 +20,9 @@ activate_virtualenv
 bin/install_ansible_requirements.sh --force
 
 # Python modules build for yugabundle.
-cd "$yb_devops_home"
-docker build -t "$DOCKER_VENV_IMAGE_NAME" .
-docker run -v "$yb_devops_home:/devops" -u "$UID:$(id -g $UID)" "$DOCKER_VENV_IMAGE_NAME"
+# cd "$yb_devops_home"
+# docker build -t "$DOCKER_VENV_IMAGE_NAME" .
+# docker run -v "$yb_devops_home:/devops" -u "$UID:$(id -g $UID)" "$DOCKER_VENV_IMAGE_NAME"
 
 # PEX virtual env build for other deployments.
 cd "$yb_devops_home/pex"

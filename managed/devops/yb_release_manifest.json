@@ -7,7 +7,6 @@
     "destroy-instance.yml",
     "python_requirements_frozen.txt",
     "python3_requirements_frozen.txt",
-    "python*_modules.tar.gz",
     "preprovision.yml",
     "use_custom_ssh_port.yml",
     "yb-server-ctl.yml",
