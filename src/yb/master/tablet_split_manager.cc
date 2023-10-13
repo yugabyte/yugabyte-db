@@ -579,7 +579,7 @@ void TabletSplitManager::DoSplitting(
       VLOG(3) << "Skipping table for splitting. " << status;
       continue;
     }
-    status = filter_->ValidateSplitCandidateTableCdc(*table.second);
+    status = filter_->XreplValidateSplitCandidateTable(*table.second);
     if (!status.ok()) {
       VLOG(3) << "Skipping table for splitting. " << status;
       continue;

@@ -30,6 +30,7 @@ import static org.yb.AssertionWrappers.*;
 
 import java.time.Duration;
 import java.util.Set;
+import java.util.Map;
 
 import org.awaitility.Awaitility;
 
@@ -45,6 +46,13 @@ public class TestGetTabletsApiCdc extends CDCBaseClass {
     statement = connection.createStatement();
     statement.execute("drop table if exists test;");
     statement.execute("create table test (a int primary key, b int);");
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("enable_tablet_split_of_cdcsdk_streamed_tables", "true");
+    return flagMap;
   }
 
   @Test

@@ -45,6 +45,7 @@
 #include "yb/integration-tests/cdcsdk_test_base.h"
 #include "yb/integration-tests/mini_cluster.h"
 
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.pb.h"
@@ -103,6 +104,7 @@ DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_int32(cdcsdk_table_processing_limit_per_run);
 DECLARE_int32(cdc_snapshot_batch_size);
 DECLARE_bool(TEST_cdc_snapshot_failure);
+DECLARE_bool(enable_tablet_split_of_cdcsdk_streamed_tables);
 
 namespace yb {
 
@@ -1526,6 +1528,12 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     }
 
     return total_seen_records;
+  }
+
+  Status XreplValidateSplitCandidateTable(const TableId& table_id) {
+    auto& cm = test_cluster_.mini_cluster_->mini_master()->catalog_manager_impl();
+    auto table = cm.GetTableInfo(table_id);
+    return cm.XreplValidateSplitCandidateTable(*table);
   }
 };
 
@@ -3794,6 +3802,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSetCDCCheckpointWithHigherTse
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentPersistencyAfterTabletSplit)) {
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables = true;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(SetUpWithParams(1, 1, false));
   const uint32_t num_tablets = 1;
@@ -3835,6 +3844,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentPersistencyAfterTabletS
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckpointPersistencyAfterTabletSplit)) {
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables = true;
   ASSERT_OK(SetUpWithParams(1, 1, false));
   const uint32_t num_tablets = 1;
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
@@ -3895,6 +3905,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckpointPersistencyAfterTab
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionInsertAfterTabletSplit)) {
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables = true;
   ASSERT_OK(SetUpWithParams(1, 1, false));
   const uint32_t num_tablets = 1;
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
@@ -3975,6 +3986,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionInsertAfterTabletS
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetChangesReportsTabletSplitErrorOnRetries)) {
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables = true;
   ASSERT_OK(SetUpWithParams(1, 1, false));
   const uint32_t num_tablets = 1;
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
@@ -4037,6 +4049,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetChangesAfterTabletSplitWit
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
   FLAGS_aborted_intent_cleanup_ms = 1000;
+  FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables = true;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   const uint32_t num_tablets = 1;
@@ -4084,6 +4097,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetChangesOnParentTabletAfter
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
   FLAGS_aborted_intent_cleanup_ms = 1000;
+  FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables = true;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   const uint32_t num_tablets = 1;
@@ -4131,6 +4145,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetChangesMultipleStreamsTabl
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
   FLAGS_aborted_intent_cleanup_ms = 1000;
+  FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables = true;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(SetUpWithParams(1, 1, false));
   const uint32_t num_tablets = 1;
@@ -4192,6 +4207,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSetCDCCheckpointAfterTabletSp
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
   FLAGS_aborted_intent_cleanup_ms = 1000;
+  FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables = true;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_before_split;
   ASSERT_OK(SetUpWithParams(1, 1, false));
   const uint32_t num_tablets = 1;
@@ -4230,6 +4246,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST(TestTabletSplitBeforeBootstrap)) {
   FLAGS_aborted_intent_cleanup_ms = 1000;
   FLAGS_update_metrics_interval_ms = 5000;
   FLAGS_cdc_parent_tablet_deletion_task_retry_secs = 1;
+  FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables = true;
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   uint32_t num_tservers = 3;
@@ -4292,6 +4309,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCStateTableAfterTabletSplit
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   FLAGS_aborted_intent_cleanup_ms = 1000;
   FLAGS_update_metrics_interval_ms = 5000;
+  FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables = true;
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -4355,6 +4373,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST(TestCDCStateTableAfterTabletSplitReported
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   FLAGS_aborted_intent_cleanup_ms = 1000;
   FLAGS_cdc_parent_tablet_deletion_task_retry_secs = 1;
+  FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables = true;
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -4450,6 +4469,7 @@ TEST_F(
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   FLAGS_aborted_intent_cleanup_ms = 1000;
   FLAGS_cdc_parent_tablet_deletion_task_retry_secs = 1;
+  FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables = true;
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -4520,6 +4540,7 @@ TEST_F(
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   FLAGS_aborted_intent_cleanup_ms = 1000;
   FLAGS_cdc_parent_tablet_deletion_task_retry_secs = 1;
+  FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables = true;
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -4565,6 +4586,7 @@ TEST_F(
 TEST_F(
     CDCSDKYsqlTest,
     YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCBootstrapWithTabletSplit)) {
+  FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables = true;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   const uint32_t num_tablets = 1;
@@ -4613,6 +4635,7 @@ TEST_F(
     CDCSDKYsqlTest,
     YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCBootstrapWithTwoTabletSplits)) {
   FLAGS_cdc_parent_tablet_deletion_task_retry_secs = 1;
+  FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables = true;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   const uint32_t num_tablets = 1;
@@ -4666,6 +4689,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWith
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   FLAGS_aborted_intent_cleanup_ms = 1000;
   FLAGS_cdc_parent_tablet_deletion_task_retry_secs = 1;
+  FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables = true;
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -6773,6 +6797,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSnapshotWithInvalidFromOpId))
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitOnAddedTableForCDC)) {
+  FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables = true;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
@@ -6835,6 +6860,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitOnAddedTableForCDC
 
 TEST_F(
     CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitOnAddedTableForCDCWithMasterRestart)) {
+  FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables = true;
+
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
@@ -6902,6 +6929,7 @@ TEST_F(
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionCommitAfterTabletSplit)) {
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables = true;
 
   uint32_t num_columns = 10;
   ASSERT_OK(SetUpWithParams(1, 1, false));
@@ -6990,6 +7018,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWith
   FLAGS_update_min_cdc_indices_interval_secs = 1;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   FLAGS_aborted_intent_cleanup_ms = 1000;
+  FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables = true;
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -7107,6 +7136,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitDuringSnapshot)) {
   FLAGS_enable_load_balancing = false;
   FLAGS_cdc_snapshot_batch_size = 100;
   FLAGS_enable_single_record_update = false;
+  FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables = true;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = EXPECT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -7606,6 +7636,42 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIsUnderCDCSDKReplicationField
 
   // Assert that after deleting the stream, 'is_under_cdc_sdk_replication' will be set to 'false'.
   check_is_under_cdc_sdk_replication(false);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitDisabledForTablesWithStream)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(SetUpWithParams(/*replication_factor=*/1, /*num_masters=*/1, /*colocated=*/false));
+  const uint32_t num_tablets = 1;
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+
+  // Should be ok to split before creating a stream.
+  ASSERT_OK(XreplValidateSplitCandidateTable(table_id));
+
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  // Split disallowed since FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables is false and we have
+  // a CDCSDK stream on the table.
+  auto s = XreplValidateSplitCandidateTable(table_id);
+  ASSERT_NOK(s);
+  ASSERT_NE(
+      s.message().ToString().find(
+          "Tablet splitting is not supported for tables that are a part of a CDCSDK stream"),
+      std::string::npos)
+      << s.message();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables) = true;
+  // Should be ok to split since FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables is true.
+  ASSERT_OK(XreplValidateSplitCandidateTable(table_id));
 }
 
 }  // namespace enterprise

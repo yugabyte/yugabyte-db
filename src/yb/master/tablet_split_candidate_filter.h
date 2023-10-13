@@ -25,7 +25,7 @@ class TabletSplitCandidateFilterIf {
   virtual ~TabletSplitCandidateFilterIf() {}
 
   // Table-level checks for whether we can split tablets in this table.
-  virtual Status ValidateSplitCandidateTableCdc(const TableInfo& table_info) const = 0;
+  virtual Status XreplValidateSplitCandidateTable(const TableInfo& table_info) const = 0;
   virtual Result<bool> IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) = 0;
 
   // Returns true if we should split a tablet based on the provided drive_info.
