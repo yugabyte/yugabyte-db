@@ -1173,6 +1173,7 @@ PgClientSession::SetupSession(
   if (transaction) {
     DCHECK_GE(options.active_sub_transaction_id(), 0);
     transaction->SetActiveSubTransaction(options.active_sub_transaction_id());
+    RETURN_NOT_OK(transaction->SetPgTxnStart(options.pg_txn_start_us()));
 
     // To avoid updating cache unnecessarily (which requires taking a lock), check if the
     // transaction ID has indeed changed.

@@ -175,7 +175,7 @@ PgTxnManager::~PgTxnManager() {
   WARN_NOT_OK(AbortTransaction(), "Failed to abort transaction in dtor");
 }
 
-Status PgTxnManager::BeginTransaction() {
+Status PgTxnManager::BeginTransaction(int64_t start_time) {
   VLOG_TXN_STATE(2);
   if (YBCIsInitDbModeEnvVarSet()) {
     return Status::OK();
@@ -183,6 +183,7 @@ Status PgTxnManager::BeginTransaction() {
   if (IsTxnInProgress()) {
     return STATUS(IllegalState, "Transaction is already in progress");
   }
+  pg_txn_start_us_ = start_time;
   return RecreateTransaction(SavePriority::kFalse);
 }
 
@@ -492,6 +493,8 @@ void PgTxnManager::SetupPerformOptions(
     options->set_read_time_manipulation(
         GetActualReadTimeManipulator(isolation_level_, read_time_manipulation_, ensure_read_time));
     read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
+    // pg_txn_start_us is similarly only used for kPlain transactions.
+    options->set_pg_txn_start_us(pg_txn_start_us_);
   }
   if (read_time_for_follower_reads_) {
     ReadHybridTime::SingleTime(read_time_for_follower_reads_).ToPB(options->mutable_read_time());

@@ -1757,6 +1757,7 @@ class TransactionParticipant::Impl
         .status_tablet = TabletId(),
         .priority = 0,
         .start_time = {},
+        .pg_txn_start_us = {},
         .old_status_tablet = {},
       };
       it = transactions_.insert(std::make_shared<RunningTransaction>(

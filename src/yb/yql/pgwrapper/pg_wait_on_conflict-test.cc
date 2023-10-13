@@ -19,26 +19,27 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/fs/fs_manager.h"
+#include "yb/gutil/strings/join.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 
+#include "yb/util/async_util.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/env.h"
 #include "yb/util/monotime.h"
+#include "yb/util/pb_util.h"
+#include "yb/util/random_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
-
 #include "yb/util/tsan_util.h"
+
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
 
-#include "yb/util/async_util.h"
-#include "yb/util/backoff_waiter.h"
-#include "yb/util/env.h"
-
-#include "yb/util/pb_util.h"
 
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(TEST_select_all_status_tablets);
@@ -1067,6 +1068,150 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(ParallelUpdatesDetectDeadlock))
       LOG(INFO) << "Thread 0 failed to update " << s;
       did_deadlock.CountDown();
     }
+  }
+}
+
+
+TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(MultiTabletFairness)) {
+  constexpr int kNumUpdateConns = 20;
+  constexpr int kNumKeys = 40;
+  // This test specifically ensures 2 aspects when transactions simultaneously contend on
+  // writes/locks to the same rows on multiple tablets:
+  // (1) Waiting transactions are woken up in a consistent order across all tablets. This avoids
+  //     deadlocks which would otherwise occur.
+  // (2) The consistent order across all tablets is the same the the ordering of the transaction
+  //     start times. This ensures fairness i.e., older transactions get a chance earlier.
+  //
+  // At a high level, the scenario is as follows:
+  // 1. Establish one transction which holds locks on keys 0...kNumKeys
+  // 2. Create kNumUpdateConns which will concurrently attempt to update the same keys
+  // 3. Establish distributed transactions on connections 0...kNumUpdateConns with start times in
+  //    ascending order, such that connection i's txn start time is before connection k's start time
+  //    for i < k.
+  // 4. Attempt updates concurrently from all update connections hitting four different tablets
+  //    in parallel
+  // 5. Once all update connections have issued their update statements (which should be blocked),
+  //    commit the locking transaction.
+  // 6. Assert that only the first update connection was able to make the updates, and all others
+  //    failed.
+
+  // We set-up the scenario with a simple table, split into 4 tablets which dissect the range of
+  // keys our update statements will contend against.
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.ExecuteFormat(
+      "CREATE TABLE foo (k INT, v INT, PRIMARY KEY(k asc)) SPLIT AT VALUES (($0), ($1), ($2))",
+      kNumKeys / 4, 2 * kNumKeys / 4, 3 * kNumKeys / 4));
+  ASSERT_OK(setup_conn.ExecuteFormat(
+      "INSERT INTO foo SELECT generate_series(0, $0), -1", kNumKeys * 5));
+
+  // The first connection takes an explicit lock on rows which the remainder of the connections will
+  // attempt to update in parallel.
+  std::vector<std::string> contended_keys;
+  for (int i = 0; i < kNumKeys; ++i) {
+    contended_keys.push_back(Format("$0", i));
+  }
+  auto update_query = Format(
+      "UPDATE foo SET v=$0 WHERE k IN ($1)", "$0", JoinStrings(contended_keys, ","));
+
+  const auto explain_fail_help_text =
+      "This test relies on the parallelization of UPDATE RPCs which touch multiple tablets. If "
+      "this assertion fails, the test will not be valid in its current form. If the behavior of "
+      "UPDATE RPCs is changed and causing this test to fail, we should update the query used in "
+      "this test such that it conforms to the requiment that RPCs are issued in parallel for "
+      "statements involving multiple tablets.";
+  auto update_analyze_query = Format("EXPLAIN (ANALYZE, DIST) $0", Format(update_query, -10));
+  ASSERT_OK(setup_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  auto explain_analyze_output = ASSERT_RESULT(setup_conn.FetchAllAsString(update_analyze_query));
+  ASSERT_NE(explain_analyze_output.find(
+      Format("Storage Write Requests: $0", kNumKeys)), std::string::npos) << explain_fail_help_text;
+  ASSERT_NE(explain_analyze_output.find("Storage Flush Requests: 1"), std::string::npos)
+      << explain_fail_help_text;
+  ASSERT_OK(setup_conn.CommitTransaction());
+
+  ASSERT_OK(setup_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(setup_conn.Fetch(Format(
+      "SELECT * From foo WHERE k IN ($0) FOR UPDATE", JoinStrings(contended_keys, ","))));
+
+  // Create update_conns here since this is somewhat slow, and the loop below has timing-based
+  // waits and assertions.
+  std::vector<PGConn> update_conns;
+  update_conns.reserve(kNumUpdateConns);
+  for (int i = 0; i < kNumUpdateConns; ++i) {
+    update_conns.push_back(ASSERT_RESULT(Connect()));
+  }
+
+  TestThreadHolder thread_holder;
+  CountDownLatch queued_waiters(kNumUpdateConns);
+  std::atomic_bool update_did_return[kNumUpdateConns];
+  // We test concurrent connections with update statements because these will be parallelized,
+  // whereas the explicit row locking "SELECT FOR" statements above send one lock rpc for each row
+  // in *serial* in both RR and RC isolation.
+  for (int i = 0; i < kNumUpdateConns; ++i) {
+    auto& conn = update_conns.at(i);
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    // Establish a distributed transaction by obtaining a lock on some key outside of the contended
+    // range of keys.
+    ASSERT_OK(conn.FetchFormat("SELECT * FROM foo WHERE k=$0 FOR UPDATE", kNumKeys * 2 + i));
+    LOG(INFO) << "Conn " << i << " started";
+    update_did_return[i] = false;
+
+    thread_holder.AddThreadFunctor(
+        [i, &conn, &update_did_return = update_did_return[i], &queued_waiters, &update_query] {
+      // Wait for all connections to queue their thread of execution
+      auto txn_id = ASSERT_RESULT(conn.FetchAllAsString("SELECT yb_get_current_transaction()"));
+      LOG(INFO) << "Conn " << i << " queued with txn id " <<  txn_id;
+      queued_waiters.CountDown();
+      ASSERT_TRUE(queued_waiters.WaitFor(10s * kTimeMultiplier));
+      LOG(INFO) << "Conn " << i << " finished waiting";
+
+      // Set timeout to 10s so the test does not hang for default 600s timeout in case of failure.
+      ASSERT_OK(conn.ExecuteFormat("SET statement_timeout=$0", 10000 * kTimeMultiplier));
+      // Only the first updating connection, which was started before the others with i>0, should
+      // succeed. The others should conflict since their read times have been established before the
+      // commit time of the first one.
+      auto execute_status = conn.ExecuteFormat(update_query, i);
+      if (i == 0) {
+        EXPECT_OK(execute_status);
+      } else {
+        EXPECT_NOK(execute_status);
+        ASSERT_STR_CONTAINS(
+            execute_status.ToString(), "could not serialize access due to concurrent update");
+        ASSERT_STR_CONTAINS(
+            execute_status.ToString(), "pgsql error 40001");
+      }
+      LOG(INFO) << "Update completed on conn " << i
+                << " with txn id: " << txn_id
+                << " and status " << execute_status;
+
+      update_did_return.exchange(true);
+    });
+  }
+
+  // Once all update threads have woken up, sleep to ensure they have all initiated a query and
+  // entered the wait queue before committing each transaction in order.
+  ASSERT_TRUE(queued_waiters.WaitFor(5s * kTimeMultiplier));
+  SleepFor(5s * kTimeMultiplier);
+  LOG(INFO) << "About to commit conns";
+  ASSERT_OK(setup_conn.CommitTransaction());
+  LOG(INFO) << "Committed locking conn";
+
+  for (int i = 0; i < kNumUpdateConns; ++i) {
+    // Wait for the update to return on this connection before attempting to commit it. Since we
+    // attempt this on each connection in order of its txn start time, if this wait fails, then the
+    // connections must have been resumed in an order inconsistent with their start time, which
+    // should be treated as a test failure.
+    ASSERT_OK(WaitFor([&did_try_update = update_did_return[i]]() {
+      return did_try_update.load();
+    }, 2s * kTimeMultiplier, Format("Waiting for connection $0 to lock", i)));
+    LOG(INFO) << "Finished waiting for connection " << i << " to lock";
+    ASSERT_OK(update_conns.at(i).CommitTransaction());
+    LOG(INFO) << "Finished conn " << i;
+  }
+
+  // Confirm that all rows have been updated to the value set by the first update txn.
+  for (int i = 0; i < kNumKeys; ++i) {
+    ASSERT_EQ(
+        ASSERT_RESULT(setup_conn.FetchValue<int>(Format("SELECT v FROM foo WHERE k=$0", i))), 0);
   }
 }
 

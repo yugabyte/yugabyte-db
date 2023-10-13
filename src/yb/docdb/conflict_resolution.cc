@@ -108,6 +108,8 @@ class ConflictResolverContext {
 
   virtual void MakeResolutionAtLeast(const HybridTime& resolution_ht) = 0;
 
+  virtual int64_t GetTxnStartUs() const = 0;
+
   virtual tablet::TabletMetrics* GetTabletMetrics() = 0;
 
   virtual bool IgnoreConflictsWith(const TransactionId& other) = 0;
@@ -630,7 +632,8 @@ class WaitOnConflictResolver : public ConflictResolver {
     DCHECK(!status_tablet_id_.empty());
     auto did_wait_or_status = wait_queue_->MaybeWaitOnLocks(
         context_->transaction_id(), context_->subtransaction_id(), lock_batch_, status_tablet_id_,
-        serial_no_, std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
+        serial_no_, context_->GetTxnStartUs(),
+        std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
     if (!did_wait_or_status.ok()) {
       InvokeCallback(did_wait_or_status.status());
     } else if (!*did_wait_or_status) {
@@ -648,7 +651,7 @@ class WaitOnConflictResolver : public ConflictResolver {
     MaybeSetWaitStartTime();
     return wait_queue_->WaitOn(
         context_->transaction_id(), context_->subtransaction_id(), lock_batch_,
-        ConsumeTransactionDataAndReset(), status_tablet_id_, serial_no_,
+        ConsumeTransactionDataAndReset(), status_tablet_id_, serial_no_,  context_->GetTxnStartUs(),
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
   }
 
@@ -855,10 +858,12 @@ class ConflictResolverContextBase : public ConflictResolverContext {
  public:
   ConflictResolverContextBase(const DocOperations& doc_ops,
                               HybridTime resolution_ht,
+                              int64_t txn_start_us,
                               tablet::TabletMetrics* tablet_metrics,
                               ConflictManagementPolicy conflict_management_policy)
       : doc_ops_(doc_ops),
         resolution_ht_(resolution_ht),
+        txn_start_us_(txn_start_us),
         tablet_metrics_(*tablet_metrics),
         conflict_management_policy_(conflict_management_policy) {
   }
@@ -873,6 +878,10 @@ class ConflictResolverContextBase : public ConflictResolverContext {
 
   void MakeResolutionAtLeast(const HybridTime& resolution_ht) override {
     resolution_ht_.MakeAtLeast(resolution_ht);
+  }
+
+  int64_t GetTxnStartUs() const override {
+    return txn_start_us_;
   }
 
   tablet::TabletMetrics* GetTabletMetrics() override {
@@ -925,6 +934,8 @@ class ConflictResolverContextBase : public ConflictResolverContext {
   // Hybrid time of conflict resolution, used to request transaction status from status tablet.
   HybridTime resolution_ht_;
 
+  int64_t txn_start_us_;
+
   bool fetched_metadata_for_transactions_ = false;
 
   tablet::TabletMetrics& tablet_metrics_;
@@ -939,10 +950,11 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
                                      const LWKeyValueWriteBatchPB& write_batch,
                                      HybridTime resolution_ht,
                                      HybridTime read_time,
+                                     int64_t txn_start_us,
                                      tablet::TabletMetrics* tablet_metrics,
                                      ConflictManagementPolicy conflict_management_policy)
       : ConflictResolverContextBase(
-            doc_ops, resolution_ht, tablet_metrics, conflict_management_policy),
+            doc_ops, resolution_ht, txn_start_us, tablet_metrics, conflict_management_policy),
         write_batch_(write_batch),
         read_time_(read_time),
         transaction_id_(FullyDecodeTransactionId(write_batch.transaction().transaction_id()))
@@ -1177,10 +1189,11 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
  public:
   OperationConflictResolverContext(const DocOperations* doc_ops,
                                    HybridTime resolution_ht,
+                                   int64_t txn_start_us,
                                    tablet::TabletMetrics* tablet_metrics,
                                    ConflictManagementPolicy conflict_management_policy)
       : ConflictResolverContextBase(
-            *doc_ops, resolution_ht, tablet_metrics, conflict_management_policy) {
+            *doc_ops, resolution_ht, txn_start_us, tablet_metrics, conflict_management_policy) {
   }
 
   virtual ~OperationConflictResolverContext() {}
@@ -1288,6 +1301,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
                                    const LWKeyValueWriteBatchPB& write_batch,
                                    HybridTime resolution_ht,
                                    HybridTime read_time,
+                                   int64_t txn_start_us,
                                    const DocDB& doc_db,
                                    PartialRangeKeyIntents partial_range_key_intents,
                                    TransactionStatusManager* status_manager,
@@ -1304,7 +1318,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
       << ", read_time: " << read_time;
 
   auto context = std::make_unique<TransactionConflictResolverContext>(
-      doc_ops, write_batch, resolution_ht, read_time, tablet_metrics,
+      doc_ops, write_batch, resolution_ht, read_time, txn_start_us, tablet_metrics,
       conflict_management_policy);
   if (conflict_management_policy == WAIT_ON_CONFLICT) {
     RSTATUS_DCHECK(
@@ -1329,6 +1343,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
 Status ResolveOperationConflicts(const DocOperations& doc_ops,
                                  const ConflictManagementPolicy conflict_management_policy,
                                  HybridTime intial_resolution_ht,
+                                 int64_t txn_start_us,
                                  const DocDB& doc_db,
                                  PartialRangeKeyIntents partial_range_key_intents,
                                  TransactionStatusManager* status_manager,
@@ -1342,7 +1357,7 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
       << ", initial_resolution_ht: " << intial_resolution_ht;
 
   auto context = std::make_unique<OperationConflictResolverContext>(
-      &doc_ops, intial_resolution_ht, tablet_metrics, conflict_management_policy);
+      &doc_ops, intial_resolution_ht, txn_start_us, tablet_metrics, conflict_management_policy);
 
   if (conflict_management_policy == WAIT_ON_CONFLICT) {
     RSTATUS_DCHECK(
