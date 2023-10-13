@@ -54,7 +54,7 @@ FindChildren(Oid parentOid, List **childTuples)
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(parentOid));
 
-	YBC_DEBUG_LOG_INFO("FindChildren for parentOid %d", parentOid);
+	elog(DEBUG3, "FindChildren for parentOid %d", parentOid);
 	SysScanDesc scan = ybc_systable_begin_default_scan(
 		relation, InheritsParentIndexId, true, NULL, 1, key);
 
@@ -63,7 +63,7 @@ FindChildren(Oid parentOid, List **childTuples)
 	{
 		HeapTuple copy_inheritsTuple = heap_copytuple(inheritsTuple);
 		*childTuples = lappend(*childTuples, copy_inheritsTuple);
-		YBC_DEBUG_LOG_INFO("Found child %d for parent %d",
+		elog(DEBUG3, "Found child %d for parent %d",
 			((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhrelid,
 			parentOid);
 	}
@@ -76,7 +76,7 @@ FindChildren(Oid parentOid, List **childTuples)
 static void
 YbPgInheritsCacheRelCallback(Datum arg, Oid relid)
 {
-	YBC_DEBUG_LOG_INFO("YbPgInheritsCacheRelCallback for relid %d", relid);
+	elog(DEBUG1, "YbPgInheritsCacheRelCallback for relid %d", relid);
 	YbPgInheritsCacheInvalidate(relid);
 }
 
@@ -125,7 +125,7 @@ YbGetChildCacheEntry(YbPgInheritsCacheEntry entry, Oid relid)
 		Form_pg_inherits form = (Form_pg_inherits) GETSTRUCT(tuple);
 		if (form->inhrelid == relid)
 		{
-			YBC_DEBUG_LOG_INFO("YbGetChildCacheEntry hit for relid %d", relid);
+			elog(DEBUG3, "YbGetChildCacheEntry hit for relid %d", relid);
 
 			YbPgInheritsCacheChildEntry result =
 				palloc(sizeof(YbPgInheritsCacheChildEntryData));
@@ -142,7 +142,7 @@ YbGetChildCacheEntry(YbPgInheritsCacheEntry entry, Oid relid)
 static YbPgInheritsCacheChildEntry
 GetYbChildCacheEntryMiss(Oid relid)
 {
-	YBC_DEBUG_LOG_INFO(
+	elog(DEBUG3,
 		"GetYbPgInheritsChildCacheEntry miss for relid %d", relid);
 
 	Oid parentOid = YbGetParentRelid(relid);
@@ -150,7 +150,7 @@ GetYbChildCacheEntryMiss(Oid relid)
 	if (!OidIsValid(parentOid))
 		return NULL;
 
-	YBC_DEBUG_LOG_INFO(
+	elog(DEBUG3,
 		"YbPgInheritsCache: Found parent %d for child %d", parentOid, relid);
 
 	/*
@@ -189,7 +189,7 @@ YbInitPgInheritsCache()
 		hash_create("YbPgInheritsCache", 8, &ctl, HASH_ELEM | HASH_CONTEXT);
 
 	CacheRegisterRelcacheCallback(YbPgInheritsCacheRelCallback, (Datum) 0);
-	YBC_DEBUG_LOG_INFO("Initialized YbPgInherits cache");
+	elog(DEBUG3, "Initialized YbPgInherits cache");
 }
 
 void
@@ -208,7 +208,7 @@ YbPreloadPgInheritsCache()
 	while ((inheritsTuple = systable_getnext(scan)) != NULL)
 	{
 		Form_pg_inherits form = (Form_pg_inherits) GETSTRUCT(inheritsTuple);
-		YBC_DEBUG_LOG_INFO(
+		elog(DEBUG3,
 			"Preloading pg_inherits cache for parent %d, child %d curr "
 			"parentOid %d", form->inhparent, form->inhrelid, parentOid);
 
@@ -241,14 +241,14 @@ GetYbPgInheritsCacheEntry(Oid parentOid)
 		YbPgInheritsCache, (void *)&parentOid, HASH_ENTER, &found);
 	if (!found)
 	{
-		YBC_DEBUG_LOG_INFO("YbPgInheritsCache miss for parent %d", parentOid);
+		elog(DEBUG3, "YbPgInheritsCache miss for parent %d", parentOid);
 		entry->parentOid = parentOid;
 		FindChildren(parentOid, &entry->childTuples);
 		entry->refcount = 1;
 	}
 	else
 	{
-		YBC_DEBUG_LOG_INFO("YbPgInheritsCache hit for parentOid %d", parentOid);
+		elog(DEBUG3, "YbPgInheritsCache hit for parentOid %d", parentOid);
 	}
 	++entry->refcount;
 	return entry;
@@ -259,7 +259,7 @@ GetYbPgInheritsChildCacheEntry(Oid relid)
 {
 	Assert(YbPgInheritsCache);
 
-	YBC_DEBUG_LOG_INFO("GetYbPgInheritsChildCacheEntry for relid %d", relid);
+	elog(DEBUG3, "GetYbPgInheritsChildCacheEntry for relid %d", relid);
 
 	HASH_SEQ_STATUS status;
 	YbPgInheritsCacheEntry elem;
@@ -283,7 +283,7 @@ GetYbPgInheritsChildCacheEntry(Oid relid)
 void
 ReleaseYbPgInheritsCacheEntry(YbPgInheritsCacheEntry entry)
 {
-	YBC_DEBUG_LOG_INFO(
+	elog(DEBUG3,
 		"ReleaseYbPgInheritsCacheEntry for parentOid %d", entry->parentOid);
 
 	--entry->refcount;
@@ -302,7 +302,7 @@ ReleaseYbPgInheritsCacheEntry(YbPgInheritsCacheEntry entry)
 void
 ReleaseYbPgInheritsChildEntry(YbPgInheritsCacheChildEntry entry)
 {
-	YBC_DEBUG_LOG_INFO(
+	elog(DEBUG3,
 		"ReleaseYbPgInheritsChildEntry for relid %d", entry->childrelid);
 	ReleaseYbPgInheritsCacheEntry(entry->cacheEntry);
 	pfree(entry);
@@ -311,7 +311,7 @@ ReleaseYbPgInheritsChildEntry(YbPgInheritsCacheChildEntry entry)
 void
 YbPgInheritsCacheDelete(YbPgInheritsCacheEntry entry)
 {
-	YBC_DEBUG_LOG_INFO(
+	elog(DEBUG3,
 		"YbPgInheritsCacheDelete for parentOid %d", entry->parentOid);
 	Assert(YbPgInheritsCache);
 	Assert(entry->refcount == 1);
@@ -344,7 +344,7 @@ YbPgInheritsCacheInvalidate(Oid relid)
 		*/
 		if (relid == InvalidOid || entry->parentOid == relid)
 		{
-			YBC_DEBUG_LOG_INFO(
+			elog(DEBUG3,
 				"YbPgInheritsCacheInvalidate: Invalidating parent %d",
 				entry->parentOid);
 			YbPgInheritsCacheDelete(entry);
@@ -358,7 +358,7 @@ YbPgInheritsCacheInvalidate(Oid relid)
 			Form_pg_inherits form = (Form_pg_inherits) GETSTRUCT(tuple);
 			if (form->inhrelid == relid)
 			{
-				YBC_DEBUG_LOG_INFO(
+				elog(DEBUG3,
 					"YbPgInheritsCacheInvalidate: Invalidating parent %d "
 					"for child %d", form->inhparent, relid);
 				YbPgInheritsCacheDelete(entry);
