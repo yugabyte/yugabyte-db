@@ -16,6 +16,8 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeUnit;
@@ -32,9 +34,6 @@ public class WaitForServerReady extends ServerSubTaskBase {
 
   // Log after these many iterations.
   private static final int LOG_EVERY_NUM_ITERS = 100;
-
-  // Maximum total wait time for the rpc to return 0 not-running tablets (10min).
-  private static final int MAX_TOTAL_WAIT_MS = 600000;
 
   @Inject
   protected WaitForServerReady(BaseTaskDependencies baseTaskDependencies) {
@@ -68,24 +67,30 @@ public class WaitForServerReady extends ServerSubTaskBase {
   public void run() {
     checkParams();
 
-    Stopwatch stopwatch = Stopwatch.createStarted();
     int numIters = 0;
     Duration userWaitTime = Duration.ofMillis(taskParams().waitTimeMs);
-    Duration maxTotalWaitTime = Duration.ofMillis(MAX_TOTAL_WAIT_MS);
     HostAndPort hp = getHostPort();
     boolean isMasterTask = taskParams().serverType == ServerType.MASTER;
     IsServerReadyResponse response = null;
     String errorMessage = null;
     boolean shouldLog = false;
 
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    // Max timeout to wait for check to complete.
+    Duration maxSubtaskTimeout =
+        confGetter.getConfForScope(universe, UniverseConfKeys.waitForServerReadyTimeout);
+    Stopwatch stopwatch = Stopwatch.createStarted();
+
     try (YBClient client = getClient()) {
       while (true) {
         shouldLog = (numIters % LOG_EVERY_NUM_ITERS) == 0;
-        if (stopwatch.elapsed().compareTo(maxTotalWaitTime) > 0) {
+        if (stopwatch.elapsed().compareTo(maxSubtaskTimeout) > 0) {
           log.info("Timing out after iters={}. error '{}'.", numIters, errorMessage);
           throw new RuntimeException(
               String.format(
-                  "WaitForServerReady, max number attempts reached: %s. Failing...", numIters));
+                  "WaitForServerReady, timing out after retrying %d times for a duration of %dms,"
+                      + " greater than max time out of %dms. Failing...",
+                  numIters, stopwatch.elapsed().toMillis(), maxSubtaskTimeout.toMillis()));
         }
         errorMessage = null;
 
