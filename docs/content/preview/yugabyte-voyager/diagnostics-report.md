@@ -17,7 +17,6 @@ Migrated data and personally identifiable information about the user or source o
 ## Data collected
 
 When data collection is enabled, the following data is collected while running yb-voyager.
-refer to the [configuration flag](#configuration-flag).
 
 ```output
 Migration unique id
