@@ -57,12 +57,21 @@ public abstract class CloudTaskBase extends AbstractTaskBase {
 
   public TaskExecutor.SubTaskGroup createRegionSetupTask(
       String regionCode, CloudBootstrap.Params.PerRegionMetadata metadata, String destVpcId) {
+    return createRegionSetupTask(regionCode, metadata, destVpcId, true);
+  }
+
+  public TaskExecutor.SubTaskGroup createRegionSetupTask(
+      String regionCode,
+      CloudBootstrap.Params.PerRegionMetadata metadata,
+      String destVpcId,
+      boolean isFirstTry) {
     TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("Create Region task");
     CloudRegionSetup.Params params = new CloudRegionSetup.Params();
     params.providerUUID = taskParams().providerUUID;
     params.regionCode = regionCode;
     params.metadata = metadata;
     params.destVpcId = destVpcId;
+    params.isFirstTry = isFirstTry;
 
     CloudRegionSetup task = createTask(CloudRegionSetup.class);
     task.initialize(params);
@@ -73,6 +82,11 @@ public abstract class CloudTaskBase extends AbstractTaskBase {
 
   public TaskExecutor.SubTaskGroup createAccessKeySetupTask(
       CloudBootstrap.Params taskParams, String regionCode) {
+    return createAccessKeySetupTask(taskParams, regionCode, true);
+  }
+
+  public TaskExecutor.SubTaskGroup createAccessKeySetupTask(
+      CloudBootstrap.Params taskParams, String regionCode, boolean isFirstTry) {
     TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("Create Access Key");
     CloudAccessKeySetup.Params params = new CloudAccessKeySetup.Params();
     params.providerUUID = taskParams().providerUUID;
@@ -87,6 +101,7 @@ public abstract class CloudTaskBase extends AbstractTaskBase {
     params.showSetUpChrony = taskParams.showSetUpChrony;
     params.skipProvisioning = taskParams.skipProvisioning;
     params.skipKeyValidateAndUpload = taskParams.skipKeyValidateAndUpload;
+    params.isFirstTry = isFirstTry;
     CloudAccessKeySetup task = createTask(CloudAccessKeySetup.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
