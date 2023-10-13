@@ -285,7 +285,9 @@ public class Universe extends Model {
    * @return list of UUIDs of all universes
    */
   public static Set<UUID> getAllUUIDs(Customer customer) {
-    return ImmutableSet.copyOf(find.query().where().eq("customer_id", customer.getId()).findIds());
+    List<UUID> universeList = find.query().where().eq("customer_id", customer.getId()).findIds();
+    Set<UUID> universeUUIDs = new HashSet<UUID>(universeList);
+    return universeUUIDs;
   }
 
   public static Set<UUID> getAllUUIDs() {
