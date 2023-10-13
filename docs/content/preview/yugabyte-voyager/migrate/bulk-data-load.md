@@ -49,7 +49,7 @@ The import data file command also supports importing multiple files to the same 
 
 ### Incremental data loading
 
-The import data file command also supports importing files to the same table across multiple runs. For example,
+You can also import files to the same table across multiple runs. For example, you could import `orders1.csv` as follows:
 
 ```sh
 yb-voyager import data file --file-table-map 'orders1.csv:orders' ...
