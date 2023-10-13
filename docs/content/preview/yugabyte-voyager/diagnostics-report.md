@@ -85,7 +85,7 @@ An example of payload collected is as follows:
 }
 ```
 
-## Configuration flag
+## Configure data collection
 
 You can use the `--send-diagnostics` flag along with the [yb-voyager](../reference/yb-voyager-cli/) command, or export an environment variable to control whether to send diagnostics to YugabyteDB as follows:
 
