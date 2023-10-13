@@ -94,7 +94,7 @@ Set the flag as follows:
 yb-voyager ... --send-diagnostics=[true|false]
 ```
 
-The default is true where yb-voyager captures the diagnostics and sends them to the YugabyteDB diagnostics service.
+The default is true.
 
 Alternatively, you can use the following environment variable to set a value for this flag globally on the client machine where yb-voyager is running.
 
