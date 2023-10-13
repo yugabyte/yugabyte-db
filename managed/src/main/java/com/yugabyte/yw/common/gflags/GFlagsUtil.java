@@ -1162,4 +1162,15 @@ public class GFlagsUtil {
         .filter(flag -> !updatedGFlags.containsKey(flag))
         .collect(Collectors.toSet());
   }
+
+  public static boolean areGflagsInheritedFromPrimary(
+      UniverseDefinitionTaskParams.Cluster cluster) {
+    if (cluster.clusterType != UniverseDefinitionTaskParams.ClusterType.ASYNC) {
+      return false;
+    }
+    if (cluster.userIntent.specificGFlags == null) {
+      return true;
+    }
+    return cluster.userIntent.specificGFlags.isInheritFromPrimary();
+  }
 }
