@@ -13,45 +13,46 @@ menu:
 type: docs
 ---
 
-The [YB-Master](../../reference/configuration/yb-master/) and [YB-TServer](../../reference/configuration/yb-tserver/) nodes report cluster diagnostics to the YugabyteDB diagnostics service every time a new cluster gets created and every hour thereafter.
+By default, the [YB-Master](../../reference/configuration/yb-master/) and [YB-TServer](../../reference/configuration/yb-tserver/) nodes report cluster diagnostics to the Yugabyte diagnostics service every time a new cluster gets created and every hour thereafter.
 
-Any personally identifiable information about the user is _never_ collected.
+No data stored in YugabyteDB or personally identifiable information is collected or reported.
 
 ## Data collected
 
-The data collected depends on the collection level set. To change the collection level, see [Configuration flags](#configuration-flags).
+The data collected depends on the collection level. To change the collection level, see [Configure diagnostics collection](#configure-diagnostics-collection).
 
 ### Collection level: low
 
-```output
-Collection time
-Cluster uuid
-Node uuid
-Node type (tserver or master)
-Number of masters (yb-master processes)
-Number of tablet servers (yb-tserver processes)
-Number of tables
-Number of tablets
-Cluster configuration (gflags)
-Host name (for each node where yb-master and yb-tserver processes are running)
-Username (for each node where yb-master and yb-tserver processes are running)
-```
+The following data is collected:
+
+- Collection time
+- Cluster uuid
+- Node uuid
+- Node type (tserver or master)
+- Number of masters (yb-master processes)
+- Number of tablet servers (yb-tserver processes)
+- Number of tables
+- Number of tablets
+- Cluster configuration (gflags)
+- Host name (for each node where yb-master and yb-tserver processes are running)
+- Username (for each node where yb-master and yb-tserver processes are running)
 
 ### Collection level: medium [Default]
 
-```output
-Everything we collect for level "low" plus:
-Performance metrics
-RPC metrics
-```
+In addition to the low-level data, the following data is collected:
+
+- Performance metrics
+- RPC metrics
 
 ### Collection level: high
 
-Same as `medium` level. In other words, no extra information is collected for this level. It will be used in the future to collect additional diagnostics information such as error logs.
+Same as `medium` level. No extra information is collected for this level. This level may be used in the future to collect additional diagnostics information such as error logs.
 
-#### Example of metrics collected
+## Example of metrics collected
 
-```output.json
+The following is an example of a payload that is collected:
+
+```json
 [
     {
         "type": "tablet",
@@ -83,14 +84,14 @@ Same as `medium` level. In other words, no extra information is collected for th
                 "max": 0,
                 "total_sum": 0
             }
-         ]
+        ]
     }
-}
+]
 ```
 
-#### Example of RPCs being collected
+### Example of RPCs collected
 
-```output.json
+```json
 {
     "inbound_connections": [
         {
@@ -109,13 +110,13 @@ Same as `medium` level. In other words, no extra information is collected for th
 }
 ```
 
-## Configuration flags
+## Configure diagnostics collection
 
 You can add the following configuration flags while starting the [YB-Master](../../reference/configuration/yb-master/) and [YB-TServer](../../reference/configuration/yb-tserver/) nodes to configure the diagnostics reporting behavior of YugabyteDB.
 
 | Flag | Default | Description |
 |:-----|:--------|:----------- |
-| `--callhome_collection_level` |  `medium` | Collection level with possible values of `low`, `medium`, or `high`
+| `--callhome_collection_level` | `medium` | Collection level with possible values of `low`, `medium`, or `high`
 | `--callhome_interval_secs` | 3600 | Collection interval in seconds
 | `--callhome_url ` | `http://diagnostics.yugabyte.com` | Endpoint where diagnostics information is reported.
 | `--callhome_enabled` | `true` | Controls whether diagnostics information is collected and reported. Set to `false` to disable collection. |
