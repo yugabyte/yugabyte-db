@@ -576,6 +576,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status AddNewTableToCDCDKStreamsMetadata(const TableId& table_id, const NamespaceId& ns_id)
       EXCLUDES(mutex_);
 
+  Status XreplValidateSplitCandidateTable(const TableInfo& table) const override;
+
   Status ChangeEncryptionInfo(
       const ChangeEncryptionInfoRequestPB* req, ChangeEncryptionInfoResponsePB* resp);
 
@@ -2176,8 +2178,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const scoped_refptr<TabletInfo>& tablet, const std::string& split_encoded_key,
       const std::string& split_partition_key, ManualSplit is_manual_split);
 
-  Status ValidateSplitCandidateTableCdc(const TableInfo& table) const override;
-  Status ValidateSplitCandidateTableCdcUnlocked(const TableInfo& table) const
+  Status XreplValidateSplitCandidateTableUnlocked(const TableInfo& table) const
       REQUIRES_SHARED(mutex_);
 
   Status ValidateSplitCandidate(

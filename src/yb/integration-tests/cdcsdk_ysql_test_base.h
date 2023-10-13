@@ -51,6 +51,7 @@
 #include "yb/integration-tests/cdcsdk_test_base.h"
 #include "yb/integration-tests/mini_cluster.h"
 
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.pb.h"
@@ -125,6 +126,7 @@ DECLARE_bool(cdc_enable_consistent_records);
 DECLARE_bool(cdc_populate_end_markers_transactions);
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_int64(cdc_resolve_intent_lag_threshold_ms);
+DECLARE_bool(enable_tablet_split_of_cdcsdk_streamed_tables);
 
 namespace yb {
 
@@ -3328,6 +3330,12 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
         },
         MonoDelta::FromSeconds(timeout_secs),
         "Waiting for GetChanges to fetch: " + std::to_string(expected_count) + " records");
+  }
+
+  Status XreplValidateSplitCandidateTable(const TableId& table_id) {
+    auto& cm = test_cluster_.mini_cluster_->mini_master()->catalog_manager_impl();
+    auto table = cm.GetTableInfo(table_id);
+    return cm.XreplValidateSplitCandidateTable(*table);
   }
 };
 

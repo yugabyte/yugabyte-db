@@ -39,6 +39,7 @@ import java.util.*;
 import org.awaitility.Awaitility;
 import org.yb.client.YBTable;
 import org.yb.master.MasterDdlOuterClass;
+import org.yb.util.BuildTypeUtil;
 
 @RunWith(value = YBTestRunner.class)
 public class TestGetTabletsApiCdc extends CDCBaseClass {
@@ -52,6 +53,13 @@ public class TestGetTabletsApiCdc extends CDCBaseClass {
     statement = connection.createStatement();
     statement.execute("drop table if exists test;");
     statement.execute("create table test (a int primary key, b int);");
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("enable_tablet_split_of_cdcsdk_streamed_tables", "true");
+    return flagMap;
   }
 
   // This test is to verify the fix for the following ticket
