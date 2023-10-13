@@ -1124,6 +1124,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status SubmitToSysCatalog(std::unique_ptr<tablet::Operation> operation);
 
   Status PromoteAutoFlags(const PromoteAutoFlagsRequestPB* req, PromoteAutoFlagsResponsePB* resp);
+  Status RollbackAutoFlags(
+      const RollbackAutoFlagsRequestPB* req, RollbackAutoFlagsResponsePB* resp);
+  Status PromoteSingleAutoFlag(
+      const PromoteSingleAutoFlagRequestPB* req, PromoteSingleAutoFlagResponsePB* resp);
+  Status DemoteSingleAutoFlag(
+      const DemoteSingleAutoFlagRequestPB* req, DemoteSingleAutoFlagResponsePB* resp);
 
   Status ReportYsqlDdlTxnStatus(
       const ReportYsqlDdlTxnStatusRequestPB* req,

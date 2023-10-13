@@ -382,6 +382,9 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     (IsLoadBalancerIdle)
     (SetPreferredZones)
     (PromoteAutoFlags)
+    (RollbackAutoFlags)
+    (PromoteSingleAutoFlag)
+    (DemoteSingleAutoFlag)
   )
 };
 
