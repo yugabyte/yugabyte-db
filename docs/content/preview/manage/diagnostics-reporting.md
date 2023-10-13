@@ -52,7 +52,7 @@ Same as `medium` level. No extra information is collected for this level. This l
 
 The following is an example of a payload that is collected:
 
-```json
+```output.json
 [
     {
         "type": "tablet",
@@ -91,7 +91,7 @@ The following is an example of a payload that is collected:
 
 ### Example of RPCs collected
 
-```json
+```output.json
 {
     "inbound_connections": [
         {
