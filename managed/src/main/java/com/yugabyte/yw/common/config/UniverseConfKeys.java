@@ -751,6 +751,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "The maximum time that we allow a tserver to be behind its peers",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> waitForServerReadyTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.wait_for_server_ready.timeout",
+          ScopeType.UNIVERSE,
+          "Wait for server ready timeout",
+          "Controls the max time for server to finish locally bootstrapping",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Long> checkMemoryTimeoutSecs =
       new ConfKeyInfo<>(
           "yb.dbmem.checks.timeout",
