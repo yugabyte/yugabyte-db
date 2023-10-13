@@ -1309,11 +1309,12 @@ Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_cou
 // Insert ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewInsert(const PgObjectId& table_id,
-                            bool is_single_row_txn,
                             bool is_region_local,
-                            PgStatement **handle) {
+                            PgStatement **handle,
+                            YBCPgTransactionSetting transaction_setting) {
   *handle = nullptr;
-  auto stmt = std::make_unique<PgInsert>(pg_session_, table_id, is_single_row_txn, is_region_local);
+  auto stmt = std::make_unique<PgInsert>(
+      pg_session_, table_id, is_region_local, transaction_setting);
   RETURN_NOT_OK(stmt->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1358,11 +1359,12 @@ Status PgApiImpl::InsertStmtSetIsBackfill(PgStatement *handle, const bool is_bac
 // Update ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewUpdate(const PgObjectId& table_id,
-                            bool is_single_row_txn,
                             bool is_region_local,
-                            PgStatement **handle) {
+                            PgStatement **handle,
+                            YBCPgTransactionSetting transaction_setting) {
   *handle = nullptr;
-  auto stmt = std::make_unique<PgUpdate>(pg_session_, table_id, is_single_row_txn, is_region_local);
+  auto stmt = std::make_unique<PgUpdate>(
+      pg_session_, table_id, is_region_local, transaction_setting);
   RETURN_NOT_OK(stmt->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1379,11 +1381,12 @@ Status PgApiImpl::ExecUpdate(PgStatement *handle) {
 // Delete ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewDelete(const PgObjectId& table_id,
-                            bool is_single_row_txn,
                             bool is_region_local,
-                            PgStatement **handle) {
+                            PgStatement **handle,
+                            YBCPgTransactionSetting transaction_setting) {
   *handle = nullptr;
-  auto stmt = std::make_unique<PgDelete>(pg_session_, table_id, is_single_row_txn, is_region_local);
+  auto stmt = std::make_unique<PgDelete>(
+      pg_session_, table_id, is_region_local, transaction_setting);
   RETURN_NOT_OK(stmt->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1456,12 +1459,12 @@ Status PgApiImpl::DeleteStmtSetIsPersistNeeded(PgStatement *handle, const bool i
 // Colocated Truncate ------------------------------------------------------------------------------
 
 Status PgApiImpl::NewTruncateColocated(const PgObjectId& table_id,
-                                       bool is_single_row_txn,
                                        bool is_region_local,
-                                       PgStatement **handle) {
+                                       PgStatement **handle,
+                                       YBCPgTransactionSetting transaction_setting) {
   *handle = nullptr;
   auto stmt = std::make_unique<PgTruncateColocated>(
-      pg_session_, table_id, is_single_row_txn, is_region_local);
+      pg_session_, table_id, is_region_local, transaction_setting);
   RETURN_NOT_OK(stmt->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();

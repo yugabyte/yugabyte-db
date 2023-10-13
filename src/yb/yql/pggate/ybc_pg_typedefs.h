@@ -478,6 +478,20 @@ typedef enum PgSysTablePrefetcherCacheMode {
   YB_YQL_PREFETCHER_NO_CACHE
 } YBCPgSysTablePrefetcherCacheMode;
 
+typedef enum PgTransactionSetting {
+  // Single shard transactions can use a fast path to give full ACID guarantees without the overhead
+  // of a distributed transaction.
+  YB_SINGLE_SHARD_TRANSACTION,
+  // Force non-transactional semantics to avoid overhead of a distributed transaction. This is used
+  // in the following cases as of today:
+  //   (1) Index backfill
+  //   (2) COPY with ysql_non_txn_copy=true
+  //   (3) For normal DML writes if yb_disable_transactional_writes is set by the user
+  YB_NON_TRANSACTIONAL,
+  // Use a distributed transaction for full ACID semantics (common case).
+  YB_TRANSACTIONAL
+} YBCPgTransactionSetting;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
