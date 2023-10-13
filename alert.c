@@ -1150,7 +1150,7 @@ dbms_alert_signal(PG_FUNCTION_ARGS)
 	text	   *event;
 	text	   *message;
 	alert_signal_data *new_signal;
-	alert_signal_data *last_signal;
+	alert_signal_data *last_signal = NULL;
 	MemoryContext oldcxt;
 
 	if (PG_ARGISNULL(0))

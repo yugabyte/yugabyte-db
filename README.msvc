@@ -48,4 +48,6 @@ Build on Microsoft Windows with Microsoft Visual Studio
 
   set "Linker"->"General"->"Link Library Dependencies" to No.
 
-7. make build
+7. Under "C/C++" -> "Advanced", Set "Disable Specific Warnings" to "4996"
+
+8. make build
