@@ -97,6 +97,29 @@ hostnossl  database  user  IP-address  netmask  auth-method  [auth-options]
 
 This record matches connection attempts made via the UNIX socket.
 
+Similarly to PostgreSQL, YugabyteDB supports opening connections via the UNIX sockets when local authentication is used. However, unlike PostgreSQL, YugabyteDB requires ysqlsh, psql and other tools to provide the full path to the socket location when using the following authentication methods:
+
+- local authentication using [peer](#peer)
+- local authentication using [trust](#trust)
+
+The path to the socket location is written to YB-TServer logs, similar to the following:
+
+```output
+2023-09-05 13:56:20.154 UTC [1261] LOG:  listening on Unix socket "/tmp/.yb.127.0.0.1:5433/.s.PGSQL.5433"
+```
+
+If you use ysqlsh, use the `-h` flag, and pass in the first part of the path (in the preceding example, `/tmp/.yb.127.0.0.1:5433/`) as follows:
+
+```sh
+./bin/ysqlsh -h /tmp/.yb.127.0.0.1:5433
+```
+
+For psql you also need specify the port number:
+
+```sh
+psql -h /tmp/.yb.127.0.0.1:5433/ -p 5433
+```
+
 ### host
 
 This record matches connection attempts made using TCP/IP, including localhost. `host` records match either SSL or non-SSL connection attempts.
