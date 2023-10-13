@@ -10,7 +10,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB Voyager reports migration diagnostics to the YugabyteDB diagnostics service every time any migration starts through YugabyteDB Voyager. YugabyteDB diagnostics service runs when yb-voyager commands are executed, and stores the data yb-voyager captures with the [--send-diagnostics flag](#configuration-flag).
+When enabled, YugabyteDB Voyager reports migration diagnostics to the YugabyteDB diagnostics service every time any migration starts through YugabyteDB Voyager. The YugabyteDB diagnostics service runs when yb-voyager commands are executed, and stores the data yb-voyager captures in Yugabyte.
 
 Migrated data and personally identifiable information about the user or source or target database configuration is _never_ collected.
 
@@ -35,7 +35,7 @@ Largest Table Size (maximum size of data migrated for a table)
 
 An example of payload collected is as follows:
 
-```output
+```output.json
 {
   "UUID": "ba4786e8-5923-11ee-8621-06e7faf40beb",
   "start_time": "2023-09-26 11:21:53",

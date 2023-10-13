@@ -13,15 +13,17 @@ menu:
 type: docs
 ---
 
-The [YB-Master](../../reference/configuration/yb-master/) and [YB-TServer](../../reference/configuration/yb-tserver/) nodes report cluster diagnostics to the YugabyteDB diagnostics service every time a new cluster gets created and every hour thereafter. User data stored in YugabyteDB as well as any personally identifiable information regarding the user is never collected or reported.
+The [YB-Master](../../reference/configuration/yb-master/) and [YB-TServer](../../reference/configuration/yb-tserver/) nodes report cluster diagnostics to the YugabyteDB diagnostics service every time a new cluster gets created and every hour thereafter.
+
+Any personally identifiable information about the user is _never_ collected.
 
 ## Data collected
 
-The data collected depends on the collection level set. See [Configuration flags](#configuration-flags) below on how to change the collection level.
+The data collected depends on the collection level set. To change the collection level, see [Configuration flags](#configuration-flags).
 
 ### Collection level: low
 
-```
+```output
 Collection time
 Cluster uuid
 Node uuid
@@ -37,8 +39,8 @@ Username (for each node where yb-master and yb-tserver processes are running)
 
 ### Collection level: medium [Default]
 
-```
-Everything we collect for level “low” plus:
+```output
+Everything we collect for level "low" plus:
 Performance metrics
 RPC metrics
 ```
@@ -49,7 +51,7 @@ Same as `medium` level. In other words, no extra information is collected for th
 
 #### Example of metrics collected
 
-```
+```output.json
 [
     {
         "type": "tablet",
@@ -88,7 +90,7 @@ Same as `medium` level. In other words, no extra information is collected for th
 
 #### Example of RPCs being collected
 
-```
+```output.json
 {
     "inbound_connections": [
         {
@@ -111,9 +113,9 @@ Same as `medium` level. In other words, no extra information is collected for th
 
 You can add the following configuration flags while starting the [YB-Master](../../reference/configuration/yb-master/) and [YB-TServer](../../reference/configuration/yb-tserver/) nodes to configure the diagnostics reporting behavior of YugabyteDB.
 
-Flag | Default | Description
-----------------------|---------|------------------------
-`--callhome_collection_level` |  `medium` | Collection level with possible values of `low`, `medium`, or `high`
-`--callhome_interval_secs` | 3600 | Collection interval in seconds
-`--callhome_url ` | `http://diagnostics.yugabyte.com` | Endpoint where diagnostics information is reported
-`--callhome_enabled` | `true` | Controls whether diagnostics information is collected and reported. Set to `false` to disable collection.
+| Flag | Default | Description |
+|:-----|:--------|:----------- |
+| `--callhome_collection_level` |  `medium` | Collection level with possible values of `low`, `medium`, or `high`
+| `--callhome_interval_secs` | 3600 | Collection interval in seconds
+| `--callhome_url ` | `http://diagnostics.yugabyte.com` | Endpoint where diagnostics information is reported.
+| `--callhome_enabled` | `true` | Controls whether diagnostics information is collected and reported. Set to `false` to disable collection. |

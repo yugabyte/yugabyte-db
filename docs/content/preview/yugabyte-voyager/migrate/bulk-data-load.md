@@ -38,7 +38,7 @@ yb-voyager import data file --export-dir <EXPORT_DIR> \
        --escape-char <ESCAPE_CHAR> \ # for csv format only. default: '"'
        --quote-char <QUOTE_CHAR> \ # for csv format only. default: '"'
        --has-header \ # for csv format only. default: false
-      --null-string <NULL_STRING> # default '' (empty string) for csv and '\N'  for text
+       --null-string <NULL_STRING> # default '' (empty string) for csv and '\N'  for text
 ```
 
 Refer to [import data file](../../reference/bulk-data-load/import-data-file/) for details about the arguments.

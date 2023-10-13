@@ -56,7 +56,7 @@ YugabyteDB Voyager supports migrating schema and data from your existing RDBMS, 
 
 ## Target database
 
-The following table describes the supported target databases based on your migration choice.
+The following table shows the target database support for each migration type.
 
 | Migration type | Supported YugabyteDB Versions | Supported products |
 | :------------- | :--------------------------- | ------------------ |
