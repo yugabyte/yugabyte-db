@@ -1088,6 +1088,38 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  protected Collection<NodeDetails> filterNodesForInstallNodeAgent(
+      Universe universe, Collection<NodeDetails> nodes) {
+    NodeAgentClient nodeAgentClient = application.injector().instanceOf(NodeAgentClient.class);
+    Map<UUID, Boolean> clusterSkip = new HashMap<>();
+    return nodes.stream()
+        .filter(n -> n.cloudInfo != null)
+        .filter(
+            n ->
+                clusterSkip.computeIfAbsent(
+                    n.placementUuid,
+                    k -> {
+                      Cluster cluster = universe.getCluster(n.placementUuid);
+                      Provider provider =
+                          Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+                      if (!nodeAgentClient.isClientEnabled(provider)) {
+                        return false;
+                      }
+                      if (provider.getCloudCode() == CloudType.onprem) {
+                        AccessKey accessKey =
+                            AccessKey.getOrBadRequest(
+                                provider.getUuid(), cluster.userIntent.accessKeyCode);
+                        return !accessKey.getKeyInfo().skipProvisioning;
+                      } else if (provider.getCloudCode() != CloudType.aws
+                          && provider.getCloudCode() != CloudType.azu
+                          && provider.getCloudCode() != CloudType.gcp) {
+                        return false;
+                      }
+                      return true;
+                    }))
+        .collect(Collectors.toSet());
+  }
+
   public SubTaskGroup createInstallNodeAgentTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup(InstallNodeAgent.class.getSimpleName());
     NodeAgentClient nodeAgentClient = application.injector().instanceOf(NodeAgentClient.class);
@@ -1149,7 +1181,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public SubTaskGroup createWaitForNodeAgentTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup(WaitForNodeAgent.class.getSimpleName());
     NodeAgentClient nodeAgentClient = application.injector().instanceOf(NodeAgentClient.class);
-    boolean createSubTaskGroup = false;
     for (NodeDetails node : nodes) {
       if (node.cloudInfo == null) {
         continue;
@@ -1157,7 +1188,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Cluster cluster = getUniverse().getCluster(node.placementUuid);
       Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
       if (nodeAgentClient.isClientEnabled(provider)) {
-        createSubTaskGroup = true;
         WaitForNodeAgent.Params params = new WaitForNodeAgent.Params();
         params.nodeName = node.nodeName;
         params.azUuid = node.azUuid;
@@ -1168,7 +1198,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         subTaskGroup.addSubTask(task);
       }
     }
-    if (createSubTaskGroup) {
+    if (subTaskGroup.getSubTaskCount() > 0) {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
     return subTaskGroup;
