@@ -115,11 +115,17 @@ public class SideBySideDiff {
     List<String> lines1 = readLinesAndNormalize(f1);
     List<String> lines2 = readLinesAndNormalize(f2);
 
-    // Might be the difference between diff implementations,
-    // but adding 4 or 8 is not enough on macOS.
+    // Diff lines look like:
+    // LHS | RHS
+    //
+    // The mid-char | can instead be space (for no change), <, or >.
+    //
+    // From experimenting, sometimes sdiff on Linux uses extra space around the mid-char.
+    // So we give 9 spaces in addition to the worst case length (where both sides are of
+    // equal length).
     final int diffWidth = Math.max(
         StringUtil.getMaxLineLength(lines1),
-        StringUtil.getMaxLineLength(lines2)) * 2 + 12;
+        StringUtil.getMaxLineLength(lines2)) * 2 + 9;
 
     // Diff has no way to strip trailing spaces, so we do preprocessing for it.
     File f1copy = new File(TestUtils.getBaseTmpDir(), "f1_" + f1.getName());
@@ -127,8 +133,7 @@ public class SideBySideDiff {
     FileUtils.writeLines(f1copy, lines1);
     FileUtils.writeLines(f2copy, lines2);
 
-    String diffCmd = String.format("diff --width=%d --side-by-side '%s' '%s'",
-        diffWidth, f1copy, f2copy);
+    String diffCmd = String.format("sdiff --width=%d '%s' '%s'", diffWidth, f1copy, f2copy);
     CommandResult commandResult = CommandUtil.runShellCommand(diffCmd);
     List<String> stdoutLines = commandResult.getStdoutLines();
 
