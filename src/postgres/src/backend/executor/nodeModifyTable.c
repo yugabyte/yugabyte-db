@@ -814,7 +814,8 @@ ExecDelete(ModifyTableState *mtstate,
 										  planSlot,
 										  ((ModifyTable *) mtstate->ps.plan)->ybReturningColumns,
 										  mtstate->yb_fetch_target_tuple,
-										  estate->yb_es_is_single_row_modify_txn,
+										  estate->yb_es_is_single_row_modify_txn
+													? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL,
 										  changingPart,
 										  estate);
 
@@ -1502,7 +1503,8 @@ ExecUpdate(ModifyTableState *mtstate,
 										 estate,
 										 plan,
 										 mtstate->yb_fetch_target_tuple,
-										 estate->yb_es_is_single_row_modify_txn,
+										 estate->yb_es_is_single_row_modify_txn
+										 		? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL,
 										 actualUpdatedCols,
 										 canSetTag);
 		}
