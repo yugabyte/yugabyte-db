@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -23,6 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 @NoArgsConstructor
 @ToString
 @Slf4j
+@EqualsAndHashCode
 public class ResourceGroup {
 
   @Builder
@@ -31,6 +33,7 @@ public class ResourceGroup {
   @Getter
   @Setter
   @ToString
+  @EqualsAndHashCode
   public static class ResourceDefinition {
     @ApiModelProperty(value = "Resource Type")
     private ResourceType resourceType;
@@ -42,6 +45,14 @@ public class ResourceGroup {
     @ApiModelProperty(value = "Set of resource uuids")
     @Builder.Default
     private Set<UUID> resourceUUIDSet = new HashSet<>();
+
+    public ResourceDefinition clone() {
+      return ResourceDefinition.builder()
+          .resourceType(this.resourceType)
+          .allowAll(this.allowAll)
+          .resourceUUIDSet(new HashSet<>(this.resourceUUIDSet))
+          .build();
+    }
   }
 
   private Set<ResourceDefinition> resourceDefinitionSet = new HashSet<>();
