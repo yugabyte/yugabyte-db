@@ -161,6 +161,26 @@ public class AvailabilityZone extends Model {
         .count();
   }
 
+  public static AvailabilityZone getOrCreate(
+      Region region, String code, String name, String subnet) {
+    return getOrCreate(region, code, name, subnet, null);
+  }
+
+  public static AvailabilityZone getOrCreate(
+      Region region, String code, String name, String subnet, String secondarySubnet) {
+    try {
+      LOG.debug("Trying to retrieve zone {} in region {}", code, region.getCode());
+      Optional<AvailabilityZone> zone = maybeGetByCode(region.getProvider(), code);
+      if (zone.isPresent()) {
+        return zone.get();
+      }
+    } catch (Exception e) {
+      LOG.debug("Zone {} in region does not exist. Creating one...", code);
+    }
+
+    return createOrThrow(region, code, name, subnet, secondarySubnet);
+  }
+
   public static AvailabilityZone createOrThrow(
       Region region, String code, String name, String subnet) {
     return createOrThrow(region, code, name, subnet, null);
