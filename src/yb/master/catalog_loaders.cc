@@ -36,6 +36,7 @@
 #include "yb/common/constants.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/master_util.h"
+#include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 #include "yb/master/ysql_transaction_ddl.h"
 
@@ -579,19 +580,7 @@ Status ClusterConfigLoader::Visit(
 
 Status XClusterConfigLoader::Visit(
     const std::string& unused_id, const SysXClusterConfigEntryPB& metadata) {
-  // Debug confirm that there is no xcluster_config_ set.
-  DCHECK(!catalog_manager_->xcluster_config_) << "Already have config data!";
-
-  // Prepare the config object.
-  std::shared_ptr<XClusterConfigInfo> config = std::make_shared<XClusterConfigInfo>();
-  {
-    auto l = config->LockForWrite();
-    l.mutable_data()->pb.CopyFrom(metadata);
-
-    // Update in memory state.
-    catalog_manager_->xcluster_config_ = config;
-    l.Commit();
-  }
+  catalog_manager_->GetXClusterManager()->LoadXClusterConfig(metadata);
 
   return Status::OK();
 }

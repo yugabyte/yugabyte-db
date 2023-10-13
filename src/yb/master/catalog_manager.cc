@@ -145,6 +145,7 @@
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/xcluster/add_table_to_xcluster_task.h"
+#include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/master/yql_aggregates_vtable.h"
 #include "yb/master/yql_auth_resource_role_permissions_index.h"
@@ -979,8 +980,6 @@ CatalogManager::CatalogManager(Master* master)
       tasks_tracker_(new TasksTracker(IsUserInitiated::kFalse)),
       jobs_tracker_(new TasksTracker(IsUserInitiated::kTrue)),
       encryption_manager_(new EncryptionManager()),
-      xcluster_safe_time_service_(
-          std::make_unique<XClusterSafeTimeService>(master, this, master_->metric_registry())),
       tablespace_manager_(std::make_shared<YsqlTablespaceManager>(nullptr, nullptr)),
       tablespace_bg_task_running_(false),
       tablet_split_manager_(this, this, this, master_->metric_entity()),
@@ -995,6 +994,8 @@ CatalogManager::CatalogManager(Master* master)
   sys_catalog_.reset(new SysCatalogTable(
       master_, master_->metric_registry(),
       Bind(&CatalogManager::ElectedAsLeaderCb, Unretained(this))));
+
+  xcluster_manager_ = std::make_unique<XClusterManager>(master_, this, sys_catalog_.get());
 }
 
 CatalogManager::~CatalogManager() {
@@ -1025,7 +1026,7 @@ Status CatalogManager::Init() {
 
   cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(&master_->cdc_state_client_initializer());
 
-  RETURN_NOT_OK(xcluster_safe_time_service_->Init());
+  RETURN_NOT_OK(xcluster_manager_->Init());
 
   RETURN_NOT_OK_PREPEND(InitSysCatalogAsync(),
                         "Failed to initialize sys tables async");
@@ -1310,8 +1311,8 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
             RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
 
             LOG_WITH_PREFIX(INFO) << "Re-initializing xcluster config";
-            xcluster_config_.reset();
-            RETURN_NOT_OK(PrepareDefaultXClusterConfig(term));
+            RETURN_NOT_OK(
+                xcluster_manager_->PrepareDefaultXClusterConfig(term, /* recreate = */ true));
 
             LOG_WITH_PREFIX(INFO) << "Restoring snapshot completed, considering initdb finished";
             RETURN_NOT_OK(InitDbFinished(Status::OK(), term));
@@ -1342,7 +1343,7 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
     // empty version 0.
     RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
 
-    RETURN_NOT_OK(PrepareDefaultXClusterConfig(term));
+    RETURN_NOT_OK(xcluster_manager_->PrepareDefaultXClusterConfig(term, /* recreate = */ false));
 
     permissions_manager_->BuildRecursiveRoles();
 
@@ -1425,9 +1426,6 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   // Clear the current cluster config.
   cluster_config_.reset();
 
-  // Clear the current xcluster config.
-  xcluster_config_.reset();
-
   // Clear redis config mapping.
   redis_config_map_.clear();
 
@@ -1442,6 +1440,8 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
 
   // Clear recent jobs/tasks.
   ResetTasksTrackers();
+
+  ClearXReplState();
 
   xcluster_safe_time_info_.Clear();
 
@@ -1477,8 +1477,6 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
 
   // Clear the snapshots.
   non_txn_snapshot_ids_map_.clear();
-
-  ClearXReplState();
 
   LOG_WITH_FUNC(INFO) << "Loading snapshots into memory.";
   unique_ptr<SnapshotLoader> snapshot_loader(new SnapshotLoader(this));
@@ -1594,31 +1592,6 @@ Status CatalogManager::SetUniverseUuidIfNeeded(const LeaderEpoch& epoch) {
   l.mutable_data()->pb.set_universe_uuid(universe_uuid);
   RETURN_NOT_OK(sys_catalog_->Upsert(epoch, cluster_config_.get()));
   l.Commit();
-  return Status::OK();
-}
-
-Status CatalogManager::PrepareDefaultXClusterConfig(int64_t term) {
-  if (xcluster_config_) {
-    LOG_WITH_PREFIX(INFO)
-        << "Cluster configuration has already been set up, skipping re-initialization.";
-    return Status::OK();
-  }
-
-  // Create default.
-  SysXClusterConfigEntryPB config;
-  config.set_version(0);
-
-  // Create in memory object.
-  xcluster_config_ = std::make_shared<XClusterConfigInfo>();
-
-  // Prepare write.
-  auto l = xcluster_config_->LockForWrite();
-  l.mutable_data()->pb = std::move(config);
-
-  // Write to sys_catalog and in memory.
-  RETURN_NOT_OK(sys_catalog_->Upsert(term, xcluster_config_.get()));
-  l.Commit();
-
   return Status::OK();
 }
 
@@ -2193,7 +2166,7 @@ void CatalogManager::CompleteShutdown() {
   refresh_ysql_tablespace_info_task_.CompleteShutdown();
   cdc_parent_tablet_deletion_task_.CompleteShutdown();
   refresh_ysql_pg_catalog_versions_task_.CompleteShutdown();
-  xcluster_safe_time_service_->Shutdown();
+  xcluster_manager_->Shutdown();
 
   if (background_tasks_) {
     background_tasks_->Shutdown();
@@ -12232,24 +12205,6 @@ Status CatalogManager::SetClusterConfig(
   return Status::OK();
 }
 
-Status CatalogManager::GetXClusterConfig(GetMasterXClusterConfigResponsePB* resp) {
-  return GetXClusterConfig(resp->mutable_xcluster_config());
-}
-
-Status CatalogManager::GetXClusterConfig(SysXClusterConfigEntryPB* config) {
-  auto xcluster_config = XClusterConfig();
-  DCHECK(xcluster_config) << "Missing xcluster config for master!";
-  *config = xcluster_config->LockForRead()->pb;
-  return Status::OK();
-}
-
-Result<uint32_t> CatalogManager::GetXClusterConfigVersion() const {
-  auto xcluster_config = XClusterConfig();
-  SCHECK(xcluster_config, IllegalState, "XCluster config is not initialized");
-  auto l = xcluster_config->LockForRead();
-  return l->pb.version();
-}
-
 Status CatalogManager::ValidateReplicationInfo(
     const ValidateReplicationInfoRequestPB* req, ValidateReplicationInfoResponsePB* resp) {
   TSDescriptorVector all_ts_descs;
@@ -13012,10 +12967,6 @@ std::shared_ptr<ClusterConfigInfo> CatalogManager::ClusterConfig() const {
   return cluster_config_;
 }
 
-std::shared_ptr<XClusterConfigInfo> CatalogManager::XClusterConfig() const {
-  return xcluster_config_;
-}
-
 Status CatalogManager::TryRemoveFromTablegroup(const TableId& table_id) {
   LockGuard lock(mutex_);
   auto tablegroup = tablegroup_manager_->FindByTable(table_id);
@@ -13118,41 +13069,6 @@ Status CatalogManager::SetXClusterNamespaceToSafeTimeMap(
       "Updating XCluster safe time in sys-catalog");
 
   l.Commit();
-
-  return Status::OK();
-}
-
-void CatalogManager::CreateXClusterSafeTimeTableAndStartService() {
-  auto status = xcluster_safe_time_service_->CreateXClusterSafeTimeTableIfNotFound();
-  if (!status.ok()) {
-    LOG(WARNING) << "Creation of XClusterSafeTime table failed :" << status;
-  }
-
-  StartXClusterSafeTimeServiceIfStopped();
-}
-
-void CatalogManager::StartXClusterSafeTimeServiceIfStopped() {
-  xcluster_safe_time_service_->ScheduleTaskIfNeeded();
-}
-
-Status CatalogManager::GetXClusterSafeTime(
-    const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp) {
-  const auto status = xcluster_safe_time_service_->GetXClusterSafeTimeInfoFromMap(resp);
-  if (!status.ok()) {
-    return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, status);
-  }
-
-  // Also fill out the namespace_name for each entry.
-  if (resp->namespace_safe_times_size()) {
-    SharedLock lock(mutex_);
-    for (auto& safe_time_info : *resp->mutable_namespace_safe_times()) {
-      const auto result = FindNamespaceByIdUnlocked(safe_time_info.namespace_id());
-      if (!result) {
-        return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, result.status());
-      }
-      safe_time_info.set_namespace_name(result.get()->name());
-    }
-  }
 
   return Status::OK();
 }
@@ -13303,9 +13219,9 @@ void CatalogManager::Started() {
 }
 
 void CatalogManager::SysCatalogLoaded(const SysCatalogLoadingState& state) {
-  StartXClusterSafeTimeServiceIfStopped();
   StartPostLoadTasks(state);
   snapshot_coordinator_.SysCatalogLoaded(state.epoch.leader_term);
+  xcluster_manager_->SysCatalogLoaded(state);
   ScheduleAddTableToXClusterTaskForAllTables(state.epoch);
 }
 
