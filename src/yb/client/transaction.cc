@@ -894,6 +894,17 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return subtransaction_.SetActiveSubTransaction(id);
   }
 
+  Status SetPgTxnStart(int64_t pg_txn_start_us) {
+    VLOG_WITH_PREFIX(4) << "set pg_txn_start_us_=" << pg_txn_start_us;
+    RSTATUS_DCHECK(
+        !metadata_.pg_txn_start_us || metadata_.pg_txn_start_us == pg_txn_start_us,
+        InternalError,
+        Format("Tried to set pg_txn_start_us (= $0) to new value (= $1)",
+               metadata_.pg_txn_start_us, pg_txn_start_us));
+    metadata_.pg_txn_start_us = pg_txn_start_us;
+    return Status::OK();
+  }
+
   std::future<Status> SendHeartBeatOnRollback(
       const CoarseTimePoint& deadline, const internal::RemoteTabletPtr& status_tablet,
       rpc::Rpcs::Handle* handle,
@@ -2361,6 +2372,10 @@ Status YBTransaction::RollbackToSubTransaction(SubTransactionId id, CoarseTimePo
 
 bool YBTransaction::HasSubTransaction(SubTransactionId id) {
   return impl_->HasSubTransaction(id);
+}
+
+Status YBTransaction::SetPgTxnStart(int64_t pg_txn_start_us) {
+  return impl_->SetPgTxnStart(pg_txn_start_us);
 }
 
 void YBTransaction::IncreaseMutationCounts(

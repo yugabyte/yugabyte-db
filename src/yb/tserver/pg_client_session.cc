@@ -1162,6 +1162,7 @@ PgClientSession::SetupSession(
   if (transaction) {
     DCHECK_GE(options.active_sub_transaction_id(), 0);
     transaction->SetActiveSubTransaction(options.active_sub_transaction_id());
+    RETURN_NOT_OK(transaction->SetPgTxnStart(options.pg_txn_start_us()));
   }
 
   return std::make_pair(sessions_[to_underlying(kind)], used_read_time);
