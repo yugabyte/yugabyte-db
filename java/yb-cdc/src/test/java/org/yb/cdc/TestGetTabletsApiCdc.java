@@ -54,6 +54,13 @@ public class TestGetTabletsApiCdc extends CDCBaseClass {
     statement.execute("create table test (a int primary key, b int);");
   }
 
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("enable_tablet_split_of_cdcsdk_streamed_tables", "true");
+    return flagMap;
+  }
+
   // This test is to verify the fix for the following ticket
   // GitHub #16481: https://github.com/yugabyte/yugabyte-db/issues/16481
   @Test
