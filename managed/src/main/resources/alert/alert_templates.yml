@@ -979,9 +979,10 @@ templates:
   NODE_CPU_USAGE:
     name: DB node CPU usage
     description: Average node CPU usage percentage for 30 minutes is above threshold
-    queryTemplate: count by(universe_uuid) ((100 - (avg by (universe_uuid, node_name)
-      (rate(node_cpu_seconds_total{job="node",mode="idle", universe_uuid="__universeUuid__"}[30m]))
-      * 100)) {{ query_condition }} {{ query_threshold }})
+    queryTemplate: count by(universe_uuid) ((avg by (universe_uuid, node_name)
+      (sum by (universe_uuid, node_name, cpu)
+      (rate(node_cpu_seconds_total{job="node",mode!="idle",universe_uuid="__universeUuid__"}[30m])
+      * 100))) {{ query_condition }} {{ query_threshold }})
     createForNewCustomer: true
     defaultThresholdMap:
       WARNING:
@@ -998,9 +999,11 @@ templates:
       generateValueFromThreshold: false
     labels:
       affected_node_names: >-
-        {{ range query "(100 - (avg by (universe_uuid, node_name)
-        (rate(node_cpu_seconds_total{job='node',mode='idle', universe_uuid='{{ $labels.universe_uuid }}'}[30m]))
-        * 100)) {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
+        {{ range query "avg by (universe_uuid, node_name)
+        (sum by (universe_uuid, node_name, cpu)
+        (rate(node_cpu_seconds_total{job='node',mode!='idle',
+        universe_uuid='{{ $labels.universe_uuid }}'}[30m])* 100))
+        {{ query_condition }} {{ query_threshold }}" }}{{ .Labels.node_name }} {{ end }}
     annotations:
       summary: >-
         Average node CPU usage for universe '{{ $labels.source_name }}'
