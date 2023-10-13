@@ -16,7 +16,7 @@ Migrated data and personally identifiable information about the user or source o
 
 ## Data collected
 
-The following data is collected based on a flag set while running yb-voyager. To change the flag's default setting,
+When data collection is enabled, the following data is collected while running yb-voyager.
 refer to the [configuration flag](#configuration-flag).
 
 ```output
