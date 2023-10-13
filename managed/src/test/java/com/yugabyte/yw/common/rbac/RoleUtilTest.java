@@ -9,6 +9,7 @@ import static org.junit.Assert.assertNotNull;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.models.Customer;
@@ -37,6 +38,7 @@ public class RoleUtilTest extends FakeDBApplication {
   PermissionUtil permissionUtil;
   RoleUtil roleUtil;
   RoleBindingUtil roleBindingUtil;
+  RuntimeConfGetter confGetter;
   public Customer customer;
   public Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.CREATE);
   public Permission permission2 = new Permission(ResourceType.OTHER, Action.CREATE);
@@ -46,8 +48,9 @@ public class RoleUtilTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer("tc1", "Test Customer 1");
     ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
     this.environment = new Environment(new File("."), classLoader, Mode.TEST);
+    confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
     this.permissionUtil = new PermissionUtil(environment);
-    this.roleBindingUtil = new RoleBindingUtil(permissionUtil);
+    this.roleBindingUtil = new RoleBindingUtil(permissionUtil, confGetter);
     this.roleUtil = new RoleUtil(permissionUtil, roleBindingUtil);
   }
 

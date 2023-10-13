@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.models.rbac.RoleBinding;
@@ -159,6 +160,9 @@ public class RBACController extends AuthenticatedController {
       @ApiParam(value = "Optional role type to filter roles list") String roleType) {
     // Check if customer exists.
     Customer.getOrBadRequest(customerUUID);
+    UserWithFeatures u = RequestContext.get(TokenAuthenticator.USER);
+    Set<UUID> resourceUUIDs =
+        roleBindingUtil.getResourceUuids(u.getUser().getUuid(), ResourceType.ROLE, Action.READ);
 
     // Get all roles for the customer if 'roleType' is not a valid case insensitive enum
     List<Role> roleList = Collections.emptyList();
@@ -168,6 +172,10 @@ public class RBACController extends AuthenticatedController {
     } else {
       roleList = Role.getAll(customerUUID);
     }
+    roleList =
+        roleList.stream()
+            .filter(r -> resourceUUIDs.contains(r.getRoleUUID()))
+            .collect(Collectors.toList());
     return PlatformResults.withData(roleList);
   }
 
