@@ -61,7 +61,7 @@ And then subsequently import `orders2.csv` to the same table as follows:
 yb-voyager import data file --file-table-map 'orders2.csv:orders' ...
 ```
 
-If you want to import an updated version of the same file (that is, having the same file name and data-dir), use the `--start-clean` flag and proceed without truncating the table. `yb-voyager` will ingest the data present in the file in upsert mode. For example,
+To import an updated version of the same file (that is, having the same file name and data-dir), use the `--start-clean` flag and proceed without truncating the table. yb-voyager ingests the data present in the file in upsert mode. For example:
 
 ```sh
 yb-voyager import data file --data-dir /dir/data-dir --file-table-map 'orders.csv:orders' ...
