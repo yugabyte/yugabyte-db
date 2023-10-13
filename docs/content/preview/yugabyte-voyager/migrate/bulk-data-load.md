@@ -45,7 +45,7 @@ Refer to [import data file](../../reference/bulk-data-load/import-data-file/) fo
 
 ### Load multiple files into the same table
 
-The import data file command also supports importing multiple files to the same table by providing the `--file-table-map` flag `<fileName>:<tableName>` entry for each file, or by passing a glob expression in place of the file name. For example, `fileName1:tableName,fileName2:tableName` or `fileName*:tableName`.
+The import data file command also supports importing multiple files to the same table by providing the `--file-table-map` flag with a `<fileName>:<tableName>` entry for each file, or by passing a glob expression in place of the file name. For example, `fileName1:tableName,fileName2:tableName` or `fileName*:tableName`.
 
 ### Incremental data loading
 
