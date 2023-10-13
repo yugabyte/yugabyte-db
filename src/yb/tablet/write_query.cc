@@ -546,8 +546,8 @@ Status WriteQuery::DoExecute() {
     auto now = tablet->clock()->Now();
     auto conflict_management_policy = GetConflictManagementPolicy(wait_queue, write_batch);
     return docdb::ResolveOperationConflicts(
-        doc_ops_, conflict_management_policy, now, tablet->doc_db(),
-        partial_range_key_intents, transaction_participant,
+        doc_ops_, conflict_management_policy, now, write_batch.transaction().pg_txn_start_us(),
+        tablet->doc_db(), partial_range_key_intents, transaction_participant,
         tablet->metrics(), &prepare_result_.lock_batch,
         wait_queue,
         [this, now](const Result<HybridTime>& result) {
@@ -585,7 +585,7 @@ Status WriteQuery::DoExecute() {
   // TODO(wait-queues): Ensure that wait_queue respects deadline() during conflict resolution.
   return docdb::ResolveTransactionConflicts(
       doc_ops_, conflict_management_policy, write_batch, tablet->clock()->Now(),
-      read_time_ ? read_time_.read : HybridTime::kMax,
+      read_time_ ? read_time_.read : HybridTime::kMax, write_batch.transaction().pg_txn_start_us(),
       tablet->doc_db(), partial_range_key_intents,
       transaction_participant, tablet->metrics(),
       &prepare_result_.lock_batch, wait_queue,

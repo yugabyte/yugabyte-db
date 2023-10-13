@@ -1885,9 +1885,9 @@ Status PgApiImpl::NewTupleExpr(
 }
 
 // Transaction Control -----------------------------------------------------------------------------
-Status PgApiImpl::BeginTransaction() {
+Status PgApiImpl::BeginTransaction(int64_t start_time) {
   pg_session_->InvalidateForeignKeyReferenceCache();
-  return pg_txn_manager_->BeginTransaction();
+  return pg_txn_manager_->BeginTransaction(start_time);
 }
 
 Status PgApiImpl::RecreateTransaction() {

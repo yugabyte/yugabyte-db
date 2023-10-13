@@ -1351,8 +1351,8 @@ uint16_t YBCCompoundHash(const char *key, size_t length) {
 // Transaction operation.
 //------------------------------------------------------------------------------------------------
 
-YBCStatus YBCPgBeginTransaction() {
-  return ToYBCStatus(pgapi->BeginTransaction());
+YBCStatus YBCPgBeginTransaction(int64_t start_time) {
+  return ToYBCStatus(pgapi->BeginTransaction(start_time));
 }
 
 YBCStatus YBCPgRecreateTransaction() {

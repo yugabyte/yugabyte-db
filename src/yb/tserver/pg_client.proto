@@ -456,6 +456,7 @@ message PgPerformOptionsPB {
   bool read_from_followers = 18;
   bool trace_requested = 19;
   bool yb_non_ddl_txn_for_sys_tables_allowed = 21;
+  int64 pg_txn_start_us = 22;
 }
 
 message PgPerformRequestPB {

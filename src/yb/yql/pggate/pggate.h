@@ -595,7 +595,7 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Transaction control.
-  Status BeginTransaction();
+  Status BeginTransaction(int64_t start_time);
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
