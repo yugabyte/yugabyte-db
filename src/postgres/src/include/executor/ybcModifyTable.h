@@ -86,7 +86,8 @@ extern Oid YBCExecuteInsertForDb(Oid dboid,
                                  TupleDesc tupleDesc,
                                  HeapTuple tuple,
                                  OnConflictAction onConflictAction,
-                                 Datum *ybctid);
+                                 Datum *ybctid,
+                                 YBCPgTransactionSetting transaction_setting);
 
 /*
  * Execute the insert outside of a transaction.

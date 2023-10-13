@@ -209,9 +209,9 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
                                     Relation rel,
                                     TupleDesc tupleDesc,
                                     HeapTuple tuple,
-                                    bool is_single_row_txn,
                                     OnConflictAction onConflictAction,
-                                    Datum *ybctid)
+                                    Datum *ybctid,
+                                    YBCPgTransactionSetting transaction_setting)
 {
 	Oid            relid    = RelationGetRelid(rel);
 	AttrNumber     minattr  = YBGetFirstLowInvalidAttributeNumber(rel);
@@ -230,9 +230,9 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 	/* Create the INSERT request and add the values from the tuple. */
 	HandleYBStatus(YBCPgNewInsert(dboid,
 	                              YbGetStorageRelid(rel),
-	                              is_single_row_txn,
 	                              YBCIsRegionLocal(rel),
-	                              &insert_stmt));
+	                              &insert_stmt,
+	                              transaction_setting));
 
 	/* Get the ybctid for the tuple and bind to statement */
 	tuple->t_ybctid =
@@ -310,7 +310,7 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 	/* Cleanup. */
 	YBCPgDeleteStatement(insert_stmt);
 	/* Add row into foreign key cache */
-	if (!is_single_row_txn)
+	if (transaction_setting != YB_SINGLE_SHARD_TRANSACTION)
 		YBCPgAddIntoForeignKeyReferenceCache(relid, tuple->t_ybctid);
 
 	return HeapTupleGetOid(tuple);
@@ -326,7 +326,8 @@ Oid YBCExecuteInsert(Relation rel,
 	                             tupleDesc,
 	                             tuple,
 	                             onConflictAction,
-	                             NULL /* ybctid */);
+	                             NULL /* ybctid */,
+	                             YB_TRANSACTIONAL);
 }
 
 Oid YBCExecuteInsertForDb(Oid dboid,
@@ -334,16 +335,21 @@ Oid YBCExecuteInsertForDb(Oid dboid,
                           TupleDesc tupleDesc,
                           HeapTuple tuple,
                           OnConflictAction onConflictAction,
-                          Datum *ybctid)
+                          Datum *ybctid,
+                          YBCPgTransactionSetting transaction_setting)
 {
-	bool non_transactional = !IsSystemRelation(rel) && yb_disable_transactional_writes;
+	if ((transaction_setting == YB_TRANSACTIONAL) &&
+			 !IsSystemRelation(rel) && yb_disable_transactional_writes)
+	{
+		transaction_setting = YB_NON_TRANSACTIONAL;
+	}
 	return YBCExecuteInsertInternal(dboid,
 	                                rel,
 	                                tupleDesc,
 	                                tuple,
-	                                non_transactional,
 	                                onConflictAction,
-	                                ybctid);
+	                                ybctid,
+	                                transaction_setting);
 }
 
 Oid YBCExecuteNonTxnInsert(Relation rel,
@@ -370,9 +376,9 @@ Oid YBCExecuteNonTxnInsertForDb(Oid dboid,
 	                                rel,
 	                                tupleDesc,
 	                                tuple,
-	                                true /* is_single_row_txn */,
 	                                onConflictAction,
-	                                ybctid);
+	                                ybctid,
+	                                YB_NON_TRANSACTIONAL);
 }
 
 Oid YBCHeapInsert(TupleTableSlot *slot,
@@ -395,31 +401,16 @@ Oid YBCHeapInsertForDb(Oid dboid,
 	ResultRelInfo *resultRelInfo = estate->es_result_relation_info;
 	Relation resultRelationDesc = resultRelInfo->ri_RelationDesc;
 
-	if (estate->yb_es_is_single_row_modify_txn)
-	{
-		/*
-		 * Try to execute the statement as a single row transaction (rather
-		 * than a distributed transaction) if it is safe to do so.
-		 * I.e. if we are in a single-statement transaction that targets a
-		 * single row (i.e. single-row-modify txn), and there are no indices
-		 * or triggers on the target table.
-		 */
-		return YBCExecuteNonTxnInsertForDb(dboid,
-		                                   resultRelationDesc,
-		                                   slot->tts_tupleDescriptor,
-		                                   tuple,
-		                                   ONCONFLICT_NONE,
-		                                   ybctid);
-	}
-	else
-	{
-		return YBCExecuteInsertForDb(dboid,
-		                             resultRelationDesc,
-		                             slot->tts_tupleDescriptor,
-		                             tuple,
-		                             ONCONFLICT_NONE,
-		                             ybctid);
-	}
+	/*
+	 * If estate->yb_es_is_single_row_modify_txn is true, try to execute the
+	 * statement as a single row transaction (rather than a distributed
+	 * transaction) if it is safe to do so. I.e. if we are in a single-statement
+	 * transaction that targets a single row (i.e. single-row-modify txn), and
+	 * there are no indices or triggers on the target table.
+	 */
+	return YBCExecuteInsertForDb(
+			dboid, resultRelationDesc, slot->tts_tupleDescriptor, tuple, ONCONFLICT_NONE, ybctid,
+			estate->yb_es_is_single_row_modify_txn ? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL);
 }
 
 static YBCPgYBTupleIdDescriptor*
@@ -508,18 +499,12 @@ void YBCExecuteInsertIndexForDb(Oid dboid,
 	YBCPgStatement insert_stmt = NULL;
 
 	/* Create the INSERT request and add the values from the tuple. */
-	/*
-	 * TODO(jason): rename `is_single_row_txn` to something like
-	 * `non_distributed_txn` when closing issue #4906.
-	 */
 	const bool is_backfill = (backfill_write_time != NULL);
 	const bool is_non_distributed_txn_write =
 		is_backfill || (!IsSystemRelation(index) && yb_disable_transactional_writes);
-	HandleYBStatus(YBCPgNewInsert(dboid,
-								  relid,
-								  is_non_distributed_txn_write,
-								  YBCIsRegionLocal(index),
-								  &insert_stmt));
+	HandleYBStatus(YBCPgNewInsert(
+		dboid, relid, YBCIsRegionLocal(index), &insert_stmt,
+		is_non_distributed_txn_write ? YB_NON_TRANSACTIONAL : YB_TRANSACTIONAL));
 
 	callback(insert_stmt, indexstate, index, values, isnull,
 			 RelationGetNumberOfAttributes(index),
@@ -570,9 +555,10 @@ bool YBCExecuteDelete(Relation rel, TupleTableSlot *slot, EState *estate,
 	/* Create DELETE request. */
 	HandleYBStatus(YBCPgNewDelete(dboid,
 								  YbGetStorageRelid(rel),
-								  estate->yb_es_is_single_row_modify_txn,
 								  YBCIsRegionLocal(rel),
-								  &delete_stmt));
+								  &delete_stmt,
+									estate->yb_es_is_single_row_modify_txn
+                  		? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL));
 
 	/*
 	 * Look for ybctid. Raise error if ybctid is not found.
@@ -718,9 +704,9 @@ void YBCExecuteDeleteIndex(Relation index,
 	/* Create the DELETE request and add the values from the tuple. */
 	HandleYBStatus(YBCPgNewDelete(dboid,
 								  relid,
-								  false /* is_single_row_txn */,
 								  YBCIsRegionLocal(index),
-								  &delete_stmt));
+								  &delete_stmt,
+									YB_TRANSACTIONAL));
 
 	callback(delete_stmt, indexstate, index, values, isnull,
 			 IndexRelationGetNumberOfKeyAttributes(index),
@@ -768,9 +754,10 @@ bool YBCExecuteUpdate(Relation rel,
 	/* Create update statement. */
 	HandleYBStatus(YBCPgNewUpdate(dboid,
 								  relid,
-								  estate->yb_es_is_single_row_modify_txn,
 								  YBCIsRegionLocal(rel),
-								  &update_stmt));
+								  &update_stmt,
+									estate->yb_es_is_single_row_modify_txn
+                  		? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL));
 
 	/*
 	 * Look for ybctid. Raise error if ybctid is not found.
@@ -997,9 +984,9 @@ YBCExecuteUpdateLoginAttempts(Oid roleid,
 	/* Create update statement. */
 	HandleYBStatus(YBCPgNewUpdate(dboid,
 				   YbRoleProfileRelationId,
-				   true,
 				   YBCIsRegionLocal(rel),
-				   &update_stmt));
+				   &update_stmt,
+					 YB_SINGLE_SHARD_TRANSACTION));
 
 	/*
 	 * Look for ybctid. Raise error if ybctid is not found.
@@ -1084,9 +1071,9 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 	/* Prepare DELETE statement. */
 	HandleYBStatus(YBCPgNewDelete(dboid,
 								  relid,
-								  false /* is_single_row_txn */,
 								  YBCIsRegionLocal(rel),
-								  &delete_stmt));
+								  &delete_stmt,
+									YB_TRANSACTIONAL));
 
 	/* Bind ybctid to identify the current row. */
 	YBCPgExpr ybctid_expr = YBCNewConstant(delete_stmt, BYTEAOID, InvalidOid, tuple->t_ybctid,
@@ -1126,9 +1113,9 @@ void YBCUpdateSysCatalogTupleForDb(Oid dboid, Relation rel, HeapTuple oldtuple, 
 	/* Create update statement. */
 	HandleYBStatus(YBCPgNewUpdate(dboid,
 								  relid,
-								  false /* is_single_row_txn */,
 								  YBCIsRegionLocal(rel),
-								  &update_stmt));
+								  &update_stmt,
+									YB_TRANSACTIONAL));
 
 	AttrNumber minattr = YBGetFirstLowInvalidAttributeNumber(rel);
 	Bitmapset  *pkey   = YBGetTablePrimaryKeyBms(rel);

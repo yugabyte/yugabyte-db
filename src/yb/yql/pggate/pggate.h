@@ -452,9 +452,10 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // Insert.
   Status NewInsert(const PgObjectId& table_id,
-                           bool is_single_row_txn,
-                           bool is_region_local,
-                           PgStatement **handle);
+                   bool is_region_local,
+                   PgStatement **handle,
+                   YBCPgTransactionSetting transaction_setting =
+                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecInsert(PgStatement *handle);
 
@@ -467,18 +468,20 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // Update.
   Status NewUpdate(const PgObjectId& table_id,
-                           bool is_single_row_txn,
-                           bool is_region_local,
-                           PgStatement **handle);
+                   bool is_region_local,
+                   PgStatement **handle,
+                   YBCPgTransactionSetting transaction_setting =
+                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecUpdate(PgStatement *handle);
 
   //------------------------------------------------------------------------------------------------
   // Delete.
   Status NewDelete(const PgObjectId& table_id,
-                           bool is_single_row_txn,
-                           bool is_region_local,
-                           PgStatement **handle);
+                   bool is_region_local,
+                   PgStatement **handle,
+                   YBCPgTransactionSetting transaction_setting =
+                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecDelete(PgStatement *handle);
 
@@ -487,9 +490,10 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // Colocated Truncate.
   Status NewTruncateColocated(const PgObjectId& table_id,
-                                      bool is_single_row_txn,
-                                      bool is_region_local,
-                                      PgStatement **handle);
+                              bool is_region_local,
+                              PgStatement **handle,
+                              YBCPgTransactionSetting transaction_setting =
+                                  YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecTruncateColocated(PgStatement *handle);
 

@@ -32,6 +32,7 @@
 #include "utils/rel.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "pg_yb_utils.h"
 
 YbCatalogVersionType yb_catalog_version_type = CATALOG_VERSION_UNSET;
@@ -91,9 +92,9 @@ bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
 	// template1.
 	HandleYBStatus(YBCPgNewUpdate(TemplateDbOid,
 								  YBCatalogVersionRelationId,
-								  false /* is_single_row_txn */,
 								  false /* is_region_local */,
-								  &update_stmt));
+								  &update_stmt,
+                  YB_TRANSACTIONAL));
 	/* Construct HeapTuple */
 	Datum		values[3];
 	bool		nulls[3];
