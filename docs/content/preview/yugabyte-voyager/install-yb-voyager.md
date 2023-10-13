@@ -109,7 +109,7 @@ Install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisit
 
 ### Collect diagnostics
 
-yb-voyager by default captures a [Diagnostics report](../diagnostics-report/) using YugabyteDB diagnostics service that runs each time you use the yb-voyager command. If you don't want to send diagnostics when you run yb-voyager, set the [--send-diagnostics flag](../diagnostics-report/#configuration-flag) to false.
+By default, yb-voyager captures a [diagnostics report](../diagnostics-report/) using the YugabyteDB diagnostics service that runs each time you use the yb-voyager command. If you don't want to send diagnostics when you run yb-voyager, set the [--send-diagnostics flag](../diagnostics-report/#configuration-flag) to false.
 
 ## Next step
 

@@ -12,12 +12,11 @@ type: docs
 
 YugabyteDB Voyager reports migration diagnostics to the YugabyteDB diagnostics service every time any migration starts through YugabyteDB Voyager. YugabyteDB diagnostics service runs when yb-voyager commands are executed, and stores the data yb-voyager captures with the [--send-diagnostics flag](#configuration-flag).
 
-User data migrated or any personally identifiable information about the user, or source/target database configuration is _never_ collected or reported.
+Migrated data and personally identifiable information about the user or source or target database configuration is _never_ collected.
 
 ## Data collected
 
-The following data is collected based on a flag set while running yb-voyager. To change the flag's default setting,
-refer to the [configuration flag](#configuration-flag).
+When data collection is enabled, the following data is collected while running yb-voyager.
 
 ```output
 Migration unique id
@@ -86,15 +85,16 @@ An example of payload collected is as follows:
 }
 ```
 
-## Configuration flag
+## Configure data collection
 
-You can use the `--send-diagnostics` flag along with the [yb-voyager](../reference/yb-voyager-cli/) command, or export an environment variable to control whether to send diagnostics to YugabyteDB as follows:
+To control whether to send diagnostics to YugabyteDB, you can use the `--send-diagnostics` flag or export an environment variable.
+Set the flag as follows:
 
 ```sh
 yb-voyager ... --send-diagnostics=[true|false]
 ```
 
-The default is true where yb-voyager captures the diagnostics and sends them to the YugabyteDB diagnostics service.
+The default is true.
 
 Alternatively, you can use the following environment variable to set a value for this flag globally on the client machine where yb-voyager is running.
 
