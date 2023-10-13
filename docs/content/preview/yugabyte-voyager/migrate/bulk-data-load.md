@@ -55,7 +55,7 @@ You can also import files to the same table across multiple runs. For example, y
 yb-voyager import data file --file-table-map 'orders1.csv:orders' ...
 ```
 
-followed by,
+And then subsequently import `orders2.csv` to the same table as follows:
 
 ```sh
 yb-voyager import data file --file-table-map 'orders2.csv:orders' ...
