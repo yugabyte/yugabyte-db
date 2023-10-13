@@ -444,9 +444,9 @@ YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, dou
 // INSERT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(YBCPgOid database_oid,
                          YBCPgOid table_oid,
-                         bool is_single_row_txn,
                          bool is_region_local,
-                         YBCPgStatement *handle);
+                         YBCPgStatement *handle,
+                         YBCPgTransactionSetting transaction_setting);
 
 YBCStatus YBCPgExecInsert(YBCPgStatement handle);
 
@@ -459,18 +459,18 @@ YBCStatus YBCPgInsertStmtSetIsBackfill(YBCPgStatement handle, const bool is_back
 // UPDATE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewUpdate(YBCPgOid database_oid,
                          YBCPgOid table_oid,
-                         bool is_single_row_txn,
                          bool is_region_local,
-                         YBCPgStatement *handle);
+                         YBCPgStatement *handle,
+                         YBCPgTransactionSetting transaction_setting);
 
 YBCStatus YBCPgExecUpdate(YBCPgStatement handle);
 
 // DELETE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewDelete(YBCPgOid database_oid,
                          YBCPgOid table_oid,
-                         bool is_single_row_txn,
                          bool is_region_local,
-                         YBCPgStatement *handle);
+                         YBCPgStatement *handle,
+                         YBCPgTransactionSetting transaction_setting);
 
 YBCStatus YBCPgExecDelete(YBCPgStatement handle);
 
@@ -479,9 +479,9 @@ YBCStatus YBCPgDeleteStmtSetIsPersistNeeded(YBCPgStatement handle, const bool is
 // Colocated TRUNCATE ------------------------------------------------------------------------------
 YBCStatus YBCPgNewTruncateColocated(YBCPgOid database_oid,
                                     YBCPgOid table_oid,
-                                    bool is_single_row_txn,
                                     bool is_region_local,
-                                    YBCPgStatement *handle);
+                                    YBCPgStatement *handle,
+                                    YBCPgTransactionSetting transaction_setting);
 
 YBCStatus YBCPgExecTruncateColocated(YBCPgStatement handle);
 

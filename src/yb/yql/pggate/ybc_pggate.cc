@@ -908,11 +908,11 @@ YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, dou
 // INSERT Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
-                         bool is_single_row_txn,
                          bool is_region_local,
-                         YBCPgStatement *handle) {
+                         YBCPgStatement *handle,
+                         YBCPgTransactionSetting transaction_setting) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewInsert(table_id, is_single_row_txn, is_region_local, handle));
+  return ToYBCStatus(pgapi->NewInsert(table_id, is_region_local, handle, transaction_setting));
 }
 
 YBCStatus YBCPgExecInsert(YBCPgStatement handle) {
@@ -940,11 +940,11 @@ YBCStatus YBCPgInsertStmtSetIsBackfill(YBCPgStatement handle, const bool is_back
 // UPDATE Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewUpdate(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
-                         bool is_single_row_txn,
                          bool is_region_local,
-                         YBCPgStatement *handle) {
+                         YBCPgStatement *handle,
+                         YBCPgTransactionSetting transaction_setting) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewUpdate(table_id, is_single_row_txn, is_region_local, handle));
+  return ToYBCStatus(pgapi->NewUpdate(table_id, is_region_local, handle, transaction_setting));
 }
 
 YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
@@ -954,11 +954,11 @@ YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
 // DELETE Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewDelete(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
-                         bool is_single_row_txn,
                          bool is_region_local,
-                         YBCPgStatement *handle) {
+                         YBCPgStatement *handle,
+                         YBCPgTransactionSetting transaction_setting) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewDelete(table_id, is_single_row_txn, is_region_local, handle));
+  return ToYBCStatus(pgapi->NewDelete(table_id, is_region_local, handle, transaction_setting));
 }
 
 YBCStatus YBCPgExecDelete(YBCPgStatement handle) {
@@ -972,12 +972,12 @@ YBCStatus YBCPgDeleteStmtSetIsPersistNeeded(YBCPgStatement handle, const bool is
 // Colocated TRUNCATE Operations -------------------------------------------------------------------
 YBCStatus YBCPgNewTruncateColocated(const YBCPgOid database_oid,
                                     const YBCPgOid table_oid,
-                                    bool is_single_row_txn,
                                     bool is_region_local,
-                                    YBCPgStatement *handle) {
+                                    YBCPgStatement *handle,
+                                    YBCPgTransactionSetting transaction_setting) {
   const PgObjectId table_id(database_oid, table_oid);
   return ToYBCStatus(pgapi->NewTruncateColocated(
-      table_id, is_single_row_txn, is_region_local, handle));
+      table_id, is_region_local, handle, transaction_setting));
 }
 
 YBCStatus YBCPgExecTruncateColocated(YBCPgStatement handle) {

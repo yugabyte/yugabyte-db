@@ -672,8 +672,8 @@ YBCDropTable(Relation relation)
 		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
 															   YbGetStorageRelid(relation),
 															   false,
-															   false,
-															   &handle),
+															   &handle,
+																 YB_TRANSACTIONAL),
 									 &not_found);
 		/*
 		 * Since the creation of the handle could return a 'NotFound' error,
@@ -725,9 +725,9 @@ YbTruncate(Relation rel)
 		 */
 		HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
 												 relationId,
-												 false,
 												 isRegionLocal,
-												 &handle));
+												 &handle,
+												 YB_TRANSACTIONAL));
 		HandleYBStatus(YBCPgDmlBindTable(handle));
 		int rows_affected_count = 0;
 		HandleYBStatus(YBCPgDmlExecWriteOp(handle, &rows_affected_count));
@@ -1408,8 +1408,8 @@ YBCDropIndex(Relation index)
 		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
 															   indexId,
 															   false,
-															   false,
-															   &handle),
+															   &handle,
+																 YB_TRANSACTIONAL),
 									 &not_found);
 		const bool valid_handle = !not_found;
 		if (valid_handle)
