@@ -23,15 +23,9 @@ Using yugabyted, you can create single-node clusters. To create multi-node clust
 Note that yugabyted is not recommended for production deployments. For production deployments with fully-distributed multi-node clusters, use [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) directly. Refer to [Deploy YugabyteDB](../../../deploy).
 {{</note>}}
 
-{{% note title="macOS Monterey" %}}
+{{% note title="Running on macOS" %}}
 
-macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Use the [--master_webserver_port flag](#advanced-flags) when you start the cluster to change the default port number, as follows:
-
-```sh
-./bin/yugabyted start --master_webserver_port=9999
-```
-
-Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
+Running YugabyteDB on macOS requires additional settings. For more information, refer to [Running on macOS](#running-on-macos).
 
 {{% /note %}}
 
@@ -680,6 +674,29 @@ The following are combinations of environment variables and their uses:
 ## Examples
 
 To deploy any type of secure cluster (that is, using the `--secure` flag) or use encryption at rest, OpenSSL must be installed on your machine.
+
+### Running on macOS
+
+#### Port conflicts
+
+macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Use the [--master_webserver_port flag](#advanced-flags) when you start the cluster to change the default port number, as follows:
+
+```sh
+./bin/yugabyted start --master_webserver_port=9999
+```
+
+Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
+
+#### Loopback addresses
+
+On macOS, every additional node after the first needs a loopback address configured to simulate the use of multiple hosts or nodes. For example, for a three-node cluster, you add two additional addresses as follows:
+
+```sh
+sudo ifconfig lo0 alias 127.0.0.2
+sudo ifconfig lo0 alias 127.0.0.3
+```
+
+The loopback addresses do not persist upon rebooting your computer.
 
 ### Destroy a local cluster
 

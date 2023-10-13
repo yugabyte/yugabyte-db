@@ -21,6 +21,12 @@ yb-ctl is meant for managing local clusters only. This means that a single host 
 
 yb-ctl can manage a cluster if and only if it was initially created via yb-ctl. This means that clusters created through any other means including those in the [Deploy](../../deploy/) section cannot be administered using yb-ctl.
 
+{{% note title="Running on macOS" %}}
+
+Running YugabyteDB on macOS requires additional settings. For more information, refer to [Running on macOS](#running-on-macos).
+
+{{% /note %}}
+
 ### Installation
 
 yb-ctl is installed with YugabyteDB and is located in the `bin` directory of the YugabyteDB home directory.
@@ -205,6 +211,8 @@ Flag to log internal debug messages to `stderr`.
 ## Using yb-ctl
 
 ### Running on macOS
+
+#### Port conflicts
 
 macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yb-ctl start` to fail. Use the [--master_flags](#master-flags) flag when you start the cluster to change the default port number, as follows:
 
