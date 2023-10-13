@@ -9,4 +9,6 @@ public @interface RequiredPermissionOnResource {
   PermissionAttribute requiredPermission();
 
   Resource resourceLocation();
+
+  boolean checkOnlyPermission() default false;
 }
