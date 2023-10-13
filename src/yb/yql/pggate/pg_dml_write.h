@@ -56,8 +56,8 @@ class PgDmlWrite : public PgDml {
   // Constructor.
   PgDmlWrite(PgSession::ScopedRefPtr pg_session,
              const PgObjectId& table_id,
-             bool is_single_row_txn,
-             bool is_region_local);
+             bool is_region_local,
+             YBCPgTransactionSetting transaction_setting);
 
   // Allocate write request.
   void AllocWriteRequest();
@@ -83,7 +83,7 @@ class PgDmlWrite : public PgDml {
   // Protobuf code.
   std::shared_ptr<LWPgsqlWriteRequestPB> write_req_;
 
-  bool is_single_row_txn_ = false; // default.
+  const YBCPgTransactionSetting transaction_setting_;
 
   int32_t rows_affected_count_ = 0;
 
