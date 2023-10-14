@@ -504,13 +504,59 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 			 * YB: If one is batched and the other isn't we consider
 			 * the two parameterizations to be different.
 			 */
-			bool is_new_path_batched = new_path->param_info &&
+			bool yb_does_new_path_req_batch = new_path->param_info &&
 				!bms_is_empty(new_path->param_info->yb_ppi_req_outer_batched);
 
-			bool is_old_path_batched = old_path->param_info &&
+			bool yb_does_old_path_req_batch = old_path->param_info &&
 				!bms_is_empty(old_path->param_info->yb_ppi_req_outer_batched);
-			bool considering_batchedness =
-				is_new_path_batched || is_old_path_batched;
+			bool yb_has_diff_req_batch =
+				(yb_does_new_path_req_batch ^ yb_does_old_path_req_batch);
+
+			/*
+			 * YB: If CBO is on, force batch-requiring plans to not be pruned
+			 * early. Without this protection, they'd be pruned undesirably early
+			 * as these batched paths will output more rows than their
+			 * unbatched equivalents.
+			 */
+			bool yb_should_keep_all_batched_plans = yb_has_diff_req_batch &&
+				yb_enable_base_scans_cost_model;
+
+			if (yb_prefer_bnl &&
+				 IsA(old_path, NestPath) && IsA(new_path, NestPath))
+			{
+				/*
+				 * YB: If yb_prefer_bnl is on and we are comparing a classic NL
+				 * with its BNL equivalent, prefer the BNL and remove the NL.
+				 * Assuming that if the costs are exactly equal, the two joins are
+				 * NL/BNL equivalents of each other.
+				 * 3fc44600e789aaad69df0d83a9d503c693d408d2 made sure that BNL/NL
+				 * equivalents have the exact same cost if
+				 * the CBO (yb_enable_base_scans_cost_model) is off.
+				 * TODO: Remove this entire branch once CBO is GA and let BNL's
+				 * naturally overcome NL's.
+				 */
+				bool yb_old_is_bnl = yb_is_nestloop_batched((NestPath *) old_path);
+				bool yb_new_is_bnl = yb_is_nestloop_batched((NestPath *) new_path);
+
+				Relids yb_old_outer_rels =
+					((NestPath *) old_path)->outerjoinpath->parent->relids;
+				Relids yb_new_outer_rels =
+					((NestPath *) new_path)->outerjoinpath->parent->relids;
+				bool is_different_nl_batchedness = yb_old_is_bnl ^ yb_new_is_bnl;
+				if (yb_prefer_bnl && is_different_nl_batchedness &&
+					 bms_equal(yb_old_outer_rels, yb_new_outer_rels) &&
+					 compare_path_costs_fuzzily(new_path,
+														 old_path,
+														 1.0000000001) ==
+														 COSTS_EQUAL)
+				{
+					if (yb_old_is_bnl)
+						accept_new = false; /* Reject new classic NL. */
+					else
+						remove_old = true; /* Forget old classic NL. */
+					break;
+				}
+			}
 
 			if (keyscmp != PATHKEYS_DIFFERENT)
 			{
@@ -519,10 +565,10 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 					case COSTS_EQUAL:
 						outercmp = bms_subset_compare(PATH_REQ_OUTER(new_path),
 													  PATH_REQ_OUTER(old_path));
-						if (considering_batchedness)
+						if (yb_should_keep_all_batched_plans)
 						{
 							outercmp = BMS_DIFFERENT;
-							if (!is_new_path_batched)
+							if (!yb_does_new_path_req_batch)
 								insert_after = p1;
 						}
 
@@ -573,6 +619,22 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 									accept_new = false; /* old dominates new */
 								else if (compare_path_costs_fuzzily(new_path,
 																	old_path,
+																	1.0000000001) ==
+																	COSTS_EQUAL &&
+																	yb_has_diff_req_batch)
+								{
+									/*
+									 * YB: Keep both but put the batched path higher up
+									 * in the queue.
+									 */
+									accept_new = true;
+									if (yb_does_new_path_req_batch)
+										insert_after = NULL;
+									else
+										insert_after = p1;
+								}
+								else if (compare_path_costs_fuzzily(new_path,
+																	old_path,
 																	1.0000000001) == COSTS_BETTER1)
 									remove_old = true;	/* new dominates old */
 								else
@@ -596,10 +658,10 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 							outercmp = bms_subset_compare(PATH_REQ_OUTER(new_path),
 														  PATH_REQ_OUTER(old_path));
 
-							if (considering_batchedness)
+							if (yb_should_keep_all_batched_plans)
 							{
 								outercmp = BMS_DIFFERENT;
-								if (!is_new_path_batched)
+								if (!yb_does_new_path_req_batch)
 									insert_after = p1;
 							}
 
@@ -616,10 +678,10 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 							outercmp = bms_subset_compare(PATH_REQ_OUTER(new_path),
 														  PATH_REQ_OUTER(old_path));
 
-							if (considering_batchedness)
+							if (yb_should_keep_all_batched_plans)
 							{
 								outercmp = BMS_DIFFERENT;
-								if (!is_new_path_batched)
+								if (!yb_does_new_path_req_batch)
 									insert_after = p1;
 							}
 

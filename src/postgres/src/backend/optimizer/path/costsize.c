@@ -172,6 +172,7 @@ bool		enable_parallel_append = true;
 bool		enable_parallel_hash = true;
 bool		enable_partition_pruning = true;
 bool		yb_enable_geolocation_costing = true;
+bool		yb_enable_batchednl = false;
 
 extern int yb_bnl_batch_size;
 
@@ -2472,12 +2473,10 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 		path->path.rows = path->path.parent->rows;
 
 	int yb_batch_size = 1;
-	if (IsYugaByteEnabled() && yb_enable_base_scans_cost_model)
-	{
-		bool yb_is_batched = yb_is_outer_inner_batched(outer_path, inner_path);
-		if (yb_is_batched)
-			yb_batch_size = yb_bnl_batch_size;
-	}
+	bool yb_is_batched = IsYugaByteEnabled() && yb_is_nestloop_batched(path);
+
+	if (IsYugaByteEnabled() && yb_enable_base_scans_cost_model && yb_is_batched)
+		yb_batch_size = yb_bnl_batch_size;
 
 	/* For partial paths, scale row estimate. */
 	if (path->path.parallel_workers > 0)
@@ -2493,7 +2492,8 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 	 * would amount to optimizing for the case where the join method is
 	 * disabled, which doesn't seem like the way to bet.
 	 */
-	if (!enable_nestloop)
+	if ((!yb_is_batched && !enable_nestloop) ||
+		 (yb_is_batched && !yb_enable_batchednl))
 		startup_cost += disable_cost;
 
 	/* cost of inner-relation source data (we already dealt with outer rel) */

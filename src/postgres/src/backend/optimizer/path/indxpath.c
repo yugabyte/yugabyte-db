@@ -869,29 +869,15 @@ get_join_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	/* We should have found something, else caller passed silly relids */
 	Assert(clauseset.nonempty);
 
-	bool yb_batched_paths_exist = false;
-	if (yb_bnl_batch_size > 1)
-	{
-		yb_batched_paths_exist =
-			yb_get_batched_index_paths(root, rel, index,&clauseset,
-					bitindexpaths);
-	}
-
 	/*
-	 * YB: With BNL enabled, we still explore NL compatible joins unless
-	 * yb_prefer_bnl to true or CBO is disabled. If yb_prefer_bnl is true,
-	 * we will never see an NL path that feeds into an index scan on the inner
-	 * side if an equivalent BNL path is available. It is still possible to
-	 * obtain NL paths that don't have BNL equivalents such as ones where the
-	 * inner side is a materialized index/seq scan.
+	 * YB: We collect batched paths first to prioritize them in the path queue.
 	 */
-	if (yb_bnl_batch_size <= 1 ||
-		 (yb_enable_base_scans_cost_model && !yb_prefer_bnl) ||
-		 !yb_batched_paths_exist)
-	{
-		/* Build index path(s) using the collected set of clauses */
-		get_index_paths(root, rel, index, &clauseset, bitindexpaths);
-	}
+	if (yb_bnl_batch_size > 1)
+		yb_get_batched_index_paths(root, rel, index,&clauseset,
+											bitindexpaths);
+
+	/* Build index path(s) using the collected set of clauses */
+	get_index_paths(root, rel, index, &clauseset, bitindexpaths);
 
 	/*
 	 * Remember we considered paths for this set of relids.  We use lcons not
