@@ -273,7 +273,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({ open, onClose, unive
               <Box flex={1} display="flex" flexDirection={'row'} alignItems={'center'}>
                 <YBToggle
                   onChange={handleInheritFlagsToggle}
-                  disabled={false}
+                  disabled={!canEditGFlags}
                   inputProps={{
                     'data-testid': 'ToggleInheritFlags'
                   }}
@@ -325,7 +325,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({ open, onClose, unive
                 editMode={true}
                 fieldPath={'gFlags'}
                 isReadReplica={false}
-                isReadOnly={false}
+                isReadOnly={!canEditGFlags}
                 tableMaxHeight={!asyncCluster ? '420px' : inheritFromPrimary ? '362px' : '296px'}
               />
             )}
@@ -336,7 +336,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({ open, onClose, unive
                 editMode={true}
                 fieldPath={'asyncGflags'}
                 isReadReplica={true}
-                isReadOnly={false}
+                isReadOnly={!canEditGFlags}
                 tableMaxHeight={!asyncCluster ? '412px' : inheritFromPrimary ? '354px' : '288px'}
               />
             )}
