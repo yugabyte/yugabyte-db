@@ -83,6 +83,7 @@ DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
+DECLARE_int32(tracing_level);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int32(yb_num_shards_per_tserver);
@@ -453,7 +454,26 @@ TEST_F(PgMiniTest, Simple) {
 }
 
 TEST_F(PgMiniTest, Tracing) {
+  class TraceLogSink : public google::LogSink {
+   public:
+    void send(
+        google::LogSeverity severity, const char* full_filename, const char* base_filename,
+        int line, const struct ::tm* tm_time, const char* message, size_t message_len) {
+      if (strcmp(base_filename, "trace.cc") == 0) {
+        last_logged_bytes_ = message_len;
+      }
+    }
+
+    size_t last_logged_bytes() const { return last_logged_bytes_; }
+
+   private:
+    std::atomic<size_t> last_logged_bytes_{0};
+  } trace_log_sink;
+  google::AddLogSink(&trace_log_sink);
+  size_t last_logged_trace_size;
+
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tracing_level) = 1;
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT, value2 TEXT)"));
@@ -462,10 +482,22 @@ TEST_F(PgMiniTest, Tracing) {
 
   LOG(INFO) << "Doing Insert";
   ASSERT_OK(conn.Execute("INSERT INTO t (key, value, value2) VALUES (1, 'hello', 'world')"));
+  SleepFor(1s);
+  last_logged_trace_size = trace_log_sink.last_logged_bytes();
+  LOG(INFO) << "Logged " << last_logged_trace_size << " bytes";
+  // 2601 is size of the current trace for insert.
+  // being a little conservative for changes in ports/ip addr etc.
+  ASSERT_GE(last_logged_trace_size, 2400);
   LOG(INFO) << "Done Insert";
 
   LOG(INFO) << "Doing Select";
   auto value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
+  SleepFor(1s);
+  last_logged_trace_size = trace_log_sink.last_logged_bytes();
+  LOG(INFO) << "Logged " << last_logged_trace_size << " bytes";
+  // 1884 is size of the current trace for select.
+  // being a little conservative for changes in ports/ip addr etc.
+  ASSERT_GE(last_logged_trace_size, 1600);
   ASSERT_EQ(value, "hello");
   LOG(INFO) << "Done Select";
 
@@ -475,7 +507,15 @@ TEST_F(PgMiniTest, Tracing) {
   ASSERT_OK(conn.Execute("INSERT INTO t (key, value, value2) VALUES (3, 'good', 'morning')"));
   value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
   ASSERT_OK(conn.Execute("ABORT"));
+  SleepFor(1s);
+  last_logged_trace_size = trace_log_sink.last_logged_bytes();
+  LOG(INFO) << "Logged " << last_logged_trace_size << " bytes";
+  // 5446 is size of the current trace for the transaction block.
+  // being a little conservative for changes in ports/ip addr etc.
+  ASSERT_GE(last_logged_trace_size, 5200);
   LOG(INFO) << "Done block transaction";
+
+  google::RemoveLogSink(&trace_log_sink);
   ValidateAbortedTxnMetric();
 }
 

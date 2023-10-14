@@ -1741,8 +1741,8 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   if (elapsed_ms > FLAGS_tablet_start_warn_threshold_ms) {
     LOG(WARNING) << kLogPrefix << "Tablet startup took " << elapsed_ms << "ms";
     if (Trace::CurrentTrace()) {
-      LOG(WARNING) << kLogPrefix << "Trace:" << std::endl
-                   << Trace::CurrentTrace()->DumpToString(true);
+      LOG(INFO) << kLogPrefix << "Trace:";
+      Trace::CurrentTrace()->DumpToLogInfo(true);
     }
   }
 

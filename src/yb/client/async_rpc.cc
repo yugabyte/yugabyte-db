@@ -184,15 +184,17 @@ AsyncRpc::~AsyncRpc() {
   if (trace_) {
     if (trace_->must_print()) {
       LOG(INFO) << ToString() << " took " << ToMicroseconds(CoarseMonoClock::Now() - start_)
-                << "us. Trace:\n"
-                << trace_->DumpToString(true);
+                << "us. Trace:";
+      trace_->DumpToLogInfo(true);
     } else {
       const auto print_trace_every_n = GetAtomicFlag(&FLAGS_ybclient_print_trace_every_n);
       if (print_trace_every_n > 0) {
+        bool was_printed = false;
         YB_LOG_EVERY_N(INFO, print_trace_every_n)
             << ToString() << " took " << ToMicroseconds(CoarseMonoClock::Now() - start_)
-            << "us. Trace:\n"
-            << trace_->DumpToString(true);
+            << "us. Trace:" << Trace::SetTrue(&was_printed);
+        if (was_printed)
+          trace_->DumpToLogInfo(true);
       }
     }
   }
