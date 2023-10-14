@@ -46,13 +46,11 @@ export const getUniverseStatus = (universe) => {
     placementModificationTaskUuid,
     errorString
   } = universe.universeDetails;
-
   /* TODO: Using placementModificationTaskUuid is a short term fix to not clear universe error
    * state because updateSucceeded reports the state of the latest task only. This will be
    * replaced by backend driven APIs in future.
    */
   const allUpdatesSucceeded = updateSucceeded && !isDefinedNotNull(placementModificationTaskUuid);
-
   if (!updateInProgress && allUpdatesSucceeded && !universePaused) {
     return { state: UniverseState.GOOD, error: errorString };
   }

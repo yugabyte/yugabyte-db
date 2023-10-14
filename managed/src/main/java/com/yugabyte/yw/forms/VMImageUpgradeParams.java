@@ -86,8 +86,8 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
   @Override
   // This method is not just doing verification. It is also setting instance members
   // which are used in other methods.
-  public void verifyParams(Universe universe) {
-    super.verifyParams(universe);
+  public void verifyParams(Universe universe, boolean isFirstTry) {
+    super.verifyParams(universe, isFirstTry);
 
     if (upgradeOption != UpgradeOption.ROLLING_UPGRADE) {
       throw new PlatformServiceException(

@@ -103,7 +103,14 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.KubernetesOverridesUpgrade,
           TaskType.GFlagsKubernetesUpgrade,
           TaskType.SoftwareKubernetesUpgrade,
-          TaskType.RestartUniverseKubernetesUpgrade);
+          TaskType.RestartUniverseKubernetesUpgrade,
+          TaskType.SoftwareUpgrade,
+          TaskType.SoftwareUpgradeYB,
+          TaskType.VMImageUpgrade,
+          TaskType.GFlagsUpgrade,
+          TaskType.RebootUniverse,
+          TaskType.RestartUniverse,
+          TaskType.ThirdpartySoftwareUpgrade);
 
   @Override
   protected Application provideApplication() {
@@ -635,7 +642,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   @Test
   public void testTaskValidationFailure() {
     ITask task = mockTaskCommon(false);
-    doThrow(new IllegalArgumentException("Validation failed")).when(task).validateParams();
+    doThrow(new RuntimeException("Validation failed")).when(task).validateParams(true);
     assertThrows(PlatformServiceException.class, () -> taskExecutor.createRunnableTask(task));
   }
 }

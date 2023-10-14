@@ -75,7 +75,7 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           // Verify the request params and fail if invalid only if its the first time we are
           // invoked.
           if (isFirstTry()) {
-            taskParams().verifyParams(universe);
+            taskParams().verifyParams(universe, isFirstTry());
           }
           if (CommonUtils.isAutoFlagSupported(cluster.userIntent.ybSoftwareVersion)) {
             // Verify auto flags compatibility.

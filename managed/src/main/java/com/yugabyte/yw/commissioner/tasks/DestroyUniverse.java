@@ -75,9 +75,9 @@ public class DestroyUniverse extends UniverseTaskBase {
       // to prevent other updates from happening.
       Universe universe;
       if (params().isForceDelete) {
-        universe = forceLockUniverseForUpdate(-1, true);
+        universe = forceLockUniverseForUpdate(-1);
       } else {
-        universe = lockUniverseForUpdate(-1, true);
+        universe = lockUniverseForUpdate(-1);
       }
 
       // Delete xCluster configs involving this universe and put the locked universes to

@@ -149,7 +149,6 @@ export default class UniverseStatus extends Component {
         return null;
       };
       const failedTask = currentUniverseFailedTask();
-
       statusDisplay = (
         <div className={showLabelText ? 'status-error' : ''}>
           <i className="fa fa-warning" />

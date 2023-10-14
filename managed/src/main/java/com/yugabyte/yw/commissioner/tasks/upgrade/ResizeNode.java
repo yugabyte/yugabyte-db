@@ -55,8 +55,9 @@ public class ResizeNode extends UpgradeTaskBase {
   }
 
   @Override
-  public void validateParams() {
-    taskParams().verifyParams(getUniverse(), !isFirstTry() ? getNodeState() : null);
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    taskParams().verifyParams(getUniverse(), !isFirstTry() ? getNodeState() : null, isFirstTry);
   }
 
   @Override

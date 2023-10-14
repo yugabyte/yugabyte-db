@@ -57,8 +57,9 @@ public class CertsRotate extends UpgradeTaskBase {
   }
 
   @Override
-  public void validateParams() {
-    taskParams().verifyParams(getUniverse());
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    taskParams().verifyParams(getUniverse(), isFirstTry);
   }
 
   @Override

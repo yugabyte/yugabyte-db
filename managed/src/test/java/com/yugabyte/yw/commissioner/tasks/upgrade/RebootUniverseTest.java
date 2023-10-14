@@ -10,8 +10,10 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.List;
@@ -106,14 +108,32 @@ public class RebootUniverseTest extends UpgradeTaskTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
     position = assertSequence(subTasksByPosition, position);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
-    assertEquals(65, position);
+    assertEquals(66, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testRollingRebootRetries() {
+    UpgradeTaskParams taskParams = new UpgradeTaskParams();
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.creatingUser = defaultUser;
+    TestUtils.setFakeHttpContext(defaultUser);
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.RebootUniverse,
+        CustomerTask.TargetType.Universe,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.RebootUniverse,
+        taskParams,
+        false);
   }
 }

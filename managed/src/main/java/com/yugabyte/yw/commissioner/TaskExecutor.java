@@ -321,7 +321,7 @@ public class TaskExecutor {
   public RunnableTask createRunnableTask(ITask task) {
     checkNotNull(task, "Task must be set");
     try {
-      task.validateParams();
+      task.validateParams(task.isFirstTry());
     } catch (PlatformServiceException e) {
       log.error("Params validation failed for task " + task, e);
       throw e;

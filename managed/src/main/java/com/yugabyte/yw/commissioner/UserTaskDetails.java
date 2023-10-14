@@ -246,7 +246,10 @@ public class UserTaskDetails {
     PromoteAutoFlags,
 
     // Rollback Auto Flags
-    RollbackAutoFlags
+    RollbackAutoFlags,
+
+    // Validate configurations.
+    ValidateConfigurations
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -574,6 +577,10 @@ public class UserTaskDetails {
       case RollbackAutoFlags:
         title = "Rollback Auto flags";
         description = "Rollback Auto flags for a universe";
+        break;
+      case ValidateConfigurations:
+        title = "Validating configurations";
+        description = "Validating configurations before proceeding";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

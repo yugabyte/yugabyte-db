@@ -76,65 +76,59 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     return (UpgradeTaskParams) taskParams;
   }
 
+  @Deprecated
+  // TODO This cannot serve all the stages in the upgrade because this gives only one fixed type.
   public abstract SubTaskGroupType getTaskSubGroupType();
 
   // State set on node while it is being upgraded
   public abstract NodeState getNodeState();
 
-  // Wrapper that takes care of common pre and post upgrade tasks and user has
-  // flexibility to manipulate subTaskGroupQueue through the lambda passed in parameter
   public void runUpgrade(Runnable upgradeLambda) {
-    try {
-      checkUniverseVersion();
-      // Update the universe DB with the update to be performed and set the
-      // 'updateInProgress' flag to prevent other updates from happening.
-      lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+    super.runUpdateTasks(
+        () -> {
+          try {
+            Set<NodeDetails> nodeList = fetchAllNodes(taskParams().upgradeOption);
 
-      Set<NodeDetails> nodeList = fetchAllNodes(taskParams().upgradeOption);
+            // Run the pre-upgrade hooks
+            createHookTriggerTasks(nodeList, true, false);
 
-      // Run the pre-upgrade hooks
-      createHookTriggerTasks(nodeList, true, false);
+            // Execute the lambda which populates subTaskGroupQueue
+            upgradeLambda.run();
 
-      // Execute the lambda which populates subTaskGroupQueue
-      upgradeLambda.run();
+            // Run the post-upgrade hooks
+            createHookTriggerTasks(nodeList, false, false);
 
-      // Run the post-upgrade hooks
-      createHookTriggerTasks(nodeList, false, false);
+            // Marks update of this universe as a success only if all the tasks before it succeeded.
+            createMarkUniverseUpdateSuccessTasks()
+                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      // Marks update of this universe as a success only if all the tasks before it succeeded.
-      createMarkUniverseUpdateSuccessTasks()
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+            // Run all the tasks.
+            getRunnableTask().runSubTasks();
+          } catch (Throwable t) {
+            log.error("Error executing task {} with error={}.", getName(), t);
 
-      // Run all the tasks.
-      getRunnableTask().runSubTasks();
-    } catch (Throwable t) {
-      log.error("Error executing task {} with error={}.", getName(), t);
+            // If the task failed, we don't want the loadbalancer to be
+            // disabled, so we enable it again in case of errors.
+            if (!isLoadBalancerOn) {
+              setTaskQueueAndRun(
+                  () -> {
+                    createLoadBalancerStateChangeTask(true)
+                        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+                  });
+            }
 
-      // If the task failed, we don't want the loadbalancer to be
-      // disabled, so we enable it again in case of errors.
-      if (!isLoadBalancerOn) {
-        setTaskQueueAndRun(
-            () -> {
-              createLoadBalancerStateChangeTask(true)
-                  .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-            });
-      }
-
-      throw t;
-    } finally {
-      try {
-        if (hasRollingUpgrade) {
-          setTaskQueueAndRun(
-              () -> clearLeaderBlacklistIfAvailable(SubTaskGroupType.ConfigureUniverse));
-        }
-      } finally {
-        try {
-          unlockXClusterUniverses(lockedXClusterUniversesUuidSet, false /* ignoreErrors */);
-        } finally {
-          unlockUniverseForUpdate();
-        }
-      }
-    }
+            throw t;
+          } finally {
+            try {
+              if (hasRollingUpgrade) {
+                setTaskQueueAndRun(
+                    () -> clearLeaderBlacklistIfAvailable(SubTaskGroupType.ConfigureUniverse));
+              }
+            } finally {
+              unlockXClusterUniverses(lockedXClusterUniversesUuidSet, false /* ignoreErrors */);
+            }
+          }
+        });
     log.info("Finished {} task.", getName());
   }
 
