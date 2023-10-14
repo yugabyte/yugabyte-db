@@ -82,8 +82,11 @@ InboundCall::~InboundCall() {
   Trace *my_trace = trace();
   TRACE_TO(my_trace, "Destroying InboundCall");
   if (my_trace) {
+    bool was_printed = false;
     YB_LOG_IF_EVERY_N(INFO, FLAGS_print_trace_every > 0, FLAGS_print_trace_every)
-        << "Tracing op: \n " << my_trace->DumpToString(true);
+        << "Tracing op:" << Trace::SetTrue(&was_printed);
+    if (was_printed)
+      my_trace->DumpToLogInfo(true);
   }
   DecrementGauge(rpc_metrics_->inbound_calls_alive);
 }
