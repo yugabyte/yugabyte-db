@@ -325,9 +325,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         log.error(msg);
         throw new IllegalStateException(msg);
       }
-      if (isFirstTry()
-          && (universeDetails.updatingTaskUUID != null
-              || universeDetails.placementModificationTaskUuid != null)) {
+      if (getUserTaskUUID().equals(universeDetails.updatingTaskUUID)) {
+        // Freeze always sets this to the UUID of the currently run task. If it is already set to
+        // the current task UUID, freeze is already run for this task.
         String msg = "Universe " + taskParams().getUniverseUUID() + " is already frozen";
         log.error(msg);
         throw new IllegalStateException(msg);
