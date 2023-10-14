@@ -1060,6 +1060,16 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	{
+		{"yb_enable_batchednl", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the planner's use of batched nested-loop "
+							 "join plans."),
+			NULL
+		},
+		&yb_enable_batchednl,
+		true,
+		NULL, NULL, NULL
+	},
+	{
 		{"enable_partition_pruning", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enable plan-time and run-time partition pruning."),
 			gettext_noop("Allows the query planner and executor to compare partition "

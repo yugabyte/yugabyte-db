@@ -130,6 +130,12 @@ extern PGDLLIMPORT bool enable_partition_pruning;
 extern PGDLLIMPORT int constraint_exclusion;
 extern PGDLLIMPORT bool yb_enable_geolocation_costing;
 
+/*
+ * If true, we will always prefer batched nested loop join plans over nested
+ * loop join plans.
+ */
+extern PGDLLIMPORT bool yb_enable_batchednl;
+
 extern double clamp_row_est(double nrows);
 extern double index_pages_fetched(double tuples_fetched, BlockNumber pages,
 					double index_pages, PlannerInfo *root);

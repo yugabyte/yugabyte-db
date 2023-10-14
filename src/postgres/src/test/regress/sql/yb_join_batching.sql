@@ -169,8 +169,8 @@ CREATE INDEX ON s3 (r1 asc, r2 asc);
 INSERT INTO s1 select i,i,i from generate_series(1,10) i;
 INSERT INTO s2 select i,i,i from generate_series(1,10) i;
 INSERT INTO s3 select i,i from generate_series(1,100) i;
-/*+Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) NestLoop(s1 s3)*/explain (costs off) select s3.* from s1, s2, s3 where s3.r1 = s1.r1 and s3.r2 = s2.r2 and s1.r3 = s2.r3 order by s3.r1, s3.r2;
-/*+Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) NestLoop(s1 s3)*/select s3.* from s1, s2, s3 where s3.r1 = s1.r1 and s3.r2 = s2.r2 and s1.r3 = s2.r3 order by s3.r1, s3.r2;
+/*+Set(enable_nestloop true) Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) YbBatchedNL(s1 s3)*/ explain (costs off) select s3.* from s1, s2, s3 where s3.r1 = s1.r1 and s3.r2 = s2.r2 and s1.r3 = s2.r3 order by s3.r1, s3.r2;
+/*+Set(enable_nestloop true) Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) YbBatchedNL(s1 s3)*/ select s3.* from s1, s2, s3 where s3.r1 = s1.r1 and s3.r2 = s2.r2 and s1.r3 = s2.r3 order by s3.r1, s3.r2;
 
 DROP TABLE s3;
 DROP TABLE s2;
