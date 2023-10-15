@@ -160,6 +160,8 @@ To be able to provision Amazon Elastic Compute Cloud (EC2) instances with Yugaby
 
 If you use YugabyteDB Anywhere to manage SSH Key Pairs for you and you deploy multiple YugabyteDB Anywhere instances across your environment, then the AWS provider name should be unique for each instance of YugabyteDB Anywhere integrating with a given AWS account.
 
+If you are using a YugabyteDB Anywhere-managed AMI and plan to use the `us-gov-east-1` and `us-gov-west-1` regions, you must set the SSH user to `centos` as these regions use CentOS 7 (as opposed to the default Alma 8 used for other regions). If you don't set the SSH user accordingly, universe deployment to these regions will fail.
+
 ### Advanced
 
 You can customize the Network Time Protocol server, as follows:
