@@ -104,7 +104,7 @@ Integrating with hosted zones can make YugabyteDB universes easily discoverable.
 You can customize your network, including the virtual network, as follows:
 
 - **Specify an existing VPC**. Select this option to use a VPC that you have created in AWS.
-- **Create a new VPC** ([Tech Preview](../../../../releases/versioning/#feature-availability)). Select this option to create a new VPC using YugabyteDB Anywhere. This option is not recommended for production use cases. If you use this feature and there are any classless inter-domain routing (CIDR) conflicts, the operation can fail silently. This would include, for example, doing the following:
+- **Create a new VPC** ([Tech Preview](/preview/releases/versioning/#feature-availability)). Select this option to create a new VPC using YugabyteDB Anywhere. This option is not recommended for production use cases. If you use this feature and there are any classless inter-domain routing (CIDR) conflicts, the operation can fail silently. This would include, for example, doing the following:
   - Configure more than one AWS cloud provider with different CIDR block prefixes and selecting the **Create a new VPC** option.
   - Creating a new VPC with an CIDR block that overlaps with any of the existing subnets.
 
