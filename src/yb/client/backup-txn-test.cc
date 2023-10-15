@@ -44,6 +44,7 @@ DECLARE_int32(TEST_inject_status_resolver_complete_delay_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_int32(unresponsive_ts_rpc_timeout_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
@@ -108,6 +109,7 @@ class BackupTxnTest : public TransactionTestBase<MiniCluster> {
   }
 
   void TestDeleteTable(bool restart_masters);
+  void TestDeleteSnapshot(bool compact_and_restart);
 
   std::unique_ptr<SnapshotTestUtil> snapshot_util_;
 };
@@ -274,17 +276,35 @@ TEST_F(BackupTxnTest, Persistence) {
                                            table_.table()->GetPartitionCount()));
 }
 
-TEST_F(BackupTxnTest, Delete) {
+void BackupTxnTest::TestDeleteSnapshot(bool compact_and_restart) {
   ASSERT_NO_FATALS(WriteData());
   auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
   ASSERT_OK(snapshot_util_->VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE,
                                            table_.table()->GetPartitionCount()));
   ASSERT_OK(snapshot_util_->DeleteSnapshot(snapshot_id));
+  if (compact_and_restart) {
+    for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+      ASSERT_OK(cluster_->mini_master(i)->tablet_peer()->tablet()->ForceManualRocksDBCompact());
+    }
+    ASSERT_OK(cluster_->RestartSync());
+  }
   ASSERT_OK(snapshot_util_->WaitAllSnapshotsDeleted());
 
   SetAtomicFlag(1000, &FLAGS_snapshot_coordinator_cleanup_delay_ms);
 
   ASSERT_OK(snapshot_util_->WaitAllSnapshotsCleaned());
+}
+
+TEST_F(BackupTxnTest, Delete) {
+  TestDeleteSnapshot(/* compact_and_restart= */ false);
+}
+
+TEST_F(BackupTxnTest, DeleteWithCompaction) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_history_cutoff_propagation) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) = 0;
+
+  TestDeleteSnapshot(/* compact_and_restart= */ true);
 }
 
 TEST_F(BackupTxnTest, CleanupAfterRestart) {
