@@ -309,4 +309,17 @@ TEST_F(CqlPackedRowTest, CompactAfterTransaction) {
   ASSERT_OK(CheckTableContent(&session, "1,one,dva"));
 }
 
+TEST_F(CqlPackedRowTest, CompactWithoutLivenessColumn) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (key INT PRIMARY KEY, value TEXT)WITH tablets = 1;"));
+  ASSERT_OK(session.ExecuteQuery("UPDATE t SET value = 'odin' WHERE key = 1"));
+  ASSERT_OK(cluster_->CompactTablets());
+  ASSERT_OK(session.ExecuteQueryFormat("UPDATE t SET value = NULL WHERE key = 1"));
+  ASSERT_OK(CheckTableContent(&session, ""));
+}
+
 } // namespace yb
