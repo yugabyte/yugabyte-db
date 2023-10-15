@@ -81,8 +81,11 @@ public class Pkcs12TrustStoreManager implements TrustStoreManager {
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
 
-    Certificate certificate = getX509Certificate(certPath);
-    trustStore.setCertificateEntry(certAlias, certificate);
+    List<Certificate> certificates = getX509Certificate(certPath);
+    for (int i = 0; i < certificates.size(); i++) {
+      String alias = certAlias + "-" + i;
+      trustStore.setCertificateEntry(alias, certificates.get(i));
+    }
     // Update the trust store in file-system.
     saveTrustStore(trustStorePath, trustStore, trustStorePassword);
     log.debug("Truststore '{}' now has a certificate with alias '{}'", trustStorePath, certAlias);
@@ -113,17 +116,31 @@ public class Pkcs12TrustStoreManager implements TrustStoreManager {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, errMsg);
     }
 
-    // Check if such an alias already exists.
-    if (!trustStore.containsAlias(certAlias) && !suppressErrors) {
-      String errMsg = String.format("Cert by name '%s' does not exist to update", certAlias);
-      log.error(errMsg);
-      // Purge newCertPath which got created.
-      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    List<Certificate> oldCertificates = getX509Certificate(oldCertPath);
+    List<Certificate> newCertificates = getX509Certificate(newCertPath);
+    for (int i = 0; i < oldCertificates.size(); i++) {
+      // Check if such an alias already exists.
+      String alias = certAlias + "-" + i;
+      if (!trustStore.containsAlias(alias) && !suppressErrors) {
+        String errMsg = String.format("Cert by name '%s' does not exist to update", alias);
+        log.error(errMsg);
+        // Purge newCertPath which got created.
+        throw new PlatformServiceException(BAD_REQUEST, errMsg);
+      }
+    }
+
+    if (newCertificates.size() < oldCertificates.size()) {
+      for (int i = newCertificates.size(); i < oldCertificates.size(); i++) {
+        String alias = certAlias + "-" + i;
+        trustStore.deleteEntry(alias);
+      }
     }
 
     // Update the trust store.
-    Certificate newCertificate = getX509Certificate(newCertPath);
-    trustStore.setCertificateEntry(certAlias, newCertificate);
+    for (int i = 0; i < newCertificates.size(); i++) {
+      String alias = certAlias + "-" + i;
+      trustStore.setCertificateEntry(alias, newCertificates.get(i));
+    }
     saveTrustStore(trustStorePath, trustStore, trustStorePassword);
 
     // Backup up YBA's pkcs12 trust store in DB.
@@ -183,22 +200,26 @@ public class Pkcs12TrustStoreManager implements TrustStoreManager {
       String trustStoreHome,
       char[] trustStorePassword,
       boolean suppressErrors)
-      throws KeyStoreException {
+      throws KeyStoreException, IOException, CertificateException {
     log.info("Removing cert {} from YBA's pkcs12 truststore ...", certAlias);
 
     String trustStorePath = getTrustStorePath(trustStoreHome, TRUSTSTORE_FILE_NAME);
     KeyStore trustStore = getTrustStore(trustStorePath, trustStorePassword, false);
+    List<Certificate> certificates = getX509Certificate(certPath);
+    for (int i = 0; i < certificates.size(); i++) {
+      String alias = certAlias + "-" + i;
 
-    // Check if such an alias already exists.
-    if (!trustStore.containsAlias(certAlias) && !suppressErrors) {
-      String errMsg = String.format("CA certificate '%s' does not exist to delete", certAlias);
-      log.error(errMsg);
-      throw new PlatformServiceException(BAD_REQUEST, errMsg);
-    }
+      // Check if such an alias already exists.
+      if (!trustStore.containsAlias(alias) && !suppressErrors) {
+        String errMsg = String.format("CA certificate '%s' does not exist to delete", alias);
+        log.error(errMsg);
+        throw new PlatformServiceException(BAD_REQUEST, errMsg);
+      }
 
-    // Delete from the trust store.
-    if (trustStore.containsAlias(certAlias)) {
-      trustStore.deleteEntry(certAlias);
+      // Delete from the trust store.
+      if (trustStore.containsAlias(alias)) {
+        trustStore.deleteEntry(alias);
+      }
     }
     saveTrustStore(trustStorePath, trustStore, trustStorePassword);
     log.debug("Truststore '{}' now does not have a CA certificate '{}'", trustStorePath, certAlias);

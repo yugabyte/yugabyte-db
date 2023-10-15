@@ -258,6 +258,7 @@ public class CustomCAStoreManager {
 
     String trustStoreHome = getTruststoreHome(storagePath);
     String certPath = getCustomCACertsPath(trustStoreHome, certId);
+
     boolean deleted = false;
     boolean suppressErrors = false;
     char[] truststorePassword = getTruststorePassword();
@@ -275,6 +276,9 @@ public class CustomCAStoreManager {
     } catch (Exception e) {
       log.error("CA certificate delete is incomplete due to: ", e);
       // Rollback DB.
+      CustomCaCertificateInfo origCert = CustomCaCertificateInfo.get(customerId, certId, false);
+      // We need to ensure paths is not messed up in the custom cert table.
+      cert.setContents(origCert.getContents());
       cert.activate();
       try {
         suppressErrors = true;
