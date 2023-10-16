@@ -281,6 +281,19 @@ public class RoleBindingUtil {
    */
   public void populateSystemRoleResourceGroups(
       UUID customerUUID, UUID userUUID, List<RoleResourceDefinition> roleResourceDefinitions) {
+    // If there are no system roles assigned to the role bindings of a user, add ConnectOnly Role to
+    // the role bindings.
+    if (!roleResourceDefinitions.stream()
+        .anyMatch(
+            rrd ->
+                RoleType.System.equals(
+                    Role.getOrBadRequest(customerUUID, rrd.getRoleUUID()).getRoleType()))) {
+      Role connectOnlyRole = Role.getOrBadRequest(customerUUID, Users.Role.ConnectOnly.name());
+      roleResourceDefinitions.add(new RoleResourceDefinition(connectOnlyRole.getRoleUUID(), null));
+    }
+
+    // All the system roles should not have any resource group. They will be populated with default
+    // values as they cannot be scoped.
     for (RoleResourceDefinition roleResourceDefinition : roleResourceDefinitions) {
       Role role = Role.getOrBadRequest(customerUUID, roleResourceDefinition.getRoleUUID());
       if (RoleType.System.equals(role.getRoleType())) {

@@ -65,11 +65,12 @@ public class RoleUtilTest extends FakeDBApplication {
             new HashSet<>(
                 Arrays.asList(
                     new Permission(ResourceType.UNIVERSE, Action.CREATE),
+                    new Permission(ResourceType.OTHER, Action.READ),
                     new Permission(ResourceType.UNIVERSE, Action.READ),
                     new Permission(ResourceType.UNIVERSE, Action.UPDATE))));
     assertNotNull(role.getRoleUUID());
     assertEquals("FakeRole1", role.getName());
-    assertEquals(3, role.getPermissionDetails().getPermissionList().size());
+    assertEquals(4, role.getPermissionDetails().getPermissionList().size());
     assertNotNull(role.getCreatedOn());
   }
 
@@ -85,6 +86,7 @@ public class RoleUtilTest extends FakeDBApplication {
             new HashSet<>(
                 Arrays.asList(
                     new Permission(ResourceType.UNIVERSE, Action.CREATE),
+                    new Permission(ResourceType.OTHER, Action.READ),
                     new Permission(ResourceType.UNIVERSE, Action.UPDATE),
                     new Permission(ResourceType.UNIVERSE, Action.DELETE))));
   }
@@ -100,11 +102,12 @@ public class RoleUtilTest extends FakeDBApplication {
             new HashSet<>(
                 Arrays.asList(
                     new Permission(ResourceType.UNIVERSE, Action.CREATE),
+                    new Permission(ResourceType.OTHER, Action.READ),
                     new Permission(ResourceType.UNIVERSE, Action.READ),
                     new Permission(ResourceType.UNIVERSE, Action.UPDATE))));
     assertNotNull(role.getRoleUUID());
     assertEquals("FakeRole1", role.getName());
-    assertEquals(3, role.getPermissionDetails().getPermissionList().size());
+    assertEquals(4, role.getPermissionDetails().getPermissionList().size());
     assertNotNull(role.getCreatedOn());
     assertEquals(0, RoleBinding.getAll().size());
 
@@ -134,11 +137,12 @@ public class RoleUtilTest extends FakeDBApplication {
             new HashSet<>(
                 Arrays.asList(
                     new Permission(ResourceType.UNIVERSE, Action.CREATE),
+                    new Permission(ResourceType.OTHER, Action.READ),
                     new Permission(ResourceType.UNIVERSE, Action.READ),
                     new Permission(ResourceType.UNIVERSE, Action.UPDATE))));
     assertNotNull(role.getRoleUUID());
     assertEquals("FakeRole1", role.getName());
-    assertEquals(3, role.getPermissionDetails().getPermissionList().size());
+    assertEquals(4, role.getPermissionDetails().getPermissionList().size());
     assertNotNull(role.getCreatedOn());
 
     roleUtil.editRole(
@@ -148,6 +152,7 @@ public class RoleUtilTest extends FakeDBApplication {
         new HashSet<>(
             Arrays.asList(
                 new Permission(ResourceType.UNIVERSE, Action.CREATE),
+                new Permission(ResourceType.OTHER, Action.READ),
                 new Permission(ResourceType.UNIVERSE, Action.DELETE))));
   }
 
@@ -190,10 +195,11 @@ public class RoleUtilTest extends FakeDBApplication {
         new HashSet<>(
             Arrays.asList(
                 new Permission(ResourceType.UNIVERSE, Action.CREATE),
+                new Permission(ResourceType.OTHER, Action.READ),
                 new Permission(ResourceType.UNIVERSE, Action.READ),
                 new Permission(ResourceType.UNIVERSE, Action.UPDATE))));
     Role roleUpdated = Role.getOrBadRequest(customer.getUuid(), role.getRoleUUID());
-    assertEquals(3, roleUpdated.getPermissionDetails().getPermissionList().size());
+    assertEquals(4, roleUpdated.getPermissionDetails().getPermissionList().size());
     assertEquals(1, RoleBinding.getAll().size());
     ResourceDefinition expectedRD1 =
         ResourceDefinition.builder().resourceType(ResourceType.UNIVERSE).allowAll(true).build();
