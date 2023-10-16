@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common.operator;
 
+import com.google.inject.Inject;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Universe;
@@ -42,6 +43,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
 
   private final Config k8sClientConfig;
 
+  @Inject
   public KubernetesOperatorStatusUpdater(RuntimeConfGetter confGetter) {
     namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
     ConfigBuilder confBuilder = new ConfigBuilder();
