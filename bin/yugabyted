@@ -1567,8 +1567,7 @@ class ControlScript(object):
     # Starts yb-master, yb-tserver, and yugaware processes.
     # After initializing, creates a callhome thread.
     def start_processes(self):
-        bind_ip = self.configs.saved_data.get("advertise_address")
-        advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
+        advertise_ip = self.advertise_ip()
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
         master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
@@ -1719,7 +1718,7 @@ class ControlScript(object):
                     else:
                         yugabyted_ui_cmd = [ yugabyted_ui_path ] + \
                             [
-                                "-database_host={}".format(bind_ip),
+                                "-database_host={}".format(advertise_ip),
                                 "-master_ui_port={}".format(self.configs.saved_data.
                                                             get("master_webserver_port")),
                                 "-tserver_ui_port={}".format(self.configs.saved_data.
@@ -1730,11 +1729,15 @@ class ControlScript(object):
                             yugabyted_ui_cmd.extend(["-secure=true",
                                 "-database_password={}".format(
                                 self.configs.saved_data.get("database_password"))])
+                    if self.configs.saved_data.get("secure"):
+                        yugabyted_ui_cmd.extend(["-secure=true",
+                            "-database_password={}".format(
+                            self.configs.saved_data.get("database_password"))])
 
-                        self.processes["yugabyted-ui"] = ProcessManager(
-                            "yugabyted-ui", yugabyted_ui_cmd,
-                            self.configs.saved_data.get("log_dir"),
-                            self.configs.saved_data.get("data_dir"))
+                    self.processes["yugabyted-ui"] = ProcessManager(
+                        "yugabyted-ui", yugabyted_ui_cmd,
+                        self.configs.saved_data.get("log_dir"),
+                        self.configs.saved_data.get("data_dir"))
 
             if self.configs.saved_data.get("ui"):
                 (_, was_started) = self.verify_start_yugabyted_ui(is_first_run, is_first_install)
@@ -1854,8 +1857,7 @@ class ControlScript(object):
         return (err, was_started)
 
     def start_rr_process(self):
-        bind_ip = self.configs.saved_data.get("advertise_address")
-        advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
+        advertise_ip = self.advertise_ip()
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
         master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
@@ -2030,8 +2032,7 @@ class ControlScript(object):
             time.sleep(int(self.configs.saved_data.get("polling_interval")))
 
     def get_common_flags(self):
-        bind_ip = self.configs.saved_data.get("advertise_address")
-        advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
+        advertise_ip = self.advertise_ip()
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
         fault_tolerance = self.configs.saved_data.get("fault_tolerance")
@@ -2050,7 +2051,7 @@ class ControlScript(object):
             "--stop_on_parent_termination",
             "--undefok=stop_on_parent_termination",
             "--fs_data_dirs={}".format(self.configs.saved_data.get("data_dir")),
-            "--webserver_interface={}".format(bind_ip),
+            "--webserver_interface={}".format(advertise_ip),
             "--metrics_snapshotter_tserver_metrics_whitelist={}".format(
                 ",".join(METRICS_SNAPSHOT_LIST)),
             "--yb_num_shards_per_tserver={}".format(YB_NUM_SHARDS_PER_TSERVER),
@@ -2072,8 +2073,7 @@ class ControlScript(object):
 
 
     def get_master_cmd(self, common_flags):
-        bind_ip = self.configs.saved_data.get("advertise_address")
-        advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
+        advertise_ip = self.advertise_ip()
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
         master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
@@ -2083,7 +2083,7 @@ class ControlScript(object):
         yb_master_cmd = [find_binary_location("yb-master")] + \
             common_flags + \
             [
-                "--rpc_bind_addresses={}:{}".format(bind_ip, master_rpc_port),
+                "--rpc_bind_addresses={}:{}".format(advertise_ip, master_rpc_port),
                 "--server_broadcast_addresses={}:{}".format(advertise_ip, master_rpc_port),
                 "--replication_factor=1",
                 "--use_initial_sys_catalog_snapshot",
@@ -2108,8 +2108,7 @@ class ControlScript(object):
         return yb_master_cmd
 
     def get_tserver_cmd(self, common_flags):
-        bind_ip = self.configs.saved_data.get("advertise_address")
-        advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
+        advertise_ip = self.advertise_ip()
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
         master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
@@ -2121,14 +2120,14 @@ class ControlScript(object):
         yb_tserver_cmd = [find_binary_location("yb-tserver")] + common_flags + \
             [
                 "--{}={}".format(TS_MASTER_ADDRS_FLAG, master_addresses),
-                "--rpc_bind_addresses={}:{}".format(bind_ip, tserver_rpc_port),
+                "--rpc_bind_addresses={}:{}".format(advertise_ip, tserver_rpc_port),
                 "--server_broadcast_addresses={}:{}".format(advertise_ip, tserver_rpc_port),
                 "--cql_proxy_bind_address={}:{}".format(
-                    bind_ip, self.configs.saved_data.get("ycql_port")),
+                    advertise_ip, self.configs.saved_data.get("ycql_port")),
                 "--server_dump_info_path={}".format(
                     os.path.join(self.configs.saved_data.get("data_dir"), "tserver-info")),
                 "--start_pgsql_proxy", "--pgsql_proxy_bind_address={}:{}".format(
-                    bind_ip, self.configs.saved_data.get("ysql_port")),
+                    advertise_ip, self.configs.saved_data.get("ysql_port")),
                 "--tserver_enable_metrics_snapshotter=true",
                 "--metrics_snapshotter_interval_ms=11000",
                 "--webserver_port={}".format(self.configs.saved_data.get("tserver_webserver_port")),
@@ -2618,11 +2617,15 @@ class ControlScript(object):
             jsonResponseFromMaster = json.load(response)
             return jsonResponseFromMaster
         except HTTPError as http_err:
-            Output.print_and_log('HTTP error occurred while fetching cloud location: {}'.format(
-                http_err), level=logging.ERROR)
+            Output.log("HTTP Error occured while hitting the api endpoint " +
+                "http://{}:7000/api/v1/tablet-servers: {}".format(master_hostport, http_err))
+            Output.log_error_and_exit(Output.make_red("ERROR:") + " Master node " +
+                "present at {} is not reachable.".format(master_hostport))
         except Exception as err:
-            Output.print_and_log('Other error occurred while fetching cloud location: {}'.format(
-                err), level=logging.ERROR)
+            Output.log("HTTP Error occured while hitting the api endpoint " +
+                "http://{}:7000/api/v1/tablet-servers: {}".format(master_hostport, err))
+            Output.log_error_and_exit(Output.make_red("ERROR:") + " Master node " +
+                "present at {} is not reachable.".format(master_hostport))
 
     # Get all masters placement locations
     def get_all_nodes_locations(self, all_tserver_info, placement_uuid):
@@ -3420,18 +3423,14 @@ class ControlScript(object):
 
         # The master was not in the current list of masters
         # and we have a valid join_ip
-
-        bind_ip = self.configs.saved_data.get("advertise_address")
-        # master_addrs = "{}:{}".format(join_ip,
-        #             self.configs.saved_data.get("master_rpc_port"))
-        # master_uuids = [ m[0] for m in YBAdminProxy.get_masters(master_addrs) ]
+        advertise_ip = self.advertise_ip()
 
         if len(master_uuids) >= 3:
             # this is going to be a standalone shell master
             return True
-        if not YBAdminProxy.add_master(master_addrs, bind_ip):
+        if not YBAdminProxy.add_master(master_addrs, advertise_ip):
             Output.log_error_and_exit("Unable to add master {} to existing cluster at {}.".format(
-                bind_ip, join_ip))
+                advertise_ip, join_ip))
             return False
 
         # If we are the third master, set replication factor to 3. This makes the cluster
@@ -4172,10 +4171,12 @@ class ControlScript(object):
 
     # Get the current master leader known to a tserver using api/v1/masters endpoint
     # of the tserver.
-    def get_current_master_leader_from_api(self, tserverIP):
+    def get_current_master_leader_from_api(self, tserverIP, timeout=60):
         try:
             tserverMastersAPI = "http://{}:9000/api/v1/masters".format(tserverIP)
-            response = urlopen(Request(tserverMastersAPI))
+            Output.log("Trying to get masters information from {}".format(tserverMastersAPI) +
+                        " (Timeout={})".format(timeout))
+            response = urlopen(Request(tserverMastersAPI), timeout=timeout)
             jsonResponseFromTserver = json.load(response)
             dictOfAllNodes = jsonResponseFromTserver.get("master_server_and_type")
 
@@ -4194,6 +4195,11 @@ class ControlScript(object):
         except HTTPError as http_err:
             Output.log("HTTP Error occured while hitting the api endpoint " +
                 "http://{}:9000/api/v1/masters: {}".format(tserverIP, http_err))
+            Output.log_error_and_exit(Output.make_red("ERROR:") + " Node at the join ip " +
+                "provided is not reachable.")
+        except URLError as url_error:
+            Output.log("Some error occured while hitting the api endpoint " +
+                "http://{}:9000/api/v1/masters: {}".format(tserverIP, url_error))
             Output.log_error_and_exit(Output.make_red("ERROR:") + " Node at the join ip " +
                 "provided is not reachable.")
         except Exception as err:
@@ -4540,6 +4546,9 @@ class ControlScript(object):
                         "provided is not a valid address. Please try again with a valid IPV4, " +
                         "IPV6 or DNS.")
 
+            args.advertise_address = IP_LOCALHOST if args.advertise_address == IP_ANY \
+                else args.advertise_address
+
             if args.daemon is not None:
                 if args.background is not None and \
                         self.parse_bool(args.daemon) != self.parse_bool(args.background):
@@ -4558,59 +4567,61 @@ class ControlScript(object):
                         " provided is not a valid address. Please try again with a valid IPV4, " +
                         "IPV6 or DNS.")
 
+                Output.print_and_log("Fetching configs from join IP...")
+                # Check if tserver webserver at join_IP is reachable or not
+                # Also get the leader master(used to get the info of all tservers)
                 master_leader = self.get_current_master_leader_from_api(args.join)
                 args.join = master_leader
 
-                try:
-                    leaderMasterURL = "http://{}:7000/api/v1/tablet-servers".format(master_leader)
-                    response = urlopen(Request(leaderMasterURL))
-                    jsonResponseFromMaster = dict(json.load(response))
-                    is_placement_uuid_set = False
-                    if args.read_replica:
-                        # When the 1st read replica node is started use a new uuid
-                        if len(jsonResponseFromMaster) == 1:
-                            is_placement_uuid_set = True
-                            Output.log("Starting first read replica node. " +
-                                       "Using {} as placement_uuid".format(
-                                           self.configs.saved_data.get("placement_uuid")))
-                        # When a read replica cluster exists use the existing placement UUID
-                        else:
-                            for uuid, nodes in jsonResponseFromMaster.items():
-                                nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
-                                if master_leader not in nodes_list and len(nodes) != 0:
-                                    self.configs.saved_data["placement_uuid"] = uuid
-                                    Output.log("Using placement_uuid {} from ".format(uuid) +
-                                               "existing read replica cluster.")
-                                    is_placement_uuid_set = True
+                # Get info on all tservers
+                master_leader_hostport = "{}:7000".format(master_leader)
+                tservers_info = dict(self.get_all_tserver_info(master_leader_hostport))
+
+                # Check if any existing node has the same IP as advertise address
+                for uuid, nodes in tservers_info.items():
+                    for node in [node.split(":")[0] for node in list(nodes.keys())]:
+                        if args.advertise_address == node:
+                            Output.log_error_and_exit(Output.make_red("ERROR:") + " A node is " +
+                                        "already running on {}, please ".format(args.join) +
+                                        "specify a valid address.")
+
+                is_placement_uuid_set = False
+
+                # Set placement UUID for the node according to it's properties(rr or primary)
+                if args.read_replica:
+                    # When the 1st read replica node is started use a new uuid
+                    if len(tservers_info) == 1:
+                        is_placement_uuid_set = True
+                        Output.log("Starting first read replica node. " +
+                                    "Using {} as placement_uuid".format(
+                                        self.configs.saved_data.get("placement_uuid")))
+                    # When a read replica cluster exists use the existing placement UUID
                     else:
-                        # Use placement uuid set for the primary cluster when 1st node was started.
-                        for uuid, nodes in jsonResponseFromMaster.items():
+                        for uuid, nodes in tservers_info.items():
                             nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
-                            if master_leader in nodes_list:
+                            if master_leader not in nodes_list and len(nodes) != 0:
                                 self.configs.saved_data["placement_uuid"] = uuid
                                 Output.log("Using placement_uuid {} from ".format(uuid) +
-                                               "existing primary cluster.")
+                                            "existing read replica cluster.")
                                 is_placement_uuid_set = True
+                else:
+                    # Use placement uuid set for the primary cluster when 1st node was started.
+                    for uuid, nodes in tservers_info.items():
+                        nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
+                        if master_leader in nodes_list:
+                            self.configs.saved_data["placement_uuid"] = uuid
+                            Output.log("Using placement_uuid {} from ".format(uuid) +
+                                            "existing primary cluster.")
+                            is_placement_uuid_set = True
 
-                    # If placement UUID could not be set for some reason, throw an error
-                    if not is_placement_uuid_set:
-                        Output.log("Cannot find placement UUID for the node. " +
-                                "Leader Master node: {}. ".format(master_leader) +
-                                "Response from tablet-servers API: {}".format(
-                                    str(jsonResponseFromMaster)))
-                        Output.log_error_and_exit(Output.make_red("ERROR:") +
-                                " Unable to start the node.")
-
-                except HTTPError as http_err:
-                    Output.log("HTTP Error occured while hitting the api endpoint " +
-                        "http://{}:7000/api/v1/tablet-servers: {}".format(master_leader, http_err))
-                    Output.log_error_and_exit(Output.make_red("ERROR:") + " Leader master " +
-                        "present at {} is not reachable.".format(master_leader))
-                except Exception as err:
-                    Output.log("Error occured while hitting the api endpoint " +
-                        "http://{}:7000/api/v1/tablet-servers: {}".format(master_leader, err))
-                    Output.log_error_and_exit(Output.make_red("ERROR:") + " Leader master " +
-                        "present at {} is not reachable.".format(master_leader))
+                # If placement UUID could not be set for some reason, throw an error
+                if not is_placement_uuid_set:
+                    Output.log("Cannot find placement UUID for the node. " +
+                            "Leader Master node: {}. ".format(master_leader) +
+                            "Response from tablet-servers API: {}".format(
+                                str(tservers_info)))
+                    Output.log_error_and_exit(Output.make_red("ERROR:") +
+                            " Unable to start the node.")
 
             # If no --join is passed then start a new cluster with a new placement_uuid
             else:
@@ -5048,6 +5059,8 @@ class ControlScript(object):
             level=logging.DEBUG, filemode="a",
             filename=os.path.join(log_dir, "{}.log".format(SCRIPT_NAME)),
             format="[%(filename)s " + args.parser + "] %(asctime)s %(levelname)s: %(message)s")
+
+        Output.log("Running yugabyted command: '{}'".format(' '.join(sys.argv)))
 
         Output.log("cmd = {} using config file: {} (args.config={})".format(
             args.parser, self.conf_file, args.config))
