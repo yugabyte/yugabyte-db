@@ -60,7 +60,7 @@ YugabyteDB Anywhere may also work on other Linux distributions; contact your Yug
 
 ## Software requirements
 
-- Python 3 must be installed.
+- Python v3.8 to 3.11 must be installed.
 
 ## Hardware requirements
 
