@@ -128,8 +128,6 @@ class XClusterSafeTimeService {
 
   void EnterIdleMode(const std::string& reason);
 
-  static std::string TabletIdsToLimitedString(const std::vector<TabletId>& tablet_ids);
-
   Master* const master_;
   CatalogManager* const catalog_manager_;
 
