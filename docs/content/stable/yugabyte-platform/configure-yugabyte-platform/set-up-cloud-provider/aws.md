@@ -141,7 +141,7 @@ You can customize your network, including the virtual network, as follows:
 
 - **VPC Setup**. Choose the VPC setup to use:
   - **Specify an existing VPC**. Select this option to use a VPC that you have created in AWS.
-  - **Create a new VPC** ([Beta](../../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag)). Select this option to create a new VPC using YugabyteDB Anywhere. This option is not recommended for production use cases. If you use this feature and there are any classless inter-domain routing (CIDR) conflicts, the operation can fail silently. This would include, for example, doing the following:
+  - **Create a new VPC** ([Tech Preview](/preview/releases/versioning/#feature-availability)). Select this option to create a new VPC using YugabyteDB Anywhere. This option is not recommended for production use cases. If you use this feature and there are any classless inter-domain routing (CIDR) conflicts, the operation can fail silently. This would include, for example, doing the following:
     - Configuring more than one AWS cloud provider with different CIDR block prefixes.
     - Creating a new VPC with a CIDR block that overlaps with any of the existing subnets.
 
@@ -159,6 +159,8 @@ To be able to provision Amazon Elastic Compute Cloud (EC2) instances with Yugaby
 - Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content and the corresponding SSH user. This information must be the same across all the regions you provision.
 
 If you use YugabyteDB Anywhere to manage SSH Key Pairs for you and you deploy multiple YugabyteDB Anywhere instances across your environment, then the AWS provider name should be unique for each instance of YugabyteDB Anywhere integrating with a given AWS account.
+
+If you are using a YugabyteDB Anywhere-managed AMI and plan to use the `us-gov-east-1` and `us-gov-west-1` regions, you must set the SSH user to `centos` as these regions use CentOS 7 (as opposed to the default Alma 8 used for other regions). If you don't set the SSH user accordingly, universe deployment to these regions will fail.
 
 ### Advanced
 
