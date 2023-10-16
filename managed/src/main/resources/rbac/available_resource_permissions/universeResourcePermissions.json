@@ -9,6 +9,10 @@
       {
         "resourceType": "UNIVERSE",
         "action": "READ"
+      },
+      {
+        "resourceType": "OTHER",
+        "action": "READ"
       }
     ]
   },
