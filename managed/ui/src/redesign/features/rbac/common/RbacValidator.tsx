@@ -7,8 +7,9 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { Component, ErrorInfo, FC, cloneElement, useState } from 'react';
+import { Component, ErrorInfo, FC, cloneElement, useRef, useState } from 'react';
 import { find } from 'lodash';
+import { useClickAway } from 'react-use';
 import { Popover, Tooltip, Typography } from '@material-ui/core';
 import { CSSProperties } from '@material-ui/styles';
 import { ActionType, Permission } from '../permission';
@@ -28,7 +29,13 @@ export interface RbacValidatorProps {
   onEnd?: (resource: any) => void;
   overrideStyle?: CSSProperties;
   customValidateFunction?: (permissions: UserPermission[]) => boolean;
+  popOverOverrides?: CSSProperties;
 }
+
+type RequireProperty<T, Prop extends keyof T> = T & { [key in Prop]-?: T[key] };
+type RequireAccessReqOrCustomValidateFn =
+  | RequireProperty<RbacValidatorProps, 'accessRequiredOn'>
+  | RequireProperty<RbacValidatorProps, 'customValidateFunction'>;
 
 export const RBAC_ERR_MSG_NO_PERM = (
   <Typography variant="body2">
@@ -90,25 +97,18 @@ export const hasNecessaryPerm = (accessRequiredOn: RbacValidatorProps['accessReq
   return false;
 };
 
-export const RbacValidator: FC<RbacValidatorProps> = ({
+export const RbacValidator: FC<RequireAccessReqOrCustomValidateFn> = ({
   accessRequiredOn,
   children,
   onEnd,
   customValidateFunction,
   minimal = false,
   isControl = false,
-  overrideStyle = {}
+  overrideStyle = {},
+  popOverOverrides = {}
 }) => {
   if (!isRbacEnabled()) {
     return <>{children}</>;
-  }
-
-  const { permissionRequired } = accessRequiredOn;
-
-  const resource = findResource(accessRequiredOn);
-
-  if (onEnd) {
-    onEnd(resource);
   }
 
   const controlComp = (
@@ -122,7 +122,9 @@ export const RbacValidator: FC<RbacValidatorProps> = ({
         }}
         data-testid="rbac-no-perm"
       >
-        <ButtonDisabledPopover>{children as any}</ButtonDisabledPopover>
+        <ButtonDisabledPopover popOverOverrides={popOverOverrides}>
+          {children as any}
+        </ButtonDisabledPopover>
       </div>
     </ErrorBoundary>
   );
@@ -137,11 +139,16 @@ export const RbacValidator: FC<RbacValidatorProps> = ({
     }
     return (
       <div
-        style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          textAlign: 'center'
+        }}
         data-testid="rbac-no-perm"
       >
         <LockIcon />
-        You don&apos;t have permission to view this page
+        {RBAC_ERR_MSG_NO_PERM}
       </div>
     );
   };
@@ -180,7 +187,17 @@ export const RbacValidator: FC<RbacValidatorProps> = ({
     } else {
       return isControl ? controlComp : getErrorBoundary;
     }
-  } else if (resource && permissionRequired.every((p) => resource.actions.includes(p))) {
+  }
+
+  const { permissionRequired } = accessRequiredOn;
+
+  const resource = findResource(accessRequiredOn);
+
+  if (onEnd) {
+    onEnd(resource);
+  }
+
+  if (resource && permissionRequired.every((p) => resource.actions.includes(p))) {
     return <>{children}</>;
   }
 
@@ -217,9 +234,16 @@ export class ErrorBoundary extends Component {
   }
 }
 
-export const ButtonDisabledPopover = ({ children }: { children: React.ReactElement }) => {
+export const ButtonDisabledPopover = ({
+  children,
+  popOverOverrides = {}
+}: {
+  children: React.ReactElement;
+  popOverOverrides: CSSProperties;
+}) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
+  const ref = useRef(null);
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     setAnchorEl(event.currentTarget);
   };
@@ -235,8 +259,10 @@ export const ButtonDisabledPopover = ({ children }: { children: React.ReactEleme
     }
   });
 
+  useClickAway(ref, handleClose);
+
   return (
-    <div>
+    <div ref={ref}>
       {reactChild}
       <Popover
         id={'rbac_perm_error'}
@@ -250,6 +276,9 @@ export const ButtonDisabledPopover = ({ children }: { children: React.ReactEleme
         transformOrigin={{
           vertical: 'top',
           horizontal: 'center'
+        }}
+        style={{
+          ...popOverOverrides
         }}
       >
         <div

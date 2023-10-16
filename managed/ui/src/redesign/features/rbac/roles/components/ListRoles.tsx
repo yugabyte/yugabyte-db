@@ -40,6 +40,9 @@ const useStyles = makeStyles((theme) => ({
     padding: `${theme.spacing(5.5)}px ${theme.spacing(3)}px`,
     '& .yb-table-header th,.yb-table-row td': {
       paddingLeft: '0 !important'
+    },
+    '& .yb-table-row': {
+      cursor: 'default'
     }
   },
   moreActionsBut: {
@@ -117,59 +120,94 @@ const ListRoles = () => {
           setCurrentRole(role);
           setEditView(EditViews.USERS);
           setCurrentPage(Pages.EDIT_ROLE);
-        }
+        },
+        menuItemWrapper(elem: JSX.Element) {
+          return elem;
+        },
+        disabled: false
       }
     ];
 
-    if (
-      hasNecessaryPerm({
-        ...UserPermissionMap.editRole,
-        onResource: role.roleUUID
-      })
-    ) {
-      menuOptions.push({
-        text: t('table.moreActions.editRole'),
-        icon: <Create />,
-        callback: () => {
-          setCurrentRole(role);
-          setEditView(EditViews.CONFIGURATIONS);
-          setCurrentPage(Pages.EDIT_ROLE);
-        }
-      });
+    menuOptions.push({
+      text: t('table.moreActions.editRole'),
+      icon: <Create />,
+      callback: () => {
+        setCurrentRole(role);
+        setEditView(EditViews.CONFIGURATIONS);
+        setCurrentPage(Pages.EDIT_ROLE);
+      },
+      menuItemWrapper(elem) {
+        return (
+          <RbacValidator
+            isControl
+            accessRequiredOn={{ ...UserPermissionMap.editRole, onResource: role.roleUUID }}
+            overrideStyle={{ display: 'block' }}
+          >
+            {elem}
+          </RbacValidator>
+        );
+      },
+      disabled: role.roleType === RoleType.SYSTEM
+    });
 
-      if (find(ForbiddenRoles, { name: role.name, roleType: role.roleType }) === undefined) {
-        menuOptions.push({
-          text: t('table.moreActions.cloneRole'),
-          icon: <Clone />,
-          callback: () => {
-            setCurrentRole({
-              ...role,
-              roleUUID: '',
-              name: ''
-            });
-            setEditView(EditViews.CONFIGURATIONS);
-            setCurrentPage(Pages.CREATE_ROLE);
-          }
+    menuOptions.push({
+      text: t('table.moreActions.cloneRole'),
+      icon: <Clone />,
+      callback: () => {
+        setCurrentRole({
+          ...role,
+          roleUUID: '',
+          name: ''
         });
+        setEditView(EditViews.CONFIGURATIONS);
+        setCurrentPage(Pages.CREATE_ROLE);
+      },
+      menuItemWrapper(elem) {
+        return (
+          <RbacValidator
+            isControl
+            accessRequiredOn={{ ...UserPermissionMap.editRole, onResource: role.roleUUID }}
+            customValidateFunction={() => {
+              return hasNecessaryPerm({
+                ...UserPermissionMap.createRole,
+                onResource: role.roleUUID
+              });
+            }}
+            overrideStyle={{ display: 'block' }}
+          >
+            {elem}
+          </RbacValidator>
+        );
+      },
+      disabled: find(ForbiddenRoles, { name: role.name, roleType: role.roleType }) !== undefined
+    });
 
-        if (
-          role.roleType !== RoleType.SYSTEM &&
-          hasNecessaryPerm({
-            ...UserPermissionMap.deleteRole,
-            onResource: role.roleUUID
-          })
-        ) {
-          menuOptions.push({
-            text: t('table.moreActions.deleteRole'),
-            icon: <Delete />,
-            callback: () => {
-              setCurrentRole(role);
-              toggleDeleteModal(true);
+    menuOptions.push({
+      text: t('table.moreActions.deleteRole'),
+      icon: <Delete />,
+      callback: () => {
+        setCurrentRole(role);
+        toggleDeleteModal(true);
+      },
+      menuItemWrapper(elem) {
+        return (
+          <RbacValidator
+            isControl
+            overrideStyle={{ display: 'block' }}
+            accessRequiredOn={{ ...UserPermissionMap.deleteRole, onResource: role.roleUUID }}
+            customValidateFunction={() =>
+              hasNecessaryPerm({
+                ...UserPermissionMap.deleteRole,
+                onResource: role.roleUUID
+              })
             }
-          });
-        }
-      }
-    }
+          >
+            {elem}
+          </RbacValidator>
+        );
+      },
+      disabled: role.roleType === RoleType.SYSTEM
+    });
 
     return (
       <MoreActionsMenu menuOptions={menuOptions}>
@@ -228,7 +266,7 @@ const ListRoles = () => {
             dataSort
             dataField="description"
             width="35%"
-            dataFormat={(desc) => desc ?? '-'}
+            dataFormat={(desc) => (desc ? desc : '-')}
           >
             {t('table.description')}
           </TableHeaderColumn>

@@ -63,6 +63,9 @@ const getActions = (
           <RbacValidator
             isControl
             accessRequiredOn={UserPermissionMap.downloadSupportBundle}
+            customValidateFunction={() => {
+              return hasNecessaryPerm(UserPermissionMap.downloadSupportBundle) && hasNecessaryPerm({ onResource: universeUUID, resourceType: Resource.UNIVERSE, permissionRequired: [Action.READ] });
+            }}
           >
             <MenuItem
               value="Download"
@@ -87,6 +90,7 @@ const getActions = (
         <RbacValidator
           isControl
           accessRequiredOn={UserPermissionMap.deleteSupportBundle}
+          overrideStyle={{ display: 'block' }}
         >
           <YBMenuItem
             disabled={creatingBundle}
@@ -176,6 +180,9 @@ export const ThirdStep = withRouter(
             <RbacValidator
               isControl
               accessRequiredOn={UserPermissionMap.createSupportBundle}
+              customValidateFunction={() => {
+                return hasNecessaryPerm(UserPermissionMap.createSupportBundle) && hasNecessaryPerm({ onResource: universeUUID, resourceType: Resource.UNIVERSE, permissionRequired: [Action.UPDATE] });
+              }}
             >
               <YBButton
                 variant="outline-dark"
