@@ -1627,7 +1627,9 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
   }
 
   auto tablet_metric = GetCDCTabletMetrics(producer_tablet, tablet_peer);
-  tablet_metric->is_bootstrap_required->set_value(s.IsNotFound());
+  if (tablet_metric) {
+    tablet_metric->is_bootstrap_required->set_value(s.IsNotFound());
+  }
 
   RPC_STATUS_RETURN_ERROR(
       s,
