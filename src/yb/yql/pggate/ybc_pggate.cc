@@ -69,10 +69,6 @@ DEFINE_UNKNOWN_int32(ysql_client_read_write_timeout_ms, -1,
 DEFINE_UNKNOWN_int32(pggate_num_connections_to_server, 1,
              "Number of underlying connections to each server from a PostgreSQL backend process. "
              "This overrides the value of --num_connections_to_server.");
-DEFINE_test_flag(uint64, ysql_oid_prefetch_adjustment, 0,
-                 "Amount to add when prefetch the next batch of OIDs. Never use this flag in "
-                 "production environment. In unit test we use this flag to force allocation of "
-                 "large Postgres OIDs.");
 
 DECLARE_int32(num_connections_to_server);
 
@@ -549,10 +545,13 @@ YBCStatus YBCPgReserveOids(const YBCPgOid database_oid,
                            const uint32_t count,
                            YBCPgOid *begin_oid,
                            YBCPgOid *end_oid) {
-  return ToYBCStatus(pgapi->ReserveOids(database_oid,
-                                        next_oid + static_cast<YBCPgOid>(
-                                          FLAGS_TEST_ysql_oid_prefetch_adjustment),
+  return ToYBCStatus(pgapi->ReserveOids(database_oid, next_oid,
                                         count, begin_oid, end_oid));
+}
+
+YBCStatus YBCGetNewObjectId(YBCPgOid db_oid, YBCPgOid* new_oid) {
+  DCHECK_NE(db_oid, kInvalidOid);
+  return ToYBCStatus(pgapi->GetNewObjectId(db_oid, new_oid));
 }
 
 YBCStatus YBCPgGetCatalogMasterVersion(uint64_t *version) {
@@ -1561,7 +1560,9 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_enable_create_database_oid_collision_retry,
       .ysql_catalog_preload_additional_table_list =
           FLAGS_ysql_catalog_preload_additional_table_list.c_str(),
-      .ysql_use_relcache_file                   = &FLAGS_ysql_use_relcache_file
+      .ysql_use_relcache_file                   = &FLAGS_ysql_use_relcache_file,
+      .ysql_enable_pg_per_database_oid_allocator =
+          &FLAGS_ysql_enable_pg_per_database_oid_allocator
   };
   // clang-format on
   return &accessor;
