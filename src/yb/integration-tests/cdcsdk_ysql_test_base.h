@@ -22,6 +22,7 @@
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
 
+#include "yb/cdc/cdc_types.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
@@ -393,13 +394,19 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       int tablet_idx = 0,
       int64 safe_hybrid_time = -1,
       int wal_segment_index = 0,
-      const bool populate_checkpoint = true);
+      const bool populate_checkpoint = true,
+      const bool should_retry = true);
 
   Result<GetChangesResponsePB> GetChangesFromCDC(
       const xrepl::StreamId& stream_id,
       const TabletId& tablet_id,
       const CDCSDKCheckpointPB* cp = nullptr,
       int tablet_idx = 0);
+
+  Result<GetChangesResponsePB> GetChangesFromCDCWithoutRetry(
+      const xrepl::StreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const CDCSDKCheckpointPB* cp);
 
   GetAllPendingChangesResponse GetAllPendingChangesWithRandomReqSafeTimeChanges(
       const xrepl::StreamId& stream_id,
