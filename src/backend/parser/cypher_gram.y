@@ -33,6 +33,7 @@
 #include "parser/ag_scanner.h"
 #include "parser/cypher_gram.h"
 #include "parser/cypher_parse_node.h"
+#include "parser/scansup.h"
 
 // override the default action for locations
 #define YYLLOC_DEFAULT(current, rhs, n) \
@@ -184,6 +185,11 @@
 /*set operations*/
 %type <boolean> all_or_distinct
 
+/* utility options */
+%type <list> utility_option_list
+%type <node> utility_option_elem utility_option_arg
+%type <string> utility_option_name
+
 %{
 //
 // internal alias check
@@ -319,6 +325,20 @@ stmt:
             estmt->query = NULL;
             estmt->options = list_make2(makeDefElem("analyze", NULL, @2),
                                         makeDefElem("verbose", NULL, @3));;
+            extra->extra = (Node *)estmt;
+        }
+    | EXPLAIN '(' utility_option_list ')' cypher_stmt semicolon_opt
+        {
+            ExplainStmt *estmt = NULL;
+
+            if (yychar != YYEOF)
+                yyerror(&yylloc, scanner, extra, "syntax error");
+
+            extra->result = $5;
+
+            estmt = makeNode(ExplainStmt);
+            estmt->query = NULL;
+            estmt->options = $3;
             extra->extra = (Node *)estmt;
         }
     ;
@@ -1089,6 +1109,66 @@ where_opt:
     | WHERE expr
         {
             $$ = $2;
+        }
+    ;
+
+utility_option_list:
+    utility_option_elem
+        {
+            $$ = list_make1($1);
+        }
+    | utility_option_list ',' utility_option_elem
+        {
+            $$ = lappend($1, $3);
+        }
+    ;
+
+utility_option_elem:
+    utility_option_name utility_option_arg
+        {
+            $$ = (Node *)makeDefElem($1, $2, @1);
+        }
+    ;
+
+utility_option_name:
+    IDENTIFIER
+        {
+            char *modified_name = downcase_truncate_identifier($1, strlen($1),
+                                                               true);
+            $$ = modified_name;
+        }
+    | safe_keywords
+        {
+            char *name = pstrdup($1);
+            char *modified_name = downcase_truncate_identifier(name,
+                                                               strlen(name),
+                                                               true);
+            $$ = modified_name;
+        }
+    ;
+
+utility_option_arg:
+    IDENTIFIER
+        {
+            char *modified_val = downcase_truncate_identifier($1, strlen($1),
+                                                              true);
+            $$ = (Node *)makeString(modified_val);
+        }
+    | INTEGER
+        {
+            $$ = (Node *)makeInteger($1);
+        }
+    | TRUE_P
+        {
+            $$ = (Node *)makeString("true");
+        }
+    | FALSE_P
+        {
+            $$ = (Node *)makeString("false");
+        }
+    | /* EMPTY */
+        {
+            $$ = NULL;
         }
     ;
 

@@ -18,35 +18,27 @@
  */
 
 #include "postgres.h"
-
-#include "fmgr.h"
-
-#include "catalog/ag_catalog.h"
-#include "nodes/ag_nodes.h"
-#include "optimizer/cypher_paths.h"
-#include "parser/cypher_analyze.h"
+#include "utils/guc.h"
 #include "utils/ag_guc.h"
 
-PG_MODULE_MAGIC;
+bool age_enable_containment = true;
 
-void _PG_init(void);
-
-void _PG_init(void)
+/*
+ * Defines AGE's custom configuration parameters.
+ *
+ * The name of the parameter must be `age.*`. This name is used for setting
+ * value to the parameter. For example, `SET age.enable_containment = on;`.
+ */
+void define_config_params(void)
 {
-    register_ag_nodes();
-    set_rel_pathlist_init();
-    object_access_hook_init();
-    process_utility_hook_init();
-    post_parse_analyze_init();
-    define_config_params();
-}
-
-void _PG_fini(void);
-
-void _PG_fini(void)
-{
-    post_parse_analyze_fini();
-    process_utility_hook_fini();
-    object_access_hook_fini();
-    set_rel_pathlist_fini();
+    DefineCustomBoolVariable("age.enable_containment",
+                             "Use @> operator to transform MATCH's filter. Otherwise, use -> operator.",
+                             NULL,
+                             &age_enable_containment,
+                             true,
+                             PGC_SUSET,
+                             0,
+                             NULL,
+                             NULL,
+                             NULL);
 }

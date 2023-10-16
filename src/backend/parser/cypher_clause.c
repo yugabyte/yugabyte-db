@@ -65,6 +65,7 @@
 #include "utils/ag_func.h"
 #include "utils/agtype.h"
 #include "utils/graphid.h"
+#include "utils/ag_guc.h"
 
 /*
  * Variable string names for makeTargetEntry. As they are going to be variable
@@ -172,6 +173,12 @@ static List *make_edge_quals(cypher_parsestate *cpstate,
                              enum transform_entity_join_side side);
 static A_Expr *filter_vertices_on_label_id(cypher_parsestate *cpstate,
                                            Node *id_field, char *label);
+static Node *transform_map_to_ind(cypher_parsestate *cpstate,
+                                  transform_entity *entity, cypher_map *map);
+static List *transform_map_to_ind_recursive(cypher_parsestate *cpstate,
+                                            transform_entity *entity,
+                                            cypher_map *map,
+                                            List *parent_fields);
 static Node *create_property_constraints(cypher_parsestate *cpstate,
                                          transform_entity *entity,
                                          Node *property_constraints,
@@ -3558,9 +3565,156 @@ static A_Expr *filter_vertices_on_label_id(cypher_parsestate *cpstate,
 }
 
 /*
- * Creates the Contains operator to process property constraints for a vertex/
- * edge in a MATCH clause. Creates the agtype @> with the entity's properties
- * on the right and the constraints in the MATCH clause on the left.
+ * Makes property constraint using indirection(s). This is an
+ * alternative to using the containment operator (@>).
+ *
+ * In case of array and empty map, containment is used instead of equality.
+ *
+ * For example, the following query
+ *
+ *      MATCH (x:Label{
+ *        name: 'xyz',
+ *        address: {
+ *          city: 'abc',
+ *          street: {
+ *              name: 'pqr',
+ *              number: 123
+ *          }
+ *        },
+ *        phone: [9, 8, 7],
+ *        parents: {}
+ *      })
+ *
+ * is transformed to-
+ *
+ *      x.name = 'xyz' AND
+ *      x.address.city = 'abc' AND
+ *      x.address.street.name = 'pqr' AND
+ *      x.address.street.number = 123 AND
+ *      x.phone @> [6, 4, 3] AND
+ *      x.parents @> {}
+ */
+static Node *transform_map_to_ind(cypher_parsestate *cpstate,
+                                  transform_entity *entity, cypher_map *map)
+{
+    List *quals; // list of equality and/or containment qual node
+
+    quals = transform_map_to_ind_recursive(cpstate, entity, map, NIL);
+    Assert(quals != NIL);
+
+    if (list_length(quals) > 1)
+    {
+        return (Node *)makeBoolExpr(AND_EXPR, quals, -1);
+    }
+    else
+    {
+        return (Node *)linitial(quals);
+    }
+}
+
+/*
+ * Helper function of `transform_map_to_ind`.
+ *
+ * This function is called when a value of the `map` is a non-empty map.
+ * For example, the key `address.street` has a non-empty map. The
+ * `parent_fields` parameter will be set to the list of parents of the
+ * key `street` in order. In this case, only `address`. If no parent
+ * fields, set it to NIL.
+ */
+static List *transform_map_to_ind_recursive(cypher_parsestate *cpstate,
+                                            transform_entity *entity,
+                                            cypher_map *map,
+                                            List *parent_fields)
+{
+    int i;
+    ParseState *pstate;
+    Node *last_srf;
+    List *quals;
+
+    pstate = (ParseState *)cpstate;
+    last_srf = pstate->p_last_srf;
+    quals = NIL;
+
+    /* since this function recurses, it could be driven to stack overflow */
+    check_stack_depth();
+
+    Assert(list_length(map->keyvals) != 0);
+
+    for (i = 0; i < map->keyvals->length; i += 2)
+    {
+        Node *key;
+        Node *val;
+        char *keystr;
+
+        key = (Node *)map->keyvals->elements[i].ptr_value;
+        val = (Node *)map->keyvals->elements[i + 1].ptr_value;
+        Assert(IsA(key, String));
+        keystr = ((String *)key)->sval;
+
+        if (is_ag_node(val, cypher_map) &&
+            list_length(((cypher_map *)val)->keyvals) != 0)
+        {
+            List *new_parent_fields;
+            List *recursive_quals;
+
+            new_parent_fields = lappend(list_copy(parent_fields),
+                                        makeString(keystr));
+
+            recursive_quals = transform_map_to_ind_recursive(
+                cpstate, entity, (cypher_map *)val, new_parent_fields);
+
+            quals = list_concat(quals, recursive_quals);
+
+            list_free(new_parent_fields);
+            list_free(recursive_quals);
+        }
+        else
+        {
+            Node *qual;
+            Node *lhs;
+            Node *rhs;
+            List *op;
+            A_Indirection *indir;
+            ColumnRef *variable;
+
+            /*
+             * Lists and empty maps are transformed to containment. If a map
+             * makes it here, then it must be empty. Because non-empty maps
+             * are processed in the upper if-block.
+             */
+            if (is_ag_node(val, cypher_list) || is_ag_node(val, cypher_map))
+            {
+                op = list_make1(makeString("@>"));
+            }
+            else
+            {
+                op = list_make1(makeString("="));
+            }
+
+            variable = makeNode(ColumnRef);
+            variable->fields =
+                list_make1(makeString(entity->entity.node->name));
+            variable->location = -1;
+
+            indir = makeNode(A_Indirection);
+            indir->arg = (Node *)variable;
+            indir->indirection = lappend(list_copy(parent_fields),
+                                         makeString(keystr));
+
+            lhs = transform_cypher_expr(cpstate, (Node *)indir,
+                                        EXPR_KIND_WHERE);
+            rhs = transform_cypher_expr(cpstate, val, EXPR_KIND_WHERE);
+
+            qual = (Node *)make_op(pstate, op, lhs, rhs, last_srf, -1);
+            quals = lappend(quals, qual);
+        }
+    }
+
+    return quals;
+}
+
+/*
+ * Creates the property constraints for a vertex/edge in a MATCH clause.
  */
 static Node *create_property_constraints(cypher_parsestate *cpstate,
                                          transform_entity *entity,
@@ -3603,10 +3757,17 @@ static Node *create_property_constraints(cypher_parsestate *cpstate,
     const_expr = transform_cypher_expr(cpstate, property_constraints,
                                        EXPR_KIND_WHERE);
 
-    return (Node *)make_op(pstate, list_make1(makeString("@>")), prop_expr,
-                           const_expr, last_srf, -1);
+    if (age_enable_containment)
+    {
+        return (Node *)make_op(pstate, list_make1(makeString("@>")), prop_expr,
+                               const_expr, last_srf, -1);
+    }
+    else
+    {
+        return (Node *)transform_map_to_ind(
+            cpstate, entity, (cypher_map *)property_constraints);
+    }
 }
-
 
 /*
  * For the given path, transform each entity within the path, create

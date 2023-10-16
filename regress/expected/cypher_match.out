@@ -2420,6 +2420,170 @@ ERROR:  multiple labels for variable 'x' are not supported
 LINE 1: ...FROM cypher('cypher_match', $$ MATCH p=(x:r)-[]->(x:R) RETUR...
                                                              ^
 --
+-- Test age.enable_containment configuration parameter
+--
+-- Test queries are run before and after switching off this parameter.
+-- When  on, the containment operator should be used to filter properties.
+-- When off, the access operator should be used.
+--
+SELECT create_graph('test_enable_containment');
+NOTICE:  graph "test_enable_containment" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('test_enable_containment',
+$$
+    CREATE (x:Customer {
+        name: 'Bob',
+        school: {
+            name: 'XYZ College',
+            program: {
+                major: 'Psyc',
+                degree: 'BSc'
+            }
+        },
+        phone: [ 123456789, 987654321, 456987123 ],
+        addr: [
+            {city: 'Vancouver', street: 30},
+            {city: 'Toronto', street: 40}
+        ]
+    })
+    RETURN x
+$$) as (a agtype);
+                                                                                                                                                  a                                                                                                                                                  
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "Customer", "properties": {"addr": [{"city": "Vancouver", "street": 30}, {"city": "Toronto", "street": 40}], "name": "Bob", "phone": [123456789, 987654321, 456987123], "school": {"name": "XYZ College", "program": {"major": "Psyc", "degree": "BSc"}}}}::vertex
+(1 row)
+
+-- With enable_containment on
+SET age.enable_containment = on;
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer {addr:[{city:'Toronto'}]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer {addr:[{city:'Toronto'}, {city: 'Vancouver'}]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer {addr:[{city:'Alberta'}]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer {school:{program:{major:'Psyc'}}}) RETURN x $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer {name:'Bob',school:{program:{degree:'BSc'}}}) RETURN x $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer {school:{program:{major:'Cs'}}}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer {name:'Bob',school:{program:{degree:'PHd'}}}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer {phone:[987654321]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer {phone:[654765876]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT * FROM cypher('test_enable_containment', $$ EXPLAIN (COSTS OFF) MATCH (x:Customer {school:{name:'XYZ',program:{degree:'BSc'}},phone:[987654321],parents:{}}) RETURN x $$) as (a agtype);
+                                                             QUERY PLAN                                                             
+------------------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on "Customer" x
+   Filter: (properties @> '{"phone": [987654321], "school": {"name": "XYZ", "program": {"degree": "BSc"}}, "parents": {}}'::agtype)
+(2 rows)
+
+-- Previous set of queries, with enable_containment off
+SET age.enable_containment = off;
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer {addr:[{city:'Toronto'}]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer {addr:[{city:'Toronto'}, {city: 'Vancouver'}]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer {addr:[{city:'Alberta'}]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer {school:{program:{major:'Psyc'}}}) RETURN x $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer {name:'Bob',school:{program:{degree:'BSc'}}}) RETURN x $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer {school:{program:{major:'Cs'}}}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer {name:'Bob',school:{program:{degree:'PHd'}}}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer {phone:[987654321]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer {phone:[654765876]}) RETURN x $$) as (a agtype);
+ count 
+-------
+     0
+(1 row)
+
+SELECT * FROM cypher('test_enable_containment', $$ EXPLAIN (COSTS OFF) MATCH (x:Customer {school:{name:'XYZ',program:{degree:'BSc'}},phone:[987654321],parents:{}}) RETURN x $$) as (a agtype);
+                                                                                                                                                                                                                             QUERY PLAN                                                                                                                                                                                                                              
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on "Customer" x
+   Filter: ((agtype_access_operator(VARIADIC ARRAY[properties, '"school"'::agtype, '"name"'::agtype]) = '"XYZ"'::agtype) AND (agtype_access_operator(VARIADIC ARRAY[properties, '"school"'::agtype, '"program"'::agtype, '"degree"'::agtype]) = '"BSc"'::agtype) AND (agtype_access_operator(VARIADIC ARRAY[properties, '"phone"'::agtype]) @> '[987654321]'::agtype) AND (agtype_access_operator(VARIADIC ARRAY[properties, '"parents"'::agtype]) @> '{}'::agtype))
+(2 rows)
+
+--
 -- Clean up
 --
 SELECT drop_graph('cypher_match', true);
@@ -2455,6 +2619,17 @@ drop cascades to table test_retrieve_var."A"
 drop cascades to table test_retrieve_var.incs
 drop cascades to table test_retrieve_var."C"
 NOTICE:  graph "test_retrieve_var" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT drop_graph('test_enable_containment', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table test_enable_containment._ag_label_vertex
+drop cascades to table test_enable_containment._ag_label_edge
+drop cascades to table test_enable_containment."Customer"
+NOTICE:  graph "test_enable_containment" has been dropped
  drop_graph 
 ------------
  

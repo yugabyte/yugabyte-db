@@ -69,7 +69,8 @@ OBJS = src/backend/age.o \
        src/backend/utils/load/ag_load_edges.o \
        src/backend/utils/load/age_load.o \
        src/backend/utils/load/libcsv.o \
-       src/backend/utils/name_validation.o
+       src/backend/utils/name_validation.o \
+       src/backend/utils/ag_guc.o
 
 EXTENSION = age
 
@@ -105,7 +106,7 @@ REGRESS = scan \
 srcdir=`pwd`
 
 ag_regress_dir = $(srcdir)/regress
-REGRESS_OPTS = --load-extension=age --inputdir=$(ag_regress_dir) --outputdir=$(ag_regress_dir) --temp-instance=$(ag_regress_dir)/instance --port=61958 --encoding=UTF-8
+REGRESS_OPTS = --load-extension=age --inputdir=$(ag_regress_dir) --outputdir=$(ag_regress_dir) --temp-instance=$(ag_regress_dir)/instance --port=61958 --encoding=UTF-8 --temp-config $(ag_regress_dir)/age_regression.conf
 
 ag_regress_out = instance/ log/ results/ regression.*
 EXTRA_CLEAN = $(addprefix $(ag_regress_dir)/, $(ag_regress_out)) src/backend/parser/cypher_gram.c src/include/parser/cypher_gram_def.h src/include/parser/cypher_kwlist_d.h
