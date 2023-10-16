@@ -458,6 +458,7 @@ InitProcess(void)
 		   sizeof(MyProc->yb_ash_metadata.client_addr));
 	MyProc->yb_ash_metadata.client_port = 0;
 	MyProc->yb_ash_metadata.addr_family = AF_UNSPEC;
+	MyProc->yb_is_ash_metadata_set = false;
 
 	/*
 	 * Acquire ownership of the PGPROC's latch, so that we can use WaitLatch
@@ -602,6 +603,7 @@ InitAuxiliaryProcess(void)
 	MyProc->lwWaitMode = 0;
 	MyProc->waitLock = NULL;
 	MyProc->waitProcLock = NULL;
+	MyProc->yb_is_ash_metadata_set = false;
 #ifdef USE_ASSERT_CHECKING
 	{
 		int			i;

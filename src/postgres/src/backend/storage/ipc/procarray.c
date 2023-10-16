@@ -4133,3 +4133,39 @@ KnownAssignedXidsReset(void)
 
 	LWLockRelease(ProcArrayLock);
 }
+
+void
+YbStoreAshSamples(YbStoreAshSample store_ash_sample,
+				  TimestampTz sample_time)
+{
+	int			i;
+	int			samples_stored = 0;
+
+	ProcArrayStruct *arrayP = procArray;
+
+	LWLockAcquire(ProcArrayLock, LW_SHARED);
+
+	/*
+	 * TODO: Add sampling logic to take random samples instead of
+	 * the first 'N'.
+	 */
+	for (i = 0; i < arrayP->numProcs; ++i)
+	{
+		int			pgprocno = arrayP->pgprocnos[i];
+		PGPROC 	   *proc = &allProcs[pgprocno];
+
+		/*
+		 * Don't sample prepared transactions, background workers
+		 * and if the ASH metadata is not set.
+		 */
+		if (proc->pid == 0 || proc->isBackgroundWorker ||
+			proc->yb_is_ash_metadata_set == 0)
+			continue;
+
+		if (store_ash_sample(proc, arrayP->numProcs, sample_time,
+							 &samples_stored) == 0)
+			break;
+	}
+
+	LWLockRelease(ProcArrayLock);
+}

@@ -221,7 +221,8 @@ class PgClient::Impl : public BigDataFetcher {
                rpc::Scheduler* scheduler,
                const tserver::TServerSharedObject& tserver_shared_object,
                std::optional<uint64_t> session_id,
-               const YBCAshMetadata* ash_metadata) {
+               const YBCAshMetadata* ash_metadata,
+               bool* is_ash_metadata_set) {
     CHECK_NOTNULL(&tserver_shared_object);
     MonoDelta resolve_cache_timeout;
     const auto& tserver_shared_data_ = *tserver_shared_object;
@@ -246,6 +247,7 @@ class PgClient::Impl : public BigDataFetcher {
     heartbeat_poller_.Start(scheduler, FLAGS_pg_client_heartbeat_interval_ms * 1ms);
 
     ash_metadata_ = ash_metadata;
+    is_ash_metadata_set_ = is_ash_metadata_set;
     memcpy(local_tserver_uuid_, tserver_shared_data_.tserver_uuid(), 16);
 
     return Status::OK();
@@ -524,7 +526,8 @@ class PgClient::Impl : public BigDataFetcher {
       // Don't send ASH metadata if it's not set
       // ash_metadata_ can be null during tests which directly create the
       // pggate layer without the PG backend.
-      if (ash_metadata_ != nullptr && ash_metadata_->is_set) {
+      if (is_ash_metadata_set_ != nullptr && ash_metadata_ != nullptr &&
+          *is_ash_metadata_set_) {
         auto* ash_metadata = options->mutable_ash_metadata();
         ash_metadata->set_yql_endpoint_tserver_uuid(local_tserver_uuid_, 16);
         ash_metadata->set_root_request_id(ash_metadata_->root_request_id, 16);
@@ -962,6 +965,7 @@ class PgClient::Impl : public BigDataFetcher {
   MonoDelta timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
 
   const YBCAshMetadata* ash_metadata_;
+  bool* is_ash_metadata_set_;
   unsigned char local_tserver_uuid_[16];
 };
 
@@ -984,9 +988,10 @@ PgClient::~PgClient() = default;
 Status PgClient::Start(
     rpc::ProxyCache* proxy_cache, rpc::Scheduler* scheduler,
     const tserver::TServerSharedObject& tserver_shared_object,
-    std::optional<uint64_t> session_id, const YBCAshMetadata* ash_metadata) {
+    std::optional<uint64_t> session_id, const YBCAshMetadata* ash_metadata,
+    bool* is_ash_metadata_set) {
   return impl_->Start(proxy_cache, scheduler, tserver_shared_object, session_id,
-                      ash_metadata);
+                      ash_metadata, is_ash_metadata_set);
 }
 
 void PgClient::Shutdown() {

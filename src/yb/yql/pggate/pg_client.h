@@ -120,7 +120,9 @@ class PgClient {
   Status Start(rpc::ProxyCache* proxy_cache,
                rpc::Scheduler* scheduler,
                const tserver::TServerSharedObject& tserver_shared_object,
-               std::optional<uint64_t> session_id, const YBCAshMetadata* ash_metadata);
+               std::optional<uint64_t> session_id,
+               const YBCAshMetadata* ash_metadata,
+               bool* is_ash_metadata_set);
 
   void Shutdown();
 
