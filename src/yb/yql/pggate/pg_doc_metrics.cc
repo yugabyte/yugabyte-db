@@ -84,10 +84,26 @@ void PgDocMetrics::RecordRequestMetrics(const LWPgsqlRequestMetricsPB& metrics) 
     auto metric = storage_metric.metric();
     // If there is a rolling restart in progress, it's possible for an unknown metric to be
     // received, but since this is for optional output it's fine to just disregard it.
-    if (metric < 0 || metric >= YB_ANALYZE_METRIC_COUNT) {
+    if (metric >= YB_STORAGE_GAUGE_COUNT) {
       continue;
     }
-    state_.stats.storage_metrics[metric] += storage_metric.value();
+    state_.stats.storage_gauge_metrics[metric] += storage_metric.value();
+  }
+  for (const auto& storage_metric : metrics.counter_metrics()) {
+    auto metric = storage_metric.metric();
+    if (metric >= YB_STORAGE_COUNTER_COUNT) {
+      continue;
+    }
+    state_.stats.storage_counter_metrics[metric] += storage_metric.value();
+  }
+  for (const auto& storage_metric : metrics.event_metrics()) {
+    auto metric = storage_metric.metric();
+    if (metric >= YB_STORAGE_GAUGE_COUNT) {
+      continue;
+    }
+    auto& stats = state_.stats.storage_event_metrics[metric];
+    stats.sum += storage_metric.sum();
+    stats.count += storage_metric.count();
   }
 }
 
