@@ -18,7 +18,7 @@ None of your data or personally identifiable information is collected.
 
 When enabled, the following data is collected while running yb-voyager:
 
-- Migration unique id
+- Migration unique ID
 - Start Time
 - YB Voyager Version (yb-voyager version used for the migration)
 - SourceDB Type (source type of migration)
