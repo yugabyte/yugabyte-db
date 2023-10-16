@@ -9,7 +9,13 @@ type: indexpage
 showRightNav: true
 ---
 
-Because YugabyteDB is wire compatible with PostgreSQL, YugabyteDB supports many third-party integrations out of the box.
+YugabyteDB is wire compatible with PostgreSQL, that makes most PostgreSQL client drivers, ORM frameworks, and any other types of third-party database tools designed for PostgreSQL compatible with YugabyteDB. 
+YugabyteDB has partnered with open-source projects, vendors to guarantee following popular PostgreSQL tools.
+
+| Status | Descrption | 
+| :--- | :--- | 
+| Full    | For the tools with Full status, compatibility with the vast majority of the tool's features will be maintained. These tools are regularly tested against the latest version documented.| 
+| Partial | These tools will eventually have full support from YugabyteDB. Although these tool’s core functions such as connecting and performing simple database operations are compatible with YugabyteDB, but full integration may require additional steps, lack support for all features, or exhibit unexpected behavior. | 
 
 ## Choose your integration
 
@@ -21,31 +27,31 @@ Because YugabyteDB is wire compatible with PostgreSQL, YugabyteDB supports many 
 
 | Tool | Support | Tutorial |
 | :--- | :--- | :--- |
-| Flyway    | Full | [Flyway](flyway/) |
 | Liquibase | Full | [Liquibase](liquibase/) |
+| Flyway    | Partial | [Flyway](flyway/) |
 | Prisma    | Full | [Prisma](prisma/) |
-| Schema Evolution Manager | Full | [Schema Evolution Manager](schema-evolution-mgr/) |
+| Schema Evolution Manager | Partial | [Schema Evolution Manager](schema-evolution-mgr/) |
 
 ### Data migration
 
 | Tool | Support | Tutorial |
 | :--- | :--- | :--- |
-| PGmigrate | Full | [PGmigrate](pgmigrate/) |
+| PGmigrate | Partial | [PGmigrate](pgmigrate/) |
 | YSQL Loader (pgloader) | Full | [YSQL Loader](ysql-loader/) |
 
 ### Data integration (CDC)
 
 | Tool | Support | Tutorial |
 | :--- | :--- | :--- |
-| Apache Beam    | Full | [Apache Beam](apache-beam/) |
-| Apache Flink   | Full | [Apache Flink](apache-flink/) |
+| Apache Beam    | Partial | [Apache Beam](apache-beam/) |
+| Apache Flink   | Partial | [Apache Flink](apache-flink/) |
 | Apache Kafka   | Full | [Apache Kafka](apache-kafka/) |
-| Akka Persistence | Full | [Akka Persistence](akka-ysql/) |
+| Akka Persistence | Partial | [Akka Persistence](akka-ysql/) |
 | Confluent      | Full | [Confluent Cloud](../explore/change-data-capture/cdc-tutorials/cdc-confluent-cloud/) |
 | Debezium       | Full | [Debezium](cdc/debezium/) |
-| Hevo Data      | Full | [Hevo Data](hevodata/) |
+| Hevo Data      | Partial | [Hevo Data](hevodata/) |
 | Kinesis Data Streams | Full | [Kinesis](kinesis/) |
-| RabbitMQ       | Full | [RabbitMQ](rabbitmq/) |
+| RabbitMQ       | Partial | [RabbitMQ](rabbitmq/) |
 | Synapse        | Full | [Synapse](../explore/change-data-capture/cdc-tutorials/cdc-azure-event-hub/) |
 
 ### GUI clients
@@ -65,7 +71,7 @@ Because YugabyteDB is wire compatible with PostgreSQL, YugabyteDB supports many 
 
 | Tool | Support | Tutorial |
 | :--- | :--- | :--- |
-| AtomicJar Testcontainers | Full | [AtomicJar Testcontainers](atomicjar/) |
+| AtomicJar Testcontainers | Partial | [AtomicJar Testcontainers](atomicjar/) |
 | Django | Full | [Django REST Framework](django-rest-framework/) |
 | Hasura | Full | [Hasura](hasura/) |
 | Spring | Full | [Spring](spring-framework/) |
@@ -74,19 +80,19 @@ Because YugabyteDB is wire compatible with PostgreSQL, YugabyteDB supports many 
 
 | IDE | Support | Tutorial |
 | :--- | :--- | :--- |
-| Caspio | Full | [Caspio](caspio/) |
-| Retool | Full | [Retool](retool/) |
-| Superblocks | Full | [Superblocks](superblocks/) |
-| Visual Studio Code | Full | [Cassandra Workbench](../tools/visualstudioworkbench/) |
+| Caspio | Partial | [Caspio](caspio/) |
+| Retool | Partial | [Retool](retool/) |
+| Superblocks | Partial | [Superblocks](superblocks/) |
+| Visual Studio Code | Partial | [Cassandra Workbench](../tools/visualstudioworkbench/) |
 
 ### Data discovery and metadata
 
 | Tool | Support | Tutorial |
 | :--- | :--- | :--- |
-| Dataedo     | Full | [Dataedo](dataedo/) |
-| Datahub     | Full | [Datahub](datahub/) |
-| DQ Analyzer | Full | [Ataccama DQ Analyzer](ataccama/) |
-| Metacat     | Full | [Metacat](metacat/) |
+| Dataedo     | Partial | [Dataedo](dataedo/) |
+| Datahub     | Partial | [Datahub](datahub/) |
+| DQ Analyzer | Partial | [Ataccama DQ Analyzer](ataccama/) |
+| Metacat     | Partial | [Metacat](metacat/) |
 
 ### Security
 
@@ -99,19 +105,19 @@ Because YugabyteDB is wire compatible with PostgreSQL, YugabyteDB supports many 
 
 | Tool | Support | Tutorial |
 | :--- | :--- | :--- |
-| Camunda | Full | [Camunda](camunda/) |
+| Camunda | Partial | [Camunda](camunda/) |
 
 ### Other
 
 | Tool | Latest tested version | Support | Tutorial |
 | :--- | :--- | :--- | :--- |
-| Apache Atlas |      | Full | [Apache Atlas](atlas-ycql/) |
+| Apache Atlas |      | Partial | [Apache Atlas](atlas-ycql/) |
 | Apache Spark | 3.30 | Full | [Apache Spark](apache-spark/) |
 | Jaeger       |      | Full | [Jaeger](jaeger/) |
 | JanusGraph   |      | Full | [JanusGraph](janusgraph/) |
 | KairosDB     |      | Full | [KairosDB](kairosdb/) |
-| Mirantis MKE |      | Full | [Mirantis](mirantis/) |
-| Presto       |      | Full | [Presto](presto/) |
+| Mirantis MKE |      | Partial | [Mirantis](mirantis/) |
+| Presto       |      | Partial | [Presto](presto/) |
 
 <!--
 <ul class="nav yb-pills">
