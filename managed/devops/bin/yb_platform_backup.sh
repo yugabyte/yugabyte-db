@@ -550,9 +550,8 @@ restore_backup() {
   if [ "$disable_version_check" != true ]; then
     command="cat ${current_metadata_path}"
 
-    version_cmd="import json, sys; print(json.load(sys.stdin)[\"version_number\"])"
-
-    build_cmd="import json, sys; print(json.load(sys.stdin)[\"build_number\"])"
+    version_cmd='import json, sys; print(json.load(sys.stdin)["version_number"])'
+    build_cmd='import json, sys; print(json.load(sys.stdin)["build_number"])'
 
     version=$(docker_aware_cmd "yugaware" "${command}" | ${PYTHON_EXECUTABLE} -c "${version_cmd}")
     build=$(docker_aware_cmd "yugaware" "${command}" | ${PYTHON_EXECUTABLE} -c "${build_cmd}")
@@ -564,8 +563,8 @@ restore_backup() {
     # The version_metadata.json file is always present in a release package, and it would have
     # been stored during create_backup(), so we don't need to check if the file exists before
     # restoring it from the restore path.
-    backup_yba_version="cat ${backup_metadata_path} | ${PYTHON_EXECUTABLE} -c ${version_cmd}"
-    backup_yba_build="cat ${backup_metadata_path} | ${PYTHON_EXECUTABLE} -c ${build_cmd}"
+    backup_yba_version=$(cat "${backup_metadata_path}" | ${PYTHON_EXECUTABLE} -c "${version_cmd}")
+    backup_yba_build=$(cat "${backup_metadata_path}" | ${PYTHON_EXECUTABLE} -c "${build_cmd}")
     back_plat_version=${backup_yba_version}-${backup_yba_build}
 
     if [ ${curr_platform_version} != ${back_plat_version} ]
