@@ -3,8 +3,10 @@ import { useSelector } from 'react-redux';
 import { browserHistory } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useUpdateEffect, useEffectOnce } from 'react-use';
+import { Box } from '@material-ui/core';
 import { UniverseFormContext } from './UniverseFormContainer';
 import { UniverseForm } from './form/UniverseForm';
+import { YBPermissionNotFound } from '../../../components';
 import { YBLoading } from '../../../../components/common/indicators';
 import { getPlacements } from './form/fields/PlacementsField/PlacementsFieldHelper';
 import {
@@ -23,6 +25,8 @@ import {
   UniverseConfigure,
   DEFAULT_FORM_DATA
 } from './utils/dto';
+import { hasNecessaryPerm } from '../../rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../rbac/UserPermPathMapping';
 
 export const CreateUniverse: FC = () => {
   const { t } = useTranslation();
@@ -52,6 +56,10 @@ export const CreateUniverse: FC = () => {
     });
   });
 
+  const isCreateOperationAllowed = hasNecessaryPerm({
+    ...UserPermissionMap.createUniverse,
+    onResource: undefined
+  });
   //Toggle ClusterType after Primary data is set to avoid bad effects
   useUpdateEffect(() => {
     toggleClusterType(ClusterType.ASYNC);
@@ -152,6 +160,13 @@ export const CreateUniverse: FC = () => {
     }
     createUniverse({ configurePayload, universeContextData: contextState });
   };
+
+  if (!isCreateOperationAllowed)
+    return (
+      <Box height="600px" display="flex">
+        <YBPermissionNotFound />
+      </Box>
+    );
 
   if (isLoading) return <YBLoading />;
 
