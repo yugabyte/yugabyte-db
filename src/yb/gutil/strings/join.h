@@ -34,7 +34,8 @@
 #include "yb/gutil/strings/strcat.h"    // For backward compatibility.
 #include "yb/gutil/strings/stringpiece.h"
 
-
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 
 // ----------------------------------------------------------------------
 // JoinUsing()
@@ -70,7 +71,7 @@ char* JoinUsingToBuffer(const std::vector<const char*>& components,
                         size_t* result_length_p);
 
 // ----------------------------------------------------------------------
-// JoinStrings(), JoinStringsIterator(), JoinStringsInArray()
+// JoinStrings(), JoinStringsIterator(), JoinStringsInArray(), JoinStringsLimitCount()
 //
 //    JoinStrings concatenates a container of strings into a C++ string,
 //    using the string "delim" as a separator between components.
@@ -88,6 +89,10 @@ char* JoinUsingToBuffer(const std::vector<const char*>& components,
 //
 //    JoinStringsInArray is the same as JoinStrings, but operates on
 //    an array of C++ strings or string pointers.
+//
+//    JoinStringsLimitCount is the same as JoinStrings, but only concatenates a limited number of
+//    entries followed by a count of the unconcatenated entries if any; the count is omitted if it
+//    is zero.
 //
 //    There are two flavors of each function, one flavor returns the
 //    concatenated string, another takes a pointer to the target string. In
@@ -178,6 +183,15 @@ std::string JoinStringsInArray(std::string const* components,
                           size_t num_components,
                           const char* delim);
 
+template <class CONTAINER>
+inline void JoinStringsLimitCount(
+    const CONTAINER& components, const GStringPiece& delim, uint32 limit_count,
+    std::string* result);
+
+template <class CONTAINER>
+inline std::string JoinStringsLimitCount(
+    const CONTAINER& components, const GStringPiece& delim, uint32 limit_count);
+
 // ----------------------------------------------------------------------
 // Definitions of above JoinStrings* methods
 // ----------------------------------------------------------------------
@@ -243,6 +257,27 @@ inline std::string JoinStringsInArray(std::string const* components,
                                  const char* delim) {
   std::string result;
   JoinStringsInArray(components, num_components, delim, &result);
+  return result;
+}
+
+template <class CONTAINER>
+inline void JoinStringsLimitCount(
+    const CONTAINER& components, const GStringPiece& delim, uint32 limit_count,
+    std::string* result) {
+  DCHECK_GE(limit_count, 1);
+  uint32 count_to_print = std::min(limit_count, static_cast<uint32>(components.size()));
+  JoinStringsIterator(components.begin(), components.begin() + count_to_print, delim, result);
+  const auto count_skipped = components.size() - count_to_print;
+  if (count_skipped > 0) {
+    *result += yb::Format(" and $0 others", count_skipped);
+  }
+}
+
+template <class CONTAINER>
+inline std::string JoinStringsLimitCount(
+    const CONTAINER& components, const GStringPiece& delim, uint32 limit_count) {
+  std::string result;
+  JoinStringsLimitCount(components, delim, limit_count, &result);
   return result;
 }
 
