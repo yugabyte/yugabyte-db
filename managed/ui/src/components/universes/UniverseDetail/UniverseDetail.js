@@ -787,7 +787,10 @@ class UniverseDetail extends Component {
                         </RbacValidator>
                       )}
                       {!universePaused && isConfigureYSQLEnabled && (
-                        <RbacValidator accessRequiredOn={UserPermissionMap.editUniverse} isControl>
+                        <RbacValidator
+                          accessRequiredOn={{ ...UserPermissionMap.editUniverse, onResource: uuid }}
+                          isControl
+                        >
                           <YBMenuItem
                             disabled={isUniverseStatusPending}
                             onClick={showEnableYSQLModal}
@@ -799,7 +802,10 @@ class UniverseDetail extends Component {
                         </RbacValidator>
                       )}
                       {!universePaused && isConfigureYCQLEnabled && (
-                        <RbacValidator accessRequiredOn={UserPermissionMap.editUniverse} isControl>
+                        <RbacValidator
+                          accessRequiredOn={{ ...UserPermissionMap.editUniverse, onResource: uuid }}
+                          isControl
+                        >
                           <YBMenuItem
                             disabled={isUniverseStatusPending}
                             onClick={showEnableYCQLModal}

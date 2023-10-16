@@ -116,6 +116,10 @@ export const UserPermissionMap = {
         resourceType: RbacResourceTypes.EAR,
         permissionRequired: [Action.CREATE]
     },
+    editEncryptionAtRest: {
+        resourceType: RbacResourceTypes.EAR,
+        permissionRequired: [Action.UPDATE]
+    },
     deleteEncryptionAtRest: {
         resourceType: RbacResourceTypes.EAR,
         permissionRequired: [Action.DELETE]
@@ -217,9 +221,18 @@ export const UserPermissionMap = {
     createMaintenenceWindow: {
         onResource: 'CUSTOMER_ID',
         resourceType: RbacResourceTypes.ALERT,
+        permissionRequired: [Action.CREATE]
+    },
+    editMaintenanceWindow: {
+        onResource: 'CUSTOMER_ID',
+        resourceType: RbacResourceTypes.ALERT,
         permissionRequired: [Action.UPDATE]
     },
-
+    deleteMaintenanceWindow: {
+        onResource: 'CUSTOMER_ID',
+        resourceType: RbacResourceTypes.ALERT,
+        permissionRequired: [Action.DELETE]
+    },
     // Performance Advisor
     rescan: {
         resourceType: RbacResourceTypes.UNIVERSE,
