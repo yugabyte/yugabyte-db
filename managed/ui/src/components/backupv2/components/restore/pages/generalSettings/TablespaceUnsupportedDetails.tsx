@@ -170,7 +170,7 @@ export const TablespaceUnsupportedDetails: FC<TablespaceUnsupportedDetailsProps>
       {conflictingTablespaces.length !== 0 && (
         <div className={classes.errMsgPane}>
           <Typography variant="body2" className={classes.heading}>
-            {t('topologyMismatch')}
+            {t('nameAlreadyExists')}
           </Typography>
           <Typography variant="subtitle1" className={classes.tablespaceName}>
             {t('tablespaceName')}
@@ -183,7 +183,7 @@ export const TablespaceUnsupportedDetails: FC<TablespaceUnsupportedDetailsProps>
       {unsupportedTablespaces.length !== 0 && (
         <div className={classes.errMsgPane}>
           <Typography variant="body2" className={classes.heading}>
-            {t('nameAlreadyExists')}
+            {t('topologyMismatch')}
           </Typography>
           <Typography variant="subtitle1" className={classes.tablespaceName}>
             {t('tablespaceName')}

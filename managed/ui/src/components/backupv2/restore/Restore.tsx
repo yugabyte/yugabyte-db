@@ -12,6 +12,7 @@ import { Link } from 'react-router';
 import { useMethods } from 'react-use';
 import { RemoteObjSpec, SortOrder, TableHeaderColumn } from 'react-bootstrap-table';
 import { useQuery } from 'react-query';
+import { find } from 'lodash';
 import Select, { OptionTypeBase } from 'react-select';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
 import { YBMultiSelectRedesiged } from '../../common/forms/fields';
@@ -28,6 +29,7 @@ import {
 import { TIME_RANGE_STATE } from '../common/IBackup';
 import { IRestore, RESTORE_STATUS_OPTIONS } from '../common/IRestore';
 import { getRestoreList } from '../common/RestoreAPI';
+import { api } from '../../../redesign/helpers/api';
 import { DEFAULT_TIME_STATE, TIME_RANGE_OPTIONS } from '../components/BackupList';
 import { RestoreEmpty } from './RestoreEmpty';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
@@ -86,6 +88,13 @@ export const Restore: FC<RestoreProps> = ({ universeUUID, type }) => {
     initialRestoreDetailsContextState
   );
 
+  const { data: universesList } = useQuery(['universes'], () => api.fetchUniverseList(),
+    {
+      refetchOnMount: false
+    }
+
+  );
+
   const [, { setSelectedRestore }] = restoreDetailsContextData;
 
   const { data: restoreList, isLoading } = useQuery(
@@ -135,7 +144,7 @@ export const Restore: FC<RestoreProps> = ({ universeUUID, type }) => {
 
   const getUniverseLink = (row: IRestore, type: 'SOURCE' | 'TARGET') => {
     if (type === 'SOURCE' && row.sourceUniverseName) {
-      if (row.isSourceUniversePresent) {
+      if (find(universesList, { universeUUID: row.sourceUniverseUUID })) {
         return (
           <Link
             target="_blank"
@@ -151,7 +160,7 @@ export const Restore: FC<RestoreProps> = ({ universeUUID, type }) => {
       }
       return row.sourceUniverseName;
     }
-    if (type === 'TARGET' && row.targetUniverseName) {
+    if (type === 'TARGET' && find(universesList, { universeUUID: row.universeUUID })) {
       return (
         <Link
           target="_blank"
