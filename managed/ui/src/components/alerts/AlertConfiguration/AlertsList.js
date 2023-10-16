@@ -474,46 +474,78 @@ export const AlertsList = (props) => {
           dropup={decideDropdownMenuPos(rowIndex, sizePerPage, totalRecords, currentPage)}
           pullRight
         >
-          <MenuItem
-            onClick={() => {
-              if (!canEditAlerts) return;
-              handleMetricsCall(row.targetType);
-              onEditAlertConfig(row);
+          <RbacValidator
+            accessRequiredOn={{
+              ...UserPermissionMap.editAlertsConfig
             }}
-            disabled={!canEditAlerts}
+            isControl
+            overrideStyle={{ display: 'block' }}
           >
-            <i className="fa fa-pencil"></i> {editActionLabel}
-          </MenuItem>
-
-          {!row.active && !isReadOnly ? (
-            <MenuItem
-              onClick={() => {
-                onToggleActive(row);
-              }}
-            >
-              <i className="fa fa-toggle-on"></i> Activate
-            </MenuItem>
-          ) : null}
-
-          {row.active && !isReadOnly ? (
             <MenuItem
               onClick={() => {
                 if (!canEditAlerts) return;
-                onToggleActive(row);
+                handleMetricsCall(row.targetType);
+                onEditAlertConfig(row);
               }}
               disabled={!canEditAlerts}
             >
-              <i className="fa fa-toggle-off"></i> Deactivate
+              <i className="fa fa-pencil"></i> {editActionLabel}
             </MenuItem>
+          </RbacValidator>
+
+          {!row.active && !isReadOnly ? (
+            <RbacValidator
+              accessRequiredOn={{
+                ...UserPermissionMap.editAlertsConfig
+              }}
+              isControl
+              overrideStyle={{ display: 'block' }}
+            >
+              <MenuItem
+                onClick={() => {
+                  onToggleActive(row);
+                }}
+              >
+                <i className="fa fa-toggle-on"></i> Activate
+              </MenuItem>
+            </RbacValidator>
+          ) : null}
+
+          {row.active && !isReadOnly ? (
+            <RbacValidator
+              accessRequiredOn={{
+                ...UserPermissionMap.editAlertsConfig
+              }}
+              isControl
+              overrideStyle={{ display: 'block' }}
+            >
+              <MenuItem
+                onClick={() => {
+                  if (!canEditAlerts) return;
+                  onToggleActive(row);
+                }}
+                disabled={!canEditAlerts}
+              >
+                <i className="fa fa-toggle-off"></i> Deactivate
+              </MenuItem>
+            </RbacValidator>
           ) : null}
 
           {!isReadOnly ? (
-            <MenuItem onClick={() => {
-              if (!canDeleteAlerts) return;
-              showDeleteModal(row?.uuid);
-            }} disabled={!canDeleteAlerts}>
-              <i className="fa fa-trash"></i> Delete Alert
-            </MenuItem>
+            <RbacValidator
+              accessRequiredOn={{
+                ...UserPermissionMap.deleteAlertsConfig
+              }}
+              isControl
+              overrideStyle={{ display: 'block' }}
+            >
+              <MenuItem onClick={() => {
+                if (!canDeleteAlerts) return;
+                showDeleteModal(row?.uuid);
+              }} disabled={!canDeleteAlerts}>
+                <i className="fa fa-trash"></i> Delete Alert
+              </MenuItem>
+            </RbacValidator>
           ) : null}
 
           {!isReadOnly ? (
@@ -522,13 +554,14 @@ export const AlertsList = (props) => {
                 ...UserPermissionMap.sendTestAlert
               }}
               isControl
+              overrideStyle={{ display: 'block' }}
             >
               <MenuItem onClick={() => onSendTestAlert(row)}>
                 <i className="fa fa-paper-plane"></i> Send Test Alert
               </MenuItem>
             </RbacValidator>
           ) : null}
-        </DropdownButton>
+        </DropdownButton >
         <YBConfirmModal
           name="delete-alert-config"
           title="Confirm Delete"

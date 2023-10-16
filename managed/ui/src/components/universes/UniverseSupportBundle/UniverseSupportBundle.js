@@ -149,6 +149,7 @@ export const UniverseSupportBundle = (props) => {
             onCreateSupportBundle={() => {
               handleStepChange(stepsObj.secondStep);
             }}
+            universeUUID={universeDetails.universeUUID}
           />
         )}
         {steps === stepsObj.secondStep && (

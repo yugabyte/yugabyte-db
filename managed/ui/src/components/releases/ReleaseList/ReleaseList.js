@@ -213,7 +213,7 @@ export default class ReleaseList extends Component {
                   accessRequiredOn={UserPermissionMap.importRelease}
                   isControl
                   overrideStyle={{
-                    float: 'right'
+                    float: 'right',
                   }}
                 >
                   <TableAction

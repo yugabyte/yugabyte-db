@@ -125,7 +125,7 @@ export const EditUser = () => {
 
   let userRoles: Role[] = [];
   let isSuperAdmin = false;
-  
+
   if (currentUser?.uuid) {
     userRoles = [...(roleBindings?.[currentUser.uuid] ?? [])].map((r) => r.role);
     isSuperAdmin = userRoles.some((role) =>
@@ -161,7 +161,6 @@ export const EditUser = () => {
           <RbacValidator
             accessRequiredOn={UserPermissionMap.deleteUser}
             customValidateFunction={() => {
-
               return (
                 hasNecessaryPerm({
                   ...UserPermissionMap.deleteUser,

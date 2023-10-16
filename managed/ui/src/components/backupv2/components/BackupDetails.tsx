@@ -252,6 +252,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 ...UserPermissionMap.deleteBackup
               }}
               isControl
+              popOverOverrides={{ zIndex: 10000 }}
             >
               <YBButton
                 btnText="Delete"
@@ -272,6 +273,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                   ...UserPermissionMap.restoreBackup
                 }}
                 isControl
+                popOverOverrides={{ zIndex: 10000 }}
               >
                 <YBButton
                   btnText="Restore Entire Backup"
@@ -312,6 +314,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                   ...UserPermissionMap.editBackup
                 }}
                 isControl
+                popOverOverrides={{ zIndex: 10000 }}
               >
                 <YBButton
                   btnText="Change Retention Period"
@@ -450,6 +453,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                       display: 'unset'
                     }}
                     isControl
+                    popOverOverrides={{ zIndex: 10000 }}
                   >
                     <YBButton
                       btnText="Add Incremental Backup"
