@@ -243,11 +243,14 @@ struct PGPROC
 	bool		ybEnteredCriticalSection;
 
 	/*
-	 * yb_ash_metadata is protected by yb_ash_metadata_lock instead of
-	 * backendLock.
+	 * yb_ash_metadata and yb_is_ash_metadata_set are protected by
+	 * yb_ash_metadata_lock instead of backendLock.
+	 * TODO: Investigate if yb_ash_metadata_lock is really needed, or can we
+	 * use backendLock itself if there is no significant drop in performance.
 	 */
 	LWLock		yb_ash_metadata_lock;
 	YBCAshMetadata yb_ash_metadata;
+	bool		yb_is_ash_metadata_set;
 };
 
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */

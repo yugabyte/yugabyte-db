@@ -200,12 +200,13 @@ Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
                       int count,
                       const PgCallbacks& pg_callbacks,
                       uint64_t *session_id,
-                      const YBCAshMetadata* ash_metadata) {
+                      const YBCAshMetadata* ash_metadata,
+                      bool* is_ash_metadata_set) {
   auto opt_session_id = session_id ? std::optional(*session_id) : std::nullopt;
   return WithMaskedYsqlSignals(
-    [data_type_table, count, &pg_callbacks, opt_session_id, ash_metadata] {
+    [data_type_table, count, &pg_callbacks, opt_session_id, ash_metadata, is_ash_metadata_set] {
     YBCInitPgGateEx(data_type_table, count, pg_callbacks, nullptr /* context */, opt_session_id,
-                    ash_metadata);
+                    ash_metadata, is_ash_metadata_set);
     return static_cast<Status>(Status::OK());
   });
 }
@@ -306,7 +307,7 @@ PrefetchingCacheMode YBCMapPrefetcherCacheMode(YBCPgSysTablePrefetcherCacheMode 
 
 void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallbacks pg_callbacks,
                      PgApiContext* context, std::optional<uint64_t> session_id,
-                     const YBCAshMetadata* ash_metadata) {
+                     const YBCAshMetadata* ash_metadata, bool *is_ash_metadata_set) {
   // TODO: We should get rid of hybrid clock usage in YSQL backend processes (see #16034).
   // However, this is added to allow simulating and testing of some known bugs until we remove
   // HybridClock usage.
@@ -325,10 +326,11 @@ void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallba
   pgapi_shutdown_done.exchange(false);
   if (context) {
     pgapi = new pggate::PgApiImpl(
-      std::move(*context), data_type_table, count, pg_callbacks, session_id, ash_metadata);
+      std::move(*context), data_type_table, count, pg_callbacks, session_id, ash_metadata,
+      is_ash_metadata_set);
   } else {
     pgapi = new pggate::PgApiImpl(PgApiContext(), data_type_table, count, pg_callbacks, session_id,
-                                  ash_metadata);
+                                  ash_metadata, is_ash_metadata_set);
   }
 
   VLOG(1) << "PgGate open";
@@ -337,8 +339,10 @@ void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallba
 extern "C" {
 
 void YBCInitPgGate(const YBCPgTypeEntity *data_type_table, int count, PgCallbacks pg_callbacks,
-                   uint64_t *session_id, const YBCAshMetadata *ash_metadata) {
-  CHECK_OK(InitPgGateImpl(data_type_table, count, pg_callbacks, session_id, ash_metadata));
+                   uint64_t *session_id, const YBCAshMetadata *ash_metadata,
+                   bool *is_ash_metadata_set) {
+  CHECK_OK(InitPgGateImpl(data_type_table, count, pg_callbacks, session_id, ash_metadata,
+                          is_ash_metadata_set));
 }
 
 void YBCDestroyPgGate() {
@@ -1561,6 +1565,10 @@ YBCStatus YBCGetNumberOfDatabases(uint32_t* num_databases) {
 
 uint64_t YBCGetSharedAuthKey() {
   return pgapi->GetSharedAuthKey();
+}
+
+const unsigned char* YBCGetLocalTserverUuid() {
+  return pgapi->GetLocalTserverUuid();
 }
 
 const YBCPgGFlagsAccessor* YBCGetGFlags() {
