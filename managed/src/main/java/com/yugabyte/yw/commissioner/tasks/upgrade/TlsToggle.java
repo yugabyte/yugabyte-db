@@ -49,13 +49,16 @@ public class TlsToggle extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams() {
+    verifyParams();
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
           Set<NodeDetails> allNodes = toOrderedSet(nodes);
-          // Verify the request params and fail if invalid
-          verifyParams();
           // Copy any new certs to all nodes
           createCopyCertTasks(allNodes);
           updateUniverseHttpsEnabledUI();

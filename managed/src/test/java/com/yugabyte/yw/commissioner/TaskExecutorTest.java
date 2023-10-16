@@ -623,4 +623,11 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     assertEquals(TaskInfo.State.Success, subTaskInfos.get(0).getTaskState());
   }
+
+  @Test
+  public void testTaskValidationFailure() {
+    ITask task = mockTaskCommon(false);
+    doThrow(new IllegalArgumentException("Validation failed")).when(task).validateParams();
+    assertThrows(IllegalArgumentException.class, () -> taskExecutor.createRunnableTask(task));
+  }
 }

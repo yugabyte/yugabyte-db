@@ -35,14 +35,16 @@ public class SystemdUpgrade extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams() {
+    taskParams().verifyParams(getUniverse());
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
           // Fetch node lists
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
-
-          // Verify the request params and fail if invalid
-          taskParams().verifyParams(getUniverse());
 
           if (taskParams().isYbcInstalled()) {
             createServerControlTasks(nodes.getRight(), ServerType.CONTROLLER, "stop")
