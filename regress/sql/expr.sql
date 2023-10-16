@@ -2637,12 +2637,10 @@ $$) AS (i agtype);
 
 --CASE
 SELECT create_graph('case_statement');
-SELECT * FROM cypher('case_statement', $$CREATE ({i: 1, j: null})$$) AS (result agtype);
-SELECT * FROM cypher('case_statement', $$CREATE ({i: 'a', j: 'b'})$$) AS (result agtype);
-SELECT * FROM cypher('case_statement', $$CREATE ({i: 0, j: 1})$$) AS (result agtype);
-SELECT * FROM cypher('case_statement', $$CREATE ({i: true, j: false})$$) AS (result agtype);
-SELECT * FROM cypher('case_statement', $$CREATE ({i: [], j: [0,1,2]})$$) AS (result agtype);
-SELECT * FROM cypher('case_statement', $$CREATE ({i: {}, j: {i:1}})$$) AS (result agtype);
+SELECT * FROM cypher('case_statement', $$CREATE ({id: 1, i: 1, j: null})-[:connected_to {id: 1, k:0}]->({id: 2, i: 'a', j: 'b'})$$) AS (result agtype);
+SELECT * FROM cypher('case_statement', $$CREATE ({id: 3, i: 0, j: 1})-[:connected_to {id: 2, k:1}]->({id: 4, i: true, j: false})$$) AS (result agtype);
+SELECT * FROM cypher('case_statement', $$CREATE ({id: 5, i: [], j: [0,1,2]})$$) AS (result agtype);
+SELECT * FROM cypher('case_statement', $$CREATE ({id: 6, i: {}, j: {i:1}})$$) AS (result agtype);
 
 --standalone case & edge cases
 --base case
@@ -2687,6 +2685,39 @@ SELECT * FROM cypher('case_statement', $$
 		ELSE 'not a or b'
 	END
 $$ ) AS (j agtype, case_statement agtype);
+
+--CASE agtype_vertex WHEN value THEN result END
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN CASE n
+    WHEN null THEN 'should not return me'
+    WHEN 'agtype_string' THEN 'wrong'
+    WHEN n THEN n
+    ELSE 'no n'
+  END
+$$ ) AS (case_statement agtype);
+
+--CASE with match and edges
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)-[e]->(m)
+  RETURN CASE
+    WHEN null THEN 'should not return me'
+    WHEN n.i = 1 THEN n
+    WHEN n.i = 0 THEN m
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)-[e]->(m)
+  RETURN CASE
+    WHEN null THEN 'should not return me'
+    WHEN e.k = 1 THEN e
+    WHEN e.k = 0 THEN e
+    ELSE 'none'
+  END
+$$ ) AS (case_statement agtype);
+
 
 -- RETURN * and (u)--(v) optional forms
 SELECT create_graph('opt_forms');
