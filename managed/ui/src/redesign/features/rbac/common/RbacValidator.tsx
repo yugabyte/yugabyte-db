@@ -30,7 +30,14 @@ export interface RbacValidatorProps {
   customValidateFunction?: (permissions: UserPermission[]) => boolean;
 }
 
-export const RBAC_ERR_MSG_NO_PERM = "You don't have permission";
+export const RBAC_ERR_MSG_NO_PERM = (
+  <Typography variant="body2">
+    You don’t have permission to do this action.
+    <br />
+    <br />
+    If you think you should be able to do this action, contact your administrator.
+  </Typography>
+);
 
 const findResource = (accessRequiredOn: RbacValidatorProps['accessRequiredOn']) => {
   const { onResource, resourceType } = accessRequiredOn;
@@ -166,7 +173,7 @@ export const RbacValidator: FC<RbacValidatorProps> = ({
       </div>
     </ErrorBoundary>
   );
-  
+
   if (customValidateFunction) {
     if (customValidateFunction((window as any).rbac_permissions)) {
       return <>{children}</>;
@@ -252,12 +259,7 @@ export const ButtonDisabledPopover = ({ children }: { children: React.ReactEleme
             zIndex: 1001
           }}
         >
-          <Typography variant="body2">
-            You don’t have permission to do this action.
-            <br />
-            <br />
-            If you think you should be able to do this action, contact your administrator.
-          </Typography>
+          {RBAC_ERR_MSG_NO_PERM}
         </div>
       </Popover>
     </div>

@@ -3,9 +3,11 @@ import _ from 'lodash';
 import { useQuery } from 'react-query';
 import { browserHistory } from 'react-router';
 import { toast } from 'react-toastify';
+import { Box } from '@material-ui/core';
 import { UniverseFormContext } from './UniverseFormContainer';
 import { UniverseForm } from './form/UniverseForm';
 import { FullMoveModal, ResizeNodeModal, SmartResizeModal } from './action-modals';
+import { YBPermissionNotFound } from '../../../components';
 import { YBLoading } from '../../../../components/common/indicators';
 import { api, QUERY_KEY } from './utils/api';
 import { getPlacements } from './form/fields/PlacementsField/PlacementsFieldHelper';
@@ -41,6 +43,8 @@ import {
   USER_TAGS_FIELD,
   SPOT_INSTANCE_FIELD
 } from './utils/constants';
+import { hasNecessaryPerm } from '../../rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../rbac/UserPermPathMapping';
 
 export enum UPDATE_ACTIONS {
   FULL_MOVE = 'FULL_MOVE',
@@ -63,10 +67,16 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
   const [showSRModal, setSRModal] = useState(false); //SR -> Smart Resize
   const [universePayload, setUniversePayload] = useState<UniverseDetails | null>(null);
 
+  const isEditUniverseAllowed = hasNecessaryPerm({
+    ...UserPermissionMap.editUniverse,
+    onResource: uuid
+  });
+
   const { isLoading: isUniverseLoading, data: originalData } = useQuery(
     [QUERY_KEY.fetchUniverse, uuid],
     () => api.fetchUniverse(uuid),
     {
+      enabled: isEditUniverseAllowed,
       onSuccess: async (resp) => {
         try {
           const configureResponse = await api.universeConfigure({
@@ -107,6 +117,13 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
       console.error(error);
     }
   };
+
+  if (!isEditUniverseAllowed)
+    return (
+      <Box height="600px" display="flex">
+        <YBPermissionNotFound />
+      </Box>
+    );
 
   if (isUniverseLoading || isLoading || !originalData?.universeDetails) return <YBLoading />;
 
@@ -182,7 +199,12 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
 
   return (
     <>
-      <UniverseForm defaultFormData={initialFormData} onFormSubmit={onSubmit} onCancel={onCancel} editUniverseUUID={uuid}/>
+      <UniverseForm
+        defaultFormData={initialFormData}
+        onFormSubmit={onSubmit}
+        onCancel={onCancel}
+        editUniverseUUID={uuid}
+      />
       {universePayload && (
         <>
           {showRNModal && (

@@ -1,4 +1,4 @@
-import React, { createContext, FC } from 'react';
+import { createContext, FC } from 'react';
 import { useQuery } from 'react-query';
 import { useMethods } from 'react-use';
 import { useSelector } from 'react-redux';
