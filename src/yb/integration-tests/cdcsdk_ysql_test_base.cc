@@ -12,6 +12,7 @@
 
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
+#include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_state_table.h"
 
 namespace yb {
@@ -1272,7 +1273,8 @@ namespace cdc {
       int tablet_idx,
       int64 safe_hybrid_time,
       int wal_segment_index,
-      const bool populate_checkpoint) {
+      const bool populate_checkpoint,
+      const bool should_retry) {
     GetChangesRequestPB change_req;
     GetChangesResponsePB change_resp;
 
@@ -1296,7 +1298,8 @@ namespace cdc {
             status = StatusFromPB(change_resp.error().status());
           }
 
-          if (status.IsLeaderNotReadyToServe() || status.IsNotFound()) {
+          if (should_retry && (status.IsLeaderNotReadyToServe() || status.IsNotFound())) {
+            LOG(INFO) << "Retrying GetChanges in test";
             return false;
           }
 
@@ -1344,6 +1347,15 @@ namespace cdc {
         "GetChanges timed out waiting for Leader to get ready"));
 
     return change_resp;
+  }
+
+  Result<GetChangesResponsePB> CDCSDKYsqlTest::GetChangesFromCDCWithoutRetry(
+      const xrepl::StreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const CDCSDKCheckpointPB* cp) {
+    return GetChangesFromCDC(
+        stream_id, tablets, cp, 0 /* tablet_idx */, -1 /* safe_hybrid_time */,
+        0 /* wal_segment_index */, true /* populate_checkpoint*/, false /* should_retry */);
   }
 
   CDCSDKYsqlTest::GetAllPendingChangesResponse
