@@ -27,7 +27,7 @@ Before starting a [live migration](../live-migrate/#live-migration-workflow), yo
 
 ![After fall-forward setup](/images/migrate/after-fall-forward-setup.png)
 
-At [cutover](#cut-over-to-the-target), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, YB Voyager keeps the fall-forward database synchronized with changes from the target Yugabyte DB as shown in the following illustration:
+At [cutover](#cutover-to-the-target), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, YB Voyager keeps the fall-forward database synchronized with changes from the target Yugabyte DB as shown in the following illustration:
 
 ![After cutover](/images/migrate/after-cutover.png)
 
@@ -49,7 +49,7 @@ Before proceeding with migration, ensure that you have completed the following s
 
 ## Prepare the source database
 
-Prepare your source database by creating a new database user, and provide it with READ access to all the resources which need to be migrated.
+Create a new database user, and assign the necessary user permissions.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
@@ -159,6 +159,8 @@ Perform the following steps to prepare your fall-forward database:
                 rows_imported NUMBER(19),
                 PRIMARY KEY (data_file_name, batch_number, schema_name, table_name)
             );
+    ALTER TABLE ybvoyager_metadata.ybvoyager_import_data_batches_metainfo_v2
+       ADD migration_uuid VARCHAR2(36);
 
     CREATE TABLE ybvoyager_metadata.ybvoyager_import_data_event_channels_metainfo (
                 migration_uuid VARCHAR2(36),
@@ -181,7 +183,7 @@ Perform the following steps to prepare your fall-forward database:
             PRIMARY KEY (migration_uuid, table_name, channel_no)
         );
 
-    // Grant all privileges on ybvoyager_metadata schema table to user ybvoyager
+    // --Grant all privileges on ybvoyager_metadata schema table to user ybvoyager
 
     DECLARE
        v_sql VARCHAR2(4000);
@@ -348,9 +350,15 @@ Additionally, the CDC phase is restartable. So, if yb-voyager terminates when da
 - For Oracle where sequences are not attached to a column, resume value generation is unsupported.
 - `--parallel-jobs` argument (specifies the number of tables to be exported in parallel from the source database at a time) has no effect on live migration.
 
-Refer to [export data](../../reference/data-migration/export-data/) for details about the arguments, and [export data status](../../reference/data-migration/export-data/#export-data-status) to track the status of an export operation.
+Refer to [export data](../../reference/data-migration/export-data/) for details about the arguments of an export operation.
 
 The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
+
+#### Export data status
+
+Run the `yb-voyager export data status --export-dir <EXPORT_DIR>` command to get an overall progress of the export data operation.
+
+Refer to [export data status](../../reference/data-migration/export-data/#export-data-status) for details about the arguments.
 
 ### Import data
 
@@ -436,9 +444,9 @@ Additionally, when you run the `fall-forward setup` command, the [import data st
 yb-voyager import data status --export-dir <EXPORT_DIR> --ff-db-password <password>
 ```
 
-### Archive changes
+### Archive changes (Optional)
 
-As the migration continuously exports changes on the source database to the `EXPORT-DIR`, the disk utilization continues to grow indefinitely over time. To limit usage of all the disk space, you can use the `archive changes` command as follows:
+As the migration continuously exports changes on the source database to the `EXPORT-DIR`, the disk utilization continues to grow indefinitely over time. To limit usage of all the disk space, optionally, you can use the `archive changes` command as follows:
 
 ```sh
 yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR> --delete
@@ -450,7 +458,7 @@ Refer to [archive changes](../../reference/cutover-archive/archive-changes/) for
 Make sure to run the archive changes command only after completing [fall-forward setup](#fall-forward-setup). If you run the command before, you may archive some changes before they have been imported to the fall-forward database.
 {{< /note >}}
 
-### Cut over to the target
+### Cutover to the target
 
 Cutover is the last phase, where you switch your application over from the source database to the target YugabyteDB database.
 
@@ -506,7 +514,7 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
     {{< /warning >}}
 
-1. Stop [archive changes](#archive-changes).
+1. Stop [archive changes](#archive-changes-optional).
 
 ### Switch over to the fall forward (Optional)
 
@@ -553,7 +561,7 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
     {{< /warning >}}
 
-1. Stop [archive changes](#archive-changes).
+1. Stop [archive changes](#archive-changes-optional).
 
 {{< note >}}
 During `fall-forward synchronize`, yb-voyager creates a CDC stream ID on the target YugabyteDB database to fetch the new changes from the target database which is displayed as part of the `fall-forward synchronize` output. You need to manually delete the stream ID after `fall forward switchover` is completed.

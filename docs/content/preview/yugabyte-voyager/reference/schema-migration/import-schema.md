@@ -35,16 +35,16 @@ The valid *arguments* for import schema are described in the following table:
 | :------- | :------------------------ |
 | --continue-on-error | Continues the import of all the exported schema even during an error and outputs all the erroneous DDLs in the `failed.sql` file under the `export-dir/schema` directory. (default: false) <br> Usage to set it: `yb-voyager import schema ... --continue-on-error`  |
 | --enable-orafce | Enables Orafce extension on target (if source database type is Oracle). (default: true) |
-| --exclude-object-list <objectTypes> | Comma-separated list of schema object types (object types are case-insensitive) to exclude while importing schema (ignored if --object-list is used).<br> Example: `--exclude-object-list 'FUNCTION,PROCEDURE'` |
+| --exclude-object-type-list <objectTypes> | Comma-separated list of schema object types (object types are case-insensitive) to exclude while importing schema (ignored if --object-type-list is used).<br> Example: `--exclude-object-type-list 'FUNCTION,PROCEDURE'` |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file. |
 | -h, --help | Command line help. |
 | --ignore-exist | Ignore if an object already exists on the target database. (default: false)<br>Usage to set it: `yb-voyager import schema ... --ignore-exist` |
-| --object-list <objectTypes> | Comma-separated list of schema object types (object types are case-insensitive) to include while importing schema.<br>Example: `--object-list 'TABLE,VIEW,MVIEW'` |
+| --object-type-list <objectTypes> | Comma-separated list of schema object types (object types are case-insensitive) to include while importing schema.<br>Example: `--object-type-list 'TABLE,VIEW,MVIEW'` |
 | --post-import-data | Imports indexes and triggers in the YugabyteDB database after data import is complete. This argument assumes that data import is already done and imports only indexes and triggers in the YugabyteDB database. (default: false) |
 | --refresh-mviews | Refreshes the materialized views on target during the post-import-data phase (default: false) |
 | --send-diagnostics| Send [diagnostics](../../../diagnostics-report/) information to Yugabyte. (default: true)|
 | --start-clean | Starts a fresh schema import on the target yugabyteDB database for the schema present in the `schema` directory. |
-| --straight-order | Imports the schema objects in the order specified via the `--object-list` flag (default: false)<br> Usage to set it: `yb-voyager import schema ... --object-list 'TYPE,TABLE,VIEW...'  --straight-order` |
+| --straight-order | Imports the schema objects in the order specified via the `--object-type-list` flag (default: false)<br> Usage to set it: `yb-voyager import schema ... --object-type-list 'TYPE,TABLE,VIEW...'  --straight-order` |
 | --target-db-host <hostname> | Domain name or IP address of the machine on which target database server is running. (default: 127.0.0.1)|
 | --target-db-name <name> | Target database name. (default: yugabyte) |
 | --target-db-password <password>| Target database password. Alternatively, you can also specify the password by setting the environment variable `TARGET_DB_PASSWORD`. If you don't provide a password via the CLI or environment variable during any migration phase, yb-voyager will prompt you at runtime for a password. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose the password in single quotes. |

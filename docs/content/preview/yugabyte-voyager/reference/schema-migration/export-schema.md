@@ -29,6 +29,8 @@ The valid *arguments* for export schema are described in the following table:
 | --comments-on-objects | Enable export of comments associated with database objects. (default: false) |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for schema. |
+|  --object-type-list | Comma-separated list of object types to export schema for. |
+| --exclude-object-type-list | Comma-separated list of object types to exclude schema export for. |
 | --oracle-cdb-name <name> | Oracle Container Database Name in case you are using a multi-tenant container database. Required for Oracle live migrations only. |
 | --oracle-cdb-sid <SID> | Oracle System Identifier (SID) of the Container Database that you wish to use while exporting data from Oracle instances. Required for Oracle live migrations only. |
 | --oracle-cdb-tns-alias <alias> | Name of TNS Alias you wish to use to connect to Oracle Container Database in case you are using a multi-tenant container database. Required for Oracle live migrations only. |

@@ -232,7 +232,7 @@ yb-voyager export data --export-dir <EXPORT_DIR> \
 ```
 
 Note that the `source-db-schema` argument is required for PostgreSQL and Oracle, and is _not_ applicable for MySQL.
-Refer to [export data](../../reference/data-migration/export-data) for details about the arguments, and [export data status](../../reference/data-migration/export-data/#export-data-status) to track the status of an export operation.
+Refer to [export data](../../reference/data-migration/export-data) for details about the arguments.
 
 The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
 
@@ -246,6 +246,12 @@ Note that there are some special cases involving sequences such as the following
 - For PostgreSQL, `SERIAL` datatype and `GENERATED AS IDENTITY` columns use sequence object internally, so resume values for them are also generated during data export.
 
 {{< /note >}}
+
+#### Export data status
+
+Run the `yb-voyager export data status --export-dir <EXPORT_DIR>` command to get an overall progress of the export data operation.
+
+Refer to [export data status](../../reference/data-migration/export-data/#export-data-status) for details about the arguments.
 
 #### Accelerate data export for MySQL and Oracle
 
