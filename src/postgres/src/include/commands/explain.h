@@ -28,13 +28,15 @@ typedef enum ExplainFormat
 
 typedef struct YbExplainExecStats
 {
-	YbPgRpcStats read;
-	YbPgRpcStats catalog_read;
-	YbPgRpcStats flush;
-	double		 write_count;
-	double		 catalog_write_count;
+	YbPgRpcStats         read;
+	YbPgRpcStats         catalog_read;
+	YbPgRpcStats         flush;
+	double               write_count;
+	double               catalog_write_count;
 
-	double	     storage_metrics[YB_ANALYZE_METRIC_COUNT];
+	double               storage_gauge_metrics[YB_STORAGE_GAUGE_COUNT];
+	double               storage_counter_metrics[YB_STORAGE_COUNTER_COUNT];
+	YbPgEventMetric      storage_event_metrics[YB_STORAGE_EVENT_COUNT];
 } YbExplainExecStats;
 
 typedef struct ExplainState

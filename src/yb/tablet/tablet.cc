@@ -1631,11 +1631,7 @@ Status Tablet::HandlePgsqlReadRequest(
   TabletMetrics* metrics = metrics_.get();
 
   if (GetAtomicFlag(&FLAGS_batch_tablet_metrics_update)) {
-    scoped_docdb_statistics.SetHistogramContext(regulardb_statistics_, intentsdb_statistics_);
     statistics = &scoped_docdb_statistics;
-
-    scoped_tablet_metrics.Prepare();
-    scoped_tablet_metrics.SetHistogramContext(metrics);
     metrics = &scoped_tablet_metrics;
   }
 
@@ -1651,7 +1647,7 @@ Status Tablet::HandlePgsqlReadRequest(
     auto metrics_capture = pgsql_read_request.metrics_capture();
     if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_metrics) &&
         metrics_capture == PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_ALL) {
-      scoped_docdb_statistics.CopyToPgsqlResponse(&result->response);
+      statistics->CopyToPgsqlResponse(&result->response);
       scoped_tablet_metrics.CopyToPgsqlResponse(&result->response);
     }
     scoped_tablet_metrics.MergeAndClear(metrics_.get());

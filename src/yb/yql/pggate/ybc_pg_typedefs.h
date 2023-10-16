@@ -440,6 +440,11 @@ typedef struct PgExecReadWriteStats {
   uint64_t read_wait;
 } YBCPgExecReadWriteStats;
 
+typedef struct PgExecEventMetric {
+  int64_t sum;
+  int64_t count;
+} YBCPgExecEventMetric;
+
 typedef struct PgExecStats {
   YBCPgExecReadWriteStats tables;
   YBCPgExecReadWriteStats indices;
@@ -448,7 +453,10 @@ typedef struct PgExecStats {
   uint64_t num_flushes;
   uint64_t flush_wait;
 
-  uint64_t storage_metrics[YB_PGGATE_IDENTIFIER(YB_ANALYZE_METRIC_COUNT)];
+  uint64_t storage_gauge_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_GAUGE_COUNT)];
+  int64_t storage_counter_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_COUNTER_COUNT)];
+  YBCPgExecEventMetric
+      storage_event_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_EVENT_COUNT)];
 } YBCPgExecStats;
 
 // Make sure this is in sync with PgsqlMetricsCaptureType in pgsql_protocol.proto.
