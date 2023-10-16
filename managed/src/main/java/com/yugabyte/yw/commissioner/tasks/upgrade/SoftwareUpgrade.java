@@ -36,14 +36,17 @@ public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
   }
 
   @Override
+  public void validateParams() {
+    taskParams().verifyParams(getUniverse());
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
           Set<NodeDetails> allNodes = toOrderedSet(nodes);
           Universe universe = getUniverse();
-          // Verify the request params and fail if invalid.
-          taskParams().verifyParams(universe);
 
           String newVersion = taskParams().ybSoftwareVersion;
 
