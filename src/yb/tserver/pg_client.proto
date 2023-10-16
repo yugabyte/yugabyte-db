@@ -78,6 +78,9 @@ service PgClientService {
   rpc CheckIfPitrActive(PgCheckIfPitrActiveRequestPB) returns (PgCheckIfPitrActiveResponsePB);
   rpc GetTserverCatalogVersionInfo(PgGetTserverCatalogVersionInfoRequestPB)
       returns (PgGetTserverCatalogVersionInfoResponsePB);
+
+  rpc GetNewObjectId(PgGetNewObjectIdRequestPB)
+      returns (PgGetNewObjectIdResponsePB);
 }
 
 message PgHeartbeatRequestPB {
@@ -633,4 +636,13 @@ message PgGetTserverCatalogVersionInfoResponsePB {
   AppStatusPB status = 1;
   repeated TServerDBCatalogVersionInfo entries = 2;
   uint32 num_entries = 3;
+}
+
+message PgGetNewObjectIdRequestPB {
+  uint32 db_oid = 1;
+}
+
+message PgGetNewObjectIdResponsePB {
+  AppStatusPB status = 1;
+  uint32 new_oid = 2;
 }

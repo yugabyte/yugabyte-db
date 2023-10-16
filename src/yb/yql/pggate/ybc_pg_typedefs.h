@@ -372,6 +372,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_disable_per_tuple_memory_context_in_update_relattrs;
   const bool*     ysql_enable_create_database_oid_collision_retry;
   const char*     ysql_catalog_preload_additional_table_list;
+  const bool*     ysql_enable_pg_per_database_oid_allocator;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {

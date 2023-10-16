@@ -392,6 +392,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void InvalidatePgTableCache();
 
+  Result<std::unordered_set<uint32_t>> GetPgDatabaseOids();
+
+  void ScheduleCheckObjectIdAllocators();
+
   std::string log_prefix_;
 
   // Bind address of postgres proxy under this tserver.

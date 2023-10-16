@@ -42,8 +42,8 @@ FROM pg_class c, yb_table_properties(c.oid) props
 WHERE c.relname LIKE 'clc_%' AND c.relkind <> 'i' ORDER BY c.oid;
     relname     | num_tablets | num_hash_key_columns | is_colocated | tablegroup_oid | colocation_id
 ----------------+-------------+----------------------+--------------+----------------+---------------
- clc_temp_tbl   |           1 |                    0 | t            |          16480 |         20001
- clc_temp_tbl_2 |           1 |                    0 | t            |          16480 |        100500
+ clc_temp_tbl   |           1 |                    0 | t            |          16387 |         20001
+ clc_temp_tbl_2 |           1 |                    0 | t            |          16387 |        100500
 (2 rows)
 
 -- Cleanup.

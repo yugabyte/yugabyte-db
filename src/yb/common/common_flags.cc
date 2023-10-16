@@ -73,6 +73,11 @@ DEFINE_RUNTIME_uint32(external_transaction_retention_window_secs, 60 * 60 * 24,
                       "Retention window on both the coordinator and participant for uncommitted "
                       "transactions from a producer.");
 
+DEFINE_NON_RUNTIME_bool(ysql_enable_pg_per_database_oid_allocator, true,
+    "If true, enable per-database PG new object identifier allocator.");
+TAG_FLAG(ysql_enable_pg_per_database_oid_allocator, advanced);
+TAG_FLAG(ysql_enable_pg_per_database_oid_allocator, hidden);
+
 namespace yb {
 
 void InitCommonFlags() {

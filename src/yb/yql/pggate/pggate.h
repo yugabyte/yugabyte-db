@@ -252,6 +252,9 @@ class PgApiImpl {
                      PgOid *begin_oid,
                      PgOid *end_oid);
 
+  // Allocate a new object id from the oid allocator of database db_oid.
+  Status GetNewObjectId(PgOid db_oid, PgOid *new_oid);
+
   Status GetCatalogMasterVersion(uint64_t *version);
 
   // Load table.

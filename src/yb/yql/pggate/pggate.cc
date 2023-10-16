@@ -788,6 +788,12 @@ Status PgApiImpl::ReserveOids(const PgOid database_oid,
   return Status::OK();
 }
 
+Status PgApiImpl::GetNewObjectId(PgOid db_oid, PgOid* new_oid) {
+  auto result = VERIFY_RESULT(pg_client_.GetNewObjectId(db_oid));
+  *new_oid = result;
+  return Status::OK();
+}
+
 Status PgApiImpl::GetCatalogMasterVersion(uint64_t *version) {
   return pg_session_->GetCatalogMasterVersion(version);
 }

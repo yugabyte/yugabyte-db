@@ -93,6 +93,8 @@ class PgClient {
 
   Result<std::pair<PgOid, PgOid>> ReserveOids(PgOid database_oid, PgOid next_oid, uint32_t count);
 
+  Result<PgOid> GetNewObjectId(PgOid db_oid);
+
   Result<bool> IsInitDbDone();
 
   Result<uint64_t> GetCatalogMasterVersion();
