@@ -10,8 +10,9 @@ import { YBButton, YBModal } from '../../../common/forms/fields';
 import { ybFormatDate, YBTimeFormats } from '../../../../redesign/helpers/DateUtils';
 import { formatBytes } from '../../../xcluster/ReplicationUtils';
 
-import { RbacValidator } from '../../../../redesign/features/rbac/common/RbacValidator';
+import { hasNecessaryPerm, RbacValidator } from '../../../../redesign/features/rbac/common/RbacValidator';
 import { UserPermissionMap } from '../../../../redesign/features/rbac/UserPermPathMapping';
+import { Action, Resource } from '../../../../redesign/features/rbac';
 import './ThirdStep.scss';
 
 const statusElementsIcons = {
@@ -41,9 +42,11 @@ const getActions = (
   setIsConfirmDeleteOpen,
   handleDownloadBundle,
   creatingBundle,
-  setDeleteBundleObj
+  setDeleteBundleObj,
+  universeUUID
 ) => {
   const isReady = row.status === 'Success';
+  
   return (
     <>
       <DropdownButton
@@ -66,6 +69,7 @@ const getActions = (
             customValidateFunction={() => {
               return hasNecessaryPerm(UserPermissionMap.downloadSupportBundle) && hasNecessaryPerm({ onResource: universeUUID, resourceType: Resource.UNIVERSE, permissionRequired: [Action.READ] });
             }}
+            popOverOverrides={{ zIndex: 100000 }}
           >
             <MenuItem
               value="Download"
@@ -91,6 +95,7 @@ const getActions = (
           isControl
           accessRequiredOn={UserPermissionMap.deleteSupportBundle}
           overrideStyle={{ display: 'block' }}
+          popOverOverrides={{ zIndex: 100000 }}
         >
           <YBMenuItem
             disabled={creatingBundle}
@@ -129,7 +134,7 @@ const ConfirmDeleteModal = ({ createdOn, closeModal, confirmDelete }) => {
 };
 
 export const ThirdStep = withRouter(
-  ({ onCreateSupportBundle, handleDeleteBundle, handleDownloadBundle, supportBundles, router }) => {
+  ({ onCreateSupportBundle, handleDeleteBundle, handleDownloadBundle, supportBundles, router, universeUUID }) => {
     const [creatingBundle, setCreatingBundle] = useState(
       supportBundles &&
       Array.isArray(supportBundles) &&
@@ -183,6 +188,7 @@ export const ThirdStep = withRouter(
               customValidateFunction={() => {
                 return hasNecessaryPerm(UserPermissionMap.createSupportBundle) && hasNecessaryPerm({ onResource: universeUUID, resourceType: Resource.UNIVERSE, permissionRequired: [Action.UPDATE] });
               }}
+              popOverOverrides={{ zIndex: 100000 }}
             >
               <YBButton
                 variant="outline-dark"
@@ -256,7 +262,8 @@ export const ThirdStep = withRouter(
                       setIsConfirmDeleteOpen,
                       handleDownloadBundle,
                       row.status === 'Running',
-                      setDeleteBundleObj
+                      setDeleteBundleObj,
+                      universeUUID
                     );
                   }}
                 />
