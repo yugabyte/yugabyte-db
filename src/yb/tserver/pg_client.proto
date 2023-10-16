@@ -85,6 +85,9 @@ service PgClientService {
   rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
   rpc GetActiveTransactionList(PgGetActiveTransactionListRequestPB)
       returns (PgGetActiveTransactionListResponsePB);
+
+  rpc GetNewObjectId(PgGetNewObjectIdRequestPB)
+      returns (PgGetNewObjectIdResponsePB);
 }
 
 message PgHeartbeatRequestPB {
@@ -706,4 +709,13 @@ message PgGetActiveTransactionListResponsePB {
   }
   AppStatusPB status = 1;
   repeated EntryPB entries = 2;
+}
+
+message PgGetNewObjectIdRequestPB {
+  uint32 db_oid = 1;
+}
+
+message PgGetNewObjectIdResponsePB {
+  AppStatusPB status = 1;
+  uint32 new_oid = 2;
 }

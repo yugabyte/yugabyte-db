@@ -3575,9 +3575,152 @@ TEST_F_EX(
   ASSERT_NOK(status_future.get());
 }
 
-// This test verifies retry solves CREATE DATABASE OID collision issue.
-// Using our current YSQL OID allocation method, we can hit the following OID collision for
-// PG CREATE DATABASE.
+class PgOidCollisionTestBase : public PgLibPqTest {
+ protected:
+  void RestartClusterWithOidAllocator(bool per_database) {
+    cluster_->Shutdown();
+    const string oid_allocator_gflag =
+        Format("--ysql_enable_pg_per_database_oid_allocator=$0",
+               per_database ? "true" : "false");
+    const string create_database_retry_gflag =
+        Format("--ysql_enable_create_database_oid_collision_retry=$0",
+               ysql_enable_create_database_oid_collision_retry ? "true" : "false");
+    LOG(INFO) << "Restart cluster with " << oid_allocator_gflag << " "
+              << create_database_retry_gflag;
+    for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+      cluster_->master(i)->mutable_flags()->push_back(oid_allocator_gflag);
+    }
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      cluster_->tablet_server(i)->mutable_flags()->push_back(oid_allocator_gflag);
+      cluster_->tablet_server(i)->mutable_flags()->push_back(create_database_retry_gflag);
+    }
+    ASSERT_OK(cluster_->Restart());
+  }
+  bool ysql_enable_create_database_oid_collision_retry = true;
+};
+
+class PgOidCollisionTest
+    : public PgOidCollisionTestBase,
+      public ::testing::WithParamInterface<bool> {
+};
+
+INSTANTIATE_TEST_CASE_P(PgOidCollisionTest,
+                        PgOidCollisionTest,
+                        ::testing::Values(false, true));
+
+// Test case for PG per-database oid allocation.
+// Using the old PG global oid allocation method, we can hit the following OID collision.
+// Connections used in the example:
+// Connection 1 on tserver 0 (Conn1) && Connection 2 on tserver 1 (Conn2)
+// Example:
+// Conn1: CREATE TABLE tbl (k INT); -- tbl OID: 16384
+// Conn1: CREATE MATERIALIZED VIEW mv AS SELECT * FROM tbl; -- mv OID: 16387, mv relfilenode: 16387
+// Conn1: REFRESH MATERIALIZED VIEW mv; -- mv OID: 16387, mv relfilenode: 16391
+// Conn1: CREATE DATABASE db2; -- Used to trigger the same range of OID allocation on tserver 1
+// Conn2: \c db2
+// Conn2: CREATE TABLE trigger_oid_allocation (k INT); -- trigger_oid_allocation OID: 16384
+// Conn2: create 4 dummy types to increase OID
+// Conn2: \c yugabyte
+// Conn2: CREATE TABLE danger (k INT); -- danger OID: 16391 (same as relfilenode of mv, so danger
+// and refreshed mv uses the same table id in DocDB as well)
+TEST_P(PgOidCollisionTest, MaterializedViewPgOidCollisionFromTservers) {
+  const bool ysql_enable_pg_per_database_oid_allocator = GetParam();
+  RestartClusterWithOidAllocator(ysql_enable_pg_per_database_oid_allocator);
+  const string db2 = "db2";
+  // Tserver 0
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE tbl (k INT)"));
+  ASSERT_OK(conn1.Execute("CREATE MATERIALIZED VIEW mv AS SELECT * FROM tbl"));
+  ASSERT_OK(conn1.Execute("REFRESH MATERIALIZED VIEW mv"));
+  ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0", db2));
+  // Tserver 1
+  LOG(INFO) << "Make a new connection to a different node at index 1";
+  pg_ts = cluster_->tablet_server(1);
+  auto conn2 = ASSERT_RESULT(ConnectToDB(db2));
+  ASSERT_OK(conn2.Execute("CREATE TABLE trigger_oid_allocation (k INT)"));
+  for (int i = 0; i < 4; ++i) {
+    ASSERT_OK(conn2.ExecuteFormat("CREATE TYPE dummy$0", i));
+  }
+  conn2 = ASSERT_RESULT(Connect());
+  auto status = conn2.Execute("CREATE TABLE danger (k INT, V INT)");
+  if (ysql_enable_pg_per_database_oid_allocator) {
+    ASSERT_OK(status);
+    ASSERT_OK(conn2.Execute("INSERT INTO danger VALUES (1, 1)"));
+    // Verify
+    auto res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM mv"));
+    ASSERT_EQ(PQntuples(res.get()), 0);
+    ASSERT_EQ(PQnfields(res.get()), 1);
+    res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM danger"));
+    ASSERT_EQ(PQntuples(res.get()), 1);
+    ASSERT_EQ(PQnfields(res.get()), 2);
+    ASSERT_EQ(ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)), 1);
+    ASSERT_EQ(ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 1)), 1);
+  } else {
+    ASSERT_TRUE(status.IsNetworkError()) << status;
+    ASSERT_STR_CONTAINS(status.ToString(), "Duplicate table");
+  }
+}
+
+// Test case for PG per-database oid allocation based on issue #15468.
+// meta-cache cannot handle table id resue.
+// Using the old PG global oid allocation method, we can hit the following OID collision.
+// Connections used in the example:
+// Connection 1 on tserver 0 (Conn1) && Connection 2 on tserver 1 (Conn2)
+// Example:
+// Conn1: CREATE DATABASE db2;
+// Conn1: CREATE TABLE tbl (k INT); -- tbl OID: 16385
+// Conn2: \c db2
+// Conn2: CREATE TYPE dummy;
+// Conn2: \c yugabyte
+// Conn2: SELECT COUNT(*) FROM tbl;
+// Conn2: DROP TABLE tbl;
+// -- danger OID: 16385 (same as table id of deleted table tbl)
+// Conn2: CREATE TABLE danger (k INT, v INT);
+// Conn2: INSERT INTO danger SELECT i, i from generate_series(1, 100) i;
+TEST_P(PgOidCollisionTest, MetaCachePgOidCollisionFromTservers) {
+  const bool ysql_enable_pg_per_database_oid_allocator = GetParam();
+  RestartClusterWithOidAllocator(ysql_enable_pg_per_database_oid_allocator);
+  const string dbname = "db2";
+  // Tserver 0
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0", dbname));
+  ASSERT_OK(conn1.Execute("CREATE TABLE tbl (k INT)"));
+  // Tserver 1
+  LOG(INFO) << "Make a new connection to a different node at index 1";
+  pg_ts = cluster_->tablet_server(1);
+  auto conn2 = ASSERT_RESULT(ConnectToDB(dbname));
+  ASSERT_OK(conn2.Execute("CREATE TYPE dummy"));
+  conn2 = ASSERT_RESULT(ConnectToDB("yugabyte"));
+  ASSERT_OK(conn2.Fetch("SELECT COUNT(*) FROM tbl"));
+  ASSERT_OK(conn2.Execute("DROP TABLE tbl"));
+  ASSERT_OK(conn2.Execute("CREATE TABLE danger (k INT, v INT)"));
+  auto status = conn2.Execute("INSERT INTO danger SELECT i, i from generate_series(1, 100) i");
+  if (ysql_enable_pg_per_database_oid_allocator) {
+    ASSERT_OK(status);
+    // Verify
+    auto res = ASSERT_RESULT(conn1.Fetch("SELECT COUNT(*) FROM danger"));
+    ASSERT_EQ(ASSERT_RESULT(GetValue<int64_t>(res.get(), 0, 0)), 100);
+  } else {
+    ASSERT_TRUE(status.IsNetworkError()) << status;
+    ASSERT_STR_CONTAINS(status.ToString(), "Tablet deleted:");
+  }
+}
+
+class PgOidCollisionCreateDatabaseTest
+    : public PgOidCollisionTestBase,
+    public ::testing::WithParamInterface<std::pair<bool, bool>> {
+};
+
+INSTANTIATE_TEST_CASE_P(PgOidCollisionCreateDatabaseTest,
+                        PgOidCollisionCreateDatabaseTest,
+                        ::testing::Values(std::make_pair(false, false),
+                                          std::make_pair(false, true),
+                                          std::make_pair(true, false),
+                                          std::make_pair(true, true)));
+
+// Test case for PG per-database oid allocation.
+// Using the old PG global oid allocation method, we can hit the following OID collision.
+// for PG CREATE DATABASE.
 // Connections used in the example:
 // Connection 1 on tserver 0 (Conn1) && Connection 2 on tserver 1 (Conn2)
 // Example:
@@ -3588,39 +3731,93 @@ TEST_F_EX(
 // Conn2: \c db2
 // Conn2: CREATE DATABASE db3; -- db3 OID: 16384; OID range: [16384, 16640) on tserver 1
 // ERROR:  Keyspace 'db3' already exists
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RetryCreateDatabasePgOidCollisionFromTservers)) {
+// Using a per-database PG oid allocator, or retry CREATE DATABASE on oid
+// collision, the CREATE DATABASE OID collision issue can be solved.
+TEST_P(PgOidCollisionCreateDatabaseTest, CreateDatabasePgOidCollisionFromTservers) {
+  const bool ysql_enable_pg_per_database_oid_allocator = GetParam().first;
+  ysql_enable_create_database_oid_collision_retry = GetParam().second;
+  RestartClusterWithOidAllocator(ysql_enable_pg_per_database_oid_allocator);
+  // Verify the keyspace already exists issue still doesn't exist if we disable retry CREATE
+  // DATABASE because we use new PG per-database oid allocation.
   const string db1 = "db1";
   const string db2 = "db2";
   const string db3 = "db3";
 
   // Tserver 0
+  // if ysql_enable_pg_per_database_oid_allocator=true
+  //   template1's range [16384, 16640) is allocated on tserver 0
+  // else
+  //   yugabyte's range [16384, 16640) is allocated on tserver 0
   auto conn1 = ASSERT_RESULT(Connect());
   ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0", db1));
   ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0", db2));
   ASSERT_OK(conn1.ExecuteFormat("DROP DATABASE $0", db1));
 
   // Tserver 1
+  // if ysql_enable_pg_per_database_oid_allocator=true
+  //   template1's range [16640, 16896) is allocated on tserver 1
+  // else
+  //   db2's range [16384, 16640) is allocated on tserver 1
   LOG(INFO) << "Make a new connection to a different node at index 1";
   pg_ts = cluster_->tablet_server(1);
   auto conn2 = ASSERT_RESULT(ConnectToDB(db2));
-  ASSERT_OK(conn2.ExecuteFormat("CREATE DATABASE $0", db3));
+  auto status = conn2.ExecuteFormat("CREATE DATABASE $0", db3);
+  if (ysql_enable_pg_per_database_oid_allocator) {
+    ASSERT_OK(status);
+    // Verify no OID collision and the expected OID is used.
+    int db3_oid = ASSERT_RESULT(conn2.FetchValue<int32_t>(
+        Format("SELECT oid FROM pg_database WHERE datname = \'$0\'", db3)));
+    ASSERT_EQ(db3_oid, 16640);
+  } else if (ysql_enable_create_database_oid_collision_retry) {
+    // Verify internally retry CREATE DATABASE works.
+    int db3_oid = ASSERT_RESULT(conn2.FetchValue<int32_t>(
+        Format("SELECT oid FROM pg_database WHERE datname = \'$0\'", db3)));
+    ASSERT_EQ(db3_oid, 16386);
+  } else {
+    // Verify the keyspace already exists issue still exists if we disable retry.
+    // Creation of db3 on Tserver 1 uses 16384 as the next available oid.
+    ASSERT_TRUE(status.IsNetworkError()) << status;
+    ASSERT_STR_CONTAINS(status.ToString(), "Keyspace with id");
+    ASSERT_STR_CONTAINS(status.ToString(), "already exists");
+  }
+}
 
-  // Verify internally retry CREATE DATABASE works.
-  int db3_oid = ASSERT_RESULT(conn2.FetchValue<int32_t>(
-      Format("SELECT oid FROM pg_database WHERE datname = \'$0\'", db3)));
-  ASSERT_EQ(db3_oid, 16386);
+// This test shows interop between using the old PG allocator and new PG
+// allocator.
+TEST_P(PgOidCollisionTest, TablespaceOidCollision) {
+  const bool ysql_enable_pg_per_database_oid_allocator = GetParam();
+  // Restart the cluster using the specified PG OID allocator.
+  RestartClusterWithOidAllocator(ysql_enable_pg_per_database_oid_allocator);
+  auto conn = ASSERT_RESULT(Connect());
+  const int32_t num_system_tablespaces = 2; // pg_default and pg_global
+  const int32_t num_tablespaces = 512; // two allocation chunks of OIDs.
+  // Create some tablespaces using the specified PG OID allocator.
+  for (int i = 0; i < num_tablespaces; i++) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLESPACE tp$0 LOCATION '/data'", i));
+  }
+  const string shared_pg_table = "pg_tablespace";
+  const string count_oid_query =
+    Format("SELECT count(oid) FROM $0", shared_pg_table);
+  const string max_oid_query =
+    Format("SELECT max(oid) FROM $0", shared_pg_table);
+  auto count_oid = ASSERT_RESULT(conn.FetchValue<int64_t>(count_oid_query));
+  auto max_oid = ASSERT_RESULT(conn.FetchValue<PGOid>(max_oid_query));
+  ASSERT_EQ(count_oid, num_tablespaces + num_system_tablespaces);
+  ASSERT_EQ(max_oid, kPgFirstNormalObjectId + num_tablespaces - 1);
 
-  // Verify the keyspace already exists issue still exists if we disable retry.
-  // Connection to db3 on Tserver 2 uses 16384 as the next available oid.
-  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_enable_create_database_oid_collision_retry",
-                                        "false"));
-  KillPostmasterProcessOnTservers();
-  pg_ts = cluster_->tablet_server(2);
-  auto conn3 = ASSERT_RESULT(ConnectToDB(db3));
-  Status s = conn3.ExecuteFormat("CREATE DATABASE createdb_oid_collision");
-  ASSERT_NOK(s);
-  ASSERT_TRUE(s.message().ToBuffer().find("Keyspace with id") != std::string::npos);
-  ASSERT_TRUE(s.message().ToBuffer().find("already exists") != std::string::npos);
+  // Restart the cluster using the opposite PG OID allocator.
+  RestartClusterWithOidAllocator(!ysql_enable_pg_per_database_oid_allocator);
+  conn = ASSERT_RESULT(Connect());
+  // Create some more tablespaces using the opposite PG OID allocator.
+  // We should not see any OID collision. The PG function DoesOidExistInRelation
+  // should keep generate new OID until we find one not in the shared table.
+  for (int i = num_tablespaces; i < num_tablespaces * 2; i++) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLESPACE tp$0 LOCATION '/data'", i));
+  }
+  count_oid = ASSERT_RESULT(conn.FetchValue<int64_t>(count_oid_query));
+  max_oid = ASSERT_RESULT(conn.FetchValue<PGOid>(max_oid_query));
+  ASSERT_EQ(count_oid, num_tablespaces * 2 + num_system_tablespaces);
+  ASSERT_EQ(max_oid, kPgFirstNormalObjectId + num_tablespaces * 2 - 1);
 }
 
 class PgLibPqTempTest: public PgLibPqTest {

@@ -6,7 +6,7 @@ CREATE TABLE prt_p1 PARTITION OF prt FOR VALUES FROM (1) TO (2);
 CREATE TABLE IF NOT EXISTS prt_p2 PARTITION OF prt FOR VALUES FROM (2) TO (3);
 \dgrt
               List of tablegroup tables
- Group Name | Group Owner |  Name  | Type  |  Owner   
+ Group Name | Group Owner |  Name  | Type  |  Owner
 ------------+-------------+--------+-------+----------
  tg1        | yugabyte    | prt    | table | yugabyte
  tg1        | yugabyte    | prt_p1 | table | yugabyte
@@ -25,12 +25,12 @@ CREATE TABLE prt2 (id int PRIMARY KEY, v int) PARTITION BY RANGE (id) WITH (colo
 SELECT * FROM yb_table_properties('prt2'::regclass::oid);
  num_tablets | num_hash_key_columns | is_colocated | tablegroup_oid | colocation_id
 -------------+----------------------+--------------+----------------+---------------
-           1 |                    0 | t            |          16599 |        666666
+           1 |                    0 | t            |          16384 |        666666
 (1 row)
 
 CREATE TABLE prt2_p1 PARTITION OF prt2 FOR VALUES FROM (1) TO (2) WITH (colocation_id='7777777');
 SELECT * FROM yb_table_properties('prt2_p1'::regclass::oid);
  num_tablets | num_hash_key_columns | is_colocated | tablegroup_oid | colocation_id
 -------------+----------------------+--------------+----------------+---------------
-           1 |                    0 | t            |          16599 |       7777777
+           1 |                    0 | t            |          16384 |       7777777
 (1 row)

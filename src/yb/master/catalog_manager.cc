@@ -8677,8 +8677,12 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
                             STATUS(NotFound, "Source keyspace not found",
                                    req->source_namespace_id()));
         }
-        auto source_ns_lock = source_ns->LockForRead();
-        metadata->set_next_pg_oid(source_ns_lock->pb.next_pg_oid());
+        if (FLAGS_ysql_enable_pg_per_database_oid_allocator) {
+          metadata->set_next_pg_oid(kPgFirstNormalObjectId);
+        } else {
+          auto source_ns_lock = source_ns->LockForRead();
+          metadata->set_next_pg_oid(source_ns_lock->pb.next_pg_oid());
+        }
       }
     }
 

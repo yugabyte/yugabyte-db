@@ -89,6 +89,11 @@ DEFINE_test_flag(uint64, delay_before_get_locks_status_ms, 0,
                  "being used to test pg_locks behavior when split happens after fetching involved "
                  "tablet(s) locations.");
 
+DEFINE_test_flag(uint64, ysql_oid_prefetch_adjustment, 0,
+                 "Amount to add when prefetch the next batch of OIDs. Never use this flag in "
+                 "production environment. In unit test we use this flag to force allocation of "
+                 "large Postgres OIDs.");
+
 DECLARE_uint64(transaction_heartbeat_usec);
 
 namespace yb {
@@ -337,6 +342,47 @@ class PgClientServiceImpl::Impl {
     resp->set_end_oid(end_oid);
 
     return Status::OK();
+  }
+
+  Status GetNewObjectId(
+      const PgGetNewObjectIdRequestPB& req,
+      PgGetNewObjectIdResponsePB* resp,
+      rpc::RpcContext* context) {
+    // Number of OIDs to prefetch (preallocate) in YugabyteDB setup.
+    // Given there are multiple Postgres nodes, each node should prefetch
+    // in smaller chunks.
+    constexpr int32_t kYbOidPrefetch = 256;
+    auto db_oid = req.db_oid();
+    std::lock_guard lock(mutex_);
+    auto& oid_chunk = reserved_oids_map_[db_oid];
+    if (oid_chunk.oid_count == 0) {
+      const uint32_t next_oid = oid_chunk.next_oid +
+          static_cast<uint32_t>(FLAGS_TEST_ysql_oid_prefetch_adjustment);
+      uint32_t begin_oid, end_oid;
+      RETURN_NOT_OK(client().ReservePgsqlOids(
+          GetPgsqlNamespaceId(db_oid), next_oid, kYbOidPrefetch, &begin_oid, &end_oid));
+      oid_chunk.next_oid = begin_oid;
+      oid_chunk.oid_count = end_oid - begin_oid;
+      VLOG(1) << "Reserved oids in database: " << db_oid << ", next_oid: " << next_oid
+              << ", begin_oid: " << begin_oid << ", end_oid: " << end_oid;
+    }
+    uint32 new_oid = oid_chunk.next_oid;
+    oid_chunk.next_oid++;
+    oid_chunk.oid_count--;
+    resp->set_new_oid(new_oid);
+    return Status::OK();
+  }
+
+  void CheckObjectIdAllocators(const std::unordered_set<uint32_t>& db_oids) {
+    std::lock_guard lock(mutex_);
+    for (auto it = reserved_oids_map_.begin(); it != reserved_oids_map_.end();) {
+      if (db_oids.count(it->first) == 0) {
+        LOG(INFO) << "Erase PG object id allocator of database: " << it->first;
+        it = reserved_oids_map_.erase(it);
+      } else {
+        it++;
+      }
+    }
   }
 
   Status GetCatalogMasterVersion(
@@ -1067,6 +1113,12 @@ class PgClientServiceImpl::Impl {
   PgTableCache table_cache_;
   rw_spinlock mutex_;
 
+  struct OidPrefetchChunk {
+    uint32_t next_oid = kPgFirstNormalObjectId;
+    uint32_t oid_count = 0;
+  };
+  std::unordered_map<uint32_t, OidPrefetchChunk> reserved_oids_map_ GUARDED_BY(mutex_);
+
   boost::multi_index_container<
       LockablePgClientSessionPtr,
       boost::multi_index::indexed_by<
@@ -1131,6 +1183,10 @@ void PgClientServiceImpl::Perform(
 
 void PgClientServiceImpl::InvalidateTableCache() {
   impl_->InvalidateTableCache();
+}
+
+void PgClientServiceImpl::CheckObjectIdAllocators(const std::unordered_set<uint32_t>& db_oids) {
+  impl_->CheckObjectIdAllocators(db_oids);
 }
 
 size_t PgClientServiceImpl::TEST_SessionsCount() {
