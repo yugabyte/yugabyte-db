@@ -1778,11 +1778,13 @@ void CDCServiceImpl::GetChanges(
         ->UpdateStats(start_time, status, num_records, bytes_sent, sent_index, latest_wal_index);
   }
 
-  auto tablet_metric_row =
-      GetCDCTabletMetrics(producer_tablet, tablet_peer, record.GetSourceType());
   if (record.GetSourceType() == XCLUSTER) {
-    auto tablet_metric = std::static_pointer_cast<CDCTabletMetrics>(tablet_metric_row);
-    tablet_metric->is_bootstrap_required->set_value(status.IsNotFound());
+    auto tablet_metric_row =
+        GetCDCTabletMetrics(producer_tablet, tablet_peer, record.GetSourceType());
+    if (tablet_metric_row) {
+      auto tablet_metric = std::static_pointer_cast<CDCTabletMetrics>(tablet_metric_row);
+      tablet_metric->is_bootstrap_required->set_value(status.IsNotFound());
+    }
   }
 
   VLOG(1) << "Sending GetChanges response " << resp->ShortDebugString();
