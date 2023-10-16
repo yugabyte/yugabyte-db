@@ -1713,10 +1713,13 @@ void CDCServiceImpl::GetChanges(
         cached_schema_version);
   }
 
-  auto tablet_metric_row = GetCDCTabletMetrics(producer_tablet, tablet_peer, record.source_type);
   if (record.source_type == XCLUSTER) {
-    auto tablet_metric = std::static_pointer_cast<CDCTabletMetrics>(tablet_metric_row);
-    tablet_metric->is_bootstrap_required->set_value(status.IsNotFound());
+    auto tablet_metric_row =
+        GetCDCTabletMetrics(producer_tablet, tablet_peer, record.source_type);
+    if (tablet_metric_row) {
+      auto tablet_metric = std::static_pointer_cast<CDCTabletMetrics>(tablet_metric_row);
+      tablet_metric->is_bootstrap_required->set_value(status.IsNotFound());
+    }
   }
 
   VLOG(1) << "Sending GetChanges response " << resp->ShortDebugString();
