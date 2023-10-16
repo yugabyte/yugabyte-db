@@ -85,7 +85,7 @@ The following is an example of a payload that is collected:
 
 ## Configure diagnostics collection
 
-To control whether to send diagnostics to YugabyteDB, you can use the `--send-diagnostics` flag or export an environment variable.
+To control whether to send diagnostics to Yugabyte, you can use the `--send-diagnostics` flag or export an environment variable.
 
 Set the flag as follows:
 
