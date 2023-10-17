@@ -194,6 +194,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
                   << SysTabletsEntryPB::State_Name(metadata.state())
                   << ", unknown table for this tablet: " << metadata.table_id();
     }
+    catalog_manager_->deleted_tablets_loaded_from_sys_catalog_.insert(tablet_id);
     return Status::OK();
   }
 
@@ -239,6 +240,10 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
 
     tablet_deleted = l.mutable_data()->is_deleted();
     listed_as_hidden = l.mutable_data()->ListedAsHidden();
+
+    if (tablet_deleted) {
+      catalog_manager_->deleted_tablets_loaded_from_sys_catalog_.insert(tablet_id);
+    }
 
     // Assume we need to delete this tablet until we find an active table using this tablet.
     bool should_delete_tablet = !tablet_deleted;
@@ -327,6 +332,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
       string deletion_msg = "Tablet deleted at " + LocalTimeAsString();
       l.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
       needs_async_write_to_sys_catalog = true;
+      catalog_manager_->deleted_tablets_loaded_from_sys_catalog_.insert(tablet_id);
     }
 
     l.Commit();

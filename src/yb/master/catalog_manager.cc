@@ -620,6 +620,18 @@ DEFINE_RUNTIME_bool(master_join_existing_universe, false,
     "other factors. To create a new universe with a new group of masters, unset this flag. Set "
     "this flag on all new and existing master processes once the universe creation completes.");
 
+DEFINE_RUNTIME_bool(master_enable_deletion_check_for_orphaned_tablets, true,
+    "When set, this flag adds stricter protection around the deletion of orphaned tablets. When "
+    "master leader is processing a tablet report and doesn't know about a tablet, explicitly "
+    "check that the tablet has been deleted in the past. If it has, then issue a DeleteTablet "
+    "to the tservers. Otherwise, it means that tserver has heartbeated to the wrong cluster, "
+    "or there has been sys catalog corruption. In this case, log an error but don't actually "
+    "delete any data.");
+
+DEFINE_test_flag(bool, simulate_sys_catalog_data_loss, false,
+    "On the heartbeat processing path, simulate a scenario where tablet metadata is missing due to "
+    "a corruption. ");
+
 #define RETURN_FALSE_IF(cond) \
   do { \
     if ((cond)) { \
@@ -1452,6 +1464,8 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   }
   // Clear the hidden tablets vector.
   hidden_tablets_.clear();
+
+  deleted_tablets_loaded_from_sys_catalog_.clear();
 
   RETURN_NOT_OK(Load<NamespaceLoader>("namespaces", state));
   RETURN_NOT_OK(Load<TableLoader>("tables", state));
@@ -8277,14 +8291,25 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
 
       // 1a. Find the tablet, deleting/skipping it if it can't be found.
       scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, tablet_id);
-      if (!tablet) {
+      if (!tablet || FLAGS_TEST_simulate_sys_catalog_data_loss) {
+        // Every tablet in the report that is processed gets a heartbeat response entry.
+        ReportedTabletUpdatesPB* update = full_report_update->add_tablets();
+        update->set_tablet_id(tablet_id);
+
+        if (GetAtomicFlag(&FLAGS_master_enable_deletion_check_for_orphaned_tablets) &&
+            !deleted_tablets_loaded_from_sys_catalog_.contains(tablet_id)) {
+          // See the comment in deleted_tablets_loaded_from_sys_catalog_ declaration for an
+          // explanation of this logic.
+          LOG_WITH_PREFIX(ERROR) << Format(
+              "Skipping deletion of orphaned tablet $0, since master has never registered this "
+              "tablet.", tablet_id);
+          continue;
+        }
+
         // If a TS reported an unknown tablet, send a delete tablet rpc to the TS.
         LOG(INFO) << "Null tablet reported, possibly the TS was not around when the"
                       " table was being deleted. Sending Delete tablet RPC to this TS.";
         orphaned_tablets.insert(tablet_id);
-        // Every tablet in the report that is processed gets a heartbeat response entry.
-        ReportedTabletUpdatesPB* update = full_report_update->add_tablets();
-        update->set_tablet_id(tablet_id);
         continue;
       }
       if (!tablet->table() || tables_->FindTableOrNull(tablet->table()->id()) == nullptr) {
@@ -10734,6 +10759,7 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
       auto& tablet_lock = tablet_data.lock;
 
       tablet_lock.Commit();
+
       LOG(INFO) << (tablet_data.hide_only ? "Hid" : "Deleted") << " tablet " << tablet->tablet_id();
 
       if (transaction_status_tablets) {
