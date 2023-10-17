@@ -23553,109 +23553,6 @@
         "tags" : [ "Universe Upgrades Management" ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/ybc/disable" : {
-      "put" : {
-        "operationId" : "disable",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "tags" : [ "Ybc Management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/ybc/install" : {
-      "put" : {
-        "operationId" : "install",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "ybcVersion",
-          "required" : false,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "tags" : [ "Ybc Management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/ybc/upgrade" : {
-      "put" : {
-        "operationId" : "upgrade",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "ybcVersion",
-          "required" : false,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "tags" : [ "Ybc Management" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/ybc_throttle_params" : {
       "get" : {
         "description" : "",
@@ -24778,36 +24675,6 @@
         "tags" : [ "Node instances" ]
       }
     },
-    "/api/v1/fetch_package" : {
-      "post" : {
-        "description" : "",
-        "operationId" : "fetchPackage",
-        "parameters" : [ {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "Package to be imported",
-          "in" : "body",
-          "name" : "Package",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/PackagesRequestParams"
-          }
-        } ],
-        "produces" : [ "application/gzip" ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "string"
-            }
-          }
-        },
-        "summary" : "Fetch a package",
-        "tags" : [ "PackagesController" ]
-      }
-    },
     "/api/v1/grafana_dashboard" : {
       "get" : {
         "description" : "",
@@ -25276,8 +25143,6 @@
   }, {
     "name" : "PITR management"
   }, {
-    "name" : "PackagesController"
-  }, {
     "name" : "Performance Advisor"
   }, {
     "name" : "Region management"
@@ -25315,8 +25180,6 @@
     "name" : "UniverseClusterMutations"
   }, {
     "name" : "User management"
-  }, {
-    "name" : "Ybc Management"
   }, {
     "name" : "preview"
   } ]

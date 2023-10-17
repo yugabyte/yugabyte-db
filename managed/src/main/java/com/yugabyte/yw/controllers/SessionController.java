@@ -217,7 +217,12 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "getLogs", response = LogData.class)
   @With(TokenAuthenticator.class)
-  @AuthzPath
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getLogs(Integer maxLines) {
     String appHomeDir = config.getString("application.home");
     String logDir = config.getString("log.override.path");
@@ -245,7 +250,12 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "getFilteredLogs", produces = "text/plain", response = String.class)
   @With(TokenAuthenticator.class)
-  @AuthzPath
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getFilteredLogs(
       Integer maxLines,
       String universeName,
