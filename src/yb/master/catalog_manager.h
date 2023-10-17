@@ -2106,6 +2106,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Tablets that were hidden instead of deleted. Used to clean up such tablets when they expire.
   std::vector<TabletInfoPtr> hidden_tablets_ GUARDED_BY(mutex_);
 
+  // The set of tablets that have ever been deleted from the cluster. This set is populated on the
+  // TabletLoader path in VisitSysCatalog when the loader sees a tablet with DELETED state.
+  // This set is used when processing a tablet report. If a reported tablet is not present in
+  // tablet_map_, then make sure it is present in deleted_tablets_loaded_from_sys_catalog_ before
+  // issuing a DeleteTablet call to tservers. It is possible in the case of corrupted sys catalog or
+  // tservers heartbeating into wrong clusters that live data is considered to be orphaned. So make
+  // sure that the tablet was explicitly deleted before deleting any on-disk data from tservers.
+  std::unordered_set<TabletId> deleted_tablets_loaded_from_sys_catalog_ GUARDED_BY(mutex_);
+
   // Split parent tablets that are now hidden and still being replicated by some CDC stream. Keep
   // track of these tablets until their children tablets start being polled, at which point they
   // can be deleted and cdc_state metadata can also be cleaned up. retained_by_xcluster_ is a
