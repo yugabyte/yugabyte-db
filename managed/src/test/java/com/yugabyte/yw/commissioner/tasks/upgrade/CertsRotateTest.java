@@ -5,11 +5,11 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSERVER;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
-import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
@@ -429,13 +429,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
   public void testCertsRotateNonRestartUpgrade() throws IOException, NoSuchAlgorithmException {
     CertsRotateParams taskParams =
         getTaskParams(false, false, false, UpgradeOption.NON_RESTART_UPGRADE);
-    TaskInfo taskInfo = submitTask(taskParams);
-    if (taskInfo == null) {
-      fail();
-    }
-
-    assertEquals(Failure, taskInfo.getTaskState());
-    assertEquals(1, taskInfo.getSubTasks().size());
+    assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
   }
 
@@ -470,11 +464,6 @@ public class CertsRotateTest extends UpgradeTaskTest {
             rootAndClientRootCASame,
             UpgradeOption.NON_ROLLING_UPGRADE);
 
-    TaskInfo taskInfo = submitTask(taskParams);
-    if (taskInfo == null) {
-      fail();
-    }
-
     boolean isRootCARequired =
         EncryptionInTransitUtil.isRootCARequired(
             currentNodeToNode, currentClientToNode, rootAndClientRootCASame);
@@ -497,13 +486,15 @@ public class CertsRotateTest extends UpgradeTaskTest {
           && currentClientToNode
           && !currentRootAndClientRootCASame
           && rootAndClientRootCASame)) {
-        assertEquals(Failure, taskInfo.getTaskState());
-        assertEquals(1, taskInfo.getSubTasks().size());
+        assertThrows(RuntimeException.class, () -> submitTask(taskParams));
         verify(mockNodeManager, times(0)).nodeCommand(any(), any());
         return;
       }
     }
-
+    TaskInfo taskInfo = submitTask(taskParams);
+    if (taskInfo == null) {
+      fail();
+    }
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
 
@@ -580,11 +571,6 @@ public class CertsRotateTest extends UpgradeTaskTest {
             rootAndClientRootCASame,
             UpgradeOption.ROLLING_UPGRADE);
 
-    TaskInfo taskInfo = submitTask(taskParams);
-    if (taskInfo == null) {
-      fail();
-    }
-
     boolean isRootCARequired =
         EncryptionInTransitUtil.isRootCARequired(
             currentNodeToNode, currentClientToNode, rootAndClientRootCASame);
@@ -607,13 +593,15 @@ public class CertsRotateTest extends UpgradeTaskTest {
           && currentClientToNode
           && !currentRootAndClientRootCASame
           && rootAndClientRootCASame)) {
-        assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
-        assertEquals(1, taskInfo.getSubTasks().size());
+        assertThrows(RuntimeException.class, () -> submitTask(taskParams));
         verify(mockNodeManager, times(0)).nodeCommand(any(), any());
         return;
       }
     }
-
+    TaskInfo taskInfo = submitTask(taskParams);
+    if (taskInfo == null) {
+      fail();
+    }
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
 
@@ -706,11 +694,6 @@ public class CertsRotateTest extends UpgradeTaskTest {
             isRolling,
             currentRootAndClientRootCASame);
 
-    TaskInfo taskInfo = submitTask(taskParams);
-    if (taskInfo == null) {
-      fail();
-    }
-
     boolean isRootCARequired =
         EncryptionInTransitUtil.isRootCARequired(
             currentNodeToNode, currentClientToNode, currentRootAndClientRootCASame);
@@ -721,12 +704,15 @@ public class CertsRotateTest extends UpgradeTaskTest {
     // Expected failure scenarios
     if (!((isRootCARequired && selfSignedServerCertRotate)
         || (isClientRootCARequired && selfSignedClientCertRotate))) {
-      assertEquals(Failure, taskInfo.getTaskState());
-      assertEquals(1, taskInfo.getSubTasks().size());
+      assertThrows(RuntimeException.class, () -> submitTask(taskParams));
       verify(mockNodeManager, times(0)).nodeCommand(any(), any());
       return;
     }
 
+    TaskInfo taskInfo = submitTask(taskParams);
+    if (taskInfo == null) {
+      fail();
+    }
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
 
