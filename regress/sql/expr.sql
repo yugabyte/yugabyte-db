@@ -2830,6 +2830,17 @@ SELECT * from cypher('list', $$RETURN range(-10, 10, -1)$$) as (range agtype);
 SELECT * from cypher('list', $$RETURN range(null, -10, -3)$$) as (range agtype);
 SELECT * from cypher('list', $$RETURN range(0, null, -3)$$) as (range agtype);
 SELECT * from cypher('list', $$RETURN range(0, -10.0, -3.0)$$) as (range agtype);
+-- tail()
+-- should return the last elements of the list
+SELECT * FROM cypher('list', $$ RETURN tail([1,2,3,4,5]) $$) AS (tail agtype);
+SELECT * FROM cypher('list', $$ RETURN tail(["a","b","c","d","e"]) $$) AS (tail agtype);
+-- should return null
+SELECT * FROM cypher('list', $$ RETURN tail([1]) $$) AS (tail agtype);
+SELECT * FROM cypher('list', $$ RETURN tail([]) $$) AS (tail agtype);
+-- should throw errors
+SELECT * FROM cypher('list', $$ RETURN tail(123) $$) AS (tail agtype);
+SELECT * FROM cypher('list', $$ RETURN tail(abc) $$) AS (tail agtype);
+SELECT * FROM cypher('list', $$ RETURN tail() $$) AS (tail agtype);
 -- labels()
 SELECT * from cypher('list', $$CREATE (u:People {name: "John"}) RETURN u$$) as (Vertices agtype);
 SELECT * from cypher('list', $$CREATE (u:People {name: "Larry"}) RETURN u$$) as (Vertices agtype);

@@ -6928,6 +6928,45 @@ SELECT * from cypher('list', $$RETURN range(0, null, -3)$$) as (range agtype);
 ERROR:  range(): neither start or end can be NULL
 SELECT * from cypher('list', $$RETURN range(0, -10.0, -3.0)$$) as (range agtype);
 ERROR:  range() unsupported argument type
+-- tail()
+-- should return the last elements of the list
+SELECT * FROM cypher('list', $$ RETURN tail([1,2,3,4,5]) $$) AS (tail agtype);
+     tail     
+--------------
+ [2, 3, 4, 5]
+(1 row)
+
+SELECT * FROM cypher('list', $$ RETURN tail(["a","b","c","d","e"]) $$) AS (tail agtype);
+         tail         
+----------------------
+ ["b", "c", "d", "e"]
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('list', $$ RETURN tail([1]) $$) AS (tail agtype);
+ tail 
+------
+ 
+(1 row)
+
+SELECT * FROM cypher('list', $$ RETURN tail([]) $$) AS (tail agtype);
+ tail 
+------
+ 
+(1 row)
+
+-- should throw errors
+SELECT * FROM cypher('list', $$ RETURN tail(123) $$) AS (tail agtype);
+ERROR:  tail() argument must resolve to a list or null
+SELECT * FROM cypher('list', $$ RETURN tail(abc) $$) AS (tail agtype);
+ERROR:  could not find rte for abc
+LINE 1: SELECT * FROM cypher('list', $$ RETURN tail(abc) $$) AS (tai...
+                                                    ^
+SELECT * FROM cypher('list', $$ RETURN tail() $$) AS (tail agtype);
+ERROR:  function ag_catalog.age_tail() does not exist
+LINE 1: SELECT * FROM cypher('list', $$ RETURN tail() $$) AS (tail a...
+                                               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 -- labels()
 SELECT * from cypher('list', $$CREATE (u:People {name: "John"}) RETURN u$$) as (Vertices agtype);
                                       vertices                                       
