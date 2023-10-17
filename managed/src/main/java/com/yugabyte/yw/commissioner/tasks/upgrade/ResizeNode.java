@@ -46,12 +46,15 @@ public class ResizeNode extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams() {
+    taskParams().verifyParams(getUniverse());
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
           Universe universe = getUniverse();
-          // Verify the request params and fail if invalid.
-          taskParams().verifyParams(universe);
           LinkedHashSet<NodeDetails> nodes = fetchNodesForCluster();
           // Create task sequence to resize nodes.
           for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {

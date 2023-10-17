@@ -45,12 +45,15 @@ public class TlsToggle extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams() {
+    verifyParams();
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
-          // Verify the request params and fail if invalid
-          verifyParams();
           // Copy any new certs to all nodes
           createCopyCertTasks(nodes.getRight());
           // Round 1 gflags upgrade

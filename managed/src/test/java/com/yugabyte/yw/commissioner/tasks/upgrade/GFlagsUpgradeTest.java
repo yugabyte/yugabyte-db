@@ -7,7 +7,9 @@ import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.Serv
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -384,12 +386,11 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   @Test
   public void testGFlagsUpgradeWithEmptyFlags() {
     GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
-    TaskInfo taskInfo = submitTask(taskParams);
+    assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(Failure, taskInfo.getTaskState());
+    assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     defaultUniverse.refresh();
     assertEquals(2, defaultUniverse.version);
-    assertTrue(taskInfo.getSubTasks().isEmpty());
   }
 
   @Test

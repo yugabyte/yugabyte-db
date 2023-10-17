@@ -46,13 +46,16 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams() {
+    taskParams().verifyParams(getUniverse());
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
           Universe universe = getUniverse();
-          // Verify the request params and fail if invalid.
-          taskParams().verifyParams(universe);
           // Precheck for Available Memory on tserver nodes.
           long memAvailableLimit =
               runtimeConfigFactory

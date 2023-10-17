@@ -2,11 +2,14 @@
 
 package com.yugabyte.yw.forms;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
@@ -39,7 +42,8 @@ public class ResizeNodeParams extends UpgradeTaskParams {
     super.verifyParams(universe);
 
     if (upgradeOption != UpgradeOption.ROLLING_UPGRADE) {
-      throw new IllegalArgumentException(
+      throw new PlatformServiceException(
+          BAD_REQUEST,
           "Only ROLLING_UPGRADE option is supported for resizing node (changing VM type).");
     }
 
@@ -62,7 +66,7 @@ public class ResizeNodeParams extends UpgradeTaskParams {
       String errorStr =
           checkResizeIsPossible(currentUserIntent, newUserIntent, allowUnsupportedInstances);
       if (errorStr != null) {
-        throw new IllegalArgumentException(errorStr);
+        throw new PlatformServiceException(BAD_REQUEST, errorStr);
       }
       hasClustersToResize = true;
     }

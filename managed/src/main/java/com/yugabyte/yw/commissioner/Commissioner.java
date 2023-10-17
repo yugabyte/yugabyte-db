@@ -59,8 +59,6 @@ public class Commissioner {
   public static final String ENABLE_DETAILED_LOGGING_FAILED_REQUEST =
       "yb.logging.enable_task_failed_request_logs";
 
-  public static final Logger LOG = LoggerFactory.getLogger(Commissioner.class);
-
   private final ExecutorService executor;
 
   private final TaskExecutor taskExecutor;
@@ -86,9 +84,9 @@ public class Commissioner {
     this.taskExecutor = taskExecutor;
     this.runtimeConfigFactory = runConfigFactory;
     executor = platformExecutorFactory.createExecutor("commissioner", namedThreadFactory);
-    LOG.info("Started Commissioner TaskPool.");
+    log.info("Started Commissioner TaskPool.");
     progressMonitor.start(runningTasks);
-    LOG.info("Started TaskProgressMonitor thread.");
+    log.info("Started TaskProgressMonitor thread.");
   }
 
   /**
@@ -147,7 +145,10 @@ public class Commissioner {
         }
       }
       String msg = "Error processing " + taskType + " task for " + taskParams.toString();
-      LOG.error(msg, t);
+      log.error(msg, t);
+      if (t instanceof PlatformServiceException) {
+        throw t;
+      }
       throw new RuntimeException(msg, t);
     }
   }
@@ -167,7 +168,7 @@ public class Commissioner {
     }
 
     if (taskInfo.getTaskState() != TaskInfo.State.Running) {
-      LOG.warn("Task {} is not running", taskUUID);
+      log.warn("Task {} is not running", taskUUID);
       return false;
     }
     CountDownLatch latch = pauseLatches.get(taskUUID);
@@ -255,7 +256,7 @@ public class Commissioner {
     TaskInfo taskInfo = TaskInfo.get(taskUUID);
     if (task == null || taskInfo == null) {
       // We are not able to find the task. Report an error.
-      LOG.error("Error fetching task progress for {}. TaskInfo is not found", taskUUID);
+      log.error("Error fetching task progress for {}. TaskInfo is not found", taskUUID);
       return Optional.empty();
     }
     Map<UUID, Set<String>> updatingTaskByTargetMap = new HashMap<>();
@@ -311,7 +312,7 @@ public class Commissioner {
       try {
         position = Integer.parseInt(value);
       } catch (NumberFormatException e) {
-        LOG.warn("Error in parsing subtask position for {}, ignoring it.", property, e);
+        log.warn("Error in parsing subtask position for {}, ignoring it.", property, e);
         position = -1;
       }
     }
@@ -327,13 +328,13 @@ public class Commissioner {
           new TaskExecutionListener() {
             @Override
             public void beforeTask(TaskInfo taskInfo) {
-              LOG.info("About to execute task {}", taskInfo);
+              log.info("About to execute task {}", taskInfo);
               beforeTaskConsumer.accept(taskInfo);
             }
 
             @Override
             public void afterTask(TaskInfo taskInfo, Throwable t) {
-              LOG.info("Task {} is completed", taskInfo);
+              log.info("Task {} is completed", taskInfo);
             }
           };
     }
@@ -350,7 +351,7 @@ public class Commissioner {
       Consumer<TaskInfo> abortConsumer =
           taskInfo -> {
             if (taskInfo.getPosition() >= subTaskAbortPosition) {
-              LOG.debug("Aborting task {} at position {}", taskInfo, taskInfo.getPosition());
+              log.debug("Aborting task {} at position {}", taskInfo, taskInfo.getPosition());
               throw new CancellationException("Subtask cancelled");
             }
           };
@@ -361,7 +362,7 @@ public class Commissioner {
       Consumer<TaskInfo> pauseConsumer =
           taskInfo -> {
             if (taskInfo.getPosition() >= subTaskPausePosition) {
-              LOG.debug("Pausing task {} at position {}", taskInfo, taskInfo.getPosition());
+              log.debug("Pausing task {} at position {}", taskInfo, taskInfo.getPosition());
               final UUID subTaskUUID = taskInfo.getParentUUID();
               try {
                 // Insert if absent and get the latch.
@@ -421,7 +422,7 @@ public class Commissioner {
                   isRunning.set(false);
                 }
               } else {
-                LOG.warn("Skipping task heartbeating as it is running.");
+                log.warn("Skipping task heartbeating as it is running.");
               }
             },
             this.executionContext);
@@ -439,7 +440,7 @@ public class Commissioner {
           if (taskRunnable.isTaskRunning()) {
             taskRunnable.doHeartbeat();
           } else if (taskRunnable.hasTaskCompleted()) {
-            LOG.info(
+            log.info(
                 "Task {} has completed with {} state.", taskRunnable, taskRunnable.getTaskState());
             // Remove task from the set of live tasks.
             iter.remove();

@@ -30,6 +30,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
@@ -523,5 +524,12 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
     JsonNode errNode = taskInfo.getSubTasks().get(0).getTaskDetails().get("errorString");
     assertThat(errNode.toString(), containsString("is aborted while waiting"));
+  }
+
+  @Test
+  public void testTaskValidationFailure() {
+    ITask task = mockTaskCommon(false);
+    doThrow(new IllegalArgumentException("Validation failed")).when(task).validateParams();
+    assertThrows(PlatformServiceException.class, () -> taskExecutor.createRunnableTask(task));
   }
 }

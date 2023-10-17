@@ -29,12 +29,15 @@ public class RestartUniverse extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams() {
+    taskParams().verifyParams(getUniverse());
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
-          // Verify the request params and fail if invalid
-          taskParams().verifyParams(getUniverse());
           // Restart all nodes
           createRestartTasks(nodes, taskParams().upgradeOption);
         });

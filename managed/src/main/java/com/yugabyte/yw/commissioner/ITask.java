@@ -32,6 +32,12 @@ public interface ITask extends Runnable {
   /** Clean up the initialization */
   public void terminate();
 
+  /**
+   * This is invoked after the task params are initialized for validations before the actual task is
+   * created.
+   */
+  void validateParams();
+
   /** A short name representing the task. */
   public String getName();
 

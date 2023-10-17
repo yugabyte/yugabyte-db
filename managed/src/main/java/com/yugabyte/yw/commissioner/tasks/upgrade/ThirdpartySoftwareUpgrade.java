@@ -38,22 +38,25 @@ public class ThirdpartySoftwareUpgrade extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams() {
+    Universe universe = getUniverse();
+    taskParams().clusters =
+        taskParams()
+            .clusters
+            .stream()
+            .map(c -> universe.getCluster(c.uuid))
+            .collect(Collectors.toList());
+    taskParams().rootCA = universe.getUniverseDetails().rootCA;
+    taskParams().clientRootCA = universe.getUniverseDetails().clientRootCA;
+    taskParams().verifyParams(getUniverse());
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
           LinkedHashSet<NodeDetails> nodesToUpdate =
               toOrderedSet(fetchNodes(taskParams().upgradeOption));
-          // Verify the request params and fail if invalid
-          Universe universe = getUniverse();
-          taskParams().clusters =
-              taskParams()
-                  .clusters
-                  .stream()
-                  .map(c -> universe.getCluster(c.uuid))
-                  .collect(Collectors.toList());
-          taskParams().rootCA = universe.getUniverseDetails().rootCA;
-          taskParams().clientRootCA = universe.getUniverseDetails().clientRootCA;
-          taskParams().verifyParams(universe);
 
           createRollingNodesUpgradeTaskFlow(
               (nodes, processTypes) -> {

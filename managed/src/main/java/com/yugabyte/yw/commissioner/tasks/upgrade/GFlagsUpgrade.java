@@ -42,6 +42,11 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams() {
+    taskParams().verifyParams(getUniverse());
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
@@ -54,8 +59,6 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
               !taskParams().tserverGFlags.equals(getUserIntent().tserverGFlags)
                   ? fetchTServerNodes(taskParams().upgradeOption)
                   : new ArrayList<>();
-          // Verify the request params and fail if invalid
-          taskParams().verifyParams(getUniverse());
           // Upgrade GFlags in all nodes
           createGFlagUpgradeTasks(masterNodes, tServerNodes);
           // Update the list of parameter key/values in the universe with the new ones.

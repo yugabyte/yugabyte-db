@@ -5,11 +5,11 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.EITHER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
-import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -146,8 +146,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     ResizeNodeParams taskParams = createResizeParams();
     taskParams.upgradeOption = UpgradeTaskParams.UpgradeOption.NON_ROLLING_UPGRADE;
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
-    TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(Failure, taskInfo.getTaskState());
+    assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     verifyNoMoreInteractions(mockNodeManager);
   }
 
@@ -156,8 +155,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     ResizeNodeParams taskParams = createResizeParams();
     taskParams.upgradeOption = UpgradeTaskParams.UpgradeOption.NON_RESTART_UPGRADE;
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
-    TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(Failure, taskInfo.getTaskState());
+    assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     verifyNoMoreInteractions(mockNodeManager);
   }
 
@@ -165,8 +163,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   public void testNoChangesFails() {
     ResizeNodeParams taskParams = createResizeParams();
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
-    TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(Failure, taskInfo.getTaskState());
+    assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     verifyNoMoreInteractions(mockNodeManager);
   }
 
@@ -176,10 +173,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
     taskParams.clusters.get(0).userIntent.deviceInfo.volumeSize += 10;
     taskParams.clusters.get(0).userIntent.deviceInfo.numVolumes++;
-    TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(Failure, taskInfo.getTaskState());
+    Exception thrown = assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     assertThat(
-        taskInfo.getErrorMessage(),
+        thrown.getMessage(),
         containsString("Only volume size should be changed to do smart resize"));
     verifyNoMoreInteractions(mockNodeManager);
   }
@@ -191,10 +187,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     taskParams.clusters.get(0).userIntent.deviceInfo.volumeSize += 10;
     taskParams.clusters.get(0).userIntent.deviceInfo.storageType =
         PublicCloudConstants.StorageType.GP2;
-    TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(Failure, taskInfo.getTaskState());
+    Exception thrown = assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     assertThat(
-        taskInfo.getErrorMessage(),
+        thrown.getMessage(),
         containsString("Only volume size should be changed to do smart resize"));
     verifyNoMoreInteractions(mockNodeManager);
   }

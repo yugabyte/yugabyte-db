@@ -5,10 +5,10 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.DownloadingSoftware;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
-import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -250,23 +250,20 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = "old-version";
 
-    TaskInfo taskInfo = submitTask(taskParams);
+    assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
     assertEquals(2, defaultUniverse.version);
-    assertTrue(taskInfo.getSubTasks().isEmpty());
   }
 
   @Test
   public void testSoftwareUpgradeWithoutVersion() {
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    TaskInfo taskInfo = submitTask(taskParams);
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
     assertEquals(2, defaultUniverse.version);
-    assertTrue(taskInfo.getSubTasks().isEmpty());
   }
 
   @Test

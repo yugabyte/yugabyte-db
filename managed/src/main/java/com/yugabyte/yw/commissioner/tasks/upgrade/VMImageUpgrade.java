@@ -57,6 +57,11 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams() {
+    taskParams().verifyParams(getUniverse());
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
@@ -64,8 +69,6 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           Set<NodeDetails> nodeSet = new LinkedHashSet<>();
           nodeSet.addAll(nodes.getLeft());
           nodeSet.addAll(nodes.getRight());
-          // Verify the request params and fail if invalid
-          taskParams().verifyParams(getUniverse());
           // Create task sequence for VM Image upgrade
           createVMImageUpgradeTasks(nodeSet);
 
