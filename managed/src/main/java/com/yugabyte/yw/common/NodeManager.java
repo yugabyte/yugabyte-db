@@ -158,6 +158,8 @@ public class NodeManager extends DevopsBase {
 
   @Inject OtelCollectorConfigGenerator otelCollectorConfigGenerator;
 
+  @Inject LocalNodeManager localNodeManager;
+
   @Override
   protected String getCommandType() {
     return YB_CLOUD_COMMAND_TYPE;
@@ -543,7 +545,6 @@ public class NodeManager extends DevopsBase {
     if (isRootCARequired) {
       subcommandStrings.add("--certs_node_dir");
       subcommandStrings.add(CertificateHelper.getCertsNodeDir(ybHomeDir));
-
       CertificateInfo rootCert = CertificateInfo.get(taskParam.rootCA);
       if (rootCert == null) {
         throw new RuntimeException("No valid rootCA found for " + taskParam.getUniverseUUID());
@@ -861,7 +862,7 @@ public class NodeManager extends DevopsBase {
                 ybcPackage, YBC_PACKAGE_REGEX));
       }
       ybcDir = "ybc" + matcher.group(1);
-      ybcFlags = GFlagsUtil.getYbcFlags(taskParam, config);
+      ybcFlags = GFlagsUtil.getYbcFlags(universe, taskParam, confGetter, config);
       boolean enableVerbose =
           confGetter.getConfForScope(universe, UniverseConfKeys.ybcEnableVervbose);
       if (enableVerbose) {
@@ -2340,6 +2341,9 @@ public class NodeManager extends DevopsBase {
     }
     addNodeAgentCommandArgs(universe, nodeTaskParam, commandArgs, redactedVals);
     addCustomTmpDirectoryCommandArgs(universe, nodeTaskParam, commandArgs);
+    if (userIntent.providerType == CloudType.local) {
+      return localNodeManager.nodeCommand(type, nodeTaskParam, commandArgs);
+    }
     commandArgs.add(nodeTaskParam.nodeName);
     try {
       Map<String, String> envVars =
