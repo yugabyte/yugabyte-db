@@ -674,7 +674,7 @@ func (pg Postgres) copyConfFiles() error {
 
 	// Add trailing slash to handle dataDir being a symlink
 	findArgs := []string{pg.dataDir + "/", "-iname", "*.conf", "-exec", "cp", "{}",
-		pg.ConfFileLocation, ";"}
+		pg.ConfFileLocation, "\\;"}
 	if common.HasSudoAccess() {
 		common.MkdirAllOrFail(pg.ConfFileLocation, 0700)
 		if err := common.Chown(pg.ConfFileLocation, userName, userName, false); err != nil {
