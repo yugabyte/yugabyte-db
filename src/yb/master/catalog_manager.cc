@@ -1046,23 +1046,7 @@ Status CatalogManager::Init() {
   // within CatalogManager. Need not start sys catalog or background tasks
   // when we are started in shell mode.
   if (!master_->opts().IsShellMode()) {
-    RETURN_NOT_OK_PREPEND(sys_catalog_->WaitUntilRunning(),
-                          "Failed waiting for the catalog tablet to run");
-    std::vector<consensus::RaftPeerPB> masters_raft;
-    RETURN_NOT_OK(master_->ListRaftConfigMasters(&masters_raft));
-    std::vector<HostPort> hps;
-    for (const auto& peer : masters_raft) {
-      if (NodeInstance().permanent_uuid() == peer.permanent_uuid()) {
-        continue;
-      }
-      HostPort hp = HostPortFromPB(DesiredHostPort(peer, master_->MakeCloudInfoPB()));
-      hps.push_back(hp);
-    }
-    universe_key_client_ = std::make_unique<client::UniverseKeyClient>(
-        hps, &master_->proxy_cache(), [&] (const encryption::UniverseKeysPB& universe_keys) {
-          encryption_manager_->PopulateUniverseKeys(universe_keys);
-        });
-    universe_key_client_->GetUniverseKeyRegistryAsync();
+    RETURN_NOT_OK(GetUniverseKeyRegistryFromOtherMastersAsync());
     RETURN_NOT_OK(EnableBgTasks());
   }
 
@@ -1596,6 +1580,29 @@ Status CatalogManager::SetUniverseUuidIfNeeded(const LeaderEpoch& epoch) {
   l.mutable_data()->pb.set_universe_uuid(universe_uuid);
   RETURN_NOT_OK(sys_catalog_->Upsert(epoch, cluster_config_.get()));
   l.Commit();
+  return Status::OK();
+}
+
+Status CatalogManager::GetUniverseKeyRegistryFromOtherMastersAsync() {
+  RETURN_NOT_OK_PREPEND(sys_catalog_->WaitUntilRunning(),
+                      "Failed waiting for the catalog tablet to run");
+  std::vector<consensus::RaftPeerPB> masters_raft;
+  RETURN_NOT_OK(master_->ListRaftConfigMasters(&masters_raft));
+  std::vector<HostPort> hps;
+  for (const auto& peer : masters_raft) {
+    if (NodeInstance().permanent_uuid() == peer.permanent_uuid()) {
+      continue;
+    }
+    HostPort hp = HostPortFromPB(DesiredHostPort(peer, master_->MakeCloudInfoPB()));
+    hps.push_back(hp);
+  }
+  if (!universe_key_client_) {
+    universe_key_client_ = std::make_unique<client::UniverseKeyClient>(
+        hps, &master_->proxy_cache(), [&] (const encryption::UniverseKeysPB& universe_keys) {
+          encryption_manager_->PopulateUniverseKeys(universe_keys);
+        });
+  }
+  universe_key_client_->GetUniverseKeyRegistryAsync();
   return Status::OK();
 }
 
@@ -10480,6 +10487,8 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
 
   LOG(INFO) << "Master completed remote bootstrap and is out of shell mode.";
 
+  // Now that we're no longer in shell mode, make call to fetch encryption keys from other masters.
+  RETURN_NOT_OK(GetUniverseKeyRegistryFromOtherMastersAsync());
   RETURN_NOT_OK(EnableBgTasks());
 
   return Status::OK();
