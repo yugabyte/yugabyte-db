@@ -71,14 +71,14 @@ public class RestoreUniverseKeysYbc extends RestoreUniverseKeysTaskBase {
               taskParams().customerUUID, taskParams().storageConfigUUID, taskId, backupStorageInfo);
       String successMarkerString =
           ybcManager.downloadSuccessMarker(
-              downloadSuccessMarkerRequest, taskParams().getUniverseUUID(), taskId);
+              downloadSuccessMarkerRequest, universe.getUniverseUUID(), taskId);
       if (StringUtils.isEmpty(successMarkerString)) {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR, "Got empty success marker response, exiting.");
       }
-      YbcBackupResponse successMarker = ybcBackupUtil.parseYbcBackupResponse(successMarkerString);
+      YbcBackupResponse successMarker = YbcBackupUtil.parseYbcBackupResponse(successMarkerString);
       JsonNode universeKeys =
-          ybcBackupUtil.getUniverseKeysJsonFromSuccessMarker(successMarker.extendedArgsString);
+          YbcBackupUtil.getUniverseKeysJsonFromSuccessMarker(successMarker.extendedArgsString);
 
       RestoreKeyResult restoreResult = RestoreKeyResult.RESTORE_SKIPPED;
       if (universeKeys != null && !universeKeys.isNull()) {
