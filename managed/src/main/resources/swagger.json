@@ -5850,7 +5850,7 @@
           "type" : "string"
         },
         "kubernetesServiceAccount" : {
-          "description" : "DEPRECATED since YBA version 2.17.3.0. kubernetes service account is not needed.",
+          "description" : "Deprecated since YBA version 2.17.3.0. kubernetes service account is not needed.",
           "type" : "string"
         },
         "kubernetesStorageClass" : {
@@ -6165,7 +6165,7 @@
           "type" : "string"
         },
         "kubernetesServiceAccount" : {
-          "description" : "DEPRECATED since YBA version 2.17.3.0. kubernetes service account is not needed.",
+          "description" : "Deprecated since YBA version 2.17.3.0. kubernetes service account is not needed.",
           "type" : "string"
         },
         "kubernetesStorageClass" : {

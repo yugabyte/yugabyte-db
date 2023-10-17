@@ -16,9 +16,12 @@ public class PlatformSwaggerSpecFilter extends AbstractSpecFilter {
   public static final Logger LOG = LoggerFactory.getLogger(PlatformSwaggerSpecFilter.class);
   // Look for APIs marked with this string in its API annotation value
   private static final String INTERNAL_MARKER = "YbaApi Internal";
+  private static final String DEPRECATED_MARKER = "Deprecated since YBA version";
+  private boolean isStrictMode = false;
 
   public PlatformSwaggerSpecFilter() {
     PlatformModelConverter.register();
+    isStrictMode = "all".equalsIgnoreCase(PlatformModelConverter.excludeYbaDeprecatedOption);
   }
 
   @Override
@@ -31,6 +34,12 @@ public class PlatformSwaggerSpecFilter extends AbstractSpecFilter {
     if (operation.getSummary() != null && operation.getSummary().contains(INTERNAL_MARKER)) {
       LOG.info("Skipping swagger generation for internal method '{}'", operation.getOperationId());
       return false;
+    }
+    if (isStrictMode) {
+      if (operation.getSummary() != null && operation.getSummary().contains(DEPRECATED_MARKER)) {
+        LOG.info("Skipping deprecated method in strict mode '{}'", operation.getOperationId());
+        return false;
+      }
     }
     return true;
   }
@@ -51,6 +60,16 @@ public class PlatformSwaggerSpecFilter extends AbstractSpecFilter {
           operation.getOperationId());
       return false;
     }
+    if (isStrictMode) {
+      if (parameter.getDescription() != null
+          && parameter.getDescription().contains(DEPRECATED_MARKER)) {
+        LOG.info(
+            "Skipping deprecated param in strict mode '{}' of operation '{}",
+            parameter.getName(),
+            operation.getOperationId());
+        return false;
+      }
+    }
     return true;
   }
 
@@ -63,6 +82,12 @@ public class PlatformSwaggerSpecFilter extends AbstractSpecFilter {
     if (model.getDescription() != null && model.getDescription().contains(INTERNAL_MARKER)) {
       LOG.info("Skipping swagger generation for model '{}'", ((ModelImpl) model).getName());
       return false;
+    }
+    if (isStrictMode) {
+      if (model.getDescription() != null && model.getDescription().contains(DEPRECATED_MARKER)) {
+        LOG.info("Skipping deprecated model in strict mode '{}'", ((ModelImpl) model).getName());
+        return false;
+      }
     }
     return true;
   }
@@ -82,6 +107,7 @@ public class PlatformSwaggerSpecFilter extends AbstractSpecFilter {
           ((ModelImpl) model).getName());
       return false;
     }
+    // TODO: move deprecation skipping of model property from PlatformModelConverter to here
     return true;
   }
 }
