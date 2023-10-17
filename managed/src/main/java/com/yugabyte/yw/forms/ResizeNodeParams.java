@@ -85,7 +85,8 @@ public class ResizeNodeParams extends UpgradeTaskParams {
     }
 
     if (upgradeOption != UpgradeOption.ROLLING_UPGRADE) {
-      throw new IllegalArgumentException(
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
           "Only ROLLING_UPGRADE option is supported for resizing node (changing VM type).");
     }
 
@@ -102,12 +103,12 @@ public class ResizeNodeParams extends UpgradeTaskParams {
           getResizeIsPossibleError(
               cluster.uuid, currentUserIntent, newUserIntent, universe, runtimeConfGetter, true);
       if (errorStr != null) {
-        throw new IllegalArgumentException(errorStr);
+        throw new PlatformServiceException(Status.BAD_REQUEST, errorStr);
       }
       hasClustersToResize = true;
     }
     if (!hasClustersToResize && !forceResizeNode) {
-      throw new IllegalArgumentException("No changes!");
+      throw new PlatformServiceException(Status.BAD_REQUEST, "No changes!");
     }
   }
 

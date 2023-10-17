@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.yugabyte.yw.models.helpers.CommonUtils.getDurationSeconds;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -16,6 +17,7 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DrainableMap;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShutdownHookHandler;
@@ -309,6 +311,15 @@ public class TaskExecutor {
    */
   public RunnableTask createRunnableTask(ITask task) {
     checkNotNull(task, "Task must be set");
+    try {
+      task.validateParams();
+    } catch (PlatformServiceException e) {
+      log.error("Params validation failed for task " + task, e);
+      throw e;
+    } catch (Exception e) {
+      log.error("Params validation failed for task " + task, e);
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+    }
     TaskInfo taskInfo = createTaskInfo(task);
     taskInfo.setPosition(-1);
     taskInfo.save();

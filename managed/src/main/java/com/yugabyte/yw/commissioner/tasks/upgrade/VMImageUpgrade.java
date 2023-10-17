@@ -76,12 +76,15 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams() {
+    taskParams().verifyParams(getUniverse());
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
           Set<NodeDetails> nodeSet = fetchAllNodes(taskParams().upgradeOption);
-          // Verify the request params and fail if invalid
-          taskParams().verifyParams(getUniverse());
 
           String newVersion = taskParams().ybSoftwareVersion;
           if (taskParams().isSoftwareUpdateViaVm) {
