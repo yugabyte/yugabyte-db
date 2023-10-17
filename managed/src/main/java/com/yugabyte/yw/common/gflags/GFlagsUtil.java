@@ -19,11 +19,14 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -325,12 +328,15 @@ public class GFlagsUtil {
 
   /** Return the map of ybc flags which will be passed to the db nodes. */
   public static Map<String, String> getYbcFlags(
-      AnsibleConfigureServers.Params taskParam, Config config) {
-    Universe universe = Universe.getOrBadRequest(taskParam.getUniverseUUID());
+      Universe universe,
+      AnsibleConfigureServers.Params taskParam,
+      RuntimeConfGetter confGetter,
+      Config config) {
     NodeDetails node = universe.getNode(taskParam.nodeName);
     // Both for old clusters and new, binding to both IPs works.
     boolean isDualNet =
-        config.getBoolean("yb.cloud.enabled")
+        confGetter.getConfForScope(
+                Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled)
             && node.cloudInfo.secondary_private_ip != null
             && !node.cloudInfo.secondary_private_ip.equals("null");
     String serverAddresses =
@@ -382,6 +388,13 @@ public class GFlagsUtil {
       String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
       ybcFlags.put("certs_dir_name", certsNodeDir);
     }
+    boolean enableVerbose =
+        confGetter.getConfForScope(universe, UniverseConfKeys.ybcEnableVervbose);
+    if (enableVerbose) {
+      ybcFlags.put("v", "1");
+    }
+    String nfsDirs = confGetter.getConfForScope(universe, UniverseConfKeys.nfsDirs);
+    ybcFlags.put("nfs_dirs", nfsDirs);
     return ybcFlags;
   }
 

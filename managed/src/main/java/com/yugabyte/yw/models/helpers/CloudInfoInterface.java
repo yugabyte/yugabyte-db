@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.DefaultCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
+import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AWSRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
@@ -173,6 +174,13 @@ public interface CloudInfoInterface {
           onpremCloudInfo.withSensitiveDataMasked();
         }
         return (T) onpremCloudInfo;
+      case local:
+        LocalCloudInfo localCloudInfo = cloudInfo.getLocal();
+        if (localCloudInfo == null) {
+          localCloudInfo = new LocalCloudInfo();
+          cloudInfo.setLocal(localCloudInfo);
+        }
+        return (T) localCloudInfo;
       default:
         // Placeholder. Don't want consumers to receive null.
         return (T) new DefaultCloudInfo();
@@ -609,8 +617,8 @@ public interface CloudInfoInterface {
         cloudInfoInterface = cloudInfo.getOnprem();
         break;
       case local:
-        // TODO: check if it used anymore? in case not, remove the local universe case
-        // Import Universe case
+        cloudInfoInterface = cloudInfo.getLocal();
+        break;
       default:
         break;
     }

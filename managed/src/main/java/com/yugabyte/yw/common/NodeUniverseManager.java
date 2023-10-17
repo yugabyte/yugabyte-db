@@ -62,6 +62,7 @@ public class NodeUniverseManager extends DevopsBase {
   @Inject NodeAgentClient nodeAgentClient;
   @Inject NodeAgentPoller nodeAgentPoller;
   @Inject RuntimeConfGetter confGetter;
+  @Inject LocalNodeManager localNodeManager;
 
   @Override
   protected String getCommandType() {
@@ -354,6 +355,10 @@ public class NodeUniverseManager extends DevopsBase {
       String ysqlCommand,
       long timeoutSec,
       boolean authEnabled) {
+    Cluster curCluster = universe.getCluster(node.placementUuid);
+    if (curCluster.userIntent.providerType == CloudType.local) {
+      return localNodeManager.runYsqlCommand(node, universe, dbName, ysqlCommand, timeoutSec);
+    }
     List<String> command = new ArrayList<>();
     command.add("bash");
     command.add("-c");

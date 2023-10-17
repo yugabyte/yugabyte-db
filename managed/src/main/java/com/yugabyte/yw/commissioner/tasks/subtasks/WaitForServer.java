@@ -17,11 +17,14 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
+import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
@@ -30,8 +33,6 @@ import org.yb.client.YBClient;
 public class WaitForServer extends ServerSubTaskBase {
 
   private final YsqlQueryExecutor ysqlQueryExecutor;
-
-  private final Duration POSTGRES_STATUS_RETRY_WAIT_TIME = Duration.ofSeconds(30);
 
   @Inject
   protected WaitForServer(
@@ -69,13 +70,24 @@ public class WaitForServer extends ServerSubTaskBase {
       } else if (taskParams().serverType.equals(ServerType.YSQLSERVER)) {
         Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
         NodeDetails node = universe.getNode(taskParams().nodeName);
+        Provider provider =
+            Provider.getOrBadRequest(
+                UUID.fromString(
+                    universe
+                        .getUniverseDetails()
+                        .getClusterByUuid(node.placementUuid)
+                        .userIntent
+                        .provider));
         Duration waitTimeout = Duration.ofMillis(taskParams().serverWaitTimeoutMs);
         Stopwatch stopwatch = Stopwatch.createStarted();
+        Duration waitDuration =
+            confGetter.getConfForScope(provider, ProviderConfKeys.waitForYQLRetryDuration);
+        log.debug("Retry duration is {}", waitDuration);
         while (true) {
           log.info("Check if postgres server is healthy on node {}", node.nodeName);
           ret = checkPostgresStatus(universe);
           if (ret || stopwatch.elapsed().compareTo(waitTimeout) > 0) break;
-          waitFor(POSTGRES_STATUS_RETRY_WAIT_TIME);
+          waitFor(waitDuration);
         }
       } else {
         ret = client.waitForServer(hp, taskParams().serverWaitTimeoutMs);
