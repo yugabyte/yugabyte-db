@@ -19877,49 +19877,6 @@
         } ],
         "summary" : "List a provider's regions",
         "tags" : [ "Region management" ]
-      },
-      "post" : {
-        "deprecated" : true,
-        "description" : "",
-        "operationId" : "createRegion",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "pUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "region form data for new region to be created",
-          "in" : "body",
-          "name" : "region",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/RegionFormData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/Region"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Deprecated since YBA version 2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions instead",
-        "tags" : [ "Region management" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/regions/{rUUID}" : {
@@ -19962,55 +19919,6 @@
         } ],
         "summary" : "Delete a region",
         "tags" : [ "Region management" ]
-      },
-      "put" : {
-        "deprecated" : true,
-        "description" : "",
-        "operationId" : "editRegion",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "pUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "rUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "region edit form data",
-          "in" : "body",
-          "name" : "region",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/RegionFormData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "object"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Deprecated since YBA version 2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions instead",
-        "tags" : [ "Region management" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/regions/{rUUID}/zones" : {
@@ -20051,58 +19959,6 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "List availability zones",
-        "tags" : [ "Availability Zones" ]
-      },
-      "post" : {
-        "deprecated" : true,
-        "description" : "",
-        "operationId" : "createAZ",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "pUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "rUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "Availability zone form data",
-          "in" : "body",
-          "name" : "azFormData",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/AvailabilityZoneFormData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "additionalProperties" : {
-                "$ref" : "#/definitions/AvailabilityZone"
-              },
-              "type" : "object"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Deprecated since YBA version 2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions/:rUUID/region_zones instead",
         "tags" : [ "Availability Zones" ]
       }
     },
@@ -20152,103 +20008,6 @@
         } ],
         "summary" : "Delete an availability zone",
         "tags" : [ "Availability Zones" ]
-      },
-      "put" : {
-        "deprecated" : true,
-        "description" : "",
-        "operationId" : "editAZ",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "pUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "rUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "azUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "Availability zone edit form data",
-          "in" : "body",
-          "name" : "azFormData",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/AvailabilityZoneFormData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/AvailabilityZone"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Deprecated since YBA version 2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions/:rUUID/region_zones/:zUUID instead",
-        "tags" : [ "Availability Zones" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/providers/{pUUID}/releases" : {
-      "get" : {
-        "deprecated" : true,
-        "description" : "",
-        "operationId" : "getListOfRegionReleases",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "pUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "default" : false,
-          "in" : "query",
-          "name" : "includeMetadata",
-          "required" : false,
-          "type" : "boolean"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "additionalProperties" : {
-                "type" : "object"
-              },
-              "type" : "object"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Deprecated since YBA version 2.20.0.0, Use /api/v1/customers/{cUUID}/releases/:arch instead",
-        "tags" : [ "Release management" ]
       }
     },
     "/api/v1/customers/{cUUID}/regions" : {
@@ -21146,42 +20905,6 @@
         "tags" : [ "Audit" ]
       }
     },
-    "/api/v1/customers/{cUUID}/tasks/{tUUID}/failed" : {
-      "get" : {
-        "deprecated" : true,
-        "description" : "",
-        "operationId" : "failedSubtasks",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "tUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "additionalProperties" : {
-                "type" : "object"
-              },
-              "type" : "object"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Deprecated since YBA version 2.19.1.0, Use /api/v1/customers/{cUUID}/tasks/{tUUID}/failed_subtasks instead",
-        "tags" : [ "Customer Tasks" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/tasks/{tUUID}/failed_subtasks" : {
       "get" : {
         "description" : "",
@@ -21486,37 +21209,6 @@
         } ],
         "summary" : "Create Universe Clusters",
         "tags" : [ "UniverseClusterMutations" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/import" : {
-      "post" : {
-        "deprecated" : true,
-        "description" : "",
-        "operationId" : "importUniverse",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/ImportUniverseFormData"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Deprecated since YBA version 2.19.3.0. Do not use, this will be removed soon. Import a universe",
-        "tags" : [ "Universe actions" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}" : {
@@ -26283,8 +25975,6 @@
     "name" : "Telemetry Provider"
   }, {
     "name" : "Universe Upgrades Management"
-  }, {
-    "name" : "Universe actions"
   }, {
     "name" : "Universe database management"
   }, {
