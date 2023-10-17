@@ -372,24 +372,62 @@ static void MemUsageHandler(const Webserver::WebRequest& req, Webserver::WebResp
 #endif
 }
 
-// Registered to handle "/mem-trackers", and prints out to handle memory tracker information.
-static void MemTrackersHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
+static void JsonOutputMemTrackers(const std::vector<MemTrackerData>& trackers,
+                                  std::stringstream *output,
+                                  int max_depth,
+                                  bool use_full_path) {
+  JsonWriter jw(output, JsonWriter::COMPACT);
+  for (auto it = trackers.begin(); it != trackers.end(); it++) {
+    // If the data.depth >= max_depth, skip the info.
+    const auto data = *it;
+    if (data.depth > max_depth) {
+      continue;
+    }
+    const auto& tracker = data.tracker;
+    const std::string tracker_id = use_full_path ? tracker->ToString() : tracker->id();
+    // Output the object
+    jw.StartObject();
+    jw.String("id");
+    jw.String(tracker_id);
+    jw.String("limit_bytes");
+    jw.Int64(tracker->limit());
+    jw.String("current_consumption_bytes");
+    jw.Int64(tracker->consumption());
+    jw.String("peak_consumption_bytes");
+    jw.Int64(tracker->peak_consumption());
+
+    // UpdateConsumption returns true if consumption is taken from external source,
+    // for instance tcmalloc stats. So we should show only it in this case.
+    if (data.consumption_excluded_from_ancestors && !data.tracker->UpdateConsumption()) {
+      jw.String("full_consumption_bytes");
+      jw.Int64(tracker->consumption() + data.consumption_excluded_from_ancestors);
+    }
+
+    jw.String("children");
+    jw.StartArray();
+    const auto next_tracker = std::next(it, 1);
+    if (next_tracker == trackers.end()) {
+      for (int i = 0; i < data.depth + 1; ++i) {
+        jw.EndArray();
+        jw.EndObject();
+      }
+    } else if ((*next_tracker).depth <= data.depth) {
+      for (int i = 0; i < data.depth - (*next_tracker).depth + 1; ++i) {
+        jw.EndArray();
+        jw.EndObject();
+      }
+    }
+  }
+}
+
+static void HtmlOutputMemTrackers(const std::vector<MemTrackerData>& trackers,
+                                  std::stringstream *output,
+                                  int max_depth,
+                                  bool use_full_path) {
   *output << "<h1>Memory usage by subsystem</h1>\n";
   *output << "<table class='table table-striped' id='memtrackerstable'>\n";
   *output << "  <tr><th>Id</th><th>Current Consumption</th>"
       "<th>Peak consumption</th><th>Limit</th></tr>\n";
-
-  int max_depth = INT_MAX;
-  string depth = FindWithDefault(req.parsed_args, "max_depth", "");
-  if (depth != "") {
-    max_depth = std::stoi(depth);
-  }
-  string full_path_arg = FindWithDefault(req.parsed_args, "show_full_path", "true");
-  bool use_full_path = ParseLeadingBoolValue(full_path_arg.c_str(), true);
-
-  std::vector<MemTrackerData> trackers;
-  CollectMemTrackerData(MemTracker::GetRootTracker(), 0, &trackers);
   for (auto it = trackers.begin(); it != trackers.end(); it++) {
     // If the data.depth >= max_depth, skip the info.
     const auto data = *it;
@@ -444,6 +482,30 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, Webserver::WebR
   }
 
   *output << "</table>\n";
+}
+
+// Registered to handle "/mem-trackers", and prints out to handle memory tracker information.
+static void MemTrackersHandler(const Webserver::WebRequest& req,
+                               Webserver::WebResponse* resp,
+                               bool isJson) {
+  std::stringstream *output = &resp->output;
+
+  int max_depth = INT_MAX;
+  string depth = FindWithDefault(req.parsed_args, "max_depth", "");
+  if (!depth.empty()) {
+    max_depth = std::stoi(depth);
+  }
+  string full_path_arg = FindWithDefault(req.parsed_args, "show_full_path", "true");
+  bool use_full_path = ParseLeadingBoolValue(full_path_arg.c_str(), true);
+
+  std::vector<MemTrackerData> trackers;
+  CollectMemTrackerData(MemTracker::GetRootTracker(), 0, &trackers);
+
+  if (isJson) {
+    JsonOutputMemTrackers(trackers, output, max_depth, use_full_path);
+  } else {
+    HtmlOutputMemTrackers(trackers, output, max_depth, use_full_path);
+  }
 }
 
 static Result<MetricLevel> MetricLevelFromName(const std::string& level) {
@@ -631,7 +693,11 @@ void AddDefaultPathHandlers(Webserver* webserver) {
   webserver->RegisterPathHandler("/status", "Status", StatusHandler, false, false);
   webserver->RegisterPathHandler("/memz", "Memory (total)", MemUsageHandler, true, false);
   webserver->RegisterPathHandler("/mem-trackers", "Memory (detail)",
-                                 MemTrackersHandler, true, false);
+                                 std::bind(&MemTrackersHandler, _1, _2, false /* isJson */),
+                                 true, false);
+  webserver->RegisterPathHandler("/api/v1/mem-trackers", "Memory (detail) JSON",
+                                 std::bind(&MemTrackersHandler, _1, _2, true /* isJson */),
+                                 false, false);
   webserver->RegisterPathHandler(
       "/api/v1/varz", "Flags", std::bind(&GetFlagsJsonHandler, _1, _2, webserver), false, false);
   webserver->RegisterPathHandler("/api/v1/version-info", "Build Version Info",
