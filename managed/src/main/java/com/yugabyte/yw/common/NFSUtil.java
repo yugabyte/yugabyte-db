@@ -3,15 +3,12 @@
 package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.PerLocationBackupInfo;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
-import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
-import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestorePreflightParams;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
@@ -55,7 +52,7 @@ public class NFSUtil implements StorageUtil {
       String commonDir,
       String previousBackupLocation,
       CustomerConfigData configData) {
-    String cloudDir = BackupUtil.appendSlash(commonDir);
+    String cloudDir = StringUtils.isNotBlank(commonDir) ? BackupUtil.appendSlash(commonDir) : "";
     String previousCloudDir = "";
     if (StringUtils.isNotBlank(previousBackupLocation)) {
       previousCloudDir =
@@ -139,7 +136,7 @@ public class NFSUtil implements StorageUtil {
   }
 
   @Override
-  public void validateStorageConfigOnUniverse(CustomerConfig config, Universe universe) {
+  public void validateStorageConfigOnUniverseNonRpc(CustomerConfig config, Universe universe) {
     validateDirectory(config.getDataObject(), universe);
   }
 
@@ -310,31 +307,6 @@ public class NFSUtil implements StorageUtil {
             });
     restorePreflightResponseBuilder.perLocationBackupInfoMap(perLocationBackupInfoMap);
     return restorePreflightResponseBuilder.build();
-  }
-
-  @Override
-  public void validateStorageConfigOnSuccessMarker(
-      CustomerConfigData configData, YbcBackupResponse successMarker) {
-    Map<String, String> configRegionBucketMap = getRegionBucketMap(configData);
-    Map<String, BucketLocation> successMarkerBucketLocationMap =
-        successMarker.responseCloudStoreSpec.getBucketLocationsMap();
-    successMarkerBucketLocationMap.entrySet().stream()
-        .forEach(
-            sME -> {
-              if (!configRegionBucketMap.containsKey(sME.getKey())) {
-                throw new PlatformServiceException(
-                    PRECONDITION_FAILED,
-                    String.format("Storage config does not contain region %s", sME.getKey()));
-              }
-              String configBucket = configRegionBucketMap.get(sME.getKey());
-              if (!configBucket.equals(sME.getValue().bucket)) {
-                throw new PlatformServiceException(
-                    PRECONDITION_FAILED,
-                    String.format(
-                        "Unknown bucket %s found for region %s, wanted: %s",
-                        configBucket, sME.getKey(), sME.getValue().bucket));
-              }
-            });
   }
 
   public List<BackupServiceNfsDirDeleteRequest> getBackupServiceNfsDirDeleteRequest(

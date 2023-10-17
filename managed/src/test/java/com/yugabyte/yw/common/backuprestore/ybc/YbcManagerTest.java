@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common.backuprestore.ybc;
 
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -27,6 +28,11 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.YbcClient;
+import org.yb.ybc.BackupServiceValidateCloudConfigRequest;
+import org.yb.ybc.BackupServiceValidateCloudConfigResponse;
+import org.yb.ybc.CloudStoreConfig;
+import org.yb.ybc.ControllerStatus;
+import org.yb.ybc.RpcControllerStatus;
 
 @RunWith(MockitoJUnitRunner.class)
 public class YbcManagerTest extends FakeDBApplication {
@@ -121,5 +127,39 @@ public class YbcManagerTest extends FakeDBApplication {
     assertThrows(
         RuntimeException.class,
         () -> spyYbcManager.getAvailableYbcClientIpPair(testUniverse.getUniverseUUID(), null));
+  }
+
+  @Test(expected = Test.None.class)
+  public void testValidateCloudConfigWithClientSuccess() {
+    YbcClient mockYbcClient = mock(YbcClient.class);
+    CloudStoreConfig csConfig = CloudStoreConfig.getDefaultInstance();
+    BackupServiceValidateCloudConfigResponse vcsResponse =
+        BackupServiceValidateCloudConfigResponse.newBuilder()
+            .setStatus(RpcControllerStatus.newBuilder().setCode(ControllerStatus.OK).build())
+            .build();
+    when(mockYbcClient.backupServiceValidateCloudConfig(
+            any(BackupServiceValidateCloudConfigRequest.class)))
+        .thenReturn(vcsResponse);
+    spyYbcManager.validateCloudConfigWithClient("127.0.0.1", mockYbcClient, csConfig);
+  }
+
+  @Test
+  public void testValidateCloudConfigWithClientWrongStatusFailure() {
+    YbcClient mockYbcClient = mock(YbcClient.class);
+    CloudStoreConfig csConfig = CloudStoreConfig.getDefaultInstance();
+    BackupServiceValidateCloudConfigResponse vcsResponse =
+        BackupServiceValidateCloudConfigResponse.newBuilder()
+            .setStatus(
+                RpcControllerStatus.newBuilder().setCode(ControllerStatus.CONNECTION_ERROR).build())
+            .build();
+    when(mockYbcClient.backupServiceValidateCloudConfig(
+            any(BackupServiceValidateCloudConfigRequest.class)))
+        .thenReturn(vcsResponse);
+    RuntimeException ex =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                spyYbcManager.validateCloudConfigWithClient("127.0.0.1", mockYbcClient, csConfig));
+    assertTrue(ex.getMessage().contains("CONNECTION_ERROR"));
   }
 }

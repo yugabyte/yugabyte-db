@@ -2,12 +2,8 @@
 
 package com.yugabyte.yw.common;
 
-import static play.mvc.Http.Status.PRECONDITION_FAILED;
-
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.PerLocationBackupInfo;
-import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
-import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation;
 import com.yugabyte.yw.forms.RestorePreflightParams;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
 import com.yugabyte.yw.models.Backup.BackupCategory;
@@ -140,31 +136,5 @@ public interface CloudUtil extends StorageUtil {
             });
     preflightResponseBuilder.perLocationBackupInfoMap(perLocationBackupInfoMap);
     return preflightResponseBuilder.build();
-  }
-
-  public default void validateStorageConfigOnSuccessMarker(
-      CustomerConfigData configData, YbcBackupResponse successMarker) {
-    Map<String, String> configLocationMap = getRegionLocationsMap(configData);
-    Map<String, BucketLocation> successMarkerBucketLocationMap =
-        successMarker.responseCloudStoreSpec.getBucketLocationsMap();
-    successMarkerBucketLocationMap.entrySet().stream()
-        .forEach(
-            sME -> {
-              if (!configLocationMap.containsKey(sME.getKey())) {
-                throw new PlatformServiceException(
-                    PRECONDITION_FAILED,
-                    String.format("Storage config does not contain region %s", sME.getKey()));
-              }
-              String configBucket =
-                  getConfigLocationInfo(configLocationMap.get(sME.getKey())).bucket;
-              if (!configBucket.equals(sME.getValue().bucket)) {
-                throw new PlatformServiceException(
-                    PRECONDITION_FAILED,
-                    String.format(
-                        "Unknown bucket %s found for region %s, wanted: %s",
-                        configBucket, sME.getKey(), sME.getValue().bucket));
-              }
-              // TODO: Arjav Garg: Verify list and Read permissions for sME.getValue().cloudDir.
-            });
   }
 }

@@ -961,4 +961,13 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Always run wait for data move during remove node",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> skipConfigBasedPreflightValidation =
+      new ConfKeyInfo<>(
+          "yb.backup.skip_config_based_preflight_validation",
+          ScopeType.UNIVERSE,
+          "Skip storage config backup/restore preflight validation",
+          "Skip preflight validation before backup/scheduled backups/incremental backups/restores."
+              + " This skips the storage config/success marker based validations done before B/R.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
