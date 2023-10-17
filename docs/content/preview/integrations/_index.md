@@ -9,13 +9,14 @@ type: indexpage
 showRightNav: true
 ---
 
-YugabyteDB is wire compatible with PostgreSQL, that makes most PostgreSQL client drivers, ORM frameworks, and any other types of third-party database tools designed for PostgreSQL compatible with YugabyteDB. 
-YugabyteDB has partnered with open-source projects, vendors to guarantee following popular PostgreSQL tools.
+Because YugabyteDB is wire compatible with PostgreSQL, most PostgreSQL client drivers, ORM frameworks, and other types of third-party database tools designed for PostgreSQL are compatible with YugabyteDB.
 
-| Status | Descrption | 
-| :--- | :--- | 
-| Full    | For the tools with Full status, compatibility with the vast majority of the tool's features will be maintained. These tools are regularly tested against the latest version documented.| 
-| Partial | These tools will eventually have full support from YugabyteDB. Although these tool’s core functions such as connecting and performing simple database operations are compatible with YugabyteDB, but full integration may require additional steps, lack support for all features, or exhibit unexpected behavior. | 
+Yugabyte has partnered with open-source projects and vendors to support the following popular PostgreSQL tools.
+
+| Support | Description |
+| :--- | :--- |
+| Full    | Compatibility with the vast majority of the tool or driver features is maintained. These tools are regularly tested against the latest version documented. |
+| Partial | Core functions, such as connecting and performing basic database operations, are compatible with YugabyteDB. Full integration may require additional steps, and some features may not be supported or exhibit unexpected behavior. These tools will eventually have full support from YugabyteDB. |
 
 ## Choose your integration
 
@@ -41,18 +42,18 @@ YugabyteDB has partnered with open-source projects, vendors to guarantee followi
 
 ### Data integration (CDC)
 
-| Tool | Support | Tutorial |
-| :--- | :--- | :--- |
-| Apache Beam    | Partial | [Apache Beam](apache-beam/) |
-| Apache Flink   | Partial | [Apache Flink](apache-flink/) |
-| Apache Kafka   | Full | [Apache Kafka](apache-kafka/) |
-| Akka Persistence | Partial | [Akka Persistence](akka-ysql/) |
-| Confluent      | Full | [Confluent Cloud](../explore/change-data-capture/cdc-tutorials/cdc-confluent-cloud/) |
-| Debezium       | Full | [Debezium](cdc/debezium/) |
-| Hevo Data      | Partial | [Hevo Data](hevodata/) |
-| Kinesis Data Streams | Full | [Kinesis](kinesis/) |
-| RabbitMQ       | Partial | [RabbitMQ](rabbitmq/) |
-| Synapse        | Full | [Synapse](../explore/change-data-capture/cdc-tutorials/cdc-azure-event-hub/) |
+| Tool | Version | Support | Tutorial |
+| :--- | :--- | :--- | :--- |
+| Apache Beam    | | Partial | [Apache Beam](apache-beam/) |
+| Apache Flink   | 1.17.1 | Partial | [Apache Flink](apache-flink/) |
+| Apache Kafka   | | Full | [Apache Kafka](apache-kafka/) |
+| Akka Persistence | | Partial | [Akka Persistence](akka-ysql/) |
+| Confluent      | | Full | [Confluent Cloud](../explore/change-data-capture/cdc-tutorials/cdc-confluent-cloud/) |
+| Debezium       | | Full | [Debezium](cdc/debezium/) |
+| Hevo Data      | | Partial | [Hevo Data](hevodata/) |
+| Kinesis Data Streams | | Full | [Kinesis](kinesis/) |
+| RabbitMQ       | | Partial | [RabbitMQ](rabbitmq/) |
+| Synapse        | | Full | [Synapse](../explore/change-data-capture/cdc-tutorials/cdc-azure-event-hub/) |
 
 ### GUI clients
 
@@ -111,7 +112,7 @@ YugabyteDB has partnered with open-source projects, vendors to guarantee followi
 
 | Tool | Latest tested version | Support | Tutorial |
 | :--- | :--- | :--- | :--- |
-| Apache Atlas |      | Partial | [Apache Atlas](atlas-ycql/) |
+| Apache Atlas | 2.30 | Partial | [Apache Atlas](atlas-ycql/) |
 | Apache Spark | 3.30 | Full | [Apache Spark](apache-spark/) |
 | Jaeger       |      | Full | [Jaeger](jaeger/) |
 | JanusGraph   |      | Full | [JanusGraph](janusgraph/) |
