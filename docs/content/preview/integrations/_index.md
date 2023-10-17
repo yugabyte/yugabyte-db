@@ -26,19 +26,19 @@ Yugabyte has partnered with open-source projects and vendors to support the foll
 
 ### Schema migration
 
-| Tool | Support | Tutorial |
-| :--- | :--- | :--- |
-| Liquibase | Full | [Liquibase](liquibase/) |
-| Flyway    | Partial | [Flyway](flyway/) |
-| Prisma    | Full | [Prisma](prisma/) |
-| Schema Evolution Manager | Partial | [Schema Evolution Manager](schema-evolution-mgr/) |
+| Tool | Version | Support | Tutorial |
+| :--- | :--- | :--- | :--- |
+| Liquibase | | Full | [Liquibase](liquibase/) |
+| Flyway    | | Partial | [Flyway](flyway/) |
+| Prisma    | | Full | [Prisma](prisma/) |
+| Schema Evolution Manager | 0.9.47 | Partial | [Schema Evolution Manager](schema-evolution-mgr/) |
 
 ### Data migration
 
-| Tool | Support | Tutorial |
-| :--- | :--- | :--- |
-| PGmigrate | Partial | [PGmigrate](pgmigrate/) |
-| YSQL Loader (pgloader) | Full | [YSQL Loader](ysql-loader/) |
+| Tool | Version | Support | Tutorial |
+| :--- | :--- | :--- | :--- |
+| PGmigrate | 1.0.7 | Partial | [PGmigrate](pgmigrate/) |
+| YSQL Loader (pgloader) | | Full | [YSQL Loader](ysql-loader/) |
 
 ### Data integration (CDC)
 
