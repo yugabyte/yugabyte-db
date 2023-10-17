@@ -46,7 +46,7 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
         () -> {
 
           // Verify the request params and fail if invalid
-          taskParams().verifyParams(getUniverse());
+          taskParams().verifyParams(getUniverse(), isFirstTry());
           // Preliminary checks for upgrades.
           createCheckUpgradeTask(taskParams().ybSoftwareVersion)
               .setSubTaskGroupType(getTaskSubGroupType());

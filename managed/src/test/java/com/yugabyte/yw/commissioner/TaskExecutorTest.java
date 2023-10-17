@@ -98,7 +98,10 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.CloudBootstrap,
           TaskType.KubernetesOverridesUpgrade,
           TaskType.GFlagsKubernetesUpgrade,
-          TaskType.SoftwareKubernetesUpgrade);
+          TaskType.SoftwareKubernetesUpgrade,
+          TaskType.SoftwareUpgrade,
+          TaskType.SoftwareUpgradeYB,
+          TaskType.VMImageUpgrade);
 
   @Override
   protected Application provideApplication() {

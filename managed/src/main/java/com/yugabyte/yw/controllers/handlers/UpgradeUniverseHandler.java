@@ -98,7 +98,7 @@ public class UpgradeUniverseHandler {
       requestParams.clusters.add(universe.getUniverseDetails().getReadOnlyClusters().get(0));
     }
     // Verify request params
-    requestParams.verifyParams(universe);
+    requestParams.verifyParams(universe, true);
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
 
