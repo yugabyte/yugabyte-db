@@ -1442,6 +1442,27 @@ void YBClient::CreateCDCStream(
   data_->CreateCDCStream(this, table_id, options, transactional, deadline, callback);
 }
 
+Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
+    const NamespaceId& namespace_id,
+    const std::unordered_map<std::string, std::string>& options,
+    const ReplicationSlotName& replication_slot_name) {
+  CreateCDCStreamRequestPB req;
+  req.set_namespace_id(namespace_id);
+  req.mutable_options()->Reserve(narrow_cast<int>(options.size()));
+  for (const auto& option : options) {
+    auto new_option = req.add_options();
+    new_option->set_key(option.first);
+    new_option->set_value(option.second);
+  }
+  if (!replication_slot_name.empty()) {
+    req.set_cdcsdk_ysql_replication_slot_name(replication_slot_name.ToString());
+  }
+
+  CreateCDCStreamResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, CreateCDCStream);
+  return xrepl::StreamId::FromString(resp.stream_id());
+}
+
 Status YBClient::GetCDCStream(
     const xrepl::StreamId& stream_id,
     NamespaceId* ns_id,
