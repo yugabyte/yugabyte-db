@@ -12,11 +12,11 @@ menu:
     parent: learn
     weight: 567
 type: docs
+private: true
 ---
 
-private: true
+
 ---
 <!-- Page DISABLED for lack of content -->
 
 {{<api-tabs>}}
-
