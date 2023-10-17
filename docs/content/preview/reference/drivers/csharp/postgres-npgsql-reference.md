@@ -82,7 +82,7 @@ NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder);
 
 {{< warning title="Warning" >}}
 
-On every new connection the NpgSQL driver also makes [extra system table queries to map types](https://github.com/npgsql/npgsql/issues/1486), which adds significant overhead. To turn off this behavior, set the following option in your connection string builder:
+On every new connection, the NpgSQL driver also makes [extra system table queries to map types](https://github.com/npgsql/npgsql/issues/1486), which adds significant overhead. To turn off this behavior, set the following option in your connection string builder:
 
 ```csharp
 connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoading;

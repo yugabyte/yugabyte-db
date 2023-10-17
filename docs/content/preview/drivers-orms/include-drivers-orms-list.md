@@ -49,7 +49,8 @@ private = true
 | **Drivers** | | | |
 | YugabyteDB Psycopg2 Smart Driver<br/>[Recommended] | [2.9.3](https://github.com/yugabyte/psycopg2) |Full | [CRUD](/preview/drivers-orms/python/yugabyte-psycopg2/) |
 | PostgreSQL Psycopg2 Driver | [2.9.3](https://github.com/psycopg/psycopg2) | Full | [CRUD](/preview/drivers-orms/python/postgres-psycopg2/) |
-| aiopg      | | Full | [Hello World](/preview/drivers-orms/python/aiopg/) |
+| aiopg      | 1.4 | Full | [Hello World](/preview/drivers-orms/python/aiopg/) |
+| YugabyteDB Python Driver for YCQL | [3.25.0](https://github.com/yugabyte/cassandra-python-driver/tree/master) | Full | [CRUD](/preview/drivers-orms/python/ycql/) |
 | **ORMs** | | | |
 | Django     | 2.2 or later | Full | [CRUD](/preview/drivers-orms/python/django/) |
 | SQLAlchemy | | Full | [CRUD](/preview/drivers-orms/python/sqlalchemy/) |
@@ -63,6 +64,7 @@ private = true
 | **Drivers** | | | |
 | YugabyteDB node-postgres Smart Driver<br/>[Recommended] | [8.7.3-yb-1](https://github.com/yugabyte/node-postgres) | Full | [CRUD](/preview/drivers-orms/nodejs/yugabyte-node-driver/) |
 | PostgreSQL node-postgres Driver | [8.7.3](https://www.npmjs.com/package/pg) | Full | [CRUD](/preview/drivers-orms/nodejs/postgres-node-driver/) |
+| YugabyteDB Node.js Driver for YCQL | [4.0.0](https://github.com/yugabyte/cassandra-nodejs-driver) | Full | [CRUD](/preview/drivers-orms/nodejs/ycql/) |
 | **ORMs** | | | |
 | Sequelize | | Full | [CRUD](/preview/drivers-orms/nodejs/sequelize/) |
 | Prisma    | | Full | [CRUD](/preview/drivers-orms/nodejs/prisma/) |

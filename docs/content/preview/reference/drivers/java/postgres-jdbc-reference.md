@@ -51,7 +51,7 @@ To get the driver from [Maven](https://maven.apache.org), add the following depe
 <dependency>
   <groupId>org.postgresql</groupId>
   <artifactId>postgresql</artifactId>
-  <version>42.2.14</version>
+  <version>42.3.4</version>
 </dependency>
 ```
 
