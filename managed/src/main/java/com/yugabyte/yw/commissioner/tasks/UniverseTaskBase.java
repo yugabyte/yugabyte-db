@@ -360,6 +360,44 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return (UniverseTaskParams) taskParams;
   }
 
+  /**
+   * This is first invoked with the universe to create long running async validation subtasks after
+   * the universe is locked.
+   *
+   * @param universe the locked universe.
+   */
+  protected void createPrecheckTasks(Universe universe) {}
+
+  /**
+   * Once the {@link #createPrecheckTasks(Universe)} is invoked, this method to make any DB changes
+   * in transaction with freezing the universe.
+   *
+   * @param universe the universe which is read in serializable transaction.
+   */
+  protected void freezeUniverseInTxn(Universe universe) {}
+
+  /**
+   * This method is invoked directly from run() method of the task. All the update tasks should move
+   * to this method to follow this pattern.
+   *
+   * @param updateLambda the actual update subtasks to be run.
+   */
+  protected void runUpdateTasks(Runnable updateLambda) {
+    checkUniverseVersion();
+    Universe universe = lockUniverseForFreezeAndUpdate(taskParams().expectedUniverseVersion);
+    try {
+      createPrecheckTasks(universe);
+      createFreezeUniverseTask(this::freezeUniverseInTxn)
+          .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
+      updateLambda.run();
+    } catch (RuntimeException e) {
+      log.error("Error occurred in running task", e);
+      throw e;
+    } finally {
+      unlockUniverseForUpdate();
+    }
+  }
+
   protected Universe getUniverse() {
     return getUniverse(false);
   }
