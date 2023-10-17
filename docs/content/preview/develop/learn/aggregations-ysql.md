@@ -14,22 +14,9 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+private: true
+---
+<!-- Page DISABLED for lack of content -->
 
-  <li >
-    <a href="../aggregations-ysql/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
+{{<api-tabs>}}
 
-  <li >
-    <a href="../aggregations-ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-
-</ul>
-
-YSQL content coming soon.

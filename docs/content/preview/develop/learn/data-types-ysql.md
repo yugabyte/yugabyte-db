@@ -9,24 +9,8 @@ menu:
     parent: learn
     weight: 120
 type: docs
+private: true
 ---
+<!-- Page DISABLED for lack of content -->
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-
-  <li >
-    <a href="../data-types-ysql/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-  <li >
-    <a href="../data-types-ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-
-</ul>
-
-YSQL content coming soon.
+{{<api-tabs>}}
