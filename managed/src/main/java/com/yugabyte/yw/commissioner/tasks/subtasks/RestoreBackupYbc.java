@@ -149,7 +149,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
                     backupStorageInfo);
             String successMarkerString =
                 ybcManager.downloadSuccessMarker(
-                    downloadSuccessMarkerRequest, taskParams().getUniverseUUID(), dsmTaskId);
+                    downloadSuccessMarkerRequest, dsmTaskId, ybcClient);
             if (StringUtils.isEmpty(successMarkerString)) {
               throw new PlatformServiceException(
                   INTERNAL_SERVER_ERROR, "Got empty success marker response, exiting.");
@@ -173,8 +173,6 @@ public class RestoreBackupYbc extends YbcTaskBase {
                   backupStorageInfo,
                   taskId,
                   taskParams().getSuccessMarker());
-          YbcBackupUtil.validateConfigWithSuccessMarker(
-              taskParams().getSuccessMarker(), restoreTaskCreateRequest.getCsConfig(), false);
           BackupServiceTaskCreateResponse response =
               ybcClient.restoreNamespace(restoreTaskCreateRequest);
           if (response.getStatus().getCode().equals(ControllerStatus.OK)) {
@@ -233,7 +231,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
         if (restoreKeyspace != null) {
           restoreKeyspace.update(taskUUID, RestoreKeyspace.State.Aborted);
         }
-        ybcManager.deleteYbcBackupTask(taskParams().getUniverseUUID(), taskId, ybcClient);
+        ybcManager.deleteYbcBackupTask(taskId, ybcClient);
       }
       Throwables.propagate(ce);
     } catch (Throwable e) {
@@ -242,7 +240,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
         restoreKeyspace.update(taskUUID, RestoreKeyspace.State.Failed);
       }
       if (StringUtils.isNotBlank(taskId)) {
-        ybcManager.deleteYbcBackupTask(taskParams().getUniverseUUID(), taskId, ybcClient);
+        ybcManager.deleteYbcBackupTask(taskId, ybcClient);
       }
       Throwables.propagate(e);
     } finally {

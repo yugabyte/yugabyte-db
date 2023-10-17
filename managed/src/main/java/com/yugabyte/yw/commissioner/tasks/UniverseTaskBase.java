@@ -2512,9 +2512,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     // TODO: Arjav garg: Validate on each cloud dir of YBC backup location( READ, LIST )
     if (restoreParams.category.equals(BackupCategory.YB_CONTROLLER)) {
-      backupHelper.validateStorageConfigForRestoreTask(
+      backupHelper.validateStorageConfigForYbcRestoreTask(
           restoreParams.storageConfigUUID,
           restoreParams.customerUUID,
+          restoreParams.getUniverseUUID(),
           preflightResponse.getSuccessMarkerMap().values());
     }
     // For first try( i.e. non-retries ) validate overwrite.
@@ -2730,8 +2731,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public SubTaskGroup createTableBackupTasksYbc(
       BackupTableParams backupParams, int parallelDBBackups) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("BackupTableYbc");
-    YbcBackupNodeRetriever nodeRetriever =
-        new YbcBackupNodeRetriever(backupParams.getUniverseUUID(), parallelDBBackups);
+    Universe universe = Universe.getOrBadRequest(backupParams.getUniverseUUID());
+    YbcBackupNodeRetriever nodeRetriever = new YbcBackupNodeRetriever(universe, parallelDBBackups);
     nodeRetriever.initializeNodePoolForBackups(backupParams.backupDBStates);
     Backup previousBackup =
         (!backupParams.baseBackupUUID.equals(backupParams.backupUuid))
@@ -2747,7 +2748,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             paramsEntry -> {
               BackupTableYbc task = createTask(BackupTableYbc.class);
               BackupTableYbc.Params backupYbcParams =
-                  new BackupTableYbc.Params(paramsEntry, nodeRetriever);
+                  new BackupTableYbc.Params(paramsEntry, nodeRetriever, universe);
               backupYbcParams.previousBackup = previousBackup;
               backupYbcParams.nodeIp =
                   backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier).nodeIp;

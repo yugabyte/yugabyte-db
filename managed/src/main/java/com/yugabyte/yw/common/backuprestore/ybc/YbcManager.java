@@ -78,6 +78,9 @@ import org.yb.ybc.BackupServiceTaskThrottleParametersGetRequest;
 import org.yb.ybc.BackupServiceTaskThrottleParametersGetResponse;
 import org.yb.ybc.BackupServiceTaskThrottleParametersSetRequest;
 import org.yb.ybc.BackupServiceTaskThrottleParametersSetResponse;
+import org.yb.ybc.BackupServiceValidateCloudConfigRequest;
+import org.yb.ybc.BackupServiceValidateCloudConfigResponse;
+import org.yb.ybc.CloudStoreConfig;
 import org.yb.ybc.ControllerObjectTaskThrottleParameters;
 import org.yb.ybc.ControllerStatus;
 import org.yb.ybc.PingRequest;
@@ -480,17 +483,15 @@ public class YbcManager {
       } else {
         LOG.info(
             "Backup {} task is successfully aborted on Yb-controller.", backup.getBackupUUID());
-        deleteYbcBackupTask(backup.getUniverseUUID(), taskID, ybcClient);
+        deleteYbcBackupTask(taskID, ybcClient);
       }
     } catch (Exception e) {
       LOG.error(
           "Backup {} task abort failed with error: {}.", backup.getBackupUUID(), e.getMessage());
-    } finally {
-      ybcClientService.closeClient(ybcClient);
     }
   }
 
-  public void deleteYbcBackupTask(UUID universeUUID, String taskID, YbcClient ybcClient) {
+  public void deleteYbcBackupTask(String taskID, YbcClient ybcClient) {
     try {
       BackupServiceTaskResultRequest taskResultRequest =
           BackupServiceTaskResultRequest.newBuilder().setTaskId(taskID).build();
@@ -521,20 +522,31 @@ public class YbcManager {
       LOG.info("Task {} is successfully deleted on Yb-controller.", taskID);
     } catch (Exception e) {
       LOG.error("Task {} deletion failed with error: {}", taskID, e.getMessage());
+    }
+  }
+
+  public String downloadSuccessMarker(
+      BackupServiceTaskCreateRequest downloadSuccessMarkerRequest,
+      UUID universeUUID,
+      String taskID) {
+    YbcClient ybcClient = null;
+    try {
+      ybcClient = getYbcClient(universeUUID);
+      return downloadSuccessMarker(downloadSuccessMarkerRequest, taskID, ybcClient);
     } finally {
-      ybcClientService.closeClient(ybcClient);
+      if (ybcClient != null) {
+        ybcClientService.closeClient(ybcClient);
+      }
     }
   }
 
   /** Returns the success marker for a particular backup, returns null if not found. */
   public String downloadSuccessMarker(
       BackupServiceTaskCreateRequest downloadSuccessMarkerRequest,
-      UUID universeUUID,
-      String taskID) {
-    YbcClient ybcClient = null;
+      String taskID,
+      YbcClient ybcClient) {
     String successMarker = null;
     try {
-      ybcClient = getYbcClient(universeUUID);
       BackupServiceTaskCreateResponse downloadSuccessMarkerResponse =
           ybcClient.restoreNamespace(downloadSuccessMarkerRequest);
       if (!downloadSuccessMarkerResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
@@ -569,7 +581,7 @@ public class YbcManager {
       }
       LOG.info("Task {} on YB-Controller to fetch success marker is successful", taskID);
       successMarker = downloadSuccessMarkerResultResponse.getMetadataJson();
-      deleteYbcBackupTask(universeUUID, taskID, ybcClient);
+      deleteYbcBackupTask(taskID, ybcClient);
       return successMarker;
     } catch (Exception e) {
       LOG.error(
@@ -577,8 +589,6 @@ public class YbcManager {
           taskID,
           e.getMessage());
       return successMarker;
-    } finally {
-      ybcClientService.closeClient(ybcClient);
     }
   }
 
@@ -594,6 +604,65 @@ public class YbcManager {
               "Unable to fetch enabled backup features for Universe %s", universeUUID.toString()));
     } finally {
       ybcClientService.closeClient(ybcClient);
+    }
+  }
+
+  /**
+   * Validate Cloud config on YBC server. If YBC server is unavailable, it logs a warning message.
+   *
+   * @param nodeIP Use this node ip to create YBC client
+   * @param universe The universe
+   * @param csConfig The cloud store config to validate
+   */
+  public void validateCloudConfigIgnoreIfYbcUnavailable(
+      String nodeIP, Universe universe, CloudStoreConfig csConfig) {
+    int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
+    String certFile = universe.getCertificateNodetoNode();
+    YbcClient ybcClient = null;
+    try {
+      ybcClient = getYbcClient(nodeIP, ybcPort, certFile);
+    } catch (Exception e) {
+      LOG.warn("Cannot check cloud config on node {} as YBC server is not available.", nodeIP);
+      return;
+    }
+    try {
+      validateCloudConfigWithClient(nodeIP, ybcClient, csConfig);
+    } finally {
+      ybcClientService.closeClient(ybcClient);
+    }
+  }
+
+  /**
+   * Validate Cloud store config credentials on YBC server. Throws exception on failure.
+   *
+   * @param nodeIP The node ip on which YBC client is created
+   * @param universe The universe
+   * @param csConfig The cloud store config to validate
+   */
+  public void validateCloudConfigWithClient(
+      String nodeIP, YbcClient ybcClient, CloudStoreConfig csConfig) {
+    try {
+      BackupServiceValidateCloudConfigRequest validationRequest =
+          BackupServiceValidateCloudConfigRequest.newBuilder().setCsConfig(csConfig).build();
+      BackupServiceValidateCloudConfigResponse validationResponse =
+          ybcClient.backupServiceValidateCloudConfig(validationRequest);
+      if (validationResponse != null) {
+        if (validationResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
+          LOG.debug("Cloud config validation successful on node {}", nodeIP);
+        } else {
+          throw new RuntimeException(
+              String.format(
+                  "Validating cloud config  on node %s failed with status code: %s error: %s",
+                  nodeIP,
+                  validationResponse.getStatus().getCode(),
+                  validationResponse.getStatus().getErrorMessage()));
+        }
+      } else {
+        throw new RuntimeException(
+            String.format("Cloud config validation on node %s returned null response.", nodeIP));
+      }
+    } catch (Exception e) {
+      throw new RuntimeException(e);
     }
   }
 
@@ -710,14 +779,14 @@ public class YbcManager {
    */
   public Pair<YbcClient, String> getAvailableYbcClientIpPair(
       UUID universeUUID, boolean enablePreference) {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
     if (enablePreference) {
-      Universe universe = Universe.getOrBadRequest(universeUUID);
       List<String> nodeIPsWithPreference = getPreferenceBasedYBCNodeIPsList(universe);
       String certFile = universe.getCertificateNodetoNode();
       int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
       return getAvailableYbcClientIpPair(nodeIPsWithPreference, ybcPort, certFile);
     } else {
-      return getAvailableYbcClientIpPair(universeUUID, null);
+      return getAvailableYbcClientIpPair(universe, null);
     }
   }
 
@@ -732,6 +801,11 @@ public class YbcManager {
   public Pair<YbcClient, String> getAvailableYbcClientIpPair(
       UUID universeUUID, @Nullable List<String> nodeIPListOverride) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
+    return getAvailableYbcClientIpPair(universe, nodeIPListOverride);
+  }
+
+  public Pair<YbcClient, String> getAvailableYbcClientIpPair(
+      Universe universe, @Nullable List<String> nodeIPListOverride) {
     String certFile = universe.getCertificateNodetoNode();
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     List<String> nodeIPs = new ArrayList<>();
@@ -762,7 +836,7 @@ public class YbcManager {
             .filter(Objects::nonNull)
             .findFirst();
     if (!clientIpPair.isPresent()) {
-      throw new RuntimeException("YB-Controller server unavailable");
+      throw new RuntimeException("YB-Controller servers unavailable");
     }
     return clientIpPair.get();
   }
@@ -811,6 +885,11 @@ public class YbcManager {
     return nodesToCheckInPreference;
   }
 
+  public YbcClient getYbcClient(String nodeIp, int ybcPort, String certFile) {
+    return getAvailableYbcClientIpPair(Collections.singletonList(nodeIp), ybcPort, certFile)
+        .getFirst();
+  }
+
   public YbcClient getYbcClient(List<String> nodeIps, int ybcPort, String certFile) {
     return getAvailableYbcClientIpPair(nodeIps, ybcPort, certFile).getFirst();
   }
@@ -822,6 +901,12 @@ public class YbcManager {
   public YbcClient getYbcClient(UUID universeUUID, String nodeIp) {
     return getAvailableYbcClientIpPair(
             universeUUID, StringUtils.isBlank(nodeIp) ? null : Collections.singletonList(nodeIp))
+        .getFirst();
+  }
+
+  public YbcClient getYbcClient(Universe universe, String nodeIp) {
+    return getAvailableYbcClientIpPair(
+            universe, StringUtils.isBlank(nodeIp) ? null : Collections.singletonList(nodeIp))
         .getFirst();
   }
 

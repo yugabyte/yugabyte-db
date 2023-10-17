@@ -29,6 +29,8 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.common.UniverseInterruptionResult.InterruptionStatus;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
@@ -49,6 +51,7 @@ import java.net.URL;
 import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -160,36 +163,84 @@ public class GCPUtil implements CloudUtil {
     }
   }
 
+  private void tryListObjects(Storage storage, String bucket, String prefix) throws Exception {
+    List<Storage.BlobListOption> options =
+        new ArrayList<>(
+            Arrays.asList(
+                Storage.BlobListOption.currentDirectory(), Storage.BlobListOption.pageSize(1)));
+    if (StringUtils.isNotBlank(prefix)) {
+      options.add(Storage.BlobListOption.prefix(prefix));
+      storage.list(bucket, options.toArray(new Storage.BlobListOption[0]));
+    } else {
+      storage.list(bucket, options.toArray(new Storage.BlobListOption[0]));
+    }
+  }
+
   @Override
   public boolean canCredentialListObjects(
       CustomerConfigData configData, Collection<String> locations) {
     if (CollectionUtils.isEmpty(locations)) {
       return true;
     }
-    for (String configLocation : locations) {
-      try {
-        String[] splitLocation = getSplitLocationValue(configLocation);
-        String bucketName = splitLocation.length > 0 ? splitLocation[0] : "";
-        String prefix = splitLocation.length > 1 ? splitLocation[1] : "";
-        Storage storage = getStorageService((CustomerConfigStorageGCSData) configData);
-        if (splitLocation.length == 1) {
-          storage.list(bucketName);
-        } else {
-          storage.list(
-              bucketName,
-              Storage.BlobListOption.prefix(prefix),
-              Storage.BlobListOption.currentDirectory());
+    try {
+      Storage storage = getStorageService((CustomerConfigStorageGCSData) configData);
+      for (String configLocation : locations) {
+        try {
+          String[] splitLocation = getSplitLocationValue(configLocation);
+          String bucketName = splitLocation.length > 0 ? splitLocation[0] : "";
+          String prefix = splitLocation.length > 1 ? splitLocation[1] : "";
+          tryListObjects(storage, bucketName, prefix);
+        } catch (Exception e) {
+          log.error(
+              String.format(
+                  "GCP Credential cannot list objects in the specified backup location %s",
+                  configLocation),
+              e);
+          return false;
         }
-      } catch (Exception e) {
-        log.error(
-            String.format(
-                "GCP Credential cannot list objects in the specified backup location %s",
-                configLocation),
-            e);
-        return false;
       }
+      return true;
+    } catch (StorageException | IOException e) {
+      log.error("Failed to create GCS client", e.getMessage());
+      return false;
     }
-    return true;
+  }
+
+  @Override
+  public void checkListObjectsWithYbcSuccessMarkerCloudStore(
+      CustomerConfigData configData, YbcBackupResponse.ResponseCloudStoreSpec csSpec) {
+    Map<String, ResponseCloudStoreSpec.BucketLocation> regionPrefixesMap =
+        csSpec.getBucketLocationsMap();
+    Map<String, String> configRegions = getRegionLocationsMap(configData);
+    try {
+      Storage storage = getStorageService((CustomerConfigStorageGCSData) configData);
+      for (Map.Entry<String, ResponseCloudStoreSpec.BucketLocation> regionPrefix :
+          regionPrefixesMap.entrySet()) {
+        if (configRegions.containsKey(regionPrefix.getKey())) {
+          // Use "cloudDir" of success marker as object prefix
+          String prefix = regionPrefix.getValue().cloudDir;
+          // Use config's bucket for bucket name
+          ConfigLocationInfo configLocationInfo =
+              getConfigLocationInfo(configRegions.get(regionPrefix.getKey()));
+          String bucketName = configLocationInfo.bucket;
+          log.debug("Trying object listing with GCS bucket {} and prefix {}", bucketName, prefix);
+          try {
+            tryListObjects(storage, bucketName, prefix);
+          } catch (Exception e) {
+            String msg =
+                String.format(
+                    "Cannot list objects in cloud location with bucket %s and cloud directory %s",
+                    bucketName, prefix);
+            log.error(msg, e);
+            throw new PlatformServiceException(
+                PRECONDITION_FAILED, msg + ": " + e.getLocalizedMessage());
+          }
+        }
+      }
+    } catch (StorageException | IOException e) {
+      throw new PlatformServiceException(
+          PRECONDITION_FAILED, "Failed to create GCS client: " + e.getLocalizedMessage());
+    }
   }
 
   public void deleteStorage(CustomerConfigData configData, List<String> backupLocations)
@@ -299,7 +350,7 @@ public class GCPUtil implements CloudUtil {
         splitValues.length > 1
             ? BackupUtil.getPathWithPrefixSuffixJoin(splitValues[1], commonDir)
             : commonDir;
-    cloudDir = BackupUtil.appendSlash(cloudDir);
+    cloudDir = StringUtils.isNotBlank(cloudDir) ? BackupUtil.appendSlash(cloudDir) : "";
     String previousCloudDir = "";
     if (StringUtils.isNotBlank(previousBackupLocation)) {
       splitValues = getSplitLocationValue(previousBackupLocation);
@@ -311,6 +362,8 @@ public class GCPUtil implements CloudUtil {
         bucket, cloudDir, previousCloudDir, gcsCredsMap, Util.GCS);
   }
 
+  // In case of Restore - cloudDir is picked from success marker
+  // In case of Success marker download - cloud Dir is the location provided by user in API
   @Override
   public CloudStoreSpec createRestoreCloudStoreSpec(
       String region, String cloudDir, CustomerConfigData configData, boolean isDsm) {

@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupRequestParams;
+import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -21,6 +22,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.CommonTypes.TableType;
 
 @Slf4j
 public class CreateBackupSchedule extends UniverseTaskBase {
@@ -50,9 +52,12 @@ public class CreateBackupSchedule extends UniverseTaskBase {
     CustomerConfig customerConfig =
         customerConfigService.getOrBadRequest(
             taskParams.customerUUID, taskParams.storageConfigUUID);
-    storageUtilFactory
-        .getStorageUtil(customerConfig.getName())
-        .validateStorageConfigOnUniverse(customerConfig, universe);
+    boolean ybcBackup =
+        !BackupCategory.YB_BACKUP_SCRIPT.equals(params().backupCategory)
+            && universe.isYbcEnabled()
+            && !params().backupType.equals(TableType.REDIS_TABLE_TYPE);
+    // Validate storage config on running Universe nodes.
+    backupHelper.validateStorageConfigOnRunningUniverseNodes(customerConfig, universe, ybcBackup);
 
     Schedule schedule =
         Schedule.create(

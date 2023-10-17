@@ -120,9 +120,9 @@ public class CreateBackup extends UniverseTaskBase {
         // Clear any previous subtasks if any.
         getRunnableTask().reset();
 
-        storageUtilFactory
-            .getStorageUtil(customerConfig.getName())
-            .validateStorageConfigOnUniverse(customerConfig, universe);
+        // Validate config on running Universe nodes.
+        backupHelper.validateStorageConfigOnRunningUniverseNodes(
+            customerConfig, universe, ybcBackup);
 
         if (ybcBackup
             && universe.isYbcEnabled()

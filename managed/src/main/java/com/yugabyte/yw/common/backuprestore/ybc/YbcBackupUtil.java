@@ -27,7 +27,6 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.PerBackupLocationKeyspaceTables;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.PerLocationBackupInfo;
@@ -63,8 +62,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.BiFunction;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.validation.ConstraintViolation;
 import javax.validation.Valid;
 import javax.validation.Validation;
@@ -116,7 +115,6 @@ public class YbcBackupUtil {
   private final UniverseInfoHandler universeInfoHandler;
   private final CustomerConfigService configService;
   private final EncryptionAtRestManager encryptionAtRestManager;
-  private final BackupHelper backupHelper;
   private final StorageUtilFactory storageUtilFactory;
 
   @Inject
@@ -125,12 +123,10 @@ public class YbcBackupUtil {
       UniverseInfoHandler universeInfoHandler,
       CustomerConfigService configService,
       EncryptionAtRestManager encryptionAtRestManager,
-      BackupHelper backupHelper,
       StorageUtilFactory storageUtilFactory) {
     this.universeInfoHandler = universeInfoHandler;
     this.configService = configService;
     this.encryptionAtRestManager = encryptionAtRestManager;
-    this.backupHelper = backupHelper;
     this.storageUtilFactory = storageUtilFactory;
     this.autoFlagUtil = autoFlagUtil;
   }
@@ -727,6 +723,40 @@ public class YbcBackupUtil {
     return cloudStoreConfigBuilder.build();
   }
 
+  // Use this to create CloudStoreConfig.
+  // TODO: In the next cut add region specific cloud store using NodeDetails.
+  public CloudStoreConfig createCloudStoreConfigForNode(
+      String nodeIP, Universe universe, UUID storageConfigUUID, UUID customerUUID) {
+    CustomerConfig config = configService.getOrBadRequest(customerUUID, storageConfigUUID);
+    return getCloudStoreConfigWithProvidedRegions(config, null);
+  }
+
+  // TODO: Add per-region spec for the regions parameter in the next cut.
+  public CloudStoreConfig getCloudStoreConfigWithProvidedRegions(
+      CustomerConfig config, @Nullable Set<String> regions) {
+    CloudStoreConfig.Builder csConfigBuilder = CloudStoreConfig.newBuilder();
+    CloudStoreSpec defaultSpec =
+        storageUtilFactory
+            .getStorageUtil(config.getName())
+            .createCloudStoreSpec(DEFAULT_REGION_STRING, "", "", config.getDataObject());
+    return csConfigBuilder.setDefaultSpec(defaultSpec).build();
+  }
+
+  // TODO: Add per-region spec for in the next cut.
+  public CloudStoreConfig getCloudStoreConfigWithBucketLocationsMap(
+      CustomerConfig config, Map<String, BucketLocation> bucketLocationsMap) {
+    CloudStoreConfig.Builder csConfigBuilder = CloudStoreConfig.newBuilder();
+    CloudStoreSpec defaultSpec =
+        storageUtilFactory
+            .getStorageUtil(config.getName())
+            .createRestoreCloudStoreSpec(
+                DEFAULT_REGION_STRING,
+                bucketLocationsMap.get(DEFAULT_REGION_STRING).cloudDir,
+                config.getDataObject(),
+                false);
+    return csConfigBuilder.setDefaultSpec(defaultSpec).build();
+  }
+
   public CloudStoreConfig createRestoreConfig(
       CustomerConfig config, YbcBackupResponse successMarker) {
     CustomerConfigData configData = config.getDataObject();
@@ -871,50 +901,6 @@ public class YbcBackupUtil {
               });
     }
     return new TablesMetadata(tablesToReturn);
-  }
-
-  public static void validateConfigWithSuccessMarker(
-      YbcBackupResponse successMarker, CloudStoreConfig config, boolean forPrevDir)
-      throws PlatformServiceException {
-    BiFunction<YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation, CloudStoreSpec, Boolean>
-        compareAndValidate =
-            forPrevDir
-                ? SuccessMarkerConfigValidator.compareForPrevCloudDir
-                : SuccessMarkerConfigValidator.compareForCloudDir;
-    if (!compareAndValidate.apply(
-        successMarker.responseCloudStoreSpec.defaultLocation, config.getDefaultSpec())) {
-      throw new PlatformServiceException(
-          PRECONDITION_FAILED, "Default location validation failed.");
-    }
-    if (MapUtils.isNotEmpty(successMarker.responseCloudStoreSpec.regionLocations)) {
-      // config.getRegionSpecMapOrThrow throws exception for key not found.
-      try {
-        successMarker.responseCloudStoreSpec.regionLocations.forEach(
-            (r, rS) -> {
-              if (!(config.containsRegionSpecMap(r)
-                  && compareAndValidate.apply(rS, config.getRegionSpecMapOrThrow(r)))) {
-                throw new PlatformServiceException(
-                    PRECONDITION_FAILED, "Region mapping validation failed.");
-              }
-            });
-      } catch (Exception e) {
-        throw new PlatformServiceException(
-            PRECONDITION_FAILED, "Region mapping validation failed.");
-      }
-    }
-  }
-
-  private interface SuccessMarkerConfigValidator {
-    BiFunction<YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation, CloudStoreSpec, Boolean>
-        compareForCloudDir =
-            (sm, cs) ->
-                StringUtils.equals(sm.bucket, cs.getBucket())
-                    && StringUtils.equals(sm.cloudDir, cs.getCloudDir());
-    BiFunction<YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation, CloudStoreSpec, Boolean>
-        compareForPrevCloudDir =
-            (sm, cs) ->
-                StringUtils.equals(sm.bucket, cs.getBucket())
-                    && StringUtils.equals(sm.cloudDir, cs.getPrevCloudDir());
   }
 
   /**
