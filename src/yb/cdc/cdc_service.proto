@@ -88,6 +88,7 @@ message CDCErrorPB {
     INTERNAL_ERROR = 9;
     INVALID_REQUEST = 10;
     TABLET_SPLIT = 12;
+    OPERATION_DISALLOWED = 13;
   }
 
   // The error code.
