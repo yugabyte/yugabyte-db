@@ -6,6 +6,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -43,11 +44,18 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
           Set<NodeDetails> allNodes = toOrderedSet(nodes);
           Universe universe = getUniverse();
 
+          UniverseDefinitionTaskParams.PrevYBSoftwareConfig prevYBSoftwareConfig =
+              universe.getUniverseDetails().prevYBSoftwareConfig;
           String newVersion =
-              universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
-
-          // Restore old auto flag Config
-          // TODO(vbansal): waiting for hsunder to add this functionality.
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+          // Skip auto flags restore incase upgrade did not take place or succeed.
+          if (prevYBSoftwareConfig != null
+              && !newVersion.equals(prevYBSoftwareConfig.getSoftwareVersion())) {
+            newVersion = prevYBSoftwareConfig.getSoftwareVersion();
+            int autoFlagConfigVersion = prevYBSoftwareConfig.getAutoFlagConfigVersion();
+            // Restore old auto flag Config
+            createRollbackAutoFlagTask(taskParams().getUniverseUUID(), autoFlagConfigVersion);
+          }
 
           Set<NodeDetails> masterNodesToBeSkipped =
               getNodesWithSameDBVersion(universe, nodes.getLeft(), ServerType.MASTER, newVersion);

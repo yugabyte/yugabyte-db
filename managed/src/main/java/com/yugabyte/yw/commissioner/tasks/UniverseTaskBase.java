@@ -72,6 +72,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYbc;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RollbackAutoFlags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetActiveUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
@@ -1081,6 +1082,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
     params.ignoreErrors = ignoreErrors;
     params.maxClass = maxClass;
+    params.setUniverseUUID(universeUUID);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Create a task to promote auto flags to the rollback version on a universe.
+   *
+   * @param universeUUID
+   * @param rollbackVersion
+   * @return
+   */
+  public SubTaskGroup createRollbackAutoFlagTask(UUID universeUUID, int rollbackVersion) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("RollbackAutoFlag");
+    RollbackAutoFlags task = createTask(RollbackAutoFlags.class);
+    RollbackAutoFlags.Params params = new RollbackAutoFlags.Params();
+    params.rollbackVersion = rollbackVersion;
     params.setUniverseUUID(universeUUID);
     task.initialize(params);
     subTaskGroup.addSubTask(task);

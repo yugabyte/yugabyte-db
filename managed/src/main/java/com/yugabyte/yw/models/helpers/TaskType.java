@@ -482,6 +482,8 @@ public enum TaskType {
 
   PromoteAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags.class),
 
+  RollbackAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.RollbackAutoFlags.class),
+
   StoreAutoFlagConfigVersion(
       com.yugabyte.yw.commissioner.tasks.subtasks.StoreAutoFlagConfigVersion.class),
 
