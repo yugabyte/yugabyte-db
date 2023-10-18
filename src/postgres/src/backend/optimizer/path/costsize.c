@@ -5670,10 +5670,12 @@ yb_compute_result_transfer_cost(double result_tuples, int result_width)
 			 (yb_fetch_row_limit == 0 ||
 			  result_width * yb_fetch_row_limit > yb_fetch_size_limit))
 	{
-		int 		results_per_page =
-			floor(((double)yb_fetch_size_limit) / result_width);
+		int results_per_page = yb_fetch_size_limit / (result_width * 1.25);
+		// TODO(#19113): tuple size is inflated on DocDB side. Estimate it at
+		// 25% larger.
+
 		num_result_pages = ceil(result_tuples / results_per_page);
-		result_page_size_mb = results_per_page * result_width / MEGA;
+		result_page_size_mb = (double) results_per_page * result_width / MEGA;
 	}
 	else
 	{

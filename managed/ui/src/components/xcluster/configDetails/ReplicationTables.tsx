@@ -161,9 +161,7 @@ export function ReplicationTables({ xClusterConfig, isDrConfig = false }: props)
               Table Type
             </TableHeaderColumn>
           )}
-          <TableHeaderColumn dataField="keySpace">
-            {isDrConfig ? 'Database' : 'Keyspace'}
-          </TableHeaderColumn>
+          <TableHeaderColumn dataField="keySpace">Database</TableHeaderColumn>
           <TableHeaderColumn dataField="sizeBytes" dataFormat={(cell) => formatBytes(cell)}>
             Size
           </TableHeaderColumn>

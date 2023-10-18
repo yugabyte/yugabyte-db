@@ -2563,7 +2563,7 @@ static bool
 YbPrefetcherStarterWithCacheCall(YbPrefetcherStarterFunctor *functor) {
 	const YbPrefetcherStarterWithCache *this =
 		(const YbPrefetcherStarterWithCache *)functor;
-	YBCStartSysTablePrefetching(*this->version, this->mode);
+	YBCStartSysTablePrefetching(MyDatabaseId, *this->version, this->mode);
 	return true;
 }
 

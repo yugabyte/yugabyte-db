@@ -6,6 +6,7 @@
       "applyChanges": "Apply Changes",
       "cancel": "Cancel",
       "confirm": "Confirm",
+      "continue": "Continue",
       "create": "Create",
       "genericFailure": "Something went wrong. Please try again.",
       "no": "No",
@@ -27,7 +28,8 @@
       "back": "Back",
       "selectAll": "Select All",
       "selected": "Selected",
-      "note": "Note :"
+      "note": "Note :",
+      "reload": "Reload"
     },
     "task": {
       "viewDetails": "View Details"
@@ -251,11 +253,14 @@
         "gFlagUpdateOptions": "G-Flag Update Options",
         "rollingMsg": "Apply all changes using a rolling restart (slower, zero downtime)",
         "nonRollingMsg": "Apply all changes immediately, using a concurrent restart (faster, some downtime)",
-        "nonRestart": "Apply all changes which do not require a restart immediately",
-        "nonRestartRuntime": "apply remaining changes the next time the database is restarted",
+        "nonRestart": "Apply all changes which do not require a restart immediately; ",
+        "nonRestartRuntime": " apply remaining changes the next time the database is restarted",
         "delayBetweenServers": "Delay Between Servers :",
         "seconds": "seconds",
-        "inheritRRModalBody": "Apply the same Flags to both Primary Cluster and Read replica? <br /> This will override all the Flags that are currently applied to Read replica<br /> by Primary Cluster’s Flag.",
+        "inheritRRModalBody": "Apply the same Flags to both Primary Cluster and Read replica? \n<br/> This will override all the Flags that are currently applied to Read replica <br/> by Primary Cluster’s Flag.",
+        "inheritRRModalLine1": "Apply the same Flags to both Primary Cluster and Read replica?",
+        "inheritRRModalLine2": "This will override all the Flags that are currently applied to Read replica",
+        "inheritRRModalLine3": "by Primary Cluster’s Flag.",
         "inheritRRModalConfirmMsg": "Are you sure you want to continue with the changes?",
         "validationError": "Fix all the errors shown below to proceed",
         "hbaLDAPConfLocal": "local database user auth-method [auth-options]",
@@ -274,7 +279,11 @@
         "identConfDescriptionSecond": "Enter each mapping as a new row, comprising the map-name, external user name, and database user name. ",
         "identConfDescriptionMore": "To incorporate user name mappings from this flag, add them to the authentication methods that use external user names in hba_conf_csv file. ",
         "readMore": "Read More",
-        "readLess": "Read Less"
+        "readLess": "Read Less",
+        "flagsModifiedModalBody1": "The Gflags has been modified in another tab/browser/device.",
+        "flagsModifiedModalBody2": "If you don't want to lose modified flags, please reload the page.",
+        "flagsModifiedModalLine1": "Do you want to reload ?",
+        "flagsModifiedModalLine2": "Note that current changes will be lost."
       },
       "helmOverrides": {
         "addK8sOverrides": "Add Kubernetes Overrides",
@@ -989,7 +998,13 @@
             "selectPermissionSubText": "Select the permissions you want to include in this role.",
             "permissions": "Permissions",
             "editSelection": "Edit Permissions",
-            "permissionsCount": "{{count}} Permissions"
+            "permissionsCount": "{{count}} Permissions",
+            "validationMsg": {
+              "nameRequired": "Name is required",
+              "descRequired": "Description is required",
+              "permRequired": "Atleast one permission must be selected",
+              "invalidRoleName": "Role should not start or end with whitespace"
+            }
           },
           "successMsg": "\"{{role_name}}\" role was created successfully",
           "editSuccessMsg": "\"{{role_name}}\" role was edited successfully"
@@ -1022,12 +1037,21 @@
             "configurations": "Configurations",
             "users": "Users"
           },
-          "title": "Edit Role"
+          "title": "Edit Role",
+          "viewUsers": {
+            "assignedUser": "Assigned users",
+            "noUsersAssgined": "No users is assigned to this role"
+          },
+          "confirmModal": {
+            "title": "Are you sure?",
+            "errMsg": "Editing a role with assigned users can have major repercussions on user's ability to access resources.",
+            "editRoleConfirm": "Are you sure you want to continue with the changes?"
+          }
         }
       },
       "permissions": {
         "title": "User Roles",
-        "connectOnly": "<b>'Connect Only'</b> role is automatically assigned to users without a role, restricting access to login and view their own profile page.",
+        "connectOnly": "Users without a role are automatically assigned the '<b>Connect Only</b>' role, limiting access to login and view their profile page",
         "noUniverses": "There are no Universes deployed in this account. Selected roles will be applied to all future Universes by default. You can modify role's scope after deployment.",
         "role": "Role",
         "for": "for",
@@ -1040,9 +1064,13 @@
         "selectPermissionModal": {
           "title": "Select Permissions",
           "resourceManagement": "{{resource}} Management",
+          "otherResource": "Other Resources",
+          "selectAllOtherPermissions": "Select All Other Resource Permissions",
           "selectAllPermissions": "Select All {{resource}} Management Permissions",
           "selectionCount": "{{count}} / {{total}} Selected",
-          "universePrimaryAndReplica": "(Primary Uninverse and Read Replica)"
+          "universePrimaryAndReplica": "(Primary Universe and Read Replica)",
+          "universePrimaryAndReplica2": "Universes (Primary and Read)",
+          "disabledDependentPerm": "This permission is included with a selected higher-level  permission and cannot be unselected"
         }
       },
       "users": {
@@ -1053,12 +1081,20 @@
             "emailPlaceholder": "Add email",
             "password": "Password",
             "confirmPassword": "Confirm Password",
-            "successMsg": "\"{{user_email}}\" user created successfully"
+            "successMsg": "\"{{user_email}}\" user created successfully",
+            "validationMsg": {
+              "emailRequired": "Email is required",
+              "invalidEmail": "Invalid email",
+              "passwordRequired": "Password is required",
+              "confirmPasswordRequired": "Confirm Password is required",
+              "confirmPasswordMatch": "Passwords should match"
+            }
           }
         },
         "edit": {
           "title": "Edit User",
-          "delete": "Delete User"
+          "delete": "Delete User",
+          "successMsg": "\"{{user_email}}\" user is edited successfully"
         },
         "delete": {
           "title": "Delete User",
@@ -1068,9 +1104,12 @@
         "list": {
           "rowsCount": "{{count}} Users",
           "createUser": "Create User",
-          "search": "search by user email",
+          "search": "Search by user email",
           "table": {
             "email": "User Email",
+            "role": "Role",
+            "moreRoles": "+ {{count}} More",
+            "connectOnly": "Connect Only (Default)",
             "createdAt": "Created At",
             "actions": "Actions",
             "moreActions": {
@@ -1078,6 +1117,11 @@
               "deleteUser": "Delete User"
             }
           }
+        },
+        "validationMessages": {
+          "roleRequired": "Roles should not be empty",
+          "duplicateBuiltinRoles": "Duplicate built-in roles found",
+          "duplicateCustomRoles": "Duplicate custom roles found"
         }
       },
       "policy": {

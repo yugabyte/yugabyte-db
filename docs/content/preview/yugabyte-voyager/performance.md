@@ -42,7 +42,7 @@ Use one or more of the following techniques to improve import data performance:
 
 - **Load data in parallel**. yb-voyager executes N parallel batch ingestion jobs at any given time, where N is equal to half of the total number of cores in the YugabyteDB cluster. Normally this is a good default value and should consume around 50-60% of CPU usage. However, if the target cluster shows high CPU utilisation, then you should lower the number of parallel jobs. Similarly, if the target cluster seems to be under-utilised, then it is recommended to stop the import, and restart it with a higher number of parallel jobs.
 
-  Use the [-–parallel-jobs](../reference/yb-voyager-cli/#parallel-jobs) argument with the import data command to override the default setting. Set `--parallel-jobs` to an appropriate value to override the default based on your cluster configuration and observation.
+  Use the [-–parallel-jobs](../reference/data-migration/import-data/#arguments) argument with the import data command to override the default setting. Set `--parallel-jobs` to an appropriate value to override the default based on your cluster configuration and observation.
 
   If CPU use is greater than 50-60%, you should lower the number of jobs. Similarly, if CPU use is low, you can increase the number of jobs.
 
@@ -52,7 +52,7 @@ Use one or more of the following techniques to improve import data performance:
 
    {{< /note >}}
 
-- **Increase batch size**. The default [--batch-size](../reference/yb-voyager-cli/#batch-size) is 20000 rows or approximately 200 MB of data, depending on whichever is reached first while preparing the batch. Normally this is considered a good default value. However, if the rows are too small, then you may consider increasing the batch size for greater throughput. Increasing the batch size to a very high value is not recommended as the whole batch is executed in one transaction.
+- **Increase batch size**. The default [--batch-size](../reference/data-migration/import-data/#arguments) is 20000 rows or approximately 200 MB of data, depending on whichever is reached first while preparing the batch. Normally this is considered a good default value. However, if the rows are too small, then you may consider increasing the batch size for greater throughput. Increasing the batch size to a very high value is not recommended as the whole batch is executed in one transaction.
 
 - **Add disks** to reduce disk write contention. YugabyteDB servers can be configured with one or multiple disk volumes to store tablet data. If all tablets are writing to a single disk, write contention can slow down the ingestion speed. Configuring the [YB-TServers](../../reference/configuration/yb-tserver/) with multiple disks can reduce disk write contention, thereby increasing throughput. Disks with higher IOPS and better throughput also improve write performance.
 
@@ -102,6 +102,6 @@ As more optimizations are introduced, average throughput increases. The followin
 
 ## Improve export performance
 
-By default, yb-voyager exports four tables at a time. To speed up data export, parallelize the export of data from multiple tables using the [–-parallel-jobs](../reference/yb-voyager-cli/#parallel-jobs) argument with the export data command to increase the number of jobs. Setting the value too high can, however, negatively impact performance; so a setting of 4 typically performs well.
+By default, yb-voyager exports four tables at a time. To speed up data export, parallelize the export of data from multiple tables using the `–-parallel-jobs` argument with the export data command to increase the number of jobs. For details about the argument, refer to the [arguments table](../reference/data-migration/export-data/#arguments). Setting the value too high can, however, negatively impact performance; so a setting of 4 typically performs well.
 
 If you use BETA_FAST_DATA_EXPORT to [accelerate data export](../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle), yb-voyager exports only one table at a time and the `--parallel-jobs` argument is ignored.

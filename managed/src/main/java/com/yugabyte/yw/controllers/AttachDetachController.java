@@ -109,7 +109,7 @@ public class AttachDetachController extends AuthenticatedController {
     List<InstanceType> instanceTypes =
         InstanceType.findByProvider(
             provider,
-            config,
+            confGetter,
             confGetter.getConfForScope(provider, ProviderConfKeys.allowUnsupportedInstances));
 
     List<XClusterConfig> xClusterConfigs =

@@ -27,7 +27,6 @@ import com.yugabyte.yw.models.paging.NodeAgentPagedQuery;
 import com.yugabyte.yw.models.paging.NodeAgentPagedResponse;
 import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
 import io.ebean.Query;
-import io.ebean.annotation.Transactional;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.file.Path;
@@ -97,7 +96,6 @@ public class NodeAgentHandler {
    * @param nodeAgent Partially populated node agent.
    * @return the fully populated node agent.
    */
-  @Transactional
   public NodeAgent register(UUID customerUuid, NodeAgentForm payload) {
     Optional<NodeAgent> nodeAgentOp = NodeAgent.maybeGetByIp(payload.ip);
     if (nodeAgentOp.isPresent()) {

@@ -21,7 +21,9 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class CloudAccessKeySetup extends CloudTaskBase {
 
   private final TemplateManager templateManager;
@@ -40,6 +42,7 @@ public class CloudAccessKeySetup extends CloudTaskBase {
 
   public static class Params extends CloudBootstrap.Params {
     public String regionCode;
+    public boolean isFirstTry = true;
   }
 
   @Override
@@ -60,32 +63,46 @@ public class CloudAccessKeySetup extends CloudTaskBase {
             ? AccessKey.getDefaultKeyCode(provider)
             : taskParams().keyPairName;
 
-    if (!Strings.isNullOrEmpty(taskParams().sshPrivateKeyContent)) {
-      accessManager.saveAndAddKey(
-          region.getUuid(),
-          taskParams().sshPrivateKeyContent,
-          accessKeyCode,
-          AccessManager.KeyType.PRIVATE,
-          taskParams().sshUser,
-          taskParams().sshPort,
-          taskParams().airGapInstall,
-          taskParams().skipProvisioning,
-          taskParams().setUpChrony,
-          taskParams().ntpServers,
-          taskParams().showSetUpChrony,
-          taskParams().skipKeyValidateAndUpload);
-    } else {
-      accessManager.addKey(
-          region.getUuid(),
-          accessKeyCode,
-          null,
-          taskParams().sshUser,
-          taskParams().sshPort,
-          taskParams().airGapInstall,
-          taskParams().skipProvisioning,
-          taskParams().setUpChrony,
-          taskParams().ntpServers,
-          taskParams().showSetUpChrony);
+    boolean createAccessKeyRetry = false;
+    if (!taskParams().isFirstTry) {
+      try {
+        log.debug(
+            "Trying to retrieve accessKey {} in provider {}", accessKeyCode, provider.getName());
+        AccessKey accessKey = AccessKey.getOrBadRequest(provider.getUuid(), accessKeyCode);
+      } catch (Exception e) {
+        log.debug("AccessKey {} in provider does not exist. Creating one...", accessKeyCode);
+        createAccessKeyRetry = true;
+      }
+    }
+
+    if (taskParams().isFirstTry || createAccessKeyRetry) {
+      if (!Strings.isNullOrEmpty(taskParams().sshPrivateKeyContent)) {
+        accessManager.saveAndAddKey(
+            region.getUuid(),
+            taskParams().sshPrivateKeyContent,
+            accessKeyCode,
+            AccessManager.KeyType.PRIVATE,
+            taskParams().sshUser,
+            taskParams().sshPort,
+            taskParams().airGapInstall,
+            taskParams().skipProvisioning,
+            taskParams().setUpChrony,
+            taskParams().ntpServers,
+            taskParams().showSetUpChrony,
+            taskParams().skipKeyValidateAndUpload);
+      } else {
+        accessManager.addKey(
+            region.getUuid(),
+            accessKeyCode,
+            null,
+            taskParams().sshUser,
+            taskParams().sshPort,
+            taskParams().airGapInstall,
+            taskParams().skipProvisioning,
+            taskParams().setUpChrony,
+            taskParams().ntpServers,
+            taskParams().showSetUpChrony);
+      }
     }
 
     if (provider.getCloudCode().equals(Common.CloudType.onprem)) {

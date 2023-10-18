@@ -1351,8 +1351,8 @@ uint16_t YBCCompoundHash(const char *key, size_t length) {
 // Transaction operation.
 //------------------------------------------------------------------------------------------------
 
-YBCStatus YBCPgBeginTransaction() {
-  return ToYBCStatus(pgapi->BeginTransaction());
+YBCStatus YBCPgBeginTransaction(int64_t start_time) {
+  return ToYBCStatus(pgapi->BeginTransaction(start_time));
 }
 
 YBCStatus YBCPgRecreateTransaction() {
@@ -1683,10 +1683,12 @@ void YBCStartSysTablePrefetchingNoCache() {
 }
 
 void YBCStartSysTablePrefetching(
+    YBCPgOid database_oid,
     YBCPgLastKnownCatalogVersionInfo version_info,
     YBCPgSysTablePrefetcherCacheMode cache_mode) {
   YBCStartSysTablePrefetchingImpl(PrefetcherOptions::CachingInfo{
       {version_info.version, version_info.is_db_catalog_version_mode},
+      database_oid,
       YBCMapPrefetcherCacheMode(cache_mode)});
 }
 

@@ -8,6 +8,7 @@
  */
 
 import { useMethods } from 'react-use';
+import { WithRouterProps } from 'react-router';
 import { Box, makeStyles } from '@material-ui/core';
 import { CreateUsers } from './CreateUsers';
 import { EditUser } from './EditUsers';
@@ -23,7 +24,7 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const ManageUsers = () => {
+export const ManageUsers = ({ routerProps }: { routerProps: WithRouterProps }) => {
   const userContextData = useMethods(userMethods, defaultUserContext);
   const [
     {
@@ -40,7 +41,7 @@ export const ManageUsers = () => {
       case 'EDIT_USER':
         return <EditUser />;
       default:
-        return <ViewUsers />;
+        return <ViewUsers routerProps={routerProps} />;
     }
   };
   return (

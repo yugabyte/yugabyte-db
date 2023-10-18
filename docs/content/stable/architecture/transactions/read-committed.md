@@ -331,8 +331,8 @@ As the [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency 
 
 However, when Read Committed isolation provides Wait-on-Conflict semantics without wait queues, the following limitations exist:
 
-* You may have to manually tune the exponential backoff parameters for performance, as explained in [Performance tuning](#performance-tuning).
-* The app may have to rely on statement timeouts to [avoid deadlocks](#avoid-deadlocks-in-read-committed-transactions).
+* You may have to manually tune the exponential backoff parameters for performance, as described in [Performance tuning](#performance-tuning).
+* Your application may have to rely on statement timeouts to [avoid deadlocks](#avoid-deadlocks-in-read-committed-transactions).
 * There may be unfairness during contention due to the retry-backoff mechanism, resulting in high P99 latencies.
 
 ## Usage
@@ -1565,9 +1565,15 @@ Read Committed interacts with the following feature:
 
     For more details, see [#12494](https://github.com/yugabyte/yugabyte-db/issues/12494).
 
-* Read restart and serialization are not internally handled in read committed isolation if the query's response size exceeds the YB-TServer GFlag `ysql_output_buffer_size`, which has a default value of 256KB (see [#11572](https://github.com/yugabyte/yugabyte-db/issues/11572)).
+* Read restart and serialization errors are not internally handled in read committed isolation if the query's response size exceeds the YB-TServer GFlag `ysql_output_buffer_size`, which has a default value of 256KB (see [#11572](https://github.com/yugabyte/yugabyte-db/issues/11572)).
 
 * Non-transactional side-effects can occur more than once when a `conflict` or `read restart` occurs in functions or procedures in read committed isolation. This is because in read committed isolation, the retry logic in the database will undo all work done as part of that statement and re-attempt the whole client-issued statement. (See [#12958](https://github.com/yugabyte/yugabyte-db/issues/12958))
+
+Read Committed isolation has the following additional limitations when `enable_wait_queues=false` (see [Wait-on-Conflict](../concurrency-control/#wait-on-conflict) and [Interaction with concurrency control](#interaction-with-concurrency-control)):
+
+* You may have to manually tune the exponential backoff parameters for performance, as described in [Performance tuning](#performance-tuning).
+* Your application may have to rely on statement timeouts to [avoid deadlocks](#avoid-deadlocks-in-read-committed-transactions).
+* There may be unfairness during contention due to the retry-backoff mechanism, resulting in high P99 latencies.
 
 ## Considerations
 

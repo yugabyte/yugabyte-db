@@ -43,7 +43,7 @@ AXIOS_INSTANCE.interceptors.response.use(
     if (
       error.response &&
       UNAUTHORISED_CODES.has(error.response.status) &&
-      !(window as any).rbac_permissions) {
+      localStorage.getItem("rbac_enabled") !== 'true') {
       // For now we need signup page to be primary page so changing it to redirect to sign.
       // will need to change it back to login once we have our own login page.
       browserHistory.redirectToLogin(true);

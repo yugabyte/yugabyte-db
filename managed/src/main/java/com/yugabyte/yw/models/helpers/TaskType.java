@@ -254,6 +254,8 @@ public enum TaskType {
   CheckUnderReplicatedTablets(
       com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets.class),
 
+  CheckFollowerLag(com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag.class),
+
   ManipulateDnsRecordTask(
       com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask.class),
 
@@ -480,6 +482,9 @@ public enum TaskType {
 
   PromoteAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags.class),
 
+  StoreAutoFlagConfigVersion(
+      com.yugabyte.yw.commissioner.tasks.subtasks.StoreAutoFlagConfigVersion.class),
+
   CheckUpgrade(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade.class),
 
   ResizeNode(com.yugabyte.yw.commissioner.tasks.upgrade.ResizeNode.class),
@@ -499,6 +504,9 @@ public enum TaskType {
 
   ThirdpartySoftwareUpgrade(
       com.yugabyte.yw.commissioner.tasks.upgrade.ThirdpartySoftwareUpgrade.class),
+
+  ModifyAuditLoggingConfig(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ModifyAuditLoggingConfig.class),
 
   MarkUniverseForHealthScriptReUpload(
       com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload.class),
@@ -559,9 +567,13 @@ public enum TaskType {
 
   FinalizeUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.FinalizeUpgrade.class),
 
+  RollbackUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.RollbackUpgrade.class),
+
   ReprovisionNode(com.yugabyte.yw.commissioner.tasks.ReprovisionNode.class),
 
-  UpdateUniverseIntent(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent.class);
+  UpdateUniverseIntent(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent.class),
+
+  FreezeUniverse(com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse.class);
 
   private final Class<? extends ITask> taskClass;
 
@@ -610,6 +622,7 @@ public enum TaskType {
           .put(UpdateKubernetesDiskSize, 49)
           .put(UpgradeKubernetesUniverse, 50)
           .put(FinalizeUpgrade, 51)
+          .put(RollbackUpgrade, 52)
           // Node operations (70-89):
           .put(AddNodeToUniverse, 70)
           .put(DeleteNodeFromUniverse, 71)

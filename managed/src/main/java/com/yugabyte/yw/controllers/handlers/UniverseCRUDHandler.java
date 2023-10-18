@@ -549,6 +549,9 @@ public class UniverseCRUDHandler {
 
       PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
       PlacementInfoUtil.finalSanityCheckConfigure(c, taskParams.getNodesInCluster(c.uuid));
+
+      taskParams.otelCollectorEnabled =
+          confGetter.getConfForScope(provider, ProviderConfKeys.otelCollectorEnabled);
     }
 
     if (taskParams.getPrimaryCluster() != null) {
@@ -1571,7 +1574,7 @@ public class UniverseCRUDHandler {
     // Validate if any required params are missed based on the taskType
     switch (taskParams.taskType) {
       case VMImage:
-        if (!runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")) {
+        if (!runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")) {
           throw new PlatformServiceException(
               Http.Status.METHOD_NOT_ALLOWED, "VM image upgrade is disabled");
         }

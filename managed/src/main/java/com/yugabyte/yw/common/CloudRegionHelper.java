@@ -38,8 +38,13 @@ public class CloudRegionHelper {
   }
 
   public Region createRegion(
-      Provider provider, String regionCode, String destVpcId, PerRegionMetadata metadata) {
-    if (Region.getByCode(provider, regionCode) != null) {
+      Provider provider,
+      String regionCode,
+      String destVpcId,
+      PerRegionMetadata metadata,
+      boolean isFirstTry) {
+    Region existingRegion = Region.getByCode(provider, regionCode);
+    if (existingRegion != null && isFirstTry) {
       throw new RuntimeException("Region " + regionCode + " already setup");
     }
 
@@ -63,7 +68,11 @@ public class CloudRegionHelper {
               metadata.longitude);
     } else {
       JsonNode metaData = Json.toJson(regionMetadata.get(regionCode));
-      createdRegion = Region.createWithMetadata(provider, regionCode, metaData);
+      if (!isFirstTry && existingRegion != null) {
+        createdRegion = existingRegion;
+      } else {
+        createdRegion = Region.createWithMetadata(provider, regionCode, metaData);
+      }
     }
     final Region region = createdRegion;
     String customImageId = metadata.customImageId;
@@ -167,7 +176,7 @@ public class CloudRegionHelper {
                 region
                     .getZones()
                     .add(
-                        AvailabilityZone.createOrThrow(
+                        AvailabilityZone.getOrCreate(
                             region,
                             zone,
                             zone,
@@ -181,9 +190,7 @@ public class CloudRegionHelper {
         } else {
           zoneSubnets.forEach(
               (zone, subnet) ->
-                  region
-                      .getZones()
-                      .add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
+                  region.getZones().add(AvailabilityZone.getOrCreate(region, zone, zone, subnet)));
         }
         break;
       case azu:
@@ -206,7 +213,7 @@ public class CloudRegionHelper {
         region.setZones(new ArrayList<>());
         zoneNets.forEach(
             (zone, subnet) ->
-                region.getZones().add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
+                region.getZones().add(AvailabilityZone.getOrCreate(region, zone, zone, subnet)));
         break;
       case gcp:
         ObjectNode customPayload = Json.newObject();
@@ -240,8 +247,7 @@ public class CloudRegionHelper {
                 region
                     .getZones()
                     .add(
-                        AvailabilityZone.createOrThrow(
-                            region, zone, zone, subnet, secondarySubnet)));
+                        AvailabilityZone.getOrCreate(region, zone, zone, subnet, secondarySubnet)));
         break;
       case onprem:
         region.setZones(new ArrayList<>());
@@ -250,7 +256,7 @@ public class CloudRegionHelper {
                 region
                     .getZones()
                     .add(
-                        AvailabilityZone.createOrThrow(
+                        AvailabilityZone.getOrCreate(
                             region, zone.getCode(), zone.getName(), null, null)));
         break;
       default:

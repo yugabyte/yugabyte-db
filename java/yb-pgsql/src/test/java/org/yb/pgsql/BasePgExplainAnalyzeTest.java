@@ -40,6 +40,11 @@ class BasePgExplainAnalyzeTest extends BasePgSQLTest {
     }
   }
 
+  public static ExplainAnalyzeUtils.Cost getExplainTotalCost(Statement stmt, String query)
+  throws Exception {
+      return ExplainAnalyzeUtils.getExplainTotalCost(stmt, query);
+  }
+
   public static ExplainAnalyzeUtils.Cost getExplainTotalCost(String query)
   throws Exception {
     try (Statement stmt = connection.createStatement()) {

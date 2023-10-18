@@ -36,12 +36,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.KmsConfig;
-import com.yugabyte.yw.models.Universe;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -115,7 +115,7 @@ public class AwsEARServiceTest extends FakeDBApplication {
     lenient().when(mockDecryptResult.getPlaintext()).thenReturn(decryptedKeyBuffer);
     lenient()
         .when(
-            mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.cloudEnabled)))
+            mockConfGetter.getConfForScope(any(Customer.class), eq(CustomerConfKeys.cloudEnabled)))
         .thenReturn(false);
     awsEARService = new AwsEARService(mockConfGetter);
     config = new EncryptionAtRestConfig();

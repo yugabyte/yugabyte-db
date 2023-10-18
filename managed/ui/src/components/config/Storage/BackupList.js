@@ -96,25 +96,24 @@ export const BackupList = (props) => {
           id="bg-nested-dropdown"
           pullRight
         >
-          <MenuItem
-            disabled={!hasNecessaryPerm({
-              onResource: 'CUSTOMER_ID',
+          <RbacValidator
+            accessRequiredOn={{
+              onResource: "CUSTOMER_ID",
               ...UserPermissionMap.editStorageConfiguration
-            })}
-            onClick={() => {
-              if (!hasNecessaryPerm({
-                onResource: 'CUSTOMER_ID',
-                ...UserPermissionMap.editStorageConfiguration
-              })) {
-                return;
-              }
-              onEditConfig(row);
-            }}>Edit Configuration</MenuItem>
+            }}
+            isControl
+            overrideStyle={{ display: 'block' }}
+          >
+            <MenuItem
+              onClick={() => {
+                onEditConfig(row);
+              }}>Edit Configuration</MenuItem>
+          </RbacValidator>
           <MenuItem
             onClick={(e) => {
               if (!hasNecessaryPerm({
                 onResource: 'CUSTOMER_ID',
-                ...UserPermissionMap.backup
+                ...UserPermissionMap.listBackup
               })) {
                 return;
               }
@@ -124,40 +123,40 @@ export const BackupList = (props) => {
             }}
             disabled={!hasNecessaryPerm({
               onResource: 'CUSTOMER_ID',
-              ...UserPermissionMap.backup
+              ...UserPermissionMap.listBackup
             })}
           >
             Show associated backups
           </MenuItem>
-          <MenuItem
-            disabled={inUse || !hasNecessaryPerm({
-              onResource: 'CUSTOMER_ID',
+          <RbacValidator
+            accessRequiredOn={{
+              onResource: "CUSTOMER_ID",
               ...UserPermissionMap.deleteStorageConfiguration
-            })}
-            onClick={() => {
-              if (!hasNecessaryPerm({
-                onResource: 'CUSTOMER_ID',
-                ...UserPermissionMap.deleteStorageConfiguration
-              })) {
-                return;
-              }
-              if (!inUse) {
-                setConfigData(configUUID);
-                showDeleteStorageConfig(configName);
-              }
             }}
+            isControl
+            overrideStyle={{ display: 'block' }}
           >
-            {!inUse && <>Delete Configuration</>}
+            <MenuItem
+              disabled={inUse}
+              onClick={() => {
+                if (!inUse) {
+                  setConfigData(configUUID);
+                  showDeleteStorageConfig(configName);
+                }
+              }}
+            >
+              {!inUse && <>Delete Configuration</>}
 
-            {inUse && (
-              <YBInfoTip
-                content="Storage configuration is in use and cannot be deleted until associated resources are removed."
-                placement="top"
-              >
-                <span className="disable-delete">Delete Configuration</span>
-              </YBInfoTip>
-            )}
-          </MenuItem>
+              {inUse && (
+                <YBInfoTip
+                  content="Storage configuration is in use and cannot be deleted until associated resources are removed."
+                  placement="top"
+                >
+                  <span className="disable-delete">Delete Configuration</span>
+                </YBInfoTip>
+              )}
+            </MenuItem>
+          </RbacValidator>
           <StorageConfigDeleteModal
             visible={visibleModal === 'delete' + configName + 'StorageConfig'}
             onHide={hideDeleteStorageConfig}

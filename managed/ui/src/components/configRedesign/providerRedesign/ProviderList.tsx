@@ -151,17 +151,26 @@ export const ProviderList = (props: ProviderListProps) => {
           <img src={ellipsisIcon} alt="more" className="ellipsis-icon" />
         </Dropdown.Toggle>
         <Dropdown.Menu>
-          <MenuItem
-            eventKey="1"
-            onSelect={() => handleDeleteProviderConfig(row)}
-            data-testid="DeleteConfiguration-button"
-            disabled={row.linkedUniverses.length > 0 || !hasNecessaryPerm({
+          <RbacValidator
+            accessRequiredOn={{
               onResource: "CUSTOMER_ID",
               ...UserPermissionMap.deleteProvider
-            })}
+            }}
+            isControl
+            overrideStyle={{ display: 'block' }}
           >
-            <YBLabelWithIcon icon="fa fa-trash">Delete Configuration</YBLabelWithIcon>
-          </MenuItem>
+            <MenuItem
+              eventKey="1"
+              onSelect={() => handleDeleteProviderConfig(row)}
+              data-testid="DeleteConfiguration-button"
+              disabled={row.linkedUniverses.length > 0 || !hasNecessaryPerm({
+                onResource: "CUSTOMER_ID",
+                ...UserPermissionMap.deleteProvider
+              })}
+            >
+              <YBLabelWithIcon icon="fa fa-trash">Delete Configuration</YBLabelWithIcon>
+            </MenuItem>
+          </RbacValidator>
         </Dropdown.Menu>
       </Dropdown>
     );

@@ -32,7 +32,7 @@ services:
 
             {{if eq (yamlPath "postgres.install.enabled") "true" }}
             username="{{ yamlPath "postgres.install.username" }}"
-            password=""
+            password="{{ yamlPath "postgres.install.password" }}"
             host="localhost"
             port="{{ yamlPath "postgres.install.port" }}"
             dbname="yugaware"

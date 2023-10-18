@@ -12,7 +12,9 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.models.filters.NodeAgentFilter;
+import com.yugabyte.yw.models.helpers.TransactionUtil;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
 import io.ebean.DB;
@@ -45,6 +47,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -65,6 +68,8 @@ import play.mvc.Http.Status;
 @Setter
 @ApiModel(description = "Node agent details")
 public class NodeAgent extends Model {
+
+  public static final KeyLock<UUID> NODE_AGENT_KEY_LOCK = new KeyLock<UUID>();
 
   /** Node agent server OS type. */
   public enum OSType {
@@ -323,6 +328,19 @@ public class NodeAgent extends Model {
     finder.deleteById(uuid);
   }
 
+  private void updateInTxn(Consumer<NodeAgent> consumer) {
+    NODE_AGENT_KEY_LOCK.acquireLock(getUuid());
+    try {
+      TransactionUtil.doInTxn(
+          () -> consumer.accept(NodeAgent.getOrBadRequest(getUuid())),
+          TransactionUtil.DEFAULT_RETRY_CONFIG);
+      // Reload the record from the DB.
+      refresh();
+    } finally {
+      NODE_AGENT_KEY_LOCK.releaseLock(getUuid());
+    }
+  }
+
   public void ensureState(State expectedState) {
     if (getState() != expectedState) {
       throw new PlatformServiceException(
@@ -362,9 +380,22 @@ public class NodeAgent extends Model {
   }
 
   public void saveState(State state) {
-    validateStateTransition(state);
-    this.setState(state);
-    save();
+    updateInTxn(
+        n -> {
+          n.validateStateTransition(state);
+          n.setState(state);
+          n.save();
+        });
+  }
+
+  public void finalizeUpgrade(String nodeAgentHome, String version) {
+    updateInTxn(
+        n -> {
+          n.setHome(nodeAgentHome);
+          n.setVersion(version);
+          n.setState(State.READY);
+          n.save();
+        });
   }
 
   public void heartbeat() {
@@ -442,14 +473,27 @@ public class NodeAgent extends Model {
   }
 
   public void updateCertDirPath(Path certDirPath) {
-    getConfig().setCertPath(certDirPath.toString());
-    save();
+    updateCertDirPath(certDirPath, null);
+  }
+
+  public void updateCertDirPath(Path certDirPath, State state) {
+    updateInTxn(
+        n -> {
+          if (state != null) {
+            n.setState(state);
+          }
+          n.getConfig().setCertPath(certDirPath.toString());
+          n.save();
+        });
   }
 
   public void updateOffloadable(boolean offloadable) {
     if (getConfig().isOffloadable() != offloadable) {
-      getConfig().setOffloadable(offloadable);
-      save();
+      updateInTxn(
+          n -> {
+            n.getConfig().setOffloadable(offloadable);
+            n.save();
+          });
     }
   }
 

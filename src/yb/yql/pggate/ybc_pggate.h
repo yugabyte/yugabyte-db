@@ -559,7 +559,7 @@ YBCStatus YBCSRFGetNext(YBCPgFunction handle, uint64_t *values, bool *is_nulls, 
 YBCStatus YBCFinalizeFunctionTargets(YBCPgFunction handle);
 
 // Transaction control -----------------------------------------------------------------------------
-YBCStatus YBCPgBeginTransaction();
+YBCStatus YBCPgBeginTransaction(int64_t start_time);
 YBCStatus YBCPgRecreateTransaction();
 YBCStatus YBCPgRestartTransaction();
 YBCStatus YBCPgResetTransactionReadPoint();
@@ -695,6 +695,7 @@ YBCStatus YBCGetIndexBackfillProgress(YBCPgOid* index_oids, YBCPgOid* database_o
 void YBCStartSysTablePrefetchingNoCache();
 
 void YBCStartSysTablePrefetching(
+    YBCPgOid database_oid,
     YBCPgLastKnownCatalogVersionInfo catalog_version,
     YBCPgSysTablePrefetcherCacheMode cache_mode);
 

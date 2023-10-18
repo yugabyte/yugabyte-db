@@ -22,7 +22,7 @@ The following projects can be used to implement Golang applications using the Yu
 | YugabyteDB PGX Driver [Recommended] | [Documentation](yb-pgx/)<br /> [Reference](../../reference/drivers/go/yb-pgx-reference/) | [v4](https://pkg.go.dev/github.com/yugabyte/pgx/) | 2.8 and above
 | PGX Driver | [Documentation](pgx/)<br />[Reference](../../reference/drivers/go/pgx-reference/) | [v4](https://pkg.go.dev/github.com/jackc/pgx/) | 2.8 and above
 | PQ Driver | [Documentation](pq/)<br />[Reference](../../reference/drivers/go/pq-reference/) | [v1.10.2](https://github.com/lib/pq/releases/tag/v1.10.2/) | 2.6 and above
-| YugabyteDB Go Driver for YCQL | [Documentation](ycql) | 3.16.3 | |
+| YugabyteDB Go Driver for YCQL | [Documentation](ycql) | [3.16.3](https://github.com/yugabyte/gocql) | |
 
 | Project | Documentation and Guides | Example Apps |
 | ------- | ------------------------ | ------------- |

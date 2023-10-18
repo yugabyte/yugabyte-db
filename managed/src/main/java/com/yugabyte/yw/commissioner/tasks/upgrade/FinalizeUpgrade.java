@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
+import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +28,11 @@ public class FinalizeUpgrade extends SoftwareUpgradeTaskBase {
   @Override
   public NodeDetails.NodeState getNodeState() {
     return NodeDetails.NodeState.FinalizeUpgrade;
+  }
+
+  @Override
+  protected FinalizeUpgradeParams taskParams() {
+    return (FinalizeUpgradeParams) taskParams;
   }
 
   @Override

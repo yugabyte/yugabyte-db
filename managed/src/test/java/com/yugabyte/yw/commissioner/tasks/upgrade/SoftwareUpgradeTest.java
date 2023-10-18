@@ -5,19 +5,17 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.DownloadingSoftware;
 import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSERVER;
-import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
@@ -59,7 +57,6 @@ import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.UpgradeYsqlResponse;
-import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
 public class SoftwareUpgradeTest extends UpgradeTaskTest {
@@ -78,7 +75,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
-          TaskType.WaitForFollowerLag,
+          TaskType.CheckFollowerLag,
           TaskType.RunHooks,
           TaskType.SetNodeState);
 
@@ -93,7 +90,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
-          TaskType.WaitForFollowerLag,
+          TaskType.CheckFollowerLag,
           TaskType.RunHooks,
           TaskType.SetNodeState);
 
@@ -111,7 +108,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.ModifyBlackList,
-          TaskType.WaitForFollowerLag,
+          TaskType.CheckFollowerLag,
           TaskType.RunHooks,
           TaskType.SetNodeState);
 
@@ -130,7 +127,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.ModifyBlackList,
-          TaskType.WaitForFollowerLag,
+          TaskType.CheckFollowerLag,
           TaskType.RunHooks,
           TaskType.SetNodeState);
 
@@ -208,9 +205,8 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         .forUniverse(defaultUniverse)
         .setValue(RunYsqlUpgrade.USE_SINGLE_CONNECTION_PARAM, "true");
 
-    ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("underreplicated_tablets", Json.newArray());
-    when(mockNodeUIApiHelper.getRequest(anyString())).thenReturn(bodyJson);
+    setUnderReplicatedTabletsMock();
+    setFollowerLagMock();
   }
 
   private TaskInfo submitTask(SoftwareUpgradeParams requestParams) {
@@ -378,26 +374,20 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     taskParams.ybSoftwareVersion = "2.14.12.0-b1";
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
 
-    TaskInfo taskInfo = submitTask(taskParams);
+    assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
     assertEquals(2, defaultUniverse.getVersion());
-    // In case of an exception, only RunHooks task should be queued.
-    assertEquals(3, taskInfo.getSubTasks().size());
   }
 
   @Test
   public void testSoftwareUpgradeWithoutVersion() {
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
-    TaskInfo taskInfo = submitTask(taskParams);
+    assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
     assertEquals(2, defaultUniverse.getVersion());
-    // In case of an exception, only RunHooks tasks should be queued.
-    assertEquals(3, taskInfo.getSubTasks().size());
   }
 
   @Test
@@ -416,6 +406,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
@@ -434,7 +425,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true, true);
-    assertEquals(128, position);
+    assertEquals(129, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -459,6 +450,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
@@ -477,7 +469,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true, true, true);
-    assertEquals(138, position);
+    assertEquals(139, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -526,6 +518,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
@@ -591,6 +584,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
@@ -609,7 +603,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true, true);
-    assertEquals(173, position);
+    assertEquals(174, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }
@@ -632,6 +626,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
@@ -647,7 +642,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     position = assertSequence(subTasksByPosition, MASTER, position, false, false);
     position = assertSequence(subTasksByPosition, TSERVER, position, false, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE, true, true);
-    assertEquals(23, position);
+    assertEquals(24, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }

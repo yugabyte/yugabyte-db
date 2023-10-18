@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { FC, useContext } from 'react';
+import { FC, useContext, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
@@ -18,7 +18,7 @@ import { deleteUser } from '../../api';
 import { createErrorMessage } from '../../../universe/universe-form/utils/helpers';
 import ErrorIcon from '../../../../assets/error.svg';
 import { RbacUser } from '../interface/Users';
-import { UserContextMethods, UserViewContext } from './UserContext';
+import { UserContextMethods, UserPages, UserViewContext } from './UserContext';
 
 type DeleteUserProps = {
   open: boolean;
@@ -58,7 +58,7 @@ export const DeleteUserModal: FC<DeleteUserProps> = ({ open, onHide }) => {
   const doDeleteUser = useMutation(() => deleteUser(currentUser!), {
     onSuccess: () => {
       toast.success(t('successMsg', { user_email: currentUser?.email }));
-      setCurrentPage('LIST_USER');
+      setCurrentPage(UserPages.LIST_USER);
       queryClient.invalidateQueries('users');
       onHide();
     },
@@ -72,8 +72,15 @@ export const DeleteUserModal: FC<DeleteUserProps> = ({ open, onHide }) => {
 
   const {
     control,
-    formState: { isValid }
+    formState: { isValid },
+    reset
   } = useForm<DeleteUserFormProps>();
+
+  useEffect(() => {
+    if (open) {
+      reset();
+    }
+  }, [open]);
 
   return (
     <YBModal

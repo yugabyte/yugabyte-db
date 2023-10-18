@@ -51,6 +51,10 @@ void PgLocksTestBase::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
 
   PgMiniTestBase::SetUp();
+  InitTransactionManagerAndPool();
+  // Wait for system.transactions to be created.
+  WaitForStatusTabletsVersion(1);
+
   InitTSProxies();
   InitPgClientProxies();
 }

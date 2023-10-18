@@ -182,10 +182,10 @@ restore_postgres_backup() {
 
   if [[ "${verbose}" = true ]]; then
     restore_cmd="${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c -v -d \
-      ${PLATFORM_DB_NAME} ${backup_path}"
+      ${PLATFORM_DB_NAME}"
   else
     restore_cmd="${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c -d \
-      ${PLATFORM_DB_NAME} ${backup_path}"
+      ${PLATFORM_DB_NAME}"
   fi
 
   # Run pg_restore.
@@ -193,7 +193,7 @@ restore_postgres_backup() {
   if [[ "$migration" = true ]]; then
     set +e
   fi
-  docker_aware_cmd "postgres" "${restore_cmd}"
+  docker_aware_cmd "postgres" "${restore_cmd}" < "${backup_path}"
   set -e
   echo "Done"
 }
@@ -482,7 +482,7 @@ restore_backup() {
 
       metadata_regex="**/yugaware/conf/${VERSION_METADATA}"
       if [[ "${yba_installer}" = true ]]; then
-        version=$(basename $(realpath /opt/yugabyte/software/active))
+        version=$(basename $(realpath ${data_dir}/software/active))
         metadata_regex="**/${version}/**/yugaware/conf/${VERSION_METADATA}"
       fi
       current_metadata_path=$(find ${destination} -wholename ${metadata_regex})
@@ -550,9 +550,8 @@ restore_backup() {
   if [ "$disable_version_check" != true ]; then
     command="cat ${current_metadata_path}"
 
-    version_cmd="import json, sys; print(json.load(sys.stdin)[\"version_number\"])"
-
-    build_cmd="import json, sys; print(json.load(sys.stdin)[\"build_number\"])"
+    version_cmd='import json, sys; print(json.load(sys.stdin)["version_number"])'
+    build_cmd='import json, sys; print(json.load(sys.stdin)["build_number"])'
 
     version=$(docker_aware_cmd "yugaware" "${command}" | ${PYTHON_EXECUTABLE} -c "${version_cmd}")
     build=$(docker_aware_cmd "yugaware" "${command}" | ${PYTHON_EXECUTABLE} -c "${build_cmd}")
@@ -564,8 +563,8 @@ restore_backup() {
     # The version_metadata.json file is always present in a release package, and it would have
     # been stored during create_backup(), so we don't need to check if the file exists before
     # restoring it from the restore path.
-    backup_yba_version="cat ${backup_metadata_path} | ${PYTHON_EXECUTABLE} -c ${version_cmd}"
-    backup_yba_build="cat ${backup_metadata_path} | ${PYTHON_EXECUTABLE} -c ${build_cmd}"
+    backup_yba_version=$(cat "${backup_metadata_path}" | ${PYTHON_EXECUTABLE} -c "${version_cmd}")
+    backup_yba_build=$(cat "${backup_metadata_path}" | ${PYTHON_EXECUTABLE} -c "${build_cmd}")
     back_plat_version=${backup_yba_version}-${backup_yba_build}
 
     if [ ${curr_platform_version} != ${back_plat_version} ]

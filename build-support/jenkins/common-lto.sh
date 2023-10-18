@@ -57,7 +57,7 @@ export BUILD_TYPE
 log "BUILD_TYPE: ${BUILD_TYPE}"
 
 log "YB_BUILD_OPTS: ${YB_BUILD_OPTS:-}"
-for yb_opt in $YB_BUILD_OPTS; do
+for yb_opt in ${YB_BUILD_OPTS:-}; do
   if [[ $yb_opt =~ YB_.*=.* ]]; then
     log "  Setting from YB_BUILD_OPTS: $yb_opt"
     export "${yb_opt?}"

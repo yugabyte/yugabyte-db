@@ -19,7 +19,6 @@ import {
   YBResourceCount,
   YBCost,
   DescriptionList,
-  YBCodeBlock
 } from '../../../components/common/descriptors';
 import { RegionMap, YBMapLegend } from '../../maps';
 import {
@@ -466,57 +465,6 @@ export default class UniverseOverviewNew extends Component {
       </Col>
     );
   };
-
-  getDemoWidget = () => {
-    const {
-      closeModal,
-      showDemoCommandModal,
-      modal: { showModal, visibleModal }
-    } = this.props;
-    return (
-      <Col lg={2} md={4} sm={4} xs={6}>
-        <YBWidget
-          size={1}
-          className={'overview-widget-cost'}
-          headerLeft={'Explore YSQL'}
-          body={
-            <FlexContainer direction={'column'}>
-              <FlexGrow>
-                <div style={{ marginBottom: '30px' }}>
-                  Load a data set and run queries against it.
-                </div>
-              </FlexGrow>
-              <FlexShrink className={'centered'}>
-                <Fragment>
-                  <YBButton
-                    btnClass={'btn btn-default'}
-                    btnText={'Create Demo'}
-                    title={'Create Demo'}
-                    onClick={showDemoCommandModal}
-                  />
-                  <YBModal
-                    title={'YSQL Retail Demo'}
-                    visible={showModal && visibleModal === 'universeOverviewDemoModal'}
-                    onHide={closeModal}
-                    cancelLabel={'Close'}
-                    showCancelButton={true}
-                  >
-                    <div>Query a sample database:</div>
-                    <YBCodeBlock>yugabyted demo connect</YBCodeBlock>
-                    <div>
-                      Explore YSQL at{' '}
-                      <a href="https://docs.yugabyte.com/latest/quick-start/explore-ysql/">here</a>.
-                    </div>
-                  </YBModal>
-                </Fragment>
-              </FlexShrink>
-            </FlexContainer>
-          }
-        />
-      </Col>
-    );
-  };
-
   getPrimaryClusterWidget = (currentUniverse) => {
     const isDedicatedNodes = isDedicatedNodePlacement(currentUniverse);
 
@@ -865,11 +813,6 @@ export default class UniverseOverviewNew extends Component {
         <Row>
           {this.getDatabaseWidget(universeInfo, tasks)}
           {this.getPrimaryClusterWidget(universeInfo)}
-          {isEnabled(
-            currentCustomer.data.features,
-            'universes.details.overview.demo',
-            'disabled'
-          ) && this.getDemoWidget()}
           {this.getCPUWidget(universeInfo)}
           {isDisabled(currentCustomer.data.features, 'universes.details.health')
             ? this.getAlertWidget(alerts, universeInfo)

@@ -111,7 +111,7 @@ namespace yb::client::internal {
 
 bool IsTracingEnabled() {
   auto *trace = Trace::CurrentTrace();
-  return FLAGS_collect_end_to_end_traces || (trace && trace->end_to_end_traces_requested());
+  return trace && (FLAGS_collect_end_to_end_traces || trace->end_to_end_traces_requested());
 }
 
 namespace {
@@ -343,6 +343,7 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
   } else {
     metadata.transaction.TransactionIdToPB(transaction);
   }
+  transaction->set_pg_txn_start_us(metadata.transaction.pg_txn_start_us);
   dest->set_deprecated_may_have_metadata(true);
 
   if (metadata.subtransaction && !metadata.subtransaction->IsDefaultState()) {
@@ -455,7 +456,8 @@ template <class Req, class Resp>
 void AsyncRpcBase<Req, Resp>::ProcessResponseFromTserver(const Status& status) {
   TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
   if (resp_.has_trace_buffer()) {
-    TRACE_TO(trace_, "Received from server: \n BEGIN\n$0 END.", resp_.trace_buffer());
+    TRACE_TO(
+        trace_, "Received from server: \n BEGIN AsyncRpc\n$0 END AsyncRpc", resp_.trace_buffer());
   }
   NotifyBatcher(status);
   if (!CommonResponseCheck(status)) {

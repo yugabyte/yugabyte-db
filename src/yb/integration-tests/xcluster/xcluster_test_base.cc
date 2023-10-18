@@ -50,12 +50,24 @@ DECLARE_int32(replication_factor);
 DECLARE_string(certs_for_cdc_dir);
 DECLARE_string(certs_dir);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_bool(enable_load_balancing);
 
 namespace yb {
 
 using client::YBClient;
 using client::YBTableName;
 using tserver::XClusterConsumer;
+
+Status XClusterTestBase::PostSetUp() {
+  if (!producer_tables_.empty()) {
+    producer_table_ = producer_tables_.front();
+  }
+  if (!consumer_tables_.empty()) {
+    consumer_table_ = consumer_tables_.front();
+  }
+
+  return WaitForLoadBalancersToStabilize();
+}
 
 Result<std::unique_ptr<XClusterTestBase::Cluster>> XClusterTestBase::CreateCluster(
     const std::string& cluster_id, const std::string& cluster_short_name, uint32_t num_tservers,
@@ -166,6 +178,9 @@ Status XClusterTestBase::RunOnBothClusters(std::function<Status(Cluster*)> run_o
 }
 
 Status XClusterTestBase::WaitForLoadBalancersToStabilize() {
+  if (!FLAGS_enable_load_balancing) {
+    return Status::OK();
+  }
   auto se = ScopeExit([catalog_manager_bg_task_wait_ms = FLAGS_catalog_manager_bg_task_wait_ms] {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) =
         catalog_manager_bg_task_wait_ms;

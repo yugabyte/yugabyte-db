@@ -29,14 +29,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Default threshold for Clock Skew alert",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> cloudEnabled =
-      new ConfKeyInfo<>(
-          "yb.cloud.enabled",
-          ScopeType.UNIVERSE,
-          "Cloud Enabled",
-          "Enables YBM specific features",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> healthLogOutput =
       new ConfKeyInfo<>(
           "yb.health.logOutput",
@@ -751,6 +743,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Controls the max time out when performing follower lag checks",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> followerLagMaxThreshold =
+      new ConfKeyInfo<>(
+          "yb.checks.follower_lag.max_threshold",
+          ScopeType.UNIVERSE,
+          "Max threshold for follower lag",
+          "The maximum time that we allow a tserver to be behind its peers",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Long> checkMemoryTimeoutSecs =
       new ConfKeyInfo<>(
           "yb.dbmem.checks.timeout",
@@ -919,7 +919,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Always backup tablespaces when taking ysql backups. This is a UI flag"
               + " used to appropriately send 'useTablespaces' parameter to backend in API.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowVolumeDecrease =
       new ConfKeyInfo<>(
           "yb.edit.allow_volume_decrease",

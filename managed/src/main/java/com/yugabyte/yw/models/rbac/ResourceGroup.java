@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -23,6 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 @NoArgsConstructor
 @ToString
 @Slf4j
+@EqualsAndHashCode
 public class ResourceGroup {
 
   @Builder
@@ -31,6 +33,7 @@ public class ResourceGroup {
   @Getter
   @Setter
   @ToString
+  @EqualsAndHashCode
   public static class ResourceDefinition {
     @ApiModelProperty(value = "Resource Type")
     private ResourceType resourceType;
@@ -42,21 +45,34 @@ public class ResourceGroup {
     @ApiModelProperty(value = "Set of resource uuids")
     @Builder.Default
     private Set<UUID> resourceUUIDSet = new HashSet<>();
+
+    public ResourceDefinition clone() {
+      return ResourceDefinition.builder()
+          .resourceType(this.resourceType)
+          .allowAll(this.allowAll)
+          .resourceUUIDSet(new HashSet<>(this.resourceUUIDSet))
+          .build();
+    }
   }
 
   private Set<ResourceDefinition> resourceDefinitionSet = new HashSet<>();
 
   public static ResourceGroup getSystemDefaultResourceGroup(UUID customerUUID, Users user) {
+    return getSystemDefaultResourceGroup(customerUUID, user.getUuid(), user.getRole());
+  }
+
+  public static ResourceGroup getSystemDefaultResourceGroup(
+      UUID customerUUID, UUID userUUID, Users.Role usersRole) {
     ResourceGroup defaultResourceGroup = new ResourceGroup();
     ResourceDefinition resourceDefinition;
-    switch (user.getRole()) {
+    switch (usersRole) {
       case ConnectOnly:
         // For connect only role, user should have access to only his user profile, nothing else.
         resourceDefinition =
             ResourceDefinition.builder()
                 .resourceType(ResourceType.USER)
                 .allowAll(false)
-                .resourceUUIDSet(new HashSet<>(Arrays.asList(user.getUuid())))
+                .resourceUUIDSet(new HashSet<>(Arrays.asList(userUUID)))
                 .build();
         defaultResourceGroup.resourceDefinitionSet.add(resourceDefinition);
         break;
