@@ -83,12 +83,12 @@ import algoliasearch from 'algoliasearch';
           if (pageHeader.matchLevel) {
             if (pageHeader.matchLevel === 'full') {
               pageHash = `#${pageHeader.value.toLowerCase().trim()}`;
-              pageHash = pageHash.replace(/<em>|<\/em>/g, '').replace(/ /g, '-');
+              pageHash = pageHash.replace(/<em>|<\/em>/g, '').replace(/\s+|_/g, '-');
             } else if (pageHeader.matchLevel === 'partial') {
               if (pageHeader.matchedWords.length > partialHeaderMatched) {
                 partialHeaderMatched = pageHeader.matchedWords.length;
                 pageHash = `#${pageHeader.value.toLowerCase().trim()}`;
-                pageHash = pageHash.replace(/<em>|<\/em>/g, '').replace(/ /g, '-');
+                pageHash = pageHash.replace(/<em>|<\/em>/g, '').replace(/\s+|_/g, '-');
               }
             }
 
