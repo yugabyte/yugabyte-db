@@ -29,7 +29,7 @@ public class KubernetesInfo implements CloudInfoInterface {
   @JsonAlias("KUBECONFIG_SERVICE_ACCOUNT")
   @EditableInUseProvider(name = "Kubernetes Service Account", allowed = false)
   @ApiModelProperty(
-      value = "DEPRECATED since YBA version 2.17.3.0. kubernetes service account is not needed.")
+      value = "Deprecated since YBA version 2.17.3.0. kubernetes service account is not needed.")
   private String kubernetesServiceAccount;
 
   @JsonAlias("KUBECONFIG_IMAGE_REGISTRY")

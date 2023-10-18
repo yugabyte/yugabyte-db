@@ -29,7 +29,6 @@ import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.Set;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -204,7 +203,7 @@ public class YbaApiTest extends FakeDBApplication {
                 + expectedVisibilityMsg
                 + ". <...anything else here...>\")";
         Assert.assertNotNull(errMsg, annDescription);
-        Assert.assertTrue(errMsg, containsIgnoreCase(annDescription, expectedVisibilityMsg));
+        Assert.assertTrue(errMsg, annDescription.contains(expectedVisibilityMsg));
         // validate the runtimeConfig flag of @YbaApi if present
         verifyRuntimeConfig(ybaApiAnn);
 
@@ -231,15 +230,11 @@ public class YbaApiTest extends FakeDBApplication {
                 + expectedVisibilityMsg
                 + ". <...anything else here...>\")";
         Assert.assertNotNull(errMsg, apiPropAnn.value());
-        Assert.assertTrue(errMsg, containsIgnoreCase(apiPropAnn.value(), expectedVisibilityMsg));
+        Assert.assertTrue(errMsg, apiPropAnn.value().contains(expectedVisibilityMsg));
         // validate the runtimeConfig flag of @YbaApi if present
         verifyRuntimeConfig(ybaApiAnn);
       }
     }
-  }
-
-  private boolean containsIgnoreCase(String source, String find) {
-    return Pattern.compile(Pattern.quote(find), Pattern.CASE_INSENSITIVE).matcher(source).find();
   }
 
   // returns the expected visibility level of YbaApi by looking for keywords in the given API
@@ -247,18 +242,18 @@ public class YbaApiTest extends FakeDBApplication {
   private YbaApiVisibility expectedVisibility(String apiDescription) {
     // A method having "deprecated" in its value should also have
     // @YbaApi(visibility=DEPRECATED)
-    if (containsIgnoreCase(apiDescription, DEPRECATION_MESSAGE_PART)) {
+    if (apiDescription.contains(DEPRECATION_MESSAGE_PART)) {
       return YbaApiVisibility.DEPRECATED;
     }
     // A method having "internal"/"ybm" in its value should also have
     // @YbaApi(visibility=INTERNAL)
-    if (containsIgnoreCase(apiDescription, INTERNAL_MESSAGE_PART_1)
-        || containsIgnoreCase(apiDescription, INTERNAL_MESSAGE_PART_2)) {
+    if (apiDescription.contains(INTERNAL_MESSAGE_PART_1)
+        || apiDescription.contains(INTERNAL_MESSAGE_PART_2)) {
       return YbaApiVisibility.INTERNAL;
     }
     // A method having "preview API" in its value should also have
     // @YbaApi(visibility=PREVIEW)
-    if (containsIgnoreCase(apiDescription, PREVIEW_MESSAGE_PART)) {
+    if (apiDescription.contains(PREVIEW_MESSAGE_PART)) {
       return YbaApiVisibility.PREVIEW;
     }
     return null;
