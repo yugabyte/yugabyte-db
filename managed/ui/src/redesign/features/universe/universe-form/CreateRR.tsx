@@ -4,10 +4,8 @@ import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 import { browserHistory } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { Box } from '@material-ui/core';
 import { UniverseFormContext } from './UniverseFormContainer';
 import { UniverseForm } from './form/UniverseForm';
-import { YBPermissionNotFound } from '../../../components';
 import { YBLoading } from '../../../../components/common/indicators';
 import { api, QUERY_KEY } from './utils/api';
 import { getPlacements } from './form/fields/PlacementsField/PlacementsFieldHelper';
@@ -28,8 +26,6 @@ import {
   NodeState,
   UniverseFormData
 } from './utils/dto';
-import { hasNecessaryPerm } from '../../rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../rbac/UserPermPathMapping';
 
 interface CreateReadReplicaProps {
   uuid: string;
@@ -41,16 +37,10 @@ export const CreateReadReplica: FC<CreateReadReplicaProps> = ({ uuid }) => {
   const [contextState, contextMethods]: any = useContext(UniverseFormContext);
   const { initializeForm } = contextMethods;
 
-  const isCreateRRAllowed = hasNecessaryPerm({
-    ...UserPermissionMap.editUniverse,
-    onResource: uuid
-  });
-
   const { isLoading, data: universe } = useQuery(
     [QUERY_KEY.fetchUniverse, uuid],
     () => api.fetchUniverse(uuid),
     {
-      enabled: isCreateRRAllowed,
       onSuccess: async (resp) => {
         //initialize form
         initializeForm({
@@ -121,13 +111,6 @@ export const CreateReadReplica: FC<CreateReadReplicaProps> = ({ uuid }) => {
     createReadReplica(finalPayload);
   };
 
-  if (!isCreateRRAllowed)
-    return (
-      <Box height="600px" display="flex">
-        <YBPermissionNotFound />
-      </Box>
-    );
-
   if (isLoading || contextState.isLoading) return <YBLoading />;
 
   if (!universe) return null;
@@ -142,6 +125,7 @@ export const CreateReadReplica: FC<CreateReadReplicaProps> = ({ uuid }) => {
       submitLabel={t('universeForm.actions.addRR')}
       onFormSubmit={(data: UniverseFormData) => onSubmit(data)}
       onCancel={onCancel}
+      universeUUID={uuid}
     />
   );
 };

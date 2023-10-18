@@ -710,7 +710,7 @@ class UniverseDetail extends Component {
                             isControl
                             accessRequiredOn={{
                               onResource: uuid,
-                              ...UserPermissionMap.editUniverse
+                              ...UserPermissionMap.readUniverse
                             }}
                           >
                             <YBMenuItem
@@ -789,7 +789,7 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...UserPermissionMap.editUniverse
+                            ...UserPermissionMap.readUniverse
                           }}
                         >
                           <YBMenuItem
@@ -865,7 +865,7 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...UserPermissionMap.editUniverse
+                            ...UserPermissionMap.readUniverse
                           }}
                         >
                           <YBMenuItem
