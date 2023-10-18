@@ -15059,7 +15059,7 @@
             }
           }
         },
-        "summary" : "getAdminNotifications",
+        "summary" : "WARNING: This is a preview API that could change. Returns the current list of notifications for admin",
         "tags" : [ "Session management" ]
       }
     },
@@ -15088,7 +15088,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List all alert channel templates",
+        "summary" : "WARNING: This is a preview API that could change. List all alert channel templates",
         "tags" : [ "Alerts" ]
       }
     },
@@ -15123,7 +15123,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete alert channel templates",
+        "summary" : "WARNING: This is a preview API that could change. Delete alert channel templates",
         "tags" : [ "Alerts" ]
       },
       "get" : {
@@ -15152,7 +15152,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get alert channel templates",
+        "summary" : "WARNING: This is a preview API that could change. Get alert channel templates",
         "tags" : [ "Alerts" ]
       },
       "post" : {
@@ -15192,7 +15192,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Set alert channel templates",
+        "summary" : "WARNING: This is a preview API that could change. Set alert channel templates",
         "tags" : [ "Alerts" ]
       }
     },
@@ -15221,7 +15221,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List all alert channels",
+        "summary" : "WARNING: This is a preview API that could change. List all alert channels",
         "tags" : [ "Alerts" ]
       },
       "post" : {
@@ -15256,7 +15256,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create an alert channel",
+        "summary" : "WARNING: This is a preview API that could change. Create an alert channel",
         "tags" : [ "Alerts" ]
       }
     },
@@ -15292,7 +15292,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete an alert channel",
+        "summary" : "WARNING: This is a preview API that could change. Delete an alert channel",
         "tags" : [ "Alerts" ]
       },
       "get" : {
@@ -15322,7 +15322,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get an alert channel",
+        "summary" : "WARNING: This is a preview API that could change. Get an alert channel",
         "tags" : [ "Alerts" ]
       },
       "put" : {
@@ -15363,7 +15363,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Update an alert channel",
+        "summary" : "WARNING: This is a preview API that could change. Update an alert channel",
         "tags" : [ "Alerts" ]
       }
     },
@@ -15400,7 +15400,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create an alert configuration",
+        "summary" : "WARNING: This is a preview API that could change. Create an alert configuration",
         "tags" : [ "Alerts" ]
       }
     },
@@ -15440,7 +15440,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get filtered list of alert configurations",
+        "summary" : "WARNING: This is a preview API that could change. Get filtered list of alert configurations",
         "tags" : [ "Alerts" ]
       }
     },
@@ -15477,7 +15477,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List all alert configurations (paginated)",
+        "summary" : "WARNING: This is a preview API that could change. List all alert configurations (paginated)",
         "tags" : [ "Alerts" ]
       }
     },
@@ -15513,7 +15513,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete an alert configuration",
+        "summary" : "WARNING: This is a preview API that could change. Delete an alert configuration",
         "tags" : [ "Alerts" ]
       },
       "get" : {
@@ -15543,7 +15543,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get an alert configuration",
+        "summary" : "WARNING: This is a preview API that could change. Get an alert configuration",
         "tags" : [ "Alerts" ]
       },
       "put" : {
@@ -15584,7 +15584,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Update an alert configuration",
+        "summary" : "WARNING: This is a preview API that could change. Update an alert configuration",
         "tags" : [ "Alerts" ]
       }
     },
@@ -15616,7 +15616,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Send test alert for alert configuration",
+        "summary" : "WARNING: This is a preview API that could change. Send test alert for alert configuration",
         "tags" : [ "Alerts" ]
       }
     },
@@ -15645,7 +15645,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List alert destinations",
+        "summary" : "WARNING: This is a preview API that could change. List alert destinations",
         "tags" : [ "Alerts" ]
       },
       "post" : {
@@ -15680,7 +15680,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create an alert destination",
+        "summary" : "WARNING: This is a preview API that could change. Create an alert destination",
         "tags" : [ "Alerts" ]
       }
     },
@@ -15716,7 +15716,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete an alert destination",
+        "summary" : "WARNING: This is a preview API that could change. Delete an alert destination",
         "tags" : [ "Alerts" ]
       },
       "get" : {
@@ -15746,7 +15746,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get an alert destination",
+        "summary" : "WARNING: This is a preview API that could change. Get an alert destination",
         "tags" : [ "Alerts" ]
       },
       "put" : {
@@ -15787,7 +15787,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Update an alert destination",
+        "summary" : "WARNING: This is a preview API that could change. Update an alert destination",
         "tags" : [ "Alerts" ]
       }
     },
@@ -15824,110 +15824,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Prepare alert notification preview",
-        "tags" : [ "Alerts" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/alert_template_settings" : {
-      "get" : {
-        "description" : "",
-        "operationId" : "listAlertTemplateSettings",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/AlertTemplateSettings"
-              },
-              "type" : "array"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Get alert template settings",
-        "tags" : [ "Alerts" ]
-      },
-      "put" : {
-        "description" : "",
-        "operationId" : "editAlertTemplateSettings",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "in" : "body",
-          "name" : "EditAlertTemplateSettingsRequest",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/AlertTemplateSettingsFormData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/AlertTemplateSettings"
-              },
-              "type" : "array"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Crete or update alert template settings list",
-        "tags" : [ "Alerts" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/alert_template_settings/{settingsUUID}" : {
-      "delete" : {
-        "description" : "",
-        "operationId" : "deleteAlertTemplateSettings",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "settingsUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Delete an alert template settings",
+        "summary" : "WARNING: This is a preview API that could change. Prepare alert notification preview",
         "tags" : [ "Alerts" ]
       }
     },
@@ -15953,7 +15850,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List alert template variables",
+        "summary" : "WARNING: This is a preview API that could change. List alert template variables",
         "tags" : [ "Alerts" ]
       },
       "put" : {
@@ -15991,7 +15888,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create or update alert template variables",
+        "summary" : "WARNING: This is a preview API that could change. Create or update alert template variables",
         "tags" : [ "Alerts" ]
       }
     },
@@ -16027,7 +15924,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete an alert template variables",
+        "summary" : "WARNING: This is a preview API that could change. Delete an alert template variables",
         "tags" : [ "Alerts" ]
       }
     },
@@ -16067,7 +15964,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get filtered list of alert configuration templates",
+        "summary" : "WARNING: This is a preview API that could change. Get filtered list of alert configuration templates",
         "tags" : [ "Alerts" ]
       }
     },
@@ -16096,76 +15993,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List all alerts",
-        "tags" : [ "Alerts" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/alerts/acknowledge" : {
-      "post" : {
-        "description" : "",
-        "operationId" : "acknowledgeByFilter",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "in" : "body",
-          "name" : "AcknowledgeAlertsRequest",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/AlertApiFilter"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/Alert"
-              },
-              "type" : "array"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Acknowledge all alerts",
-        "tags" : [ "Alerts" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/alerts/active" : {
-      "get" : {
-        "description" : "",
-        "operationId" : "listActive",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/Alert"
-              },
-              "type" : "array"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "List active alerts",
+        "summary" : "WARNING: This is a preview API that could change. List all alerts",
         "tags" : [ "Alerts" ]
       }
     },
@@ -16203,7 +16031,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Count alerts",
+        "summary" : "WARNING: This is a preview API that could change. Count alerts",
         "tags" : [ "Alerts" ]
       }
     },
@@ -16240,7 +16068,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List alerts (paginated)",
+        "summary" : "WARNING: This is a preview API that could change. List alerts (paginated)",
         "tags" : [ "Alerts" ]
       }
     },
@@ -16272,7 +16100,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get details of an alert",
+        "summary" : "WARNING: This is a preview API that could change. Get details of an alert",
         "tags" : [ "Alerts" ]
       }
     },
@@ -16308,7 +16136,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Acknowledge an alert",
+        "summary" : "WARNING: This is a preview API that could change. Acknowledge an alert",
         "tags" : [ "Alerts" ]
       }
     },
@@ -18067,7 +17895,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create maintenance window",
+        "summary" : "WARNING: This is a preview API that could change. Create maintenance window",
         "tags" : [ "Maintenance windows" ]
       }
     },
@@ -18100,7 +17928,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List maintenance windows",
+        "summary" : "WARNING: This is a preview API that could change. List maintenance windows",
         "tags" : [ "Maintenance windows" ]
       }
     },
@@ -18137,7 +17965,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List maintenance windows (paginated)",
+        "summary" : "WARNING: This is a preview API that could change. List maintenance windows (paginated)",
         "tags" : [ "Maintenance windows" ]
       }
     },
@@ -18173,7 +18001,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete maintenance window",
+        "summary" : "WARNING: This is a preview API that could change. Delete maintenance window",
         "tags" : [ "Maintenance windows" ]
       },
       "get" : {
@@ -18203,7 +18031,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get details of a maintenance window",
+        "summary" : "WARNING: This is a preview API that could change. Get details of a maintenance window",
         "tags" : [ "Maintenance windows" ]
       },
       "put" : {
@@ -18244,7 +18072,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Update maintenance window",
+        "summary" : "WARNING: This is a preview API that could change. Update maintenance window",
         "tags" : [ "Maintenance windows" ]
       }
     },
@@ -18416,7 +18244,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List performance recommendations state change audit events (paginated)",
+        "summary" : "WARNING: This is a preview API that could change. List performance recommendations state change audit events (paginated)",
         "tags" : [ "Performance Advisor" ]
       }
     },
@@ -18453,44 +18281,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete performance recommendations",
-        "tags" : [ "Performance Advisor" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/performance_recommendations/hide" : {
-      "post" : {
-        "description" : "",
-        "operationId" : "hide",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "in" : "body",
-          "name" : "HidePerformanceRecommendationsRequest",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/PerformanceRecommendationFilter"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Hide performance recommendations",
+        "summary" : "WARNING: This is a preview API that could change. Delete performance recommendations",
         "tags" : [ "Performance Advisor" ]
       }
     },
@@ -18527,44 +18318,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List performance recommendations (paginated)",
-        "tags" : [ "Performance Advisor" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/performance_recommendations/resolve" : {
-      "post" : {
-        "description" : "",
-        "operationId" : "resolve",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "in" : "body",
-          "name" : "ResolvePerformanceRecommendationsRequest",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/PerformanceRecommendationFilter"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Resolve performance recommendations",
+        "summary" : "WARNING: This is a preview API that could change. List performance recommendations (paginated)",
         "tags" : [ "Performance Advisor" ]
       }
     },
@@ -18596,7 +18350,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get performance recommendation details",
+        "summary" : "WARNING: This is a preview API that could change. Get performance recommendation details",
         "tags" : [ "Performance Advisor" ]
       }
     },
@@ -21013,136 +20767,6 @@
         "tags" : [ "Customer Tasks" ]
       }
     },
-    "/api/v1/customers/{cUUID}/telemetry_provider" : {
-      "get" : {
-        "description" : "",
-        "operationId" : "listAllTelemetryProviders",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/TelemetryProvider"
-              },
-              "type" : "array"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "List All Telemetry Providers",
-        "tags" : [ "Telemetry Provider" ]
-      },
-      "post" : {
-        "description" : "",
-        "operationId" : "createTelemetry",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "in" : "body",
-          "name" : "providerData",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/TelemetryProvider"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/TelemetryProvider"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Create Telemetry Provider",
-        "tags" : [ "Telemetry Provider" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/telemetry_provider/{intUUID}" : {
-      "delete" : {
-        "description" : "",
-        "operationId" : "deleteTelemetryProvider",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "intUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Delete a telemetry provider",
-        "tags" : [ "Telemetry Provider" ]
-      },
-      "get" : {
-        "description" : "",
-        "operationId" : "getTelemetryProvider",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "intUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/TelemetryProvider"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Get Telemetry Provider",
-        "tags" : [ "Telemetry Provider" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/universes" : {
       "get" : {
         "description" : "",
@@ -21674,7 +21298,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get last performance advisor run details",
+        "summary" : "WARNING: This is a preview API that could change. Get last performance advisor run details",
         "tags" : [ "Performance Advisor" ]
       }
     },
@@ -21938,7 +21562,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get universe performance advisor settings",
+        "summary" : "WARNING: This is a preview API that could change. Get universe performance advisor settings",
         "tags" : [ "Performance Advisor" ]
       },
       "post" : {
@@ -21979,7 +21603,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Update universe performance advisor settings",
+        "summary" : "WARNING: This is a preview API that could change. Update universe performance advisor settings",
         "tags" : [ "Performance Advisor" ]
       }
     },
@@ -22370,7 +21994,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Start performance advisor run for universe",
+        "summary" : "WARNING: This is a preview API that could change. Start performance advisor run for universe",
         "tags" : [ "Performance Advisor" ]
       }
     },
@@ -24533,7 +24157,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get Grafana Dashboard",
+        "summary" : "WARNING: This is a preview API that could change. Get Grafana Dashboard",
         "tags" : [ "Grafana Dashboard" ]
       }
     },
@@ -24766,7 +24390,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get Prometheus metrics",
+        "summary" : "Available since YBA version 2.8.0.0. Get Prometheus metrics",
         "tags" : [ "Metrics" ]
       }
     },
@@ -24976,8 +24600,6 @@
     "name" : "Session management"
   }, {
     "name" : "Support Bundle management"
-  }, {
-    "name" : "Telemetry Provider"
   }, {
     "name" : "Universe Upgrades Management"
   }, {

@@ -12,6 +12,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.TelemetryProvider;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
@@ -35,13 +36,16 @@ public class TelemetryProviderController extends AuthenticatedController {
 
   @Inject private TelemetryProviderService telemetryProviderService;
 
-  @ApiOperation(value = "Get Telemetry Provider", response = TelemetryProvider.class)
+  @ApiOperation(
+      value = "YbaApi Internal. Get Telemetry Provider",
+      response = TelemetryProvider.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   public Result getTelemetryProvider(UUID customerUUID, UUID providerUUID) {
     Customer.getOrBadRequest(customerUUID);
     TelemetryProvider provider =
@@ -50,7 +54,7 @@ public class TelemetryProviderController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List All Telemetry Providers",
+      value = "YbaApi Internal. List All Telemetry Providers",
       response = TelemetryProvider.class,
       responseContainer = "List",
       nickname = "listAllTelemetryProviders")
@@ -60,6 +64,7 @@ public class TelemetryProviderController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   public Result listTelemetryProviders(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     List<TelemetryProvider> providers = telemetryProviderService.list(customerUUID);
@@ -67,7 +72,7 @@ public class TelemetryProviderController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Create Telemetry Provider",
+      value = "YbaApi Internal. Create Telemetry Provider",
       response = TelemetryProvider.class,
       nickname = "createTelemetry")
   @ApiImplicitParams(
@@ -82,6 +87,7 @@ public class TelemetryProviderController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   public Result createTelemetryProvider(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     TelemetryProvider provider = parseJson(request, TelemetryProvider.class);
@@ -98,13 +104,14 @@ public class TelemetryProviderController extends AuthenticatedController {
     return PlatformResults.withData(provider);
   }
 
-  @ApiOperation(value = "Delete a telemetry provider", response = YBPSuccess.class)
+  @ApiOperation(value = "YbaApi Internal. Delete a telemetry provider", response = YBPSuccess.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   public Result deleteTelemetryProvider(
       UUID customerUUID, UUID providerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);

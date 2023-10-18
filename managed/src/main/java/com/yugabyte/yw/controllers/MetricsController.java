@@ -8,6 +8,7 @@ import com.yugabyte.yw.common.AppInit;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.models.Metric;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
@@ -61,9 +62,10 @@ public class MetricsController extends Controller {
   private Date lastKamonErrorPrinted = null;
 
   @ApiOperation(
-      value = "Get Prometheus metrics",
+      value = "Available since YBA version 2.8.0.0. Get Prometheus metrics",
       response = String.class,
       nickname = "MetricsDetail")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.8.0.0")
   public Result index() {
     try (ByteArrayOutputStream response = new ByteArrayOutputStream(1 << 20);
         OutputStreamWriter osw = new OutputStreamWriter(response)) {
