@@ -11,8 +11,11 @@ private=true
     LOG_MODE
     ------------
     ARCHIVELOG
+    ```
 
-    If not enabled,
+    If log_mode is not enabled,
+
+    ```sql
     sqlplus /nolog
     SQL>alter system set db_recovery_file_dest_size = 10G;
     SQL>alter system set db_recovery_file_dest = '<oracle_path>/oradata/recovery_area' scope=spfile;
