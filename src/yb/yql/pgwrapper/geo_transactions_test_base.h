@@ -35,6 +35,8 @@ class GeoTransactionsTestBase : public pgwrapper::PgMiniTestBase {
 
   void SetUp() override;
 
+  void InitTransactionManagerAndPool();
+
   size_t NumTabletServers() override { return NumRegions(); }
 
   virtual size_t NumRegions() { return 3; }
