@@ -455,7 +455,7 @@ restore_backup() {
   # restoring it from the restore path.
   backup_yba_version="eval cat ${r_pth} | ${PYTHON_EXECUTABLE} -c ${version_command}"
   backup_yba_build="eval cat ${r_pth} | ${PYTHON_EXECUTABLE} -c ${build_command}"
-  back_plat_version=${backup_yba_version}-${backup_yba_build}
+  back_plat_version=$(${backup_yba_version})-$(${backup_yba_build})
 
   if [ ${curr_platform_version} != ${back_plat_version} ]
   then
