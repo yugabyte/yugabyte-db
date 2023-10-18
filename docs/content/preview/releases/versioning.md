@@ -9,11 +9,6 @@ aliases:
   - /v2.14/releases/versioning/
   - /v2.12/releases/versioning/
   - /v2.8/releases/versioning/
-menu:
-  preview_releases:
-    identifier: versioning
-    parent: release-notes
-    weight: 1000
 type: docs
 ---
 

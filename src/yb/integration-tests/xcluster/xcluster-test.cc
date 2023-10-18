@@ -149,8 +149,7 @@ struct XClusterTestParams {
   bool transactional_table;  // For XCluster + CQL only. All YSQL tables are transactional.
 };
 
-class XClusterTest : public XClusterTestBase,
-                     public testing::WithParamInterface<XClusterTestParams> {
+class XClusterTestNoParam : public XClusterTestBase {
  public:
   Result<std::vector<std::shared_ptr<client::YBTable>>> SetUpWithParams(
       const std::vector<uint32_t>& num_consumer_tablets,
@@ -162,7 +161,7 @@ class XClusterTest : public XClusterTestBase,
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) = 1;
     XClusterTestBase::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_num_shards_per_tserver) = 1;
-    bool transactional_table = GetParam().transactional_table;
+    bool transactional_table = GetTestParam().transactional_table;
     num_tservers = std::max(num_tservers, replication_factor);
 
     MiniClusterOptions opts;
@@ -214,6 +213,10 @@ class XClusterTest : public XClusterTestBase,
     RETURN_NOT_OK(WaitForLoadBalancersToStabilize());
 
     return yb_tables;
+  }
+
+  virtual XClusterTestParams GetTestParam() {
+    return XClusterTestParams(false /* transactional_table */);
   }
 
   Result<YBTableName> CreateTable(
@@ -496,6 +499,12 @@ class XClusterTest : public XClusterTestBase,
   server::ClockPtr clock_{new server::HybridClock()};
 
   YBSchema schema_;
+};
+
+class XClusterTest : public XClusterTestNoParam,
+                     public testing::WithParamInterface<XClusterTestParams> {
+ public:
+  XClusterTestParams GetTestParam() override { return GetParam(); }
 };
 
 INSTANTIATE_TEST_CASE_P(
@@ -3634,6 +3643,61 @@ TEST_P(XClusterTest, LeaderFailoverTest) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_disable_poller_term_check) = false;
   ASSERT_OK(VerifyNumRecords(consumer_table->name(), consumer_client(), 3 * kNumWriteRecords));
+}
+
+// Verify the xCluster Pollers shutdown immediately even if the Poll delay is very long.
+TEST_F_EX(XClusterTest, PollerShutdownWithLongPollDelay, XClusterTestNoParam) {
+  // Make Pollers enter a long sleep state.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_skip_replication_poll) = true;
+  ASSERT_OK(SET_FLAG(async_replication_idle_delay_ms, 10 * 60 * 1000));  // 10 minutes
+  const auto kTimeout = 10s * kTimeMultiplier;
+
+  const auto kTabletCount = 3;
+  auto tables = ASSERT_RESULT(SetUpWithParams({kTabletCount}, {kTabletCount}, 3));
+  ASSERT_EQ(tables.size(), 2);
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables{tables[0]};
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables{tables[1]};
+
+  ASSERT_OK(SetupUniverseReplication(producer_tables));
+
+  // Verify that universe was setup on consumer.
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(&resp));
+
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), kTabletCount));
+
+  // Wait for the Pollers to sleep.
+  ASSERT_OK(LoggedWaitFor(
+      [&]() {
+        uint32 sleeping_pollers = 0;
+        for (const auto& mini_tserver : consumer_cluster()->mini_tablet_servers()) {
+          auto* server = mini_tserver->server();
+          auto tserver_pollers = server->GetXClusterConsumer()->TEST_ListPollers();
+          for (auto& poller : tserver_pollers) {
+            if (poller->TEST_Is_Sleeping()) {
+              sleeping_pollers++;
+            }
+          }
+        }
+        LOG(INFO) << YB_STRUCT_TO_STRING(sleeping_pollers);
+        return sleeping_pollers == kTabletCount;
+      },
+      kTimeout, Format("Waiting for $0 pollers to sleep", kTabletCount)));
+
+  ASSERT_OK(DeleteUniverseReplication());
+
+  // Wait for the Pollers to stop.
+  for (const auto& mini_tserver : consumer_cluster()->mini_tablet_servers()) {
+    auto* server = mini_tserver->server();
+    ASSERT_OK(LoggedWaitFor(
+        [&server]() {
+          auto tserver_pollers = server->GetXClusterConsumer()->TEST_ListPollers();
+          LOG(INFO) << "TServer: " << server->ToString() << ", Pollers: " << tserver_pollers.size();
+          return tserver_pollers.size() == 0;
+        },
+        kTimeout, Format("Waiting for pollers from $0 to stop", server->ToString())));
+  }
 }
 
 } // namespace yb

@@ -46,6 +46,7 @@ class RedisWriteOperation;
 class ScanChoices;
 class SchemaPackingProvider;
 class SharedLockManager;
+class TableInfoProvider;
 class TransactionStatusCache;
 class WaitQueue;
 class YQLRowwiseIteratorIf;

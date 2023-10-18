@@ -6,6 +6,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.password.PasswordPolicyService;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import org.apache.commons.lang3.StringUtils;
@@ -50,6 +51,21 @@ public class DatabaseSecurityFormData {
 
       if (ysqlAdminUsername.contains("\"")) {
         throw new PlatformServiceException(BAD_REQUEST, "Invalid username.");
+      }
+    }
+  }
+
+  public void validatePassword(PasswordPolicyService policyService, boolean checkPasswordLeak) {
+    if (!StringUtils.isEmpty(ysqlAdminPassword)) {
+      policyService.checkPasswordPolicy(null, ysqlAdminPassword);
+      if (checkPasswordLeak) {
+        policyService.validatePasswordNotLeaked("YSQL", ysqlAdminPassword);
+      }
+    }
+    if (!StringUtils.isEmpty(ycqlAdminPassword)) {
+      policyService.checkPasswordPolicy(null, ycqlAdminPassword);
+      if (checkPasswordLeak) {
+        policyService.validatePasswordNotLeaked("YCQL", ycqlAdminPassword);
       }
     }
   }

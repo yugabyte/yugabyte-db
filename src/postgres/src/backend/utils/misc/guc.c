@@ -1248,7 +1248,7 @@ static struct config_bool ConfigureNamesBool[] =
 						 "REPEATABLE READ and READ COMMITTED.")
 		},
 		&yb_lock_pk_single_rpc,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 	{
