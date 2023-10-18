@@ -144,6 +144,10 @@ class Webserver::Impl {
 
   bool IsSecure() const;
 
+  void SetAutoFlags(std::unordered_set<std::string>&& flags);
+
+  bool ContainsAutoFlag(const std::string& flag) const;
+
  private:
   // Container class for a list of path handler callbacks for a single URL.
   class PathHandler {
@@ -244,6 +248,12 @@ class Webserver::Impl {
 
   // Mutex guarding against concurrenct calls to Stop().
   std::mutex stop_mutex_;
+
+  mutable std::mutex auto_flags_mutex_;
+  // The AutoFlags that are associated with this particular server. In LTO builds we use the same
+  // process for both yb-master and yb-tserver, so the process may have more AutoFlags than this
+  // server needs. This is used to filter out the AutoFlags that are shown in the varz path.
+  std::unordered_set<std::string> auto_flags_;
 };
 
 Webserver::Impl::Impl(const WebserverOptions& opts, const std::string& server_name)
@@ -280,6 +290,16 @@ void Webserver::Impl::BuildArgumentMap(const string& args, ArgumentMap* output) 
 
 bool Webserver::Impl::IsSecure() const {
   return !opts_.certificate_file.empty();
+}
+
+void Webserver::Impl::SetAutoFlags(std::unordered_set<std::string>&& flags) {
+  std::lock_guard l(auto_flags_mutex_);
+  auto_flags_ = std::move(flags);
+}
+
+bool Webserver::Impl::ContainsAutoFlag(const std::string& flag) const {
+  std::lock_guard l(auto_flags_mutex_);
+  return auto_flags_.contains(flag);
 }
 
 Status Webserver::Impl::BuildListenSpec(string* spec) const {
@@ -801,4 +821,11 @@ bool Webserver::IsSecure() const {
   return impl_->IsSecure();
 }
 
+void Webserver::SetAutoFlags(std::unordered_set<std::string>&& flags) {
+  impl_->SetAutoFlags(std::move(flags));
+}
+
+bool Webserver::ContainsAutoFlag(const std::string& flag) const {
+  return impl_->ContainsAutoFlag(flag);
+}
 } // namespace yb

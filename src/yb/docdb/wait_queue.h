@@ -118,9 +118,9 @@ class WaitQueue {
   // Populate tablet_locks_info with awaiting lock information corresponding to waiter transactions
   // from this wait queue. If transaction_ids is not empty, restrict returned information to locks
   // which are requested by the given set of transaction_ids.
-  Status GetLockStatus(
-      const std::set<TransactionId>& transaction_ids, SchemaPtr schema_ptr,
-      TabletLockInfoPB* tablet_lock_info) const;
+  Status GetLockStatus(const std::set<TransactionId>& transaction_ids,
+                       const TableInfoProvider& table_info_provider,
+                       TabletLockInfoPB* tablet_lock_info) const;
 
  private:
   class Impl;

@@ -498,20 +498,28 @@
     showSection = true
 
 [[preview_releases]]
-  name = "Releases"
+  name = "Release versioning"
   weight = 2
-  identifier = "release-notes"
+  identifier = "release-versioning"
+  url = "/preview/releases/versioning/"
   [preview_releases.params]
     showSection = true
-    hideLink = true
 
 [[preview_releases]]
-  name = "YBA Releases"
+  name = "Releases"
   weight = 3
-  identifier = "yba-release-notes"
+  identifier = "releases"
+  url = "/preview/releases/"
   [preview_releases.params]
     showSection = true
-    hideLink = true
+
+[[preview_releases]]
+  name = "YugabyteDB Anywhere releases"
+  weight = 4
+  identifier = "yba-releases"
+  url = "/preview/releases/yba-releases/"
+  [preview_releases.params]
+    showSection = true
 
 ########## Menus (in preview) for FAQ section
 

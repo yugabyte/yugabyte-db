@@ -22,6 +22,20 @@ It is recommended to have a cron or systemd setup to ensure that the YB-TServer 
 
 This handles transient failures, such as a node rebooting or process crash due to an unexpected behavior.
 
+If you are using systemd and want to find the names of the services to restart, use the following command:
+
+```sh
+sudo systemctl list-units --type=service | grep yb
+```
+
+You should see output similar to the following:
+
+```output
+yb-controller.service                       loaded active running Yugabyte Controller
+yb-master.service                           loaded active running Yugabyte master service
+yb-tserver.service                          loaded active running Yugabyte tserver service
+```
+
 ## Node failure
 
 Typically, if a node has failed, the system automatically recovers and continues to function with the remaining N-1 nodes. If the failed node does not recover soon enough, and N-1 >= 3, then the under-replicated tablets will be re-replicated automatically to return to RF=3 on the remaining N-1 nodes.

@@ -319,7 +319,8 @@ class PgOperationBuffer::Impl {
     for (; count && !in_flight_ops_.empty(); --count) {
       uint64_t duration = 0;
       auto result = VERIFY_RESULT(metrics_.CallWithDuration(
-          [&future = in_flight_ops_.front().future] { return future.Get(); }, &duration));
+          [&future = in_flight_ops_.front().future] { return future.Get(); }, &duration,
+          false /* use_high_res_timer */));
       metrics_.FlushRequest(duration);
       in_flight_ops_.pop_front();
     }

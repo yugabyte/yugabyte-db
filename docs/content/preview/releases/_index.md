@@ -7,11 +7,6 @@ image: /images/section_icons/index/quick_start.png
 aliases:
   - /preview/releases/releases-overview/
   - /preview/releases/whats-new/
-menu:
-  preview_releases:
-    identifier: releases
-    parent: release-notes
-    weight: 1060
 type: indexpage
 showRightNav: true
 cascade:

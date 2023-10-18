@@ -29,3 +29,10 @@ var UpgradeChecks = []Check{
 	checks.Memory,
 	checks.Python,
 }
+
+var ReplicatedMigrateChecks = []Check{
+	checks.InstallNotExists,
+	checks.Python,
+	checks.License,
+	checks.ValidateLocaleConfig,
+}

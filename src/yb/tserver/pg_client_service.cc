@@ -810,16 +810,14 @@ class PgClientServiceImpl::Impl {
     }
 
     std::vector<std::future<Status>> status_future;
-    std::vector<std::shared_ptr<tserver::CancelTransactionResponsePB>>
-        node_resp(remote_tservers.size(), std::make_shared<tserver::CancelTransactionResponsePB>());
-
+    std::vector<tserver::CancelTransactionResponsePB> node_resp(remote_tservers.size());
     for (size_t i = 0 ; i < remote_tservers.size() ; i++) {
       const auto& proxy = remote_tservers[i]->proxy();
       auto controller = std::make_shared<rpc::RpcController>();
       status_future.push_back(
           MakeFuture<Status>([&, controller](auto callback) {
             proxy->CancelTransactionAsync(
-                node_req, node_resp[i].get(), controller.get(), [callback, controller] {
+                node_req, &node_resp[i], controller.get(), [callback, controller] {
               callback(controller->status());
             });
           }));
@@ -834,11 +832,11 @@ class PgClientServiceImpl::Impl {
         continue;
       }
 
-      if (node_resp[i]->has_error()) {
+      if (node_resp[i].has_error()) {
         // Errors take precedence over TransactionStatus::ABORTED statuses. This needs to be done to
         // correctly handle cancelation requests of promoted txns. Ignore all NotFound statuses as
         // we collate them, collect all other error types.
-        const auto& status_from_pb = StatusFromPB(node_resp[i]->error().status());
+        const auto& status_from_pb = StatusFromPB(node_resp[i].error().status());
         if (status_from_pb.IsNotFound()) {
           continue;
         }

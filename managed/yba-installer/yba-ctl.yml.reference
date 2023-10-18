@@ -15,7 +15,7 @@ host: ""
 # HTTPS server cert and key in PEM format.
 # The certificate SAN/CN must match the host setting above
 # OK to leave empty - a self-signed cert will be generated
-server_cert_path: "" 
+server_cert_path: ""
 server_key_path: ""
 
 # Linux user which will run all services that make up YugabyteDB Anywhere.
@@ -119,6 +119,8 @@ platform:
       no_proxy: ""
       java_non_proxy: ""
 
+   support_origin_url: "/"
+
    # This section is for and additional data entries that you can
    # add to platform.conf if you desire. Please enter the text
    # exactly in the correct format starting from the lines below the
@@ -145,6 +147,13 @@ postgres:
       port: 5432
       restartSeconds: 10 # restart interval on exit
       locale: en_US.UTF8 # Locale for initdb
+      ldap_enabled: false
+      ldap_server: ""
+      ldap_prefix: ""
+      ldap_suffix: ""
+      ldap_port: 389
+      secure_ldap: false
+
 
    # Specify the connection parameters to an existing postgres db.
    # A database named 'yugaware' must already be created on this host.
@@ -159,47 +168,17 @@ postgres:
 
 
 # Config parameters for Prometheus
+# Format for specifying timing information can be found https://prometheus.io/docs/prometheus/latest/configuration/configuration/#configuration-file
 # ================================
 
 prometheus:
-   # The external port that is used by the running
-   # Prometheus instance. Defaults to 9090, override if you have opened
-   # up a different port that you wish to use for running Prometheus.
     port: 9090
-
-   # restartSeconds: time in seconds for systemd to wait before restarting
-   # prometheus
-    restartSeconds: 10
-
-   # scrapeInterval: The interval of time between the Prometheus
-   # instance scraping for database metrics on the Yugabyte Platform
-   # instance. Defaults to 15s, override if you wish for Prometheus
-   # to scrape for metrics at a faster or slower rate.
-    scrapeInterval: 15
-
-   # scrapeTimeout: The time threshold for inactivity after which the
-   # Prometheus instance will stop scraping for database metrics on the
-   # Yugabyte Platform instance. Defaults to 10s, override if you wish
-   # for the inactivity threshold to be longer or shorter.
-    scrapeTimeout: 10
-
-   # maxConcurrency: The maximum number of concurrent queries
-   # that can be executed by the running Prometheus instance as
-   # it scrapes for metrics. Defaults to 20, override if you wish
-   # for the number of concurrent queries executable by Prometheus
-   # to be higher or lower.
-
-   # maxSamples: The maximum number of samples that a single
-   # Prometheus query can load into memory. Defaults to 5000000,
-   # override if you wish for the maximum number of samples loadable
-   # by a single Prometheus query to be higher or lower.
-
-   # timeout: The time threshold for inactivity after which the
-   # Prometheus service will be declared inactive. Defaults to 30s,
-   # override if you wish for the inactivity threshold to be longer or
-   # shorter.
-    maxConcurrency: 20
-    maxSamples: 5000000
-    timeout: 30
+    restartSeconds: 10     # time (in seconds) to sleep before restarting prometheus service
+    scrapeInterval: 10s    # time between prometheus data scrapes
+    scrapeTimeout: 10s     # time before a scrape request times out
+    maxConcurrency: 20     # max number of queries to execute concurrently
+    maxSamples: 5000000    # max number of samples prometheus can load to process single query
+    timeout: 30s           # time before a query times out
+    retentionTime: 15d     # time to retain metrics
 
 

@@ -735,8 +735,8 @@ class AzureCloudAdmin():
 
         # Skip OS delete during VM image upgrade so disk can be cloned and remounted.
         if not skip_os_delete:
-            logging.info("[app] Deleting os disk {}".format(os_disk_name))
             os_disk_name = vm.storage_profile.os_disk.name
+            logging.info("[app] Deleting os disk {}".format(os_disk_name))
             disk_del = self.delete_disk(os_disk_name)
             disk_dels[os_disk_name] = disk_del
 

@@ -38,21 +38,23 @@ class PgDocMetrics {
   void FlushRequest(uint64_t wait_time);
 
   // A helper function to compute the wait time of a function
-  template<class Functor>
-  auto CallWithDuration(const Functor& functor, uint64_t* duration) {
-    DurationWatcher watcher(duration, !state_.is_timing_required);
+  template <class Functor>
+  auto CallWithDuration(
+      const Functor& functor, uint64_t* duration, bool use_high_res_timer = true) {
+    DurationWatcher watcher(duration, !state_.is_timing_required, use_high_res_timer);
     return functor();
   }
 
  private:
   class DurationWatcher {
    public:
-    DurationWatcher(uint64_t* duration, bool use_zero_duration);
+    DurationWatcher(uint64_t* duration, bool use_zero_duration, bool use_high_res_timer);
     ~DurationWatcher();
 
    private:
     uint64_t* duration_;
     const bool use_zero_duration_;
+    const bool use_high_res_timer_;
     const uint64_t start_;
 
     DISALLOW_COPY_AND_ASSIGN(DurationWatcher);

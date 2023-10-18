@@ -24,6 +24,7 @@
 
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.messages.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/iter_util.h"
 #include "yb/docdb/shared_lock_manager.h"
@@ -33,6 +34,8 @@
 #include "yb/dockv/intent.h"
 
 #include "yb/gutil/stl_util.h"
+
+#include "yb/tablet/tablet_metadata.h"
 
 #include "yb/util/lazy_invoke.h"
 #include "yb/util/logging.h"
@@ -1378,29 +1381,41 @@ std::string DebugIntentKeyToString(Slice intent_key) {
 
 Status PopulateLockInfoFromParsedIntent(
     const ParsedIntent& parsed_intent, const dockv::DecodedIntentValue& decoded_value,
-    const SchemaPtr& schema, LockInfoPB* lock_info, bool intent_has_ht) {
+    const TableInfoProvider& table_info_provider, LockInfoPB* lock_info, bool intent_has_ht) {
   dockv::SubDocKey subdoc_key;
   RETURN_NOT_OK(subdoc_key.FullyDecodeFrom(
       parsed_intent.doc_path, dockv::HybridTimeRequired::kFalse));
   DCHECK(!subdoc_key.has_hybrid_time());
+
+  const auto& doc_key = subdoc_key.doc_key();
+  tablet::TableInfoPtr table_info;
+  if (doc_key.has_colocation_id()) {
+    table_info = VERIFY_RESULT(table_info_provider.GetTableInfo(doc_key.colocation_id()));
+    lock_info->set_table_id(table_info->table_id);
+  } else {
+    table_info = VERIFY_RESULT(table_info_provider.GetTableInfo(kColocationIdNotSet));
+  }
+  RSTATUS_DCHECK(
+      table_info, IllegalState, "Couldn't fetch TableInfo for key $0", doc_key.ToString());
 
   if (intent_has_ht) {
     auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(parsed_intent.doc_ht));
     lock_info->set_wait_end_ht(doc_ht.hybrid_time().ToUint64());
   }
 
-  for (const auto& hash_key : subdoc_key.doc_key().hashed_group()) {
+  for (const auto& hash_key : doc_key.hashed_group()) {
     lock_info->add_hash_cols(hash_key.ToString());
   }
-  for (const auto& range_key : subdoc_key.doc_key().range_group()) {
+  for (const auto& range_key : doc_key.range_group()) {
     lock_info->add_range_cols(range_key.ToString());
   }
+  const auto& schema = table_info->doc_read_context->schema();
   if (subdoc_key.num_subkeys() > 0 && subdoc_key.last_subkey().IsColumnId()) {
     const ColumnId& column_id = subdoc_key.last_subkey().GetColumnId();
 
     // Don't print the attnum for the liveness column
     if (column_id != 0) {
-      const ColumnSchema& column = VERIFY_RESULT(schema->column_by_id(column_id));
+      const ColumnSchema& column = VERIFY_RESULT(schema.column_by_id(column_id));
 
       // If the order field is negative, it doesn't correspond to a column in pg_attribute
       if (column.order() > 0) {
@@ -1415,8 +1430,8 @@ Status PopulateLockInfoFromParsedIntent(
   lock_info->set_is_explicit(
       decoded_value.body.starts_with(dockv::ValueEntryTypeAsChar::kRowLock));
   lock_info->set_multiple_rows_locked(
-      schema->num_hash_key_columns() > subdoc_key.doc_key().hashed_group().size() ||
-      schema->num_range_key_columns() > subdoc_key.doc_key().range_group().size());
+      schema.num_hash_key_columns() > doc_key.hashed_group().size() ||
+      schema.num_range_key_columns() > doc_key.range_group().size());
 
   for (const auto& intent_type : parsed_intent.types) {
     switch (intent_type) {

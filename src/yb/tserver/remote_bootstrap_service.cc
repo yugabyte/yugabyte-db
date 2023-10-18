@@ -151,72 +151,47 @@ RemoteBootstrapServiceImpl::RemoteBootstrapServiceImpl(
 RemoteBootstrapServiceImpl::~RemoteBootstrapServiceImpl() {
 }
 
+void RemoteBootstrapServiceImpl::BeginRemoteSnapshotTransferSession(
+    const BeginRemoteSnapshotTransferSessionRequestPB* req,
+    BeginRemoteSnapshotTransferSessionResponsePB* resp, rpc::RpcContext context) {
+  RemoteBootstrapErrorPB::Code error_code;
+  auto session_result = CreateRemoteSession(
+      req,
+      /* tablet_leader_conn_info = */ nullptr, context.requestor_string(), &error_code);
+
+  RPC_RETURN_NOT_OK(session_result, error_code, session_result.status().message().ToString());
+  auto session = *session_result;
+
+  RPC_RETURN_NOT_OK(
+      session->InitSnapshotTransferSession(), RemoteBootstrapErrorPB::UNKNOWN_ERROR,
+      Substitute(
+          "Error initializing remote snapshot transfer session for tablet $0", req->tablet_id()));
+
+  resp->set_session_id(session->session_id());
+  resp->set_session_idle_timeout_millis(FLAGS_remote_bootstrap_idle_timeout_ms);
+  resp->mutable_superblock()->CopyFrom(session->tablet_superblock());
+
+  context.RespondSuccess();
+}
+
 void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
         const BeginRemoteBootstrapSessionRequestPB* req,
         BeginRemoteBootstrapSessionResponsePB* resp,
         rpc::RpcContext context) {
-  const string& requestor_uuid = req->requestor_uuid();
-  const string& tablet_id = req->tablet_id();
+  RemoteBootstrapErrorPB::Code error_code;
+  auto tablet_leader_conn_info =
+      req->has_tablet_leader_conn_info() ? &req->tablet_leader_conn_info() : nullptr;
+  auto session_result =
+      CreateRemoteSession(req, tablet_leader_conn_info, context.requestor_string(), &error_code);
 
-  // For now, we use the requestor_uuid with the tablet id as the session id,
-  // but there is no guarantee this will not change in the future.
-  MonoTime now = MonoTime::Now();
-  const string session_id = Substitute("$0-$1-$2", requestor_uuid, tablet_id, now.ToString());
+  RPC_RETURN_NOT_OK(session_result, error_code, session_result.status().message().ToString());
+  auto session = *session_result;
 
-  scoped_refptr<RemoteBootstrapAnchorClient> rbs_anchor_client(nullptr);
-  if (req->has_tablet_leader_conn_info()) {
-    rbs_anchor_client.reset(new RemoteBootstrapAnchorClient(
-        requestor_uuid,
-        session_id,
-        proxy_cache_,
-        HostPortFromPB(DesiredHostPort(
-            req->tablet_leader_conn_info().broadcast_addresses(),
-            req->tablet_leader_conn_info().private_rpc_addresses(),
-            req->tablet_leader_conn_info().cloud_info(),
-            local_cloud_info_pb_))));
-  }
+  RPC_RETURN_NOT_OK(
+      session->InitBootstrapSession(), RemoteBootstrapErrorPB::UNKNOWN_ERROR,
+      Substitute("Error initializing remote bootstrap session for tablet $0", req->tablet_id()));
 
-  auto tablet_peer_result = tablet_peer_lookup_->GetServingTablet(tablet_id);
-  RPC_RETURN_NOT_OK(tablet_peer_result,
-                    RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
-                    Substitute("Unable to find specified tablet: $0", tablet_id));
-  auto tablet_peer = std::move(*tablet_peer_result);
-  RPC_RETURN_NOT_OK(tablet_peer->CheckRunning(),
-                    RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
-                    Substitute("Tablet is not running yet: $0", tablet_id));
-
-  scoped_refptr<RemoteBootstrapSession> session;
-  {
-    std::lock_guard l(sessions_mutex_);
-    auto it = sessions_.find(session_id);
-    if (it == sessions_.end()) {
-      LOG(INFO) << "Beginning new remote bootstrap session on tablet " << tablet_id
-                << " from peer " << requestor_uuid << " at " << context.requestor_string()
-                << ": session id = " << session_id;
-      session.reset(new RemoteBootstrapSession(
-          tablet_peer, session_id, requestor_uuid, &nsessions_, rbs_anchor_client));
-      it = sessions_.emplace(session_id, SessionData{session, CoarseTimePoint()}).first;
-      auto new_nsessions = nsessions_.fetch_add(1, std::memory_order_acq_rel) + 1;
-      LOG_IF(DFATAL, implicit_cast<size_t>(new_nsessions) != sessions_.size())
-          << "nsessions_ " << new_nsessions << " !=  number of sessions " << sessions_.size();
-    } else {
-      session = it->second.session;
-      LOG(INFO) << "Re-initializing existing remote bootstrap session on tablet " << tablet_id
-                << " from peer " << requestor_uuid << " at " << context.requestor_string()
-                << ": session id = " << session_id;
-    }
-    RemoteBootstrapErrorPB::Code app_error;
-    RPC_RETURN_NOT_OK(it->second.ResetExpiration(&app_error),
-                      app_error,
-                      Substitute("Refresh Log Anchor session failed"));
-  }
-
-  RPC_RETURN_NOT_OK(session->Init(),
-                    RemoteBootstrapErrorPB::UNKNOWN_ERROR,
-                    Substitute("Error initializing remote bootstrap session for tablet $0",
-                               tablet_id));
-
-  resp->set_session_id(session_id);
+  resp->set_session_id(session->session_id());
   resp->set_session_idle_timeout_millis(FLAGS_remote_bootstrap_idle_timeout_ms);
   resp->mutable_superblock()->CopyFrom(session->tablet_superblock());
   resp->mutable_initial_committed_cstate()->CopyFrom(session->initial_committed_cstate());
@@ -356,8 +331,8 @@ void RemoteBootstrapServiceImpl::RemoveRemoteBootstrapSession(const std::string&
     LOG(WARNING) << "Attempt to remove session with unknown id: " << session_id;
     return;
   }
-  LOG(INFO) << "Removing remote bootstrap session " << session_id << " on tablet "
-            << session_id << " with peer " << it->second.session->requestor_uuid();
+  LOG(INFO) << "Removing remote bootstrap session " << session_id << " on tablet " << session_id
+            << " with peer " << it->second.session->requestor_uuid();
   sessions_.erase(it);
   nsessions_.fetch_sub(1, std::memory_order_acq_rel);
 }
@@ -397,6 +372,69 @@ void RemoteBootstrapServiceImpl::Shutdown() {
       CHECK_OK(DoEndLogAnchorSession(session_id, &app_error));
     }
   }
+}
+
+template <typename Request>
+Result<scoped_refptr<RemoteBootstrapSession>> RemoteBootstrapServiceImpl::CreateRemoteSession(
+    const Request* req, const ServerRegistrationPB* tablet_leader_conn_info,
+    const std::string& requestor_string, RemoteBootstrapErrorPB::Code* error_code) {
+  const string& requestor_uuid = req->requestor_uuid();
+  const TabletId& tablet_id = req->tablet_id();
+
+  // For now, we use the requestor_uuid with the tablet id as the session id,
+  // but there is no guarantee this will not change in the future.
+  MonoTime now = MonoTime::Now();
+  const string session_id = Substitute("$0-$1-$2", requestor_uuid, tablet_id, now.ToString());
+
+  scoped_refptr<RemoteBootstrapAnchorClient> rbs_anchor_client(nullptr);
+  if (tablet_leader_conn_info != nullptr) {
+    rbs_anchor_client.reset(new RemoteBootstrapAnchorClient(
+        requestor_uuid, session_id, proxy_cache_,
+        HostPortFromPB(DesiredHostPort(
+            tablet_leader_conn_info->broadcast_addresses(),
+            tablet_leader_conn_info->private_rpc_addresses(), tablet_leader_conn_info->cloud_info(),
+            local_cloud_info_pb_))));
+  }
+
+  auto tablet_peer_result = tablet_peer_lookup_->GetServingTablet(tablet_id);
+  if (!tablet_peer_result.ok()) {
+    *error_code = RemoteBootstrapErrorPB::TABLET_NOT_FOUND;
+    return STATUS(NotFound, Substitute("Unable to find specified tablet: $0", tablet_id));
+  }
+  auto tablet_peer = std::move(*tablet_peer_result);
+  auto s = tablet_peer->CheckRunning();
+  if (!s.ok()) {
+    *error_code = RemoteBootstrapErrorPB::TABLET_NOT_FOUND;
+    return STATUS(NotFound, Substitute("Tablet is not running yet: $0", tablet_id));
+  }
+
+  scoped_refptr<RemoteBootstrapSession> session;
+  {
+    std::lock_guard l(sessions_mutex_);
+    auto it = sessions_.find(session_id);
+    if (it == sessions_.end()) {
+      LOG(INFO) << "Beginning new remote bootstrap session on tablet " << tablet_id << " from peer "
+                << requestor_uuid << " at " << requestor_string << ": session id = " << session_id;
+      session.reset(new RemoteBootstrapSession(
+          tablet_peer, session_id, requestor_uuid, &nsessions_, rbs_anchor_client));
+      it = sessions_.emplace(session_id, SessionData{session, CoarseTimePoint()}).first;
+      auto new_nsessions = nsessions_.fetch_add(1, std::memory_order_acq_rel) + 1;
+      LOG_IF(DFATAL, implicit_cast<size_t>(new_nsessions) != sessions_.size())
+          << "nsessions_ " << new_nsessions << " !=  number of sessions " << sessions_.size();
+    } else {
+      session = it->second.session;
+      LOG(INFO) << "Re-initializing existing remote bootstrap session on tablet " << tablet_id
+                << " from peer " << requestor_uuid << " at " << requestor_string
+                << ": session id = " << session_id;
+    }
+
+    s = it->second.ResetExpiration(error_code);
+    if (!s.ok()) {
+      return STATUS(RuntimeError, "Refresh Log Anchor session failed");
+    }
+  }
+
+  return session;
 }
 
 Status RemoteBootstrapServiceImpl::ValidateFetchRequestDataId(

@@ -39,6 +39,7 @@ class PgFailOnConflictTest : public PgOnConflictTest {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     opts->extra_tserver_flags.push_back("--enable_wait_queues=false");
+    opts->extra_tserver_flags.push_back("--enable_deadlock_detection=false");
   }
 };
 

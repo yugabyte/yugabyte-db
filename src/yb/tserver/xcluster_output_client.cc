@@ -112,7 +112,9 @@ class XClusterOutputClient : public XClusterOutputClientIf {
       const cdc::XClusterSchemaVersionMap& schema_version_map,
       const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map) override;
 
-  Status ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> resp) override;
+  // Async call for applying changes. Will invoke the apply_changes_clbk when the changes are
+  // applied, or when any error occurs.
+  void ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> resp) override;
 
   void Shutdown() override {
     DCHECK(!shutdown_);
@@ -273,10 +275,10 @@ class XClusterOutputClient : public XClusterOutputClientIf {
   do { \
     auto&& _s = (status); \
     if (!_s.ok()) { \
-      HandleError(_s); \
-      return std::move(_s); \
+      HandleError(std::move(_s)); \
+      return; \
     } \
-  } while (0);
+  } while (0)
 
 #define RETURN_WHEN_OFFLINE() \
   if (shutdown_.load()) { \
@@ -317,7 +319,7 @@ void XClusterOutputClient::UpdateSchemaVersionMappings(
   }
 }
 
-Status XClusterOutputClient::ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> poller_resp) {
+void XClusterOutputClient::ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> poller_resp) {
   // ApplyChanges is called in a single threaded manner.
   // For all the changes in GetChangesResponsePB, we first fan out and find the tablet for
   // every record key.
@@ -345,7 +347,7 @@ Status XClusterOutputClient::ApplyChanges(std::shared_ptr<cdc::GetChangesRespons
   // Ensure we have records.
   if (get_changes_resp_->records_size() == 0) {
     HandleResponse();
-    return Status::OK();
+    return;
   }
 
   // Ensure we have a connection to the consumer table cached.
@@ -361,8 +363,6 @@ Status XClusterOutputClient::ApplyChanges(std::shared_ptr<cdc::GetChangesRespons
       table_, CoarseMonoClock::now() + timeout_ms_).get();
 
   HANDLE_ERROR_AND_RETURN_IF_NOT_OK(ProcessChangesStartingFromIndex(0));
-
-  return Status::OK();
 }
 
 Status XClusterOutputClient::ProcessChangesStartingFromIndex(int start) {

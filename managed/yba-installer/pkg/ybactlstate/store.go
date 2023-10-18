@@ -18,7 +18,7 @@ func LoadState() (*State, error) {
 	sf, err := os.Open(sp)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
+			return state, nil
 		}
 		return state, err
 	}

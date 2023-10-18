@@ -166,7 +166,7 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     // cloud customer, neither YSQL nor YCQL user
     "true,,,,, false, false, Need to provide YSQL and/or YCQL username.",
     // non-cloud customer but change in password of default user
-    "false, yugabyte, baz, cassandra, baz, true, true,"
+    "false, yugabyte, Admin@123, cassandra, Admin@123, true, true,"
   })
   // @formatter:on
   public void testSetDatabaseCredentials(
@@ -193,8 +193,8 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
         Json.newObject()
             .put("ycqlAdminUsername", ycqlAdminUsername)
             .put("ysqlAdminUsername", ysqlAdminUsername)
-            .put("ycqlCurrAdminPassword", "foo")
-            .put("ysqlCurrAdminPassword", "foo")
+            .put("ycqlCurrAdminPassword", "Admin@123")
+            .put("ysqlCurrAdminPassword", "Admin@123")
             .put("ycqlAdminPassword", ycqlPassword)
             .put("ysqlAdminPassword", ysqlPassword)
             .put("dbName", "test");
@@ -292,7 +292,7 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Cannot enable YSQL if it was disabled earlier.");
     updateUniverseAPIDetails(universe, true, false, true, false);
-    bodyJson.put("enableYSQL", true).put("ysqlPassword", "foo");
+    bodyJson.put("enableYSQL", true).put("ysqlPassword", "Admin@123");
     result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
@@ -303,7 +303,7 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Required password to configure YSQL auth.");
-    bodyJson.put("ysqlPassword", "foo");
+    bodyJson.put("ysqlPassword", "Admin@123");
     when(mockCommissioner.submit(any(), any())).thenReturn(UUID.randomUUID());
     result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertOk(result);
@@ -325,7 +325,7 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Cannot enable YCQL auth when API is disabled.");
     updateUniverseAPIDetails(universe, false, false, true, false);
-    bodyJson.put("enableYCQL", true).put("enableYCQLAuth", false).put("ycqlPassword", "foo");
+    bodyJson.put("enableYCQL", true).put("enableYCQLAuth", false).put("ycqlPassword", "Admin@123");
     result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
@@ -336,7 +336,7 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Required password to configure YCQL auth.");
-    bodyJson.put("ycqlPassword", "foo");
+    bodyJson.put("ycqlPassword", "Admin@123");
     when(mockCommissioner.submit(any(), any())).thenReturn(UUID.randomUUID());
     result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertOk(result);

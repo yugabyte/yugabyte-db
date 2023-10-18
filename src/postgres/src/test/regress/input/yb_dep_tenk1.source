@@ -51,4 +51,4 @@ CREATE INDEX NONCONCURRENTLY tenk1_unique2 ON tenk1 USING btree(unique2 int4_ops
 
 CREATE INDEX NONCONCURRENTLY tenk1_hundred ON tenk1 USING btree(hundred int4_ops ASC);
 
-CREATE INDEX NONCONCURRENTLY tenk1_thous_tenthous ON tenk1 (thousand, tenthous ASC);
+CREATE INDEX NONCONCURRENTLY tenk1_thous_tenthous ON tenk1 (thousand ASC, tenthous ASC);

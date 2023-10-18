@@ -72,6 +72,7 @@ DECLARE_bool(enable_pg_savepoints);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(enable_deadlock_detection);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -173,6 +174,7 @@ class PgMiniTestFailOnConflict : public PgMiniTest {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = false;
     PgMiniTest::SetUp();
   }
 };

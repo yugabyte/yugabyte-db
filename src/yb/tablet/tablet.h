@@ -42,6 +42,7 @@
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_types.pb.h"
 
+#include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_types.h"
@@ -133,7 +134,9 @@ struct TabletScopedRWOperationPauses {
   }
 };
 
-class Tablet : public AbstractTablet, public TransactionIntentApplier {
+class Tablet : public AbstractTablet,
+               public TransactionIntentApplier,
+               public docdb::TableInfoProvider {
  public:
   class CompactionFaultHooks;
   class FlushCompactCommonHooks;
@@ -866,6 +869,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const TabletScopedRWOperationPauses& ops_pauses);
 
   Status OpenKeyValueTablet();
+
+  // Returns a pointer to the TableInfo corresponding to the colocated table. When called with
+  // 'kColocationIdNotSet', returns the TableInfo of the parent/primary table.
+  Result<TableInfoPtr> GetTableInfo(ColocationId colocation_id) const override;
 
   // Lock used to serialize the creation of RocksDB checkpoints.
   mutable std::mutex create_checkpoint_lock_;

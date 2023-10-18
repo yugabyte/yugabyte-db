@@ -16,6 +16,7 @@
 #include <boost/function.hpp>
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/doc_operation.h"
@@ -140,12 +141,22 @@ Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_sourc
 
 std::string DebugIntentKeyToString(Slice intent_key);
 
+// Abstarct class to enable fetching table info from parsed intents while populating lock info in
+// PopulateLockInfoFromParsedIntent.
+class TableInfoProvider {
+ public:
+  virtual Result<tablet::TableInfoPtr> GetTableInfo(ColocationId colocation_id) const = 0;
+
+  virtual ~TableInfoProvider() = default;
+};
+
 // Decodes the doc_path present in the parsed_intent, and adds the lock information to the given
 // lock_info pointer. parsed_intent is expected to have a hybrid time by default. If not,
 // intent_has_ht needs to be set to false for the function to not return an error status.
 Status PopulateLockInfoFromParsedIntent(
     const ParsedIntent& parsed_intent, const dockv::DecodedIntentValue& decoded_value,
-    const SchemaPtr& schema, LockInfoPB* lock_info, bool intent_has_ht = true);
+    const TableInfoProvider& table_info_provider, LockInfoPB* lock_info,
+    bool intent_has_ht = true);
 
 } // namespace docdb
 } // namespace yb

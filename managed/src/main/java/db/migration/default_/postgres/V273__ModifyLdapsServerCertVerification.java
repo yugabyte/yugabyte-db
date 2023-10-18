@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-package db.migration.default_.common;
+package db.migration.default_.postgres;
 
 import java.sql.Connection;
 import java.sql.ResultSet;

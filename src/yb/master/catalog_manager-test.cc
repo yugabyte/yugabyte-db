@@ -30,6 +30,7 @@
 // under the License.
 //
 
+#include "yb/common/constants.h"
 #include "yb/master/catalog_manager-test_base.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
@@ -42,17 +43,6 @@ using std::make_shared;
 using std::string;
 using std::vector;
 using strings::Substitute;
-
-class TestLoadBalancerCommunity : public TestLoadBalancerBase<ClusterLoadBalancerMocked> {
-  typedef TestLoadBalancerBase<ClusterLoadBalancerMocked> super;
- public:
-  TestLoadBalancerCommunity(ClusterLoadBalancerMocked* cb, const string& table_id) :
-      super(cb, table_id) {}
-
-  void TestAlgorithm() {
-    super::TestAlgorithm();
-  }
-};
 
 // Test of the tablet assignment algorithm for splits done at table creation time.
 // This tests that when we define a split, the tablet lands on the expected
@@ -120,14 +110,6 @@ TEST(TestTSDescriptor, TestReplicaCreationsDecay) {
     SleepFor(MonoDelta::FromSeconds(10));
     ASSERT_NEAR(0.891, ts.RecentReplicaCreations(), 0.05);
   }
-}
-
-TEST(TestLoadBalancerCommunity, TestLoadBalancerAlgorithm) {
-  const TableId table_id = CURRENT_TEST_NAME();
-  auto options = make_shared<yb::master::Options>();
-  auto cb = make_shared<ClusterLoadBalancerMocked>(options.get());
-  auto lb = make_shared<TestLoadBalancerCommunity>(cb.get(), table_id);
-  lb->TestAlgorithm();
 }
 
 TEST(TestCatalogManager, TestLoadCountMultiAZ) {

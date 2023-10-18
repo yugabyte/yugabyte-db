@@ -17,6 +17,7 @@
 using namespace std::literals;
 
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(enable_deadlock_detection);
 
 namespace yb {
 namespace pgwrapper {
@@ -107,6 +108,7 @@ class PgExplicitLockTestSerializable
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = false;
     PgExplicitLockTest::BeforePgProcessStart();
   }
 };

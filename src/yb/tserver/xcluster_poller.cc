@@ -28,8 +28,10 @@
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/unique_lock.h"
 
 // Similar heuristic to heartbeat_interval in heartbeater.cc.
 DEFINE_RUNTIME_int32(async_replication_polling_delay_ms, 0,
@@ -65,6 +67,46 @@ DECLARE_int32(cdc_read_rpc_timeout_ms);
 
 using namespace std::placeholders;
 
+#define RETURN_WHEN_OFFLINE \
+  do { \
+    if (CheckOffline()) { \
+      LOG_WITH_PREFIX(WARNING) << "XCluster Poller went offline"; \
+      return; \
+    } \
+  } while (false)
+
+#define RETURN_WHEN_TERM_INVALID \
+  do { \
+    if (!IsLeaderTermValid()) { \
+      return; \
+    } \
+  } while (false)
+
+#define ACQUIRE_MUTEX_IF_ONLINE \
+  RETURN_WHEN_OFFLINE; \
+  std::lock_guard l(data_mutex_); \
+  RETURN_WHEN_TERM_INVALID
+
+#define ACQUIRE_UNIQUE_LOCK_IF_ONLINE \
+  RETURN_WHEN_OFFLINE; \
+  UniqueLock l(data_mutex_); \
+  RETURN_WHEN_TERM_INVALID
+
+// Helper macro to sleep without holding the lock. If the poller goes offline we will return
+// immediately. Also retuns if the leader term changes at the end of the sleep.
+#define SLEEP_FOR(delay_ms) \
+  { \
+    TEST_is_sleeping_ = true; \
+    auto se = ScopeExit([this]() { TEST_is_sleeping_ = false; }); \
+    if (shutdown_cv_.wait_for( \
+            GetLockForCondition(&l), delay_ms * 1ms, [this] { return CheckOffline(); })) { \
+      return; \
+    } \
+  } \
+  RETURN_WHEN_TERM_INVALID
+
+using namespace std::chrono_literals;
+
 namespace yb {
 namespace tserver {
 
@@ -96,7 +138,7 @@ XClusterPoller::XClusterPoller(
           local_client,
           thread_pool,
           rpcs,
-          std::bind(&XClusterPoller::HandleApplyChanges, this, _1),
+          std::bind(&XClusterPoller::ApplyChangesCallback, this, _1),
           use_local_tserver,
           global_transaction_status_tablets,
           enable_replicate_transaction_status_table,
@@ -113,31 +155,44 @@ XClusterPoller::~XClusterPoller() {
   DCHECK(shutdown_);
 }
 
-void XClusterPoller::Shutdown() {
+void XClusterPoller::StartShutdown() {
   // The poller is shutdown in two cases:
   // 1. The regular case where the poller is deleted via XClusterConsumer's
   // TriggerDeletionOfOldPollers.
   //    This happens when the stream is deleted or the consumer tablet leader changes.
   // 2. During XClusterConsumer::Shutdown(). Note that in this scenario, we may still be processing
-  // a
-  //    GetChanges request / handle callback, so we shutdown what we can here (note that
+  //    a GetChanges request / handle callback, so we shutdown what we can here (note that
   //    thread_pool_ is shutdown before we shutdown the pollers, so that will force most
   //    codepaths to exit early), and then using shared_from_this, destroy the object once all
   //    callbacks are complete.
+  VLOG_WITH_PREFIX_AND_FUNC(2);
+
   DCHECK(!shutdown_);
   shutdown_ = true;
+  shutdown_cv_.notify_all();
+}
 
+void XClusterPoller::CompleteShutdown() {
+  DCHECK(shutdown_);
+  VLOG_WITH_PREFIX_AND_FUNC(2) << "Start";
   rpc::RpcCommandPtr rpc_to_abort;
   {
     std::lock_guard l(data_mutex_);
     output_client_->Shutdown();
+  }
+
+  {
+    std::lock_guard l(poll_handle_mutex_);
     if (poll_handle_ != rpcs_->InvalidHandle()) {
       rpc_to_abort = *poll_handle_;
     }
   }
+
   if (rpc_to_abort) {
     rpc_to_abort->Abort();
   }
+
+  VLOG_WITH_PREFIX_AND_FUNC(2) << "Complete";
 }
 
 std::string XClusterPoller::LogPrefix() const {
@@ -149,20 +204,22 @@ std::string XClusterPoller::LogPrefix() const {
       consumer_tablet_info_.tablet_id);
 }
 
+template <class F>
+void XClusterPoller::SubmitFunc(F&& f) {
+  RETURN_WHEN_OFFLINE;
+
+  auto s = thread_pool_->SubmitFunc(std::move(f));
+  if (!s.ok()) {
+    LOG_WITH_PREFIX(WARNING)
+        << "Stopping xCluster Poller as we could not submit function to thread pool: " << s;
+    is_failed_ = true;
+  }
+}
+
 bool XClusterPoller::CheckOffline() { return shutdown_ || is_failed_; }
 
-#define RETURN_WHEN_OFFLINE() \
-  if (CheckOffline()) { \
-    LOG_WITH_PREFIX(WARNING) << "XCluster Poller went offline"; \
-    return; \
-  }
-
-#define ACQUIRE_MUTEX_IF_ONLINE() \
-  RETURN_WHEN_OFFLINE(); \
-  std::lock_guard l(data_mutex_);
-
 void XClusterPoller::UpdateSchemaVersions(const cdc::XClusterSchemaVersionMap& schema_versions) {
-  RETURN_WHEN_OFFLINE();
+  RETURN_WHEN_OFFLINE;
   {
     std::lock_guard l(schema_version_lock_);
     schema_version_map_ = schema_versions;
@@ -176,7 +233,7 @@ void XClusterPoller::UpdateSchemaVersions(const cdc::XClusterSchemaVersionMap& s
 
 void XClusterPoller::UpdateColocatedSchemaVersionMap(
     const cdc::ColocatedSchemaVersionMap& input_colocated_schema_version_map) {
-  RETURN_WHEN_OFFLINE();
+  RETURN_WHEN_OFFLINE;
   {
     std::lock_guard l(schema_version_lock_);
     colocated_schema_version_map_ = input_colocated_schema_version_map;
@@ -190,23 +247,21 @@ void XClusterPoller::UpdateColocatedSchemaVersionMap(
   }
 }
 
-void XClusterPoller::SetSchemaVersion(SchemaVersion cur_version,
-                                 SchemaVersion last_compatible_consumer_schema_version) {
-  RETURN_WHEN_OFFLINE();
+void XClusterPoller::ScheduleSetSchemaVersionIfNeeded(
+    SchemaVersion cur_version, SchemaVersion last_compatible_consumer_schema_version) {
+  RETURN_WHEN_OFFLINE;
 
   if (last_compatible_consumer_schema_version_ < last_compatible_consumer_schema_version ||
       validated_schema_version_ < cur_version) {
-    WARN_NOT_OK(
-        thread_pool_->SubmitFunc(std::bind(
-            &XClusterPoller::DoSetSchemaVersion, shared_from_this(), cur_version,
-            last_compatible_consumer_schema_version)),
-        "Could not submit SetSchemaVersion to thread pool");
+    SubmitFunc(std::bind(
+        &XClusterPoller::DoSetSchemaVersion, shared_from_this(), cur_version,
+        last_compatible_consumer_schema_version));
   }
 }
 
 void XClusterPoller::DoSetSchemaVersion(
     SchemaVersion cur_version, SchemaVersion current_consumer_schema_version) {
-  ACQUIRE_MUTEX_IF_ONLINE();
+  ACQUIRE_MUTEX_IF_ONLINE;
 
   if (last_compatible_consumer_schema_version_ < current_consumer_schema_version) {
     last_compatible_consumer_schema_version_ = current_consumer_schema_version;
@@ -220,9 +275,7 @@ void XClusterPoller::DoSetSchemaVersion(
       LOG(INFO) << "Restarting polling on " << producer_tablet_info_.tablet_id
                 << " Producer schema version : " << validated_schema_version_
                 << " Consumer schema version : " << last_compatible_consumer_schema_version_;
-      WARN_NOT_OK(
-          thread_pool_->SubmitFunc(std::bind(&XClusterPoller::DoPoll, shared_from_this())),
-          "Could not submit Poll to thread pool");
+      SubmitFunc(std::bind(&XClusterPoller::DoPoll, shared_from_this()));
     }
   }
 }
@@ -246,26 +299,16 @@ void XClusterPoller::UpdateSafeTime(int64 new_time) {
   }
 }
 
-void XClusterPoller::Poll() {
-  RETURN_WHEN_OFFLINE();
-
-  auto s = thread_pool_->SubmitFunc(std::bind(&XClusterPoller::DoPoll, shared_from_this()));
-  if (!s.ok()) {
-    LOG_WITH_PREFIX(WARNING) << "Could not submit Poll to thread pool: " << s;
-    is_failed_ = true;
-  }
+void XClusterPoller::SchedulePoll() {
+  SubmitFunc(std::bind(&XClusterPoller::DoPoll, shared_from_this()));
 }
 
 void XClusterPoller::DoPoll() {
-  ACQUIRE_MUTEX_IF_ONLINE();
-
-  if (!IsLeaderTermValid()) {
-    return;
-  }
+  ACQUIRE_UNIQUE_LOCK_IF_ONLINE;
 
   if (PREDICT_FALSE(FLAGS_TEST_cdc_skip_replication_poll)) {
-    SleepFor(MonoDelta::FromMilliseconds(FLAGS_async_replication_idle_delay_ms));
-    Poll();
+    SLEEP_FOR(FLAGS_async_replication_idle_delay_ms);
+    SchedulePoll();
     return;
   }
 
@@ -278,9 +321,7 @@ void XClusterPoller::DoPoll() {
   if (poll_failures_ > 0) {
     delay = std::max(delay, (int64_t)1 << poll_failures_); // exponential backoff for failures.
   }
-  if (delay > 0) {
-    SleepFor(MonoDelta::FromMilliseconds(delay));
-  }
+  SLEEP_FOR(delay);
 
   const auto xcluster_simulated_lag_ms = GetAtomicFlag(&FLAGS_TEST_xcluster_simulated_lag_ms);
   if (PREDICT_FALSE(xcluster_simulated_lag_ms != 0)) {
@@ -296,11 +337,11 @@ void XClusterPoller::DoPoll() {
         delay = xcluster_simulated_lag_ms;
       }
 
-      SleepFor(MonoDelta::FromMilliseconds(delay));
+      SLEEP_FOR(delay);
 
       // If replication is paused skip the GetChanges call
       if (xcluster_simulated_lag_ms < 0) {
-        return Poll();
+        return SchedulePoll();
       }
     }
   }
@@ -321,8 +362,8 @@ void XClusterPoller::DoPoll() {
     *req.mutable_from_checkpoint() = checkpoint;
   }
 
-  poll_handle_ = rpcs_->Prepare();
-  if (poll_handle_ == rpcs_->InvalidHandle()) {
+  auto poll_handle = rpcs_->Prepare();
+  if (poll_handle == rpcs_->InvalidHandle()) {
     DCHECK(CheckOffline());
     LOG_WITH_PREFIX(WARNING) << "Unable to perform poll, rpcs_ is shutdown";
     return;
@@ -330,13 +371,18 @@ void XClusterPoller::DoPoll() {
 
   VLOG_WITH_PREFIX(5) << "Sending GetChangesRequest: " << req.ShortDebugString();
 
-  *poll_handle_ = CreateGetChangesCDCRpc(
+  *poll_handle = CreateGetChangesCDCRpc(
       CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),
       nullptr, /* RemoteTablet: will get this from 'req' */
       producer_client_->client.get(),
       &req,
-      std::bind(&XClusterPoller::HandlePoll, shared_from_this(), _1, _2));
-  (**poll_handle_).SendRpc();
+      std::bind(&XClusterPoller::GetChangesCallback, shared_from_this(), _1, _2));
+
+  {
+    std::lock_guard l(poll_handle_mutex_);
+    poll_handle_ = std::move(poll_handle);
+    (**poll_handle_).SendRpc();
+  }
 }
 
 void XClusterPoller::UpdateSchemaVersionsForApply() {
@@ -345,109 +391,120 @@ void XClusterPoller::UpdateSchemaVersionsForApply() {
   output_client_->UpdateSchemaVersionMappings(schema_version_map_, colocated_schema_version_map_);
 }
 
-void XClusterPoller::HandlePoll(const Status& status, cdc::GetChangesResponsePB&& resp) {
-  rpc::RpcCommandPtr retained;
-  {
-    std::lock_guard l(data_mutex_);
-    retained = rpcs_->Unregister(&poll_handle_);
-  }
-  RETURN_WHEN_OFFLINE();
+void XClusterPoller::GetChangesCallback(const Status& status, cdc::GetChangesResponsePB&& resp) {
   auto new_resp = std::make_shared<cdc::GetChangesResponsePB>(std::move(resp));
-  WARN_NOT_OK(
-      thread_pool_->SubmitFunc(std::bind(
-          &XClusterPoller::DoHandlePoll, shared_from_this(), status, std::move(new_resp))),
-      "Could not submit HandlePoll to thread pool");
-}
 
-void XClusterPoller::DoHandlePoll(Status status, std::shared_ptr<cdc::GetChangesResponsePB> resp) {
-  ACQUIRE_MUTEX_IF_ONLINE();
-
-  if (!IsLeaderTermValid()) {
-    return;
+  {
+    std::lock_guard l(poll_handle_mutex_);
+    rpcs_->Unregister(&poll_handle_);
   }
 
-  status_ = status;
+  SubmitFunc(std::bind(
+      &XClusterPoller::HandleGetChangesResponse, shared_from_this(), status, std::move(new_resp)));
+}
 
-  bool failed = false;
-  if (!status_.ok()) {
-    LOG_WITH_PREFIX(INFO) << "XClusterPoller failure: " << status_.ToString();
-    failed = true;
-  } else if (resp->has_error()) {
-    LOG_WITH_PREFIX(WARNING) << "XClusterPoller failure response: code=" << resp->error().code()
-                             << ", status=" << resp->error().status().DebugString();
-    failed = true;
+void XClusterPoller::HandleGetChangesResponse(
+    Status status, std::shared_ptr<cdc::GetChangesResponsePB> resp) {
+  {
+    ACQUIRE_MUTEX_IF_ONLINE;
+    status_ = std::move(status);
 
-    if (resp->error().code() == cdc::CDCErrorPB::CHECKPOINT_TOO_OLD) {
-      xcluster_consumer_->StoreReplicationError(
-          consumer_tablet_info_.tablet_id,
-          producer_tablet_info_.stream_id,
-          ReplicationErrorPb::REPLICATION_MISSING_OP_ID,
-          "Unable to find expected op id on the producer");
+    bool failed = false;
+    if (!status_.ok()) {
+      LOG_WITH_PREFIX(INFO) << "XClusterPoller failure: " << status_.ToString();
+      failed = true;
+    } else if (resp->has_error()) {
+      LOG_WITH_PREFIX(WARNING) << "XClusterPoller failure response: code=" << resp->error().code()
+                               << ", status=" << resp->error().status().DebugString();
+      failed = true;
+
+      if (resp->error().code() == cdc::CDCErrorPB::CHECKPOINT_TOO_OLD) {
+        xcluster_consumer_->StoreReplicationError(
+            consumer_tablet_info_.tablet_id,
+            producer_tablet_info_.stream_id,
+            ReplicationErrorPb::REPLICATION_MISSING_OP_ID,
+            "Unable to find expected op id on the producer");
+      }
+    } else if (!resp->has_checkpoint()) {
+      LOG_WITH_PREFIX(ERROR) << "XClusterPoller failure: no checkpoint";
+      failed = true;
     }
-  } else if (!resp->has_checkpoint()) {
-    LOG_WITH_PREFIX(ERROR) << "XClusterPoller failure: no checkpoint";
-    failed = true;
+    if (failed) {
+      // In case of errors, try polling again with backoff
+      poll_failures_ =
+          std::min(poll_failures_ + 1, GetAtomicFlag(&FLAGS_replication_failure_delay_exponent));
+      return SchedulePoll();
+    }
+    // Recover slowly if we're congested.
+    poll_failures_ = std::max(poll_failures_ - 2, 0);
   }
-  if (failed) {
-    // In case of errors, try polling again with backoff
-    poll_failures_ =
-        std::min(poll_failures_ + 1, GetAtomicFlag(&FLAGS_replication_failure_delay_exponent));
-    return Poll();
-  }
-  poll_failures_ = std::max(poll_failures_ - 2, 0); // otherwise, recover slowly if we're congested
 
-  // Success Case: ApplyChanges() from Poll
-  UpdateSchemaVersionsForApply();
-  WARN_NOT_OK(output_client_->ApplyChanges(std::move(resp)), "Could not ApplyChanges");
+  // Success Case.
+  ApplyChanges(std::move(resp));
 }
 
-void XClusterPoller::HandleApplyChanges(XClusterOutputClientResponse response) {
-  RETURN_WHEN_OFFLINE();
-  WARN_NOT_OK(
-      thread_pool_->SubmitFunc(
-          std::bind(&XClusterPoller::DoHandleApplyChanges, shared_from_this(), response)),
-      "Could not submit HandleApplyChanges to thread pool");
+void XClusterPoller::ApplyChangesCallback(XClusterOutputClientResponse response) {
+  SubmitFunc(std::bind(
+      &XClusterPoller::HandleApplyChangesResponse, shared_from_this(), std::move(response)));
 }
 
-void XClusterPoller::DoHandleApplyChanges(XClusterOutputClientResponse response) {
-  ACQUIRE_MUTEX_IF_ONLINE();
-  DCHECK(response.get_changes_response);
-
-  if (!IsLeaderTermValid()) {
-    return;
-  }
-
+void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse response) {
   if (!response.status.ok()) {
     LOG_WITH_PREFIX(WARNING) << "ApplyChanges failure: " << response.status;
-    // Repeat the ApplyChanges step, with exponential backoff
-    apply_failures_ =
-        std::min(apply_failures_ + 1, GetAtomicFlag(&FLAGS_replication_failure_delay_exponent));
-    int64_t delay = (1 << apply_failures_) - 1;
-    VLOG_WITH_PREFIX(1) << "Retrying ApplyChanges after sleeping for  " << delay;
-    SleepFor(MonoDelta::FromMilliseconds(delay));
-    UpdateSchemaVersionsForApply();
-    WARN_NOT_OK(
-        output_client_->ApplyChanges(std::move(response.get_changes_response)),
-        "Could not ApplyChanges");
+    // Repeat the ApplyChanges step, with exponential backoff.
+    {
+      ACQUIRE_MUTEX_IF_ONLINE;
+      apply_failures_ =
+          std::min(apply_failures_ + 1, GetAtomicFlag(&FLAGS_replication_failure_delay_exponent));
+    }
+    ApplyChanges(std::move(response.get_changes_response));
     return;
   }
-  apply_failures_ = std::max(apply_failures_ - 2, 0); // recover slowly if we've gotten congested
 
-  op_id_ = response.last_applied_op_id;
+  DCHECK(response.get_changes_response);
 
-  idle_polls_ = (response.processed_record_count == 0) ? idle_polls_ + 1 : 0;
+  {
+    ACQUIRE_MUTEX_IF_ONLINE;
 
-  if (validated_schema_version_ < response.wait_for_version) {
-    is_polling_ = false;
-    validated_schema_version_ = response.wait_for_version - 1;
-  } else {
+    // Recover slowly if we've gotten congested.
+    apply_failures_ = std::max(apply_failures_ - 2, 0);
+
+    op_id_ = response.last_applied_op_id;
+
+    idle_polls_ = (response.processed_record_count == 0) ? idle_polls_ + 1 : 0;
+
+    if (validated_schema_version_ < response.wait_for_version) {
+      LOG(WARNING) << "Pausing Poller since producer schema version " << response.wait_for_version
+                   << " is higher than consumer schema version " << validated_schema_version_;
+      is_polling_ = false;
+      validated_schema_version_ = response.wait_for_version - 1;
+      return;
+    }
+
     if (response.get_changes_response->has_safe_hybrid_time()) {
       // Once all changes have been successfully applied we can update the safe time.
       UpdateSafeTime(response.get_changes_response->safe_hybrid_time());
     }
-
-    Poll();
   }
+
+  // We can poll again from the same thread.
+  DoPoll();
+}
+
+void XClusterPoller::ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response) {
+  DCHECK(get_changes_response);
+
+  ACQUIRE_UNIQUE_LOCK_IF_ONLINE;
+
+  if (apply_failures_ > 0) {
+    int64_t delay = (1 << apply_failures_) - 1;
+    VLOG_WITH_PREFIX(1) << "Retrying ApplyChanges after sleeping for  " << delay;
+
+    SLEEP_FOR(delay);
+  }
+
+  UpdateSchemaVersionsForApply();
+  output_client_->ApplyChanges(get_changes_response);
 }
 
 bool XClusterPoller::IsLeaderTermValid() {
@@ -477,8 +534,5 @@ bool XClusterPoller::IsLeaderTermValid() {
   return true;
 }
 
-#undef ACQUIRE_MUTEX_IF_ONLINE
-#undef RETURN_WHEN_OFFLINE
-
-} // namespace tserver
+}  // namespace tserver
 } // namespace yb
