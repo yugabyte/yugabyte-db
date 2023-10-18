@@ -21,6 +21,8 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Schedule.State;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.filters.ScheduleFilter;
 import com.yugabyte.yw.models.paging.SchedulePagedApiResponse;
 import com.yugabyte.yw.models.paging.SchedulePagedQuery;
@@ -58,8 +60,12 @@ public class ScheduleController extends AuthenticatedController {
     this.backupHelper = backupHelper;
   }
 
+  @Deprecated
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value = "List schedules",
+      value =
+          "Deprecated since YBA version 2.20.0.0."
+              + " Use 'List schedules V2' instead. List schedules",
       response = Schedule.class,
       responseContainer = "List",
       nickname = "listSchedules")
@@ -116,8 +122,12 @@ public class ScheduleController extends AuthenticatedController {
     return PlatformResults.withData(schedule);
   }
 
+  @Deprecated
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value = "Delete a schedule",
+      value =
+          "Deprecated since YBA version 2.20.0.0."
+              + " Use 'Delete a schedule V2' instead. Delete a schedule",
       response = PlatformResults.YBPSuccess.class,
       nickname = "deleteSchedule")
   @AuthzPath({

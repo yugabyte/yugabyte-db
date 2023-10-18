@@ -16341,34 +16341,6 @@
       }
     },
     "/api/v1/customers/{cUUID}/backups" : {
-      "delete" : {
-        "description" : "",
-        "operationId" : "deleteBackups",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTasks"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Delete backups",
-        "tags" : [ "Backups" ]
-      },
       "post" : {
         "description" : "",
         "operationId" : "createbackup",
@@ -16402,7 +16374,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create a backup",
+        "summary" : "Create a backup V2",
         "tags" : [ "Backups" ]
       }
     },
@@ -17260,45 +17232,6 @@
         } ],
         "summary" : "Get a cost estimate for all universes",
         "tags" : [ "Universe information" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/create_backup_schedule" : {
-      "post" : {
-        "deprecated" : true,
-        "description" : "",
-        "operationId" : "createBackupSchedule",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "Parameters of the backup to be restored",
-          "in" : "body",
-          "name" : "backup",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/BackupRequestParams"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/Schedule"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Create Backup Schedule",
-        "tags" : [ "Backups" ]
       }
     },
     "/api/v1/customers/{cUUID}/create_backup_schedule_async" : {
@@ -20558,35 +20491,6 @@
         "tags" : [ "Runtime configuration" ]
       }
     },
-    "/api/v1/customers/{cUUID}/schedules" : {
-      "get" : {
-        "description" : "",
-        "operationId" : "listSchedules",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/Schedule"
-              },
-              "type" : "array"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "List schedules",
-        "tags" : [ "Schedule management" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/schedules/page" : {
       "post" : {
         "description" : "",
@@ -20625,40 +20529,6 @@
       }
     },
     "/api/v1/customers/{cUUID}/schedules/{sUUID}" : {
-      "delete" : {
-        "description" : "",
-        "operationId" : "deleteSchedule",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "sUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Delete a schedule",
-        "tags" : [ "Schedule management" ]
-      },
       "get" : {
         "description" : "",
         "operationId" : "getSchedule",
@@ -21363,91 +21233,6 @@
         "tags" : [ "Universe Upgrades Management" ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/backups" : {
-      "get" : {
-        "description" : "",
-        "operationId" : "ListOfBackups",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/Backup"
-              },
-              "type" : "array"
-            }
-          },
-          "500" : {
-            "description" : "If there was a server or database issue when listing the backups",
-            "schema" : {
-              "$ref" : "#/definitions/YBPError"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "List a customer's backups",
-        "tags" : [ "Backups" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/backups/restore" : {
-      "post" : {
-        "description" : "",
-        "operationId" : "restore",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "Parameters of the backup to be restored",
-          "in" : "body",
-          "name" : "backup",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/BackupTableParams"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTask"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Restore from a backup",
-        "tags" : [ "Backups" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/backups/tasks/{tUUID}" : {
       "get" : {
         "description" : "",
@@ -21491,7 +21276,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List a task's backups",
+        "summary" : "List backups associated with a task",
         "tags" : [ "Backups" ]
       }
     },
