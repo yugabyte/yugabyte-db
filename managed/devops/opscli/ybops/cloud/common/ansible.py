@@ -113,7 +113,7 @@ class AnsibleProcess(object):
                 "ssh_version": SSH if ssh_key_type == SSH else SSH2
             })
 
-        process_args = ["ansible-playbook"]
+        process_args = [os.path.join(ybutils.YB_DEVOPS_HOME, "bin/ansible-playbook.sh")]
 
         if ssh2_enabled:
             # Will be moved as part of task of license upload api.

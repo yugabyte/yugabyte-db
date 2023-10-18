@@ -609,7 +609,7 @@ activate_pex() {
   export PEX_EXTRA_SYS_PATH
   # Used by other devops scripts
   PEX_PATH="$yb_devops_home/pex/pexEnv"
-  export PEX_ROOT="$PEX_PATH"
+  export PEX_ROOT="$pex_venv_dir"
   SCRIPT_PATH="$yb_devops_home/opscli/ybops/scripts/ybcloud.py"
   export SCRIPT_PATH
   export ANSIBLE_CONFIG="$yb_devops_home/ansible.cfg"
