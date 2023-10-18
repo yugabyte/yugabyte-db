@@ -9,7 +9,6 @@ import { mouseTrap } from 'react-mousetrap';
 import { CustomerMetricsPanel } from '../../metrics';
 import { RollingUpgradeFormContainer } from '../../../components/common/forms';
 import {
-  UniverseFormContainer,
   UniverseStatusContainer,
   NodeDetailsContainer,
   DeleteUniverseContainer,
@@ -689,7 +688,7 @@ class UniverseDetail extends Component {
                             isControl
                             accessRequiredOn={{
                               onResource: uuid,
-                              ...UserPermissionMap.editUniverse
+                              ...UserPermissionMap.readUniverse
                             }}
                           >
                             <YBMenuItem
@@ -768,7 +767,7 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...UserPermissionMap.editUniverse
+                            ...UserPermissionMap.readUniverse
                           }}
                         >
                           <YBMenuItem
@@ -844,7 +843,7 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...UserPermissionMap.editUniverse
+                            ...UserPermissionMap.readUniverse
                           }}
                         >
                           <YBMenuItem
