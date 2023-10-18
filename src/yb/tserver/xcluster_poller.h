@@ -64,22 +64,23 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
           get_leader_term);
   ~XClusterPoller();
 
-  void Shutdown();
+  void StartShutdown();
+  void CompleteShutdown();
 
   bool IsFailed() const { return is_failed_.load(); }
 
   // Begins poll process for a producer tablet.
-  void Poll();
+  void SchedulePoll();
 
-  bool IsPolling() const { return is_polling_; }
+  void ScheduleSetSchemaVersionIfNeeded(
+      SchemaVersion cur_version, SchemaVersion last_compatible_consumer_schema_version);
 
-  void SetSchemaVersion(SchemaVersion cur_version,
-                        SchemaVersion last_compatible_consumer_schema_version);
-
-  void UpdateSchemaVersions(const cdc::XClusterSchemaVersionMap& schema_versions);
+  void UpdateSchemaVersions(const cdc::XClusterSchemaVersionMap& schema_versions)
+      EXCLUDES(schema_version_lock_);
 
   void UpdateColocatedSchemaVersionMap(
-      const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map);
+      const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map)
+      EXCLUDES(schema_version_lock_);
 
   std::string LogPrefix() const;
 
@@ -87,22 +88,27 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
 
   cdc::ConsumerTabletInfo GetConsumerTabletInfo() const;
 
+  bool TEST_Is_Sleeping() const { return ANNOTATE_UNPROTECTED_READ(TEST_is_sleeping_); }
+
  private:
+  template <class F>
+  void SubmitFunc(F&& f);
+
   bool CheckOffline();
 
-  void DoSetSchemaVersion(SchemaVersion cur_version,
-                          SchemaVersion current_consumer_schema_version);
+  void DoSetSchemaVersion(SchemaVersion cur_version, SchemaVersion current_consumer_schema_version)
+      EXCLUDES(data_mutex_);
 
-  void DoPoll();
-  // Does the work of sending the changes to the output client.
-  void HandlePoll(const Status& status, cdc::GetChangesResponsePB&& resp);
-  void DoHandlePoll(Status status, std::shared_ptr<cdc::GetChangesResponsePB> resp);
-  // Async handler for the response from output client.
-  void HandleApplyChanges(XClusterOutputClientResponse response);
-  // Does the work of polling for new changes.
-  void DoHandleApplyChanges(XClusterOutputClientResponse response);
+  void DoPoll() EXCLUDES(data_mutex_);
+  void GetChangesCallback(const Status& status, cdc::GetChangesResponsePB&& resp);
+  void HandleGetChangesResponse(Status status, std::shared_ptr<cdc::GetChangesResponsePB> resp)
+      EXCLUDES(data_mutex_);
+  void ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response)
+      EXCLUDES(data_mutex_);
+  void ApplyChangesCallback(XClusterOutputClientResponse response);
+  void HandleApplyChangesResponse(XClusterOutputClientResponse response) EXCLUDES(data_mutex_);
   void UpdateSafeTime(int64 new_time) EXCLUDES(safe_time_lock_);
-  void UpdateSchemaVersionsForApply();
+  void UpdateSchemaVersionsForApply() EXCLUDES(schema_version_lock_);
   bool IsLeaderTermValid() REQUIRES(data_mutex_);
 
   const cdc::ProducerTabletInfo producer_tablet_info_;
@@ -121,6 +127,7 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
   std::atomic<bool> shutdown_ = false;
   // In failed state we do not poll for changes and are awaiting shutdown.
   std::atomic<bool> is_failed_ = false;
+  std::condition_variable shutdown_cv_;
 
   OpIdPB op_id_ GUARDED_BY(data_mutex_);
   std::atomic<SchemaVersion> validated_schema_version_;
@@ -134,18 +141,21 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
 
   ThreadPool* thread_pool_;
   rpc::Rpcs* rpcs_;
-  rpc::Rpcs::Handle poll_handle_ GUARDED_BY(data_mutex_);
+  std::mutex poll_handle_mutex_;
+  rpc::Rpcs::Handle poll_handle_ GUARDED_BY(poll_handle_mutex_);
   XClusterConsumer* xcluster_consumer_ GUARDED_BY(data_mutex_);
 
   mutable rw_spinlock safe_time_lock_;
   HybridTime producer_safe_time_ GUARDED_BY(safe_time_lock_);
 
-  std::atomic<bool> is_polling_{true};
+  bool is_polling_ GUARDED_BY(data_mutex_) = true;
   int poll_failures_ GUARDED_BY(data_mutex_){0};
   int apply_failures_ GUARDED_BY(data_mutex_){0};
   int idle_polls_ GUARDED_BY(data_mutex_){0};
 
   int64_t leader_term_ GUARDED_BY(data_mutex_) = OpId::kUnknownTerm;
+
+  bool TEST_is_sleeping_ = false;
 };
 
 } // namespace tserver

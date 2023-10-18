@@ -73,7 +73,7 @@ public class CustomerConfigValidator extends BaseBeanValidator {
         new CustomerConfigStorageGCSValidator(beanValidator, factory));
     validators.put(
         CustomerConfigStorageS3Data.class,
-        new CustomerConfigStorageS3Validator(beanValidator, factory, runtimeConfGetter));
+        new CustomerConfigStorageS3Validator(beanValidator, factory, runtimeConfGetter, awsUtil));
     validators.put(
         CustomerConfigStorageNFSData.class, new CustomerConfigStorageNFSValidator(beanValidator));
     validators.put(

@@ -40,9 +40,11 @@ The following operations lock the cluster and only one can happen at the same ti
 
 - [backup and restore](backup-clusters/)
 - pause and resume
-- [scaling the cluster](configure-clusters/), including adding and removing nodes
+- [scaling the cluster](configure-clusters/), including adding and removing nodes, increasing disk size, and changing IOPS
 - create, delete, and edit of [read replicas](managed-read-replica/)
 - any scheduled [maintenance](cloud-maintenance/), including database upgrades, certificate rotations, and cluster maintenance (a backup is run automatically before a database upgrade)
+
+In addition, on AWS, any disk modification (size or IOPS) blocks further disk modifications for six hours (this includes a scaling operation that increases the number of vCPUs, as this also increases disk size).
 
 Make sure that you schedule maintenance and backups so that they do not conflict.
 

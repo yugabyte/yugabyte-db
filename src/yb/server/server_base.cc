@@ -516,6 +516,18 @@ Status RpcAndWebServerBase::Init() {
   return Status::OK();
 }
 
+Status RpcAndWebServerBase::InitAutoFlags() {
+  auto process_auto_flags_result = GetAvailableAutoFlagsForServer();
+  if (!process_auto_flags_result) {
+    LOG(WARNING) << "Unable to get the AutoFlags for this process: "
+                 << process_auto_flags_result.status();
+  } else {
+    web_server_->SetAutoFlags(std::move(*process_auto_flags_result));
+  }
+
+  return RpcServerBase::InitAutoFlags();
+}
+
 void RpcAndWebServerBase::GetStatusPB(ServerStatusPB* status) const {
   RpcServerBase::GetStatusPB(status);
 

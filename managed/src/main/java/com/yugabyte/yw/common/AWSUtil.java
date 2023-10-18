@@ -2,7 +2,9 @@
 
 package com.yugabyte.yw.common;
 
+import static org.apache.commons.lang3.exception.ExceptionUtils.getStackTrace;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.EXPECTATION_FAILED;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
@@ -30,6 +32,7 @@ import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
 import com.amazonaws.services.s3.model.GetBucketLocationRequest;
 import com.amazonaws.services.s3.model.ListObjectsV2Request;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
+import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.google.inject.Inject;
@@ -43,6 +46,8 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.ProxySetting;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.RegionLocations;
+import java.io.IOException;
 import java.io.InputStream;
 import java.security.KeyStore;
 import java.security.SecureRandom;
@@ -51,6 +56,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -101,10 +107,10 @@ public class AWSUtil implements CloudUtil {
       try {
         maybeDisableCertVerification();
         AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
-        String[] bucketSplit = getSplitLocationValue(location);
-        String bucketName = bucketSplit.length > 0 ? bucketSplit[0] : "";
-        String prefix = bucketSplit.length > 1 ? bucketSplit[1] : "";
-        if (bucketSplit.length == 1) {
+        ConfigLocationInfo configLocationInfo = getConfigLocationInfo(location);
+        String bucketName = configLocationInfo.bucket;
+        String prefix = configLocationInfo.cloudPath;
+        if (StringUtils.isEmpty(prefix)) {
           Boolean doesBucketExist = s3Client.doesBucketExistV2(bucketName);
           if (!doesBucketExist) {
             throw new RuntimeException(
@@ -666,6 +672,178 @@ public class AWSUtil implements CloudUtil {
   public void maybeEnableCertVerification() {
     if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enforceCertVerificationBackupRestore)) {
       System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
+    }
+  }
+
+  /**
+   * Validates create permissions on the S3 configuration on default region and other regions, apart
+   * read, list or delete permissions if specified.
+   */
+  @Override
+  public void validate(CustomerConfigData configData, List<ExtraPermissionToValidate> permissions)
+      throws Exception {
+    CustomerConfigStorageS3Data s3data = (CustomerConfigStorageS3Data) configData;
+    if (StringUtils.isEmpty(s3data.awsAccessKeyId)
+        || StringUtils.isEmpty(s3data.awsSecretAccessKey)) {
+      if (!s3data.isIAMInstanceProfile) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Aws credentials are null and IAM profile is not used.");
+      }
+    }
+
+    AmazonS3 s3Client = null;
+    String exceptionMsg = null;
+    try {
+      s3Client = createS3Client(s3data);
+    } catch (AmazonS3Exception s3Exception) {
+      exceptionMsg = s3Exception.getErrorMessage();
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, exceptionMsg);
+    }
+
+    validateOnLocation(s3Client, s3data.backupLocation, permissions);
+
+    if (s3data.regionLocations != null) {
+      for (RegionLocations location : s3data.regionLocations) {
+        if (StringUtils.isEmpty(location.region)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Region of RegionLocation: " + location.awsHostBase + " is empty.");
+        }
+        validateOnLocation(s3Client, location.location, permissions);
+      }
+    }
+  }
+
+  /** Validates S3 configuration on a specific location */
+  private void validateOnLocation(
+      AmazonS3 client, String location, List<ExtraPermissionToValidate> permissions) {
+    ConfigLocationInfo configLocationInfo = getConfigLocationInfo(location);
+    validateOnBucket(client, configLocationInfo.bucket, configLocationInfo.cloudPath, permissions);
+  }
+
+  /**
+   * Validates create permission on a bucket, apart from read, list or delete permissions if
+   * specified.
+   */
+  public void validateOnBucket(
+      AmazonS3 client,
+      String bucketName,
+      String prefix,
+      List<ExtraPermissionToValidate> permissions) {
+    Optional<ExtraPermissionToValidate> unsupportedPermission =
+        permissions.stream()
+            .filter(
+                permission ->
+                    permission != ExtraPermissionToValidate.READ
+                        && permission != ExtraPermissionToValidate.LIST)
+            .findAny();
+
+    if (unsupportedPermission.isPresent()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Unsupported permission "
+              + unsupportedPermission.get().toString()
+              + " validation is not supported!");
+    }
+
+    String objectName = getRandomUUID().toString() + ".txt";
+    String completeObjectPath = BackupUtil.getPathWithPrefixSuffixJoin(prefix, objectName);
+
+    createObject(client, bucketName, DUMMY_DATA, completeObjectPath);
+
+    if (permissions.contains(ExtraPermissionToValidate.READ)) {
+      validateReadObject(client, bucketName, completeObjectPath, DUMMY_DATA);
+    }
+
+    if (permissions.contains(ExtraPermissionToValidate.LIST)) {
+      validateListObjects(client, bucketName, prefix, completeObjectPath);
+    }
+
+    validateDeleteObject(client, bucketName, completeObjectPath);
+  }
+
+  private void createObject(AmazonS3 client, String bucketName, String content, String fileName) {
+    client.putObject(bucketName, fileName, content);
+  }
+
+  private void validateReadObject(
+      AmazonS3 client, String bucketName, String objectName, String content) {
+    String readString = readObject(client, bucketName, objectName, content.getBytes().length);
+    if (!readString.equals(content)) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED,
+          "Error reading test object "
+              + objectName
+              + ", expected: \""
+              + content
+              + "\", got: \""
+              + readString
+              + "\"");
+    }
+  }
+
+  private String readObject(
+      AmazonS3 client, String bucketName, String objectName, int bytesToRead) {
+    S3Object object = client.getObject(bucketName, objectName);
+    if (object == null) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED,
+          "Created object " + objectName + " was not found in bucket " + bucketName);
+    }
+    InputStream ois = object.getObjectContent();
+    byte[] data = new byte[bytesToRead];
+    try {
+      ois.read(data);
+    } catch (IOException e) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED,
+          "Error reading test object " + objectName + ", exception occurred: " + getStackTrace(e));
+    }
+
+    return new String(data);
+  }
+
+  private void validateListObjects(
+      AmazonS3 client, String bucketName, String prefix, String objectName) {
+    if (!listContainsObject(client, bucketName, prefix, objectName)) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED,
+          "Test object "
+              + objectName
+              + " was not found in bucket "
+              + bucketName
+              + " objects list.");
+    }
+  }
+
+  private boolean listContainsObject(
+      AmazonS3 client, String bucketName, String prefix, String objectName) {
+    Optional<S3ObjectSummary> objSum;
+    ObjectListing objListing = client.listObjects(bucketName, prefix);
+    objSum =
+        objListing
+            .getObjectSummaries()
+            .parallelStream()
+            .filter(oS -> oS.getKey().equals(objectName))
+            .findAny();
+
+    while (!objSum.isPresent() && objListing.isTruncated()) {
+      objListing = client.listNextBatchOfObjects(objListing);
+      objSum =
+          objListing
+              .getObjectSummaries()
+              .parallelStream()
+              .filter(oS -> oS.getKey().equals(objectName))
+              .findAny();
+    }
+
+    return objSum.isPresent();
+  }
+
+  private void validateDeleteObject(AmazonS3 client, String bucketName, String objectName) {
+    client.deleteObject(bucketName, objectName);
+    if (client.doesObjectExist(bucketName, objectName)) {
+      throw new PlatformServiceException(
+          EXPECTATION_FAILED, "Test object " + objectName + " was found in bucket " + bucketName);
     }
   }
 }

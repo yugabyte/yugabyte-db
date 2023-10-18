@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-If you have apps running in multiple regions, they would still have to go the tablet leaders in the other regions for reads and writes. Although writes will always go to the tablet leaders, the speed of reads could be improved with [Follower Reads](./follower-reads) or [Read replicas](./read-replicas). But in both such setups, the replicas may not be up-to-date with the latest data and would result in stale reads. This may not be acceptable for some applications.
+If you have apps running in multiple regions, they would still have to go the tablet leaders in the other regions for reads and writes. Although writes will always go to the tablet leaders, the speed of reads could be improved with [Follower Reads](../follower-reads) or [Read replicas](../read-replicas). But in both such setups, the replicas may not be up-to-date with the latest data and would result in stale reads. This may not be acceptable for some applications.
 
 This is where **Duplicate Indexes** would come in handy. Duplicate Indexes will guarantee immediately consistent reads in multiple regions. Let us look into how your applications can benefit from this pattern and understand the costs associated with it.
 
@@ -72,9 +72,9 @@ Even though the leader preference is set to a region, you should place the repli
       ```plpgsql
       --  tablespace for west data
       CREATE TABLESPACE west WITH (
-        replica_placement= '{ 
+        replica_placement= '{
             "num_replicas" : 3,
-            "placement_blocks" : [ 
+            "placement_blocks" : [
                 {"cloud":"aws","region":"us-west","zone":"us-west-1a","leader_preference": 1,"min_num_replicas":1},
                 {"cloud":"aws","region":"us-east","zone":"us-east-1a","min_num_replicas":1},
                 {"cloud":"aws","region":"us-central","zone":"us-central-1a","min_num_replicas":1}
@@ -82,9 +82,9 @@ Even though the leader preference is set to a region, you should place the repli
 
       --  tablespace for central data
       CREATE TABLESPACE central WITH (
-        replica_placement= '{ 
+        replica_placement= '{
             "num_replicas" : 3,
-            "placement_blocks" : [ 
+            "placement_blocks" : [
                 {"cloud":"aws","region":"us-west","zone":"us-west-1a","min_num_replicas":1},
                 {"cloud":"aws","region":"us-east","zone":"us-east-1a","min_num_replicas":1},
                 {"cloud":"aws","region":"us-central","zone":"us-central-1a","leader_preference": 1,"min_num_replicas":1}
@@ -92,9 +92,9 @@ Even though the leader preference is set to a region, you should place the repli
 
       --  tablespace for east data
       CREATE TABLESPACE east WITH (
-        replica_placement= '{ 
+        replica_placement= '{
             "num_replicas" : 3,
-            "placement_blocks" : [ 
+            "placement_blocks" : [
                 {"cloud":"aws","region":"us-west","zone":"us-west-1a","min_num_replicas":1},
                 {"cloud":"aws","region":"us-east","zone":"us-east-1a","leader_preference": 1,"min_num_replicas":1},
                 {"cloud":"aws","region":"us-central","zone":"us-central-1a","min_num_replicas":1}

@@ -32,6 +32,7 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/shared_lock_manager.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/intent.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/thread_annotations.h"
@@ -129,6 +130,8 @@ namespace yb {
 namespace docdb {
 
 using dockv::DecodedIntentValue;
+using dockv::DocKey;
+using dockv::DocKeyPart;
 using dockv::KeyEntryTypeAsChar;
 
 namespace {
@@ -1233,9 +1236,9 @@ class WaitQueue::Impl {
     MaybeSignalWaitingTransactions(id, res);
   }
 
-  Status GetLockStatus(
-      const std::set<TransactionId>& transaction_ids, SchemaPtr schema_ptr,
-      TabletLockInfoPB* tablet_lock_info) const {
+  Status GetLockStatus(const std::set<TransactionId>& transaction_ids,
+                       const TableInfoProvider& table_info_provider,
+                       TabletLockInfoPB* tablet_lock_info) const {
     std::vector<WaiterLockStatusInfo> waiter_lock_entries;
     {
       SharedLock l(mutex_);
@@ -1279,15 +1282,17 @@ class WaitQueue::Impl {
 
       for (const auto& lock_batch_entry : lock_status_info.locks) {
         const auto& partial_doc_key_slice = lock_batch_entry.key.as_slice();
-        DCHECK(partial_doc_key_slice.empty() ||
-               !partial_doc_key_slice.ends_with(KeyEntryTypeAsChar::kGroupEnd));
-
-        // kGroupEnd suffix is stripped from RefCntPrefix key(s) as part of conflict resolution.
-        // Append kGroupEnd for the decoder to work as expected and not error out.
         std::string doc_key_str;
         doc_key_str.reserve(partial_doc_key_slice.size() + 1);
         partial_doc_key_slice.AppendTo(&doc_key_str);
-        doc_key_str.append(&KeyEntryTypeAsChar::kGroupEnd, 1);
+        // We shouldn't append kGroupEnd when the sub dockey ends with a column id.
+        if (!DocKey::EncodedSize(partial_doc_key_slice, DocKeyPart::kWholeDocKey).ok()) {
+          DCHECK(partial_doc_key_slice.empty() ||
+                 !partial_doc_key_slice.ends_with(KeyEntryTypeAsChar::kGroupEnd));
+          // kGroupEnd suffix is stripped from the DocKey as part of DetermineKeysToLock.
+          // Append kGroupEnd for the decoder to work as expected and not error out.
+          doc_key_str.append(&KeyEntryTypeAsChar::kGroupEnd, 1);
+        }
 
         auto parsed_intent = ParsedIntent {
           .doc_path = Slice(doc_key_str.c_str(), doc_key_str.size()),
@@ -1297,7 +1302,7 @@ class WaitQueue::Impl {
         // TODO(pglocks): Populate 'subtransaction_id' & 'is_explicit' info of waiter txn(s) in
         // the LockInfoPB response. Currently we don't track either for waiter txn(s).
         RETURN_NOT_OK(docdb::PopulateLockInfoFromParsedIntent(
-            parsed_intent, DecodedIntentValue{}, schema_ptr, waiter_info->add_locks(),
+            parsed_intent, DecodedIntentValue{}, table_info_provider, waiter_info->add_locks(),
             /* intent_has_ht */ false));
       }
     }
@@ -1609,10 +1614,10 @@ void WaitQueue::SignalPromoted(const TransactionId& id, TransactionStatusResult&
   return impl_->SignalPromoted(id, std::move(res));
 }
 
-Status WaitQueue::GetLockStatus(
-    const std::set<TransactionId>& transaction_ids, SchemaPtr schema_ptr,
-    TabletLockInfoPB* tablet_lock_info) const {
-  return impl_->GetLockStatus(transaction_ids, schema_ptr, tablet_lock_info);
+Status WaitQueue::GetLockStatus(const std::set<TransactionId>& transaction_ids,
+                                const TableInfoProvider& table_info_provider,
+                                TabletLockInfoPB* tablet_lock_info) const {
+  return impl_->GetLockStatus(transaction_ids, table_info_provider, tablet_lock_info);
 }
 
 }  // namespace docdb

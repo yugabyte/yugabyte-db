@@ -118,6 +118,10 @@ message LockInfoPB {
   optional bool is_explicit = 8;
 
   repeated LockMode modes = 9;
+
+  // Populated only when the lock belongs to a colocated table. When set, TabletLockInfoPB::table_id
+  // should be ignored.
+  optional bytes table_id = 10;
 }
 
 message TabletLockInfoPB {
