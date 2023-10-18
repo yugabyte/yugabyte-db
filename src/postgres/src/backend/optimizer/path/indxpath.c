@@ -44,7 +44,7 @@
 #include "utils/rel.h"
 
 /* GUC flag, whether to attempt single RPC lock+select in RR and RC levels. */
-bool yb_lock_pk_single_rpc = true;
+bool yb_lock_pk_single_rpc = false;
 
 /* XXX see PartCollMatchesExprColl */
 #define IndexCollMatchesExprColl(idxcollation, exprcollation) \

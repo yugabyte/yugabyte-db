@@ -270,6 +270,92 @@ func (prom Prometheus) Upgrade() error {
 	return prom.Start()
 }
 
+// Status prints out the header information for the
+// Prometheus service specifically.
+func (prom Prometheus) Status() (common.Status, error) {
+	status := common.Status{
+		Service:    prom.Name(),
+		Port:       viper.GetInt("prometheus.port"),
+		Version:    prom.version,
+		ConfigLoc:  prom.ConfFileLocation,
+		LogFileLoc: prom.DataDir + "/prometheus.log",
+	}
+
+	// Set the systemd service file location if one exists
+	if common.HasSudoAccess() {
+		status.ServiceFileLoc = prom.SystemdFileLocation
+	} else {
+		status.ServiceFileLoc = "N/A"
+	}
+
+	// Get the service status
+	if common.HasSudoAccess() {
+		props := systemd.Show(filepath.Base(prom.SystemdFileLocation), "LoadState", "SubState",
+			"ActiveState")
+		if props["LoadState"] == "not-found" {
+			status.Status = common.StatusNotInstalled
+		} else if props["SubState"] == "running" {
+			status.Status = common.StatusRunning
+		} else if props["ActiveState"] == "inactive" {
+			status.Status = common.StatusStopped
+		} else {
+			status.Status = common.StatusErrored
+		}
+	} else {
+		out := shell.Run("pgrep", "prometheus")
+		if out.Succeeded() {
+			status.Status = common.StatusRunning
+		} else if out.ExitCode == 1 {
+			status.Status = common.StatusStopped
+		} else {
+			return status, out.Error
+		}
+	}
+	return status, nil
+}
+
+// MigrateFromReplicated will install prometheus using data from replicated
+func (prom Prometheus) MigrateFromReplicated() error {
+	log.Info("Starting Prometheus migration")
+	config.GenerateTemplate(prom)
+
+	if err := prom.moveAndExtractPrometheusPackage(); err != nil {
+		return fmt.Errorf("failed to extract prometheus: %w", err)
+	}
+
+	if err := prom.migrateReplicatedDirs(); err != nil {
+		return fmt.Errorf("failed symlinked data directories from replicated: %w", err)
+	}
+
+	if err := prom.createPrometheusSymlinks(); err != nil {
+		return fmt.Errorf("failed symlinking prometheus binaries: %w", err)
+	}
+
+	//chown is not needed when we are operating under non-root, the user will already
+	//have the necessary access.
+	if common.HasSudoAccess() {
+		userName := viper.GetString("service_username")
+		promDir := common.GetSoftwareRoot() + "/prometheus"
+		chownClosure := func() error {
+			return common.Chown(promDir, userName, userName, true)
+		}
+		if err := chownClosure(); err != nil {
+			log.Error("failed to change ownership of " + promDir + ": " + err.Error())
+			return err
+		}
+	} else {
+		if err := prom.CreateCronJob(); err != nil {
+			return err
+		}
+	}
+
+	if err := prom.Start(); err != nil {
+		return err
+	}
+	log.Info("Finishing Prometheus migration")
+	return nil
+}
+
 func (prom Prometheus) moveAndExtractPrometheusPackage() error {
 
 	srcPath := fmt.Sprintf(
@@ -367,48 +453,65 @@ func (prom Prometheus) createPrometheusSymlinks() error {
 	return nil
 }
 
-// Status prints out the header information for the
-// Prometheus service specifically.
-func (prom Prometheus) Status() (common.Status, error) {
-	status := common.Status{
-		Service:    prom.Name(),
-		Port:       viper.GetInt("prometheus.port"),
-		Version:    prom.version,
-		ConfigLoc:  prom.ConfFileLocation,
-		LogFileLoc: prom.DataDir + "/prometheus.log",
+func (prom Prometheus) migrateReplicatedDirs() error {
+	if err := common.MkdirAll(prom.DataDir, os.ModePerm); err != nil {
+		return fmt.Errorf("failed to create %s: %w", prom.DataDir, err)
 	}
 
-	// Set the systemd service file location if one exists
-	if common.HasSudoAccess() {
-		status.ServiceFileLoc = prom.SystemdFileLocation
-	} else {
-		status.ServiceFileLoc = "N/A"
+	userName := viper.GetString("service_username")
+
+	rootDir := common.GetReplicatedBaseDir()
+	linkDirs := []struct {
+		src  string
+		dest string
+	}{
+		{
+			filepath.Join(rootDir, "prometheusv2"),
+			filepath.Join(prom.DataDir, "storage"),
+		},
+		{
+			filepath.Join(rootDir, "/yugaware/swamper_targets"),
+			filepath.Join(prom.DataDir, "swamper_targets"),
+		},
+		{
+			filepath.Join(rootDir, "yugaware/swamper_rules"),
+			filepath.Join(prom.DataDir, "swamper_rules"),
+		},
+		{
+			filepath.Join(rootDir, "prometheus_configs/default_prometheus.yml"),
+			filepath.Dir(prom.ConfFileLocation),
+		},
+		{
+			filepath.Join(rootDir, "prometheus_configs/prometheus.yml"),
+			filepath.Dir(prom.ConfFileLocation),
+		},
+	}
+	for _, ld := range linkDirs {
+		if err := common.Symlink(ld.src, ld.dest); err != nil {
+			return fmt.Errorf("could not symlink replicated data %s -> %s: %w", ld.src, ld.dest, err)
+		}
+		if common.HasSudoAccess() {
+			// Need to give the yugabyte user ownership of the entire postgres directory.
+			file := ld.dest
+			if !strings.HasSuffix(file, ".yml") {
+				file = file + "/"
+			}
+			if err := common.Chown(file, userName, userName, true); err != nil {
+				log.Error("failed to change ownership of " + prom.DataDir + ": " + err.Error())
+				return err
+			}
+		}
 	}
 
-	// Get the service status
 	if common.HasSudoAccess() {
-		props := systemd.Show(filepath.Base(prom.SystemdFileLocation), "LoadState", "SubState",
-			"ActiveState")
-		if props["LoadState"] == "not-found" {
-			status.Status = common.StatusNotInstalled
-		} else if props["SubState"] == "running" {
-			status.Status = common.StatusRunning
-		} else if props["ActiveState"] == "inactive" {
-			status.Status = common.StatusStopped
-		} else {
-			status.Status = common.StatusErrored
-		}
-	} else {
-		out := shell.Run("pgrep", "prometheus")
-		if out.Succeeded() {
-			status.Status = common.StatusRunning
-		} else if out.ExitCode == 1 {
-			status.Status = common.StatusStopped
-		} else {
-			return status, out.Error
+		// Need to give the yugabyte user ownership of the entire postgres directory.
+		if err := common.Chown(prom.DataDir, userName, userName, true); err != nil {
+			log.Error("failed to change ownership of " + prom.DataDir + ": " + err.Error())
+			return err
 		}
 	}
-	return status, nil
+
+	return nil
 }
 
 // CreateCronJob creates the cron job for managing prometheus with cron script in non-root.

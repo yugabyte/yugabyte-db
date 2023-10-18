@@ -84,6 +84,9 @@ class LoginForm extends Component {
       password: ''
     };
 
+    const searchParam = new URLSearchParams(window.location.search);
+    const user_not_found = searchParam.get('user_not_found');
+
     const showLoginFrom = !isSSOEnabled() || this.state.showLoginFrom;
 
     return (
@@ -99,6 +102,19 @@ class LoginForm extends Component {
               <div className="divider-c">
                 <div className="divider-ic divider"></div>
               </div>
+              {user_not_found && !authToken.error && (
+                <div
+                  className={`alert alert-danger form-error-alert ${user_not_found ? '' : 'hide'}`}
+                >
+                  {
+                    <strong>
+                      {JSON.stringify(
+                        `User not found: ${user_not_found}. Please contact administrator.`
+                      )}
+                    </strong>
+                  }
+                </div>
+              )}
               <div>
                 <YBButton
                   btnClass="btn btn-orange login-btns sso-btn"

@@ -138,7 +138,7 @@ Examples:
 : Determines the fault tolerance constraint to be applied on the data placement policy of the YugabyteDB cluster. This flag can accept the following values: none, zone, region, cloud.
 
 --ui *bool*
-: Enable or disable the webserver UI. Default: `false`
+: Enable or disable the webserver UI (available at <http://localhost:15433>). Default: `true`
 
 --secure
 : Enable [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/ysql/) for the node.

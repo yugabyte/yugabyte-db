@@ -300,6 +300,7 @@ using client::YBTablePtr;
 
 using dockv::DocKey;
 using docdb::DocRowwiseIterator;
+using docdb::TableInfoProvider;
 using dockv::SubDocKey;
 using docdb::StorageDbType;
 using qlexpr::IndexInfo;
@@ -4206,7 +4207,7 @@ Status Tablet::ApplyAutoFlagsConfig(const AutoFlagsConfigPB& config) {
 }
 
 Status PopulateLockInfoFromIntent(
-    Slice key, Slice val, const SchemaPtr& schema,
+    Slice key, Slice val, const TableInfoProvider& table_info_provider,
     ::google::protobuf::Map<std::string, TabletLockInfoPB_TransactionLockInfoPB>* txn_locks) {
   auto parsed_intent = VERIFY_RESULT(docdb::ParseIntentKey(key, val));
   auto decoded_value = VERIFY_RESULT(dockv::DecodeIntentValue(
@@ -4214,7 +4215,7 @@ Status PopulateLockInfoFromIntent(
 
   auto& lock_entry = (*txn_locks)[decoded_value.transaction_id.ToString()];
   return docdb::PopulateLockInfoFromParsedIntent(
-      parsed_intent, decoded_value, schema, lock_entry.add_granted_locks());
+      parsed_intent, decoded_value, table_info_provider, lock_entry.add_granted_locks());
 }
 
 Status Tablet::GetLockStatus(const std::set<TransactionId>& transaction_ids,
@@ -4224,7 +4225,11 @@ Status Tablet::GetLockStatus(const std::set<TransactionId>& transaction_ids,
     return STATUS_FORMAT(
         InvalidArgument, "Cannot get lock status for non YSQL table $0", metadata_->table_id());
   }
-  tablet_lock_info->set_table_id(metadata_->table_id());
+  if (!metadata_->colocated()) {
+    // For colocated table, we don't populate table_id field of TabletLockInfoPB message. Instead,
+    // it is populated in LockInfoPB by downstream code.
+    tablet_lock_info->set_table_id(metadata_->table_id());
+  }
   tablet_lock_info->set_tablet_id(tablet_id());
 
   auto pending_op = CreateScopedRWOperationBlockingRocksDbShutdownStart();
@@ -4252,7 +4257,7 @@ Status Tablet::GetLockStatus(const std::set<TransactionId>& transaction_ids,
       }
 
       RETURN_NOT_OK(PopulateLockInfoFromIntent(
-          key, intent_iter->value(), schema(), tablet_lock_info->mutable_transaction_locks()));
+          key, intent_iter->value(), *this, tablet_lock_info->mutable_transaction_locks()));
 
       intent_iter->Next();
     }
@@ -4304,16 +4309,20 @@ Status Tablet::GetLockStatus(const std::set<TransactionId>& transaction_ids,
 
       auto val = intent_iter->value();
       RETURN_NOT_OK(PopulateLockInfoFromIntent(
-          key, val, schema(), tablet_lock_info->mutable_transaction_locks()));
+          key, val, *this, tablet_lock_info->mutable_transaction_locks()));
     }
   }
 
   const auto& wait_queue = transaction_participant()->wait_queue();
   if (wait_queue) {
-    RETURN_NOT_OK(wait_queue->GetLockStatus(transaction_ids, schema(), tablet_lock_info));
+    RETURN_NOT_OK(wait_queue->GetLockStatus(transaction_ids, *this, tablet_lock_info));
   }
 
   return Status::OK();
+}
+
+Result<TableInfoPtr> Tablet::GetTableInfo(ColocationId colocation_id) const {
+  return metadata_->GetTableInfo(colocation_id);
 }
 
 // ------------------------------------------------------------------------------------------------

@@ -40,6 +40,7 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     flagMap.put("enable_wait_queues", "false");
+    flagMap.put("enable_deadlock_detection", "false");
     return flagMap;
   }
 
@@ -445,11 +446,12 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
           "ERROR: could not obtain lock on row in relation \"test\""));
 
         // Assert that we failed immediately without retrying at all. This is done by ensuring that
-        // we make only 1 read rpc call to the tservers. The call reads the tuple locks the row.
+        // we make only 2 read rpc call to tservers - one for reading the tuple and one for locking
+        // the row.
         Long read_count_after = getTServerMetric(
           "handler_latency_yb_tserver_TabletServerService_Read").count;
         LOG.info("read_count_after=" + read_count_after);
-        assertTrue((read_count_after - read_count_before) == 1);
+        assertTrue((read_count_after - read_count_before) == 2);
         stmt1.execute("COMMIT");
         stmt2.execute("ROLLBACK");
       }
@@ -470,7 +472,7 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
       Long read_count_after = getTServerMetric(
           "handler_latency_yb_tserver_TabletServerService_Read").count;
         LOG.info("read_count_after=" + read_count_after);
-      assertTrue((read_count_after - read_count_before) == 1);
+      assertTrue((read_count_after - read_count_before) == 2);
       stmt1.execute("COMMIT");
       stmt2.execute("ROLLBACK");
     }

@@ -17,4 +17,5 @@ type Component interface {
 	Stop() error
 	Restart() error
 	Install() error
+	MigrateFromReplicated() error
 }

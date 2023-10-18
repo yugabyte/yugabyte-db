@@ -20,6 +20,12 @@ type: docs
       YSQL
     </a>
   </li>
+    <li >
+    <a href="../covering-index-ycql/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
 </ul>
 
 A covering index is an index that includes all the columns required by a query, including columns that would typically not be a part of an index. This is done by using the INCLUDE keyword to list the columns you want to include.

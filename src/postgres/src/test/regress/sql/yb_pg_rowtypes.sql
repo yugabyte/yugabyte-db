@@ -113,32 +113,10 @@ where (unique1, unique2) < any (select ten, ten from tenk1 where hundred < 3)
 order by 1;
 
 -- Also check row comparison with an indexable condition
--- `tenk1_local` is created and used instead of `tenk1` because we want the
--- index to be (ASC, ASC) rather than (HASH, ASC).
-CREATE TABLE tenk1_local (
-	unique1		int4,
-	unique2		int4,
-	two			int4,
-	four		int4,
-	ten			int4,
-	twenty		int4,
-	hundred		int4,
-	thousand	int4,
-	twothousand	int4,
-	fivethous	int4,
-	tenthous	int4,
-	odd			int4,
-	even		int4,
-	stringu1	name,
-	stringu2	name,
-	string4		name
-);
-CREATE INDEX tenk1_local_thous_tenthous ON tenk1_local (thousand ASC, tenthous ASC);
 explain (costs off)
-select thousand, tenthous from tenk1_local
+select thousand, tenthous from tenk1
 where (thousand, tenthous) >= (997, 5000)
 order by thousand, tenthous;
-DROP TABLE tenk1_local;
 
 select thousand, tenthous from tenk1
 where (thousand, tenthous) >= (997, 5000)

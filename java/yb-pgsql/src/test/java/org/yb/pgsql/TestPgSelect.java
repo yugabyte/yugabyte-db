@@ -1648,4 +1648,54 @@ public class TestPgSelect extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testFilteringUsingIN() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test(h int, r int, v int, PRIMARY KEY (h, r))");
+
+      statement.execute("INSERT INTO test (h,r,v) values (1,1,1)");
+      statement.execute("INSERT INTO test (h,r,v) values (1,2,2)");
+      statement.execute("INSERT INTO test (h,r,v) values (1,3,3)");
+      statement.execute("INSERT INTO test (h,r,v) values (2,1,2)");
+      statement.execute("INSERT INTO test (h,r,v) values (2,2,3)");
+      statement.execute("INSERT INTO test (h,r,v) values (2,3,1)");
+      statement.execute("INSERT INTO test (h,r,v) values (3,1,3)");
+      statement.execute("INSERT INTO test (h,r,v) values (3,2,1)");
+      statement.execute("INSERT INTO test (h,r,v) values (3,3,2)");
+
+      // Filter by hash & range columns.
+      assertQuery(statement, "SELECT * FROM test WHERE h IN (1,2) AND r IN (1,2)",
+          new Row(1, 1, 1),
+          new Row(1, 2, 2),
+          new Row(2, 1, 2),
+          new Row(2, 2, 3));
+      // Filter by hash & non-key columns.
+      assertQuery(statement, "SELECT * FROM test WHERE h IN (1,2) AND v IN (1,2)",
+          new Row(1, 1, 1),
+          new Row(1, 2, 2),
+          new Row(2, 1, 2),
+          new Row(2, 3, 1));
+      assertQuery(statement, "SELECT * FROM test WHERE h IN (1,2) AND v = 2",
+          new Row(1, 2, 2),
+          new Row(2, 1, 2));
+      // Filter by range & non-key columns.
+      assertQuery(statement, "SELECT * FROM test WHERE r IN (1,2) AND v IN (1,2)",
+          new Row(1, 1, 1),
+          new Row(1, 2, 2),
+          new Row(2, 1, 2),
+          new Row(3, 2, 1));
+      assertQuery(statement, "SELECT * FROM test WHERE r IN (1,2) AND v = 2",
+          new Row(1, 2, 2),
+          new Row(2, 1, 2));
+      // Filter by hash & range & non-key columns.
+      assertQuery(statement, "SELECT * FROM test WHERE h IN (1,2) AND r IN (1,2) AND v IN (1,2)",
+          new Row(1, 1, 1),
+          new Row(1, 2, 2),
+          new Row(2, 1, 2));
+      assertQuery(statement, "SELECT * FROM test WHERE h IN (1,2) AND r IN (1,2) AND v = 2",
+          new Row(1, 2, 2),
+          new Row(2, 1, 2));
+    }
+  }
+
 }

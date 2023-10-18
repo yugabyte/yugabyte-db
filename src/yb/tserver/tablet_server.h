@@ -311,6 +311,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
 
+  Result<std::unordered_set<std::string>> GetAvailableAutoFlagsForServer() const override;
+
   std::atomic<bool> initted_{false};
 
   // If true, all heartbeats will be seen as failed.

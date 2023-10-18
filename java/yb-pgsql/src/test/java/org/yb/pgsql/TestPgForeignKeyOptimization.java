@@ -52,8 +52,11 @@ public class TestPgForeignKeyOptimization extends BasePgSQLTest {
 
   @Test
   public void testDelete() throws Exception {
-    // 5 reads are expected, they are:
-    // - PERFORM makes one read from tbl table for SERIALIZABLE and REPEATABLE READ levels.
+    // 5 or 6 reads are expected, they are:
+    // - PERFORM makes one read from tbl table for SERIALIZABLE level. Two in case of REPEATABLE
+    //   READ even though we specify pk because a separate RPC is used to lock tuples.
+    //   TODO(foucher): Optimize to ensure we use only 1 rpc for locking if pk is specified in
+    //   REPEATABLE READ level.
     // - DELETE makes 3 reads:
     //   - first read from 'tbl' to get row's ybctid as it is not single row update (due to FK)
     //   - second read from 'tbl' but with ROW_MARK_KEYSHARE
@@ -68,7 +71,7 @@ public class TestPgForeignKeyOptimization extends BasePgSQLTest {
       "END; $$ LANGUAGE 'plpgsql';";
     testHelper(queryStr, 5 /* expectedReadCount */, "violates foreign key constraint",
                IsolationLevel.SERIALIZABLE);
-    testHelper(queryStr, 5 /* expectedReadCount */, "violates foreign key constraint",
+    testHelper(queryStr, 6 /* expectedReadCount */, "violates foreign key constraint",
                IsolationLevel.REPEATABLE_READ);
   }
 
@@ -111,12 +114,12 @@ public class TestPgForeignKeyOptimization extends BasePgSQLTest {
   }
 
   private void testSelectWithOptimization(String rowMarker) throws Exception {
-    // SERIALIZABLE requires just 1 rpc to lock rows since it doesn't lock specific
+    // For REPEATABLE READ, one read to fetch the tuple and the second read rpc to lock only that
+    // specific row. SERIALIZABLE requires just 1 rpc to lock row since it doesn't lock specific
     // rows that might possibly filtered by YSQL (it instead locks the longest prefix of pk
     // specified in read request - since it has to lock the whole predicate and block new rows
-    // matching predicate from being added in a parallel txn). REPEATABLE READ also requires
-    // only 1 rpc when the primary key is given.
-    testSelect(rowMarker, 1, IsolationLevel.REPEATABLE_READ);
+    // matching predicate from being added in a parallel txn).
+    testSelect(rowMarker, 2, IsolationLevel.REPEATABLE_READ);
     testSelect(rowMarker, 1, IsolationLevel.SERIALIZABLE);
   }
 

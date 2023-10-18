@@ -128,7 +128,8 @@ func PrunePastInstalls() {
 
 // Default the directory manager to using the install workflow.
 var dm directoryManager = directoryManager{
-	Workflow: workflowInstall,
+	Workflow:          workflowInstall,
+	replicatedBaseDir: "/opt/yugabyte", // default replicated install directory
 }
 
 // SetWorkflowUpgrade changes the workflow from install to upgrade.
@@ -144,7 +145,8 @@ const (
 )
 
 type directoryManager struct {
-	Workflow workflow
+	Workflow          workflow
+	replicatedBaseDir string
 }
 
 func (dm directoryManager) BaseInstall() string {
@@ -161,6 +163,14 @@ func (dm directoryManager) WorkingDirectory() string {
 // GetActiveSymlink will return the symlink file name
 func (dm directoryManager) ActiveSymlink() string {
 	return filepath.Join(dm.BaseInstall(), "software", InstallSymlink)
+}
+
+func (dm directoryManager) ReplicatedBaseDir() string {
+	return dm.replicatedBaseDir
+}
+
+func (dm directoryManager) SetReplicatedBaseDir(dir string) {
+	dm.replicatedBaseDir = dir
 }
 
 func GetPostgresPackagePath() string {
@@ -216,4 +226,8 @@ func GetYBAInstallerDataDir() string {
 }
 func GetSelfSignedCertsDir() string {
 	return filepath.Join(GetYBAInstallerDataDir(), "certs")
+}
+
+func GetReplicatedBaseDir() string {
+	return dm.ReplicatedBaseDir()
 }

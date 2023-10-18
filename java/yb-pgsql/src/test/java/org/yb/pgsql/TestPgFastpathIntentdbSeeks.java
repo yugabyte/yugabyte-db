@@ -29,6 +29,7 @@ public class TestPgFastpathIntentdbSeeks extends BasePgSQLTestWithRpcMetric {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("enable_wait_queues", "false");
+    flagMap.put("enable_deadlock_detection", "false");
     flagMap.put("ysql_max_write_restart_attempts", Integer.toString(0));
     // Verbose logging of intentsdb seeks/postgres statements
     flagMap.put("vmodule", "docdb=4,conflict_resolution=5");

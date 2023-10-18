@@ -141,7 +141,7 @@ Status PgFunction::GetNext(uint64_t* values, bool* is_nulls, bool* has_data) {
 
 Result<PgTableRow> AddLock(
     const ReaderProjection& projection, const Schema& schema, const std::string& permanent_uuid,
-    const TableId table_id, const std::string& tablet_id, const yb::LockInfoPB& lock,
+    const TableId& parent_table_id, const std::string& tablet_id, const yb::LockInfoPB& lock,
     const Uuid& transaction_id = Uuid::Nil(), HybridTime wait_start_ht = HybridTime::kMin,
     const std::vector<std::string>& blocking_txn_ids = {}) {
   DCHECK_NE(lock.has_wait_end_ht(), wait_start_ht != HybridTime::kMin);
@@ -161,6 +161,11 @@ Result<PgTableRow> AddLock(
 
   RETURN_NOT_OK(SetColumnValue("locktype", locktype, schema, &row));
 
+  RSTATUS_DCHECK(
+      lock.has_table_id() == parent_table_id.empty(), IllegalState,
+      "Response must contain exactly one among LockInfoPB::table_id or TabletLockInfoPB::table_id");
+  // If the lock belongs to a colocated table, use the table id populated in the lock.
+  const auto table_id = lock.has_table_id() ? lock.table_id() : parent_table_id;
   PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table_id));
   RETURN_NOT_OK(SetColumnValue("database", database_oid, schema, &row));
 

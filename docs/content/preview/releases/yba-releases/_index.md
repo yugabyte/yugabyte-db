@@ -4,11 +4,6 @@ headerTitle: YugabyteDB Anywhere releases
 linkTitle: YugabyteDB Anywhere releases
 description: An overview of YugabyteDB Anywhere releases, including preview and current stable releases.
 image: /images/section_icons/index/quick_start.png
-menu:
-  preview_releases:
-    identifier: yba-releases
-    parent: release-notes
-    weight: 1070
 type: indexpage
 showRightNav: true
 cascade:

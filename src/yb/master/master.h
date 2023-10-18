@@ -207,6 +207,8 @@ class Master : public tserver::DbServerBase {
 
   Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
 
+  Result<std::unordered_set<std::string>> GetAvailableAutoFlagsForServer() const override;
+
  private:
   friend class MasterTest;
 

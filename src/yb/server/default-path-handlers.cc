@@ -55,6 +55,7 @@
 #include <set>
 
 #include <boost/algorithm/string.hpp>
+#include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/string_case.h"
 
 #if YB_TCMALLOC_ENABLED
@@ -245,7 +246,7 @@ void ConvertFlagsToJson(const vector<FlagInfo>& flag_infos, std::stringstream* o
   jw.EndObject();
 }
 
-vector<FlagInfo> GetFlagInfos(const Webserver::WebRequest& req) {
+vector<FlagInfo> GetFlagInfos(const Webserver::WebRequest& req, Webserver* webserver) {
   const std::set<string> node_info_flags{
       "log_filename",    "rpc_bind_addresses", "webserver_interface", "webserver_port",
       "placement_cloud", "placement_region",   "placement_zone"};
@@ -273,7 +274,7 @@ vector<FlagInfo> GetFlagInfos(const Webserver::WebRequest& req) {
       flag_info.type = FlagType::kNodeInfo;
     } else if (flag.current_value != flag.default_value) {
       flag_info.type = FlagType::kCustom;
-    } else if (flag_tags.contains(FlagTag::kAuto)) {
+    } else if (flag_tags.contains(FlagTag::kAuto) && webserver->ContainsAutoFlag(flag_info.name)) {
       flag_info.type = FlagType::kAuto;
     }
 
@@ -293,16 +294,18 @@ vector<FlagInfo> GetFlagInfos(const Webserver::WebRequest& req) {
 
 // Registered to handle "/api/v1/varz", and prints out all command-line flags and their values in
 // JSON format.
-static void GetFlagsJsonHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  const auto flag_infos = GetFlagInfos(req);
+static void GetFlagsJsonHandler(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp, Webserver* webserver) {
+  const auto flag_infos = GetFlagInfos(req, webserver);
   ConvertFlagsToJson(std::move(flag_infos), &resp->output);
 }
 
 // Registered to handle "/varz", and prints out all command-line flags and their values in tabular
 // format. If "raw" argument was passed ("/varz?raw") then prints it in "--name=value" format.
-static void FlagsHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+static void FlagsHandler(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp, Webserver* webserver) {
   std::stringstream& output = resp->output;
-  auto flag_infos = GetFlagInfos(req);
+  auto flag_infos = GetFlagInfos(req, webserver);
   if (req.parsed_args.find("raw") != req.parsed_args.end()) {
     for (const auto& flag_info : flag_infos) {
       output << "--" << flag_info.name << "=" << flag_info.value << endl;
@@ -600,12 +603,14 @@ static void HandleGetVersionInfo(
 
 void AddDefaultPathHandlers(Webserver* webserver) {
   webserver->RegisterPathHandler("/logs", "Logs", LogsHandler, true, false);
-  webserver->RegisterPathHandler("/varz", "Flags", FlagsHandler, true, false);
+  webserver->RegisterPathHandler(
+      "/varz", "Flags", std::bind(&FlagsHandler, _1, _2, webserver), true, false);
   webserver->RegisterPathHandler("/status", "Status", StatusHandler, false, false);
   webserver->RegisterPathHandler("/memz", "Memory (total)", MemUsageHandler, true, false);
   webserver->RegisterPathHandler("/mem-trackers", "Memory (detail)",
                                  MemTrackersHandler, true, false);
-  webserver->RegisterPathHandler("/api/v1/varz", "Flags", GetFlagsJsonHandler, false, false);
+  webserver->RegisterPathHandler(
+      "/api/v1/varz", "Flags", std::bind(&GetFlagsJsonHandler, _1, _2, webserver), false, false);
   webserver->RegisterPathHandler("/api/v1/version-info", "Build Version Info",
                                  HandleGetVersionInfo, false, false);
 

@@ -40,6 +40,8 @@ typedef std::map<std::string, std::vector<AutoFlagInfo>> AutoFlagsInfoMap;
 namespace AutoFlagsUtil {
 std::string DumpAutoFlagsToJSON(const std::string& program_name);
 
+Result<AutoFlagsInfoMap> GetAvailableAutoFlags();
+
 Result<AutoFlagsInfoMap> GetFlagsEligibleForPromotion(
     const AutoFlagClass max_flag_class, const PromoteNonRuntimeAutoFlags promote_non_runtime);
 

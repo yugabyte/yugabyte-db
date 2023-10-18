@@ -17,18 +17,18 @@ Application clients connect to the following addresses:
 
 | API     | Port  | Server | Flag (default)           |
 | ------- | ----- | ------- |------------------------------------------|
-| YSQL | 5433  | YB-TServer | [`--pgsql_proxy_bind_address 0.0.0.0:5433`](../yb-tserver/#pgsql-proxy-bind-address) |
-| YCQL | 9042  | YB-TServer | [`--cql_proxy_bind_address 0.0.0.0:9042`](../yb-tserver/#cql-proxy-bind-address)   |
-| YEDIS | 6379  | YB-TServer | [`--redis_proxy_bind_address 0.0.0.0:6379`](../yb-tserver/#redis-proxy-bind-address) |
+| YSQL | 5433  | YB-TServer | [--pgsql_proxy_bind_address 0.0.0.0:5433](../yb-tserver/#pgsql-proxy-bind-address) |
+| YCQL | 9042  | YB-TServer | [--cql_proxy_bind_address 0.0.0.0:9042](../yb-tserver/#cql-proxy-bind-address)   |
+| YEDIS | 6379  | YB-TServer | [--redis_proxy_bind_address 0.0.0.0:6379](../yb-tserver/#redis-proxy-bind-address) |
 
 ## Internode RPC communication
 
 Internode (server-to-server or node-to-node) communication, including xCluster, is managed using RPC calls on the following addresses:
 
-| Server    | Port | Flag (default)                              |
+| Server     | Port | Flag (default)                              |
 | ---------- | ---- | ------------------------------------------------------------ |
-| YB-Master | 7100 |  [`--rpc_bind_addresses 0.0.0.0:7100`](../yb-master/#rpc-bind-addresses) |
-| YB-TServer | 9100 |  [`--rpc_bind_addresses 0.0.0.0:9100`](../yb-tserver/#rpc-bind-addresses)<br/>[`--tserver_master_addrs 0.0.0.0:7100`](../yb-tserver/#tserver-master-addrs)<br/>[`--server_broadcast_addresses 0.0.0.0:9100`](../yb-tserver/#server-broadcast-addresses) |
+| YB-Master  | 7100 | [--rpc_bind_addresses 0.0.0.0:7100](../yb-master/#rpc-bind-addresses) |
+| YB-TServer | 9100 | [--rpc_bind_addresses 0.0.0.0:9100](../yb-tserver/#rpc-bind-addresses)<br/>[--tserver_master_addrs 0.0.0.0:7100](../yb-tserver/#tserver-master-addrs)<br/>[--server_broadcast_addresses 0.0.0.0:9100](../yb-tserver/#server-broadcast-addresses) |
 
 To enable login to the machines running these servers, the SSH port 22 should be opened.
 
@@ -46,8 +46,14 @@ Admin web server UI can be viewed at the following addresses:
 
 | Server    | Port  | Flag (default)                             |
 | ---------- | ----- | ------------------------------------------------------------ |
-| YB-Master  | 7000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br>[`--webserver_port 7000`](../yb-master/#webserver-port) |
-| YB-TServer | 9000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br>[`--webserver_port 9000`](../yb-master/#webserver-port) |
+| YB-Master  | 7000  |  [--webserver_interface 0.0.0.0](../yb-master/#webserver-interface)<br>[--webserver_port 7000](../yb-master/#webserver-port) |
+| YB-TServer | 9000  |  [--webserver_interface 0.0.0.0](../yb-master/#webserver-interface)<br>[--webserver_port 9000](../yb-master/#webserver-port) |
+
+For clusters started using [yugabyted](../yugabyted/), the YugabyteDB UI can be viewed at the following address:
+
+| Server        | Port  | Flag                                             |
+| ------------- | ----- | ------------------------------------------------ |
+| YugabyteDB UI | 15433 | [--ui](../yugabyted/#start)  (default is true) |
 
 ## Firewall rules
 
@@ -68,7 +74,7 @@ The following common ports are required for firewall rules:
 
 YugabyteDB servers expose time-series performance metrics in the [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format) on multiple HTTP endpoints that have the following structure:
 
-```
+```output
 <target>/prometheus-metrics
 ```
 
@@ -86,6 +92,7 @@ Use the following targets to monitor YB-TServer and YB-Master server metrics:
 | ---------- | --------------------------- |
 | YB-Master  | `<yb-master-address>:7000`  |
 | YB-TServer | `<yb-tserver-address>:9000` |
+| YugabyteDB UI | `<yb-tserver-address>:15433` |
 
 ### APIs
 

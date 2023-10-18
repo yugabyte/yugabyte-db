@@ -7945,8 +7945,7 @@ load_relcache_init_file(bool shared)
 	 * below.
 	 */
 	if (IsYugaByteEnabled() &&
-		*YBCGetGFlags()->ysql_catalog_preload_additional_tables &&
-		!YBIsDBCatalogVersionMode())
+		*YBCGetGFlags()->ysql_catalog_preload_additional_tables)
 		return false;
 
 	RelCacheInitFileName(initfilename, shared);

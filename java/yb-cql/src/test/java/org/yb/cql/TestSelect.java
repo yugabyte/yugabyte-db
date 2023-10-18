@@ -1544,6 +1544,61 @@ public class TestSelect extends BaseCQLTest {
     LOG.info("TEST IN KEYWORD - End");
   }
 
+  @Test
+  public void testFilteringUsingIN() throws Exception {
+    session.execute("CREATE TABLE test(h int, r int, v int, PRIMARY KEY (h, r))");
+    session.execute("INSERT INTO test (h,r,v) values (1,1,1)");
+    session.execute("INSERT INTO test (h,r,v) values (1,2,2)");
+    session.execute("INSERT INTO test (h,r,v) values (1,3,3)");
+    session.execute("INSERT INTO test (h,r,v) values (2,1,2)");
+    session.execute("INSERT INTO test (h,r,v) values (2,2,3)");
+    session.execute("INSERT INTO test (h,r,v) values (2,3,1)");
+    session.execute("INSERT INTO test (h,r,v) values (3,1,3)");
+    session.execute("INSERT INTO test (h,r,v) values (3,2,1)");
+    session.execute("INSERT INTO test (h,r,v) values (3,3,2)");
+
+    // Filter by hash & range columns.
+    assertQuery("SELECT * FROM test WHERE h IN (1,2) AND r IN (1,2)",
+        "Row[1, 1, 1]" +
+        "Row[1, 2, 2]" +
+        "Row[2, 1, 2]" +
+        "Row[2, 2, 3]");
+    // Filter by hash & non-key columns.
+    assertQuery("SELECT * FROM test WHERE h IN (1,2) AND v IN (1,2)",
+        "Row[1, 1, 1]" +
+        "Row[1, 2, 2]" +
+        "Row[2, 1, 2]" +
+        "Row[2, 3, 1]");
+    assertQuery("SELECT * FROM test WHERE h IN (1,2) AND v = 2",
+        "Row[1, 2, 2]" +
+        "Row[2, 1, 2]");
+    // Filter by range & non-key columns.
+    assertQuery("SELECT * FROM test WHERE r IN (1,2) AND v IN (1,2)",
+        "Row[1, 1, 1]" +
+        "Row[1, 2, 2]" +
+        "Row[2, 1, 2]" +
+        "Row[3, 2, 1]");
+    assertQuery("SELECT * FROM test WHERE r IN (1,2) AND v = 2",
+        "Row[1, 2, 2]" +
+        "Row[2, 1, 2]");
+    // Filter by hash & range & non-key columns.
+    assertQuery("SELECT * FROM test WHERE h IN (1,2) AND r IN (1,2) AND v IN (1,2)",
+        "Row[1, 1, 1]" +
+        "Row[1, 2, 2]" +
+        "Row[2, 1, 2]");
+    assertQuery("SELECT * FROM test WHERE h IN (1,2) AND r IN (1,2) AND v = 2",
+        "Row[1, 2, 2]" +
+        "Row[2, 1, 2]");
+    // Filter by hash & range columns + IF by non-key columns.
+    assertQuery("SELECT * FROM test WHERE h IN (1,2) AND r IN (1,2) IF v IN (1,2)",
+        "Row[1, 1, 1]" +
+        "Row[1, 2, 2]" +
+        "Row[2, 1, 2]");
+    assertQuery("SELECT * FROM test WHERE h IN (1,2) AND r IN (1,2) IF v = 2",
+        "Row[1, 2, 2]" +
+        "Row[2, 1, 2]");
+  }
+
   private void assertSelectWithFlushes(String stmt,
                                        List<String> expectedRows,
                                        int expectedFlushesCount) throws Exception {

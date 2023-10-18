@@ -126,6 +126,13 @@ void RpcThrottleThresholdBytesValidator() {
   }
 }
 
+void EnableDeadlockDetectionValidator() {
+  if (FLAGS_enable_deadlock_detection && !FLAGS_enable_wait_queues) {
+    LOG(FATAL) << "Flag validation failed. Cannot enable deadlock detection if "
+               << "enable_wait_queues=false.";
+  }
+}
+
 }  // namespace
 
 // Normally we would have used DEFINE_validator. But this validation depends on the value of another
@@ -136,6 +143,12 @@ void RpcThrottleThresholdBytesValidator() {
 // after all the flags have been parsed.
 REGISTER_CALLBACK(rpc_throttle_threshold_bytes, "RpcThrottleThresholdBytesValidator",
     &RpcThrottleThresholdBytesValidator);
+
+// This validator depends on the value of another flag (enable_wait_queues), so we use
+// REGISTER_CALLBACK instead of DEFINE_validator. We only need to register callback on one of the
+// flags since both are NON_RUNTIME.
+REGISTER_CALLBACK(enable_deadlock_detection, "EnableDeadlockDetectionValidator",
+    &EnableDeadlockDetectionValidator);
 
 namespace yb {
 

@@ -219,6 +219,7 @@ set(YB_TEST_LINK_LIBS master
   ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(catalog_entity_info-test)
 ADD_YB_TEST(catalog_manager-test)
+ADD_YB_TEST(load_balancer_mocked-test)
 ADD_YB_TEST(flush_manager-test)
 ADD_YB_TEST(master-test)
 ADD_YB_TEST(sys_catalog-test)

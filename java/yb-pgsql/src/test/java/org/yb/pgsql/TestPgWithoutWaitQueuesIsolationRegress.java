@@ -26,6 +26,7 @@ public class TestPgWithoutWaitQueuesIsolationRegress extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("enable_wait_queues", "false");
+    flagMap.put("enable_deadlock_detection", "false");
     flagMap.put("ysql_sleep_before_retry_on_txn_conflict", "true");
     flagMap.put("yb_enable_read_committed_isolation", "true");
     flagMap.put("ysql_max_write_restart_attempts", "20");

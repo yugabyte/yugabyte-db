@@ -41,8 +41,9 @@ func cleanCmd() *cobra.Command {
 			if err != nil {
 				log.Warn("failed to load internal state, continue with uninstall")
 				state = ybactlstate.New()
-				state.CurrentStatus = ybactlstate.CleaningStatus
 			}
+			state.CurrentStatus = ybactlstate.CleaningStatus
+
 			// Ignore errors as we want to clean no matter what
 			if err := ybactlstate.StoreState(state); err != nil {
 				log.Warn("failed to update internal state - continue with uninstall")

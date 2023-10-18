@@ -169,6 +169,7 @@ class PgLibPqFailOnConflictTest : public PgLibPqTest {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     options->extra_tserver_flags.push_back("--enable_wait_queues=false");
+    options->extra_tserver_flags.push_back("--enable_deadlock_detection=false");
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -794,6 +795,7 @@ class PgLibPqSmallClockSkewFailOnConflictTest : public PgLibPqTest {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     options->extra_tserver_flags.push_back("--enable_wait_queues=false");
+    options->extra_tserver_flags.push_back("--enable_deadlock_detection=false");
   }
 };
 
@@ -3530,6 +3532,7 @@ class PgLibPqLegacyColocatedDBFailOnConflictTest : public PgLibPqLegacyColocated
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     options->extra_tserver_flags.push_back("--enable_wait_queues=false");
+    options->extra_tserver_flags.push_back("--enable_deadlock_detection=false");
     PgLibPqLegacyColocatedDBTest::UpdateMiniClusterOptions(options);
   }
 };

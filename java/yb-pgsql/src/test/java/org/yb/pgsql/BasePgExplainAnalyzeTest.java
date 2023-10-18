@@ -22,7 +22,6 @@ class BasePgExplainAnalyzeTest extends BasePgSQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_prefetch_limit", "1024");
     flagMap.put("ysql_session_max_batch_size", "512");
-    flagMap.put("TEST_use_monotime_for_rpc_wait_time", "true");
     return flagMap;
   }
 
