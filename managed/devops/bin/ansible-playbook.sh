@@ -23,7 +23,10 @@ if [ "$is_mac" == false ] && \
 
   activate_pex
   set -x
-  ansible-playbook "$@"
+  pythonpath=$(head -n 1 "$pex_venv_dir/bin/ansible-playbook")
+  [[ "$pythonpath" =~ ^#\!\/.*python.* ]] || fatal "Could not find valid shebang in PEX environment"
+  # Remove the #! from beginning of python path
+  ${pythonpath:2} $pex_venv_dir/bin/ansible-playbook "$@"
 
 else
   activate_virtualenv
