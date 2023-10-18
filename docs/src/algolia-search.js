@@ -109,7 +109,22 @@ import algoliasearch from 'algoliasearch';
             highlightContent = highlightContent.replace(/<em>|<\/em>/g, '');
 
             if (highlightContent.length > 0) {
-              pageHash = `#:~:text=${encodeURIComponent(highlightContent.replace(/-/g, '%2D'))}`;
+              const valueToSentence = highlightContent.split(/\r?\n/);
+
+              let wordIndex;
+              valueToSentence.filter(
+                ((contentPart, index) => {
+                  if (contentPart.includes(hit._highlightResult.content.matchedWords[0])) {
+                    wordIndex = index;
+                  }
+
+                  return wordIndex;
+                }),
+              );
+
+              if (wordIndex !== 'undefined' && valueToSentence[wordIndex]) {
+                pageHash = `#:~:text=${valueToSentence[wordIndex].replace(/-/g, '%2D')}`;
+              }
             }
           }
         }
