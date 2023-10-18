@@ -199,6 +199,12 @@ docker run \
     apache/age
 ```
 
+<h5> Enter PostgreSQL's psql: </h5>
+
+```bash
+docker exec -it age psql -d postgresDB -U postgresUser
+```
+
 
 
 <h2><img height="20" src="/img/contents.svg">&nbsp;&nbsp;Post Installation</h2>
