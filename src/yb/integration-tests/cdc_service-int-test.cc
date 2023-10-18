@@ -1018,70 +1018,44 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure) {
 
 TEST_F(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
   docdb::DisableYcqlPackedRow();
+  // Always update cdc_state with checkpoint info.
+  SetAtomicFlag(0, &FLAGS_cdc_state_checkpoint_update_interval_ms);
+  // Enable BG thread to generate metrics.
+  SetAtomicFlag(true, &FLAGS_enable_collect_cdc_metrics);
+
   stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = true;
-
   std::string tablet_id = GetTablet();
+  ProducerTabletInfo tablet_info = {{} /* empty universeid for producers */, stream_id_, tablet_id};
+  const auto& tservers = cluster_->mini_tablet_servers();
 
+  // Test with t0 as the leader, by blacklisting other tservers.
+  ASSERT_OK(MoveLeadersToTserver(tservers[0]));
   // Get the leader and a follower for the tablet.
-  tserver::MiniTabletServer* leader_mini_tserver = nullptr;
-  tserver::MiniTabletServer* follower_mini_tserver = nullptr;
-
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    leader_mini_tserver = nullptr;
-    follower_mini_tserver = nullptr;
-    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
-      auto tablet_peer_result =
-          cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetServingTablet(tablet_id);
-      if (!tablet_peer_result.ok()) {
-        continue;
-      }
-      if ((**tablet_peer_result).LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
-        leader_mini_tserver = cluster_->mini_tablet_server(i);
-      } else {
-        follower_mini_tserver = cluster_->mini_tablet_server(i);
-      }
-    }
-    return leader_mini_tserver != nullptr && follower_mini_tserver != nullptr;
-  }, MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait for tablet to have a leader."));
+  tserver::MiniTabletServer* leader_mini_tserver = tservers[0].get();
+  tserver::MiniTabletServer* follower_mini_tserver = tservers[1].get();
 
   auto leader_proxy = std::make_unique<CDCServiceProxy>(
-      &client_->proxy_cache(),
-      HostPort::FromBoundEndpoint(leader_mini_tserver->bound_rpc_addr()));
-
+      &client_->proxy_cache(), HostPort::FromBoundEndpoint(leader_mini_tserver->bound_rpc_addr()));
   auto follower_proxy = std::make_unique<CDCServiceProxy>(
       &client_->proxy_cache(),
       HostPort::FromBoundEndpoint(follower_mini_tserver->bound_rpc_addr()));
-
-  auto leader_tserver = leader_mini_tserver->server();
-  auto follower_tserver = follower_mini_tserver->server();
-  // Use proxy for to most accurately simulate normal requests.
-  const auto& proxy = leader_tserver->proxy();
-
-  auto cdc_service = CDCService(leader_tserver);
-  auto cdc_service_follower = CDCService(follower_tserver);
+  auto cdc_service = CDCService(leader_mini_tserver->server());
+  auto cdc_service_follower = CDCService(follower_mini_tserver->server());
 
   // At the start of time, assert both leader and follower at 0 lag.
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    {
-      // Leader metrics
-      auto metrics = std::static_pointer_cast<CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-          {{}, stream_id_, tablet_id}));
-      if (!(metrics->async_replication_sent_lag_micros->value() == 0 &&
-          metrics->async_replication_committed_lag_micros->value() == 0)) {
-        return false;
-      }
-    }
-    {
-      // Follower metrics
-      auto follower_metrics =
-          std::static_pointer_cast<CDCTabletMetrics>(cdc_service_follower->GetCDCTabletMetrics(
-              {{}, stream_id_, tablet_id}));
-      return follower_metrics->async_replication_sent_lag_micros->value() == 0 &&
-          follower_metrics->async_replication_committed_lag_micros->value() == 0;
-    }
-  }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "At start, wait for Lag = 0"));
-
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (const auto& service : {cdc_service, cdc_service_follower}) {
+          auto metrics = std::static_pointer_cast<CDCTabletMetrics>(
+              service->GetCDCTabletMetrics({{}, stream_id_, tablet_id}));
+          if (!(metrics->async_replication_sent_lag_micros->value() == 0 &&
+                metrics->async_replication_committed_lag_micros->value() == 0)) {
+            return false;
+          }
+        }
+        return true;
+      },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "At start, wait for Lag = 0"));
 
   // Create the in-memory structures for both follower and leader by polling for the tablet.
   GetChangesRequestPB change_req;
@@ -1099,24 +1073,16 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
     ASSERT_OK(follower_proxy->GetChanges(change_req, &change_resp, &rpc));
   }
 
-  // Insert test rows, one at a time so they have different hybrid times.
-  tserver::WriteRequestPB write_req;
-  tserver::WriteResponsePB write_resp;
-  write_req.set_tablet_id(tablet_id);
-  {
+  // Insert 2 test rows, one at a time so they have different hybrid times.
+  const int kNumTestRows = 2;
+  for (int i = 1; i <= kNumTestRows; ++i) {
+    // Use proxy for to most accurately simulate normal requests.
+    const auto& proxy = leader_mini_tserver->server()->proxy();
     RpcController rpc;
-    AddTestRowInsert(1, 11, "key1", &write_req);
-    SCOPED_TRACE(write_req.DebugString());
-    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
-    SCOPED_TRACE(write_resp.DebugString());
-    ASSERT_FALSE(write_resp.has_error());
-  }
-
-  {
-    write_req.Clear();
+    tserver::WriteRequestPB write_req;
+    tserver::WriteResponsePB write_resp;
     write_req.set_tablet_id(tablet_id);
-    RpcController rpc;
-    AddTestRowInsert(2, 22, "key2", &write_req);
+    AddTestRowInsert(i, 10 * i + i, "key" + std::to_string(i), &write_req);
     SCOPED_TRACE(write_req.DebugString());
     ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
