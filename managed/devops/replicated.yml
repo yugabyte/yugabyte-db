@@ -886,12 +886,12 @@ config:
         type: text
         default: "30s"
       - name: prometheus_enable_https
-        title: Enable HTTPS for Promehteus web UI/APIs
+        title: Enable HTTPS for Prometheus web UI/APIs
         help_text: When enabled Prometheus will listen to HTTPS
         type: bool
         default: "0"
       - name: prometheus_enable_auth
-        title: Enable basic auth for Promehteus web UI/APIs
+        title: Enable basic auth for Prometheus web UI/APIs
         help_text: When enabled Prometheus will require username/password to access UI/APIs
         type: bool
         default: "0"
@@ -906,6 +906,13 @@ config:
         value_cmd:
           name: dbpass_cmd
           value_at: 0
+        test_proc:
+          run_on_save: true
+          display_name: Check password is at least 8 characters long
+          command: regex_match
+          args:
+            - '^.{8,}$'
+            - "Password must contain at least 8 characters"
         when: '{{repl ConfigOptionEquals "prometheus_enable_auth" "1" }}'
 
 state:
