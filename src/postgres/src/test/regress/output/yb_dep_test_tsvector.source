@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS test_tsvector(
 --
 -- copy
 --
-COPY test_tsvector FROM '@abs_srcdir@/data/tsearch.data';
+\getenv abs_srcdir PG_ABS_SRCDIR
+--
+\set filename :abs_srcdir '/data/tsearch.data'
+COPY test_tsvector FROM :'filename';
 --
 ANALYZE test_tsvector;

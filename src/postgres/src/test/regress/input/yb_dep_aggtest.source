@@ -20,7 +20,12 @@ CREATE TABLE aggtest (
 -- copy
 --
 
-COPY aggtest FROM '@abs_srcdir@/data/agg.data';
+\getenv abs_srcdir PG_ABS_SRCDIR
+
+--
+
+\set filename :abs_srcdir '/data/agg.data'
+COPY aggtest FROM :'filename';
 
 --
 

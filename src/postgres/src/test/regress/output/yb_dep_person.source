@@ -17,6 +17,9 @@ CREATE TABLE person (
 --
 -- copy
 --
-COPY person FROM '@abs_srcdir@/data/person.data';
+\getenv abs_srcdir PG_ABS_SRCDIR
+--
+\set filename :abs_srcdir '/data/person.data'
+COPY person FROM :'filename';
 --
 ANALYZE person;
