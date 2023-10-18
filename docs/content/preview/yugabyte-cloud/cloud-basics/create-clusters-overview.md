@@ -101,15 +101,14 @@ The _fault tolerance_ determines how resilient the cluster is to domain (that is
 YugabyteDB Managed provides the following configurations for fault tolerance.
 
 | Fault tolerance | Resilient to | Minimum number of nodes | Scale in increments of |
-| :--------- | :--- | :---: | :---: |
-| **None**   | 0 Node outages   | 1 | 1 |
-| **Node**   | 1 Node outage    | 3 | 1 |
-|            | 2 Node outages   | 5 | 1 |
-|            | 3 Node outages   | 7 | 1 |
-| **Zone**   | 1 Zone outage    | 3 across 3 zones   | 3 |
-| **Region** | 1 Region outage  | 3 across 3 regions | 3 |
-|            | 2 Region outages | 5 across 5 regions | 5 |
-|            | 3 Region outages | 7 across 7 regions | 7 |
+| :-------------- | :----------- | :---------------------: | :--------------------: |
+| **Node**        | 1 Node outage    | 3 | 1 |
+|                 | 2 Node outages   | 5 | 1 |
+|                 | 3 Node outages   | 7 | 1 |
+| **Zone**        | 1 Zone outage    | 3 across 3 zones   | 3 |
+| **Region**      | 1 Region outage  | 3 across 3 regions | 3 |
+|                 | 2 Region outages | 5 across 5 regions | 5 |
+|                 | 3 Region outages | 7 across 7 regions | 7 |
 
 You can't change the cluster fault tolerance after the cluster is created.
 
@@ -155,9 +154,9 @@ For production clusters, a minimum of 3 nodes with 4 to 8 vCPUs per node is reco
 
 During an update, one node is always offline. When sizing your cluster to your workload, ensure you have enough additional capacity to support rolling updates with minimal impact on application performance. You can also mitigate the effect of updates on performance by [scheduling them](../../cloud-clusters/cloud-maintenance/) during periods of lower traffic.
 
-If your configuration doesn't match your performance requirements, you can scale your cluster after it is created. Depending on your performance requirements, you can increase the number of vCPUs per node (scale up, also referred to as vertical scaling), as well as the total number of nodes (scale out, also referred to as horizontal scaling). You can also increase the disk size per node. However, once increased, you can't lower the disk size per node.
+If your configuration doesn't match your performance requirements, you can [scale your cluster](../../cloud-clusters/configure-clusters/#scale-and-configure-clusters) after it is created. Depending on your performance requirements, you can increase the number of vCPUs per node (scale up, also referred to as vertical scaling), as well as the total number of nodes (scale out, also referred to as horizontal scaling). You can also increase the disk size per node. However, once increased, you can't lower the disk size per node.
 
-To realize the full benefit from scaling a cluster, for typical workloads you should scale up to 8 or 16 vCPUs before adding additional nodes. For example, for a 3-node cluster with 4 vCPUs per node, scale up to 8 or 16 vCPUs before adding a fourth node.
+YugabyteDB recommends vertical scaling until nodes have 16vCPUs, and horizontal scaling once nodes have 16 vCPUs. For example, for a 3-node cluster with 4 vCPUs per node, scale up to 8 vCPUs rather than adding a fourth node. For a 3-node cluster with 16 vCPUs per node, scale out by adding a 4th node.
 
 Refer to [Scaling clusters](../../cloud-clusters/configure-clusters/).
 
