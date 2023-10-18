@@ -16456,6 +16456,7 @@
     },
     "/api/v1/customers/{cUUID}/backups" : {
       "delete" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "deleteBackups",
         "parameters" : [ {
@@ -16480,7 +16481,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete backups",
+        "summary" : "Deprecated since YBA version 2.20.0.0. Use 'Delete backups V2' instead. Delete backups",
         "tags" : [ "Backups" ]
       },
       "post" : {
@@ -16516,7 +16517,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create a backup",
+        "summary" : "Create a backup V2",
         "tags" : [ "Backups" ]
       }
     },
@@ -17411,7 +17412,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create Backup Schedule",
+        "summary" : "Deprecated since YBA version 2.20.0.0. Use 'Create Backup Schedule Async' instead. Create Backup Schedule",
         "tags" : [ "Backups" ]
       }
     },
@@ -20915,6 +20916,7 @@
     },
     "/api/v1/customers/{cUUID}/schedules" : {
       "get" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "listSchedules",
         "parameters" : [ {
@@ -20938,7 +20940,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List schedules",
+        "summary" : "Deprecated since YBA version 2.20.0.0. Use 'List schedules V2' instead. List schedules",
         "tags" : [ "Schedule management" ]
       }
     },
@@ -20981,6 +20983,7 @@
     },
     "/api/v1/customers/{cUUID}/schedules/{sUUID}" : {
       "delete" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "deleteSchedule",
         "parameters" : [ {
@@ -21011,7 +21014,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete a schedule",
+        "summary" : "Deprecated since YBA version 2.20.0.0. Use 'Delete a schedule V2' instead. Delete a schedule",
         "tags" : [ "Schedule management" ]
       },
       "get" : {
@@ -21787,6 +21790,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/backups" : {
       "get" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "ListOfBackups",
         "parameters" : [ {
@@ -21822,12 +21826,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List a customer's backups",
+        "summary" : "Deprecated since YBA version 2.20.0.0. Use 'List Backups (paginated) V2' instead. List a customer's backups",
         "tags" : [ "Backups" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/backups/restore" : {
       "post" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "restore",
         "parameters" : [ {
@@ -21866,7 +21871,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Restore from a backup",
+        "summary" : "Deprecated since YBA version 2.20.0.0. Use 'Restore from a backup V2' instead. Restore from a backup",
         "tags" : [ "Backups" ]
       }
     },
@@ -21913,7 +21918,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List a task's backups",
+        "summary" : "List backups associated with a task",
         "tags" : [ "Backups" ]
       }
     },
