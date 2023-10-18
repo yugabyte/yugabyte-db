@@ -1,6 +1,8 @@
 --
 -- COPY large file while performing DDL in same txn
 --
+-- directory paths are passed to us in environment variables
+\getenv abs_srcdir PG_ABS_SRCDIR
 BEGIN;
 CREATE INDEX ON airports (type);
 NOTICE:  making create index for table "airports" nonconcurrent
@@ -10,5 +12,6 @@ CREATE INDEX ON airports (name);
 NOTICE:  making create index for table "airports" nonconcurrent
 DETAIL:  Create index in transaction block cannot be concurrent.
 HINT:  Consider running it outside of a transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.
-COPY airports FROM '@abs_srcdir@/data/airport-codes.csv' CSV HEADER;
+\set filename :abs_srcdir '/data/airport-codes.csv'
+COPY airports FROM :'filename' CSV HEADER;
 COMMIT;

@@ -19,4 +19,9 @@ CREATE TABLE testjsonb (
 -- copy
 --
 
-COPY testjsonb FROM '@abs_srcdir@/data/jsonb.data';
+\getenv abs_srcdir PG_ABS_SRCDIR
+
+--
+
+\set filename :abs_srcdir '/data/jsonb.data'
+COPY testjsonb FROM :'filename';

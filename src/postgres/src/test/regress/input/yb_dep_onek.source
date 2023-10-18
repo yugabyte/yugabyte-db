@@ -34,7 +34,12 @@ CREATE TABLE onek (
 -- copy
 --
 
-COPY onek FROM '@abs_srcdir@/data/onek.data';
+\getenv abs_srcdir PG_ABS_SRCDIR
+
+--
+
+\set filename :abs_srcdir '/data/onek.data'
+COPY onek FROM :'filename';
 
 --
 
