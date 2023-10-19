@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
@@ -374,6 +375,9 @@ public class CustomerTaskManager {
         break;
       case KubernetesOverridesUpgrade:
         taskParams = Json.fromJson(oldTaskParams, KubernetesOverridesUpgradeParams.class);
+        break;
+      case GFlagsKubernetesUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, KubernetesGFlagsUpgradeParams.class);
         break;
       case AddNodeToUniverse:
       case RemoveNodeFromUniverse:

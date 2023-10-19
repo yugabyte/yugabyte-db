@@ -95,8 +95,9 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.StopNodeInUniverse,
           TaskType.CloudProviderDelete,
           TaskType.ReinstallNodeAgent,
+          TaskType.CloudBootstrap,
           TaskType.KubernetesOverridesUpgrade,
-          TaskType.CloudBootstrap);
+          TaskType.GFlagsKubernetesUpgrade);
 
   @Override
   protected Application provideApplication() {
