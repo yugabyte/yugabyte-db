@@ -223,8 +223,10 @@ public class XClusterConfig extends Model {
   }
 
   public void addPitrConfig(PitrConfig pitrConfig) {
-    this.pitrConfigs.add(pitrConfig);
-    this.update();
+    if (this.pitrConfigs.stream().noneMatch(p -> p.getUuid().equals(pitrConfig.getUuid()))) {
+      this.pitrConfigs.add(pitrConfig);
+      this.update();
+    }
   }
 
   @Override
