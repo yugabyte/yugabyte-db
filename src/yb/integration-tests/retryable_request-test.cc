@@ -227,6 +227,18 @@ TEST_F_EX(
   thread_holder.WaitAndStop(10s);
 }
 
+TEST_F_EX(RetryableRequestTest, TestMemTrackerMetric, SingleServerRetryableRequestTest) {
+  auto* tablet_server = mini_cluster()->mini_tablet_server(0);
+  const auto tablet_id = ASSERT_RESULT(GetOnlyTabletId(table_.name()));
+  auto tablet_peer = ASSERT_RESULT(
+      tablet_server->server()->tablet_manager()->GetServingTablet(tablet_id));
+  // Make sure mem_tracker metric is in the tablet metric entity.
+  std::string mem_tracker_metric_name =
+      "mem_tracker_server_1_Tablets_overhead_PerTablet_Retryable_Requests";
+  auto tablet_metrics_entity = tablet_peer->tablet()->GetTabletMetricsEntity();
+  ASSERT_TRUE(tablet_metrics_entity->TEST_ContainMetricName(mem_tracker_metric_name));
+}
+
 class MultiNodeRetryableRequestTest : public RetryableRequestTest {
  protected:
   bool enable_ysql() override { return false; }
