@@ -29,6 +29,7 @@
 #include <assert.h>
 #include <inttypes.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -3557,6 +3558,43 @@ bool check_yb_xcluster_consistency_level(char** newval, void** extra, GucSource 
 
 void assign_yb_xcluster_consistency_level(const char* newval, void* extra) {
 	yb_xcluster_consistency_level = *((int*)extra);
+}
+
+bool
+check_yb_read_time(char **newval, void **extra, GucSource source)
+{
+	/* Read time should be convertable to unsigned long long */
+	unsigned long long read_time_ull = strtoull(*newval, NULL, 0);
+	char read_time_string[23];
+	sprintf(read_time_string, "%llu", read_time_ull);
+	if (strcmp(*newval, read_time_string))
+	{
+		GUC_check_errdetail("Accepted value is Unix timestamp in microseconds."
+							" i.e. 1694673026673528");
+		return false;
+	}
+	/* Read time should not be set to a timestamp in the future */
+	struct timeval now_tv;
+	gettimeofday(&now_tv, NULL);
+	unsigned long long now_micro_sec = ((unsigned long long)now_tv.tv_sec * USECS_PER_SEC) + now_tv.tv_usec;
+	if(read_time_ull > now_micro_sec)
+	{
+		GUC_check_errdetail("Provided timestamp is in the future.");
+		return false;
+	}
+	return true;
+}
+
+void
+assign_yb_read_time(const char* newval, void *extra) 
+{
+	yb_read_time = strtoull(newval, NULL, 0);
+	ereport(NOTICE,
+			(errmsg("yb_read_time should be set with caution."),
+			 errdetail("No DDL operations should be performed while it is set and "
+			 		   "it should not be set to a timestamp before a DDL "
+					   "operation has been performed. It doesn't have well defined semantics"
+					   " for normal transactions and is only to be used after consultation")));
 }
 
 void YBCheckServerAccessIsAllowed() {
