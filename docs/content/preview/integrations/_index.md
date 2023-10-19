@@ -40,7 +40,7 @@ Version refers to the latest tested version of the integration.
 | Tool      | Version | Support | Tutorial |
 | :---------| :------ | :------ | :------- |
 | PGmigrate | 1.0.7   | Partial | [PGmigrate](pgmigrate/) |
-| YSQL Loader (pgloader) | | Full | [YSQL Loader](ysql-loader/) |
+| YSQL Loader (pgloader) | 1.1 | Full | [YSQL Loader](ysql-loader/) |
 
 ### Data integration (CDC)
 
@@ -72,12 +72,14 @@ Version refers to the latest tested version of the integration.
 
 ### Application frameworks
 
-| Tool | Support | Tutorial |
-| :--- | :--- | :--- |
-| AtomicJar Testcontainers | Partial | [AtomicJar Testcontainers](atomicjar/) |
-| Django | Full | [Django REST Framework](django-rest-framework/) |
-| Hasura | Full | [Hasura](hasura/) |
-| Spring | Full | [Spring](spring-framework/) |
+| Tool        | | Version      | Support | Tutorial |
+| :---------- | :--- | :----------- | :------ | :------- |
+| AtomicJar Testcontainers | | | Partial | [AtomicJar Testcontainers](atomicjar/) |
+| Django | | 3.2 or later | Full | [Django REST Framework](django-rest-framework/) |
+| Hasura | | 1.3.3        | Full | [Hasura](hasura/) |
+| Spring | Spring Data YugabyteDB | 2.3.0          | Full | [Spring](spring-framework/) |
+|        | Spring Data JPA        | 2.6.3          | Full |  |
+|        | Spring Data Cassandra  | 2.2.12         | Full |  |
 
 ### Development platforms
 
@@ -91,18 +93,18 @@ Version refers to the latest tested version of the integration.
 ### Data discovery and metadata
 
 | Tool        | Version      | Support | Tutorial |
-| :---------- | :----------- | :------ | :--- |
-| Dataedo     | 23.x         | Partial | [Dataedo](dataedo/) |
-| Datahub     | v0.10.5      | Partial | [Datahub](datahub/) |
-| DQ Analyzer |              | Partial | [Ataccama DQ Analyzer](ataccama/) |
+| :---------- | :----------- | :------ | :------- |
+| Dataedo     | 23.1.1       | Partial | [Dataedo](dataedo/) |
+| Datahub     | 0.10.4      | Partial | [Datahub](datahub/) |
+| DQ Analyzer | 11.1.1       | Partial | [Ataccama DQ Analyzer](ataccama/) |
 | Metacat     | 1.3.0-rc.105 | Partial | [Metacat](metacat/) |
 
 ### Security
 
-| Tool | Support | Tutorial |
-| :--- | :--- | :--- |
-| Hashicorp Vault      | Full | [Hashicorp Vault](hashicorp-vault/) |
-| WSO2 Identity Server | Full | [WSO2 Identity Server](wso2/) |
+| Tool    | Version | Support | Tutorial |
+| :------ | :------ | :------ | :------- |
+| Hashicorp Vault      | 1.0.0  | Full | [Hashicorp Vault](hashicorp-vault/) |
+| WSO2 Identity Server | 5.11.0 | Full | [WSO2 Identity Server](wso2/) |
 
 ### Applications powered by YugabyteDB
 
@@ -116,11 +118,11 @@ Version refers to the latest tested version of the integration.
 | :----------- | :------ | :------ | :------- |
 | Apache Atlas | 2.30    | Partial | [Apache Atlas](atlas-ycql/) |
 | Apache Spark | 3.30    | Full    | [Apache Spark](apache-spark/) |
-| Jaeger       |         | Full    | [Jaeger](jaeger/) |
-| JanusGraph   |         | Full    | [JanusGraph](janusgraph/) |
+| Jaeger       | 1.43.0  | Full    | [Jaeger](jaeger/) |
+| JanusGraph   | 0.6.2   | Full    | [JanusGraph](janusgraph/) |
 | KairosDB     | 1.3.0   | Full    | [KairosDB](kairosdb/) |
-| Mirantis MKE |         | Partial | [Mirantis](mirantis/) |
-| Presto       |         | Partial | [Presto](presto/) |
+| Mirantis MKE | 3.5.8   | Partial | [Mirantis](mirantis/) |
+| Presto       | 309     | Partial | [Presto](presto/) |
 
 <!--
 <ul class="nav yb-pills">

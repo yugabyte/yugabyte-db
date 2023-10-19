@@ -53,7 +53,7 @@ private = true
 | YugabyteDB Python Driver for YCQL | [3.25.0](https://github.com/yugabyte/cassandra-python-driver/tree/master) | Full | [CRUD](/preview/drivers-orms/python/ycql/) |
 | **ORMs** | | | |
 | Django     | 2.2 or later | Full | [CRUD](/preview/drivers-orms/python/django/) |
-| SQLAlchemy | | Full | [CRUD](/preview/drivers-orms/python/sqlalchemy/) |
+| SQLAlchemy | 2.0          | Full | [CRUD](/preview/drivers-orms/python/sqlalchemy/) |
 
   {{% /tab %}}
 
