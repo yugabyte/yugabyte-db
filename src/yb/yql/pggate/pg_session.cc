@@ -694,6 +694,12 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
       !(ops_options.use_catalog_session || pg_txn_manager_->IsDdlMode() ||
         yb_non_ddl_txn_for_sys_tables_allowed));
 
+  if (yb_read_time != 0) {
+    SCHECK(
+        !pg_txn_manager_->IsDdlMode(), IllegalState,
+        "DDL operation should not be performed while yb_read_time is set to nonzero.");
+    ReadHybridTime::FromMicros(yb_read_time).ToPB(options.mutable_read_time());
+  }
   auto promise = std::make_shared<std::promise<PerformResult>>();
 
   // If all operations belong to the same database then set the namespace.

@@ -131,6 +131,13 @@ extern bool yb_enable_replication_commands;
 extern int yb_xcluster_consistency_level;
 
 /*
+ * Allows user to query a databases as of the point in time.
+ * yb_read_time is UNIX timestamp in microsecond.
+ * Zero value means reading data as of current time.
+ */
+extern uint64_t yb_read_time;
+
+/*
  * Allows for customizing the number of rows to be prefetched.
  */
 extern int yb_fetch_row_limit;
