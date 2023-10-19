@@ -111,12 +111,13 @@ import algoliasearch from 'algoliasearch';
             highlightContent = highlightContent.replace(/<em>|<\/em>/g, '');
 
             if (highlightContent.length > 0) {
+              const firstWord = hit._highlightResult.content.matchedWords[0];
               const valueToSentence = highlightContent.split(/\r?\n/);
 
               let wordIndex;
               valueToSentence.filter(
                 ((contentPart, index) => {
-                  if (contentPart.includes(hit._highlightResult.content.matchedWords[0])) {
+                  if (contentPart.toLowerCase().includes(firstWord)) {
                     wordIndex = index;
                   }
 
