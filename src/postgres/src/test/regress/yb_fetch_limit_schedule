@@ -1,0 +1,8 @@
+####################################################################################################
+# Prefetch Limit Testsuite
+# Test for setting row / size prefetch limits
+#  * yb_fetch_row_limit
+#  * yb_fetch_size_limit
+####################################################################################################
+test: yb_fetch_limits
+test: yb_fetch_limits_joins
