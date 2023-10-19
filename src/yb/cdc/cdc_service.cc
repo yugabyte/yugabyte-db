@@ -1335,8 +1335,12 @@ void CDCServiceImpl::GetTabletListToPollForCDC(
 
     resp->mutable_tablet_checkpoint_pairs()->Reserve(
         static_cast<int>(tablet_checkpoint_pairs.size()));
+    LOG(INFO) << "Processing tablets for table " << table_id
+              << " for GetTabletListToPollForCDCResponse";
     for (auto tablet_checkpoint_pair : tablet_checkpoint_pairs) {
       auto tablet_checkpoint_pair_pb = resp->add_tablet_checkpoint_pairs();
+
+      LOG(INFO) << "Adding tablet " << tablet_checkpoint_pair.first;
 
       tablet_checkpoint_pair_pb->mutable_tablet_locations()->CopyFrom(
           tablet_id_to_tablet_locations_map[tablet_checkpoint_pair.first]);
@@ -2898,6 +2902,15 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
     if (add_to_result) {
       result->push_back(std::make_pair(tablet_id, checkpoint_pb));
     }
+  }
+
+  // If scanning cdc_state table fails, return the error to the client so that it can be retried
+  // accordingly.
+  if (!failer_status.ok()) {
+    RefreshCdcStateTable();
+    return STATUS_FORMAT(
+        IllegalState, "Failed to scan table $0: $1", kCdcStateTableName.table_name(),
+        failer_status);
   }
 
   return Status::OK();
