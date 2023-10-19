@@ -391,12 +391,13 @@ heap_create(const char *relname,
 									 relkind);
 
 	/*
-	 * No need to create local storage for YB Tables as YugaByte will handle it.
-	 * Temporary tables in YugaByte mode use local storage.
+	 * Create local storage in YB only if storage is required and it is a
+	 * temporary relation.
 	 * TODO Consider hooking the YB-Create logic here instead of above.
 	 */
 	if (YBIsEnabledInPostgresEnvVar())
-		create_storage = relpersistence == RELPERSISTENCE_TEMP;
+		create_storage = create_storage &&
+						 relpersistence == RELPERSISTENCE_TEMP;
 
 	/*
 	 * Have the storage manager create the relation's disk file, if needed.
