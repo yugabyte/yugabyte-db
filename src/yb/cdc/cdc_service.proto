@@ -129,7 +129,7 @@ message CreateCDCStreamRequestPB {
   optional CDCRecordFormat record_format = 3 [default = JSON];
   optional string namespace_name = 4;
   optional CDCRequestSource source_type = 5 [default = XCLUSTER];
-  optional CDCCheckpointType checkpoint_type = 6 [default = IMPLICIT];
+  optional CDCCheckpointType checkpoint_type = 6;
   optional bool transactional = 7; // [default = false]
   optional YQLDatabase db_type = 8 [default = YQL_DATABASE_PGSQL] ;
 }
