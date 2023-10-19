@@ -143,7 +143,7 @@ func HasSudoAccess() bool {
 // Create a file at a relative path for the non-root case. Have to make the directory before
 // inserting the file in that directory.
 func Create(p string) (*os.File, error) {
-	if err := MkdirAll(filepath.Dir(p), 0777); err != nil {
+	if err := MkdirAll(filepath.Dir(p), DirMode); err != nil {
 		log.Fatal(fmt.Sprintf("Error creating %s. Failed with %s", p, err.Error()))
 		return nil, err
 	}

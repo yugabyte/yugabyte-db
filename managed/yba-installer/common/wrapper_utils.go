@@ -1,9 +1,11 @@
 package common
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/user"
+	"path/filepath"
 
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
@@ -15,7 +17,51 @@ import (
 
 func MkdirAll(path string, perm os.FileMode) error {
 	log.Debug(fmt.Sprintf("Creating dir %s", path))
-	return os.MkdirAll(path, perm)
+	err := os.Mkdir(path, os.ModePerm)
+	if err == nil {
+		// change modification bits as well
+		if e := os.Chmod(path, perm); e != nil {
+			return e
+		}
+		return nil
+	} else if errors.Is(err, os.ErrExist) {
+		log.Debug(fmt.Sprintf("Dir %s already exists. Skipping creation.", path))
+		return nil
+	} else if _, ok := err.(*os.PathError); ok {
+		// recursive case where we need to make parent directories
+		return mkdirAllHelper(filepath.Dir(path), []string{filepath.Base(path)}, perm)
+	}
+	return err
+}
+
+func mkdirAllHelper(path string, children []string, perm os.FileMode) error {
+	log.Debug("Creating directory " + path)
+	err := os.Mkdir(path, os.ModePerm)
+	if err != nil {
+		// Directory can not be created at this level. More parents must be created.
+		// Appending to list so first directory that can be created will be at the end.
+		children = append(children, filepath.Base(path))
+		return mkdirAllHelper(filepath.Dir(path), children, perm)
+	}
+	// change modification bits as well
+	if e := os.Chmod(path, perm); e != nil {
+		return fmt.Errorf("error changing %s permissions to %d err: %s", path, perm, e.Error())
+	}
+	// Also make children
+	// Iterate in reverse because we appended all children starting with the deepest
+	// so first child is last.
+	for i := len(children) - 1; i >= 0; i-- {
+		path = path + string(os.PathSeparator) + children[i]
+		log.Debug("Creating directory " + path)
+		if e := os.Mkdir(path, os.ModePerm); err != nil && !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("error making %s: %s", path, e.Error())
+		}
+		// change modification bits as well
+		if e := os.Chmod(path, perm); e != nil {
+			return fmt.Errorf("error changing %s permissions to %d err: %s", path, perm, e.Error())
+		}
+	}
+	return nil
 }
 
 func RenameOrFail(src string, dst string) {

@@ -29,7 +29,7 @@ type platformDirectories struct {
 	templateFileName    string
 	DataDir             string
 	cronScript          string
-	PgBin								string
+	PgBin               string
 }
 
 func newPlatDirectories() platformDirectories {
@@ -40,15 +40,15 @@ func newPlatDirectories() platformDirectories {
 		DataDir:             common.GetBaseInstall() + "/data/yb-platform",
 		cronScript: filepath.Join(
 			common.GetInstallerSoftwareDir(), common.CronDir, "managePlatform.sh"),
-		PgBin: 							 common.GetSoftwareRoot() + "/pgsql/bin",
+		PgBin: common.GetSoftwareRoot() + "/pgsql/bin",
 	}
 }
 
 // Component 3: Platform
 type Platform struct {
-	name    	string
-	version 	string
-	FixPaths	bool
+	name     string
+	version  string
+	FixPaths bool
 	platformDirectories
 }
 
@@ -58,7 +58,7 @@ func NewPlatform(version string) Platform {
 		name:                "yb-platform",
 		version:             version,
 		platformDirectories: newPlatDirectories(),
-		FixPaths:						 false,
+		FixPaths:            false,
 	}
 }
 
@@ -135,16 +135,32 @@ func (plat Platform) SetDataDirPerms() error {
 	return nil
 }
 
-func (plat Platform) createNecessaryDirectories() {
-
-	common.MkdirAll(common.GetSoftwareRoot()+"/yb-platform", os.ModePerm)
-	common.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/releases/"+plat.version, os.ModePerm)
-	common.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/ybc/release", os.ModePerm)
-	common.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/ybc/releases", os.ModePerm)
-	common.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/node-agent/releases", os.ModePerm)
-
-	common.MkdirAll(plat.devopsDir(), os.ModePerm)
-	common.MkdirAll(plat.yugawareDir(), os.ModePerm)
+func (plat Platform) createNecessaryDirectories() error {
+	dirs := []string{
+		common.GetSoftwareRoot() + "/yb-platform",
+		common.GetBaseInstall() + "/data/yb-platform/releases",
+		common.GetBaseInstall() + "/data/yb-platform/ybc/release",
+		common.GetBaseInstall() + "/data/yb-platform/ybc/releases",
+		common.GetBaseInstall() + "/data/yb-platform/node-agent/releases",
+		plat.devopsDir(),
+		plat.yugawareDir(),
+	}
+	userName := viper.GetString("service_username")
+	for _, dir := range dirs {
+		if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
+			if mkErr := common.MkdirAll(dir, common.DirMode); mkErr != nil {
+				log.Error("failed to make " + dir + ": " + err.Error())
+				return mkErr
+			}
+			if common.HasSudoAccess() {
+				if chErr := common.Chown(dir, userName, userName, true); chErr != nil {
+					log.Error("failed to set ownership of " + dir + ": " + chErr.Error())
+					return chErr
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (plat Platform) untarDevopsAndYugawarePackages() {
