@@ -40,7 +40,7 @@ Version refers to the latest tested version of the integration.
 | Tool      | Version | Support | Tutorial |
 | :---------| :------ | :------ | :------- |
 | PGmigrate | 1.0.7   | Partial | [PGmigrate](pgmigrate/) |
-| YSQL Loader (pgloader) | 1.1 | Full | [YSQL Loader](ysql-loader/) |
+| YSQL Loader (pgloader) | 3.6.3 | Full | [YSQL Loader](ysql-loader/) |
 
 ### Data integration (CDC)
 
@@ -48,10 +48,10 @@ Version refers to the latest tested version of the integration.
 | :------------- | :------ | :------ | :------- |
 | Apache Beam    | 2.49.0  | Partial | [Apache Beam](apache-beam/) |
 | Apache Flink   | 1.17.1  | Partial | [Apache Flink](apache-flink/) |
-| Apache Kafka   |         | Full | [Apache Kafka](apache-kafka/) |
+| Apache Kafka   | 6.1.1   | Full | [Apache Kafka](apache-kafka/) |
 | Akka Persistence | 1.0.1 | Partial | [Akka Persistence](akka-ysql/) |
 | Confluent      | 7.4.0   | Full | [Confluent Cloud](../explore/change-data-capture/cdc-tutorials/cdc-confluent-cloud/) |
-| Debezium       |         | Full | [Debezium](cdc/debezium/) |
+| Debezium       | 1.9.5   | Full | [Debezium](cdc/debezium/) |
 | Hevo Data      | 1.66    | Partial | [Hevo Data](hevodata/) |
 | Kinesis Data Streams |   | Full | [Kinesis](kinesis/) |
 | RabbitMQ       | 3.11.21 | Partial | [RabbitMQ](rabbitmq/) |
