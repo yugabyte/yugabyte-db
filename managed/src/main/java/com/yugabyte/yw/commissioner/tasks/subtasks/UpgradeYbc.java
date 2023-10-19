@@ -6,7 +6,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.Universe;
@@ -60,8 +59,7 @@ public class UpgradeYbc extends AbstractTaskBase {
       Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       preChecks(universe, taskParams().ybcVersion);
       ybcUpgrade.upgradeYBC(taskParams().universeUUID, taskParams().ybcVersion, true /* force */);
-
-      int numRetries = waitForYbcUpgrade();
+      waitForYbcUpgrade();
       boolean success =
           ybcUpgrade.pollUpgradeTaskResult(
               taskParams().universeUUID, taskParams().ybcVersion, true /* verbose */);
@@ -69,21 +67,6 @@ public class UpgradeYbc extends AbstractTaskBase {
           "Polling ybc upgrade for the universe {} resulted in the state {}",
           taskParams().universeUUID,
           success);
-
-      if (!success && confGetter.getGlobalConf(GlobalConfKeys.forceYbcShutdownDuringUpgrade)) {
-        log.info("Making a request to shutdown ybc for the universe {}", taskParams().universeUUID);
-        // Shutdown YBC explicitly.
-        ybcUpgrade.shutdownYbc(universe);
-        // Wait for ybc to start after explicit shutdown.
-        numRetries = waitForYbcUpgrade();
-        success =
-            ybcUpgrade.pollUpgradeTaskResult(
-                taskParams().universeUUID, taskParams().ybcVersion, true /* verbose */);
-        log.info(
-            "Polling ybc upgrade for the universe {} resulted in the state {} post shutdown",
-            taskParams().universeUUID,
-            success);
-      }
 
       if (!success && !taskParams().validateOnlyMasterLeader) {
         throw new RuntimeException("YBC Upgrade task did not complete in expected time.");
@@ -123,12 +106,10 @@ public class UpgradeYbc extends AbstractTaskBase {
     while (numRetries < ybcUpgrade.MAX_YBC_UPGRADE_POLL_RESULT_TRIES) {
       numRetries++;
       if (!ybcUpgrade.checkYBCUpgradeProcessExists(taskParams().universeUUID)) {
-        log.info(
-            "Ybc upgrade process does not exist for the universe {}", taskParams().universeUUID);
         break;
-      } else {
-        ybcUpgrade.pollUpgradeTaskResult(
-            taskParams().universeUUID, taskParams().ybcVersion, false /* verbose */);
+      } else if (ybcUpgrade.pollUpgradeTaskResult(
+          taskParams().universeUUID, taskParams().ybcVersion, false /* verbose */)) {
+        break;
       }
       waitFor(Duration.ofMillis(ybcUpgrade.YBC_UPGRADE_POLL_RESULT_SLEEP_MS));
     }

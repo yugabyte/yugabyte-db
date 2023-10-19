@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformScheduler;
@@ -24,7 +25,6 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -54,6 +54,7 @@ public class YbcUpgrade {
   private final YbcClientService ybcClientService;
   private final YbcManager ybcManager;
   private final NodeUniverseManager nodeUniverseManager;
+  private final Config config;
 
   public static final String YBC_UPGRADE_INTERVAL = "ybc.upgrade.scheduler_interval";
   public static final String YBC_UNIVERSE_UPGRADE_BATCH_SIZE_PATH =
@@ -64,26 +65,26 @@ public class YbcUpgrade {
 
   private final int YBC_UNIVERSE_UPGRADE_BATCH_SIZE;
   private final int YBC_NODE_UPGRADE_BATCH_SIZE;
-  public final int MAX_YBC_UPGRADE_POLL_RESULT_TRIES = 30;
+  public final int MAX_YBC_UPGRADE_POLL_RESULT_TRIES = 10;
   public final long YBC_UPGRADE_POLL_RESULT_SLEEP_MS = 10000;
   private final long YBC_REMOTE_TIMEOUT_SEC = 60;
   private final String PACKAGE_PERMISSIONS = "755";
-  private final String PLAT_YBC_PACKAGE_URL;
 
   private final CopyOnWriteArraySet<UUID> ybcUpgradeUniverseSet = new CopyOnWriteArraySet<>();
   private final CopyOnWriteArraySet<UUID> ybcUpgradeUniverseSetOnK8s = new CopyOnWriteArraySet<>();
   private final Set<UUID> failedYBCUpgradeUniverseSet = new HashSet<>();
   private final Set<UUID> failedYBCUpgradeUniverseSetOnK8s = new HashSet<>();
   private final Map<UUID, Set<String>> unreachableNodes = new ConcurrentHashMap<>();
-  private final Map<UUID, Set<NodeDetails>> nodesToBeUpgradedWithLocalPackage = new HashMap<>();
 
   @Inject
   public YbcUpgrade(
+      Config config,
       PlatformScheduler platformScheduler,
       RuntimeConfGetter confGetter,
       YbcClientService ybcClientService,
       YbcManager ybcManager,
       NodeUniverseManager nodeUniverseManager) {
+    this.config = config;
     this.platformScheduler = platformScheduler;
     this.confGetter = confGetter;
     this.ybcClientService = ybcClientService;
@@ -91,10 +92,12 @@ public class YbcUpgrade {
     this.nodeUniverseManager = nodeUniverseManager;
     this.YBC_UNIVERSE_UPGRADE_BATCH_SIZE = getYBCUniverseBatchSize();
     this.YBC_NODE_UPGRADE_BATCH_SIZE = getYBCNodeBatchSize();
-    this.PLAT_YBC_PACKAGE_URL = "http://" + Util.getHostIP() + ":9000/api/v1/fetch_package";
   }
 
   public void start() {
+    if (config.getBoolean("yb.cloud.enabled")) {
+      return;
+    }
     Duration duration = this.upgradeInterval();
   }
 
@@ -121,7 +124,7 @@ public class YbcUpgrade {
 
   public synchronized void removeYBCUpgradeProcess(UUID universeUUID) {
     ybcUpgradeUniverseSet.remove(universeUUID);
-    nodesToBeUpgradedWithLocalPackage.remove(universeUUID);
+    unreachableNodes.remove(universeUUID);
   }
 
   public synchronized void removeYBCUpgradeProcessOnK8s(UUID universeUUID) {
@@ -298,10 +301,10 @@ public class YbcUpgrade {
         .forEach(
             (node) -> {
               try {
-                upgradeYbcOnNode(universe, node, ybcVersion, false);
+                upgradeYbcOnNode(universe, node, ybcVersion);
               } catch (Exception e) {
                 log.error(
-                    "Ybc upgrade request failed on node: {} universe: {}, with error: {}",
+                    "Ybc upgrade request failed on node: {} universe: {}, with error: ",
                     node.nodeName,
                     universe.getUniverseUUID(),
                     e);
@@ -372,24 +375,21 @@ public class YbcUpgrade {
     return true;
   }
 
-  private void upgradeYbcOnNode(
-      Universe universe, NodeDetails node, String ybcVersion, boolean localPackage) {
+  private void upgradeYbcOnNode(Universe universe, NodeDetails node, String ybcVersion) {
     if (!universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd) {
       checkCronStatus(universe, node);
     }
-    Integer ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
+    log.info("Placing ybc package on db node: {}", node.cloudInfo.private_ip);
+    placeYbcPackageOnDBNode(universe, node, ybcVersion);
+    int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     String certFile = universe.getCertificateNodetoNode();
     String nodeIp = node.cloudInfo.private_ip;
     Builder builder =
         UpgradeRequest.newBuilder()
             .setYbcVersion(ybcVersion)
             .setHomeDir(Util.getNodeHomeDir(universe.getUniverseUUID(), node));
-    if (localPackage) {
-      String location = ybcManager.getYbcPackageTmpLocation(universe, node, ybcVersion);
-      builder.setLocation(location);
-    } else {
-      builder.setLocation(PLAT_YBC_PACKAGE_URL);
-    }
+    String location = ybcManager.getYbcPackageTmpLocation(universe, node, ybcVersion);
+    builder.setLocation(location);
     UpgradeRequest upgradeRequest = builder.build();
     YbcClient client = null;
     UpgradeResponse resp = null;
@@ -426,46 +426,32 @@ public class YbcUpgrade {
       Universe universe = Universe.getOrBadRequest(universeUUID);
       UpgradeResultRequest request =
           UpgradeResultRequest.newBuilder().setYbcVersion(ybcVersion).build();
-      Integer ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
+      int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
       String certFile = universe.getCertificateNodetoNode();
       boolean success = true;
       for (NodeDetails node : universe.getNodes()) {
         String nodeIp = node.cloudInfo.private_ip;
-        if (unreachableNodes.getOrDefault(universeUUID, new HashSet<>()).contains(nodeIp)) {
-          continue;
-        }
         YbcClient client = null;
         try {
           client = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);
           UpgradeResultResponse resp = client.UpgradeResult(request);
-          if (resp == null) {
-            throw new RuntimeException(
-                "Could not get upgrade task result on node " + nodeIp + " as it is not reachable");
-          }
-          if (resp.getStatus().equals(ControllerStatus.IN_PROGRESS)) {
+          if (resp == null || resp.getStatus().equals(ControllerStatus.IN_PROGRESS)) {
             success = false;
-            continue;
           } else if (resp.getStatus().equals(ControllerStatus.COMMAND_FAILED)) {
-            if (!nodesToBeUpgradedWithLocalPackage
-                .getOrDefault(universeUUID, new HashSet<>())
-                .contains(node)) {
-              // We will retry the upgrade only once by placing the ybc package on DB nodes.
-              nodesToBeUpgradedWithLocalPackage
-                  .getOrDefault(universeUUID, new HashSet<>())
-                  .add(node);
-              log.info(
-                  "Trying Ybc upgrade again on node {} by uploading ybc package {}",
-                  node.nodeName,
-                  ybcVersion);
-              placeYbcPackageOnDBNode(universe, node, ybcVersion);
-              upgradeYbcOnNode(universe, node, ybcVersion, true);
+            if (confGetter.getGlobalConf(GlobalConfKeys.forceYbcShutdownDuringUpgrade)) {
+              log.info("Shutting down ybc on node: {}", node.cloudInfo.private_ip);
+              shutdownYbcOnNode(universe, node);
               success = false;
-              continue;
             } else {
-              removeYBCUpgradeProcess(universeUUID);
-              failedYBCUpgradeUniverseSet.add(universeUUID);
+              log.error(
+                  "YBC upgrade failed on node: {} with error: {}",
+                  node.cloudInfo.private_ip,
+                  resp.toString());
               throw new RuntimeException(
-                  "YBC upgrade task failed on node " + nodeIp + "  universe " + universeUUID);
+                  "YBC upgrade failed on node: "
+                      + node.cloudInfo.private_ip
+                      + " with error: "
+                      + resp.getStatus());
             }
           } else if (!resp.getStatus().equals(ControllerStatus.COMPLETE)) {
             throw new RuntimeException(
@@ -475,6 +461,10 @@ public class YbcUpgrade {
                     + universeUUID
                     + ".");
           } else {
+            log.info(
+                "Found ybc version: {} on node: {}",
+                resp.getCurrentYbcVersion(),
+                node.cloudInfo.private_ip);
             // Verify that required version is upgraded.
             if (!resp.getCurrentYbcVersion().equals(ybcVersion)) {
               throw new RuntimeException(
@@ -515,34 +505,28 @@ public class YbcUpgrade {
     return true;
   }
 
-  public synchronized void shutdownYbc(Universe universe) {
-    Integer ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
+  public synchronized void shutdownYbcOnNode(Universe universe, NodeDetails node) {
+    int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     String certFile = universe.getCertificateNodetoNode();
     ShutdownRequest request = ShutdownRequest.newBuilder().build();
-    for (NodeDetails node : universe.getNodes()) {
-      String nodeIp = node.cloudInfo.private_ip;
-      if (unreachableNodes
-          .getOrDefault(universe.getUniverseUUID(), new HashSet<>())
-          .contains(nodeIp)) {
-        continue;
+    String nodeIp = node.cloudInfo.private_ip;
+    YbcClient client = null;
+    try {
+      client = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);
+      if (client == null) {
+        // Assuming ybc is already dead if YBA is unable to create yb-client.
+        return;
       }
-      YbcClient client = null;
-      try {
-        client = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);
-        if (client == null) {
-          // Assuming ybc is already dead if YBA is unable to create yb-client.
-          continue;
-        }
-        ShutdownResponse resp = client.shutdown(request);
-        if (!resp.getStatus().getCode().equals(ControllerStatus.OK)) {
-          log.error("YBC shutdown failed with error", resp);
-          throw new RuntimeException("YBC shutdown failed with error: " + resp.getStatus());
-        }
-      } catch (Exception e) {
-        throw e;
-      } finally {
-        ybcClientService.closeClient(client);
+      ShutdownResponse resp = client.shutdown(request);
+      if (!resp.getStatus().getCode().equals(ControllerStatus.OK)) {
+        log.error("YBC shutdown failed with error: {}", resp.toString());
+        throw new RuntimeException("YBC shutdown failed with error: " + resp.getStatus());
       }
+    } catch (Exception e) {
+      log.error("YBC shutdown failed with error: ", e);
+      throw e;
+    } finally {
+      ybcClientService.closeClient(client);
     }
   }
 
