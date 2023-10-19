@@ -1614,6 +1614,7 @@ class TabletBootstrap {
 
     ChangeMetadataOperation operation(tablet_, log_.get(), request);
     operation.set_op_id(op_id);
+    RETURN_NOT_OK(operation.Prepare(tablet::IsLeaderSide::kFalse));
 
     Status s;
     RETURN_NOT_OK(operation.Apply(yb::OpId::kUnknownTerm, &s));
