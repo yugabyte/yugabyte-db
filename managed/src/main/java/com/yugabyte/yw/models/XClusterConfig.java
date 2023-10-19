@@ -95,7 +95,7 @@ public class XClusterConfig extends Model {
    * for UI purposes.
    */
   @ApiModelProperty(
-      value = "The replication status of the source universe; used for disaster recover")
+      value = "The replication status of the source universe; used for disaster recovery")
   private SourceUniverseState sourceUniverseState;
 
   /**
@@ -103,8 +103,16 @@ public class XClusterConfig extends Model {
    * for UI purposes.
    */
   @ApiModelProperty(
-      value = "The replication status of the target universe; used for disaster recover")
+      value = "The replication status of the target universe; used for disaster recovery")
   private TargetUniverseState targetUniverseState;
+
+  /**
+   * In the application logic, <em>NEVER<em/> read from the following variable. This is only used
+   * for UI purposes.
+   */
+  @ApiModelProperty(
+      value = "The keyspace name that the xCluster task is working on; used for disaster recovery")
+  private String keyspacePending;
 
   public enum XClusterConfigStatusType {
     Initialized("Initialized"),

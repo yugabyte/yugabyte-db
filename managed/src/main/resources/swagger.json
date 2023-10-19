@@ -14277,6 +14277,10 @@
           "description" : "Whether this xCluster replication config was imported",
           "type" : "boolean"
         },
+        "keyspacePending" : {
+          "description" : "The keyspace name that the xCluster task is working on; used for disaster recovery",
+          "type" : "string"
+        },
         "modifyTime" : {
           "description" : "Last modify time of the xCluster config",
           "example" : "2022-12-12T13:07:18Z",
@@ -14310,7 +14314,7 @@
           "type" : "boolean"
         },
         "sourceUniverseState" : {
-          "description" : "The replication status of the source universe; used for disaster recover",
+          "description" : "The replication status of the source universe; used for disaster recovery",
           "enum" : [ "Unconfigured", "ReadyToReplicate", "WaitingForDr", "ReplicatingData", "PreparingSwitchover", "SwitchingToDrReplica", "DrFailed" ],
           "type" : "string"
         },
@@ -14350,7 +14354,7 @@
           "type" : "boolean"
         },
         "targetUniverseState" : {
-          "description" : "The replication status of the target universe; used for disaster recover",
+          "description" : "The replication status of the target universe; used for disaster recovery",
           "enum" : [ "Unconfigured", "Bootstrapping", "ReceivingData", "SwitchingToDrPrimary", "DrFailed" ],
           "type" : "string"
         },
@@ -14477,6 +14481,10 @@
           "description" : "Whether this xCluster replication config was imported",
           "type" : "boolean"
         },
+        "keyspacePending" : {
+          "description" : "The keyspace name that the xCluster task is working on; used for disaster recovery",
+          "type" : "string"
+        },
         "lag" : {
           "description" : "Lag metric data",
           "type" : "object"
@@ -14514,7 +14522,7 @@
           "type" : "boolean"
         },
         "sourceUniverseState" : {
-          "description" : "The replication status of the source universe; used for disaster recover",
+          "description" : "The replication status of the source universe; used for disaster recovery",
           "enum" : [ "Unconfigured", "ReadyToReplicate", "WaitingForDr", "ReplicatingData", "PreparingSwitchover", "SwitchingToDrReplica", "DrFailed" ],
           "type" : "string"
         },
@@ -14554,7 +14562,7 @@
           "type" : "boolean"
         },
         "targetUniverseState" : {
-          "description" : "The replication status of the target universe; used for disaster recover",
+          "description" : "The replication status of the target universe; used for disaster recovery",
           "enum" : [ "Unconfigured", "Bootstrapping", "ReceivingData", "SwitchingToDrPrimary", "DrFailed" ],
           "type" : "string"
         },

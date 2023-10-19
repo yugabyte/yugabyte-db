@@ -4431,13 +4431,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       XClusterConfig xClusterConfig,
       @Nullable DrConfigStates.State drConfigState,
       @Nullable SourceUniverseState sourceUniverseState,
-      @Nullable TargetUniverseState targetUniverseState) {
+      @Nullable TargetUniverseState targetUniverseState,
+      @Nullable String keyspacePending) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("SetDrStates");
     SetDrStates.Params params = new SetDrStates.Params();
     params.xClusterConfig = xClusterConfig;
     params.drConfigState = drConfigState;
     params.sourceUniverseState = sourceUniverseState;
     params.targetUniverseState = targetUniverseState;
+    params.keyspacePending = keyspacePending;
 
     SetDrStates task = createTask(SetDrStates.class);
     task.initialize(params);

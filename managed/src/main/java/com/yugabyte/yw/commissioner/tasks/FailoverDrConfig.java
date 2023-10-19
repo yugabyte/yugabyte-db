@@ -69,7 +69,8 @@ public class FailoverDrConfig extends EditDrConfig {
                   currentXClusterConfig,
                   State.SwitchoverInProgress,
                   SourceUniverseState.PreparingSwitchover,
-                  null /* targetUniverseState */)
+                  null /* targetUniverseState */,
+                  null /* keyspacePending */)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
           createWaitForReplicationDrainTask(currentXClusterConfig);
@@ -83,7 +84,8 @@ public class FailoverDrConfig extends EditDrConfig {
                   currentXClusterConfig,
                   State.FailoverInProgress,
                   SourceUniverseState.DrFailed,
-                  TargetUniverseState.SwitchingToDrPrimary)
+                  TargetUniverseState.SwitchingToDrPrimary,
+                  null /* keyspacePending */)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
           // The source and target universes are swapped in `failoverXClusterConfig`, so set the
@@ -93,7 +95,8 @@ public class FailoverDrConfig extends EditDrConfig {
                   failoverXClusterConfig,
                   null /* drConfigState */,
                   null /* sourceUniverseState */,
-                  TargetUniverseState.DrFailed)
+                  TargetUniverseState.DrFailed,
+                  null /* keyspacePending */)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
           // Delete the main replication config.
@@ -144,7 +147,8 @@ public class FailoverDrConfig extends EditDrConfig {
                   failoverXClusterConfig,
                   State.Halted,
                   null /* sourceUniverseState */,
-                  null /* targetUniverseState */)
+                  null /* targetUniverseState */,
+                  null /* keyspacePending */)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         } else {
           throw new IllegalArgumentException(
