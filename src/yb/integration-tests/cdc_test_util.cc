@@ -15,6 +15,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/cdc/cdc_service.pb.h"
 #include "yb/consensus/log.h"
 
 #include "yb/rpc/rpc_controller.h"
@@ -51,6 +52,7 @@ void CreateCDCStream(const std::unique_ptr<CDCServiceProxy>& cdc_proxy,
   CreateCDCStreamResponsePB resp;
   req.set_table_id(table_id);
   req.set_source_type(source_type);
+  req.set_checkpoint_type(IMPLICIT);
 
   rpc::RpcController rpc;
   ASSERT_OK(cdc_proxy->CreateCDCStream(req, &resp, &rpc));

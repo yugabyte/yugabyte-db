@@ -1644,7 +1644,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClient* client) {
           return ClusterAdminCli::kInvalidArguments;
         }
 
-        std::string checkpoint_type = yb::ToString("IMPLICIT");
+        std::string checkpoint_type = yb::ToString("EXPLICIT");
         std::string record_type = yb::ToString("CHANGE");
         std::string uppercase_checkpoint_type;
         std::string uppercase_record_type;
