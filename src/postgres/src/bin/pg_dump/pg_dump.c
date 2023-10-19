@@ -367,10 +367,7 @@ static void getYbTablePropertiesAndReloptions(Archive *fout,
 						PQExpBuffer reloptions_buf, Oid reloid, const char* relname,
 						char relkind);
 static void isDatabaseColocated(Archive *fout);
-#ifdef YB_TODO
-/* Need rework to match Pg15 */
 static char *getYbSplitClause(Archive *fout, const TableInfo *tbinfo);
-#endif
 static void ybDumpUpdatePgExtensionCatalog(Archive *fout);
 
 
@@ -15938,8 +15935,6 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 
 		destroyPQExpBuffer(yb_reloptions);
 
-#ifdef YB_TODO
-		/* Need rework to match Pg15 */
 		/* Additional properties for YB table or index. */
 		if (yb_properties != NULL && tbinfo->relkind != RELKIND_MATVIEW)
 		{
@@ -15955,6 +15950,8 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			}
 			/* else - single shard table - supported, no need to add anything */
 
+#ifdef YB_TODO
+			/* Need rework to match Pg15 */
 			if (!is_colocated_database && !dopt->no_tablegroups && dopt->include_yb_metadata &&
 				OidIsValid(yb_properties->tablegroup_oid))
 			{
@@ -15964,8 +15961,8 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 						  yb_properties->tablegroup_oid);
 				appendPQExpBuffer(q, "\nTABLEGROUP %s", tablegroup->dobj.name);
 			}
-		}
 #endif
+		}
 
 
 		/* Dump generic options if any */
@@ -19014,8 +19011,6 @@ isDatabaseColocated(Archive *fout)
 	destroyPQExpBuffer(query);
 }
 
-#ifdef YB_TODO
-/* Need rework to match Pg15 */
 /*
  * Load the YB range-partitioned table SPLIT AT Clause from the YB server.
  * The table is identified by the Relation OID.
@@ -19038,7 +19033,6 @@ getYbSplitClause(Archive *fout, const TableInfo *tbinfo)
 	destroyPQExpBuffer(query);
 	return range_split_clause;
 }
-#endif
 
 /*
  * Update pg_extension catalog to record correct configuration relations' OID.
