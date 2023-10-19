@@ -1091,4 +1091,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " Ex: [\"yb_task:dev\",\"yb_owner:dev\",\"yb_dept:eng\"]",
           ConfDataType.StringListType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> granularMetrics =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.granular_metrics",
+          ScopeType.UNIVERSE,
+          "Granular level metrics",
+          "View granular level metrics when user selects specific time period in a chart",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
