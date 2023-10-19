@@ -29,7 +29,7 @@ jobs:
     release_artifact: true
 
   - os: alma8
-    compiler: clang17
+    compiler: clang16
     build_type: debug
     architecture: aarch64
     release_artifact: false
