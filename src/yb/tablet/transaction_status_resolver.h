@@ -28,6 +28,7 @@ namespace yb {
 namespace tablet {
 
 struct TransactionStatusInfo {
+  TabletId status_tablet;
   TransactionId transaction_id = TransactionId::Nil();
   TransactionStatus status;
   SubtxnSet aborted_subtxn_set;
@@ -38,7 +39,8 @@ struct TransactionStatusInfo {
   Status expected_deadlock_status = Status::OK();
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(transaction_id, status, status_ht, coordinator_safe_time);
+    return YB_STRUCT_TO_STRING(
+        status_tablet, transaction_id, status, status_ht, coordinator_safe_time);
   }
 };
 
