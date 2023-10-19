@@ -380,7 +380,9 @@ public class XClusterConfigController extends AuthenticatedController {
                 columnName = "uuid")),
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
         resourceLocation =
             @Resource(
                 path = "sourceUniverseUUID",
@@ -390,7 +392,9 @@ public class XClusterConfigController extends AuthenticatedController {
                 columnName = "uuid")),
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
         resourceLocation =
             @Resource(
                 path = "targetUniverseUUID",
@@ -632,7 +636,9 @@ public class XClusterConfigController extends AuthenticatedController {
                 columnName = "uuid")),
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
         resourceLocation =
             @Resource(
                 path = "sourceUniverseUUID",
@@ -642,7 +648,9 @@ public class XClusterConfigController extends AuthenticatedController {
                 columnName = "uuid")),
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
         resourceLocation =
             @Resource(
                 path = "targetUniverseUUID",
@@ -927,11 +935,11 @@ public class XClusterConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT)),
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
         resourceLocation =
             @Resource(path = "targetUniverseUUID", sourceType = SourceType.REQUEST_BODY))
   })
@@ -1061,7 +1069,7 @@ public class XClusterConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
         resourceLocation =
             @Resource(
                 path = "sourceUniverseUUID",
@@ -1071,7 +1079,7 @@ public class XClusterConfigController extends AuthenticatedController {
                 columnName = "uuid")),
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
         resourceLocation =
             @Resource(
                 path = "targetUniverseUUID",

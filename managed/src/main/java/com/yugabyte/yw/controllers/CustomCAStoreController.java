@@ -62,7 +62,9 @@ public class CustomCAStoreController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+            @PermissionAttribute(
+                resourceType = ResourceType.OTHER,
+                action = Action.SUPER_ADMIN_ACTIONS),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
@@ -154,7 +156,9 @@ public class CustomCAStoreController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+            @PermissionAttribute(
+                resourceType = ResourceType.OTHER,
+                action = Action.SUPER_ADMIN_ACTIONS),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
@@ -201,7 +205,9 @@ public class CustomCAStoreController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+            @PermissionAttribute(
+                resourceType = ResourceType.OTHER,
+                action = Action.SUPER_ADMIN_ACTIONS),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
