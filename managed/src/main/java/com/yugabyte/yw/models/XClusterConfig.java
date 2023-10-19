@@ -14,6 +14,8 @@ import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbEnumValue;
@@ -95,7 +97,10 @@ public class XClusterConfig extends Model {
    * for UI purposes.
    */
   @ApiModelProperty(
-      value = "The replication status of the source universe; used for disaster recover")
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "The replication status of the source universe; used for disaster recovery")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   private SourceUniverseState sourceUniverseState;
 
   /**
@@ -103,7 +108,10 @@ public class XClusterConfig extends Model {
    * for UI purposes.
    */
   @ApiModelProperty(
-      value = "The replication status of the target universe; used for disaster recover")
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "The replication status of the target universe; used for disaster recovery")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   private TargetUniverseState targetUniverseState;
 
   public enum XClusterConfigStatusType {
@@ -145,7 +153,9 @@ public class XClusterConfig extends Model {
   @ApiModelProperty(value = "Whether this xCluster replication config is paused")
   private boolean paused;
 
-  @ApiModelProperty(value = "Whether this xCluster replication config was imported")
+  @ApiModelProperty(
+      value = "YbaApi Internal. Whether this xCluster replication config was imported")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.18.0.0")
   private boolean imported;
 
   @ApiModelProperty(value = "Create time of the xCluster config", example = "2022-12-12T13:07:18Z")
@@ -199,9 +209,17 @@ public class XClusterConfig extends Model {
   private DrConfig drConfig;
 
   @ApiModelProperty(
-      value = "Whether this xCluster config is used as a secondary config for a DR config")
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "Whether this xCluster config is used as a secondary config for a DR config")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   private boolean secondary;
 
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "The list of PITR configs used for the txn xCluster config")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.2.0")
   @OneToMany
   @JoinTable(
       name = "xcluster_pitr",
@@ -209,7 +227,13 @@ public class XClusterConfig extends Model {
       inverseJoinColumns = @JoinColumn(name = "pitr_uuid", referencedColumnName = "uuid"))
   private List<PitrConfig> pitrConfigs;
 
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "Whether the xCluster config is used as part of a DR config")
   @JsonProperty
+  // Todo: Uncomment the following after YbaApi utest supports JsonProperty annotation.
+  //  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public boolean isUsedForDr() {
     return maybeGetDrConfig().isPresent();
   }

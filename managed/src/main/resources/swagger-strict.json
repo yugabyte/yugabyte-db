@@ -13316,10 +13316,6 @@
           "format" : "date-time",
           "type" : "string"
         },
-        "imported" : {
-          "description" : "Whether this xCluster replication config was imported",
-          "type" : "boolean"
-        },
         "modifyTime" : {
           "description" : "Last modify time of the xCluster config",
           "example" : "2022-12-12T13:07:18Z",
@@ -13335,6 +13331,7 @@
           "type" : "boolean"
         },
         "pitrConfigs" : {
+          "description" : "WARNING: This is a preview API that could change. The list of PITR configs used for the txn xCluster config",
           "items" : {
             "$ref" : "#/definitions/PitrConfig"
           },
@@ -13345,7 +13342,7 @@
           "type" : "string"
         },
         "secondary" : {
-          "description" : "Whether this xCluster config is used as a secondary config for a DR config",
+          "description" : "WARNING: This is a preview API that could change. Whether this xCluster config is used as a secondary config for a DR config",
           "type" : "boolean"
         },
         "sourceActive" : {
@@ -13353,7 +13350,7 @@
           "type" : "boolean"
         },
         "sourceUniverseState" : {
-          "description" : "The replication status of the source universe; used for disaster recover",
+          "description" : "WARNING: This is a preview API that could change. The replication status of the source universe; used for disaster recovery",
           "enum" : [ "Unconfigured", "ReadyToReplicate", "WaitingForDr", "ReplicatingData", "PreparingSwitchover", "SwitchingToDrReplica", "DrFailed" ],
           "type" : "string"
         },
@@ -13393,7 +13390,7 @@
           "type" : "boolean"
         },
         "targetUniverseState" : {
-          "description" : "The replication status of the target universe; used for disaster recover",
+          "description" : "WARNING: This is a preview API that could change. The replication status of the target universe; used for disaster recovery",
           "enum" : [ "Unconfigured", "Bootstrapping", "ReceivingData", "SwitchingToDrPrimary", "DrFailed" ],
           "type" : "string"
         },
@@ -13408,6 +13405,7 @@
           "type" : "string"
         },
         "usedForDr" : {
+          "description" : "WARNING: This is a preview API that could change. Whether the xCluster config is used as part of a DR config",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -13417,7 +13415,6 @@
           "type" : "string"
         }
       },
-      "required" : [ "pitrConfigs" ],
       "type" : "object"
     },
     "XClusterConfigCreateFormData" : {
@@ -13516,10 +13513,6 @@
           "format" : "date-time",
           "type" : "string"
         },
-        "imported" : {
-          "description" : "Whether this xCluster replication config was imported",
-          "type" : "boolean"
-        },
         "lag" : {
           "description" : "Lag metric data",
           "type" : "object"
@@ -13539,6 +13532,7 @@
           "type" : "boolean"
         },
         "pitrConfigs" : {
+          "description" : "WARNING: This is a preview API that could change. The list of PITR configs used for the txn xCluster config",
           "items" : {
             "$ref" : "#/definitions/PitrConfig"
           },
@@ -13549,7 +13543,7 @@
           "type" : "string"
         },
         "secondary" : {
-          "description" : "Whether this xCluster config is used as a secondary config for a DR config",
+          "description" : "WARNING: This is a preview API that could change. Whether this xCluster config is used as a secondary config for a DR config",
           "type" : "boolean"
         },
         "sourceActive" : {
@@ -13557,7 +13551,7 @@
           "type" : "boolean"
         },
         "sourceUniverseState" : {
-          "description" : "The replication status of the source universe; used for disaster recover",
+          "description" : "WARNING: This is a preview API that could change. The replication status of the source universe; used for disaster recovery",
           "enum" : [ "Unconfigured", "ReadyToReplicate", "WaitingForDr", "ReplicatingData", "PreparingSwitchover", "SwitchingToDrReplica", "DrFailed" ],
           "type" : "string"
         },
@@ -13597,7 +13591,7 @@
           "type" : "boolean"
         },
         "targetUniverseState" : {
-          "description" : "The replication status of the target universe; used for disaster recover",
+          "description" : "WARNING: This is a preview API that could change. The replication status of the target universe; used for disaster recovery",
           "enum" : [ "Unconfigured", "Bootstrapping", "ReceivingData", "SwitchingToDrPrimary", "DrFailed" ],
           "type" : "string"
         },
@@ -13612,6 +13606,7 @@
           "type" : "string"
         },
         "usedForDr" : {
+          "description" : "WARNING: This is a preview API that could change. Whether the xCluster config is used as part of a DR config",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -13621,7 +13616,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "lag", "pitrConfigs" ],
+      "required" : [ "lag" ],
       "type" : "object"
     },
     "XClusterConfigNeedBootstrapFormData" : {
@@ -13680,6 +13675,7 @@
     "XClusterTableConfig" : {
       "properties" : {
         "backupUuid" : {
+          "description" : "The backup config used to do bootstrapping for this table",
           "format" : "uuid",
           "type" : "string"
         },
@@ -13689,17 +13685,6 @@
           "format" : "date-time",
           "type" : "string"
         },
-        "indexTable" : {
-          "type" : "boolean"
-        },
-        "needBootstrap" : {
-          "description" : "Whether this table needs bootstrap process for replication setup",
-          "type" : "boolean"
-        },
-        "replicationSetupDone" : {
-          "description" : "Whether replication is set up for this table",
-          "type" : "boolean"
-        },
         "restoreTime" : {
           "description" : "Time of the last try to restore data to the target universe",
           "example" : "2022-12-12T13:07:18Z",
@@ -13707,6 +13692,7 @@
           "type" : "string"
         },
         "restoreUuid" : {
+          "description" : "The restore config used to do bootstrapping for this table",
           "format" : "uuid",
           "type" : "string"
         },
@@ -13726,7 +13712,6 @@
           "type" : "string"
         }
       },
-      "required" : [ "indexTable" ],
       "type" : "object"
     },
     "YBPError" : {
@@ -15373,35 +15358,6 @@
       }
     },
     "/api/v1/customers/{cUUID}/backups" : {
-      "delete" : {
-        "deprecated" : true,
-        "description" : "",
-        "operationId" : "deleteBackups",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTasks"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Deprecated since YBA version 2.20.0.0. Use 'Delete backups V2' instead. Delete backups",
-        "tags" : [ "Backups" ]
-      },
       "post" : {
         "description" : "",
         "operationId" : "createbackup",
@@ -16293,45 +16249,6 @@
         } ],
         "summary" : "Get a cost estimate for all universes",
         "tags" : [ "Universe information" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/create_backup_schedule" : {
-      "post" : {
-        "deprecated" : true,
-        "description" : "",
-        "operationId" : "createBackupSchedule",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "Parameters of the backup to be restored",
-          "in" : "body",
-          "name" : "backup",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/BackupRequestParams"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/Schedule"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Deprecated since YBA version 2.20.0.0. Use 'Create Backup Schedule Async' instead. Create Backup Schedule",
-        "tags" : [ "Backups" ]
       }
     },
     "/api/v1/customers/{cUUID}/create_backup_schedule_async" : {
@@ -19591,36 +19508,6 @@
         "tags" : [ "Runtime configuration" ]
       }
     },
-    "/api/v1/customers/{cUUID}/schedules" : {
-      "get" : {
-        "deprecated" : true,
-        "description" : "",
-        "operationId" : "listSchedules",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/Schedule"
-              },
-              "type" : "array"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Deprecated since YBA version 2.20.0.0. Use 'List schedules V2' instead. List schedules",
-        "tags" : [ "Schedule management" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/schedules/page" : {
       "post" : {
         "description" : "",
@@ -19659,41 +19546,6 @@
       }
     },
     "/api/v1/customers/{cUUID}/schedules/{sUUID}" : {
-      "delete" : {
-        "deprecated" : true,
-        "description" : "",
-        "operationId" : "deleteSchedule",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "sUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Deprecated since YBA version 2.20.0.0. Use 'Delete a schedule V2' instead. Delete a schedule",
-        "tags" : [ "Schedule management" ]
-      },
       "get" : {
         "description" : "",
         "operationId" : "getSchedule",
@@ -20352,93 +20204,6 @@
         } ],
         "summary" : "Get a universe",
         "tags" : [ "Universe management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/backups" : {
-      "get" : {
-        "deprecated" : true,
-        "description" : "",
-        "operationId" : "ListOfBackups",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/Backup"
-              },
-              "type" : "array"
-            }
-          },
-          "500" : {
-            "description" : "If there was a server or database issue when listing the backups",
-            "schema" : {
-              "$ref" : "#/definitions/YBPError"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Deprecated since YBA version 2.20.0.0. Use 'List Backups (paginated) V2' instead. List a customer's backups",
-        "tags" : [ "Backups" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/backups/restore" : {
-      "post" : {
-        "deprecated" : true,
-        "description" : "",
-        "operationId" : "restore",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "Parameters of the backup to be restored",
-          "in" : "body",
-          "name" : "backup",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/BackupTableParams"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTask"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Deprecated since YBA version 2.20.0.0. Use 'Restore from a backup V2' instead. Restore from a backup",
-        "tags" : [ "Backups" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/backups/tasks/{tUUID}" : {
@@ -21197,7 +20962,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Whether tables need bootstrap before setting up cross cluster replication",
+        "summary" : "WARNING: This is a preview API that could change. Whether tables need bootstrap before setting up cross cluster replication",
         "tags" : [ "Asynchronous Replication" ]
       }
     },
@@ -23860,7 +23625,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create xcluster config",
+        "summary" : "Available since YBA version 2.16.0.0. Create xcluster config",
         "tags" : [ "Asynchronous Replication" ]
       }
     },
@@ -23897,7 +23662,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Sync xcluster config",
+        "summary" : "Available since YBA version 2.16.0.0. Sync xcluster config",
         "tags" : [ "Asynchronous Replication" ]
       }
     },
@@ -23939,7 +23704,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete xcluster config",
+        "summary" : "Available since YBA version 2.16.0.0. Delete xcluster config",
         "tags" : [ "Asynchronous Replication" ]
       },
       "get" : {
@@ -23969,7 +23734,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get xcluster config",
+        "summary" : "Available since YBA version 2.16.0.0. Get xcluster config",
         "tags" : [ "Asynchronous Replication" ]
       },
       "post" : {
@@ -24017,7 +23782,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Restart xcluster config",
+        "summary" : "Available since YBA version 2.16.0.0. Restart xcluster config",
         "tags" : [ "Asynchronous Replication" ]
       },
       "put" : {
@@ -24059,54 +23824,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Edit xcluster config",
-        "tags" : [ "Asynchronous Replication" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/xcluster_configs/{xccUUID}/need_bootstrap" : {
-      "post" : {
-        "description" : "",
-        "operationId" : "NeedBootstrapXClusterConfig",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "xccUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "XCluster Need Bootstrap Form Data",
-          "in" : "body",
-          "name" : "xcluster_need_bootstrap_form_data",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/XClusterConfigNeedBootstrapFormData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "additionalProperties" : {
-                "type" : "object"
-              },
-              "type" : "object"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Whether tables in an xCluster replication config have fallen far behind and need bootstrap",
+        "summary" : "Available since YBA version 2.16.0.0. Edit xcluster config",
         "tags" : [ "Asynchronous Replication" ]
       }
     },
