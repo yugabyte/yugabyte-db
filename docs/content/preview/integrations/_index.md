@@ -59,27 +59,28 @@ Version refers to the latest tested version of the integration.
 
 ### GUI clients
 
-| Tool | Support | Tutorial |
-| :--- | :--- | :--- |
-| Apache Superset   | Full | [Apache Superset](../tools/superset/) |
-| Arctype   | Full | [Arctype](../tools/arctype/) |
-| DBeaver   | Full | [DBeaver](../tools/dbeaver-ysql/) |
-| DbSchema  | Full | [DbSchema](../tools/dbschema/) |
-| Metabase  | Full | [Metabase](../tools/metabase/) |
-| pgAdmin   | Full | [pgAdmin](../tools/pgadmin/) |
-| SQL Workbench/J | Full | [SQL Workbench/J](../tools/sql-workbench/) |
-| TablePlus | Full | [TablePlus](../tools/tableplus/) |
+| Tool            | Version | Support | Tutorial |
+| :-------------- | :------ | :------ | :------- |
+| Apache Superset |         | Full    | [Apache Superset](../tools/superset/) |
+| Arctype         |         | Full    | [Arctype](../tools/arctype/) |
+| DataGrip        | 2023.2.2 | Full   |  |
+| DBeaver         | 23.2.2  | Full    | [DBeaver](../tools/dbeaver-ysql/) |
+| DbSchema        |         | Full    | [DbSchema](../tools/dbschema/) |
+| Metabase        |         | Full    | [Metabase](../tools/metabase/) |
+| pgAdmin         |         | Full    | [pgAdmin](../tools/pgadmin/) |
+| SQL Workbench/J |         | Full    | [SQL Workbench/J](../tools/sql-workbench/) |
+| TablePlus       |         | Full    | [TablePlus](../tools/tableplus/) |
 
 ### Application frameworks
 
-| Tool        | | Version      | Support | Tutorial |
+| Tool        |      | Version      | Support | Tutorial |
 | :---------- | :--- | :----------- | :------ | :------- |
 | AtomicJar Testcontainers | | | Partial | [AtomicJar Testcontainers](atomicjar/) |
 | Django | | 3.2 or later | Full | [Django REST Framework](django-rest-framework/) |
 | Hasura | | 1.3.3        | Full | [Hasura](hasura/) |
 | Spring | Spring Data YugabyteDB | 2.3.0          | Full | [Spring](spring-framework/) |
 |        | Spring Data JPA        | 2.6.3          | Full |  |
-|        | Spring Data Cassandra  | 2.2.12         | Full |  |
+|        | Spring Data Cassandra  | 2.2.12 / 3.06  | Full |  |
 
 ### Development platforms
 

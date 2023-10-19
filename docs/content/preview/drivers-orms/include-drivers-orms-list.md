@@ -37,8 +37,8 @@ private = true
 | PQ Driver  | [v1.10.2](https://github.com/lib/pq/releases/tag/v1.10.2/) | Full | [CRUD](/preview/drivers-orms/go/pq/) |
 | YugabyteDB Go Driver for YCQL | [3.16.3](https://github.com/yugabyte/gocql) | Full | [CRUD](/preview/drivers-orms/go/ycql) |
 | **ORMs** | | | |
-| GORM       | | Full | [CRUD](/preview/drivers-orms/go/gorm/) |
-| PG         | | Full | [CRUD](/preview/drivers-orms/go/pg/) |
+| GORM       |    | Full | [CRUD](/preview/drivers-orms/go/gorm/) |
+| PG         | [10](https://github.com/go-pg/pg) | Full | [CRUD](/preview/drivers-orms/go/pg/) |
 
   {{% /tab %}}
 
@@ -109,7 +109,7 @@ private = true
 | Pg Gem Driver                   | [1.5.4](https://github.com/ged/ruby-pg) | Full | [CRUD](/preview/drivers-orms/ruby/ysql-pg/) |
 | YugabyteDB Ruby Driver for YCQL | [3.2.3.2](https://github.com/yugabyte/cassandra-ruby-driver) | Full | [CRUD](/preview/drivers-orms/ruby/ycql/) |
 | **ORM**     | | | |
-| ActiveRecord                    | | Full | [CRUD](/preview/drivers-orms/ruby/activerecord/) |
+| Active Record                   | | Full | [CRUD](/preview/drivers-orms/ruby/activerecord/) |
 
   {{% /tab %}}
 
