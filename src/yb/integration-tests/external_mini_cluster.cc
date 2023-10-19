@@ -1319,7 +1319,7 @@ Status ExternalMiniCluster::WaitForInitDb() {
 }
 
 Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx, MonoDelta deadline) {
-  auto proxy = GetMasterProxy<master::MasterClusterProxy>();
+  auto proxy = GetLeaderMasterProxy<master::MasterClusterProxy>();
   std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
   master::ListTabletServersRequestPB req;
   master::ListTabletServersResponsePB resp;
