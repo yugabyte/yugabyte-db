@@ -76,6 +76,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/service_util.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -1096,6 +1097,12 @@ void CDCServiceImpl::CreateCDCStream(
             req->checkpoint_type(),
             StreamModeTransactional(req->transactional())));
   } else if (req->has_namespace_name()) {
+    // Return error if we see that no checkpoint type has been populated.
+    RPC_CHECK_AND_RETURN_ERROR(
+        req->has_checkpoint_type(),
+        STATUS(InvalidArgument, "Checkpoint type is required to create a CDCSDK stream"),
+        resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+
     auto deadline = GetDeadline(context, client());
     Status status = CreateCDCStreamForNamespace(req, resp, deadline);
     CDCError error(status);
