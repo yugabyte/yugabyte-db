@@ -243,7 +243,8 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                 xClusterConfig,
                 State.Initializing,
                 SourceUniverseState.Unconfigured,
-                TargetUniverseState.Unconfigured)
+                TargetUniverseState.Unconfigured,
+                null /* keyspacePending */)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       }
 
@@ -271,7 +272,8 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                 xClusterConfig,
                 State.Initializing,
                 SourceUniverseState.Unconfigured,
-                TargetUniverseState.Unconfigured)
+                TargetUniverseState.Unconfigured,
+                null /* keyspacePending */)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       }
 

@@ -187,7 +187,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
                 xClusterConfig,
                 null /* drConfigState */,
                 SourceUniverseState.ReadyToReplicate,
-                null /* targetUniverseState */)
+                null /* targetUniverseState */,
+                null /* keyspacePending */)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       }
 
@@ -275,7 +276,6 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
 
-    boolean isFirstNamespace = true;
     for (String namespaceName : dbToTablesInfoMapNeedBootstrap.keySet()) {
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoListNeedBootstrap =
           dbToTablesInfoMapNeedBootstrap.get(namespaceName);
@@ -298,12 +298,13 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
 
       // Create the following subtask only when the subtasks to set up replication for the first
       // namespace are being created.
-      if (isFirstNamespace && xClusterConfig.isUsedForDr()) {
+      if (xClusterConfig.isUsedForDr()) {
         createSetDrStatesTask(
                 xClusterConfig,
                 null /* drConfigState */,
                 SourceUniverseState.ReadyToReplicate,
-                null /* targetUniverseState */)
+                null /* targetUniverseState */,
+                namespaceName)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       }
 
@@ -368,12 +369,13 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RestoringBackup);
       }
 
-      if (isFirstNamespace && xClusterConfig.isUsedForDr()) {
+      if (xClusterConfig.isUsedForDr()) {
         createSetDrStatesTask(
                 xClusterConfig,
                 null /* drConfigState */,
                 SourceUniverseState.WaitingForDr,
-                TargetUniverseState.Bootstrapping)
+                TargetUniverseState.Bootstrapping,
+                namespaceName)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       }
 
@@ -432,7 +434,6 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         isReplicationConfigCreated = true;
       }
-      isFirstNamespace = false;
     }
 
     // After all the other subtasks are done, set the DR states to show replication is happening.
@@ -441,7 +442,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
               xClusterConfig,
               State.Replicating,
               SourceUniverseState.ReplicatingData,
-              TargetUniverseState.ReceivingData)
+              TargetUniverseState.ReceivingData,
+              null /* keyspacePending */)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
     }
   }
