@@ -66,7 +66,6 @@ public class TestPgRegressSecondaryIndexScan extends BasePgSQLTest {
     // The following queries run index scan on "airport_type_hash_idx" to find ybctid, which is
     // then use to query data from "airports".
     final String rowQuery =
-        "/*+Set(yb_bnl_batch_size 1)*/" +
         "SELECT elevation_ft FROM airports WHERE ident IN " +
         "  (SELECT ident FROM airports WHERE type = '%s' AND iso_country > '0');";
     final String batchQuery =
@@ -100,7 +99,6 @@ public class TestPgRegressSecondaryIndexScan extends BasePgSQLTest {
     // The following queries run index scan on "airport_type_range_idx" to find ybctid, which is
     // then use to query data from "airports".
     final String rowQuery =
-        "/*+Set(yb_bnl_batch_size 1)*/" +
         "SELECT elevation_ft FROM airports WHERE ident IN" +
         "  (SELECT ident FROM airports WHERE type = '%s' AND name > '!');";
     final String batchQuery =

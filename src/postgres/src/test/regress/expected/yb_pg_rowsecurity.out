@@ -305,10 +305,9 @@ EXPLAIN (COSTS OFF) SELECT * FROM document WHERE f_leak(dtitle);
 (6 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM document NATURAL JOIN category WHERE f_leak(dtitle);
-                                QUERY PLAN
----------------------------------------------------------------------------
- YB Batched Nested Loop Join
-   Join Filter: (document.cid = category.cid)
+                     QUERY PLAN
+----------------------------------------------------
+ Nested Loop
    InitPlan 1 (returns $0)
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
@@ -316,8 +315,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM document NATURAL JOIN category WHERE f_leak(dt
          Remote Filter: (dlevel <= $0)
          Filter: f_leak(dtitle)
    ->  Index Scan using category_pkey on category
-         Index Cond: (cid = ANY (ARRAY[document.cid, $2, $3, ..., $1024]))
-(10 rows)
+         Index Cond: (cid = document.cid)
+(9 rows)
 
 -- viewpoint from regress_rls_dave
 SET SESSION AUTHORIZATION regress_rls_dave;
@@ -373,8 +372,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM document WHERE f_leak(dtitle);
 EXPLAIN (COSTS OFF) SELECT * FROM document NATURAL JOIN category WHERE f_leak(dtitle);
                                        QUERY PLAN
 ----------------------------------------------------------------------------------------
- YB Batched Nested Loop Join
-   Join Filter: (document.cid = category.cid)
+ Nested Loop
    InitPlan 1 (returns $0)
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
@@ -382,8 +380,8 @@ EXPLAIN (COSTS OFF) SELECT * FROM document NATURAL JOIN category WHERE f_leak(dt
          Remote Filter: ((cid <> 44) AND (cid <> 44) AND (cid < 50) AND (dlevel <= $0))
          Filter: f_leak(dtitle)
    ->  Index Scan using category_pkey on category
-         Index Cond: (cid = ANY (ARRAY[document.cid, $2, $3, ..., $1024]))
-(10 rows)
+         Index Cond: (cid = document.cid)
+(9 rows)
 
 -- 44 would technically fail for both p2r and p1r, but we should get an error
 -- back from p1r for this because it sorts first
@@ -463,15 +461,14 @@ EXPLAIN (COSTS OFF) SELECT * FROM document WHERE f_leak(dtitle);
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM document NATURAL JOIN category WHERE f_leak(dtitle);
-                                QUERY PLAN
----------------------------------------------------------------------------
- YB Batched Nested Loop Join
-   Join Filter: (document.cid = category.cid)
+                          QUERY PLAN
+---------------------------------------------------------------
+ Nested Loop
    ->  Seq Scan on document
          Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
    ->  Index Scan using category_pkey on category
-         Index Cond: (cid = ANY (ARRAY[document.cid, $1, $2, ..., $1023]))
-(6 rows)
+         Index Cond: (cid = document.cid)
+(5 rows)
 
 -- interaction of FK/PK constraints
 SET SESSION AUTHORIZATION regress_rls_alice;
