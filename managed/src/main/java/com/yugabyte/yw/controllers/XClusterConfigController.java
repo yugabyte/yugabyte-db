@@ -45,6 +45,8 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
@@ -119,7 +121,7 @@ public class XClusterConfigController extends AuthenticatedController {
    */
   @ApiOperation(
       nickname = "createXClusterConfig",
-      value = "Create xcluster config",
+      value = "Available since YBA version 2.16.0.0. Create xcluster config",
       response = YBPTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -154,6 +156,7 @@ public class XClusterConfigController extends AuthenticatedController {
         resourceLocation =
             @Resource(path = "targetUniverseUUID", sourceType = SourceType.REQUEST_BODY))
   })
+  @YbaApi(visibility = YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.16.0.0")
   public Result create(UUID customerUUID, Http.Request request) {
     log.info("Received create XClusterConfig request");
 
@@ -264,7 +267,7 @@ public class XClusterConfigController extends AuthenticatedController {
    */
   @ApiOperation(
       nickname = "getXClusterConfig",
-      value = "Get xcluster config",
+      value = "Available since YBA version 2.16.0.0. Get xcluster config",
       response = XClusterConfigGetResp.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -288,6 +291,7 @@ public class XClusterConfigController extends AuthenticatedController {
                 identifier = "xcluster_configs",
                 columnName = "uuid"))
   })
+  @YbaApi(visibility = YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.16.0.0")
   public Result get(UUID customerUUID, UUID xclusterConfigUUID) {
     log.info("Received get XClusterConfig({}) request", xclusterConfigUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -344,7 +348,7 @@ public class XClusterConfigController extends AuthenticatedController {
    */
   @ApiOperation(
       nickname = "editXClusterConfig",
-      value = "Edit xcluster config",
+      value = "Available since YBA version 2.16.0.0. Edit xcluster config",
       response = YBPTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -395,6 +399,7 @@ public class XClusterConfigController extends AuthenticatedController {
                 identifier = "xcluster_configs",
                 columnName = "uuid"))
   })
+  @YbaApi(visibility = YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.16.0.0")
   public Result edit(UUID customerUUID, UUID xclusterConfigUUID, Http.Request request) {
     log.info("Received edit XClusterConfig({}) request", xclusterConfigUUID);
 
@@ -595,7 +600,7 @@ public class XClusterConfigController extends AuthenticatedController {
    */
   @ApiOperation(
       nickname = "restartXClusterConfig",
-      value = "Restart xcluster config",
+      value = "Available since YBA version 2.16.0.0. Restart xcluster config",
       response = YBPTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -646,6 +651,7 @@ public class XClusterConfigController extends AuthenticatedController {
                 identifier = "xcluster_configs",
                 columnName = "uuid"))
   })
+  @YbaApi(visibility = YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.16.0.0")
   public Result restart(
       UUID customerUUID, UUID xClusterConfigUUID, boolean isForceDelete, Http.Request request) {
     log.info(
@@ -750,7 +756,7 @@ public class XClusterConfigController extends AuthenticatedController {
    */
   @ApiOperation(
       nickname = "deleteXClusterConfig",
-      value = "Delete xcluster config",
+      value = "Available since YBA version 2.16.0.0. Delete xcluster config",
       response = YBPTask.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -774,6 +780,7 @@ public class XClusterConfigController extends AuthenticatedController {
                 identifier = "xcluster_configs",
                 columnName = "uuid"))
   })
+  @YbaApi(visibility = YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.16.0.0")
   public Result delete(
       UUID customerUUID, UUID xClusterConfigUuid, boolean isForceDelete, Http.Request request) {
     log.info(
@@ -844,7 +851,7 @@ public class XClusterConfigController extends AuthenticatedController {
    */
   @ApiOperation(
       nickname = "syncXClusterConfig",
-      value = "Sync xcluster config",
+      value = "Available since YBA version 2.16.0.0. Sync xcluster config",
       response = YBPTask.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -853,6 +860,7 @@ public class XClusterConfigController extends AuthenticatedController {
         resourceLocation =
             @Resource(path = "targetUniverseUUID", sourceType = SourceType.REQUEST_BODY))
   })
+  @YbaApi(visibility = YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.16.0.0")
   public Result sync(UUID customerUUID, UUID targetUniverseUUID, Http.Request request) {
     // Parse and validate request
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -905,7 +913,9 @@ public class XClusterConfigController extends AuthenticatedController {
    */
   @ApiOperation(
       nickname = "needBootstrapTable",
-      value = "Whether tables need bootstrap before setting up cross cluster replication",
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "Whether tables need bootstrap before setting up cross cluster replication",
       response = Map.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -925,6 +935,7 @@ public class XClusterConfigController extends AuthenticatedController {
         resourceLocation =
             @Resource(path = "targetUniverseUUID", sourceType = SourceType.REQUEST_BODY))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.16.0.0")
   public Result needBootstrapTable(
       UUID customerUuid, UUID sourceUniverseUuid, String configTypeString, Http.Request request) {
     // Parse and validate request.
@@ -1037,8 +1048,8 @@ public class XClusterConfigController extends AuthenticatedController {
   @ApiOperation(
       nickname = "NeedBootstrapXClusterConfig",
       value =
-          "Whether tables in an xCluster replication config have fallen far behind and need "
-              + "bootstrap",
+          "YbaApi Internal. Whether tables in an xCluster replication config have fallen far behind"
+              + " and need bootstrap",
       response = Map.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -1069,6 +1080,7 @@ public class XClusterConfigController extends AuthenticatedController {
                 identifier = "xcluster_configs",
                 columnName = "uuid"))
   })
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.16.0.0")
   public Result needBootstrap(UUID customerUuid, UUID xClusterConfigUuid, Http.Request request) {
     log.info("Received needBootstrap request for xClusterConfigUuid={}", xClusterConfigUuid);
 
