@@ -168,15 +168,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
-  public static final ConfKeyInfo<Boolean> granularMetrics =
-      new ConfKeyInfo<>(
-          "yb.ui.feature_flags.granular_metrics",
-          ScopeType.UNIVERSE,
-          "Granular level metrics",
-          "View granular level metrics when user selects specific time period in a chart",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
-
   public static final ConfKeyInfo<Boolean> pgBasedBackup =
       new ConfKeyInfo<>(
           "yb.backup.pg_based",
