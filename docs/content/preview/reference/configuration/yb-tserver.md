@@ -1189,12 +1189,16 @@ Use of this flag can potentially result in expiration of live data. Use at your 
 
 ##### --export_help_and_type_in_prometheus_metrics
 
-TServer metrics are available in Prometheus format at
-`http://localhost:9000/prometheus_metrics`.  This flag controls whether
+YB-TServer metrics are available in Prometheus format at
+`http://localhost:9000/prometheus-metrics`.  This flag controls whether
 #TYPE and #HELP information is included as part of the Prometheus
-metrics output by default.  This choice can be overridden on a
-per-scrape basis by passing the URL parameter `show_help` with value
-`true` to include or `false` to not include type and help information.
+metrics output by default.
+
+To override this flag on a per-scrape basis, set the URL parameter
+`show_help` to `true` to include or to `false` to not include type and
+help information.  For example, querying
+`http://localhost:9000/prometheus-metrics?show_help=true` will return
+type and help information regardless of the setting of this flag.
 
 Default: `true`
 
