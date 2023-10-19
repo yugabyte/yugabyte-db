@@ -18,6 +18,8 @@ Yugabyte has partnered with open-source projects and vendors to support the foll
 | Full    | Compatibility with the vast majority of the tool or driver features is maintained. These tools are regularly tested against the latest version documented. |
 | Partial | Core functions, such as connecting and performing basic database operations, are compatible with YugabyteDB. Full integration may require additional steps, and some features may not be supported or exhibit unexpected behavior. These tools will eventually have full support from YugabyteDB. |
 
+Version refers to the latest tested version of the integration.
+
 ## Choose your integration
 
 ### Drivers and ORMs
@@ -26,34 +28,34 @@ Yugabyte has partnered with open-source projects and vendors to support the foll
 
 ### Schema migration
 
-| Tool | Version | Support | Tutorial |
-| :--- | :--- | :--- | :--- |
-| Liquibase | | Full | [Liquibase](liquibase/) |
-| Flyway    | | Partial | [Flyway](flyway/) |
-| Prisma    | | Full | [Prisma](prisma/) |
+| Tool      | Version | Support | Tutorial |
+| :-------- | :------ | :------ | :------- |
+| Liquibase | 4.23.1  | Full    | [Liquibase](liquibase/) |
+| Flyway    | 7.11.2  | Partial | [Flyway](flyway/) |
+| Prisma    | 5.1.0   | Full    | [Prisma](prisma/) |
 | Schema Evolution Manager | 0.9.47 | Partial | [Schema Evolution Manager](schema-evolution-mgr/) |
 
 ### Data migration
 
-| Tool | Version | Support | Tutorial |
-| :--- | :--- | :--- | :--- |
-| PGmigrate | 1.0.7 | Partial | [PGmigrate](pgmigrate/) |
+| Tool      | Version | Support | Tutorial |
+| :---------| :------ | :------ | :------- |
+| PGmigrate | 1.0.7   | Partial | [PGmigrate](pgmigrate/) |
 | YSQL Loader (pgloader) | | Full | [YSQL Loader](ysql-loader/) |
 
 ### Data integration (CDC)
 
-| Tool | Version | Support | Tutorial |
-| :--- | :--- | :--- | :--- |
-| Apache Beam    | | Partial | [Apache Beam](apache-beam/) |
-| Apache Flink   | 1.17.1 | Partial | [Apache Flink](apache-flink/) |
-| Apache Kafka   | | Full | [Apache Kafka](apache-kafka/) |
-| Akka Persistence | | Partial | [Akka Persistence](akka-ysql/) |
-| Confluent      | | Full | [Confluent Cloud](../explore/change-data-capture/cdc-tutorials/cdc-confluent-cloud/) |
-| Debezium       | | Full | [Debezium](cdc/debezium/) |
-| Hevo Data      | | Partial | [Hevo Data](hevodata/) |
-| Kinesis Data Streams | | Full | [Kinesis](kinesis/) |
-| RabbitMQ       | | Partial | [RabbitMQ](rabbitmq/) |
-| Synapse        | | Full | [Synapse](../explore/change-data-capture/cdc-tutorials/cdc-azure-event-hub/) |
+| Tool           | Version | Support | Tutorial |
+| :------------- | :------ | :------ | :------- |
+| Apache Beam    | 2.49.0  | Partial | [Apache Beam](apache-beam/) |
+| Apache Flink   | 1.17.1  | Partial | [Apache Flink](apache-flink/) |
+| Apache Kafka   |         | Full | [Apache Kafka](apache-kafka/) |
+| Akka Persistence | 1.0.1 | Partial | [Akka Persistence](akka-ysql/) |
+| Confluent      | 7.4.0   | Full | [Confluent Cloud](../explore/change-data-capture/cdc-tutorials/cdc-confluent-cloud/) |
+| Debezium       |         | Full | [Debezium](cdc/debezium/) |
+| Hevo Data      | 1.66    | Partial | [Hevo Data](hevodata/) |
+| Kinesis Data Streams |   | Full | [Kinesis](kinesis/) |
+| RabbitMQ       | 3.11.21 | Partial | [RabbitMQ](rabbitmq/) |
+| Synapse        |         | Full | [Synapse](../explore/change-data-capture/cdc-tutorials/cdc-azure-event-hub/) |
 
 ### GUI clients
 
@@ -79,21 +81,21 @@ Yugabyte has partnered with open-source projects and vendors to support the foll
 
 ### Development platforms
 
-| IDE | Support | Tutorial |
-| :--- | :--- | :--- |
-| Caspio | Partial | [Caspio](caspio/) |
-| Retool | Partial | [Retool](retool/) |
-| Superblocks | Partial | [Superblocks](superblocks/) |
-| Visual Studio Code | Partial | [Cassandra Workbench](../tools/visualstudioworkbench/) |
+| IDE         | Version | Support | Tutorial |
+| :---------- | :------ | :------ | :------- |
+| Caspio      |         | Partial | [Caspio](caspio/) |
+| Retool      | 3.1     | Partial | [Retool](retool/) |
+| Superblocks |         | Partial | [Superblocks](superblocks/) |
+<!-- tool not maintained | Visual Studio Code |  | Partial | [Cassandra Workbench](../tools/visualstudioworkbench/) | -->
 
 ### Data discovery and metadata
 
-| Tool | Support | Tutorial |
-| :--- | :--- | :--- |
-| Dataedo     | Partial | [Dataedo](dataedo/) |
-| Datahub     | Partial | [Datahub](datahub/) |
-| DQ Analyzer | Partial | [Ataccama DQ Analyzer](ataccama/) |
-| Metacat     | Partial | [Metacat](metacat/) |
+| Tool        | Version      | Support | Tutorial |
+| :---------- | :----------- | :------ | :--- |
+| Dataedo     | 23.x         | Partial | [Dataedo](dataedo/) |
+| Datahub     | v0.10.5      | Partial | [Datahub](datahub/) |
+| DQ Analyzer |              | Partial | [Ataccama DQ Analyzer](ataccama/) |
+| Metacat     | 1.3.0-rc.105 | Partial | [Metacat](metacat/) |
 
 ### Security
 
@@ -104,21 +106,21 @@ Yugabyte has partnered with open-source projects and vendors to support the foll
 
 ### Applications powered by YugabyteDB
 
-| Tool | Support | Tutorial |
-| :--- | :--- | :--- |
-| Camunda | Partial | [Camunda](camunda/) |
+| Tool    | Version | Support | Tutorial |
+| :------ | :------ | :------ | :------- |
+| Camunda | 7       | Partial | [Camunda](camunda/) |
 
 ### Other
 
-| Tool | Latest tested version | Support | Tutorial |
-| :--- | :--- | :--- | :--- |
-| Apache Atlas | 2.30 | Partial | [Apache Atlas](atlas-ycql/) |
-| Apache Spark | 3.30 | Full | [Apache Spark](apache-spark/) |
-| Jaeger       |      | Full | [Jaeger](jaeger/) |
-| JanusGraph   |      | Full | [JanusGraph](janusgraph/) |
-| KairosDB     |      | Full | [KairosDB](kairosdb/) |
-| Mirantis MKE |      | Partial | [Mirantis](mirantis/) |
-| Presto       |      | Partial | [Presto](presto/) |
+| Tool         | Version | Support | Tutorial |
+| :----------- | :------ | :------ | :------- |
+| Apache Atlas | 2.30    | Partial | [Apache Atlas](atlas-ycql/) |
+| Apache Spark | 3.30    | Full    | [Apache Spark](apache-spark/) |
+| Jaeger       |         | Full    | [Jaeger](jaeger/) |
+| JanusGraph   |         | Full    | [JanusGraph](janusgraph/) |
+| KairosDB     | 1.3.0   | Full    | [KairosDB](kairosdb/) |
+| Mirantis MKE |         | Partial | [Mirantis](mirantis/) |
+| Presto       |         | Partial | [Presto](presto/) |
 
 <!--
 <ul class="nav yb-pills">
