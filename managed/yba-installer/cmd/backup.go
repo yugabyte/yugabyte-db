@@ -34,7 +34,7 @@ func CreateBackupScript(outputPath string, dataDir string,
 	args := []string{"create", "--output", outputPath, "--data_dir", dataDir,
 		"--yba_installer"}
 	if excludePrometheus {
-		args = append(args, "--exclude-prometheus")
+		args = append(args, "--exclude_prometheus")
 	}
 	if skipRestart {
 		args = append(args, "--skip_restart")
