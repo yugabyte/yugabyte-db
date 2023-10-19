@@ -1600,6 +1600,13 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
     }
   }
 
+  // We limit the response's size.
+  auto response_size_limit = std::numeric_limits<std::size_t>::max();
+
+  if (request_.has_size_limit() && request_.size_limit() > 0) {
+    response_size_limit = request_.size_limit() * 1_KB;
+  }
+
   auto projection = CreateProjection(doc_read_context.schema(), request_);
   dockv::PgTableRow row(projection);
   std::optional<FilteringIterator> iter;
@@ -1633,11 +1640,21 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
         ++row_count;
         break;
     }
+
+    if (result_buffer->size() >= response_size_limit) {
+      VLOG(1) << "Stopped iterator after " << row_count << " rows fetched (out of "
+              << request_.batch_arguments_size() << " matches). Response buffer size: "
+              << result_buffer->size() << ", response size limit: " << response_size_limit;
+      break;
+    }
   }
 
   // Set status for this batch.
-  // Mark all rows were processed even in case some of the ybctids were not found.
-  response_.set_batch_arg_count(request_.batch_arguments_size());
+  if (result_buffer->size() >= response_size_limit)
+    response_.set_batch_arg_count(row_count);
+  else
+    // Mark all rows were processed even in case some of the ybctids were not found.
+    response_.set_batch_arg_count(request_.batch_arguments_size());
 
   return row_count;
 }
