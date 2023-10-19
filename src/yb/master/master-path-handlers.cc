@@ -2152,13 +2152,9 @@ vector<string> GetTabletUnderReplicatedPlacements(
       VLOG_WITH_FUNC(1) << "Skipping replica in state " << RaftGroupStatePB_Name(replica.state);
       continue;
     }
-    auto& ts_desc = replica.ts_desc;
-    if (!ts_desc->IsLiveAndHasReported()) {
-      VLOG_WITH_FUNC(1) << "Skipping not live TS " << ts_desc->permanent_uuid();
-      continue;
-    }
 
     // Decrement counters in the relevant placement.
+    auto& ts_desc = replica.ts_desc;
     VLOG_WITH_FUNC(1) << "Processing tablet replica on TS " << ts_desc->permanent_uuid();
     for (auto* placement : placements) {
       if (placement->placement_uuid() == ts_desc->placement_uuid()) {
