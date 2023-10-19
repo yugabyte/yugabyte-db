@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <sstream>
 
 #include "yb/master/ysql_transaction_ddl.h"
 
@@ -75,6 +76,16 @@ bool IsTableModifiedByTransaction(TableInfo* table,
     return false;
   }
   return true;
+}
+
+string PrintPgCols(const vector<YsqlTransactionDdl::PgColumnFields>& pg_cols) {
+  std::stringstream ss;
+  ss << "{ ";
+  for (const auto& col : pg_cols) {
+    ss << "{" << col.attname << ", " << col.order << "} ";
+  }
+  ss << "}";
+  return ss.str();
 }
 
 } // namespace
@@ -333,7 +344,8 @@ Status YsqlTransactionDdl::PgSchemaCheckerWithReadTime(
       *result = true;
       return Status::OK();
     }
-    CHECK(l->is_being_created_by_ysql_ddl_txn());
+    CHECK(l->is_being_created_by_ysql_ddl_txn())
+        << table->ToString() << " " << l->pb.ysql_ddl_txn_verifier_state(0).ShortDebugString();
     *result = false;
     return Status::OK();
   }
@@ -394,7 +406,12 @@ Status YsqlTransactionDdl::PgSchemaCheckerWithReadTime(
 
   // The PG catalog schema does not match either the current schema nor the previous schema. This
   // is an unexpected state, do nothing.
-  return STATUS_FORMAT(IllegalState, "Failed to verify transaction for table $0",
+  LOG(WARNING) << "Unexpected state for table " << table->ToString() << " with current schema "
+               << schema.ToString() << " and previous schema " << previous_schema.ToString()
+               << " and PG catalog schema " << PrintPgCols(pg_cols)
+               << ". The transaction verification state is "
+               << l->ysql_ddl_txn_verifier_state().ShortDebugString();
+  return STATUS_FORMAT(Corruption, "Failed to verify DDL transaction for table $0",
                        table->ToString());
 }
 
@@ -403,41 +420,49 @@ bool YsqlTransactionDdl::MatchPgDocDBSchemaColumns(
   const Schema& schema,
   const vector<YsqlTransactionDdl::PgColumnFields>& pg_cols) {
 
-  const string& fail_msg = "Schema mismatch for table " + table->ToString();
+  const string& fail_msg = "Schema mismatch for table " + table->ToString() + " with schema "
+                          + schema.ToString() + " and PG catalog schema " + PrintPgCols(pg_cols);
   const std::vector<ColumnSchema>& columns = schema.columns();
 
-  size_t i = 0;
+  size_t pg_idx = 0;
   for (const auto& col : columns) {
     // 'ybrowid' is a column present only in DocDB. Skip it.
-    if (col.name() == "ybrowid") {
+    if (col.name() == "ybrowid" || col.name() == "ybidxbasectid") {
       continue;
     }
 
-    if (col.marked_for_deletion() && i < pg_cols.size() && col.order() == pg_cols[i].order) {
+    if (col.marked_for_deletion() && pg_idx < pg_cols.size() &&
+        col.order() == pg_cols[pg_idx].order) {
       LOG(INFO) << fail_msg << " Column " << col.name() << " is marked for deletion but found it "
           "in PG catalog";
       return false;
     }
 
-    if (i >= pg_cols.size()) {
+    // The column is marked for deletion on DocDB side. We didn't find it in the PG catalog as
+    // expected, so safely skip this column.
+    if (col.marked_for_deletion()) {
+      continue;
+    }
+
+    if (pg_idx >= pg_cols.size()) {
       LOG(INFO) << fail_msg << " Expected num_columns: " << columns.size()
                 << " but found num_columns in PG: " << pg_cols.size();
       return false;
     }
 
-    if (col.name().compare(pg_cols[i].attname) != 0) {
-      LOG(INFO) << fail_msg << " Expected column name for attnum: " << pg_cols[i].order
-                << " is :" << col.name() << " but column name at PG is " << pg_cols[i].attname;
+    if (col.name().compare(pg_cols[pg_idx].attname) != 0) {
+      LOG(INFO) << fail_msg << " Expected column name for attnum: " << pg_cols[pg_idx].order
+                << " is :" << col.name() << " but column name at PG is " << pg_cols[pg_idx].attname;
       return false;
     }
 
     // Verify whether attnum matches.
-    if (col.order() != pg_cols[i].order) {
-      LOG(INFO) << fail_msg << " At index " << i << " expected attnum is " << col.order()
-                << " but actual attnum is " << pg_cols[i].order;
+    if (col.order() != pg_cols[pg_idx].order) {
+      LOG(INFO) << fail_msg << " At index " << pg_idx << " expected attnum is " << col.order()
+                << " but actual attnum is " << pg_cols[pg_idx].order;
       return false;
     }
-    i++;
+    pg_idx++;
   }
 
   return true;

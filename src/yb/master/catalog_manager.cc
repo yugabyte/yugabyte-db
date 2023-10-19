@@ -5981,6 +5981,12 @@ Status CatalogManager::DeleteTable(
                   MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
+  if (req->ysql_ddl_rollback_enabled()) {
+    DCHECK(req->has_transaction());
+    DCHECK(req->transaction().has_transaction_id());
+    RETURN_NOT_OK(WaitForDdlVerificationToFinish(table, req->transaction().transaction_id()));
+  }
+
   scoped_refptr<TableInfo> indexed_table;
   if (req->is_index_table()) {
     TRACE("Looking up index");
@@ -6771,14 +6777,18 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     }
   }
 
+  if (req->ysql_ddl_rollback_enabled()) {
+    DCHECK(req->has_transaction());
+    DCHECK(req->transaction().has_transaction_id());
+    RETURN_NOT_OK(WaitForDdlVerificationToFinish(table, req->transaction().transaction_id()));
+  }
+
   TRACE("Locking table");
   auto l = table->LockForWrite();
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   // If the table is already undergoing an alter operation, return failure.
   if (req->ysql_ddl_rollback_enabled() && l->has_ysql_ddl_txn_verifier_state()) {
-    DCHECK(req->has_transaction());
-    DCHECK(req->transaction().has_transaction_id());
     if (l->pb_transaction_id() != req->transaction().transaction_id()) {
       const Status s = STATUS(TryAgain, "Table is undergoing DDL transaction verification");
       return SetupError(resp->mutable_error(), MasterErrorPB::TABLE_SCHEMA_CHANGE_IN_PROGRESS, s);
@@ -7231,6 +7241,10 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     if (tablegroup) {
       resp->set_tablegroup_id(tablegroup->id());
     }
+  }
+
+  if (l->has_ysql_ddl_txn_verifier_state()) {
+    resp->add_ysql_ddl_txn_verifier_state()->CopyFrom(l->ysql_ddl_txn_verifier_state());
   }
 
   VLOG(1) << "Serviced GetTableSchema request for " << req->ShortDebugString() << " with "

@@ -520,6 +520,10 @@ Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
 
         TRACE("Locking table");
         auto l = table_info->LockForRead();
+        if (l->has_ysql_ddl_txn_verifier_state()) {
+          return STATUS_FORMAT(IllegalState, "Table $0 is undergoing DDL verification, retry later",
+                               table_info->id());
+        }
         // PG schema name is available for YSQL table only, except for colocation parent tables.
         if (l->table_type() == PGSQL_TABLE_TYPE && !IsColocationParentTableId(entry.id())) {
           const auto res = GetPgSchemaName(table_info);

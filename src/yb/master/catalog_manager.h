@@ -445,6 +445,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status YsqlDdlTxnDropTableHelper(
       TableInfo* table, TableInfo::WriteLock* l, const LeaderEpoch& epoch);
 
+  Status WaitForDdlVerificationToFinish(
+      const scoped_refptr<TableInfo>& table, const std::string& pb_txn_id);
+
   // Get the information about the specified table.
   Status GetTableSchema(const GetTableSchemaRequestPB* req,
                         GetTableSchemaResponsePB* resp) override;
