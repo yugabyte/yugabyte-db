@@ -93,6 +93,7 @@ public class Util {
   public static final String CUSTOMERS = "customers";
   public static final String UNIVERSES = "universes";
   public static final String USERS = "users";
+  public static final String ROLE = "role";
   public static final String UNIVERSE_UUID = "universeUUID";
 
   public static final String AVAILABLE_MEMORY = "MemAvailable";
