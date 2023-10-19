@@ -64,6 +64,7 @@ public class ExplainAnalyzeUtils {
     PlanCheckerBuilder relationName(String value);
     PlanCheckerBuilder parentRelationship(String value);
     PlanCheckerBuilder actualLoops(ValueChecker<Long> checker);
+    PlanCheckerBuilder actualRows(ValueChecker<Long> checker);
 
     // Table Reads
     // The type of param is Checker and not ValueChecker<> since
