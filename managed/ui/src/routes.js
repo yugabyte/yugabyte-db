@@ -37,7 +37,7 @@ import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
 import { Replication } from './pages/Replication';
 import UniverseNewView from './pages/UniverseNewView';
 import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
-import { clearRbacCreds, isRbacEnabled } from './redesign/features/rbac/common/RbacUtils';
+import { clearRbacCreds, getRbacEnabledVal, isRbacEnabled } from './redesign/features/rbac/common/RbacUtils';
 
 /**
  * Redirects to base url if no queryParmas is set else redirects to path set in queryParam
@@ -123,7 +123,9 @@ axios.interceptors.response.use(
   (response) => response,
   (error) => {
     // skip 401 response for "/login" and "/register" endpoints
-    if(isRbacEnabled()) return Promise.reject(error);
+    //rbac is not loaded yet or it is enabled
+    if(getRbacEnabledVal() === null || isRbacEnabled()) return Promise.reject(error);
+
     const isAllowedUrl = /.+\/(login|register)$/i.test(error.request.responseURL);
     const isUnauthorised = error.response?.status === 401;
     if (isUnauthorised && !isAllowedUrl) {
