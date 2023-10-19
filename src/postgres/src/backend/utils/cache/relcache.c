@@ -1525,9 +1525,17 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
 		relation->rd_partdesc   = NULL;
 		relation->rd_pdcxt      = NULL;
 
+		/*
+		 * initialize access method information
+		 */
 		if (relation->rd_rel->relkind == RELKIND_INDEX ||
 			relation->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
 			RelationInitIndexAccessInfo(relation);
+		else if (RELKIND_HAS_TABLE_AM(relation->rd_rel->relkind) ||
+				 relation->rd_rel->relkind == RELKIND_SEQUENCE)
+			RelationInitTableAccessMethod(relation);
+		else
+			Assert(relation->rd_rel->relam == InvalidOid);
 
 		/* extract reloptions if any */
 		RelationParseRelOptions(relation, pg_class_tuple);
