@@ -16878,7 +16878,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Refresh KMS Config",
+        "summary" : "WARNING: This is a preview API that could change. Refresh KMS Config",
         "tags" : [ "Encryption at rest" ]
       }
     },
@@ -21288,6 +21288,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/kms" : {
       "delete" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "removeKeyRefHistory",
         "parameters" : [ {
@@ -21318,112 +21319,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Remove a universe's key reference history",
-        "tags" : [ "Encryption at rest" ]
-      },
-      "get" : {
-        "description" : "",
-        "operationId" : "getKeyRefHistory",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "items" : {
-                "type" : "object"
-              },
-              "type" : "array"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Get a universe's key reference history",
-        "tags" : [ "Encryption at rest" ]
-      },
-      "post" : {
-        "description" : "",
-        "operationId" : "retrieveKey",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "additionalProperties" : {
-                "type" : "object"
-              },
-              "type" : "object"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Retrive a universe's KMS key",
-        "tags" : [ "Encryption at rest" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/kms/key_ref" : {
-      "get" : {
-        "description" : "",
-        "operationId" : "getCurrentKeyRef",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "additionalProperties" : {
-                "type" : "object"
-              },
-              "type" : "object"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Get a universe's key reference",
+        "summary" : "Deprecated since YBA version 2.20.0.0. Do not use. This API removes a universe's key reference history",
         "tags" : [ "Encryption at rest" ]
       }
     },
