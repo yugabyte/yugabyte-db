@@ -1185,6 +1185,19 @@ Default: `false`
 Use of this flag can potentially result in expiration of live data. Use at your discretion.
 {{< /warning >}}
 
+## Metric export flags
+
+##### --export_help_and_type_in_prometheus_metrics
+
+TServer metrics are available in Prometheus format at
+`http://localhost:9000/prometheus_metrics`.  This flag controls whether
+#TYPE and #HELP information is included as part of the Prometheus
+metrics output by default.  This choice can be overridden on a
+per-scrape basis by passing the URL parameter `show_help` with value
+`true` to include or `false` to not include type and help information.
+
+Default: `true`
+
 ## PostgreSQL server options
 
 YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances.

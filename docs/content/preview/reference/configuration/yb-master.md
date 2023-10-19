@@ -734,6 +734,19 @@ WAL retention time, in seconds, to be used for tables for which a CDC stream was
 
 Default: `14400` (4 hours)
 
+## Metric export flags
+
+##### --export_help_and_type_in_prometheus_metrics
+
+Master metrics are available in Prometheus format at
+`http://localhost:7000/prometheus_metrics`.  This flag controls whether
+#TYPE and #HELP information is included as part of the Prometheus
+metrics output by default.  This choice can be overridden on a
+per-scrape basis by passing the URL parameter `show_help` with value
+`true` to include or `false` to not include type and help information.
+
+Default: `true`
+
 ## Admin UI
 
 The Admin UI for YB-Master is available at <http://localhost:7000>.
