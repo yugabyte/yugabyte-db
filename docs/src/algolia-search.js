@@ -79,26 +79,28 @@ import algoliasearch from 'algoliasearch';
       let highlightContent = '';
       if (hit._highlightResult.title.matchLevel !== 'full' && hit._highlightResult.description.matchLevel !== 'full') {
         let partialHeaderMatched = 0;
-        hit._highlightResult.headers.every(pageHeader => {
-          if (pageHeader.matchLevel) {
-            if (pageHeader.matchLevel === 'full') {
-              pageHash = `#${pageHeader.value.toLowerCase().trim()}`;
-              pageHash = pageHash.replace(/<em>|<\/em>/g, '').replace(/\s+|_/g, '-');
-            } else if (pageHeader.matchLevel === 'partial') {
-              if (pageHeader.matchedWords.length > partialHeaderMatched) {
-                partialHeaderMatched = pageHeader.matchedWords.length;
+        if (hit._highlightResult.headers) {
+          hit._highlightResult.headers.every(pageHeader => {
+            if (pageHeader.matchLevel) {
+              if (pageHeader.matchLevel === 'full') {
                 pageHash = `#${pageHeader.value.toLowerCase().trim()}`;
                 pageHash = pageHash.replace(/<em>|<\/em>/g, '').replace(/\s+|_/g, '-');
+              } else if (pageHeader.matchLevel === 'partial') {
+                if (pageHeader.matchedWords.length > partialHeaderMatched) {
+                  partialHeaderMatched = pageHeader.matchedWords.length;
+                  pageHash = `#${pageHeader.value.toLowerCase().trim()}`;
+                  pageHash = pageHash.replace(/<em>|<\/em>/g, '').replace(/\s+|_/g, '-');
+                }
+              }
+
+              if (pageHeader.matchLevel === 'full') {
+                return false;
               }
             }
 
-            if (pageHeader.matchLevel === 'full') {
-              return false;
-            }
-          }
-
-          return true;
-        });
+            return true;
+          });
+        }
 
         if (pageHash === '' && hit._highlightResult.content.matchLevel === 'full') {
           const contentValue = hit.content;
