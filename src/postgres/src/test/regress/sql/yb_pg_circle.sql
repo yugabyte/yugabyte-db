@@ -2,6 +2,9 @@
 -- CIRCLE
 --
 
+-- avoid bit-exact output here because operations may not be bit-exact.
+SET extra_float_digits = 0;
+
 CREATE TABLE CIRCLE_TBL (id int primary key, f1 circle);
 
 INSERT INTO CIRCLE_TBL VALUES (1, '<(5,1),3>');

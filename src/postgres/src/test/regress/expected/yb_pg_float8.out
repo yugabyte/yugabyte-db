@@ -210,7 +210,7 @@ SELECT '' AS three, f.f1, f.f1 / '-10' AS x
  three |          f1          |           x
 -------+----------------------+-----------------------
        | 1.2345678901234e-200 | -1.2345678901234e-201
-       |               1004.3 |               -100.43
+       |               1004.3 |   -100.42999999999999
        | 1.2345678901234e+200 | -1.2345678901234e+199
 (3 rows)
 
@@ -226,9 +226,9 @@ SELECT '' AS three, f.f1, f.f1 - '-10' AS x
 
 SELECT '' AS one, f.f1 ^ '2.0' AS square_f1
    FROM FLOAT8_TBL f where f.f1 = '1004.3' ORDER BY f1;
- one | square_f1
------+------------
-     | 1008618.49
+ one |     square_f1
+-----+--------------------
+     | 1008618.4899999999
 (1 row)
 
 -- absolute value
@@ -310,6 +310,8 @@ select sign(f1) as sign_f1 from float8_tbl f ORDER BY f1;
        1
 (5 rows)
 
+-- avoid bit-exact output here because operations may not be bit-exact.
+SET extra_float_digits = 0;
 -- square root
 SELECT sqrt(float8 '64') AS eight;
  eight
@@ -414,6 +416,7 @@ SELECT '' AS five, * FROM FLOAT8_TBL ORDER BY f1;
       |                     0
 (5 rows)
 
+RESET extra_float_digits;
 -- test for over- and underflow
 INSERT INTO FLOAT8_TBL(f1) VALUES ('10e400');
 ERROR:  "10e400" is out of range for type double precision
@@ -453,7 +456,6 @@ SELECT '' AS five, * FROM FLOAT8_TBL ORDER BY f1;
 (5 rows)
 
 -- test exact cases for trigonometric functions in degrees
-SET extra_float_digits = 3;
 SELECT x,
        sind(x),
        sind(x) IN (-1,-0.5,0,0.5,1) AS sind_exact
@@ -555,4 +557,3 @@ FROM (SELECT 10*cosd(a), 10*sind(a)
   10 |   0 |      0 | t
 (5 rows)
 
-RESET extra_float_digits;
