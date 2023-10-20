@@ -54,6 +54,7 @@ CREATE TABLE chat_user("chatID" text NOT NULL, PRIMARY KEY("chatID"));
 
 DROP USER IF EXISTS regress_rls_alice;
 CREATE USER regress_rls_alice NOLOGIN;
+GRANT CREATE ON SCHEMA public TO regress_rls_alice;
 SET SESSION AUTHORIZATION regress_rls_alice;
 CREATE TABLE uaccount (pguser      name, seclv       int, PRIMARY KEY(pguser ASC));
 ALTER TABLE uaccount ENABLE ROW LEVEL SECURITY;

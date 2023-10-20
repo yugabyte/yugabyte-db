@@ -145,7 +145,7 @@ SET row_security = off;
 -- Name: system_platform; Type: DATABASE; Schema: -; Owner: postgres
 --
 
-CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8';
+CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8';
 
 
 ALTER DATABASE system_platform OWNER TO postgres;
@@ -216,7 +216,7 @@ SET row_security = off;
 -- Name: yugabyte; Type: DATABASE; Schema: -; Owner: postgres
 --
 
-CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8';
+CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LC_COLLATE = 'C' LC_CTYPE = 'en_US.UTF-8';
 
 
 ALTER DATABASE yugabyte OWNER TO postgres;
@@ -271,8 +271,6 @@ CREATE TABLEGROUP grp_without_spc;
 ALTER TABLEGROUP grp_without_spc OWNER TO yugabyte_test;
 
 SET default_tablespace = tsp1;
-
-SET default_with_oids = false;
 
 --
 -- Name: table1; Type: TABLE; Schema: public; Owner: yugabyte_test; Tablespace: tsp1
