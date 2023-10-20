@@ -281,6 +281,4 @@ You need to perform the following steps:
   docker push us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/prom/prometheus:v2.41.0
   ```
 
-  ![img](/images/yp/docker-image.png)
-
 - Follow [Specify custom container registry](../../install-software/kubernetes/#specify-custom-container-registry) to install YugabyteDB Anywhere with the images from your private registry.
