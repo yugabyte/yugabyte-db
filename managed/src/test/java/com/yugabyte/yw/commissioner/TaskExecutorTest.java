@@ -35,10 +35,11 @@ import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
-import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
@@ -92,7 +93,12 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.ResizeNode,
           TaskType.StartNodeInUniverse,
           TaskType.StopNodeInUniverse,
-          TaskType.CloudProviderDelete);
+          TaskType.CloudProviderDelete,
+          TaskType.ReinstallNodeAgent,
+          TaskType.CloudBootstrap,
+          TaskType.KubernetesOverridesUpgrade,
+          TaskType.GFlagsKubernetesUpgrade,
+          TaskType.SoftwareKubernetesUpgrade);
 
   @Override
   protected Application provideApplication() {
@@ -170,7 +176,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
               ITask task = (ITask) objects[0];
               // Create a new task info object.
               TaskInfo taskInfo = new TaskInfo(TaskType.BackupUniverse);
-              taskInfo.setDetails(RedactingService.filterSecretFields(task.getTaskDetails()));
+              taskInfo.setDetails(
+                  RedactingService.filterSecretFields(task.getTaskDetails(), RedactionTarget.APIS));
               taskInfo.setOwner("test-owner");
               return taskInfo;
             })
@@ -618,5 +625,12 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     verify(subTask, times(1)).setTaskUUID(any());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     assertEquals(TaskInfo.State.Success, subTaskInfos.get(0).getTaskState());
+  }
+
+  @Test
+  public void testTaskValidationFailure() {
+    ITask task = mockTaskCommon(false);
+    doThrow(new IllegalArgumentException("Validation failed")).when(task).validateParams();
+    assertThrows(IllegalArgumentException.class, () -> taskExecutor.createRunnableTask(task));
   }
 }

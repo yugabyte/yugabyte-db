@@ -3,7 +3,7 @@ title: YSQL window functions
 linkTitle: Window functions
 headerTitle: Window functions
 description: This section covers the syntax and semantics for all supported window functions in YSQL.
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   preview:
     identifier: window-functions
@@ -11,6 +11,7 @@ menu:
 aliases:
   - /preview/api/ysql/exprs/window_functions
 type: indexpage
+showRightNav: true
 ---
 If you are already familiar with window functions, then you can skip straight to the [syntax and semantics](./invocation-syntax-semantics/) section or the section that lists all of [the YSQL window functions](./function-syntax-semantics/) and that links, in turn, to the definitive account of each function.
 
@@ -50,17 +51,17 @@ Window functions differ from aggregate functions in this way:
 
 The remaining pages are organized as follows:
 
-### Informal overview of function invocation using the OVER clause: [here](./functionality-overview/)
+### Informal overview of function invocation using the OVER clause
 
-Skip this section entirely if you are already familiar with window functions. It presents five code examples. This section focuses on the _effect_ that each illustrated function has. It leaves their formal definitions to the [invocation syntax and semantics](./invocation-syntax-semantics/) section.
+**[Here](./functionality-overview/)**. Skip this section entirely if you are already familiar with window functions. It presents five code examples. This section focuses on the _effect_ that each illustrated function has. It leaves their formal definitions to the [invocation syntax and semantics](./invocation-syntax-semantics/) section.
 
-### Window function invocation—SQL syntax and semantics: [here](./invocation-syntax-semantics/)
+### Window function invocation—SQL syntax and semantics
 
-This section presents the formal treatment of the syntax and semantics of how a window function, or an aggregate function, is invoked as a special kind of `SELECT` list item in conjunction with the `OVER` keyword.
+**[Here](./invocation-syntax-semantics/)**. This section presents the formal treatment of the syntax and semantics of how a window function, or an aggregate function, is invoked as a special kind of `SELECT` list item in conjunction with the `OVER` keyword.
 
-### Signature and purpose of each window function: [here](./function-syntax-semantics/)
+### Signature and purpose of each window function
 
-The following list groups the eleven window functions in the same way that the sidebar items group them. The rationale for the grouping is explained in the referenced sections.
+**[Here](./function-syntax-semantics/)**. The following list groups the eleven window functions in the same way that the sidebar items group them. The rationale for the grouping is explained in the referenced sections.
 
 &#160;&#160;&#160;&#160;&#160;&#160;[`row_number()`](./function-syntax-semantics/row-number-rank-dense-rank/#row-number)<br>
 &#160;&#160;&#160;&#160;&#160;&#160;[`rank()`](./function-syntax-semantics/row-number-rank-dense-rank/#rank)<br>
@@ -79,9 +80,9 @@ The following list groups the eleven window functions in the same way that the s
 
 &#160;&#160;&#160;&#160;&#160;&#160;[The data sets used by the code examples](./function-syntax-semantics/data-sets/)
 
-### Analyzing a normal distribution with percent_rank(), cume_dist() and ntile(): [here](./analyzing-a-normal-distribution/)
+### Analyzing a normal distribution with percent_rank(), cume_dist() and ntile()
 
-Regard this section as an optional extra. It answers an interesting question:
+**[Here](./analyzing-a-normal-distribution/)**. Regard this section as an optional extra. It answers an interesting question:
 
 - If you want to allocate a row set into buckets where each contains the same number of rows, based on your ordering rule, is there any difference between the result produced by using, in turn, each of the three functions `percent_rank()`, `cume_dist()`, or `ntile()`?
 

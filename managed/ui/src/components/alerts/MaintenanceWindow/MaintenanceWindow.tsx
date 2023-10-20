@@ -1,4 +1,4 @@
-import React, { FC, useState } from 'react';
+import { FC, useState } from 'react';
 import { useQuery } from 'react-query';
 import { MaintenanceWindowSchema } from '.';
 import { fetchUniversesList } from '../../../actions/xClusterReplication';

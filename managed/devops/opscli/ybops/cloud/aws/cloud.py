@@ -76,6 +76,9 @@ class AwsCloud(AbstractCloud):
     def get_image_arch(self, args):
         return get_image_arch(args.region, args.machine_image)
 
+    def get_image_root_label(self, args):
+        return get_root_label(args.region, args.machine_image)
+
     def get_spot_pricing(self, args):
         return get_spot_pricing(args.region, args.zone, args.instance_type)
 
@@ -446,14 +449,12 @@ class AwsCloud(AbstractCloud):
                 node_uuid=node_uuid_tags[0] if node_uuid_tags else None,
                 universe_uuid=universe_uuid_tags[0] if universe_uuid_tags else None,
                 vpc=data["VpcId"],
-                ami=data.get("ImageId", None),
                 instance_state=instance_state,
                 is_running=True if instance_state == "running" else False
             )
             disks = data.get("BlockDeviceMappings")
             root_vol = next((d for d in disks if
-                            d.get("DeviceName") == get_root_label(
-                                result["region"], result["ami"])), None)
+                            d.get("DeviceName") == data.get("RootDeviceName")), None)
             ebs = root_vol.get("Ebs") if root_vol else None
             result["root_volume"] = ebs.get("VolumeId") if ebs else None
             if not get_all:
@@ -510,7 +511,7 @@ class AwsCloud(AbstractCloud):
 
         # persistent spot requests might have more than one instance associated with them
         # so terminate them all
-        if(instance.spot_instance_request_id):
+        if (instance.spot_instance_request_id):
             spot_request_id = instance.spot_instance_request_id
             client = boto3.client('ec2', region)
             response = client.describe_spot_instance_requests(
@@ -621,8 +622,8 @@ class AwsCloud(AbstractCloud):
             raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
         update_disk(args, instance["id"])
 
-    def change_instance_type(self, args, newInstanceType):
-        change_instance_type(args["region"], args["id"], newInstanceType)
+    def change_instance_type(self, args, instance_type):
+        change_instance_type(args["region"], args["id"], instance_type)
 
     def stop_instance(self, host_info):
         ec2 = boto3.resource('ec2', host_info["region"])
@@ -660,6 +661,22 @@ class AwsCloud(AbstractCloud):
             else:
                 raise YBOpsRuntimeError("Failed to start instance {}: {}".format(
                     host_info["id"], e))
+
+    def update_user_data(self, args):
+        if args.boot_script is None:
+            return
+        new_user_data = ''
+        with open(args.boot_script, 'r') as script:
+            new_user_data = script.read()
+        instance = self.get_host_info(args)
+        logging.info("[app] Updating the user_data for the instance {}".format(instance['id']))
+        try:
+            ec2 = boto3.client('ec2', region_name=instance['region'])
+            ec2.modify_instance_attribute(InstanceId=instance['id'],
+                                          UserData={'Value': new_user_data})
+        except ClientError as e:
+            logging.exception('Failed to update user_data for {}'.format(args.search_pattern))
+            raise e
 
     def get_console_output(self, args):
         instance = self.get_host_info(args)

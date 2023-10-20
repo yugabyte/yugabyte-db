@@ -36,6 +36,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -107,13 +108,16 @@ void DocRowwiseIterator::InitIterator(
       statistics_);
   InitResult();
 
-  if (is_forward_scan_ && has_bound_key_) {
-    db_iter_->SetUpperbound(bound_key_);
-  }
-
   auto prefix = shared_key_prefix();
-  if (!prefix.empty()) {
-    prefix_scope_.emplace(prefix, db_iter_.get());
+  if (is_forward_scan_ && has_bound_key_ &&
+      bound_key_.data().data()[0] != dockv::KeyEntryTypeAsChar::kHighest) {
+    DCHECK(bound_key_.AsSlice().starts_with(prefix))
+        << "Bound key: " << bound_key_.AsSlice().ToDebugHexString()
+        << ", prefix: " << prefix.ToDebugHexString();
+    upperbound_scope_.emplace(bound_key_, db_iter_.get());
+  } else {
+    DCHECK(!upperbound().empty());
+    upperbound_scope_.emplace(upperbound(), db_iter_.get());
   }
 }
 
@@ -138,7 +142,9 @@ Result<bool> DocRowwiseIterator::PgFetchRow(Slice key, bool restart, dockv::PgTa
   prev_doc_found_ = DocReaderResult::kNotFound;
   done_ = false;
 
-  IntentAwareIteratorPrefixScope prefix_scope(key, db_iter_.get());
+  Slice upperbound(key.data(), key.end() + 1);
+  DCHECK_EQ(upperbound.end()[-1], dockv::KeyEntryTypeAsChar::kHighest);
+  IntentAwareIteratorUpperboundScope upperbound_scope(upperbound, db_iter_.get());
   if (restart) {
     db_iter_->Seek(key);
   } else {
@@ -297,7 +303,7 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     if (doc_reader_ == nullptr) {
       doc_reader_ = std::make_unique<DocDBTableReader>(
           db_iter_.get(), read_operation_data_.deadline, &projection_, table_type_,
-          schema_packing_storage());
+          schema_packing_storage(), schema());
       RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(
           VERIFY_RESULT(GetTableTombstoneTime(row_key))));
       if (!ignore_ttl_) {
@@ -330,14 +336,14 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
 Result<DocReaderResult> DocRowwiseIterator::FetchRow(
     const FetchedEntry& fetched_entry, dockv::PgTableRow* table_row) {
   CHECK_NE(doc_mode_, DocMode::kGeneric) << "Table type: " << table_type_;
-  return doc_reader_->GetFlat(row_key_, fetched_entry, table_row);
+  return doc_reader_->GetFlat(row_key_.mutable_data(), fetched_entry, table_row);
 }
 
 Result<DocReaderResult> DocRowwiseIterator::FetchRow(
     const FetchedEntry& fetched_entry, QLTableRowPair table_row) {
   return doc_mode_ == DocMode::kFlat
-      ? doc_reader_->GetFlat(row_key_, fetched_entry, table_row.table_row)
-      : doc_reader_->Get(row_key_, fetched_entry, &*row_);
+      ? doc_reader_->GetFlat(row_key_.mutable_data(), fetched_entry, table_row.table_row)
+      : doc_reader_->Get(row_key_.mutable_data(), fetched_entry, &*row_);
 }
 
 Status DocRowwiseIterator::FillRow(dockv::PgTableRow* out) {

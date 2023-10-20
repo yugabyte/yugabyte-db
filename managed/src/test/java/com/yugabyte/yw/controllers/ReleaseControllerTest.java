@@ -18,9 +18,9 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.OK;
+import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -70,6 +70,15 @@ public class ReleaseControllerTest extends FakeDBApplication {
 
   private Result getReleasesProvider(UUID customerUUID, UUID providerUUID) {
     String uri = "/api/customers/" + customerUUID + "/providers/" + providerUUID + "/releases";
+    return doRequestWithAuthToken("GET", uri, user.createAuthToken());
+  }
+
+  public Result getReleaseArch(UUID customerUUID, Architecture arch) {
+    String uri = "/api/customers/" + customerUUID + "/releases";
+    if (arch != null) {
+      uri += String.format("?arch=%s", arch.toString());
+    }
+    System.out.println("uri here: " + uri);
     return doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
 
@@ -246,7 +255,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
     ObjectNode body = Json.newObject();
     UUID randomUUID = UUID.randomUUID();
     Result result = createRelease(randomUUID, body);
-    assertEquals(FORBIDDEN, result.status());
+    assertEquals(UNAUTHORIZED, result.status());
 
     String resultString = contentAsString(result);
     assertEquals(resultString, "Unable To Authenticate User");
@@ -476,6 +485,28 @@ public class ReleaseControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testGetReleasesByArch() {
+    mockNewReleaseData(true);
+    Result result = getReleaseArch(customer.getUuid(), Architecture.aarch64);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(OK, result.status());
+    Set<String> versions = ImmutableSet.of("0.0.3", "0.0.5");
+    assertEquals(versions.size(), json.size());
+    Iterator<JsonNode> jsonIter = json.iterator();
+    while (jsonIter.hasNext()) {
+      assertTrue(versions.contains(jsonIter.next().asText()));
+    }
+    result = getReleaseArch(customer.getUuid(), Architecture.x86_64);
+    json = Json.parse(contentAsString(result));
+    versions = ImmutableSet.of("0.0.2", "0.0.3", "0.0.4");
+    assertEquals(versions.size(), json.size());
+    jsonIter = json.iterator();
+    while (jsonIter.hasNext()) {
+      assertTrue(versions.contains(jsonIter.next().asText()));
+    }
+  }
+
+  @Test
   public void testUpdateRelease() {
     ReleaseManager.ReleaseMetadata metadata = ReleaseManager.ReleaseMetadata.create("0.0.1");
     when(mockReleaseManager.getReleaseByVersion("0.0.1")).thenReturn(metadata);
@@ -545,7 +576,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
   public void testRefreshReleaseInvalidCustomer() {
     UUID randomUUID = UUID.randomUUID();
     Result result = refreshReleases(randomUUID);
-    assertEquals(FORBIDDEN, result.status());
+    assertEquals(UNAUTHORIZED, result.status());
 
     String resultString = contentAsString(result);
     assertEquals(resultString, "Unable To Authenticate User");

@@ -24,8 +24,6 @@ class MetricEntity;
 
 namespace client {
 
-YB_STRONGLY_TYPED_BOOL(ForceGlobalTransaction);
-
 // Pool that maintains set of preallocated ready transactions.
 // The size of the pool is auto adjusted, i.e. the more transactions we request - the more
 // transactions will be allocated.

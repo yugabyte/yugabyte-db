@@ -36,6 +36,7 @@ import com.yugabyte.yw.models.Audit.TargetType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.UniversePerfAdvisorRun;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.Api;
@@ -82,8 +83,11 @@ public class PerfAdvisorController extends AuthenticatedController {
   @Inject private PerfAdvisorScheduler perfAdvisorScheduler;
 
   @ApiOperation(
-      value = "Get performance recommendation details",
+      value =
+          "WARNING: This is a preview API that could change. Get performance recommendation"
+              + " details",
       response = PerformanceRecommendation.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
   public Result get(UUID customerUUID, UUID recommendationUuid) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -96,7 +100,9 @@ public class PerfAdvisorController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List performance recommendations (paginated)",
+      value =
+          "WARNING: This is a preview API that could change. List performance recommendations"
+              + " (paginated)",
       response = PerformanceRecommendationPagedResponse.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -104,6 +110,7 @@ public class PerfAdvisorController extends AuthenticatedController {
           paramType = "body",
           dataType = "org.yb.perf_advisor.models.paging.PerformanceRecommendationPagedQuery",
           required = true))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
   public Result page(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -123,13 +130,16 @@ public class PerfAdvisorController extends AuthenticatedController {
     return PlatformResults.withData(response);
   }
 
-  @ApiOperation(value = "Hide performance recommendations", response = YBPSuccess.class)
+  @ApiOperation(
+      value = "YbaApi Internal. Hide performance recommendations",
+      response = YBPSuccess.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "HidePerformanceRecommendationsRequest",
           paramType = "body",
           dataType = "org.yb.perf_advisor.filters.PerformanceRecommendationFilter",
           required = true))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.18.0.0")
   public Result hide(UUID customerUUID, Http.Request request) {
     return updateRecommendations(
         customerUUID,
@@ -137,13 +147,16 @@ public class PerfAdvisorController extends AuthenticatedController {
         request);
   }
 
-  @ApiOperation(value = "Resolve performance recommendations", response = YBPSuccess.class)
+  @ApiOperation(
+      value = "YbaApi Internal. Resolve performance recommendations",
+      response = YBPSuccess.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "ResolvePerformanceRecommendationsRequest",
           paramType = "body",
           dataType = "org.yb.perf_advisor.filters.PerformanceRecommendationFilter",
           required = true))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.18.0.0")
   public Result resolve(UUID customerUUID, Http.Request request) {
     return updateRecommendations(
         customerUUID,
@@ -151,13 +164,18 @@ public class PerfAdvisorController extends AuthenticatedController {
         request);
   }
 
-  @ApiOperation(value = "Delete performance recommendations", response = YBPSuccess.class)
+  @ApiOperation(
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "Delete performance recommendations",
+      response = YBPSuccess.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "DeletePerformanceRecommendationsRequest",
           paramType = "body",
           dataType = "org.yb.perf_advisor.filters.PerformanceRecommendationFilter",
           required = true))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
   public Result delete(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -204,7 +222,9 @@ public class PerfAdvisorController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List performance recommendations state change audit events (paginated)",
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "List performance recommendations state change audit events (paginated)",
       response = StateChangeAuditInfoPagedResponse.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -212,6 +232,7 @@ public class PerfAdvisorController extends AuthenticatedController {
           paramType = "body",
           dataType = "org.yb.perf_advisor.models.paging.StateChangeAuditInfoPagedQuery",
           required = true))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
   public Result pageAuditInfo(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -231,8 +252,11 @@ public class PerfAdvisorController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Get universe performance advisor settings",
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "Get universe performance advisor settings",
       response = PerfAdvisorSettingsWithDefaults.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
   public Result getSettings(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -268,7 +292,11 @@ public class PerfAdvisorController extends AuthenticatedController {
     return PlatformResults.withData(result);
   }
 
-  @ApiOperation(value = "Update universe performance advisor settings", response = YBPSuccess.class)
+  @ApiOperation(
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "Update universe performance advisor settings",
+      response = YBPSuccess.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "PerformanceAdvisorSettingsRequest",
@@ -276,6 +304,7 @@ public class PerfAdvisorController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.PerfAdvisorSettingsFormData",
           required = true))
   @Transactional
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
   public Result updateSettings(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -303,8 +332,11 @@ public class PerfAdvisorController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Start performance advisor run for universe",
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "Start performance advisor run for universe",
       response = PerfAdvisorManualRunStatus.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
   public Result runPerfAdvisor(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -322,7 +354,12 @@ public class PerfAdvisorController extends AuthenticatedController {
             .setActiveRun(result.getActiveRun()));
   }
 
-  @ApiOperation(value = "Get last performance advisor run details", response = YBPSuccess.class)
+  @ApiOperation(
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "Get last performance advisor run details",
+      response = YBPSuccess.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
   public Result getLatestRun(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);

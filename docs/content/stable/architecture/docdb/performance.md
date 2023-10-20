@@ -53,7 +53,7 @@ In a traditional key-value store, range scans do not make use of bloom filters b
 
 ## Range query optimizations
 
-The ordered (or range) components of the compound-keys in DocDB often have a natural order. For example, it may be an `int` that represents a message ID (for a messaging application) or a timestamp (for a IoT time-series). By keeping hints with each SSTable file in the LSM store about the minimum and maximum values for these components of the key, range queries can intelligently prune away the lookup of irrelevant SSTable files during the read operation.
+The ordered (or range) components of the compound-keys in DocDB often have a natural order. For example, it may be an `int` that represents a message ID (for a messaging application) or a timestamp (for a IoT time series). By keeping hints with each SSTable file in the LSM store about the minimum and maximum values for these components of the key, range queries can intelligently prune away the lookup of irrelevant SSTable files during the read operation.
 
 Consider the following example:
 
@@ -65,7 +65,7 @@ WHERE user_id = 17
   AND message_id < 100;
 ```
 
-The following example illustrates a time-series application:
+The following example illustrates a time series application:
 
 ```sql
 SELECT metric_value

@@ -63,7 +63,6 @@ $YB_SRC_ROOT/python/yugabyte/gen_initial_sys_catalog_snapshot.py
   export YB_SCRIPT_PATH_IS_SAME_PATH=$YB_SRC_ROOT/python/yugabyte/is_same_path.py
   export YB_SCRIPT_PATH_KILL_LONG_RUNNING_MINICLUSTER_DAEMONS=\
 $YB_SRC_ROOT/python/yugabyte/kill_long_running_minicluster_daemons.py
-  export YB_SCRIPT_PATH_MAKE_RPATH_RELATIVE=$YB_SRC_ROOT/python/yugabyte/make_rpath_relative.py
   export YB_SCRIPT_PATH_PARSE_TEST_FAILURE=$YB_SRC_ROOT/python/yugabyte/parse_test_failure.py
   export YB_SCRIPT_PATH_POSTPROCESS_TEST_RESULT=\
 $YB_SRC_ROOT/python/yugabyte/postprocess_test_result.py
@@ -228,10 +227,12 @@ readonly -a VALID_COMPILER_TYPES=(
   gcc
   gcc11
   gcc12
+  gcc13
   clang
   clang14
   clang15
   clang16
+  clang17
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
 
@@ -387,13 +388,8 @@ decide_whether_to_use_linuxbrew() {
       if [[ ${predefined_build_root##*/} == *-linuxbrew-* ]]; then
         YB_USE_LINUXBREW=1
       fi
-    elif [[ -n ${YB_LINUXBREW_DIR:-} ||
-            ( ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ &&
-               $build_type =~ ^(release|prof_(gen|use))$ &&
-              "$( uname -m )" == "x86_64" &&
-              ${OSTYPE} =~ ^linux.*$ ) ]] && ! is_ubuntu; then
-      YB_USE_LINUXBREW=1
     fi
+    # Default is no linuxbrew
     export YB_USE_LINUXBREW=${YB_USE_LINUXBREW:-0}
   fi
 }
@@ -544,12 +540,7 @@ set_default_compiler_type() {
       adjust_compiler_type_on_mac
     elif [[ $OSTYPE =~ ^linux ]]; then
       detect_architecture
-      if [[ ${build_type} =~ ^(asan|debug|fastdebug)$ ]]; then
-        YB_COMPILER_TYPE=clang16
-      else
-        # Use Clang 15 for release builds and TSAN builds until perf evaluation and TSAN fixes.
-        YB_COMPILER_TYPE=clang15
-      fi
+      YB_COMPILER_TYPE=clang16
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi
@@ -757,7 +748,7 @@ set_mvn_parameters() {
   fi
   if is_jenkins; then
     local m2_repository_in_build_root=$BUILD_ROOT/m2_repository
-    if "$is_run_test_script" && [[ -d $m2_repository_in_build_root ]]; then
+    if [[ $is_run_test_script == "true" && -d $m2_repository_in_build_root ]]; then
       YB_MVN_LOCAL_REPO=$m2_repository_in_build_root
       # Do not use the "shared Maven settings" path even if it is available.
       YB_MVN_SETTINGS_PATH=$YB_DEFAULT_MVN_SETTINGS_PATH
@@ -831,7 +822,12 @@ append_common_mvn_opts() {
 # A utility function called by both 'build_yb_java_code' and 'build_yb_java_code_with_retries'.
 build_yb_java_code_filter_save_output() {
   set_mvn_parameters
-  log "Building Java code in $PWD"
+  local msg_prefix="Building Java code in $PWD"
+  if [[ -n ${java_code_build_purpose:-} ]]; then
+    log "$msg_prefix for $java_code_build_purpose"
+  else
+    log "$msg_prefix"
+  fi
 
   # --batch-mode hides download progress.
   # We are filtering out some patterns from Maven output, e.g.:
@@ -1636,7 +1632,9 @@ get_build_worker_list() {
     if [[ -n ${YB_BUILD_WORKERS_FILE:-} ]]; then
       build_workers=( $( cat "$YB_BUILD_WORKERS_FILE" ))
     else
-      build_workers=( $( curl -s "$YB_BUILD_WORKERS_LIST_URL" ) )
+      build_workers=( $( curl -s "$YB_BUILD_WORKERS_LIST_URL" ) ) \
+        || fatal "Failed to curl $YB_BUILD_WORKERS_LIST_URL: check your network connection or use" \
+                 "--no-remote"
     fi
     if [[ ${#build_workers[@]} -eq 0 ]]; then
       log "Got an empty list of build workers from $YB_BUILD_WORKERS_LIST_URL," \
@@ -2138,7 +2136,7 @@ handle_predefined_build_root() {
   else
     should_use_ninja=0
   fi
-  if ! "$handle_predefined_build_root_quietly"; then
+  if [[ $handle_predefined_build_root_quietly == "false" ]]; then
     log "Setting YB_USE_NINJA to 1 based on predefined build root ('$basename')"
   fi
   if [[ -n ${YB_USE_NINJA:-} && $YB_USE_NINJA != "$should_use_ninja" ]]; then
@@ -2259,19 +2257,20 @@ check_python_script_syntax() {
 
 run_shellcheck() {
   local scripts_to_check=(
+    bin/release_package_docker_test.sh
     build-support/common-build-env.sh
     build-support/common-cli-env.sh
     build-support/common-test-env.sh
-    build-support/jenkins/common-lto.sh
     build-support/compiler-wrappers/compiler-wrapper.sh
     build-support/find_linuxbrew.sh
     build-support/jenkins/build.sh
+    build-support/jenkins/common-lto.sh
     build-support/jenkins/test.sh
     build-support/jenkins/yb-jenkins-build.sh
     build-support/jenkins/yb-jenkins-test.sh
     build-support/run-test.sh
-    yugabyted-ui/build.sh
     yb_build.sh
+    yugabyted-ui/build.sh
   )
   pushd "$YB_SRC_ROOT"
   local script_path
@@ -2379,7 +2378,7 @@ activate_virtualenv() {
   if [[ ${yb_readonly_virtualenv} == "false" ]]; then
     local requirements_file_path="$YB_SRC_ROOT/requirements_frozen.txt"
     local installed_requirements_file_path=$virtualenv_dir/${requirements_file_path##*/}
-    pip3 install --upgrade pip
+    "$pip_executable" --retries 0 install --upgrade pip
     if ! cmp --silent "$requirements_file_path" "$installed_requirements_file_path"; then
       run_with_retries 10 0.5 "$pip_executable" install -r "$requirements_file_path" \
         $pip_no_cache
@@ -2498,12 +2497,14 @@ lint_java_code() {
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanOrAArch64Mac\.class\)' \
              "$java_test_file" &&
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerReleaseOnly\.class\)' \
+             "$java_test_file" &&
+         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerYsqlConnMgr\.class\)' \
              "$java_test_file"
       then
         log "$log_prefix: neither YBTestRunner, YBParameterizedTestRunner, " \
             "YBTestRunnerNonTsanOnly, YBTestRunnerNonTsanAsan, YBTestRunnerNonSanitizersOrMac, " \
             "YBTestRunnerNonSanOrAArch64Mac, " \
-            "nor YBTestRunnerReleaseOnly are being used in test"
+            "YBTestRunnerReleaseOnly, nor YBTestRunnerYsqlConnMgr are being used in test"
         num_errors+=1
       fi
       if grep -Fq 'import static org.junit.Assert' "$java_test_file" ||
@@ -2588,7 +2589,7 @@ set_prebuilt_thirdparty_url() {
       local thirdparty_tool_cmd_line=(
         "$YB_BUILD_SUPPORT_DIR/thirdparty_tool"
         --save-thirdparty-url-to-file "$thirdparty_url_file_path"
-        --compiler-type "$YB_COMPILER_TYPE"
+        --compiler-type "${YB_COMPILER_TYPE_FOR_THIRDPARTY:-$YB_COMPILER_TYPE}"
       )
       if [[ -n ${YB_USE_LINUXBREW:-} ]]; then
         # See arg_str_to_bool in Python code for how the boolean parameter is interpreted.

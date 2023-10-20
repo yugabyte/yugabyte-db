@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BackupTableParams.ActionType;
@@ -127,7 +128,8 @@ public class BackupUniverse extends UniverseTaskBase {
           installThirdPartyPackagesTask(universe)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
         } else {
-          installThirdPartyPackagesTaskK8s(universe)
+          installThirdPartyPackagesTaskK8s(
+                  universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.XXHSUM)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
         }
 
@@ -257,7 +259,7 @@ public class BackupUniverse extends UniverseTaskBase {
     log.info(
         "Submitted task to backup table {}:{}, task uuid = {}.",
         taskParams.tableUUID,
-        taskParams.getTableName(),
+        CommonUtils.logTableName(taskParams.getTableName()),
         taskUUID);
     CustomerTask.create(
         customer,
@@ -271,7 +273,7 @@ public class BackupUniverse extends UniverseTaskBase {
         taskUUID,
         taskParams.tableUUID,
         taskParams.getKeyspace(),
-        taskParams.getTableName());
+        CommonUtils.logTableName(taskParams.getTableName()));
     SCHEDULED_BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     metricService.setOkStatusMetric(
         buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));

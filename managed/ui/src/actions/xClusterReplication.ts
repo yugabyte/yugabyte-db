@@ -10,6 +10,7 @@ import {
   XClusterConfigType
 } from '../components/xcluster/constants';
 import { ApiTimeout } from '../redesign/helpers/api';
+import { YBPTask } from '../redesign/helpers/dtos';
 
 // TODO: Move this out of the /actions folder since these functions aren't Redux actions.
 
@@ -18,6 +19,9 @@ export function getUniverseInfo(universeUUID: string) {
   return axios.get(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}`);
 }
 
+/**
+ * @deprecated Pleaes use fetchUniverseList from helpers/api.ts instead.
+ */
 export function fetchUniversesList() {
   const cUUID = localStorage.getItem('customerId');
   return axios.get(`${ROOT_URL}/customers/${cUUID}/universes`);
@@ -143,10 +147,12 @@ export function editXClusterConfigTables(
   }
 ) {
   const customerId = localStorage.getItem('customerId');
-  return axios.put(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterUUID}`, {
-    tables: tables,
-    ...(bootstrapParams !== undefined && { bootstrapParams })
-  });
+  return axios
+    .put<YBPTask>(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterUUID}`, {
+      tables: tables,
+      ...(bootstrapParams !== undefined && { bootstrapParams })
+    })
+    .then((response) => response.data);
 }
 
 export function deleteXclusterConfig(uuid: string, isForceDelete: boolean) {
@@ -154,6 +160,24 @@ export function deleteXclusterConfig(uuid: string, isForceDelete: boolean) {
   return axios.delete(
     `${ROOT_URL}/customers/${customerId}/xcluster_configs/${uuid}?isForceDelete=${isForceDelete}`
   );
+}
+
+/**
+ * Set the provided xCluster config to whatever is on the database.
+ *
+ * Context:
+ * Users can interact with an xCluster config using the YBA API or yb-admin.
+ * The purpose of the sync API is to reconcile changes to an xCluster config as a
+ * result of yb-admin commands.
+ */
+export function syncXClusterConfigWithDB(replicationGroupName: string, targetUniverseUUID: string) {
+  const customerUUID = localStorage.getItem('customerId');
+  return axios
+    .post<YBPTask>(`${ROOT_URL}/customers/${customerUUID}/xcluster_configs/sync`, {
+      replicationGroupName: replicationGroupName,
+      targetUniverseUUID: targetUniverseUUID
+    })
+    .then((response) => response.data);
 }
 
 export function queryLagMetricsForUniverse(
@@ -227,7 +251,7 @@ type callbackFunc = (err: boolean, data: any) => void;
 
 export function fetchTaskUntilItCompletes(
   taskUUID: string,
-  callback: callbackFunc,
+  onTaskCompletion: callbackFunc,
   onTaskStarted?: () => void,
   interval = DEFAULT_TASK_REFETCH_INTERVAL
 ) {
@@ -241,9 +265,9 @@ export function fetchTaskUntilItCompletes(
         taskRunning = true;
       }
       if (status === 'Failed' || status === 'Failure') {
-        callback(true, resp);
+        onTaskCompletion(true, resp);
       } else if (percent === 100) {
-        callback(false, resp.data);
+        onTaskCompletion(false, resp.data);
       } else {
         setTimeout(retryTask, interval);
       }

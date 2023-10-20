@@ -77,7 +77,7 @@
 
 namespace yb {
 
-class Histogram;
+class EventStats;
 class Counter;
 
 namespace docdb {
@@ -109,8 +109,7 @@ struct PrepareDocWriteOperationResult {
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
-    const scoped_refptr<Histogram>& write_lock_latency,
-    const scoped_refptr<Counter>& failed_batch_lock,
+    tablet::TabletMetrics* tablet_metrics,
     IsolationLevel isolation_level,
     RowMarkType row_mark_type,
     bool transactional_table,
@@ -129,6 +128,7 @@ Status AssembleDocWriteBatch(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ReadOperationData& read_operation_data,
     const DocDB& doc_db,
+    SchemaPackingProvider* schema_packing_provider /* null okay */,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
     LWKeyValueWriteBatchPB* write_batch,
     InitMarkerBehavior init_marker_behavior,
@@ -147,20 +147,6 @@ struct ExternalTxnApplyStateData {
 };
 
 using ExternalTxnApplyState = std::map<TransactionId, ExternalTxnApplyStateData>;
-
-class ExternalTxnIntentsState {
- public:
-  IntraTxnWriteId GetWriteIdAndIncrement(const TransactionId& txn_id);
-  // Used by PrepareExternalWriteBatch when applying external transactions.
-  void EraseEntries(const ExternalTxnApplyState& apply_external_transaction);
-  // Used by DocDBCompactionFilterIntents when cleaning up aborted external txns.
-  void EraseEntries(const TransactionIdSet& transactions);
-  size_t EntryCount();
-
- private:
-  std::mutex mutex_;
-  std::unordered_map<TransactionId, IntraTxnWriteId, TransactionIdHash> map_;
-};
 
 Status EnumerateIntents(
     const ArenaList<LWKeyValuePairPB>& kv_pairs,

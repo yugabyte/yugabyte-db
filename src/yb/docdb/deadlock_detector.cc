@@ -19,7 +19,9 @@
 
 #include "yb/client/transaction_rpc.h"
 
+#include "yb/common/pgsql_error.h"
 #include "yb/common/transaction.h"
+#include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/stl_util.h"
@@ -41,6 +43,7 @@
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
+#include "yb/util/yb_pg_errcodes.h"
 
 using namespace std::placeholders;
 using namespace std::literals;
@@ -53,10 +56,18 @@ DEFINE_UNKNOWN_int32(
 TAG_FLAG(clear_active_probes_older_than_seconds, hidden);
 TAG_FLAG(clear_active_probes_older_than_seconds, advanced);
 
-METRIC_DEFINE_coarse_histogram(
+DEFINE_RUNTIME_int32(
+    clear_deadlocked_txns_info_older_than_heartbeats, 10,
+    "Minimum number of transaction heartbeat periods for which a deadlocked transaction's info is "
+    "retained, after it has been reported to be aborted. This ensures the memory used to track "
+    "info of deadlocked transactions does not grow unbounded.");
+TAG_FLAG(clear_deadlocked_txns_info_older_than_heartbeats, hidden);
+TAG_FLAG(clear_deadlocked_txns_info_older_than_heartbeats, advanced);
+
+METRIC_DEFINE_event_stats(
     tablet, deadlock_size, "Deadlock size", yb::MetricUnit::kTransactions,
     "The number of transactions involved in detected deadlocks");
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     tablet, deadlock_probe_latency, "Deadlock probe latency", yb::MetricUnit::kMicroseconds,
     "The time it takes to complete the probe from a waiting transaction to all of its blockers.");
 METRIC_DEFINE_gauge_uint64(
@@ -66,6 +77,8 @@ METRIC_DEFINE_gauge_uint64(
 DEFINE_test_flag(int32, sleep_amidst_iterating_blockers_ms, 0,
     "Time for which the thread sleeps in each iteration while looping over the computed wait-for "
     "probes and sending information to the waiters.");
+
+DECLARE_uint64(transaction_heartbeat_usec);
 
 namespace yb {
 namespace tablet {
@@ -201,7 +214,7 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
   LocalProbeProcessor(
       const std::string& detector_log_prefix, const DetectorId& origin_detector_id,
       uint32_t probe_num, uint32_t min_probe_num, const TransactionId& waiter_id, rpc::Rpcs* rpcs,
-      client::YBClient* client, scoped_refptr<Histogram> probe_latency)
+      client::YBClient* client, scoped_refptr<EventStats> probe_latency)
       : detector_log_prefix_(detector_log_prefix), origin_detector_id_(origin_detector_id),
         waiter_(waiter_id), probe_num_(probe_num), min_probe_num_(min_probe_num), rpcs_(rpcs),
         client_(client), probe_latency_(std::move(probe_latency)) {
@@ -336,7 +349,7 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
   uint32_t min_probe_num_;
   rpc::Rpcs* rpcs_;
   client::YBClient* client_;
-  scoped_refptr<Histogram> probe_latency_;
+  scoped_refptr<EventStats> probe_latency_;
 
   CoarseTimePoint sent_at_;
 
@@ -357,6 +370,22 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
 using LocalProbeProcessorPtr = std::shared_ptr<LocalProbeProcessor>;
 
 } // namespace
+
+std::string ConstructDeadlockedMessage(const TransactionId& waiter,
+                                       const tserver::ProbeTransactionDeadlockResponsePB& resp) {
+  std::stringstream ss;
+  ss << Format("Transaction $0 aborted due to a deadlock.\n$0", waiter.ToString());
+  for (auto i = 1 ; i < resp.deadlocked_txn_ids_size() ; i++) {
+    auto id_or_status = FullyDecodeTransactionId(resp.deadlocked_txn_ids(i));
+    if (!id_or_status.ok()) {
+      ss << Format(" -> [Error decoding txn id: $0]", id_or_status.status());
+    } else {
+      ss << Format(" -> $0", *id_or_status);
+    }
+  }
+  ss << Format(" -> $0 ", waiter.ToString());
+  return ss.str();
+}
 
 class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetector::Impl> {
  public:
@@ -562,6 +591,20 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
       // TODO(wait-queues): Trigger probes only for waiters which which have
       // wait_start_time > Now() - N seconds
       probes_to_send = GetProbesToSend(waiters_);
+
+      // Clear the info of old deadlocked transactions.
+      auto interval = FLAGS_clear_deadlocked_txns_info_older_than_heartbeats *
+          FLAGS_transaction_heartbeat_usec * 1us;
+      auto expired_cutoff_time = CoarseMonoClock::Now() - interval;
+      for (auto it = recently_deadlocked_txns_info_.begin();
+           it != recently_deadlocked_txns_info_.end();) {
+        const auto& deadlock_time = it->second.second;
+        if (deadlock_time < expired_cutoff_time) {
+          it = recently_deadlocked_txns_info_.erase(it);
+        } else {
+          it++;
+        }
+      }
     }
 
     for (auto& processor : probes_to_send) {
@@ -579,6 +622,18 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
                             << " old probes from tracking for remote detector " << detector_id;
       }
     }
+  }
+
+  Status GetTransactionDeadlockStatus(const TransactionId& txn_id) {
+    SharedLock<decltype(mutex_)> l(mutex_);
+    auto it = recently_deadlocked_txns_info_.find(txn_id);
+    if (it == recently_deadlocked_txns_info_.end()) {
+      return Status::OK();
+    }
+    // Return Expired so that TabletInvoker does not retry. Also, query layer proactively sends
+    // clean up requests to transaction participant only for transactions with Expired status.
+    return STATUS_EC_FORMAT(
+        Expired, TransactionError(TransactionErrorCode::kDeadlock), it->second.first);
   }
 
  private:
@@ -630,9 +685,14 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
             LOG(ERROR) << "Failed to decode transaction id in detected deadlock!";
           } else {
             const auto& waiter = *waiter_or_status;
+            {
+              UniqueLock<decltype(detector->mutex_)> l(detector->mutex_);
+              auto deadlock_info = std::make_pair(ConstructDeadlockedMessage(waiter, resp),
+                                                  CoarseMonoClock::Now());
+              detector->recently_deadlocked_txns_info_.emplace(waiter, deadlock_info);
+            }
             detector->controller_->Abort(
-                waiter,
-                std::bind(&DeadlockDetector::Impl::TxnAbortCallback, detector, _1, waiter));
+                waiter, std::bind(&DeadlockDetector::Impl::TxnAbortCallback, detector, _1, waiter));
           }
         }
       });
@@ -770,7 +830,7 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
 
   void TxnAbortCallback(Result<TransactionStatusResult> res, const TransactionId txn_id) {
     if (res.ok()) {
-      if (res->status == TransactionStatus::ABORTED && res->status_time.is_valid()) {
+      if (res->status == TransactionStatus::ABORTED) {
         LOG_WITH_FUNC(INFO) << "Aborting deadlocked transaction " << txn_id << " succeeded.";
         return;
       }
@@ -793,8 +853,8 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
   const DetectorId detector_id_;
   const std::string log_prefix_;
 
-  scoped_refptr<Histogram> deadlock_size_;
-  scoped_refptr<Histogram> probe_latency_;
+  scoped_refptr<EventStats> deadlock_size_;
+  scoped_refptr<EventStats> probe_latency_;
   scoped_refptr<AtomicGauge<uint64_t>> deadlock_detector_waiters_;
 
   mutable rw_spinlock mutex_;
@@ -812,6 +872,9 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
   Waiters waiters_ GUARDED_BY(mutex_);
 
   std::atomic<uint32_t> seq_no_ = 0;
+
+  std::unordered_map<TransactionId, std::pair<std::string, CoarseTimePoint>, TransactionIdHash>
+      recently_deadlocked_txns_info_ GUARDED_BY(mutex_);
 };
 
 DeadlockDetector::DeadlockDetector(
@@ -839,6 +902,10 @@ void DeadlockDetector::ProcessWaitFor(
 
 void DeadlockDetector::TriggerProbes() {
   return impl_->TriggerProbes();
+}
+
+Status DeadlockDetector::GetTransactionDeadlockStatus(const TransactionId& txn_id) {
+  return impl_->GetTransactionDeadlockStatus(txn_id);
 }
 
 void DeadlockDetector::Shutdown() {

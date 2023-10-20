@@ -73,8 +73,9 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
-  CHECK_YBC_STATUS(YBCPgNewInsert(kDefaultDatabaseOid, tab_oid, false /* is_single_row_txn */,
-                                  false /* is_region_local */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewInsert(
+      kDefaultDatabaseOid, tab_oid, false /* is_region_local */, &pg_stmt,
+      YBCPgTransactionSetting::YB_TRANSACTIONAL));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -120,7 +121,7 @@ TEST_F(PggateTestCatalog, TestDml) {
     CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_projcnt, 100 + seed, false));
     CHECK_YBC_STATUS(YBCPgUpdateConstFloat4(expr_salary, seed + 1.0*seed/10.0, false));
     job = strings::Substitute("Job_title_$0", seed);
-    CHECK_YBC_STATUS(YBCPgUpdateConstChar(expr_job, job.c_str(), job.size(), false));
+    CHECK_YBC_STATUS(YBCPgUpdateConstText(expr_job, job.c_str(), false));
   }
 
   pg_stmt = nullptr;
@@ -253,8 +254,8 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // UPDATE ----------------------------------------------------------------------------------------
   // Allocate new update.
-  CHECK_YBC_STATUS(YBCPgNewUpdate(kDefaultDatabaseOid, tab_oid, false /* is_single_row_txn */,
-                                  false /* is_region_local */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewUpdate(
+      kDefaultDatabaseOid, tab_oid, false /* is_region_local */, &pg_stmt, YB_TRANSACTIONAL));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -300,7 +301,7 @@ TEST_F(PggateTestCatalog, TestDml) {
     CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_projcnt, 77 + 100 + seed, false));
     CHECK_YBC_STATUS(YBCPgUpdateConstFloat4(expr_salary, 77 + seed + 1.0*seed/10.0, false));
     job = strings::Substitute("Job_title_$0", 77 + seed);
-    CHECK_YBC_STATUS(YBCPgUpdateConstChar(expr_job, job.c_str(), job.size(), false));
+    CHECK_YBC_STATUS(YBCPgUpdateConstBinary(expr_job, job.c_str(), job.size(), false));
   }
 
   pg_stmt = nullptr;
@@ -413,8 +414,9 @@ TEST_F(PggateTestCatalog, TestCopydb) {
   ExecCreateTableTransaction(pg_stmt);
   pg_stmt = nullptr;
 
-  CHECK_YBC_STATUS(YBCPgNewInsert(kDefaultDatabaseOid, tab_oid, false /* is_single_row_txn */,
-                                  false /* is_region_local */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewInsert(
+      kDefaultDatabaseOid, tab_oid, false /* is_region_local */, &pg_stmt,
+      YBCPgTransactionSetting::YB_TRANSACTIONAL));
 
   YBCPgExpr expr_key;
   YBCPgExpr expr_value;

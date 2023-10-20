@@ -15,6 +15,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/cdc/cdc_service.pb.h"
 #include "yb/consensus/log.h"
 
 #include "yb/rpc/rpc_controller.h"
@@ -43,22 +44,23 @@ void AssertIntKey(const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>&
   ASSERT_EQ(key[0].value().int32_value(), value);
 }
 
-void CreateCDCStream(const std::unique_ptr<CDCServiceProxy>& cdc_proxy,
-                     const TableId& table_id,
-                     CDCStreamId* stream_id,
-                     cdc::CDCRequestSource source_type) {
+Result<xrepl::StreamId> CreateCDCStream(
+    const std::unique_ptr<CDCServiceProxy>& cdc_proxy,
+    const TableId& table_id,
+    cdc::CDCRequestSource source_type) {
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
   req.set_table_id(table_id);
   req.set_source_type(source_type);
+  req.set_checkpoint_type(IMPLICIT);
 
   rpc::RpcController rpc;
-  ASSERT_OK(cdc_proxy->CreateCDCStream(req, &resp, &rpc));
-  ASSERT_FALSE(resp.has_error());
-
-  if (stream_id) {
-    *stream_id = resp.stream_id();
+  RETURN_NOT_OK(cdc_proxy->CreateCDCStream(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
   }
+
+  return xrepl::StreamId::FromString(resp.stream_id());
 }
 
 void WaitUntilWalRetentionSecs(std::function<int()> get_wal_retention_secs,

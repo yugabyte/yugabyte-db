@@ -123,7 +123,7 @@ def main() -> int:
                         id_output)
                     raise
 
-    git_repo_dir = get_yb_src_root_from_build_root(os.getcwd(), must_succeed=False, verbose=True)
+    git_repo_dir = get_yb_src_root_from_build_root(os.getcwd(), must_succeed=False)
     if git_repo_dir:
         clean_repo = is_git_repo_clean(git_repo_dir)
     else:

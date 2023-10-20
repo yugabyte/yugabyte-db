@@ -51,7 +51,7 @@
 using std::shared_ptr;
 using std::vector;
 
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     server, load_balancer_duration, "Load balancer duration",
     yb::MetricUnit::kMilliseconds, "Duration of one load balancer run (in milliseconds)");
 
@@ -84,7 +84,7 @@ DECLARE_bool(TEST_echo_service_enabled);
 namespace yb {
 namespace master {
 
-typedef std::unordered_map<TableId, std::list<scoped_refptr<CDCStreamInfo>>> TableStreamIdsMap;
+typedef std::unordered_map<TableId, std::list<CDCStreamInfoPtr>> TableStreamIdsMap;
 
 CatalogManagerBgTasks::CatalogManagerBgTasks(CatalogManager *catalog_manager)
     : closing_(false),
@@ -139,7 +139,8 @@ void CatalogManagerBgTasks::Shutdown() {
   }
 }
 
-void CatalogManagerBgTasks::TryResumeBackfillForTables(std::unordered_set<TableId>* tables) {
+void CatalogManagerBgTasks::TryResumeBackfillForTables(
+    const LeaderEpoch& epoch, std::unordered_set<TableId>* tables) {
   for (auto it = tables->begin(); it != tables->end(); it = tables->erase(it)) {
     const auto& table_info_result = catalog_manager_->FindTableById(*it);
     if (!table_info_result.ok()) {
@@ -155,7 +156,7 @@ void CatalogManagerBgTasks::TryResumeBackfillForTables(std::unordered_set<TableI
                 << ". If it is not a table for which backfill needs to be resumed"
                 << " then this is a NO-OP";
       auto s = catalog_manager_->HandleTabletSchemaVersionReport(
-          tablet.get(), version, table_info);
+          tablet.get(), version, epoch, table_info);
       // If schema version changed since PITR restore then backfill should restart
       // by virtue of that particular alter if needed.
       WARN_NOT_OK(s, Format("PITR: Resume backfill failed for tablet ", tablet->id()));
@@ -184,11 +185,12 @@ void CatalogManagerBgTasks::Run() {
 
       if (FLAGS_TEST_echo_service_enabled) {
         WARN_NOT_OK(
-            catalog_manager_->CreateTestEchoService(), "Failed to create Test Echo service");
+            catalog_manager_->CreateTestEchoService(l.epoch()),
+            "Failed to create Test Echo service");
       }
 
       if (GetAtomicFlag(&FLAGS_ysql_enable_auto_analyze_service)) {
-        WARN_NOT_OK(catalog_manager_->CreatePgAutoAnalyzeService(),
+        WARN_NOT_OK(catalog_manager_->CreatePgAutoAnalyzeService(l.epoch()),
                     "Failed to create Auto Analyze service");
       }
 
@@ -216,7 +218,7 @@ void CatalogManagerBgTasks::Run() {
         for (const auto& entries : to_process) {
           LOG(INFO) << "Processing pending assignments for table: " << entries.first;
           Status s = catalog_manager_->ProcessPendingAssignmentsPerTable(
-              entries.first, entries.second, &global_load_state);
+              entries.first, entries.second, l.epoch(), &global_load_state);
           WARN_NOT_OK(s, "Assignment failed");
           // Set processed_tablets as true if the call succeeds for at least one table.
           processed_tablets = processed_tablets || s.ok();
@@ -231,14 +233,14 @@ void CatalogManagerBgTasks::Run() {
         std::lock_guard lock(catalog_manager_->backfill_mutex_);
         table_map.swap(catalog_manager_->pending_backfill_tables_);
       }
-      TryResumeBackfillForTables(&table_map);
+      TryResumeBackfillForTables(l.epoch(), &table_map);
 
       // Do the LB enabling check
       if (!processed_tablets) {
         if (catalog_manager_->TimeSinceElectedLeader() >
             MonoDelta::FromSeconds(FLAGS_load_balancer_initial_delay_secs)) {
           auto start = CoarseMonoClock::Now();
-          catalog_manager_->load_balance_policy_->RunLoadBalancer();
+          catalog_manager_->load_balance_policy_->RunLoadBalancer(l.epoch());
           load_balancer_duration_->Increment(ToMilliseconds(CoarseMonoClock::now() - start));
         }
       }
@@ -251,10 +253,11 @@ void CatalogManagerBgTasks::Run() {
         tables = std::vector(std::begin(tables_it), std::end(tables_it));
         tablet_info_map = *catalog_manager_->tablet_map_;
       }
-      catalog_manager_->tablet_split_manager()->MaybeDoSplitting(tables, tablet_info_map);
+      catalog_manager_->tablet_split_manager()->MaybeDoSplitting(
+          tables, tablet_info_map, l.epoch());
 
       if (!to_delete.empty() || catalog_manager_->AreTablesDeleting()) {
-        catalog_manager_->CleanUpDeletedTables();
+        catalog_manager_->CleanUpDeletedTables(l.epoch());
       }
 
       {
@@ -268,8 +271,8 @@ void CatalogManagerBgTasks::Run() {
             catalog_manager_->FindCDCSDKStreamsForAddedTables(&table_unprocessed_streams_map);
 
         if (s.ok() && !table_unprocessed_streams_map.empty()) {
-          s = catalog_manager_->AddTabletEntriesToCDCSDKStreamsForNewTables(
-              table_unprocessed_streams_map);
+          s = catalog_manager_->ProcessNewTablesForCDCSDKStreams(
+              table_unprocessed_streams_map, l.epoch());
         }
         if (!s.ok()) {
           YB_LOG_EVERY_N(WARNING, 10)
@@ -298,10 +301,15 @@ void CatalogManagerBgTasks::Run() {
       catalog_manager_->StartCDCParentTabletDeletionTaskIfStopped();
 
       // Run background tasks related to XCluster & CDC Schema.
-      WARN_NOT_OK(catalog_manager_->RunXClusterBgTasks(), "Failed XCluster Background Task");
+      WARN_NOT_OK(
+          catalog_manager_->RunXClusterBgTasks(l.epoch()), "Failed XCluster Background Task");
 
       // Abort inactive YSQL BackendsCatalogVersionJob jobs.
       catalog_manager_->master_->ysql_backends_manager()->AbortInactiveJobs();
+
+      // Set the universe_uuid field in the cluster config if not already set.
+      WARN_NOT_OK(catalog_manager_->SetUniverseUuidIfNeeded(l.epoch()),
+                  "Failed SetUniverseUuidIfNeeded Task");
 
       was_leader_ = true;
     } else {

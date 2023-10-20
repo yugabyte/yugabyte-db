@@ -1,9 +1,11 @@
+// Copyright (c) Yugabyte, Inc.
+
 package com.yugabyte.yw.common.rbac;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
-import com.yugabyte.yw.common.rbac.PermissionInfo.Permission;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import java.io.File;
 import java.util.HashSet;
@@ -36,7 +38,8 @@ public class PermissionUtilTest {
     // Check if all objects in a file have same resourceType.
     for (ResourceType resourceType : ResourceType.values()) {
       log.info("Testing unique resource type: " + resourceType.toString());
-      List<PermissionInfo> allPermissionInfo = permissionUtil.getAllPermissionInfo(resourceType);
+      List<PermissionInfo> allPermissionInfo =
+          permissionUtil.getAllPermissionInfoFromCache(resourceType);
       for (PermissionInfo permissionInfo : allPermissionInfo) {
         assertEquals(resourceType, permissionInfo.resourceType);
       }
@@ -48,11 +51,12 @@ public class PermissionUtilTest {
     // All objects in a file should have unique permission.
     for (ResourceType resourceType : ResourceType.values()) {
       log.info("Testing unique permissions on : " + resourceType.toString());
-      HashSet<Permission> allPermissionsInFile = new HashSet<Permission>();
-      List<PermissionInfo> allPermissionInfo = permissionUtil.getAllPermissionInfo(resourceType);
+      HashSet<Action> allPermissionsInFile = new HashSet<Action>();
+      List<PermissionInfo> allPermissionInfo =
+          permissionUtil.getAllPermissionInfoFromCache(resourceType);
       for (PermissionInfo permissionInfo : allPermissionInfo) {
-        assertFalse(allPermissionsInFile.contains(permissionInfo.getPermission()));
-        allPermissionsInFile.add(permissionInfo.getPermission());
+        assertFalse(allPermissionsInFile.contains(permissionInfo.getAction()));
+        allPermissionsInFile.add(permissionInfo.getAction());
       }
     }
   }
@@ -62,15 +66,14 @@ public class PermissionUtilTest {
     // All objects in a file should have unique prerequisite permissions.
     for (ResourceType resourceType : ResourceType.values()) {
       log.info("Testing unique prerequisite permissions on : " + resourceType.toString());
-      List<PermissionInfo> allPermissionInfo = permissionUtil.getAllPermissionInfo(resourceType);
+      List<PermissionInfo> allPermissionInfo =
+          permissionUtil.getAllPermissionInfoFromCache(resourceType);
       for (PermissionInfo permissionInfo : allPermissionInfo) {
         // For each PermissionInfo object, traverse the list of prerequisite permissions.
-        HashSet<PermissionInfoIdentifier> allPrerequisitePermissionsInFile =
-            new HashSet<PermissionInfoIdentifier>();
-        for (PermissionInfoIdentifier permissionInfoIdentifier :
-            permissionInfo.getPrerequisitePermissions()) {
-          assertFalse(allPrerequisitePermissionsInFile.contains(permissionInfoIdentifier));
-          allPrerequisitePermissionsInFile.add(permissionInfoIdentifier);
+        HashSet<Permission> allPrerequisitePermissionsInFile = new HashSet<Permission>();
+        for (Permission permission : permissionInfo.getPrerequisitePermissions()) {
+          assertFalse(allPrerequisitePermissionsInFile.contains(permission));
+          allPrerequisitePermissionsInFile.add(permission);
         }
       }
     }

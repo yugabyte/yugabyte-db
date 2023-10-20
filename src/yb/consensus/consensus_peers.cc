@@ -69,6 +69,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/url-coding.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -83,6 +84,11 @@ DEFINE_UNKNOWN_int32(max_wait_for_processresponse_before_closing_ms,
              "finish before returning proceding to close the Peer and return");
 TAG_FLAG(max_wait_for_processresponse_before_closing_ms, advanced);
 
+DEFINE_RUNTIME_bool(collect_update_consensus_traces, false,
+    "If true, collected traces from followers for UpdateConsensus "
+    "running on a different server. ");
+TAG_FLAG(collect_update_consensus_traces, advanced);
+
 DECLARE_int32(raft_heartbeat_interval_ms);
 
 DECLARE_bool(enable_multi_raft_heartbeat_batcher);
@@ -95,6 +101,15 @@ DEFINE_test_flag(int32, delay_removing_peer_with_failed_tablet_secs, 0,
                  "If greater than 0, Peer::ProcessResponse will sleep after receiving a response "
                  "indicating that a tablet is in the FAILED state, and before marking this peer "
                  "as failed.");
+
+DEFINE_RUNTIME_int32(consensus_stuck_peer_call_threshold_ms, 10000,
+    "Time to wait after timeout before considering a RPC call as stuck.");
+TAG_FLAG(consensus_stuck_peer_call_threshold_ms, advanced);
+
+DEFINE_RUNTIME_bool(consensus_force_recover_from_stuck_peer_call, false,
+    "Set this flag to true in addition to consensus_stuck_peer_call_threshold_ms to automatically "
+    "recover from stuck RPC call.");
+TAG_FLAG(consensus_force_recover_from_stuck_peer_call, advanced);
 
 // Allow for disabling remote bootstrap in unit tests where we want to test
 // certain scenarios without triggering bootstrap of a remote peer.
@@ -157,6 +172,31 @@ Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
   // If there are new requests in the queue we'll get them on ProcessResponse().
   auto performing_update_lock = LockPerformingUpdate(std::try_to_lock);
   if (!performing_update_lock.owns_lock()) {
+    // In production, we have seen some cases where OutboundCall is stuck in SENT state and there is
+    // no callback invoked for the call. When FLAGS_consensus_stuck_peer_call_threshold_ms config is
+    // set, we try to detect this situation. And if
+    // FLAGS_consensus_force_recover_from_stuck_peer_call config is set to true, then we will mark
+    // the outstanding call as failed. Note: if there is no outstanding call in controller or
+    // timeout is not initialized, then we won't be able to recover it (we didn't see this situation
+    // in production).
+    auto timeout = controller_.timeout();
+    if (FLAGS_consensus_stuck_peer_call_threshold_ms > 0 && timeout.Initialized()) {
+      const MonoDelta stuck_threshold = FLAGS_consensus_stuck_peer_call_threshold_ms * 1ms;
+      auto now = CoarseMonoClock::Now();
+      auto last_rpc_start_time = last_rpc_start_time_.load(std::memory_order_acquire);
+      if (last_rpc_start_time != CoarseTimePoint::min() &&
+          now > last_rpc_start_time + stuck_threshold + timeout && !controller_.finished()) {
+        LOG_WITH_PREFIX(INFO) << Format(
+            "Found a RPC call in stuck state - timeout: $0, last_rpc_start_time: $1, "
+            "stuck threshold: $2, force recover: $3, call state: $4",
+            timeout, last_rpc_start_time, stuck_threshold,
+            FLAGS_consensus_force_recover_from_stuck_peer_call, controller_.CallStateDebugString());
+        if (FLAGS_consensus_force_recover_from_stuck_peer_call) {
+          controller_.MarkCallAsFailed();
+        }
+      }
+    }
+    TRACE("Could not get the lock to send update request for peer $0", peer_pb().permanent_uuid());
     return Status::OK();
   }
 
@@ -195,6 +235,23 @@ Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
     performing_update_lock.release();
   }
   return status;
+}
+
+void Peer::DumpToHtml(std::ostream& out) const {
+  const auto peer_pb_str = EscapeForHtmlToString("Peer PB: " + peer_pb_.DebugString());
+  out << "Peer:" << std::endl;
+  std::lock_guard lock(peer_lock_);
+  out << Format(
+             "<ul><li>$0</li><li>$1</li><li>$2</li><li>$3</li><li>$4</li><li>$5</li></ul>",
+             EscapeForHtmlToString(Format("State: $0", state_)),
+             EscapeForHtmlToString(Format("Current Heartbeat Id: $0", cur_heartbeat_id_)),
+             EscapeForHtmlToString(Format("Failed Attempts: $0", failed_attempts_)),
+             EscapeForHtmlToString(Format(
+                 "Last RPC start time: $0", last_rpc_start_time_.load(std::memory_order_acquire))),
+             EscapeForHtmlToString(
+                 Format("WaitingForRPCResponse: $0", performing_update_mutex_.is_locked())),
+             peer_pb_str)
+      << std::endl;
 }
 
 void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
@@ -341,6 +398,10 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
     return;
   }
 
+  TracePtr trace(Trace::CurrentTrace());
+  if (trace && GetAtomicFlag(&FLAGS_collect_update_consensus_traces)) {
+    update_request_->set_trace_requested(true);
+  }
   // The minimum_viable_heartbeat_ represents the
   // heartbeat that is sent immediately following this op.
   // Any heartbeats which are outstanding are considered no longer viable.
@@ -352,8 +413,9 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   processing_lock.unlock();
   performing_update_lock.release();
   controller_.set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolHigh);
+  last_rpc_start_time_.store(CoarseMonoClock::now(), std::memory_order_release);
   proxy_->UpdateAsync(update_request_, trigger_mode, update_response_, &controller_,
-                      std::bind(&Peer::ProcessResponse, retain_self));
+                      std::bind(&Peer::ProcessResponse, retain_self, trace));
 }
 
 std::unique_lock<simple_spinlock> Peer::StartProcessingUnlocked() {
@@ -434,14 +496,20 @@ bool Peer::ProcessResponseWithStatus(const Status& status,
   return queue_->ResponseFromPeer(peer_pb_.permanent_uuid(), *response);
 }
 
-void Peer::ProcessResponse() {
+void Peer::ProcessResponse(TracePtr trace) {
+  ADOPT_TRACE(trace.get());
   DCHECK(performing_update_mutex_.is_locked()) << "Got a response when nothing was pending.";
   auto status = controller_.status();
   if (status.ok()) {
     status = controller_.thread_pool_failure();
   }
+  last_rpc_start_time_.store(CoarseTimePoint::min(), std::memory_order_release);
   controller_.Reset();
 
+  if (update_response_->has_trace_buffer()) {
+    TRACE("Received response from $0:\n BEGIN UpdateConsensus\n$1 END UpdateConsensus",
+            peer_pb_.permanent_uuid(), update_response_->trace_buffer().ToBuffer());
+  }
   auto performing_update_lock = LockPerformingUpdate(std::adopt_lock);
   auto processing_lock = StartProcessingUnlocked();
   if (!processing_lock.owns_lock()) {
@@ -459,6 +527,7 @@ void Peer::ProcessResponse() {
 void Peer::ProcessHeartbeatResponse(const Status& status) {
   DCHECK(performing_heartbeat_mutex_.is_locked()) << "Got a heartbeat when nothing was pending.";
   DCHECK(heartbeat_request_.ops().empty()) << "Got a heartbeat with a non-zero number of ops.";
+  last_rpc_start_time_.store(CoarseTimePoint::min(), std::memory_order_release);
 
   auto performing_heartbeat_lock = LockPerformingHeartbeat(std::adopt_lock);
   auto processing_lock = StartProcessingUnlocked();
@@ -494,6 +563,7 @@ Status Peer::SendRemoteBootstrapRequest() {
   YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 30) << "Sending request to remotely bootstrap";
   controller_.set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolNormal);
   return raft_pool_token_->SubmitFunc([retain_self = shared_from_this()]() {
+    retain_self->last_rpc_start_time_.store(CoarseMonoClock::now(), std::memory_order_release);
     retain_self->proxy_->StartRemoteBootstrap(
       &retain_self->rb_request_, &retain_self->rb_response_, &retain_self->controller_,
       std::bind(&Peer::ProcessRemoteBootstrapResponse, retain_self));
@@ -502,6 +572,7 @@ Status Peer::SendRemoteBootstrapRequest() {
 
 void Peer::ProcessRemoteBootstrapResponse() {
   Status status = controller_.status();
+  last_rpc_start_time_.store(CoarseTimePoint::min(), std::memory_order_release);
   controller_.Reset();
 
   auto performing_update_lock = LockPerformingUpdate(std::adopt_lock);
@@ -607,10 +678,9 @@ void RpcPeerProxy::UpdateAsync(const LWConsensusRequestPB* request,
   consensus_proxy_->UpdateConsensusAsync(*request, response, controller, callback);
 }
 
-void RpcPeerProxy::RequestConsensusVoteAsync(const VoteRequestPB* request,
-                                             VoteResponsePB* response,
-                                             rpc::RpcController* controller,
-                                             const rpc::ResponseCallback& callback) {
+void RpcPeerProxy::RequestConsensusVoteAsync(
+    const VoteRequestPB* request, VoteResponsePB* response, rpc::RpcController* controller,
+    const rpc::ResponseCallback& callback) {
   consensus_proxy_->RequestConsensusVoteAsync(*request, response, controller, callback);
 }
 
@@ -622,17 +692,15 @@ void RpcPeerProxy::RunLeaderElectionAsync(const RunLeaderElectionRequestPB* requ
   consensus_proxy_->RunLeaderElectionAsync(*request, response, controller, callback);
 }
 
-void RpcPeerProxy::LeaderElectionLostAsync(const LeaderElectionLostRequestPB* request,
-                                           LeaderElectionLostResponsePB* response,
-                                           rpc::RpcController* controller,
-                                           const rpc::ResponseCallback& callback) {
+void RpcPeerProxy::LeaderElectionLostAsync(
+    const LeaderElectionLostRequestPB* request, LeaderElectionLostResponsePB* response,
+    rpc::RpcController* controller, const rpc::ResponseCallback& callback) {
   consensus_proxy_->LeaderElectionLostAsync(*request, response, controller, callback);
 }
 
-void RpcPeerProxy::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB* request,
-                                        StartRemoteBootstrapResponsePB* response,
-                                        rpc::RpcController* controller,
-                                        const rpc::ResponseCallback& callback) {
+void RpcPeerProxy::StartRemoteBootstrap(
+    const StartRemoteBootstrapRequestPB* request, StartRemoteBootstrapResponsePB* response,
+    rpc::RpcController* controller, const rpc::ResponseCallback& callback) {
   consensus_proxy_->StartRemoteBootstrapAsync(*request, response, controller, callback);
 }
 

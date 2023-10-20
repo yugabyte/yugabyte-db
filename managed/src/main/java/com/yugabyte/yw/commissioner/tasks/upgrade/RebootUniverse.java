@@ -31,17 +31,18 @@ public class RebootUniverse extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams() {
+    if (taskParams().upgradeOption != UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "Only ROLLING_UPGRADE option is supported for reboot.");
+    }
+    taskParams().verifyParams(getUniverse());
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
-          // Verify the request params and fail if invalid
-          taskParams().verifyParams(getUniverse());
-
-          if (taskParams().upgradeOption != UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE) {
-            throw new PlatformServiceException(
-                Status.BAD_REQUEST, "Only ROLLING_UPGRADE option is supported for reboot.");
-          }
-
           LinkedHashSet<NodeDetails> nodes = fetchAllNodes(taskParams().upgradeOption);
           createRollingNodesUpgradeTaskFlow(
               (nodez, processTypes) ->

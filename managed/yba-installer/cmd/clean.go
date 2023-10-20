@@ -1,11 +1,12 @@
 package cmd
 
 import (
-	"log"
-	"path/filepath"
+	// "path/filepath"
 
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
 func cleanCmd() *cobra.Command {
@@ -20,12 +21,6 @@ func cleanCmd() *cobra.Command {
 		Args:    cobra.MaximumNArgs(1),
 		// Confirm with the user before deleting ALL data.
 		PreRun: func(cmd *cobra.Command, args []string) {
-			// Version check before clean
-			if !common.RunFromInstalled() {
-				path := filepath.Join(common.YbactlInstallDir(), "yba-ctl")
-				log.Fatal("clean must be run from " + path +
-					". It may be in the systems $PATH for easy of use.")
-			}
 
 			// Prompt for remmoving all data
 			if removeData {
@@ -36,6 +31,14 @@ func cleanCmd() *cobra.Command {
 			}
 		},
 		Run: func(cmd *cobra.Command, args []string) {
+			state, err := ybactlstate.Initialize()
+			if err != nil {
+				log.Warn("failed to load internal state, continue with uninstall")
+				state = ybactlstate.New()
+			}
+			if err := state.TransitionStatus(ybactlstate.CleaningStatus); err != nil {
+				log.Fatal("Could not start clean: " + err.Error())
+			}
 
 			// TODO: Only clean up per service.
 			// Clean up services in reverse order.
@@ -46,6 +49,13 @@ func cleanCmd() *cobra.Command {
 			}
 
 			common.Uninstall(serviceNames, removeData)
+			// If this is a soft clean, update internal state. Otherwise skip, as there is nothing left to
+			// update.
+			if !removeData {
+				if err := state.TransitionStatus(ybactlstate.SoftCleanStatus); err != nil {
+					log.Warn("failed to update internal state - continue with uninstall")
+				}
+			}
 		},
 	}
 	clean.Flags().BoolVar(&removeData, "all", false, "also clean out data (default: false)")

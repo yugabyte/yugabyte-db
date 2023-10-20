@@ -1,42 +1,28 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 import static play.libs.Json.newObject;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Hook;
-import com.yugabyte.yw.models.HookScope;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.yb.client.YBClient;
 import play.libs.Json;
@@ -98,6 +84,15 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
                 listResponse.message = respJson.toString();
                 return listResponse;
               }
+              if (invocation.getArgument(0).equals(NodeManager.NodeCommandType.Control)) {
+                AnsibleClusterServerCtl.Params params = invocation.getArgument(1);
+                assertTrue(StringUtils.isNotBlank(params.command));
+                Universe universe = Universe.getOrBadRequest(params.getUniverseUUID());
+                NodeDetails nodeDetails = universe.getNode(params.nodeName);
+                if ("stop".equalsIgnoreCase(params.command)) {
+                  assertFalse(nodeDetails.isSoftwareDeleted());
+                }
+              }
               return dummyShellResponse;
             });
     mockClient = mock(YBClient.class);
@@ -110,7 +105,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
               return res;
             })
         .when(mockYsqlQueryExecutor)
-        .executeQueryInNodeShell(any(), any(), any());
+        .executeQueryInNodeShell(any(), any(), any(), anyBoolean());
     // Create hooks
     hook1 =
         Hook.create(
@@ -161,6 +156,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     gflags.put("foo", "bar");
     userIntent.masterGFlags = gflags;
     userIntent.tserverGFlags = gflags;
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     Universe result = createUniverse(universeName, defaultCustomer.getId(), providerType);
     result =
         Universe.saveDetails(
@@ -242,5 +238,79 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     keyInfo.sshPort = 22;
     AccessKey accessKey = AccessKey.create(provider.getUuid(), keyCode, keyInfo);
     return accessKey;
+  }
+
+  protected void mockGetMasterRegistrationResponses(List<String> masterIps) {
+    mockGetMasterRegistrationResponses(mockClient, masterIps);
+  }
+
+  public static void mockGetMasterRegistrationResponses(YBClient client, List<String> masterIps) {
+    /* reimplement once correct RPC method is used
+    when(client.getMasterRegistrationResponseList())
+        .thenAnswer(
+            i -> {
+              addMasters = !addMasters;
+              List<GetMasterRegistrationResponse> responses =
+                  new ArrayList<>(
+                      masterIps.stream()
+                          .map(
+                              ip ->
+                                  new GetMasterRegistrationResponse(
+                                      5,
+                                      "",
+                                      addMasters
+                                          ? CommonTypes.PeerRole.FOLLOWER
+                                          : CommonTypes.PeerRole.NON_PARTICIPANT,
+                                      WireProtocol.ServerRegistrationPB.newBuilder()
+                                          .addPrivateRpcAddresses(
+                                              CommonNet.HostPortPB.newBuilder()
+                                                  .setHost(ip)
+                                                  .setPort(7100)
+                                                  .build())
+                                          .build(),
+                                      null))
+                          .toList());
+              return responses;
+            });
+     */
+  }
+
+  public void mockGetMasterRegistrationResponse(List<String> addedIps, List<String> removedIps) {
+    mockGetMasterRegistrationResponse(mockClient, addedIps, removedIps);
+  }
+
+  public static void mockGetMasterRegistrationResponse(
+      YBClient client, List<String> addedIps, List<String> removedIps) {
+    /* reimplement once correct RPC method is used
+    List<GetMasterRegistrationResponse> responses = new ArrayList<>();
+    responses.addAll(
+        addedIps.stream()
+            .map(
+                ip ->
+                    new GetMasterRegistrationResponse(
+                        5,
+                        "",
+                        CommonTypes.PeerRole.FOLLOWER,
+                        WireProtocol.ServerRegistrationPB.newBuilder()
+                            .addPrivateRpcAddresses(
+                                CommonNet.HostPortPB.newBuilder().setHost(ip).setPort(7100).build())
+                            .build(),
+                        null))
+            .toList());
+    responses.addAll(
+        removedIps.stream()
+            .map(
+                ip ->
+                    new GetMasterRegistrationResponse(
+                        5,
+                        "",
+                        CommonTypes.PeerRole.NON_PARTICIPANT,
+                        WireProtocol.ServerRegistrationPB.newBuilder()
+                            .addPrivateRpcAddresses(
+                                CommonNet.HostPortPB.newBuilder().setHost(ip).setPort(7100).build())
+                            .build(),
+                        null))
+            .toList());
+    when(client.getMasterRegistrationResponseList()).thenReturn(responses);*/
   }
 }

@@ -2265,7 +2265,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
                 newMaster.masterState = null;
                 nodes.add(newMaster);
               }
-              node.cloudInfo.instance_type = userIntent.instanceType;
+              node.cloudInfo.instance_type =
+                  userIntent.getInstanceType(UniverseTaskBase.ServerType.TSERVER, node.getAzUuid());
               node.state = Live;
             });
     PlacementInfoUtil.dedicateNodes(nodes);
@@ -3249,6 +3250,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     // Checking onprem.
     userIntent.providerType = CloudType.onprem;
+    userIntent.dedicatedNodes = true;
     AvailableNodeTracker onpremNodeTracker =
         new AvailableNodeTracker(clusterUUID, Collections.singletonList(cluster), currentNodes);
     assertEquals(0, onpremNodeTracker.getAvailableForZone(z1.getUuid()));
@@ -3714,6 +3716,52 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       assertEquals(0, PlacementInfoUtil.getTserversToBeRemoved(udtp.nodeDetailsSet).size());
       assertEquals(t.az3.getUuid(), addedNodes.iterator().next().getAzUuid());
     }
+  }
+
+  @Test
+  public void testOverridenInstanceType() {
+    Customer customer =
+        ModelFactory.testCustomer("customer", String.format("Test Customer %s", "customer"));
+    Provider provider = ModelFactory.newProvider(customer, aws);
+
+    Region region = getOrCreate(provider, "r1");
+    AvailabilityZone z1 = AvailabilityZone.createOrThrow(region, "z1", "z1", "subnet-1");
+    AvailabilityZone z2 = AvailabilityZone.createOrThrow(region, "z2", "z2", "subnet-2");
+    AvailabilityZone z3 = AvailabilityZone.createOrThrow(region, "z3", "z3", "subnet-3");
+    UserIntent userIntent = new UserIntent();
+    userIntent.universeName = "aaa";
+    userIntent.replicationFactor = 3;
+    userIntent.numNodes = 3;
+    userIntent.provider = provider.getUuid().toString();
+    userIntent.regionList = Collections.singletonList(region.getUuid());
+    userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    UniverseDefinitionTaskParams.UserIntentOverrides userIntentOverrides =
+        new UniverseDefinitionTaskParams.UserIntentOverrides();
+    UniverseDefinitionTaskParams.AZOverrides azOverrides =
+        new UniverseDefinitionTaskParams.AZOverrides();
+    azOverrides.setInstanceType("m4.maximum");
+    userIntentOverrides.setAzOverrides(Collections.singletonMap(z1.getUuid(), azOverrides));
+    userIntent.setUserIntentOverrides(userIntentOverrides);
+    userIntent.ybSoftwareVersion = "0.0.1";
+    userIntent.accessKeyCode = "akc";
+    userIntent.providerType = provider.getCloudCode();
+    userIntent.preferredRegion = null;
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.upsertPrimaryCluster(userIntent, null);
+    params.currentClusterType = ClusterType.PRIMARY;
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getId(), params.getPrimaryCluster().uuid, CREATE);
+    Map<UUID, Integer> azUuidToNumNodes =
+        PlacementInfoUtil.getAzUuidToNumNodes(params.nodeDetailsSet);
+    assertTrue(azUuidToNumNodes.containsKey(z1.getUuid()));
+    params.nodeDetailsSet.forEach(
+        node -> {
+          if (node.getAzUuid().equals(z1.getUuid())) {
+            assertEquals(azOverrides.getInstanceType(), node.cloudInfo.instance_type);
+          } else {
+            assertEquals(ApiUtils.UTIL_INST_TYPE, node.cloudInfo.instance_type);
+          }
+        });
   }
 
   private SelectMastersResult selectMasters(

@@ -26,8 +26,8 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
+import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 
@@ -102,7 +102,7 @@ public class CustomerControllerTest extends FakeDBApplication {
   @Test
   public void testListCustomersWithoutAuth() {
     Result result = route(fakeRequest("GET", rootRoute));
-    assertEquals(FORBIDDEN, result.status());
+    assertEquals(UNAUTHORIZED, result.status());
   }
 
   @Test
@@ -165,7 +165,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     UUID invalidUUID = UUID.randomUUID();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Result result = route(fakeRequest("GET", baseRoute + invalidUUID).cookie(validCookie));
-    assertEquals(FORBIDDEN, result.status());
+    assertEquals(UNAUTHORIZED, result.status());
 
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(), equalTo("Unable To Authenticate User")));
@@ -528,7 +528,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     UUID invalidUUID = UUID.randomUUID();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Result result = route(fakeRequest("PUT", baseRoute + invalidUUID).cookie(validCookie));
-    assertEquals(FORBIDDEN, result.status());
+    assertEquals(UNAUTHORIZED, result.status());
 
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(), equalTo("Unable To Authenticate User")));
@@ -554,7 +554,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     String authToken = user.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Result result = route(fakeRequest("DELETE", baseRoute + invalidUUID).cookie(validCookie));
-    assertEquals(FORBIDDEN, result.status());
+    assertEquals(UNAUTHORIZED, result.status());
 
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(), equalTo("Unable To Authenticate User")));
@@ -1082,7 +1082,7 @@ public class CustomerControllerTest extends FakeDBApplication {
   public void testCustomerHostInfoWithInvalidCustomer() {
     UUID randomUUID = UUID.randomUUID();
     Result result = getHostInfo(randomUUID);
-    assertEquals(FORBIDDEN, result.status());
+    assertEquals(UNAUTHORIZED, result.status());
 
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(), equalTo("Unable To Authenticate User")));

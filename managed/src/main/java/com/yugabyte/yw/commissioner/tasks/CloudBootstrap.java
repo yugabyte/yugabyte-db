@@ -14,11 +14,13 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudSetup;
+import com.yugabyte.yw.common.CloudProviderHelper;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -40,15 +42,20 @@ import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
 @Slf4j
+@Retryable
 public class CloudBootstrap extends CloudTaskBase {
 
   private CloudProviderHandler cloudProviderHandler;
+  private CloudProviderHelper cloudProviderHelper;
 
   @Inject
   protected CloudBootstrap(
-      BaseTaskDependencies baseTaskDependencies, CloudProviderHandler cloudProviderHandler) {
+      BaseTaskDependencies baseTaskDependencies,
+      CloudProviderHandler cloudProviderHandler,
+      CloudProviderHelper cloudProviderHelper) {
     super(baseTaskDependencies);
     this.cloudProviderHandler = cloudProviderHandler;
+    this.cloudProviderHelper = cloudProviderHelper;
   }
 
   @ApiModel(value = "CloudBootstrapParams", description = "Cloud bootstrap parameters")
@@ -288,14 +295,14 @@ public class CloudBootstrap extends CloudTaskBase {
             .perRegionMetadata
             .forEach(
                 (regionCode, metadata) -> {
-                  createRegionSetupTask(regionCode, metadata, taskParams().destVpcId)
+                  createRegionSetupTask(regionCode, metadata, taskParams().destVpcId, isFirstTry())
                       .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingRegion);
                 });
         taskParams()
             .perRegionMetadata
             .forEach(
                 (regionCode, metadata) -> {
-                  createAccessKeySetupTask(taskParams(), regionCode)
+                  createAccessKeySetupTask(taskParams(), regionCode, isFirstTry())
                       .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
                 });
 
@@ -314,6 +321,8 @@ public class CloudBootstrap extends CloudTaskBase {
       p = Provider.getOrBadRequest(taskParams().providerUUID);
       p.setUsabilityState(Provider.UsabilityState.READY);
       p.save();
+
+      cloudProviderHelper.updatePrometheusConfig(p);
     } catch (RuntimeException e) {
       log.error("Received exception during bootstrap", e);
       p = Provider.getOrBadRequest(taskParams().providerUUID);
@@ -339,6 +348,7 @@ public class CloudBootstrap extends CloudTaskBase {
     CloudImageBundleSetup.Params params = new CloudImageBundleSetup.Params();
     params.providerUUID = taskParams().providerUUID;
     params.imageBundles = taskParams().imageBundles;
+    params.isFirstTry = isFirstTry();
     CloudImageBundleSetup task = createTask(CloudImageBundleSetup.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);

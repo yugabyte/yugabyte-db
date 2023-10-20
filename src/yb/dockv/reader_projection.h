@@ -38,6 +38,10 @@ struct ProjectedColumn {
   std::string ToString() const;
 };
 
+inline bool operator==(const ProjectedColumn& lhs, const ProjectedColumn& rhs) {
+  return YB_STRUCT_EQUALS(id, data_type);
+}
+
 struct ReaderProjection {
   static constexpr size_t kNotFoundIndex = std::numeric_limits<size_t>::max();
 
@@ -153,5 +157,13 @@ struct ReaderProjection {
 
   void AddColumn(const Schema& schema, ColumnId column_id, ColumnId* first_non_key_column);
 };
+
+inline bool operator==(const ReaderProjection& lhs, const ReaderProjection& rhs) {
+  return YB_STRUCT_EQUALS(columns);
+}
+
+inline std::ostream& operator<<(std::ostream& out, const ReaderProjection& value) {
+  return out << value.ToString();
+}
 
 }  // namespace yb::dockv

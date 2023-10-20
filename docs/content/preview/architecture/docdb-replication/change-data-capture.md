@@ -3,7 +3,7 @@ title: Change data capture (CDC) in YugabyteDB
 headerTitle: Change data capture (CDC)
 linkTitle: Change data capture (CDC)
 description: Learn how YugabyteDB supports asynchronous replication of data changes (inserts, updates, and deletes) to external databases or applications.
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+earlyAccess: /preview/releases/versioning/#feature-availability
 aliases:
   - /preview/architecture/change-data-capture/
 menu:
@@ -94,7 +94,7 @@ Using the Debezium connector for YugabyteDB, changes are pushed from YugabyteDB 
 
 ### CDC guarantees
 
-There is a number of guarantees that CDC makes.
+CDC makes the following guarantees.
 
 #### Per-tablet ordered delivery guarantee
 
@@ -120,6 +120,6 @@ When you have received a change for a row for timestamp `t`, you do not receive 
 
 {{< note title="Note" >}}
 
-See the [reference page](../../../explore/change-data-capture/) for more details & limitations.
+See [Change data capture](../../../explore/change-data-capture/) in Explore for more details and limitations.
 
 {{< /note >}}

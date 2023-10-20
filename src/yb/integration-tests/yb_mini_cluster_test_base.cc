@@ -114,6 +114,14 @@ Status MiniClusterTestWithClient<T>::CreateClient() {
 }
 
 template <class T>
+Status MiniClusterTestWithClient<T>::EnsureClientCreated() {
+  if (!client_) {
+    return CreateClient();
+  }
+  return Status::OK();
+}
+
+template <class T>
 void MiniClusterTestWithClient<T>::DoTearDown() {
   client_.reset();
   YBMiniClusterTestBase<T>::DoTearDown();
@@ -121,8 +129,7 @@ void MiniClusterTestWithClient<T>::DoTearDown() {
 
 template <class T>
 client::YBSessionPtr MiniClusterTestWithClient<T>::NewSession() {
-  auto session = client_->NewSession();
-  session->SetTimeout(60s);
+  auto session = client_->NewSession(60s);
   return session;
 }
 

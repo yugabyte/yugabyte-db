@@ -73,6 +73,7 @@
 #include "commands/tablegroup.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
+#include "utils/yb_inheritscache.h"
 
 /* non-export function prototypes */
 static void CheckPredicate(Expr *predicate);
@@ -667,6 +668,19 @@ DefineIndex(Oid relationId,
 		}
 	}
 
+	if (IsYugaByteEnabled() &&
+		stmt->tableSpace &&
+		rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
+	{
+		/*
+		 * Disable setting tablespaces for temporary indexes in Yugabyte
+		 * clusters.
+		 */
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot set tablespace for temporary index")));
+	}
+
 	/*
 	 * Select tablespace to use.  If not specified, use default tablespace
 	 * (which may in turn default to database's default).
@@ -728,7 +742,7 @@ DefineIndex(Oid relationId,
 		!IsBootstrapProcessingMode() &&
 		!YbIsConnectedToTemplateDb() &&
 		YbGetTableProperties(rel)->is_colocated;
-	
+
 	/* Use tablegroup of the indexed table, if any. */
 	Oid tablegroupId = YbTablegroupCatalogExists && IsYBRelation(rel) ?
 		YbGetTableProperties(rel)->tablegroup_oid :
@@ -1524,6 +1538,8 @@ DefineIndex(Oid relationId,
 	/* Wait for all backends to have up-to-date version. */
 	YbWaitForBackendsCatalogVersion();
 
+	YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "indisready");
+
 	/*
 	 * Update the pg_index row to mark the index as ready for inserts.
 	 */
@@ -1561,6 +1577,8 @@ DefineIndex(Oid relationId,
 
 	/* Do backfill. */
 	HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
+
+	YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "postbackfill");
 
 	if (IsYugaByteEnabled() && yb_test_block_index_phase[0] != '\0')
 		YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
@@ -3021,6 +3039,18 @@ IndexSetParentIndex(Relation partitionIdx, Oid parentOid)
 
 	if (fix_dependencies)
 	{
+		if (IsYugaByteEnabled())
+		{
+			/*
+			* YB Note: If setting index parent, invalidate the entry for the
+			* parent table in the pg_inherits cache as the parent now has a new
+			* child. If clearing the entry for the child, then invalidate the
+			* entry in the cache pertaining to the child and its old parent.
+			*/
+			YbPgInheritsCacheInvalidate(
+				OidIsValid(parentOid) ? parentOid : partRelid);
+		}
+
 		ObjectAddress partIdx;
 
 		/*

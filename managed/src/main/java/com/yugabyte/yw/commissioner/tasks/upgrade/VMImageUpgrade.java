@@ -20,6 +20,7 @@ import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -43,6 +44,7 @@ import org.apache.commons.lang3.StringUtils;
 public class VMImageUpgrade extends UpgradeTaskBase {
 
   private final Map<UUID, List<String>> replacementRootVolumes = new ConcurrentHashMap<>();
+  private final Map<UUID, String> replacementRootDevices = new ConcurrentHashMap<>();
 
   private final RuntimeConfGetter confGetter;
   private final ImageBundleUtil imageBundleUtil;
@@ -76,13 +78,15 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams() {
+    taskParams().verifyParams(getUniverse());
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
           Set<NodeDetails> nodeSet = fetchNodesForCluster();
-
-          // Verify the request params and fail if invalid
-          taskParams().verifyParams(getUniverse());
 
           String newVersion = taskParams().ybSoftwareVersion;
           if (taskParams().isSoftwareUpdateViaVm) {
@@ -120,6 +124,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     createRootVolumeCreationTasks(nodes).setSubTaskGroupType(getTaskSubGroupType());
 
     Map<UUID, UUID> clusterToImageBundleMap = new HashMap<>();
+    Universe universe = getUniverse();
     for (NodeDetails node : nodes) {
       UUID region = taskParams().nodeToRegion.get(node.nodeUuid);
       String machineImage = "";
@@ -150,11 +155,10 @@ public class VMImageUpgrade extends UpgradeTaskBase {
             machineImage);
         continue;
       }
-
       List<UniverseTaskBase.ServerType> processTypes = new ArrayList<>();
       if (node.isMaster) processTypes.add(ServerType.MASTER);
       if (node.isTserver) processTypes.add(ServerType.TSERVER);
-      if (getUniverse().isYbcEnabled()) processTypes.add(ServerType.CONTROLLER);
+      if (universe.isYbcEnabled()) processTypes.add(ServerType.CONTROLLER);
 
       // The node is going to be stopped. Ignore error because of previous error due to
       // possibly detached root volume.
@@ -188,7 +192,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
       // Copy the source root certificate to the node.
       createTransferXClusterCertsCopyTasks(
-          Collections.singleton(node), getUniverse(), SubTaskGroupType.InstallingSoftware);
+          Collections.singleton(node), universe, SubTaskGroupType.InstallingSoftware);
 
       processTypes.forEach(
           processType -> {
@@ -243,7 +247,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           });
     }
     // Delete after all the disks are replaced.
-    createDeleteRootVolumesTasks(getUniverse(), nodes, null /* volume Ids */)
+    createDeleteRootVolumesTasks(universe, nodes, null /* volume Ids */)
         .setSubTaskGroupType(getTaskSubGroupType());
   }
 
@@ -290,6 +294,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           params.numVolumes = numVolumes;
           params.setMachineImage(machineImage);
           params.bootDisksPerZone = this.replacementRootVolumes;
+          params.rootDevicePerZone = this.replacementRootDevices;
 
           log.info(
               "Creating {} root volumes using {} in AZ {}",
@@ -313,6 +318,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     replaceParams.azUuid = node.azUuid;
     replaceParams.setUniverseUUID(taskParams().getUniverseUUID());
     replaceParams.bootDisksPerZone = this.replacementRootVolumes;
+    replaceParams.rootDevicePerZone = this.replacementRootDevices;
 
     ReplaceRootVolume replaceDiskTask = createTask(ReplaceRootVolume.class);
     replaceDiskTask.initialize(replaceParams);

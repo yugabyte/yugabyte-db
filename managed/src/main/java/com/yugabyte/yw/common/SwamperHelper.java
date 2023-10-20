@@ -21,14 +21,12 @@ import com.google.common.io.PatternFilenameFilter;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.alerts.AlertRuleTemplateSubstitutor;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDescription;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
-import com.yugabyte.yw.models.AlertConfiguration;
-import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertTemplateSettings;
-import com.yugabyte.yw.models.NodeAgent;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.MetricCollectionLevel;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -36,13 +34,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.UUID;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -111,14 +104,18 @@ public class SwamperHelper {
   private final Environment environment;
   private final RuntimeConfGetter confGetter;
 
+  private final AlertTemplateService alertTemplateService;
+
   @Inject
   public SwamperHelper(
       RuntimeConfigFactory runtimeConfigFactory,
       Environment environment,
-      RuntimeConfGetter confGetter) {
+      RuntimeConfGetter confGetter,
+      AlertTemplateService alertTemplateService) {
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.environment = environment;
     this.confGetter = confGetter;
+    this.alertTemplateService = alertTemplateService;
   }
 
   @Getter
@@ -163,6 +160,9 @@ public class SwamperHelper {
     NODE_PREFIX,
     EXPORT_TYPE,
     EXPORTED_INSTANCE,
+    NODE_NAME,
+    NODE_ADDRESS,
+    NODE_IDENTIFIER,
     UNIVERSE_UUID
   }
 
@@ -181,7 +181,29 @@ public class SwamperHelper {
         LabelType.NODE_PREFIX.toString().toLowerCase(), universe.getUniverseDetails().nodePrefix);
     labels.put(LabelType.EXPORT_TYPE.toString().toLowerCase(), t.toString().toLowerCase());
     if (nodeDetails.nodeName != null) {
+      // exported_instance is a special name that we should not use as a custom label.
+      // You get metrics with exported_ prefix if the collected data already have one of
+      // the predefined labels (such as 'job' and 'instance').
+      // As a result - our 'up' metrics does not have this exported_instance label (seem like some
+      // internal prometheus logic we can't change), while other metrics have one.
+      // So better just not use that. But have to leave for backward compatibility anyway.
       labels.put(LabelType.EXPORTED_INSTANCE.toString().toLowerCase(), nodeDetails.nodeName);
+      labels.put(LabelType.NODE_NAME.toString().toLowerCase(), nodeDetails.nodeName);
+    }
+    if (nodeDetails.cloudInfo != null) {
+      if (nodeDetails.cloudInfo.private_ip != null) {
+        labels.put(
+            LabelType.NODE_ADDRESS.toString().toLowerCase(), nodeDetails.cloudInfo.private_ip);
+      }
+      if (CloudType.onprem.name().equals(nodeDetails.cloudInfo.cloud)) {
+        NodeInstance nodeInstance = NodeInstance.get(nodeDetails.nodeUuid);
+        if (nodeInstance != null
+            && StringUtils.isNotEmpty(nodeInstance.getDetails().instanceName)) {
+          labels.put(
+              LabelType.NODE_IDENTIFIER.toString().toLowerCase(),
+              nodeInstance.getDetails().instanceName);
+        }
+      }
     }
     if (t.isCollectionLevelSupported()) {
       MetricCollectionLevel level = getLevel(universe);
@@ -369,6 +391,9 @@ public class SwamperHelper {
       return;
     }
 
+    AlertTemplateDescription alertTemplateDescription =
+        alertTemplateService.getTemplateDescription(configuration.getTemplate());
+
     String fileContent;
     try (InputStream templateStream =
         environment.resourceAsStream("alert/alert_definition_header.yml")) {
@@ -391,7 +416,12 @@ public class SwamperHelper {
                 severity -> {
                   AlertRuleTemplateSubstitutor substitutor =
                       new AlertRuleTemplateSubstitutor(
-                          configuration, definition, severity, templateSettings);
+                          confGetter,
+                          alertTemplateDescription,
+                          configuration,
+                          definition,
+                          severity,
+                          templateSettings);
                   return substitutor.replace(template);
                 })
             .collect(Collectors.joining());

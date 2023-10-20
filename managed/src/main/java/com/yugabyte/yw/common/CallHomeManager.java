@@ -56,6 +56,7 @@ public class CallHomeManager {
     this.apiHelper = apiHelper;
     this.configHelper = configHelper;
   }
+
   // Email address from YugaByte to which to send diagnostics, if enabled.
   private final String YB_CALLHOME_URL = "http://yw-diagnostics.yugabyte.com";
 

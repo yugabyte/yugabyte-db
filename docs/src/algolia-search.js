@@ -1,8 +1,6 @@
 import algoliasearch from 'algoliasearch';
 
 (function () {
-  'use strict';
-
   const ignoreClickOnMeElement = document.querySelector('body:not(.td-searchpage) .search-area');
   const searchInput = document.getElementById('search-query');
 
@@ -10,12 +8,10 @@ import algoliasearch from 'algoliasearch';
    * Provided name value from the Query param either from URL or with the passed
    * search query.
    */
-  function searchURLParameter(name, fetchFrom) {
-    if (!fetchFrom) {
-      fetchFrom = location.search;
-    }
+  function searchURLParameter(name) {
+    const fetchFrom = location.search;
 
-    return decodeURIComponent((new RegExp('[?|&]' + name + '=([^&;]+?)(&|#|;|$)').exec(fetchFrom) || [null, ''])[1].replace(/\+/g, '%20')) || null;
+    return decodeURIComponent((new RegExp(`[?|&]${name}=([^&;]+?)(&|#|;|$)`).exec(fetchFrom) || [null, ''])[1].replace(/\+/g, '%20')) || null;
   }
 
   /**
@@ -27,15 +23,17 @@ import algoliasearch from 'algoliasearch';
       let addQueryParams = '';
       if (searchText && searchText.trim().length > 0) {
         document.getElementById('search-query').classList.add('have-text');
-        addQueryParams = '?query=' + searchText.trim();
+        addQueryParams = `?query=${searchText.trim()}`;
       } else {
         addQueryParams = '/search/';
         document.getElementById('search-query').classList.remove('have-text');
       }
+
       if (document.querySelector('body').classList.contains('td-searchpage')) {
         if (pager > 1) {
-          addQueryParams += '&page=' + pager;
+          addQueryParams += `&page=${pager}`;
         }
+
         window.history.pushState({}, '', addQueryParams);
       }
     }
@@ -47,7 +45,7 @@ import algoliasearch from 'algoliasearch';
   function emptySearch() {
     setTimeout(() => {
       if (document.querySelector('body').classList.contains('td-searchpage--')) {
-        document.querySelector('#doc-hit').innerHTML = '<li class="no-result">Search data related to <b>YugabyteDb</b> in our Documentation </li>';
+        document.querySelector('#doc-hit').innerHTML = '<li class="no-result">Search data related to <b>YugabyteDB</b> in our Documentation</li>';
         document.querySelector('#pagination-docs').style.display = 'none';
       } else {
         document.querySelector('.search-result').style.display = 'none';
@@ -61,19 +59,27 @@ import algoliasearch from 'algoliasearch';
   function docsSection(hitIs) {
     let content = '';
     hitIs.forEach(hit => {
-      const hitLevel0 = hit.hierarchy.lvl0;
-      if (!hitLevel0) {
-        return;
+      let pageTitle = '';
+      let pageBreadcrumb = '';
+
+      if (hit.headers[0]) {
+        pageTitle = hit.headers[0];
+      } else if (hit.title) {
+        pageTitle = hit.title;
       }
 
-      content += '<li>' +
-        '<div class="search-title">' +
-        '<a href="' + hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/') + '">' +
-        '<span class="search-title-inner">' + hitLevel0 + '</span>' +
-        '<div class="breadcrumb-item">' + hit.breadcrumb + '</div>' +
-        '</a>' +
-        '</div>' +
-        '</li>';
+      if (hit.breadcrumb) {
+        pageBreadcrumb = hit.breadcrumb;
+      }
+
+      content += `<li>
+        <div class="search-title">
+          <a href="${hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/')}">
+            <span class="search-title-inner">${pageTitle}</span>
+            <div class="breadcrumb-item">${pageBreadcrumb}</div>
+          </a>
+        </div>
+      </li>`;
     });
 
     return content;
@@ -85,27 +91,28 @@ import algoliasearch from 'algoliasearch';
   function searchPagination(pagerInfo) {
     document.querySelector('#docs').removeAttribute('style');
 
-    const searchpager = document.getElementById(pagerInfo.pagerId);
-    const currentPage = pagerInfo.currentPage;
-    const totalPages = pagerInfo.totalPages;
+    const {
+      currentPage, pagerId, pagerType, totalPages,
+    } = pagerInfo;
+    const searchpager = document.getElementById(pagerId);
 
-    let firstPage = '<span class="pager-btn" data-pager="' + 1 + '">1</span>';
-    let lastPage = '<span class="pager-btn" data-pager="' + totalPages + '">' + totalPages + '</span>';
-    let nextPageHTML = '<span class="right-btn pager-btn" data-pager="' + (currentPage + 1) + '"> &raquo; </span>';
+    let firstPage = '<span class="pager-btn" data-pager="1">1</span>';
+    let lastPage = `<span class="pager-btn" data-pager="${totalPages}">${totalPages}</span>`;
+    let nextPageHTML = `<span class="right-btn pager-btn" data-pager="${(currentPage + 1)}"> &raquo; </span>`;
     let pagerClick = '';
     let pagerClickLength = 0;
     let pagerLoop = 0;
     let pagerFull = '';
-    let prevPageHTML = '<span class="left-btn pager-btn" data-pager="' + (currentPage - 1) + '"> &laquo; </span>';
+    let prevPageHTML = `<span class="left-btn pager-btn" data-pager="${(currentPage - 1)}"> &laquo; </span>`;
 
     if (currentPage === 1) {
       prevPageHTML = '';
-      firstPage = '<span class="pager-btn active-page" data-pager="' + 1 + '">1</span>';
+      firstPage = '<span class="pager-btn active-page" data-pager="1">1</span>';
     }
 
     if (currentPage === totalPages) {
       nextPageHTML = '';
-      lastPage = '<span class="pager-btn active-page" data-pager="' + totalPages + '">' + totalPages + '</span>';
+      lastPage = `<span class="pager-btn active-page" data-pager="${totalPages}"> ${totalPages}</span>`;
     }
 
     if (totalPages > 1) {
@@ -144,7 +151,7 @@ import algoliasearch from 'algoliasearch';
           activeClass = ' active-page';
         }
 
-        pagerFull += '<span class="pager-btn' + activeClass + '" data-pager="' + pagerStep + '">' + pagerStep + '</span>';
+        pagerFull += `<span class="pager-btn${activeClass}" data-pager="${pagerStep}">${pagerStep}</span>`;
       }
 
       if (loopTill < (totalPages - 1)) {
@@ -154,20 +161,18 @@ import algoliasearch from 'algoliasearch';
       pagerFull += lastPage;
     }
 
-    searchpager.innerHTML = '<nav>' +
-      '<div class="pager-area">' +
-      '<div class="left-right-button" data-pager-type="' + pagerInfo.pagerType + '">' +
-      prevPageHTML +
-      '<span class="page-number">' +
-      pagerFull +
-      '</span>' +
-      nextPageHTML +
-      '</div>' +
-      '</div>' +
-      '</nav>' +
-      '<span class="left-right-button mobile-button" data-pager-type="' + pagerInfo.pagerType + '"></span>';
+    searchpager.innerHTML = `<nav>
+      <div class="pager-area">
+        <div class="left-right-button" data-pager-type="${pagerType}">
+          ${prevPageHTML}
+          <span class="page-number">${pagerFull}</span>
+          ${nextPageHTML}
+        </div>
+      </div>
+    </nav>
+    <span class="left-right-button mobile-button" data-pager-type="${pagerType}"></span>`;
 
-    pagerClick = document.querySelectorAll('#' + pagerInfo.pagerId + ' .left-right-button .pager-btn');
+    pagerClick = document.querySelectorAll(`#${pagerId} .left-right-button .pager-btn`);
     pagerClickLength = pagerClick.length;
 
     while (pagerLoop < pagerClickLength) {
@@ -193,56 +198,59 @@ import algoliasearch from 'algoliasearch';
       perPageCount = 10;
     }
 
-    const client = algoliasearch('UMBCUJCBE8', 'e2f160cd7efe96b0ada15fd27f297d66');
-    const index = client.initIndex('yugabyte_docs');
+    const client = algoliasearch('UMBCUJCBE8', 'b6c4bdb11b865250add6fecc38d8ebdf');
+    const index = client.initIndex('yugabytedb_docs');
     const pageItems = searchURLParameter('page');
     const searchpagerparent = document.querySelector('#pagination-docs');
     const searchOptions = {
       hitsPerPage: perPageCount,
       page: 0,
-      filters: 'version:"preview"',
     };
 
     if (pageItems && pageItems > 0) {
       searchOptions.page = pageItems - 1;
     }
 
-    index.search(searchValue, searchOptions).then(({hits, nbHits, nbPages, page}) => {
-      let pagerDetails = {};
-      let sectionHTML = '';
-      sectionHTML += docsSection(hits);
-      if (hits.length > 0) {
-        document.getElementById('doc-hit').innerHTML = sectionHTML;
-      } else {
-        document.getElementById('doc-hit').innerHTML = '<li class="no-result">0 results found for <b>"' + searchValue + '"</b></li>';
-      }
-
-      if (document.querySelector('body').classList.contains('td-searchpage')) {
-        pagerDetails = {
-          currentPage: page + 1,
-          pagerId: 'pagination-docs',
-          pagerType: 'docs',
-          totalHits: nbHits,
-          totalPages: nbPages,
-        };
-
-        searchPagination(pagerDetails);
-        searchpagerparent.className = 'pager results-' + nbHits;
-      } else {
-        searchpagerparent.className = 'pager results-' + nbHits;
-        let viewAll = '';
-        if (nbPages > 1) {
-          viewAll = '<a href="/search/?query=' + searchValue + '" title="View all results">View all results</a>';
+    index.search(searchValue, searchOptions).then(
+      ({
+        hits, nbHits, nbPages, page,
+      }) => {
+        let pagerDetails = {};
+        let sectionHTML = '';
+        sectionHTML += docsSection(hits);
+        if (hits.length > 0 && sectionHTML !== '') {
+          document.getElementById('doc-hit').innerHTML = sectionHTML;
+        } else {
+          document.getElementById('doc-hit').innerHTML = `<li class="no-result">0 results found for <b>"${searchValue}"</b></li>`;
         }
 
-        document.getElementById('pagination-docs').innerHTML = '<nav class="pager-area">' +
-          '<div class="pager-area">' +
-          '<span class="total-result">' + nbHits + ' Results</span>' +
-          '</div>' +
-          viewAll +
-          '</nav>';
-      }
-    });
+        if (document.querySelector('body').classList.contains('td-searchpage')) {
+          pagerDetails = {
+            currentPage: page + 1,
+            pagerId: 'pagination-docs',
+            pagerType: 'docs',
+            totalHits: nbHits,
+            totalPages: nbPages,
+          };
+
+          searchPagination(pagerDetails);
+          searchpagerparent.className = `pager results-${nbHits}`;
+        } else {
+          searchpagerparent.className = `pager results-${nbHits}`;
+          let viewAll = '';
+          if (nbPages > 1) {
+            viewAll = `<a href="/search/?query=${searchValue}" title="View all results">View all results</a>`;
+          }
+
+          document.getElementById('pagination-docs').innerHTML = `<nav class="pager-area">
+            <div class="pager-area">
+              <span class="total-result">${nbHits} Results</span>
+            </div>
+            ${viewAll}
+          </nav>`;
+        }
+      },
+    );
   }
 
   /**
@@ -255,6 +263,7 @@ import algoliasearch from 'algoliasearch';
           if (document.querySelector('body').classList.contains('td-searchpage')) {
             createSearchUrl(e.target.getAttribute('data-pager'));
           }
+
           searchAlgolia();
           setTimeout(() => {
             window.scrollTo(0, 0);
@@ -311,6 +320,7 @@ import algoliasearch from 'algoliasearch';
       }
     });
   }
+
   const inputReset = document.querySelector('.reset-input');
   inputReset.addEventListener('click', () => {
     document.querySelector('.td-search-input').value = '';

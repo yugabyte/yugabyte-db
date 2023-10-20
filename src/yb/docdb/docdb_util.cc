@@ -22,6 +22,7 @@
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
+#include "yb/dockv/key_entry_value.h"
 
 #include "yb/rocksutil/write_batch_formatter.h"
 #include "yb/rocksutil/yb_rocksdb.h"
@@ -64,10 +65,10 @@ DocDBRocksDBUtil::DocDBRocksDBUtil(InitMarkerBehavior init_marker_behavior)
 }
 
 DocReadContext& DocDBRocksDBUtil::doc_read_context() {
-  if (!doc_read_context_) {
-    doc_read_context_ = std::make_shared<DocReadContext>(
-        DocReadContext::TEST_Create(CreateSchema()));
-  }
+  std::call_once(doc_reader_context_init_once_, [this]() {
+      doc_read_context_ = std::make_shared<DocReadContext>(
+          DocReadContext::TEST_Create(CreateSchema()));
+  });
   return *doc_read_context_;
 }
 
@@ -282,6 +283,29 @@ Status DocDBRocksDBUtil::WriteToRocksDBAndClear(
   return Status::OK();
 }
 
+Result<Uuid> DocDBRocksDBUtil::WriteSimpleWithCotablePrefix(
+    int index, HybridTime write_time, Uuid cotable_id) {
+  uint16_t key_hash = index;
+  dockv::KeyEntryValues hash_components =
+      dockv::MakeKeyEntryValues(Format("row$0", index), 11111 * index);
+  if (cotable_id.IsNil()) {
+    uint32_t db_oid = 16234 + index;
+    uint32_t table_oid = 16234 + index;
+    std::string table_id = GetPgsqlTableId(db_oid, table_oid);
+    cotable_id = VERIFY_RESULT(Uuid::FromHexString(table_id));
+  }
+  auto encoded_doc_key = dockv::DocKey(cotable_id, key_hash, hash_components).Encode();
+  op_id_.term = index / 2;
+  op_id_.index = index;
+  auto& dwb = DefaultDocWriteBatch();
+  QLValuePB value;
+  value.set_int32_value(index);
+  RETURN_NOT_OK(dwb.SetPrimitive(
+      DocPath(encoded_doc_key, dockv::KeyEntryValue::MakeColumnId(ColumnId(10))), ValueRef(value)));
+  RETURN_NOT_OK(WriteToRocksDBAndClear(&dwb, write_time));
+  return cotable_id;
+}
+
 Status DocDBRocksDBUtil::WriteSimple(int index) {
   auto encoded_doc_key = dockv::MakeDocKey(Format("row$0", index), 11111 * index).Encode();
   op_id_.term = index / 2;
@@ -304,9 +328,16 @@ void DocDBRocksDBUtil::SetTableTTL(uint64_t ttl_msec) {
 }
 
 string DocDBRocksDBUtil::DocDBDebugDumpToStr() {
-  return docdb::DocDBDebugDumpToStr(rocksdb(), doc_read_context().schema_packing_storage) +
+  return docdb::DocDBDebugDumpToStr(rocksdb(), this /*schema_packing_provider*/) +
          docdb::DocDBDebugDumpToStr(
-             intents_db(), doc_read_context().schema_packing_storage, StorageDbType::kIntents);
+             intents_db(), this /*schema_packing_provider*/, StorageDbType::kIntents);
+}
+
+void DocDBRocksDBUtil::DocDBDebugDumpToContainer(std::unordered_set<std::string>* out) {
+  DocDB db;
+  db.regular = rocksdb();
+  db.intents = intents_db();
+  docdb::DocDBDebugDumpToContainer(db, this /*schema_packing_provider*/, out);
 }
 
 Status DocDBRocksDBUtil::SetPrimitive(
@@ -469,8 +500,7 @@ Status DocDBRocksDBUtil::DeleteSubDoc(
 
 void DocDBRocksDBUtil::DocDBDebugDumpToConsole() {
   DocDBDebugDump(
-      regular_db_.get(), std::cerr, doc_read_context().schema_packing_storage,
-      StorageDbType::kRegular);
+      regular_db_.get(), std::cerr, this /*schema_packing_provider*/, StorageDbType::kRegular);
 }
 
 Status DocDBRocksDBUtil::FlushRocksDbAndWait() {
@@ -544,7 +574,8 @@ Result<CompactionSchemaInfo> DocDBRocksDBUtil::CotablePacking(
     .schema_packing = rpc::SharedField(doc_read_context_, &packing),
     .cotable_id = table_id,
     .deleted_cols = {},
-    .enabled = PackedRowEnabled(TableType::YQL_TABLE_TYPE, false)
+    .packed_row_version = PackedRowVersion(TableType::YQL_TABLE_TYPE, false),
+    .schema = rpc::SharedField(doc_read_context_, &doc_read_context_->schema())
   };
 }
 

@@ -91,17 +91,19 @@ class Executor : public qlexpr::QLExprExecutor {
     ResetAsyncCalls(ResetAsyncCalls&& rhs);
     void operator=(ResetAsyncCalls&& rhs);
 
-    bool empty() const {
-      return num_async_calls_ == nullptr;
-    }
-
     void Cancel();
     void Perform();
 
     ~ResetAsyncCalls();
 
    private:
-    std::atomic<int64_t>* num_async_calls_;
+    void PerformUnlocked() REQUIRES(num_async_calls_mutex_);
+
+    // Move the pointer out of this object and return it, and make this object empty.
+    std::atomic<int64_t>* Move() EXCLUDES(num_async_calls_mutex_);
+
+    std::atomic<int64_t>* num_async_calls_ GUARDED_BY(num_async_calls_mutex_);
+    std::mutex num_async_calls_mutex_;
   };
 
   ResetAsyncCalls PrepareExecuteAsync();

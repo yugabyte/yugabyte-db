@@ -14,91 +14,58 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.alerts.AlertRuleTemplateSubstitutor.*;
+
 import com.cronutils.utils.VisibleForTesting;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.AlertManager.SendNotificationResult;
 import com.yugabyte.yw.common.AlertManager.SendNotificationStatus;
 import com.yugabyte.yw.common.AlertTemplate;
-import com.yugabyte.yw.common.AlertTemplate.TestAlertSettings;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.alerts.AlertChannelService;
-import com.yugabyte.yw.common.alerts.AlertChannelTemplateService;
-import com.yugabyte.yw.common.alerts.AlertConfigurationService;
-import com.yugabyte.yw.common.alerts.AlertDefinitionService;
-import com.yugabyte.yw.common.alerts.AlertDestinationService;
-import com.yugabyte.yw.common.alerts.AlertService;
-import com.yugabyte.yw.common.alerts.AlertTemplateSettingsService;
-import com.yugabyte.yw.common.alerts.AlertTemplateSubstitutor;
-import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
-import com.yugabyte.yw.common.alerts.TestAlertTemplateSubstitutor;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.alerts.*;
 import com.yugabyte.yw.common.alerts.impl.AlertChannelBase;
 import com.yugabyte.yw.common.alerts.impl.AlertChannelBase.Context;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDescription;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.TestAlertSettings;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
-import com.yugabyte.yw.forms.AlertChannelFormData;
-import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
-import com.yugabyte.yw.forms.AlertChannelTemplatesPreview;
-import com.yugabyte.yw.forms.AlertDestinationFormData;
-import com.yugabyte.yw.forms.AlertTemplateSettingsFormData;
-import com.yugabyte.yw.forms.AlertTemplateSystemVariable;
-import com.yugabyte.yw.forms.AlertTemplateVariablesFormData;
-import com.yugabyte.yw.forms.AlertTemplateVariablesList;
-import com.yugabyte.yw.forms.NotificationPreview;
-import com.yugabyte.yw.forms.NotificationPreviewFormData;
-import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.forms.filters.AlertTemplateApiFilter;
 import com.yugabyte.yw.forms.paging.AlertConfigurationPagedApiQuery;
 import com.yugabyte.yw.forms.paging.AlertPagedApiQuery;
 import com.yugabyte.yw.metrics.MetricUrlProvider;
-import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.AlertChannel.ChannelType;
-import com.yugabyte.yw.models.AlertChannelTemplates;
-import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
-import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertDestination;
-import com.yugabyte.yw.models.AlertLabel;
-import com.yugabyte.yw.models.AlertTemplateSettings;
-import com.yugabyte.yw.models.AlertTemplateVariable;
-import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Audit.ActionType;
 import com.yugabyte.yw.models.Audit.TargetType;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.extended.AlertConfigurationTemplate;
 import com.yugabyte.yw.models.extended.AlertData;
-import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
-import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
-import com.yugabyte.yw.models.filters.AlertFilter;
-import com.yugabyte.yw.models.filters.AlertTemplateFilter;
-import com.yugabyte.yw.models.filters.AlertTemplateSettingsFilter;
+import com.yugabyte.yw.models.filters.*;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import com.yugabyte.yw.models.paging.AlertConfigurationPagedQuery;
-import com.yugabyte.yw.models.paging.AlertConfigurationPagedResponse;
-import com.yugabyte.yw.models.paging.AlertDataPagedResponse;
-import com.yugabyte.yw.models.paging.AlertPagedQuery;
-import com.yugabyte.yw.models.paging.AlertPagedResponse;
+import com.yugabyte.yw.models.paging.*;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
+import io.swagger.annotations.*;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -112,6 +79,8 @@ import play.mvc.Result;
 public class AlertController extends AuthenticatedController {
 
   @Inject private MetricService metricService;
+
+  @Inject private AlertTemplateService alertTemplateService;
 
   @Inject private AlertConfigurationService alertConfigurationService;
 
@@ -133,7 +102,16 @@ public class AlertController extends AuthenticatedController {
 
   @Inject private AlertTemplateVariableService alertTemplateVariableService;
 
-  @ApiOperation(value = "Get details of an alert", response = Alert.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. " + "Get details of an alert",
+      response = Alert.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result get(UUID customerUUID, UUID alertUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -143,10 +121,17 @@ public class AlertController extends AuthenticatedController {
 
   /** Lists alerts for given customer. */
   @ApiOperation(
-      value = "List all alerts",
+      value = "WARNING: This is a preview API that could change. " + "List all alerts",
       response = Alert.class,
       responseContainer = "List",
       nickname = "listOfAlerts")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result list(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -156,7 +141,18 @@ public class AlertController extends AuthenticatedController {
     return PlatformResults.withData(convert(alerts));
   }
 
-  @ApiOperation(value = "List active alerts", response = Alert.class, responseContainer = "List")
+  @ApiOperation(
+      value = "Deprecated since YBA version 2.8.0.0. List active alerts",
+      response = Alert.class,
+      responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @Deprecated
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.8.0.0")
   public Result listActive(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -166,13 +162,22 @@ public class AlertController extends AuthenticatedController {
     return PlatformResults.withData(convert(alerts));
   }
 
-  @ApiOperation(value = "Count alerts", response = Integer.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. " + "Count alerts",
+      response = Integer.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "CountAlertsRequest",
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.filters.AlertApiFilter",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result countAlerts(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -185,13 +190,22 @@ public class AlertController extends AuthenticatedController {
     return PlatformResults.withData(alertCount);
   }
 
-  @ApiOperation(value = "List alerts (paginated)", response = AlertPagedResponse.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. " + "List alerts (paginated)",
+      response = AlertPagedResponse.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "PageAlertsRequest",
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.paging.AlertPagedApiQuery",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result pageAlerts(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -208,7 +222,16 @@ public class AlertController extends AuthenticatedController {
     return PlatformResults.withData(alertDataPagedResponse);
   }
 
-  @ApiOperation(value = "Acknowledge an alert", response = Alert.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. " + "Acknowledge an alert",
+      response = Alert.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result acknowledge(UUID customerUUID, UUID alertUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -223,7 +246,7 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Acknowledge all alerts",
+      value = "Deprecated since YBA version 2.8.0.0. Acknowledge all alerts",
       response = Alert.class,
       responseContainer = "List")
   @ApiImplicitParams(
@@ -232,6 +255,14 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.filters.AlertApiFilter",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @Deprecated
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.8.0.0")
   public Result acknowledgeByFilter(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -250,7 +281,16 @@ public class AlertController extends AuthenticatedController {
     return YBPSuccess.empty();
   }
 
-  @ApiOperation(value = "Get an alert configuration", response = AlertConfiguration.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. " + "Get an alert configuration",
+      response = AlertConfiguration.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result getAlertConfiguration(UUID customerUUID, UUID configurationUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -261,7 +301,9 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Get filtered list of alert configuration templates",
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "Get filtered list of alert configuration templates",
       response = AlertConfigurationTemplate.class,
       responseContainer = "List")
   @ApiImplicitParams(
@@ -270,6 +312,13 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.filters.AlertTemplateApiFilter",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result listAlertTemplates(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -278,7 +327,8 @@ public class AlertController extends AuthenticatedController {
 
     List<AlertConfigurationTemplate> templates =
         Arrays.stream(AlertTemplate.values())
-            .filter(filter::matches)
+            .filter(
+                template -> filter.matches(alertTemplateService.getTemplateDescription(template)))
             .map(
                 template ->
                     alertConfigurationService.createConfigurationTemplate(customer, template))
@@ -288,7 +338,9 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List all alert configurations (paginated)",
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "List all alert configurations (paginated)",
       response = AlertConfigurationPagedResponse.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -296,6 +348,13 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.paging.AlertConfigurationPagedApiQuery",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result pageAlertConfigurations(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -313,7 +372,9 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Get filtered list of alert configurations",
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "Get filtered list of alert configurations",
       response = AlertConfiguration.class,
       responseContainer = "List")
   @ApiImplicitParams(
@@ -322,6 +383,13 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result listAlertConfigurations(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -335,13 +403,23 @@ public class AlertController extends AuthenticatedController {
     return PlatformResults.withData(configurations);
   }
 
-  @ApiOperation(value = "Create an alert configuration", response = AlertConfiguration.class)
+  @ApiOperation(
+      value =
+          "WARNING: This is a preview API that could change. " + "Create an alert configuration",
+      response = AlertConfiguration.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "CreateAlertConfigurationRequest",
           paramType = "body",
           dataType = "com.yugabyte.yw.models.AlertConfiguration",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result createAlertConfiguration(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -362,13 +440,23 @@ public class AlertController extends AuthenticatedController {
     return PlatformResults.withData(configuration);
   }
 
-  @ApiOperation(value = "Update an alert configuration", response = AlertConfiguration.class)
+  @ApiOperation(
+      value =
+          "WARNING: This is a preview API that could change. " + "Update an alert configuration",
+      response = AlertConfiguration.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "UpdateAlertConfigurationRequest",
           paramType = "body",
           dataType = "com.yugabyte.yw.models.AlertConfiguration",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result updateAlertConfiguration(
       UUID customerUUID, UUID configurationUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
@@ -394,7 +482,17 @@ public class AlertController extends AuthenticatedController {
     return PlatformResults.withData(configuration);
   }
 
-  @ApiOperation(value = "Delete an alert configuration", response = YBPSuccess.class)
+  @ApiOperation(
+      value =
+          "WARNING: This is a preview API that could change. " + "Delete an alert configuration",
+      response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result deleteAlertConfiguration(
       UUID customerUUID, UUID configurationUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
@@ -409,7 +507,18 @@ public class AlertController extends AuthenticatedController {
     return YBPSuccess.empty();
   }
 
-  @ApiOperation(value = "Send test alert for alert configuration", response = YBPSuccess.class)
+  @ApiOperation(
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "Send test alert for alert configuration",
+      response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result sendTestAlert(UUID customerUUID, UUID configurationUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -423,13 +532,22 @@ public class AlertController extends AuthenticatedController {
     return YBPSuccess.withMessage(result.getMessage());
   }
 
-  @ApiOperation(value = "Create an alert channel", response = AlertChannel.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. " + "Create an alert channel",
+      response = AlertChannel.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "CreateAlertChannelRequest",
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AlertChannelFormData",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result createAlertChannel(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     AlertChannelFormData data = parseJsonAndValidate(request, AlertChannelFormData.class);
@@ -445,7 +563,16 @@ public class AlertController extends AuthenticatedController {
     return PlatformResults.withData(CommonUtils.maskObject(channel));
   }
 
-  @ApiOperation(value = "Get an alert channel", response = AlertChannel.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. " + "Get an alert channel",
+      response = AlertChannel.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result getAlertChannel(UUID customerUUID, UUID alertChannelUUID) {
     Customer.getOrBadRequest(customerUUID);
     return PlatformResults.withData(
@@ -453,13 +580,22 @@ public class AlertController extends AuthenticatedController {
             alertChannelService.getOrBadRequest(customerUUID, alertChannelUUID)));
   }
 
-  @ApiOperation(value = "Update an alert channel", response = AlertChannel.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. " + "Update an alert channel",
+      response = AlertChannel.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "UpdateAlertChannelRequest",
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AlertChannelFormData",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result updateAlertChannel(UUID customerUUID, UUID alertChannelUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     AlertChannel channel = alertChannelService.getOrBadRequest(customerUUID, alertChannelUUID);
@@ -477,7 +613,16 @@ public class AlertController extends AuthenticatedController {
     return PlatformResults.withData(CommonUtils.maskObject(channel));
   }
 
-  @ApiOperation(value = "Delete an alert channel", response = YBPSuccess.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. " + "Delete an alert channel",
+      response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result deleteAlertChannel(UUID customerUUID, UUID alertChannelUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     AlertChannel channel = alertChannelService.getOrBadRequest(customerUUID, alertChannelUUID);
@@ -493,9 +638,16 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List all alert channels",
+      value = "WARNING: This is a preview API that could change. " + "List all alert channels",
       response = AlertChannel.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result listAlertChannels(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     return PlatformResults.withData(
@@ -504,7 +656,16 @@ public class AlertController extends AuthenticatedController {
             .collect(Collectors.toList()));
   }
 
-  @ApiOperation(value = "Get alert channel templates", response = AlertChannelTemplatesExt.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. " + "Get alert channel templates",
+      response = AlertChannelTemplatesExt.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result getAlertChannelTemplates(UUID customerUUID, String channelTypeStr) {
     Customer.getOrBadRequest(customerUUID);
     ChannelType channelType = parseChannelType(channelTypeStr);
@@ -512,13 +673,22 @@ public class AlertController extends AuthenticatedController {
         alertChannelTemplateService.getWithDefaults(customerUUID, channelType));
   }
 
-  @ApiOperation(value = "Set alert channel templates", response = AlertChannelTemplates.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. " + "Set alert channel templates",
+      response = AlertChannelTemplates.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "SetAlertChannelTemplatesRequest",
           paramType = "body",
           dataType = "com.yugabyte.yw.models.AlertChannelTemplates",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result setAlertChannelTemplates(
       UUID customerUUID, String channelTypeStr, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
@@ -533,7 +703,17 @@ public class AlertController extends AuthenticatedController {
     return PlatformResults.withData(CommonUtils.maskObject(result));
   }
 
-  @ApiOperation(value = "Delete alert channel templates", response = YBPSuccess.class)
+  @ApiOperation(
+      value =
+          "WARNING: This is a preview API that could change. " + "Delete alert channel templates",
+      response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result deleteAlertChannelTemplates(
       UUID customerUUID, String channelTypeStr, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
@@ -546,21 +726,38 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List all alert channel templates",
+      value =
+          "WARNING: This is a preview API that could change. " + "List all alert channel templates",
       response = AlertChannelTemplatesExt.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result listAlertChannelTemplates(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     return PlatformResults.withData(alertChannelTemplateService.listWithDefaults(customerUUID));
   }
 
-  @ApiOperation(value = "Create an alert destination", response = AlertDestination.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. " + "Create an alert destination",
+      response = AlertDestination.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "CreateAlertDestinationRequest",
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AlertDestinationFormData",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result createAlertDestination(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     AlertDestinationFormData data =
@@ -581,20 +778,38 @@ public class AlertController extends AuthenticatedController {
     return PlatformResults.withData(destination);
   }
 
-  @ApiOperation(value = "Get an alert destination", response = AlertDestination.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. " + "Get an alert destination",
+      response = AlertDestination.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result getAlertDestination(UUID customerUUID, UUID alertDestinationUUID) {
     Customer.getOrBadRequest(customerUUID);
     return PlatformResults.withData(
         alertDestinationService.getOrBadRequest(customerUUID, alertDestinationUUID));
   }
 
-  @ApiOperation(value = "Update an alert destination", response = AlertDestination.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. " + "Update an alert destination",
+      response = AlertDestination.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "UpdateAlertDestinationRequest",
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AlertDestinationFormData",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result updateAlertDestination(
       UUID customerUUID, UUID alertDestinationUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
@@ -616,7 +831,16 @@ public class AlertController extends AuthenticatedController {
     return PlatformResults.withData(destination);
   }
 
-  @ApiOperation(value = "Delete an alert destination", response = YBPSuccess.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. " + "Delete an alert destination",
+      response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result deleteAlertDestination(
       UUID customerUUID, UUID alertDestinationUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
@@ -631,18 +855,33 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List alert destinations",
+      value = "WARNING: This is a preview API that could change. List alert destinations",
       response = AlertDefinition.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result listAlertDestinations(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     return PlatformResults.withData(alertDestinationService.listByCustomer(customerUUID));
   }
 
   @ApiOperation(
-      value = "Get alert template settings",
+      value = "Deprecated since YBA version 2.20.0.0. Get alert template settings",
       response = AlertTemplateSettings.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @Deprecated
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   public Result listAlertTemplateSettings(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -654,7 +893,9 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Crete or update alert template settings list",
+      value =
+          "Deprecated since YBA version 2.20.0.0. "
+              + "Create or update alert template settings list",
       response = AlertTemplateSettings.class,
       responseContainer = "List")
   @ApiImplicitParams(
@@ -663,6 +904,14 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AlertTemplateSettingsFormData",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @Deprecated
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   public Result editAlertTemplateSettings(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -680,7 +929,17 @@ public class AlertController extends AuthenticatedController {
     return PlatformResults.withData(settings);
   }
 
-  @ApiOperation(value = "Delete an alert template settings", response = YBPSuccess.class)
+  @ApiOperation(
+      value = "Deprecated since YBA version 2.20.0.0. " + "Delete an alert template settings",
+      response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @Deprecated
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   public Result deleteAlertTemplateSettings(
       UUID customerUUID, UUID settingsUuid, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
@@ -696,8 +955,15 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List alert template variables",
+      value = "WARNING: This is a preview API that could change. List alert template variables",
       response = AlertTemplateVariablesList.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result listAlertTemplateVariables(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -711,7 +977,9 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Create or update alert template variables",
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "Create or update alert template variables",
       response = AlertTemplateVariable.class,
       responseContainer = "List")
   @ApiImplicitParams(
@@ -720,6 +988,13 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AlertTemplateVariablesFormData",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result editAlertTemplateVariables(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -737,7 +1012,18 @@ public class AlertController extends AuthenticatedController {
     return PlatformResults.withData(variables);
   }
 
-  @ApiOperation(value = "Delete an alert template variables", response = YBPSuccess.class)
+  @ApiOperation(
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "Delete an alert template variables",
+      response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result deleteAlertTemplateVariables(
       UUID customerUUID, UUID variablesUuid, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
@@ -753,7 +1039,9 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Prepare alert notification preview",
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "Prepare alert notification preview",
       response = AlertTemplateVariablesList.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -761,6 +1049,13 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AlertTemplateVariablesFormData",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result alertNotificationPreview(UUID customerUUID, Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -833,7 +1128,8 @@ public class AlertController extends AuthenticatedController {
     Map<UUID, AlertDefinition> alertDefinitionMap =
         CollectionUtils.isNotEmpty(alertDefinitionUuids)
             ? alertDefinitionService
-                .list(AlertDefinitionFilter.builder().uuids(alertDefinitionUuids).build()).stream()
+                .list(AlertDefinitionFilter.builder().uuids(alertDefinitionUuids).build())
+                .stream()
                 .collect(Collectors.toMap(AlertDefinition::getUuid, Function.identity()))
             : Collections.emptyMap();
     return alerts.stream()
@@ -850,7 +1146,8 @@ public class AlertController extends AuthenticatedController {
       Alert alert, AlertConfiguration alertConfiguration, AlertDefinition alertDefinition) {
     return new AlertData()
         .setAlert(alert)
-        .setAlertExpressionUrl(getAlertExpressionUrl(alert, alertConfiguration, alertDefinition));
+        .setAlertExpressionUrl(getAlertExpressionUrl(alert, alertConfiguration, alertDefinition))
+        .setMetricsLinkUseBrowserFqdn(metricUrlProvider.getMetricsLinkUseBrowserFqdn());
   }
 
   private String getAlertExpressionUrl(
@@ -861,9 +1158,11 @@ public class AlertController extends AuthenticatedController {
       // Will try to get from configuration and definition.
       // Thresholds and even expression itself may already be changed - but that's best we can do.
       if (alertConfiguration != null && alertDefinition != null) {
+        AlertTemplateDescription description =
+            alertTemplateService.getTemplateDescription(alertConfiguration.getTemplate());
         expression =
-            alertDefinition.getQueryWithThreshold(
-                alertConfiguration.getThresholds().get(alert.getSeverity()));
+            description.getQueryWithThreshold(
+                alertDefinition, alertConfiguration.getThresholds().get(alert.getSeverity()));
       } else {
         return null;
       }
@@ -880,6 +1179,8 @@ public class AlertController extends AuthenticatedController {
   @VisibleForTesting
   Alert createTestAlert(
       Customer customer, AlertConfiguration configuration, boolean testAlertPrefix) {
+    AlertTemplateDescription alertTemplateDescription =
+        alertTemplateService.getTemplateDescription(configuration.getTemplate());
     AlertDefinition definition =
         alertDefinitionService
             .list(
@@ -897,10 +1198,10 @@ public class AlertController extends AuthenticatedController {
         definition = new AlertDefinition();
         definition.setCustomerUUID(customer.getUuid());
         definition.setConfigurationUUID(configuration.getUuid());
-        definition.setQuery(configuration.getTemplate().buildTemplate(customer, universe));
         definition.generateUUID();
         definition.setLabels(
             MetricLabelsBuilder.create()
+                .appendCustomer(customer)
                 .appendSource(getOrCreateUniverseForTestAlert(customer))
                 .getDefinitionLabels());
       } else {
@@ -917,11 +1218,17 @@ public class AlertController extends AuthenticatedController {
         alertTemplateSettingsService.get(
             configuration.getCustomerUUID(), configuration.getTemplate().name());
     List<AlertLabel> labels =
-        definition.getEffectiveLabels(configuration, alertTemplateSettings, severity).stream()
+        definition
+            .getEffectiveLabels(
+                alertTemplateDescription, configuration, alertTemplateSettings, severity)
+            .stream()
             .map(label -> new AlertLabel(label.getName(), label.getValue()))
             .collect(Collectors.toList());
     labels.add(new AlertLabel(KnownAlertLabels.ALERTNAME.labelName(), configuration.getName()));
-    labels.addAll(configuration.getTemplate().getTestAlertSettings().getAdditionalLabels());
+    labels.addAll(
+        alertTemplateDescription.getTestAlertSettings().getAdditionalLabels().stream()
+            .map(label -> new AlertLabel(label.getName(), label.getValue()))
+            .toList());
     Map<String, String> alertLabels =
         labels.stream().collect(Collectors.toMap(AlertLabel::getName, AlertLabel::getValue));
     Alert alert =
@@ -940,23 +1247,35 @@ public class AlertController extends AuthenticatedController {
     if (StringUtils.isNotEmpty(sourceUuid)) {
       alert.setSourceUUID(UUID.fromString(sourceUuid));
     }
-    alert.setMessage(buildTestAlertMessage(configuration, alert, testAlertPrefix));
+    if (alertTemplateDescription.getLabels().containsKey(AFFECTED_NODE_NAMES)) {
+      alert.setLabel(AFFECTED_NODE_NAMES, "node1 node2 node3");
+      alert.setLabel(AFFECTED_NODE_ADDRESSES, "1.2.3.1 1.2.3.2 1.2.3.3");
+      alert.setLabel(AFFECTED_NODE_IDENTIFIERS, "node1 node2 node3");
+    }
+    if (alertTemplateDescription.getLabels().containsKey(AFFECTED_VOLUMES)) {
+      alert.setLabel(AFFECTED_VOLUMES, "node1:/\nnode2:/\n");
+    }
+    alert.setMessage(
+        buildTestAlertMessage(alertTemplateDescription, configuration, alert, testAlertPrefix));
     return alert;
   }
 
   private String buildTestAlertMessage(
-      AlertConfiguration configuration, Alert alert, boolean testAlertPrefix) {
-    AlertTemplate template = configuration.getTemplate();
-    TestAlertSettings settings = template.getTestAlertSettings();
+      AlertTemplateDescription alertTemplateDescription,
+      AlertConfiguration configuration,
+      Alert alert,
+      boolean testAlertPrefix) {
+
+    TestAlertSettings settings = alertTemplateDescription.getTestAlertSettings();
     if (settings.getCustomMessage() != null) {
       return settings.getCustomMessage();
     }
-    String messageTemplate = template.getSummaryTemplate();
+    String messageTemplate = alertTemplateDescription.getAnnotations().get("summary");
     AlertTemplateSubstitutor<Alert> alertTemplateSubstitutor =
         new AlertTemplateSubstitutor<>(alert);
     String message = alertTemplateSubstitutor.replace(messageTemplate);
     TestAlertTemplateSubstitutor testAlertTemplateSubstitutor =
-        new TestAlertTemplateSubstitutor(alert, configuration);
+        new TestAlertTemplateSubstitutor(alert, alertTemplateDescription, configuration);
     message = testAlertTemplateSubstitutor.replace(message);
     return testAlertPrefix ? "[TEST ALERT!!!] " + message : message;
   }

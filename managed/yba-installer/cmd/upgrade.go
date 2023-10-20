@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/yugaware"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight"
@@ -38,7 +39,7 @@ var upgradeCmd = &cobra.Command{
 			if err != nil {
 				log.Fatal("Cannot upgrade: " + err.Error())
 			}
-			targetVersion := common.GetVersion()
+			targetVersion := ybactl.Version
 			if !common.LessVersions(installedVersion, targetVersion) {
 				log.Fatal(fmt.Sprintf("upgrade target version '%s' must be greater then the installed "+
 					"YugabyteDB Anywhere version '%s'", targetVersion, installedVersion))
@@ -46,10 +47,24 @@ var upgradeCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		state, err := ybactlstate.LoadState()
-		// Can have no stateif upgrading from a version before state existed
+		state, err := ybactlstate.Initialize()
+		// Can have no state if upgrading from a version before state existed.
 		if err != nil {
 			state = ybactlstate.New()
+			state.CurrentStatus = ybactlstate.InstalledStatus
+		}
+
+		if err := state.TransitionStatus(ybactlstate.UpgradingStatus); err != nil {
+			log.Fatal("cannot upgrade, invalid status transition: " + err.Error())
+		}
+
+		if err := state.ValidateReconfig(); err != nil {
+			log.Fatal("invalid reconfigure during upgrade: " + err.Error())
+		}
+
+		// Upgrade yba-ctl first.
+		if err := ybaCtl.Install(); err != nil {
+			log.Fatal("failed to upgrade yba-ctl")
 		}
 
 		//Todo: this is a temporary hidden feature to migrate data
@@ -60,13 +75,18 @@ var upgradeCmd = &cobra.Command{
 			log.Fatal("preflight failed")
 		}
 
+		state.CurrentStatus = ybactlstate.UpgradingStatus
+		if err := ybactlstate.StoreState(state); err != nil {
+			log.Fatal("could not update state: " + err.Error())
+		}
+
 		/* This is the postgres major version upgrade workflow!
 		// First, stop platform and prometheus. Postgres will need to be running
 		// to take the backup for postgres upgrade.
 		services[YbPlatformServiceName].Stop()
 		services[PrometheusServiceName].Stop()
 
-		common.Upgrade(common.GetVersion())
+		common.Upgrade(ybactl.Version)
 
 		for _, name := range serviceOrder {
 			services[name].Upgrade()
@@ -81,7 +101,7 @@ var upgradeCmd = &cobra.Command{
 		*/
 
 		// Here is the postgres minor version/no upgrade workflow
-		common.Upgrade(common.GetVersion())
+		common.Upgrade(ybactl.Version)
 
 		// Check if upgrading requires DB migration.
 
@@ -119,6 +139,8 @@ var upgradeCmd = &cobra.Command{
 			log.Info("Completed restart of component " + name)
 		}
 
+		common.WaitForYBAReady(ybactl.Version)
+
 		var statuses []common.Status
 		//serviceOrder = append([]string{newDbServiceName}, serviceOrder...)
 		for _, name := range serviceOrder {
@@ -135,10 +157,8 @@ var upgradeCmd = &cobra.Command{
 		common.PrintStatus(statuses...)
 		// Here ends the postgres minor version/no upgrade workflow
 
-		if err := ybaCtl.Install(); err != nil {
-			log.Fatal("failed to install yba-ctl")
-		}
-
+		state.CurrentStatus = ybactlstate.InstalledStatus
+		state.Version = ybactl.Version
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("failed to write state: " + err.Error())
 		}

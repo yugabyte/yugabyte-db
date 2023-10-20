@@ -86,12 +86,14 @@ In order to deploy YugabyteDB nodes in your AWS account, YugabyteDB Anywhere req
 
 ### SSH key pairs
 
-In order to be able to provision Amazon Elastic Compute Cloud (EC2) instances with YugabyteDB, YugabyteDB Anywhere requires SSH access. The following are two ways to provide SSH access:
+To be able to provision Amazon Elastic Compute Cloud (EC2) instances with YugabyteDB, YugabyteDB Anywhere requires SSH access. The following are two ways to provide SSH access:
 
 - Enable YugabyteDB Anywhere to create and manage [Key Pairs](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html). In this mode, YugabyteDB Anywhere creates SSH Key Pairs across all the regions you choose to set up and stores the relevant private key part of these locally in order to SSH into future EC2 instances.
 - Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content and the corresponding SSH user. This information must be the same across all the regions you provision.
 
 If you use YugabyteDB Anywhere to manage SSH Key Pairs for you and you deploy multiple YugabyteDB Anywhere instances across your environment, then the AWS provider name should be unique for each instance of YugabyteDB Anywhere integrating with a given AWS account.
+
+If you are using a YugabyteDB Anywhere-managed AMI and plan to use the `us-gov-east-1` and `us-gov-west-1` regions, you must set the SSH user to `centos` as these regions use CentOS 7 (as opposed to the default Alma 8 used for other regions). If you don't set the SSH user accordingly, universe deployment to these regions will fail.
 
 ### Hosted zones
 
@@ -101,8 +103,8 @@ Integrating with hosted zones can make YugabyteDB universes easily discoverable.
 
 You can customize your network, including the virtual network, as follows:
 
-- Select an existing Virtual Private Cloud (VPC).
-- Create a new VPC. Note that this option is considered beta and is not recommended for production use cases, as creating a new VPC can silently fail if there are any classless inter-domain routing (CIDR) conflicts. For example, the following will result in a silent failure:
+- **Specify an existing VPC**. Select this option to use a VPC that you have created in AWS.
+- **Create a new VPC** ([Tech Preview](/preview/releases/versioning/#feature-availability)). Select this option to create a new VPC using YugabyteDB Anywhere. This option is not recommended for production use cases. If you use this feature and there are any classless inter-domain routing (CIDR) conflicts, the operation can fail silently. This would include, for example, doing the following:
   - Configure more than one AWS cloud provider with different CIDR block prefixes and selecting the **Create a new VPC** option.
   - Creating a new VPC with an CIDR block that overlaps with any of the existing subnets.
 

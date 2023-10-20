@@ -59,6 +59,7 @@ import com.yugabyte.yw.models.HealthCheck.Details.NodeData;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricSourceKey;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -82,6 +83,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -91,6 +93,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.mail.MessagingException;
 import lombok.AllArgsConstructor;
@@ -120,8 +123,6 @@ public class HealthChecker {
 
   private static final String MAX_NUM_THREADS_NODE_CHECK_KEY =
       "yb.health.max_num_parallel_node_checks";
-
-  public static final String READ_WRITE_TEST_PARAM = "yb.metrics.db_read_write_test";
 
   private final Environment environment;
 
@@ -288,7 +289,8 @@ public class HealthChecker {
         }
         // Add node metric value if it's present in data node
         List<Details.Metric> nodeMetrics = nodeData.getMetrics();
-        List<Metric> nodeCustomMetrics = new ArrayList<>(getNodeMetrics(c, u, node, nodeMetrics));
+        List<Metric> nodeCustomMetrics =
+            new ArrayList<>(getNodeMetrics(c, u, nodeData, nodeMetrics));
         if (checkName.equals(UPTIME_CHECK)) {
           // No boot time metric means the instance or the whole node is down
           // and this node shouldn't be counted in other error node count metrics.
@@ -648,6 +650,10 @@ public class HealthChecker {
     }
     boolean testReadWrite =
         confGetter.getConfForScope(params.universe, UniverseConfKeys.dbReadWriteTest);
+    boolean testYsqlshConnectivity =
+        confGetter.getConfForScope(params.universe, UniverseConfKeys.ysqlshConnectivityTest);
+    boolean testCqlshConnectivity =
+        confGetter.getConfForScope(params.universe, UniverseConfKeys.cqlshConnectivityTest);
     for (UniverseDefinitionTaskParams.Cluster cluster : details.clusters) {
       UserIntent userIntent = cluster.userIntent;
       Provider provider = Provider.get(UUID.fromString(userIntent.provider));
@@ -680,11 +686,23 @@ public class HealthChecker {
           activeNodes.stream()
               .sorted(Comparator.comparing(NodeDetails::getNodeName))
               .collect(Collectors.toList());
+      Set<UUID> nodeUuids =
+          sortedDetails.stream()
+              .map(NodeDetails::getNodeUuid)
+              .filter(Objects::nonNull)
+              .collect(Collectors.toSet());
+      Map<UUID, NodeInstance> nodeInstanceMap =
+          NodeInstance.listByUuids(nodeUuids).stream()
+              .collect(Collectors.toMap(NodeInstance::getNodeUuid, Function.identity()));
       for (NodeDetails nodeDetails : sortedDetails) {
+        NodeInstance nodeInstance = nodeInstanceMap.get(nodeDetails.getNodeUuid());
         NodeInfo nodeInfo =
             new NodeInfo()
                 .setNodeHost(nodeDetails.cloudInfo.private_ip)
                 .setNodeName(nodeDetails.nodeName)
+                .setNodeUuid(nodeDetails.nodeUuid)
+                .setNodeIdentifier(
+                    nodeInstance != null ? nodeInstance.getDetails().instanceName : "")
                 .setYbSoftwareVersion(userIntent.ybSoftwareVersion)
                 .setEnableYSQL(userIntent.enableYSQL)
                 .setEnableYCQL(userIntent.enableYCQL)
@@ -696,6 +714,8 @@ public class HealthChecker {
                 .setYbHomeDir(provider.getYbHome())
                 .setNodeStartTime(potentialStartTime)
                 .setTestReadWrite(testReadWrite)
+                .setTestYsqlshConnectivity(testYsqlshConnectivity)
+                .setTestCqlshConnectivity(testCqlshConnectivity)
                 .setUniverseUuid(params.universe.getUniverseUUID())
                 .setNodeDetails(nodeDetails);
         if (nodeDetails.isMaster) {
@@ -839,6 +859,7 @@ public class HealthChecker {
           new NodeData()
               .setNode(nodeInfo.nodeHost)
               .setNodeName(nodeInfo.nodeName)
+              .setNodeIdentifier(nodeInfo.nodeIdentifier)
               .setMessage("Node")
               .setTimestampIso(new Date());
       try {
@@ -955,8 +976,8 @@ public class HealthChecker {
       // they are added.
       Path path =
           fileHelperService.createTempFile(
-              "collect_metrics_" + universeUuid + "_" + nodeInfo.nodeName, ".sh");
-      Files.write(path, scriptContent.getBytes(StandardCharsets.UTF_8));
+              "collect_metrics_" + universeUuid + "_" + nodeInfo.nodeUuid, ".sh");
+      Files.writeString(path, scriptContent);
 
       return path.toString();
     } catch (IOException e) {
@@ -977,8 +998,8 @@ public class HealthChecker {
       // they are added.
       Path path =
           fileHelperService.createTempFile(
-              "node_health_" + universeUuid + "_" + nodeInfo.nodeName, ".py");
-      Files.write(path, scriptContent.getBytes(StandardCharsets.UTF_8));
+              "node_health_" + universeUuid + "_" + nodeInfo.nodeUuid, ".py");
+      Files.writeString(path, scriptContent);
 
       return path.toString();
     } catch (IOException e) {
@@ -1034,6 +1055,8 @@ public class HealthChecker {
     private String ybcDir = "";
     private String nodeHost;
     private String nodeName;
+    private UUID nodeUuid;
+    private String nodeIdentifier = "";
     private String ybSoftwareVersion = null;
     private boolean enableTls = false;
     private boolean enableTlsClient = false;
@@ -1052,6 +1075,8 @@ public class HealthChecker {
     private boolean checkClock = false;
     private Long nodeStartTime = null;
     private boolean testReadWrite = true;
+    private boolean testYsqlshConnectivity = true;
+    private boolean testCqlshConnectivity = true;
     private boolean enableYbc = false;
     private int ybcPort = 18018;
     private UUID universeUuid;

@@ -51,6 +51,10 @@ DEFINE_test_flag(int32, delay_tablet_split_metadata_restore_secs, 0,
                  "How much time in secs to delay restoring tablet split metadata after restoring "
                  "checkpoint.");
 
+DEFINE_test_flag(int32, delay_tablet_export_metadata_ms, 0,
+                 "How much time in milliseconds to delay before exporting tablet metadata during "
+                 "snapshot creation.");
+
 namespace yb {
 namespace tablet {
 
@@ -167,6 +171,8 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
     }
   });
 
+  DisableSchemaGC disable_schema_gc(tablet().metadata());
+
   // Note: checkpoint::CreateCheckpoint() calls DisableFileDeletions()/EnableFileDeletions()
   //       for the RocksDB object.
   s = CreateCheckpoint(tmp_snapshot_dir);
@@ -181,8 +187,10 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
     docdb::RocksDBPatcher patcher(tmp_snapshot_dir, rocksdb_options);
 
     RETURN_NOT_OK(patcher.Load());
-    RETURN_NOT_OK(patcher.SetHybridTimeFilter(snapshot_hybrid_time));
+    RETURN_NOT_OK(patcher.SetHybridTimeFilter(std::nullopt, snapshot_hybrid_time));
   }
+
+  AtomicFlagSleepMs(&FLAGS_TEST_delay_tablet_export_metadata_ms);
 
   bool need_flush = data.schedule_id && tablet().metadata()->AddSnapshotSchedule(data.schedule_id);
 
@@ -383,7 +391,7 @@ Status TabletSnapshots::RestoreCheckpoint(
     RETURN_NOT_OK(patcher.Load());
     RETURN_NOT_OK(patcher.ModifyFlushedFrontier(frontier));
     if (restore_at) {
-      RETURN_NOT_OK(patcher.SetHybridTimeFilter(restore_at));
+      RETURN_NOT_OK(patcher.SetHybridTimeFilter(std::nullopt, restore_at));
     }
   }
 
@@ -474,7 +482,7 @@ Result<std::string> TabletSnapshots::RestoreToTemporary(
     docdb::RocksDBPatcher patcher(dest_dir, rocksdb_options);
 
     RETURN_NOT_OK(patcher.Load());
-    RETURN_NOT_OK(patcher.SetHybridTimeFilter(restore_at));
+    RETURN_NOT_OK(patcher.SetHybridTimeFilter(std::nullopt, restore_at));
   }
 
   return dest_dir;

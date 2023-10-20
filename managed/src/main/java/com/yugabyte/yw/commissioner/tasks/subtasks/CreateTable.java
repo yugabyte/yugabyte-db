@@ -62,12 +62,15 @@ public class CreateTable extends AbstractTaskBase {
     // The name of the table to be created.
     @ApiModelProperty(value = "Table name")
     public String tableName;
+
     // The type of the table to be created (Redis, YSQL)
     @ApiModelProperty(value = "Table type")
     public TableType tableType;
+
     // The schema of the table to be created (required for YSQL)
     @ApiModelProperty(value = "Table details")
     public TableDetails tableDetails;
+
     // Flag, indicating that we need to create table only if not exists
     @ApiModelProperty(value = "Create only if table does not exist")
     public boolean ifNotExist;
@@ -114,14 +117,14 @@ public class CreateTable extends AbstractTaskBase {
           "Failed to create table '"
               + tableDetails.keyspace
               + "."
-              + tableDetails.tableName
+              + CommonUtils.logTableName(tableDetails.tableName)
               + "' of type "
               + taskParams().tableType);
     }
     log.info(
         "Created table '{}.{}' of type {}.",
         tableDetails.keyspace,
-        taskParams().tableName,
+        CommonUtils.logTableName(taskParams().tableName),
         taskParams().tableType);
   }
 
@@ -150,7 +153,7 @@ public class CreateTable extends AbstractTaskBase {
     log.info(
         "Created table '{}.{}' of type {}.",
         tableDetails.keyspace,
-        taskParams().tableName,
+        CommonUtils.logTableName(taskParams().tableName),
         taskParams().tableType);
   }
 
@@ -177,7 +180,10 @@ public class CreateTable extends AbstractTaskBase {
         taskParams().tableName = YBClient.REDIS_DEFAULT_TABLE_NAME;
       }
       YBTable table = client.createRedisTable(taskParams().tableName, taskParams().ifNotExist);
-      log.info("Created table '{}' of type {}.", table.getName(), table.getTableType());
+      log.info(
+          "Created table '{}' of type {}.",
+          CommonUtils.logTableName(table.getName()),
+          table.getTableType());
     } finally {
       ybService.closeClient(client, masterAddresses);
     }
@@ -204,7 +210,11 @@ public class CreateTable extends AbstractTaskBase {
         createRedisTable();
       }
     } catch (Exception e) {
-      String msg = "Error " + e.getMessage() + " while creating table " + taskParams().tableName;
+      String msg =
+          "Error "
+              + e.getMessage()
+              + " while creating table "
+              + CommonUtils.logTableName(taskParams().tableName);
       log.error(msg, e);
       throw new RuntimeException(msg);
     }

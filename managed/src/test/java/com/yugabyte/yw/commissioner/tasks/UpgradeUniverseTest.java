@@ -9,24 +9,10 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
@@ -51,29 +37,15 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.*;
 import io.ebean.DB;
 import io.ebean.SqlUpdate;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.naming.TestCaseName;
@@ -87,12 +59,7 @@ import org.mockito.InjectMocks;
 import org.mockito.MockitoAnnotations;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.IsInitDbDoneResponse;
-import org.yb.client.IsServerReadyResponse;
-import org.yb.client.ListMastersResponse;
-import org.yb.client.UpgradeYsqlResponse;
-import org.yb.client.YBClient;
+import org.yb.client.*;
 import org.yb.master.CatalogEntityInfo.SysClusterConfigEntryPB;
 import play.libs.Json;
 
@@ -259,6 +226,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     successResponse.message = "YSQL successfully upgraded to the latest version";
     when(mockNodeUniverseManager.runYbAdminCommand(any(), any(), any(), anyList(), anyLong()))
         .thenReturn(successResponse);
+
+    setFollowerLagMock();
   }
 
   private TaskInfo submitTask(UpgradeUniverse.Params taskParams, UpgradeTaskType taskType) {
@@ -444,6 +413,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.ChangeMasterConfig,
+          TaskType.CheckFollowerLag,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.SetNodeState);
@@ -1006,7 +976,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
               node.isMaster = false;
               node.isTserver = true;
               node.cloudInfo = new CloudSpecificInfo();
-              node.cloudInfo.instance_type = userIntent.instanceType;
+              node.cloudInfo.instance_type = userIntent.getInstanceTypeForNode(node);
               node.cloudInfo.private_ip = "1.2.3." + idx;
               universeDetails.nodeDetailsSet.add(node);
             }
@@ -1092,6 +1062,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           if (rf == 1) {
             // Don't change master config for RF1
             if (RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER.get(j) == TaskType.ChangeMasterConfig
+                || RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER.get(j) == TaskType.CheckFollowerLag
                 || RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER.get(j)
                     == TaskType.WaitForMasterLeader) {
               continue;
@@ -1144,6 +1115,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testResizeNodeUpgradeRF3() {
+    UniverseModifyBaseTest.mockGetMasterRegistrationResponses(
+        mockClient, ImmutableList.of("10.0.0.1", "10.0.0.2", "10.0.0.3"));
     testResizeNodeUpgrade(3, 29);
   }
 
@@ -1210,16 +1183,28 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     // AZ 4 has 2 nodes so return 2 volumes here
     createVolumeOutput.put(az4.getUuid(), Arrays.asList("root-volume-4", "root-volume-5"));
 
+    // Use output for verification and response is the raw string that parses into output.
+    Map<UUID, String> createVolumeOutputResponse =
+        Stream.of(az1, az2, az3)
+            .collect(
+                Collectors.toMap(
+                    az -> az.getUuid(),
+                    az ->
+                        String.format(
+                            "{\"boot_disks_per_zone\":[\"root-volume-%s\"], "
+                                + "\"root_device_name\":\"/dev/sda1\"}",
+                            az.getCode())));
+    createVolumeOutputResponse.put(
+        az4.getUuid(),
+        "{\"boot_disks_per_zone\":[\"root-volume-4\", \"root-volume-5\"], "
+            + "\"root_device_name\":\"/dev/sda1\"}");
+
     ObjectMapper om = new ObjectMapper();
-    for (Map.Entry<UUID, List<String>> e : createVolumeOutput.entrySet()) {
-      try {
-        when(mockNodeManager.nodeCommand(
-                eq(NodeCommandType.Create_Root_Volumes),
-                argThat(new CreateRootVolumesMatcher(e.getKey()))))
-            .thenReturn(ShellResponse.create(0, om.writeValueAsString(e.getValue())));
-      } catch (JsonProcessingException ex) {
-        throw new RuntimeException(ex);
-      }
+    for (Map.Entry<UUID, String> e : createVolumeOutputResponse.entrySet()) {
+      when(mockNodeManager.nodeCommand(
+              eq(NodeCommandType.Create_Root_Volumes),
+              argThat(new CreateRootVolumesMatcher(e.getKey()))))
+          .thenReturn(ShellResponse.create(0, e.getValue()));
     }
 
     TaskInfo taskInfo =

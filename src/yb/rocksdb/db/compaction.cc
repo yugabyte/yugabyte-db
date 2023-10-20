@@ -77,7 +77,7 @@ LightweightBoundaries::LightweightBoundaries(Arena* arena,
 FdWithBoundaries::FdWithBoundaries(Arena* arena, const FileMetaData& source)
     : fd(source.fd), smallest(arena, source.smallest), largest(arena, source.largest) {
   if (source.largest.user_frontier) {
-    auto filter = source.largest.user_frontier->Filter();
+    auto filter = source.largest.user_frontier->FilterAsSlice();
     if (!filter.empty()) {
       user_filter_data = SliceDup(arena, filter);
     }
@@ -334,10 +334,10 @@ bool Compaction::InputCompressionMatchesOutput() const {
   bool matches = (GetCompressionType(*cfd_->ioptions(), start_level_,
                                      base_level) == output_compression_);
   if (matches) {
-    TEST_SYNC_POINT("Compaction::InputCompressionMatchesOutput:Matches");
+    DEBUG_ONLY_TEST_SYNC_POINT("Compaction::InputCompressionMatchesOutput:Matches");
     return true;
   }
-  TEST_SYNC_POINT("Compaction::InputCompressionMatchesOutput:DidntMatch");
+  DEBUG_ONLY_TEST_SYNC_POINT("Compaction::InputCompressionMatchesOutput:DidntMatch");
   return matches;
 }
 

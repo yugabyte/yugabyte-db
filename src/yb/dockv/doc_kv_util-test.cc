@@ -105,7 +105,7 @@ namespace {
 template <char END_OF_STRING>
 void NaiveAppendEncodedStr(const string &s, std::string *dest) {
   static_assert(END_OF_STRING == '\0' || END_OF_STRING == '\xff',
-                "Only characters '\0' and '\xff' allowed as a template parameter");
+                "Only characters 0x00 and 0xff allowed as a template parameter");
   if (END_OF_STRING == '\0' && s.find('\0') == string::npos) {
     // Fast path: no zero characters, nothing to encode.
     dest->append(s);
@@ -138,7 +138,7 @@ std::string NaiveComplementZeroEncodeStr(const string &s) {
 template<char END_OF_STRING>
 Status NaiveDecodeEncodedStr(Slice* slice, string* result) {
   static_assert(END_OF_STRING == '\0' || END_OF_STRING == '\xff',
-                "Invalid END_OF_STRING character. Only '\0' and '\xff' accepted");
+                "Invalid END_OF_STRING character. Only 0x00 and 0xff accepted");
   constexpr char END_OF_STRING_ESCAPE = END_OF_STRING ^ 1;
   const char* p = slice->cdata();
   const char* end = p + slice->size();

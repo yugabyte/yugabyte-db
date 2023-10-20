@@ -141,7 +141,7 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_stat
     if (s.ok()) {
       log->set_wal_retention_secs(request()->wal_retention_secs());
     } else {
-      LOG(WARNING) << "T " << tablet->tablet_id() << ": Unable to alter wal retention secs";
+      LOG(WARNING) << "T " << tablet->tablet_id() << " Unable to alter wal retention secs: " << s;
     }
   }
 

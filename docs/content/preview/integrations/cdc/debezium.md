@@ -2,13 +2,13 @@
 title: Debezium and CDC in YugabyteDB
 linkTitle: Debezium
 description: Using Debezium for CDC in YugabyteDB.
-earlyAccess: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+earlyAccess: /preview/releases/versioning/#feature-availability
 aliases:
   - /preview/integrations/cdc/
 menu:
   preview_integrations:
     identifier: cdc-debezium
-    parent: integrations
+    parent: data-integration
     weight: 571
 type: docs
 ---
@@ -156,9 +156,9 @@ Do the following:
 
 For a list of all the configuration options provided with the Debezium YugabyteDB connector, see [Connector configuration properties](../../../explore/change-data-capture/debezium-connector-yugabytedb/#connector-configuration-properties).
 
-{{< tip title="DROP or TRUNCATE tables when CDC is enabled" >}}
+{{< tip title="TRUNCATE tables when CDC is enabled" >}}
 
-By default, the YugabyteDB CDC implementation does not allow you to DROP or TRUNCATE a table while an active CDC stream is present on the namespace. If you need to perform these operations while CDC is enabled, set the [enable_delete_truncate_cdcsdk_table](../../../reference/configuration/yb-tserver/#enable-delete-truncate-cdcsdk-table) flag to `true` and then you can DROP or TRUNCATE the table.
+By default, the YugabyteDB CDC implementation does not allow you to TRUNCATE a table while an active CDC stream is present on the namespace. To allow truncating tables while CDC is active, set the [enable_truncate_cdcsdk_table](../../../reference/configuration/yb-tserver/#enable-truncate-cdcsdk-table) flag to true.
 
 {{< /tip >}}
 

@@ -9,6 +9,7 @@ import static com.yugabyte.yw.common.NodeActionType.QUERY;
 import static com.yugabyte.yw.common.NodeActionType.REBOOT;
 import static com.yugabyte.yw.common.NodeActionType.RELEASE;
 import static com.yugabyte.yw.common.NodeActionType.REMOVE;
+import static com.yugabyte.yw.common.NodeActionType.REPROVISION;
 import static com.yugabyte.yw.common.NodeActionType.START;
 import static com.yugabyte.yw.common.NodeActionType.STOP;
 
@@ -38,6 +39,7 @@ import org.slf4j.LoggerFactory;
 @ApiModel(description = "Details of a cloud node")
 public class NodeDetails {
   public static final Logger LOG = LoggerFactory.getLogger(NodeDetails.class);
+
   // The id of the node. This is usually present in the node name.
   @ApiModelProperty(value = "Node ID")
   public int nodeIdx = -1;
@@ -99,6 +101,10 @@ public class NodeDetails {
     SoftwareInstalled(START, DELETE, ADD),
     // Set after the YB software is upgraded via Rolling Restart.
     UpgradeSoftware(),
+    // set when software version is rollback.
+    RollbackUpgrade(),
+    // set when software version is finalized after upgrade.
+    FinalizeUpgrade(),
     // Set after the YB specific GFlags are updated via Rolling Restart.
     UpdateGFlags(),
     // Set after all the services (master, tserver, etc) on a node are successfully running.
@@ -111,7 +117,7 @@ public class NodeDetails {
     // The actions in Stopped state should apply because of the transition from Stopped to Starting.
     Starting(START, REMOVE),
     // Set when node has been stopped and no longer has a master or a tserver running.
-    Stopped(START, REMOVE, QUERY),
+    Stopped(START, REMOVE, QUERY, REPROVISION),
     // Nodes are never set to Unreachable, this is just one of the possible return values in a
     // status query.
     Unreachable(),
@@ -353,6 +359,13 @@ public class NodeDetails {
   }
 
   @JsonIgnore
+  public boolean isSoftwareDeleted() {
+    return state == NodeState.Decommissioned
+        || state == NodeState.Terminating // Software can be partially removed during this state.
+        || state == NodeState.Terminated;
+  }
+
+  @JsonIgnore
   public boolean isActive() {
     // TODO For some reason ToBeAdded node is treated as 'Active', which it's not the case.
     // Need to better figure out the meaning of 'Active' - and it's usage - as currently it's used
@@ -372,6 +385,8 @@ public class NodeDetails {
   @JsonIgnore
   public boolean isQueryable() {
     return (state == NodeState.UpgradeSoftware
+        || state == NodeState.FinalizeUpgrade
+        || state == NodeState.RollbackUpgrade
         || state == NodeState.UpdateGFlags
         || state == NodeState.Live
         || state == NodeState.ToBeRemoved
@@ -379,6 +394,11 @@ public class NodeDetails {
         || state == NodeState.Stopping
         || state == NodeState.UpdateCert
         || state == NodeState.ToggleTls);
+  }
+
+  @JsonIgnore
+  public boolean isConsideredRunning() {
+    return (state == NodeState.Live || state == NodeState.ToBeRemoved);
   }
 
   @JsonIgnore
@@ -476,5 +496,14 @@ public class NodeDetails {
       namespace = this.cloudInfo.private_ip.split("\\.")[2];
     }
     return namespace;
+  }
+
+  // Returns the provisioned instance type.
+  @JsonIgnore
+  public String getInstanceType() {
+    if (cloudInfo != null && StringUtils.isNotBlank(cloudInfo.instance_type)) {
+      return cloudInfo.instance_type;
+    }
+    throw new IllegalStateException("Cloud info or instance type is not set");
   }
 }

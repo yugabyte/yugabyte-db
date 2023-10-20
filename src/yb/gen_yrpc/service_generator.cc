@@ -43,7 +43,7 @@ std::vector<MetricDescriptor> inbound_metrics = {
   {
     .name = "handler_latency",
     .prefix = "",
-    .kind = "histogram_with_percentiles",
+    .kind = "histogram",
     .extra_args = ",\n  60000000LU, 2",
     .units = "yb::MetricUnit::kMicroseconds",
     .description = "Microseconds spent handling",

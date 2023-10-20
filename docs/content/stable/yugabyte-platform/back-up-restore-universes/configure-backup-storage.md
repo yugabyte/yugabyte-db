@@ -3,6 +3,7 @@ title: Configure backup storage
 headerTitle: Configure backup storage
 linkTitle: Configure backup storage
 description: Configure backup storage
+headContent: Store your backups in the cloud or on NFS
 menu:
   stable_yugabyte-platform:
     parent: back-up-restore-universes
@@ -10,6 +11,8 @@ menu:
     weight: 10
 type: docs
 ---
+
+Before you can back up universes, you need to configure a storage location for your backups.
 
 Depending on your environment, you can save your YugabyteDB universe data to a variety of storage solutions.
 

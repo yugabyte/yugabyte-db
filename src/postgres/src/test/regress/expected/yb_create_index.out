@@ -281,13 +281,14 @@ SELECT * FROM t1 WHERE v1 = 11 ORDER BY h, r;
 -- EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 = 11 AND v2 = 11;
 -- SELECT * FROM t1 WHERE v1 = 11 AND v2 = 11;
 EXPLAIN (COSTS OFF) SELECT t1.h, t1.r, t1.v1, t2.v1 FROM t1, t2 WHERE t1.h = t2.h AND t1.r = t2.r;
-                   QUERY PLAN
--------------------------------------------------
- Nested Loop
+                                                       QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((t1.h = t2.h) AND (t1.r = t2.r))
    ->  Seq Scan on t1
    ->  Index Scan using t2_pkey on t2
-         Index Cond: ((h = t1.h) AND (r = t1.r))
-(4 rows)
+         Index Cond: (ROW(h, r) = ANY (ARRAY[ROW(t1.h, t1.r), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
+(5 rows)
 
 SELECT t1.h, t1.r, t1.v1, t2.v1 FROM t1, t2 WHERE t1.h = t2.h AND t1.r = t2.r;
  h | r | v1 | v1
@@ -1500,6 +1501,31 @@ SELECT reltuples FROM pg_class WHERE relname = 'test_stats';
 (1 row)
 
 DROP TABLE test_stats;
+-- Split options on a partitioned table or its indexes should not be copied
+-- for a newly attached partition.
+CREATE TABLE test_part (a INT, PRIMARY KEY(a ASC)) PARTITION BY RANGE (a)
+    SPLIT AT VALUES ((5), (10)); -- split options are ignored.
+CREATE TABLE test_part_1 PARTITION OF test_part FOR VALUES FROM (1) TO (5);
+SELECT yb_get_range_split_clause('test_part_1'::regclass);
+ yb_get_range_split_clause 
+---------------------------
+ 
+(1 row)
+
+CREATE INDEX test_part_idx ON test_part(a) SPLIT INTO 5 TABLETS;
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('test_part_1_a_idx'::regclass);
+ num_tablets | num_hash_key_columns 
+-------------+----------------------
+           5 |                    1
+(1 row)
+
+CREATE TABLE test_part_2 PARTITION OF test_part DEFAULT;
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('test_part_2_a_idx'::regclass);
+ num_tablets | num_hash_key_columns 
+-------------+----------------------
+           3 |                    1
+(1 row)
+
 -- Test creating temp index using lsm.
 CREATE TEMP TABLE test_temp_lsm (i int);
 CREATE INDEX ON test_temp_lsm USING lsm (i);

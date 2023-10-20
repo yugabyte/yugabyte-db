@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -25,8 +26,9 @@ import lombok.extern.slf4j.Slf4j;
 public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
 
   @Inject
-  protected UpdateKubernetesDiskSize(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
+  protected UpdateKubernetesDiskSize(
+      BaseTaskDependencies baseTaskDependencies, KubernetesOperatorStatusUpdater kubernetesStatus) {
+    super(baseTaskDependencies, kubernetesStatus);
   }
 
   @Override
@@ -45,10 +47,6 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
       taskParams().useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
       preTaskActions();
 
-      UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-      Integer newDiskSize = taskParams().getPrimaryCluster().userIntent.deviceInfo.volumeSize;
-      // String newDiskSizeGi = String.format("%dGi", newDiskSize);
-      userIntent.deviceInfo.volumeSize = newDiskSize;
       // String softwareVersion = userIntent.ybSoftwareVersion;
       // primary and readonly clusters disk resize
       for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
@@ -77,12 +75,10 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
             taskParams().useNewHelmNamingStyle,
             universe.isYbcEnabled(),
             universe.getUniverseDetails().getYbcSoftwareVersion());
-      }
 
-      // persist the changes to the universe
-      createPersistResizeNodeTask(
-          userIntent.instanceType,
-          taskParams().getPrimaryCluster().userIntent.deviceInfo.volumeSize);
+        // persist the changes to the universe
+        createPersistResizeNodeTask(cluster.userIntent, cluster.uuid);
+      }
 
       // Marks update of this universe as a success only if all the tasks before it
       // succeeded.

@@ -1,11 +1,13 @@
 package checks
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
 // InstallExists initalizes the check
@@ -35,8 +37,19 @@ func (i installExistsCheck) Execute() Result {
 	// While err could be some other error (like, permission error, for example), it does not affect
 	// the result of InstallExistsCheck. If we can't access the file, it might as well not exist!
 	log.Debug("Checking for install marker file " + common.YbaInstalledMarker())
-	if _, err := os.Stat(common.YbaInstalledMarker()); err != nil {
-		err := fmt.Errorf("no current YugabyteDB Anywhere install found")
+
+	state, err := ybactlstate.Initialize()
+	// Can have no state if upgrading from a version before state existed. Instead check for marker
+	// file.
+	if err != nil {
+		if _, err := os.Stat(common.YbaInstalledMarker()); err != nil {
+			err := fmt.Errorf("no current YugabyteDB Anywhere install found")
+			res.Error = err
+			res.Status = StatusCritical
+		}
+	} else if !state.CurrentStatus.TransitionValid(ybactlstate.UpgradingStatus) {
+		err = errors.New("cannot initiate upgrade when current status is " +
+			state.CurrentStatus.String())
 		res.Error = err
 		res.Status = StatusCritical
 	}

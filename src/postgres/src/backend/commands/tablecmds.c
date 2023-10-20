@@ -3920,14 +3920,12 @@ ATController(AlterTableStmt *parsetree,
 	}
 	PG_CATCH();
 	{
-		if (!*YBCGetGFlags()->ysql_ddl_rollback_enabled ||
-		    rel->yb_table_properties->is_colocated)
+		if (!ddl_rollback_enabled)
 		{
 			/*
-			 * The new way of doing ddl rollback is disabled (or unsupported,
-			 * as in the case of colocated tables) fall back to the old way of
-			 * doing a best-effort rollback which may not always succeed
-			 * (e.g., in case of network failure or PG crash).
+			 * The new way of doing ddl rollback is disabled, fall back to the
+			 * old way of doing best-effort rollback which may not always
+			 * succeed (e.g., in case of network failure or PG crash).
 			 */
 			ListCell *lc = NULL;
 			foreach(lc, rollbackHandles)
@@ -4768,14 +4766,22 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode)
 		 * the equivalent of a rewrite, by the time we reach here so the trigger
 		 * is executed after the rewrite.
 		 */
-		if (IsYugaByteEnabled() && tab->subcmds[AT_PASS_ALTER_TYPE] != NIL &&
-			tab->rewrite > 0)
+		if (IsYBRelationById(tab->relid) &&
+			tab->subcmds[AT_PASS_ALTER_TYPE] != NIL && tab->rewrite > 0)
 		{
 			if (parsetree)
 				EventTriggerTableRewrite((Node *) parsetree, tab->relid,
 										 tab->rewrite);
 			continue;
 		}
+
+		/*
+		 * When rewriting a temp relation, we need to execute the PG
+		 * transaction handling code-paths, as PG uses the transaction ID to
+		 * determine what rows are visible to a specific transaction.
+		 */
+		if (!IsYBRelationById(tab->relid) && tab->rewrite > 0)
+			SetTxnWithPGRel();
 
 		/*
 		 * If we change column data types or add/remove OIDs, the operation
@@ -10490,7 +10496,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation *yb_mutable_rel,
 	}
 
 	bool yb_clone_table = IsYBRelation(rel) && tab->rewrite > 0;
-	
+
 	if (!yb_clone_table)
 		attrelation = heap_open(AttributeRelationId, RowExclusiveLock);
 
@@ -10815,11 +10821,6 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation *yb_mutable_rel,
 	 */
 	if (yb_clone_table)
 	{
-		/*
-		 * TODO(mislam): check for CDC and xCluster on the table and error out
-		 * here. See https://github.com/yugabyte/yugabyte-db/issues/16625.
-		 */
-
 		*yb_mutable_rel = YbATCloneRelationSetColumnType(
 			rel, colName, targetcollid, typeName, tab->newvals);
 
@@ -10828,6 +10829,13 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation *yb_mutable_rel,
 		 * table.
 		 */
 		tab->relid = (*yb_mutable_rel)->rd_id;
+
+		/* Update the altered column's attribute number. */
+		HeapTuple attTup =
+			SearchSysCacheAttName(RelationGetRelid(*yb_mutable_rel), colName);
+		Assert(HeapTupleIsValid(attTup));
+		attnum = ((Form_pg_attribute) GETSTRUCT(attTup))->attnum;
+		ReleaseSysCache(attTup);
 	}
 
 	/*
@@ -10913,23 +10921,28 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation *yb_mutable_rel,
 
 	ReleaseSysCache(typeTuple);
 
+	/*
+	 * YB Note: Skip the steps below because datatype and collation
+	 * dependencies for the table have already been created as part of the
+	 * rewrite flow, so we do not need to install them here.
+	 * Also, the pg_statistic entries were not cloned for the altered column,
+	 * so we don't have any statistics to remove.
+	 */
 	if (!yb_clone_table)
 	{
 		CatalogTupleUpdate(attrelation, &heapTup->t_self, heapTup);
 
 		heap_close(attrelation, RowExclusiveLock);
+
+		/* Install dependencies on new datatype and collation */
+		add_column_datatype_dependency(RelationGetRelid(rel), attnum, targettype);
+		add_column_collation_dependency(RelationGetRelid(rel), attnum, targetcollid);
+
+		/*
+		 * Drop any pg_statistic entry for the column, since it's now wrong type
+		 */
+		RemoveStatistics(RelationGetRelid(rel), attnum);
 	}
-
-	/* Install dependencies on new datatype and collation */
-	add_column_datatype_dependency(RelationGetRelid(*yb_mutable_rel), attnum,
-								   targettype);
-	add_column_collation_dependency(RelationGetRelid(*yb_mutable_rel), attnum,
-									targetcollid);
-
-	/*
-	 * Drop any pg_statistic entry for the column, since it's now wrong type
-	 */
-	RemoveStatistics(RelationGetRelid(*yb_mutable_rel), attnum);
 
 	InvokeObjectPostAlterHook(RelationRelationId,
 							  RelationGetRelid(*yb_mutable_rel), attnum);
@@ -10961,7 +10974,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation *yb_mutable_rel,
 
 	/* Cleanup */
 	heap_freetuple(heapTup);
-	
+
 	return address;
 }
 
@@ -16679,7 +16692,7 @@ update_relispartition(Relation classRel, Oid relationId, bool newval)
  */
 static void
 YbATCopyStats(Oid old_relid, RangeVar *new_rel, Oid new_relid,
-			  AttrNumber *attmap, bool ext_only)
+			  AttrNumber *attmap, int altered_old_attnum)
 {
 	Relation		pg_statistic, pg_statistic_ext;
 	HeapTuple		tuple;
@@ -16733,9 +16746,6 @@ YbATCopyStats(Oid old_relid, RangeVar *new_rel, Oid new_relid,
 	systable_endscan(scan);
 	heap_close(pg_statistic_ext, RowExclusiveLock);
 
-	if (ext_only)
-		return;
-
 	/* Copy pg_statistic entries with updated starelid and staattnum values. */
 	pg_statistic =  heap_open(StatisticRelationId, RowExclusiveLock);
 	ScanKeyInit(&key, Anum_pg_statistic_starelid, BTEqualStrategyNumber,
@@ -16750,6 +16760,13 @@ YbATCopyStats(Oid old_relid, RangeVar *new_rel, Oid new_relid,
 		bool		nulls[Natts_pg_statistic];
 		bool		replaces[Natts_pg_statistic];
 		HeapTuple	newtuple;
+
+		/*
+		 * If this attribute's type was changed, don't copy the pg_statistic
+		 * entry because it is invalid.
+		 */
+		if (stat_form->staattnum == altered_old_attnum)
+			continue;
 
 		memset(values, 0, sizeof(values));
 		memset(nulls, false, sizeof(nulls));
@@ -17095,6 +17112,17 @@ YbATValidateChangePrimaryKey(Relation rel, IndexStmt *stmt)
 {
 	Assert(IsYBRelation(rel));
 
+	bool is_object_part_of_xrepl;
+	HandleYBStatus(YBCIsObjectPartOfXRepl(MyDatabaseId,
+										  RelationGetRelid(rel),
+										  &is_object_part_of_xrepl));
+	if (is_object_part_of_xrepl)
+		ereport(ERROR,
+				(errmsg("cannot change the primary key of a table that is a "
+						"part of CDC or XCluster replication."),
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
+						 "16625.")));
+
 	/*
 	 * Recreating a table will change its OID, which is not tolerable
 	 * for system tables.
@@ -17231,13 +17259,7 @@ YbATGetCloneTableStmt(const char *namespace_name, const char *table_name,
 	}
 
 	if (clone_split_options)
-	{
-		create_stmt->split_options = makeNode(OptSplit);
-		create_stmt->split_options->split_type = NUM_TABLETS;
-		create_stmt->split_options->num_tablets =
-			rel->yb_table_properties->num_tablets;
-		create_stmt->split_options->split_points = NULL;
-	}
+		create_stmt->split_options = YbGetSplitOptions(rel);
 
 	/*
 	 * Set attributes and their defaults.
@@ -17756,7 +17778,7 @@ YbATCopyFkAndCheckConstraints(const Relation old_rel, Relation new_rel,
 
 /*
  * Copy all rows from one table to the other.
- * Does not perform any constraint checks.
+ * Performs constraint checks when a column type is altered.
  *
  * This is a based on ATRewriteTable, but adopted for YB and with attribute
  * remapping, accounting for old_rel columns dropped in new_rel (we don't expect
@@ -17764,7 +17786,10 @@ YbATCopyFkAndCheckConstraints(const Relation old_rel, Relation new_rel,
  *
  * old_rel is the relation to copy table rows from.
  * new_rel is the relation to copy rows to.
- * attmap is the mapping of indexes of attributes from old_rel to new_rel.
+ * old2new_attmap is a mapping such that old2new_attmap[i] = j implies
+ * attnum i in the new relation maps to attnum j in the old relation.
+ * new2old_attmap is a mapping such that new2old_attmap[i] = j implies
+ * attnum i in the old relation maps to attnum j in the new relation.
  *
  * has_altered_column_type represents whether the new relation has a different
  * type for a column.
@@ -17784,7 +17809,9 @@ YbATCopyFkAndCheckConstraints(const Relation old_rel, Relation new_rel,
  */
 static void
 YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
-						   AttrNumber *attmap, bool has_altered_column_type,
+						   AttrNumber *old2new_attmap,
+						   AttrNumber *new2old_attmap,
+						   bool has_altered_column_type,
 						   const List *altered_column_new_column_values,
 						   const char *altered_column_name,
 						   List *new_check_constraints,
@@ -17804,6 +17831,7 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 	EState		   *estate;
 	ExprContext	   *econtext;
 	ListCell	   *cell;
+	List		   *notnull_attrs = NIL;
 
 	Assert(IsYBRelation(new_rel));
 
@@ -17825,10 +17853,24 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 	foreach(cell, altered_column_new_column_values)
 	{
 		NewColumnValue *new_column_value = lfirst(cell);
-
+		/*
+		 * At the time the new column values expressions were created, the
+		 * original attnum was used. We need to update the attnum after YB
+		 * table rewrite (because attnum can change if there are dropped
+		 * columns in the original relation).
+		 */
+		new_column_value->attnum =
+			new2old_attmap[new_column_value->attnum - 1];
 		/* expr already planned */
 		new_column_value->exprstate =
 			ExecInitExpr((Expr *) new_column_value->expr, NULL);
+	}
+
+	for (int i = 0; i < newTupDesc->natts; i++)
+	{
+		Form_pg_attribute attr = TupleDescAttr(newTupDesc, i);
+		if (attr->attnotnull && !attr->attisdropped)
+			notnull_attrs = lappend_int(notnull_attrs, i);
 	}
 
 	/*
@@ -17844,6 +17886,7 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 	 */
 	oldcxt = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 
+	/* The following while loop is similar to the one in ATRewriteTable. */
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		Oid tupOid = InvalidOid;
@@ -17871,14 +17914,26 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 				{
 					NewColumnValue *ex = lfirst(cell);
 
-					new_values[ex->attnum - 1] = ExecEvalExpr(
-						ex->exprstate, econtext, &new_isnull[ex->attnum - 1]);
+					/*
+					 * If there are multiple ALTER TYPE subcmds, YB does a
+					 * table rewrite for each subcmd, whereas PG does a single
+					 * table rewrite. The list of new column values
+					 * is generated by PG code and will contain fresh values
+					 * for all altered columns, so we need to filter them out.
+					 */
+					if (ex->attnum == newTupDesc->attrs[i].attnum)
+					{
+						new_values[ex->attnum - 1] = ExecEvalExpr(
+							ex->exprstate, econtext,
+							&new_isnull[ex->attnum - 1]);
+						break;
+					}
 				}
 			}
 			else
 			{
-				new_values[i] = old_values[attmap[i] - 1];
-				new_isnull[i] = old_isnull[attmap[i] - 1];
+				new_values[i] = old_values[old2new_attmap[i] - 1];
+				new_isnull[i] = old_isnull[old2new_attmap[i] - 1];
 			}
 		}
 
@@ -17892,6 +17947,50 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 		if (newTupDesc->tdhasoid)
 			HeapTupleSetOid(tuple, tupOid);
 
+		/* If we performed type conversions, re-check constraints */
+		if (has_altered_column_type)
+		{
+			foreach(cell, notnull_attrs)
+			{
+				int			attn = lfirst_int(cell);
+
+				if (heap_attisnull(tuple, attn + 1, newTupDesc))
+				{
+					Form_pg_attribute attr = TupleDescAttr(newTupDesc, attn);
+
+					ereport(ERROR,
+							(errcode(ERRCODE_NOT_NULL_VIOLATION),
+							 errmsg("column \"%s\" contains null values",
+									NameStr(attr->attname)),
+							 errtablecol(old_rel, attn + 1)));
+				}
+			}
+
+			foreach(cell, new_check_constraints)
+			{
+				CookedConstraint *constraint = lfirst(cell);
+				ExprState *exprstate = ExecPrepareExpr(
+					(Expr *) constraint->expr, estate);
+				econtext->ecxt_scantuple = newslot;
+				ExecStoreHeapTuple(tuple, newslot, false);
+				if (!ExecCheck(exprstate, econtext))
+					ereport(ERROR,
+							(errcode(ERRCODE_CHECK_VIOLATION),
+							 errmsg("check constraint \"%s\""
+									" is violated by some row",
+									constraint->name),
+							 errtableconstraint(new_rel,
+												constraint->name)));
+			}
+
+		/*
+		 * TODO(fizaa): When we add support for altering the type of a foreign
+		 * key column, we should check the foreign key constraints here. See
+		 * https://github.com/yugabyte/yugabyte-db/issues/17037.
+		 */
+
+		}
+
 		ExecStoreHeapTuple(tuple, newslot, false);
 
 		/* Write the tuple out to the new relation */
@@ -17901,36 +18000,6 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 		MemoryContextReset(econtext->ecxt_per_tuple_memory);
 
 		CHECK_FOR_INTERRUPTS();
-	}
-
-	/* If we performed type conversions, re-check check and FK constraints */
-	if (has_altered_column_type)
-	{
-		Relation constrRel = heap_open(ConstraintRelationId, AccessShareLock);
-		foreach(cell, new_check_constraints)
-		{
-			CookedConstraint *cooked_constraint = lfirst(cell);
-			HeapTuple		  constrTup =
-				get_catalog_object_by_oid(constrRel, cooked_constraint->conoid);
-			validateCheckConstraint(new_rel, constrTup);
-		}
-
-		foreach(cell, new_fk_constraint_oids)
-		{
-			Oid		  constraint_oid = lfirst_oid(cell);
-			HeapTuple constrTup =
-				get_catalog_object_by_oid(constrRel, constraint_oid);
-			Form_pg_constraint constraint =
-				(Form_pg_constraint) GETSTRUCT(constrTup);
-
-			Relation pk_rel = heap_open(constraint->confrelid, AccessShareLock);
-			validateForeignKeyConstraint(NameStr(constraint->conname), new_rel,
-										 pk_rel, constraint->conindid,
-										 constraint_oid);
-			heap_close(pk_rel, AccessShareLock);
-		}
-
-		heap_close(constrRel, AccessShareLock);
 	}
 
 	/*
@@ -17962,7 +18031,7 @@ static void
 YbATCopyIndexes(Relation old_rel, Oid new_relid, AttrNumber *new2old_attmap,
 				const char *temp_suffix, const Oid namespace_oid,
 				RenameStmt *rename_stmt, const char *namespace_name,
-				ObjectAddress *new_index_addr)
+				ObjectAddress *new_index_addr, const char *altered_column_name)
 {
 	ListCell *cell;
 	List	 *idx_list = RelationGetIndexList(old_rel);
@@ -17975,6 +18044,22 @@ YbATCopyIndexes(Relation old_rel, Oid new_relid, AttrNumber *new2old_attmap,
 			NULL /* heapRel, we provide an oid instead */, new_relid, idx_rel,
 			new2old_attmap, RelationGetDescr(old_rel)->natts,
 			NULL /* parent constraint OID pointer */);
+
+		/*
+		* For range partitioned secondary indexes, we only clone split options
+		* when the altered column (if any) is not a part of the index's range
+		* key (as in this case the split options cannot be copied in
+		* a straight-forward way).
+		*/
+		if (!idx_rel->rd_index->indisprimary)
+		{
+			YbGetTableProperties(idx_rel);
+			if (!idx_rel->yb_table_properties->is_colocated &&
+				!(YbIsColumnPartOfKey(idx_rel, altered_column_name) &&
+				idx_rel->yb_table_properties->num_range_key_columns > 0 &&
+				idx_rel->yb_table_properties->num_hash_key_columns == 0))
+				idx_stmt->split_options = YbGetSplitOptions(idx_rel);
+		}
 
 		/*
 		 * Index names on different tables conflict with each other, so
@@ -18035,8 +18120,7 @@ YbATMoveRelDependencies(Relation old_rel, Relation new_rel, Relation pg_depend,
 	ScanKeyData key[2];
 	SysScanDesc scan;
 	HeapTuple	dep_tuple, con_tuple;
-	ListCell   *cell;
-	List *cons_to_drop = NIL; /* list of pairs (ConOid, ConstraintedRelOid) */
+	ObjectAddresses *cons_to_drop;
 
 	/* Move sequences dependencies. */
 	ScanKeyInit(&key[0], Anum_pg_depend_refclassid, BTEqualStrategyNumber,
@@ -18074,10 +18158,11 @@ YbATMoveRelDependencies(Relation old_rel, Relation new_rel, Relation pg_depend,
 	scan = systable_beginscan(pg_constraint, InvalidOid /* no index */,
 							  true /* indexOK */, NULL /* snapshot */,
 							  2 /* nkeys */, key);
+	cons_to_drop = new_object_addresses();
 	while (HeapTupleIsValid(con_tuple = systable_getnext(scan)))
 	{
 		Form_pg_constraint con_form = (Form_pg_constraint) GETSTRUCT(con_tuple);
-
+		ObjectAddress con_addr;
 		/*
 		 * We need to rename this FK constraint and create a new one in its
 		 * stead. Dropping old constraints will be postponed until the end of
@@ -18095,9 +18180,9 @@ YbATMoveRelDependencies(Relation old_rel, Relation new_rel, Relation pg_depend,
 		CatalogTupleUpdate(pg_constraint, &con_tuple->t_self, con_tuple);
 		CommandCounterIncrement();
 
-		cons_to_drop =
-			lappend(cons_to_drop, list_make2_oid(HeapTupleGetOid(con_tuple),
-												 con_form->conrelid));
+		ObjectAddressSet(con_addr, ConstraintRelationId,
+						 HeapTupleGetOid(con_tuple));
+		add_exact_object_address(&con_addr, cons_to_drop);
 
 		/*
 		 * We don't need AccessExclusiveLock since old constraint
@@ -18125,22 +18210,8 @@ YbATMoveRelDependencies(Relation old_rel, Relation new_rel, Relation pg_depend,
 	}
 	systable_endscan(scan);
 
-	foreach(cell, cons_to_drop)
-	{
-		List *cell_list = lfirst(cell);
-		Oid	  conoid = linitial_oid(cell_list);
-		Oid	  base_relid = lsecond_oid(cell_list);
-
-		ObjectAddress con_objaddr;
-		con_objaddr.classId = ConstraintRelationId;
-		con_objaddr.objectId = conoid;
-		con_objaddr.objectSubId = 0;
-
-		Relation base_rel = heap_open(base_relid, ShareUpdateExclusiveLock);
-
-		performDeletion(&con_objaddr, DROP_CASCADE, 0);
-		heap_close(base_rel, ShareUpdateExclusiveLock);
-	}
+	performMultipleDeletions(cons_to_drop, DROP_RESTRICT,
+							 PERFORM_DELETION_INTERNAL);
 }
 
 static void
@@ -18277,6 +18348,7 @@ YbATCopyMetadataAndData(Relation old_rel, Relation new_rel,
 	Relation pg_trigger, pg_depend;
 	List	*new_check_constraints = NIL;
 	List	*new_fk_constraint_oids = NIL;
+	int		altered_old_attnum = 0;
 
 	YbATCopyFkAndCheckConstraints(old_rel, new_rel, pg_constraint,
 								  &new_check_constraints,
@@ -18291,7 +18363,7 @@ YbATCopyMetadataAndData(Relation old_rel, Relation new_rel,
 	 * Copy table content.
 	 */
 	YbATCopyTableRowsUnchecked(old_rel, new_rel, old2new_attmap,
-							   has_altered_column_type,
+							   new2old_attmap, has_altered_column_type,
 							   altered_column_new_column_values,
 							   altered_column_name, new_check_constraints,
 							   new_fk_constraint_oids);
@@ -18306,7 +18378,7 @@ YbATCopyMetadataAndData(Relation old_rel, Relation new_rel,
 	pg_depend = heap_open(DependRelationId, RowExclusiveLock);
 	YbATCopyIndexes(old_rel, RelationGetRelid(new_rel), new2old_attmap,
 					temp_suffix, namespace_oid, rename_stmt, namespace_name,
-					new_index_addr);
+					new_index_addr, altered_column_name);
 	/*
 	 * Either we're not changing indexes (new_index_addr passed in was null),
 	 * or otherwise new_index_addr is valid or invalid depending on whether
@@ -18336,13 +18408,18 @@ YbATCopyMetadataAndData(Relation old_rel, Relation new_rel,
 	RangeVar *new_rel_rangevar = makeRangeVar(
 		pstrdup(namespace_name), pstrdup(old_table_name), -1 /* location */);
 
-	/*
-	 * If a column type was changed, only copy pg_statistic_ext because
-	 * pg_statistic would be invalid.
-	 */
+	if (has_altered_column_type)
+	{
+		HeapTuple attTup = SearchSysCacheAttName(RelationGetRelid(old_rel),
+												 altered_column_name);
+		Assert(HeapTupleIsValid(attTup));
+		altered_old_attnum = ((Form_pg_attribute) GETSTRUCT(attTup))->attnum;
+		ReleaseSysCache(attTup);
+	}
+
 	YbATCopyStats(RelationGetRelid(old_rel), new_rel_rangevar,
 				  RelationGetRelid(new_rel), new2old_attmap,
-				  has_altered_column_type /* ext_only */);
+				  altered_old_attnum);
 
 	/*
 	 * Copy policy objects.
@@ -18631,6 +18708,17 @@ YbATValidateAlterColumnType(Relation rel)
 {
 	Assert(IsYBRelation(rel));
 
+	bool is_object_part_of_xrepl;
+	HandleYBStatus(YBCIsObjectPartOfXRepl(MyDatabaseId,
+										  RelationGetRelid(rel),
+										  &is_object_part_of_xrepl));
+	if (is_object_part_of_xrepl)
+		ereport(ERROR,
+				(errmsg("cannot change a column type of a table that is a "
+						"part of CDC or XCluster replication."),
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
+						 "16625.")));
+
 	/*
 	 * Recreating a table will change its OID, which is not tolerable
 	 * for system tables.
@@ -18728,9 +18816,19 @@ YbATCloneRelationSetColumnType(Relation old_rel,
 	/*
 	 * Prepare a statement to clone the old relation.
 	 */
+
+	/*
+	 * For range partitioned tables, we only clone split options
+	 * when the altered column (if any) is not a part of the table's range key
+	 * (as in this case the split options cannot be copied in
+	 * a straight-forward way).
+	 */
+	bool clone_split_options =
+		!old_rel->yb_table_properties->is_colocated &&
+		!(YbIsColumnPartOfKey(old_rel, altered_column_name) &&
+		  old_rel->yb_table_properties->num_range_key_columns > 0);
 	create_stmt = YbATGetCloneTableStmt(
-		namespace_name, orig_table_name, old_rel,
-		!old_rel->yb_table_properties->is_colocated /* clone_split_options */);
+		namespace_name, orig_table_name, old_rel, clone_split_options);
 
 	YbATUpdateColumnTypeForCreateStmt(create_stmt, old_rel, altered_column_name,
 									  altered_collation_id, altered_type_name);

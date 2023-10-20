@@ -33,11 +33,52 @@ public class TestTuple extends BaseCQLTest {
   // See also: ql-parser-test.cc
   @Test
   public void notSupported() throws Exception {
-    runInvalidStmt("CREATE TABLE human_resource(id int primary key, name tuple)");
-    runInvalidStmt("CREATE TABLE human_resource(id int primary key, name tuple<>)");
-    runInvalidStmt("CREATE TABLE human_resource(id int primary key, name tuple< >)");
-    runInvalidStmt("CREATE TABLE human_resource(id int primary key, name tuple<int>)");
-    runInvalidStmt("CREATE TABLE human_resource(id int primary key, name tuple<int,int>)");
-    runInvalidStmt("CREATE TABLE human_resource(id int primary key, name tuple<int,randomstuff>)");
+    String SYNTAX_ERROR_MESSAGE_1 =
+        "Invalid SQL Statement. syntax error, unexpected ')', expecting '<'";
+    String SYNTAX_ERROR_MESSAGE_2 =
+        "Invalid SQL Statement. syntax error, unexpected NOT_EQUALS, expecting '<'";
+    String SYNTAX_ERROR_MESSAGE_3 =
+        "Invalid SQL Statement. syntax error, unexpected '>'";
+    String FEATURE_NOT_SUPPORTED_ERROR_MESSAGE = "Feature Not Supported";
+
+    runInvalidStmt("CREATE TABLE human_resource(id int primary key, name tuple)",
+                   SYNTAX_ERROR_MESSAGE_1);
+    runInvalidStmt("CREATE TABLE human_resource(id int primary key, name tuple<>)",
+                   SYNTAX_ERROR_MESSAGE_2);
+    runInvalidStmt("CREATE TABLE human_resource(id int primary key, name tuple< >)",
+                   SYNTAX_ERROR_MESSAGE_3);
+    runInvalidStmt("CREATE TABLE human_resource(id int primary key, name tuple<int>)",
+                   FEATURE_NOT_SUPPORTED_ERROR_MESSAGE);
+    runInvalidStmt("CREATE TABLE human_resource(id int primary key, name tuple<int,int>)",
+                   FEATURE_NOT_SUPPORTED_ERROR_MESSAGE);
+    runInvalidStmt("CREATE TABLE human_resource(id int primary key, name tuple<int,randomstuff>)",
+                   FEATURE_NOT_SUPPORTED_ERROR_MESSAGE);
+
+    // Tuple as a nested type to Collections
+    runInvalidStmt("CREATE TABLE human_resource(id int primary key, name list<tuple<int>>)",
+                   FEATURE_NOT_SUPPORTED_ERROR_MESSAGE);
+    runInvalidStmt("CREATE TABLE human_resource(id int primary key, name map<int, tuple<int>>)",
+                   FEATURE_NOT_SUPPORTED_ERROR_MESSAGE);
+    runInvalidStmt("CREATE TABLE human_resource(id int primary key, name set<tuple<int>>)",
+                   FEATURE_NOT_SUPPORTED_ERROR_MESSAGE);
+    runInvalidStmt("CREATE TABLE human_resource(id int primary key, name tuple<tuple<int>>)",
+                   FEATURE_NOT_SUPPORTED_ERROR_MESSAGE);
+    runInvalidStmt("CREATE TABLE human_resource(id int primary key, name frozen<tuple<int>>)",
+                   FEATURE_NOT_SUPPORTED_ERROR_MESSAGE);
+
+    runInvalidStmt("CREATE TYPE tl (c list<tuple<int>>)",
+                   FEATURE_NOT_SUPPORTED_ERROR_MESSAGE);
+    runInvalidStmt("CREATE TYPE tl (c map<int, tuple<int>>)",
+                   FEATURE_NOT_SUPPORTED_ERROR_MESSAGE);
+    runInvalidStmt("CREATE TYPE tl (c map<tuple<int>, int>)",
+                   FEATURE_NOT_SUPPORTED_ERROR_MESSAGE);
+    runInvalidStmt("CREATE TYPE tl (c set<tuple<int>>)",
+                   FEATURE_NOT_SUPPORTED_ERROR_MESSAGE);
+    runInvalidStmt("CREATE TYPE tl (c tuple<tuple<int>>)",
+                   FEATURE_NOT_SUPPORTED_ERROR_MESSAGE);
+    runInvalidStmt("CREATE TYPE tl (c frozen<tuple<int>>)",
+                   FEATURE_NOT_SUPPORTED_ERROR_MESSAGE);
+    runInvalidStmt("CREATE TYPE tl (c list<set<frozen<tuple<list<int>>>>>)",
+                   FEATURE_NOT_SUPPORTED_ERROR_MESSAGE);
   }
 }

@@ -144,7 +144,7 @@ Status DeleteScheduler::MoveToTrash(const std::string& file_path,
 }
 
 void DeleteScheduler::BackgroundEmptyTrash() {
-  TEST_SYNC_POINT("DeleteScheduler::BackgroundEmptyTrash");
+  DEBUG_ONLY_TEST_SYNC_POINT("DeleteScheduler::BackgroundEmptyTrash");
 
   while (true) {
     MutexLock l(&mu_);
@@ -179,8 +179,8 @@ void DeleteScheduler::BackgroundEmptyTrash() {
       uint64_t total_penlty =
           ((total_deleted_bytes * kMicrosInSecond) / rate_bytes_per_sec_);
       while (!closing_ && !cv_.TimedWait(start_time + total_penlty)) {}
-      TEST_SYNC_POINT_CALLBACK("DeleteScheduler::BackgroundEmptyTrash:Wait",
-                               &total_penlty);
+      DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
+          "DeleteScheduler::BackgroundEmptyTrash:Wait", &total_penlty);
 
       pending_files_--;
       if (pending_files_ == 0) {
@@ -197,7 +197,7 @@ Status DeleteScheduler::DeleteTrashFile(const std::string& path_in_trash,
   uint64_t file_size;
   Status s = env_->GetFileSize(path_in_trash, &file_size);
   if (s.ok()) {
-    TEST_SYNC_POINT("DeleteScheduler::DeleteTrashFile:DeleteFile");
+    DEBUG_ONLY_TEST_SYNC_POINT("DeleteScheduler::DeleteTrashFile:DeleteFile");
     s = env_->DeleteFile(path_in_trash);
   }
 

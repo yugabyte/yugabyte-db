@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import { useContext } from 'react';
 import './MetricsComparisonModal.scss';
 import { NodeSelector } from './NodeSelector';
 import { FilterContext } from './ComparisonFilterContextProvider';

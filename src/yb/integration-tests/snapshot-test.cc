@@ -27,6 +27,7 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
@@ -56,10 +57,14 @@
 
 using namespace std::literals;
 
+DECLARE_bool(enable_ysql);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
+DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
+DECLARE_uint32(default_snapshot_retention_hours);
 DECLARE_bool(TEST_tablet_verify_flushed_frontier_after_modifying);
-DECLARE_bool(enable_ysql);
+DECLARE_bool(TEST_treat_hours_as_milliseconds_for_snapshot_expiry);
 
 namespace yb {
 
@@ -187,25 +192,35 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   template <typename THandler>
-  Status WaitTillComplete(const string& handler_name, THandler handler) {
-    return LoggedWaitFor(handler, 30s, handler_name, 100ms, 1.5);
+  Status WaitTillComplete(const string& handler_name, THandler handler, MonoDelta timeout = 30s) {
+    return LoggedWaitFor(handler, timeout, handler_name, 100ms, 1.5);
   }
 
-  Status WaitForSnapshotOpDone(const string& op_name, const TxnSnapshotId& snapshot_id) {
+  Status WaitForSnapshotOpDone(
+      const string& op_name, const TxnSnapshotId& snapshot_id, MonoDelta timeout = 30s) {
     return WaitTillComplete(
         op_name,
-        [this, &snapshot_id]() -> Result<bool> {
+        [this, &snapshot_id, &op_name]() -> Result<bool> {
           ListSnapshotsRequestPB list_req;
           ListSnapshotsResponsePB list_resp;
           list_req.set_snapshot_id(snapshot_id.AsSlice().ToBuffer());
 
-          RETURN_NOT_OK(proxy_backup_->ListSnapshots(
-              list_req, &list_resp, ResetAndGetController()));
-          SCHECK(!list_resp.has_error(), IllegalState, "Expected response without error");
+          Status s = proxy_backup_->ListSnapshots(
+              list_req, &list_resp, ResetAndGetController());
+          if (s.ok() && list_resp.has_error()) {
+            s = StatusFromPB(list_resp.error().status());
+          }
+          if (op_name == "IsSnapshotDeleted" && !s.ok() && s.IsNotFound()) {
+            return true;
+          }
+          RETURN_NOT_OK(s);
           SCHECK_FORMAT(list_resp.snapshots_size() == 1, IllegalState,
               "Wrong number of snapshots: ", list_resp.snapshots_size());
+          if (op_name == "IsSnapshotDeleted") {
+            return list_resp.snapshots(0).entry().state() == SysSnapshotEntryPB::DELETED;
+          }
           return list_resp.snapshots(0).entry().state() == SysSnapshotEntryPB::COMPLETE;
-        });
+        }, timeout);
   }
 
   Status WaitForSnapshotRestorationDone(const TxnSnapshotRestorationId& restoration_id) {
@@ -248,13 +263,16 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
         });
   }
 
-  TxnSnapshotId CreateSnapshot() {
+  TxnSnapshotId CreateSnapshot(int32_t retention_duration_hours = 0) {
     CreateSnapshotRequestPB req;
     CreateSnapshotResponsePB resp;
     req.set_transaction_aware(true);
     TableIdentifierPB* const table = req.mutable_tables()->Add();
     table->set_table_name(kTableName.table_name());
     table->mutable_namespace_()->set_name(kTableName.namespace_name());
+    if (retention_duration_hours > 0) {
+      req.set_retention_duration_hours(retention_duration_hours);
+    }
 
     // Check the request.
     EXPECT_OK(proxy_backup_->CreateSnapshot(req, &resp, ResetAndGetController()));
@@ -276,6 +294,15 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
         });
 
     return snapshot_id;
+  }
+
+  void DeleteSnapshot(const TxnSnapshotId& snapshot_id) {
+    master::DeleteSnapshotResponsePB resp;
+    ASSERT_OK(client_->DeleteSnapshot(snapshot_id, &resp));
+    LOG(INFO) << "Started snapshot deletion " << snapshot_id;
+    // Check the snapshot creation is complete.
+    EXPECT_OK(WaitForSnapshotOpDone("IsSnapshotDeleted", snapshot_id));
+    LOG(INFO) << "Snapshot id " << snapshot_id << " is deleted";
   }
 
   void VerifySnapshotFiles(const TxnSnapshotId& snapshot_id) {
@@ -363,6 +390,78 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     return workload;
   }
 
+  Status TableHidden(const TableId& table_id) {
+    LOG(INFO) << "Verifying table is hidden";
+    // Check that the table is hidden on the master.
+    auto master_leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+    auto table = VERIFY_RESULT(master_leader->catalog_manager_impl().FindTableById(table_id));
+    LOG(INFO) << "Table info " << table->id();
+    if (!table->AreAllTabletsHidden()) {
+      return STATUS_FORMAT(IllegalState, "Tablets of table $0 not hidden on master", table_id);
+    }
+    if (!table->LockForRead()->is_hidden()) {
+      return STATUS_FORMAT(IllegalState, "Table $0 not hidden on master", table_id);
+    }
+
+    // Check that the table is hidden on the tservers.
+    for (auto ts : cluster_->mini_tablet_servers()) {
+      auto ts_tablet_peers = ts->server()->tablet_manager()->GetTabletPeers();
+
+      // Iterate through all available tablets (on this TabletServer).
+      for (std::shared_ptr<TabletPeer>& tablet_peer : ts_tablet_peers) {
+        if (tablet_peer->tablet_metadata()->table_id() == table_id &&
+            !tablet_peer->tablet_metadata()->hidden()) {
+          return STATUS_FORMAT(
+              IllegalState, "Tablet $0 of table $1 not hidden on tserver",
+              tablet_peer->tablet_id(), table_id);
+        }
+      }
+    }
+    return Status::OK();
+  }
+
+  Result<bool> IsTableDropped(const TableId& table_id) {
+    LOG(INFO) << "Verifying table is dropped";
+    // Check that the table is dropped on the master.
+    auto master_leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+    auto table = VERIFY_RESULT(master_leader->catalog_manager_impl().FindTableById(table_id));
+    LOG(INFO) << "Table info " << table->id();
+    if (!table->AreAllTabletsDeleted()) {
+      return false;
+    }
+    if (!table->LockForRead()->is_deleted()) {
+      return false;
+    }
+
+    // Check that the table is deleted on the tservers.
+    for (auto ts : cluster_->mini_tablet_servers()) {
+      auto ts_tablet_peers = ts->server()->tablet_manager()->GetTabletPeers();
+      for (const auto& peer : ts_tablet_peers) {
+        if (peer->tablet_metadata()->table_id() == table_id) {
+          LOG(INFO) << "Tablet peer " << peer->tablet_id() << " is not yet deleted";
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  Status SnapshotCoversTablets(
+      const TxnSnapshotId& snapshot_id, const TableId& table_id) {
+    auto master_leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+    auto table = VERIFY_RESULT(master_leader->catalog_manager_impl().GetTableById(table_id));
+    auto tablets = table->GetTablets(master::IncludeInactive::kTrue);
+    auto* coordinator = down_cast<master::MasterSnapshotCoordinator*>(
+        &master_leader->catalog_manager_impl().snapshot_coordinator());
+    for (const auto& tablet : tablets) {
+      if (!coordinator->IsTabletCoveredBySnapshot(tablet->id(), snapshot_id)) {
+        return STATUS_FORMAT(
+            IllegalState, "Covering snapshot for tablet $0 not found", tablet->id());
+      }
+    }
+    return Status::OK();
+  }
+
  protected:
   std::unique_ptr<Messenger> messenger_;
   unique_ptr<MasterBackupProxy> proxy_backup_;
@@ -399,6 +498,127 @@ TEST_F(SnapshotTest, CreateSnapshot) {
   ASSERT_NO_FATALS(VerifySnapshotFiles(snapshot_id));
 
   ASSERT_OK(cluster_->RestartSync());
+}
+
+// Tests that a snapshot hides a table that is dropped subsequently.
+// Until the snapshot is deleted, the table is hidden and once the
+// snapshot gets deleted, the table is subsequently deleted.
+TEST_F(SnapshotTest, HideTablesCoveredBySnapshot) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 500;
+  auto workload = SetupWorkload(); // Used to create table
+
+  // Get the table id.
+  auto master_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto table = master_leader->catalog_manager_impl().GetTableInfoFromNamespaceNameAndTableName(
+      workload.table_name().namespace_type(), workload.table_name().namespace_name(),
+      workload.table_name().table_name());
+
+  // Create Snapshot.
+  const auto snapshot_id = CreateSnapshot();
+
+  // Verify the snapshot covers tablets on the master.
+  ASSERT_OK(SnapshotCoversTablets(snapshot_id, table->id()));
+  // Even after restart the cover should be present.
+  ASSERT_OK(cluster_->RestartSync());
+  ASSERT_OK(SnapshotCoversTablets(snapshot_id, table->id()));
+
+  // Drop table.
+  ASSERT_OK(client_->DeleteTable(workload.table_name(), true));
+
+  // Verify table is hidden on the masters as well as tservers.
+  ASSERT_OK(TableHidden(table->id()));
+  // Even after restart the table should remain hidden.
+  ASSERT_OK(cluster_->RestartSync());
+  ASSERT_OK(TableHidden(table->id()));
+  // Delete the snapshot and verify that the table gets eventually deleted.
+  DeleteSnapshot(snapshot_id);
+  // The cover should be removed.
+  ASSERT_NOK(SnapshotCoversTablets(snapshot_id, table->id()));
+  ASSERT_OK(WaitFor(
+      std::bind(&SnapshotTest::IsTableDropped, this, table->id()), 120s, "IsTableDropped"));
+}
+
+// Tests that snapshot TTL field is set in snapshots.
+TEST_F(SnapshotTest, SnapshotTtlBasic) {
+  SetupWorkload();
+  auto snapshot_id = CreateSnapshot(5 /* retention_duration_hours */);
+  auto expiry_equals_cb = [this](const TxnSnapshotId& snapshot_id, int32_t expiry_hrs) -> Status {
+    ListSnapshotsRequestPB list_req;
+    ListSnapshotsResponsePB list_resp;
+    list_req.set_snapshot_id(snapshot_id.AsSlice().ToBuffer());
+
+    RETURN_NOT_OK(proxy_backup_->ListSnapshots(
+        list_req, &list_resp, ResetAndGetController()));
+    if (list_resp.snapshots_size() != 1) {
+      return STATUS(IllegalState, "Expect only one snapshot of a given id");
+    }
+    if (list_resp.snapshots(0).entry().retention_duration_hours() != expiry_hrs) {
+      return STATUS(IllegalState, "Ttl in snapshot metadata is not equal to set expiry");
+    }
+    return Status::OK();
+  };
+  ASSERT_OK(expiry_equals_cb(snapshot_id, 5));
+  DeleteSnapshot(snapshot_id);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_default_snapshot_retention_hours) = 12;
+  // Default value controlled by gflag should be set.
+  snapshot_id = CreateSnapshot();
+  ASSERT_OK(expiry_equals_cb(snapshot_id, FLAGS_default_snapshot_retention_hours));
+}
+
+// Tests that snapshot TTL is honoured and that snapshots get expired.
+TEST_F(SnapshotTest, SnapshotTtl) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 500;
+  // To speed up tests.
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_treat_hours_as_milliseconds_for_snapshot_expiry) = true;
+  SetupWorkload();
+  // This will actually be treated as 1000 ms instead of 1000 hours due to the flag.
+  const auto snapshot_id = CreateSnapshot(1000 /* retention_duration_hours */);
+  // Give three cycles to the snapshot coordinator to cleanup the snapshot.
+  ASSERT_OK(WaitForSnapshotOpDone(
+      "IsSnapshotDeleted", snapshot_id,
+      MonoDelta::FromMilliseconds(FLAGS_snapshot_coordinator_poll_interval_ms * 3)));
+}
+
+TEST_F(SnapshotTest, SnapshotTtlWithRestart) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 500;
+  // To speed up tests.
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_treat_hours_as_milliseconds_for_snapshot_expiry) = true;
+  SetupWorkload();
+  // This will actually be treated as 5000 ms instead of 5000 hours due to the flag.
+  const auto snapshot_id = CreateSnapshot(5000 /* retention_duration_hours */);
+  // Restart.
+  ASSERT_OK(cluster_->RestartSync());
+  // Give four cycles to the snapshot coordinator to cleanup the snapshot.
+  ASSERT_OK(WaitForSnapshotOpDone(
+      "IsSnapshotDeleted", snapshot_id,
+      MonoDelta::FromMilliseconds(FLAGS_snapshot_coordinator_poll_interval_ms * 4)));
+}
+
+// Tests that deleted objects are eventually cleaned up even if the client
+// fails to invoke delete snapshot.
+TEST_F(SnapshotTest, EventuallyDeleteTablesCoveredBySnapshot) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 500;
+  // To speed up tests.
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_treat_hours_as_milliseconds_for_snapshot_expiry) = true;
+
+  auto workload = SetupWorkload(); // Used to create table
+
+  // Get the table id.
+  auto master_leader = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto table = master_leader->catalog_manager_impl().GetTableInfoFromNamespaceNameAndTableName(
+      workload.table_name().namespace_type(), workload.table_name().namespace_name(),
+      workload.table_name().table_name());
+
+  // This will actually be treated as 1000 ms instead of 1000 hours due to the flag.
+  CreateSnapshot(1000 /* retention_duration_hours */);
+
+  // Drop table.
+  ASSERT_OK(client_->DeleteTable(workload.table_name(), true));
+  ASSERT_OK(WaitFor(
+      std::bind(&SnapshotTest::IsTableDropped, this, table->id()), 120s, "IsTableDropped"));
 }
 
 TEST_F(SnapshotTest, RestoreSnapshot) {
@@ -583,6 +803,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
   }
 
   LOG(INFO) << "Deleting table & namespace: " << kTableName.ToString();
+  DeleteSnapshot(snapshot_id);
   ASSERT_OK(client_->DeleteTable(kTableName));
   ASSERT_OK(client_->DeleteNamespace(kTableName.namespace_name()));
 

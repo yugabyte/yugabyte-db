@@ -101,7 +101,13 @@ class PriorityThreadPoolInternalTask {
   // This is called get_worker_unsafe because in order to call this function, the caller needs
   // to turn off thread safety analysis, so we only do it inside the GetWorker wrapper function.
   PriorityThreadPoolWorker* get_worker_unsafe() const REQUIRES(thread_pool_mutex_) {
-    return worker_;
+    return worker_.load(std::memory_order_relaxed);
+  }
+
+  // Another getter for worker_ but this time the mutex is not required. The value returned should
+  // only be used for ToString.
+  PriorityThreadPoolWorker* get_worker_relaxed() const NO_THREAD_SAFETY_ANALYSIS {
+    return worker_.load(std::memory_order_relaxed);
   }
 
   size_t serial_no() const {
@@ -139,7 +145,7 @@ class PriorityThreadPoolInternalTask {
     // So it is safe to avoid state caching for logging.
     LOG_IF(DFATAL, state() != PriorityThreadPoolTaskState::kNotStarted)
         << "Wrong task state " << state() << " in " << __PRETTY_FUNCTION__;
-    worker_ = worker;
+    worker_.store(worker, std::memory_order_release);
     SetState(PriorityThreadPoolTaskState::kRunning);
   }
 
@@ -171,10 +177,13 @@ class PriorityThreadPoolInternalTask {
     return PriorityThreadPoolPriorities{task_priority_.load(), group_no_priority()};
   }
 
+  // Reading the value of worker_ requires thread_pool_mutex_. But since this is only used for
+  // logging and we are just printing the pointer value we do not need to lock.
   std::string ToString() const {
     return Format(
-      "{ task: $0 worker: $1 state: $2 task_priority: $3 group_no_priority: $4 serial_no: $5 }",
-      TaskToString(), worker_, state(), task_priority(), group_no_priority(), serial_no_);
+        "{ task: $0 worker: $1 state: $2 task_priority: $3 group_no_priority: $4 serial_no: $5 }",
+        TaskToString(), get_worker_relaxed(), state(), task_priority(), group_no_priority(),
+        serial_no_);
   }
 
  private:
@@ -197,7 +206,7 @@ class PriorityThreadPoolInternalTask {
   std::atomic<PriorityThreadPoolTaskState> state_{PriorityThreadPoolTaskState::kNotStarted};
   mutable TaskPtr task_;
 
-  mutable PriorityThreadPoolWorker* worker_ GUARDED_BY(thread_pool_mutex_);
+  mutable std::atomic<PriorityThreadPoolWorker*> worker_ GUARDED_BY(thread_pool_mutex_);
 
   mutable std::atomic<bool> task_to_string_ready_{false};
   mutable simple_spinlock task_to_string_mutex_;

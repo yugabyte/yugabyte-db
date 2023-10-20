@@ -12,8 +12,10 @@
 // under the License.
 //
 //
-// This class defines a CQL statement. A CQL statement extends from a SQL statement to handle query
-// ID and caching prepared statements in a list.
+// This class defines a CQL statement. A CQL statement extends from a SQL statement. Handles the
+// following use cases :
+// - query ID and caching prepared statements in a list.
+// - query ID and caching unprepared statements in a (separate) list.
 //--------------------------------------------------------------------------------------------------
 
 #pragma once
@@ -47,6 +49,8 @@ struct StmtCounters{
       sum_var_time_in_msec(other->sum_var_time_in_msec), query(other->query) {}
 
   void WriteAsJson(JsonWriter* jw, const ql::CQLMessage::QueryId& query_id) const;
+
+  void ResetCounters();
 
   int64 num_calls = 0;              // Number of times executed.
   double total_time_in_msec = 0.;   // Total execution time, in msec.

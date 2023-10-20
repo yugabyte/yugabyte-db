@@ -40,7 +40,7 @@
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/master/cdc_rpc_tasks.h"
+#include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
@@ -111,8 +111,10 @@ void TabletReplica::UpdateDriveInfo(const TabletReplicaDriveInfo& info) {
 }
 
 void TabletReplica::UpdateLeaderLeaseInfo(const TabletLeaderLeaseInfo& info) {
-  bool initialized = leader_lease_info.initialized;
+  const bool initialized = leader_lease_info.initialized;
+  const auto old_lease_exp = leader_lease_info.ht_lease_expiration;
   leader_lease_info = info;
+  leader_lease_info.ht_lease_expiration = std::max(old_lease_exp, info.ht_lease_expiration);
   leader_lease_info.initialized = initialized || info.initialized;
 }
 
@@ -294,7 +296,7 @@ void TabletInfo::UpdateReplicaInfo(const std::string& ts_uuid,
   it->second.UpdateLeaderLeaseInfo(leader_lease_info);
 }
 
-std::unordered_map<CDCStreamId, uint64_t>  TabletInfo::GetReplicationStatus() {
+std::unordered_map<xrepl::StreamId, uint64_t> TabletInfo::GetReplicationStatus() {
   std::lock_guard l(lock_);
   return replication_stream_to_status_bitmask_;
 }
@@ -452,7 +454,8 @@ const string TableInfo::pgschema_name() const {
 }
 
 bool TableInfo::has_pg_type_oid() const {
-  for (const auto& col : LockForRead()->schema().columns()) {
+  const auto lock = LockForRead();
+  for (const auto& col : lock->schema().columns()) {
     if (!col.has_pg_type_oid()) {
       return false;
     }
@@ -486,6 +489,18 @@ bool TableInfo::is_unique_index() const {
 
 TableType TableInfo::GetTableType() const {
   return LockForRead()->pb.table_type();
+}
+
+bool TableInfo::IsBeingDroppedDueToDdlTxn(const std::string& txn_id_pb, bool txn_success) const {
+  auto l = LockForRead();
+  if (l->pb_transaction_id() != txn_id_pb) {
+    return false;
+  }
+  // The table can be dropped in 2 cases due to a DDL:
+  // 1. This table was created by a transaction that subsequently aborted.
+  // 2. This is a successful transaction that DROPs the table.
+  return (l->is_being_created_by_ysql_ddl_txn() && !txn_success) ||
+         (l->is_being_deleted_by_ysql_ddl_txn() && txn_success);
 }
 
 void TableInfo::AddTablet(const TabletInfoPtr& tablet) {
@@ -1249,6 +1264,11 @@ const NamespaceId CDCStreamInfo::namespace_id() const {
   return LockForRead()->pb.namespace_id();
 }
 
+const ReplicationSlotName CDCStreamInfo::GetCdcsdkYsqlReplicationSlotName() const {
+  auto l = LockForRead();
+  return ReplicationSlotName(l->pb.cdcsdk_ysql_replication_slot_name());
+}
+
 std::string CDCStreamInfo::ToString() const {
   auto l = LockForRead();
   if (l->pb.has_namespace_id()) {
@@ -1259,32 +1279,34 @@ std::string CDCStreamInfo::ToString() const {
 }
 
 // ================================================================================================
-// UniverseReplicationInfo
+// UniverseReplicationInfoBase
 // ================================================================================================
-
-Result<std::shared_ptr<CDCRpcTasks>> UniverseReplicationInfo::GetOrCreateCDCRpcTasks(
+Result<std::shared_ptr<XClusterRpcTasks>> UniverseReplicationInfoBase::GetOrCreateXClusterRpcTasks(
     google::protobuf::RepeatedPtrField<HostPortPB> producer_masters) {
   std::vector<HostPort> hp;
   HostPortsFromPBs(producer_masters, &hp);
   std::string master_addrs = HostPort::ToCommaSeparatedString(hp);
 
   std::lock_guard l(lock_);
-  if (cdc_rpc_tasks_ != nullptr) {
+  if (xcluster_rpc_tasks_ != nullptr) {
     // Master Addresses changed, update YBClient with new retry logic.
     if (master_addrs_ != master_addrs) {
-      RETURN_NOT_OK(cdc_rpc_tasks_->UpdateMasters(master_addrs));
+      RETURN_NOT_OK(xcluster_rpc_tasks_->UpdateMasters(master_addrs));
       master_addrs_ = master_addrs;
     }
-    return cdc_rpc_tasks_;
+    return xcluster_rpc_tasks_;
   }
 
   auto rpc_task =
-      VERIFY_RESULT(CDCRpcTasks::CreateWithMasterAddrs(replication_group_id_, master_addrs));
-  cdc_rpc_tasks_ = rpc_task;
+      VERIFY_RESULT(XClusterRpcTasks::CreateWithMasterAddrs(replication_group_id_, master_addrs));
+  xcluster_rpc_tasks_ = rpc_task;
   master_addrs_ = master_addrs;
   return rpc_task;
 }
 
+// ================================================================================================
+// UniverseReplicationInfo
+// ================================================================================================
 std::string UniverseReplicationInfo::ToString() const {
   auto l = LockForRead();
   return strings::Substitute("$0 [data=$1] ", id(), l->pb.ShortDebugString());
@@ -1302,7 +1324,7 @@ Status UniverseReplicationInfo::GetSetupUniverseReplicationErrorStatus() const {
 
 void UniverseReplicationInfo::StoreReplicationError(
     const TableId& consumer_table_id,
-    const CDCStreamId& stream_id,
+    const xrepl::StreamId& stream_id,
     const ReplicationErrorPb error,
     const std::string& error_detail) {
   std::lock_guard l(lock_);
@@ -1311,7 +1333,7 @@ void UniverseReplicationInfo::StoreReplicationError(
 
 void UniverseReplicationInfo::ClearReplicationError(
     const TableId& consumer_table_id,
-    const CDCStreamId& stream_id,
+    const xrepl::StreamId& stream_id,
     const ReplicationErrorPb error) {
   std::lock_guard l(lock_);
 
@@ -1336,6 +1358,114 @@ UniverseReplicationInfo::TableReplicationErrorMap
 UniverseReplicationInfo::GetReplicationErrors() const {
   SharedLock<decltype(lock_)> l(lock_);
   return table_replication_error_map_;
+}
+
+// ================================================================================================
+// PersistentUniverseReplicationBootstrapInfo
+// ================================================================================================
+void PersistentUniverseReplicationBootstrapInfo::set_new_snapshot_objects(
+    const NamespaceMap& namespace_map, const UDTypeMap& type_map,
+    const ExternalTableSnapshotDataMap& tables_data) {
+  SysUniverseReplicationBootstrapEntryPB::NewSnapshotObjectsPB new_snapshot_objects;
+  for (const ExternalTableSnapshotDataMap::value_type& entry : tables_data) {
+    const auto& data = entry.second;
+    const TableId& old_id = entry.first;
+    const TableId& new_id = data.new_table_id;
+    const TableType& type = data.table_entry_pb.table_type();
+    const SysTablesEntryPB& table_entry_pb = data.table_entry_pb;
+    const auto& indexed_table_id =
+        table_entry_pb.has_indexed_table_id() ? table_entry_pb.indexed_table_id() : "";
+
+    SysUniverseReplicationBootstrapEntryPB::IdPairPB ids;
+    ids.set_old_id(old_id);
+    ids.set_new_id(new_id);
+
+    auto table_data = new_snapshot_objects.mutable_tables()->Add();
+    table_data->set_table_type(type);
+    table_data->set_indexed_table_id(indexed_table_id);
+    table_data->mutable_ids()->CopyFrom(ids);
+  }
+
+  for (const UDTypeMap::value_type& entry : type_map) {
+    const UDTypeId& old_id = entry.first;
+    const UDTypeId& new_id = entry.second.new_type_id;
+    const bool existing = !entry.second.just_created;
+
+    SysUniverseReplicationBootstrapEntryPB::IdPairPB ids;
+    ids.set_old_id(old_id);
+    ids.set_new_id(new_id);
+
+    auto ud_type_data = new_snapshot_objects.mutable_ud_types()->Add();
+    ud_type_data->set_existing(existing);
+    ud_type_data->mutable_ids()->CopyFrom(ids);
+  }
+
+  for (const NamespaceMap::value_type& entry : namespace_map) {
+    const NamespaceId& old_id = entry.first;
+    const NamespaceId& new_id = entry.second.new_namespace_id;
+    const YQLDatabase& db_type = entry.second.db_type;
+    const bool existing = !entry.second.just_created;
+
+    SysUniverseReplicationBootstrapEntryPB::IdPairPB ids;
+    ids.set_old_id(old_id);
+    ids.set_new_id(new_id);
+
+    auto namespace_data = new_snapshot_objects.mutable_namespaces()->Add();
+    namespace_data->set_existing(existing);
+    namespace_data->set_db_type(db_type);
+    namespace_data->mutable_ids()->CopyFrom(ids);
+  }
+
+  pb.mutable_new_snapshot_objects()->CopyFrom(new_snapshot_objects);
+}
+
+void PersistentUniverseReplicationBootstrapInfo::set_into_namespace_map(
+    NamespaceMap* namespace_map) const {
+  for (const auto& entry : pb.new_snapshot_objects().namespaces()) {
+    const auto& ids = entry.ids();
+    auto& namespace_entry = (*namespace_map)[ids.old_id()];
+    namespace_entry.new_namespace_id = ids.new_id();
+    namespace_entry.db_type = entry.db_type();
+    namespace_entry.just_created = entry.existing();
+  }
+}
+
+void PersistentUniverseReplicationBootstrapInfo::set_into_ud_type_map(UDTypeMap* type_map) const {
+  for (const auto& entry : pb.new_snapshot_objects().ud_types()) {
+    const auto& ids = entry.ids();
+    auto& type_entry = (*type_map)[ids.old_id()];
+    type_entry.new_type_id = ids.new_id();
+    type_entry.just_created = entry.existing();
+  }
+}
+void PersistentUniverseReplicationBootstrapInfo::set_into_tables_data(
+    ExternalTableSnapshotDataMap* tables_data) const {
+  for (const auto& entry : pb.new_snapshot_objects().tables()) {
+    const auto& ids = entry.ids();
+    auto& tables_entry = (*tables_data)[ids.old_id()];
+    tables_entry.new_table_id = ids.new_id();
+    tables_entry.table_entry_pb.set_table_type(entry.table_type());
+    tables_entry.table_entry_pb.set_indexed_table_id(entry.indexed_table_id());
+  }
+}
+
+// ================================================================================================
+// UniverseReplicationBootstrapInfo
+// ================================================================================================
+std::string UniverseReplicationBootstrapInfo::ToString() const {
+  auto l = LockForRead();
+  return strings::Substitute("$0 [data=$1] ", id(), l->pb.ShortDebugString());
+}
+
+void UniverseReplicationBootstrapInfo::SetReplicationBootstrapErrorStatus(const Status& status) {
+  std::lock_guard l(lock_);
+  replication_bootstrap_error_ = status;
+}
+
+
+Status UniverseReplicationBootstrapInfo::GetReplicationBootstrapErrorStatus() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  return replication_bootstrap_error_;
 }
 
 ////////////////////////////////////////////////////////////

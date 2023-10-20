@@ -1,8 +1,9 @@
 package models
 
+// GflagsInfo - Gflags Info
 type GflagsInfo struct {
 
-    MasterFlags map[string]interface{} `json:"masterFlags"`
+    MasterFlags []Gflag `json:"master_flags"`
 
-    TserverFlags map[string]interface{} `json:"tserverFlags"`
+    TserverFlags []Gflag `json:"tserver_flags"`
 }

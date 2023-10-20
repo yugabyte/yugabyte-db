@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import {
   YBFormSelect,
@@ -116,6 +116,7 @@ class AddRegionList extends Component {
     }
   };
 
+  // eslint-disable-next-line react/display-name
   actionFormatter = (zoneArrayHelpers) => (cell, row, formatExtraData, rowIdx) => {
     const { showZoneForm, regionIndex } = this.state;
     const vals = zoneArrayHelpers.form.values;

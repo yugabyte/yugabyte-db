@@ -26,7 +26,7 @@ Transaction isolation level support differs between the YSQL and YCQL APIs:
 
 Similarly to PostgreSQL, you can specify Read Uncommitted for YSQL, but it behaves the same as Read Committed.
 
-<sup>$</sup> Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). This level is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default, this flag is `false`, in which case the Read Committed isolation level of YugabyteDB's transactional layer falls back to the stricter Snapshot isolation. The default isolation level for the YSQL API is essentially Snapshot because Read Committed, which is the YSQL API and PostgreSQL syntactic default, maps to Snapshot isolation.
+<sup>$</sup> Read Committed support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability). This level is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default, this flag is `false`, in which case the Read Committed isolation level of YugabyteDB's transactional layer falls back to the stricter Snapshot isolation. The default isolation level for the YSQL API is essentially Snapshot because Read Committed, which is the YSQL API and PostgreSQL syntactic default, maps to Snapshot isolation.
 
 ## Internal locking in DocDB
 
@@ -77,7 +77,7 @@ Although described here as a separate lock type for simplicity, the snapshot iso
 
 ## Locking granularities
 
-Locks can be taken at many levels of granularity.  For example, a serializable read lock could be taken at the level of an entire tablet, a single row, or a single column of a single row.  Such a lock will block attempts to take write locks at that or finer granularities. Thus, for example, a read lock taken at the row level will block attempts to write to that entire row or any sub column of it.
+Locks can be taken at many levels of granularity.  For example, a serializable read lock could be taken at the level of an entire tablet, a single row, or a single column of a single row.  Such a lock will block attempts to take write locks at that or finer granularities. Thus, for example, a read lock taken at the row level will block attempts to write to that entire row or any column in that row.
 
 In addition to the above-mentioned levels of granularity, locks in DocDB can be taken at  prefixes of the primary key columns, treating the hash columns as a single unit.  For example, if you created a YSQL table via:
 ```sql

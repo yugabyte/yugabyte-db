@@ -387,6 +387,10 @@ ClusterTable:
       type: string
       minLength: 1
       nullable: false
+    uuid:
+      type: string
+      minLength: 1
+      nullable: false
     type:
       $ref: '#/YbApiEnum'
     size_bytes:
@@ -396,6 +400,7 @@ ClusterTable:
   required:
     - name
     - keyspace
+    - uuid
     - type
     - size_bytes
 YbApiEnum:
@@ -543,10 +548,16 @@ ClusterNodeInfo:
       description: The number of CPU cores per node
       type: integer
       default: 0
+    ram_provisioned_gb:
+      description: The total size of provisioned ram (GB)
+      type: number
+      format: double
+      default: 0
   required:
     - num_cores
     - memory_mb
     - disk_size_gb
+    - ram_provisioned_gb
 ClusterRegionInfo:
   title: Cluster Region Info
   description: Cluster region info list
@@ -648,7 +659,7 @@ HealthCheckInfo:
 ClusterTabletData:
   title: Cluster Tablet Data
   description: List of cluster tablets
-  type: array
+  type: object
   additionalProperties:
     $ref: '#/ClusterTablet'
 ClusterTablet:
@@ -674,10 +685,328 @@ ClusterTablet:
     - table_uuid
     - table_id
     - has_leader
+GflagsInfo:
+  title: Gflags Info
+  description: Gflags Info
+  type: object
+  properties:
+    master_flags:
+      type: array
+      items:
+        $ref: '#/Gflag'
+    tserver_flags:
+      type: array
+      items:
+        $ref: '#/Gflag'
+  required:
+    - master_flags
+    - tserver_flags
+Gflag:
+  title: Gflag
+  description: Gflag
+  type: object
+  properties:
+    name:
+      type: string
+    value:
+      type: string
+    type:
+      type: string
+TableInfo:
+  title: Table Info
+  description: Table Info
+  type: object
+  properties:
+    table_name:
+      type: string
+    table_id:
+      type: string
+      format: uuid
+    table_version:
+      type: integer
+    table_type:
+      type: string
+    table_state:
+      type: string
+    table_state_message:
+      type: string
+    table_tablespace_oid:
+      type: string
+    table_replication_info:
+      type: object
+      properties:
+        live_replicas:
+          $ref: '#/TableReplicationInfo'
+        read_replicas:
+          type: array
+          items:
+            $ref: '#/TableReplicationInfo'
+    columns:
+      type: array
+      items:
+        $ref: '#/ColumnInfo'
+    tablets:
+      type: array
+      items:
+        $ref: '#/TabletInfo'
+  required:
+    - table_name
+    - table_id
+    - table_version
+    - table_type
+    - table_state
+    - table_state_message
+    - table_replication_info
+    - columns
+    - tablets
+TabletInfo:
+  title: Tablet Info
+  description: Tablet Info
+  type: object
+  properties:
+    tablet_id:
+      type: string
+      format: uuid
+    partition:
+      type: string
+    split_depth:
+      type: integer
+    state:
+      type: string
+    hidden:
+      type: boolean
+    message:
+      type: string
+    raft_config:
+      type: array
+      items:
+        $ref: '#/RaftConfig'
+RaftConfig:
+  title: Raft Config
+  description: Raft Config
+  type: object
+  properties:
+    uuid:
+      type: string
+      format: uuid
+    role:
+      type: string
+    location:
+      type: string
+ColumnInfo:
+  title: Column Info
+  description: Column Info
+  type: object
+  properties:
+    column:
+      type: string
+    id:
+      type: string
+    type:
+      type: string
+TableReplicationInfo:
+  title: TableReplicationInfo
+  description: TableReplicationInfo
+  type: object
+  properties:
+    num_replicas:
+      type: integer
+    placement_blocks:
+      type: array
+      items:
+        $ref: '#/PlacementBlock'
+    placement_uuid:
+      type: string
+      format: uuid
+PlacementBlock:
+  title: Placement Block
+  description: Placement Block
+  type: object
+  properties:
+    cloud_info:
+      $ref: '#/PlacementCloudInfo'
+    min_num_replicas:
+      type: integer
+PlacementCloudInfo:
+  title: Placement Cloud Info
+  description: Placement Cloud Info
+  type: object
+  properties:
+    placement_cloud:
+      type: string
+    placement_region:
+      type: string
+    placement_zone:
+      type: string
 VersionInfo:
   title: YugabyteDB Version Info
   description: YugabyteDB version info
   type: object
   properties:
     version:
+      type: string
+VoyagerMigrationsInfo:
+  title: YB Voyager migrations Info
+  description: YB Voyager migrations Info
+  type: object
+  properties:
+    migrations:
+      type: array
+      items:
+        $ref: '#/VoyagerMigrationDetails'
+VoyagerMigrationDetails:
+  title: Voyager task details
+  description: Information regarding a specific voyager migration task
+  type: object
+  properties:
+    migration_uuid:
+      type: string
+      format: uuid
+    migration_name:
+      type: string
+    migration_phase:
+      type: integer
+    invocation_sequence:
+      type: integer
+    source_db:
+      type: string
+    complexity:
+      type: string
+    database_name:
+      type: string
+    schema_name:
+      type: string
+    status:
+      type: string
+    invocation_timestamp:
+      type: string
+VoyagerMigrateDataMetrics:
+  title: YB Voyager Migrate Data metrics Info
+  description: List of YB Voyager Data migrations metrics
+  type: object
+  properties:
+    metrics:
+      type: array
+      items:
+        $ref: '#/VoyagerMigrateDataMetricsDetails'
+VoyagerMigrateDataMetricsDetails:
+  title: Voyager Migrate Data Metrics details
+  description: Voyager data migration metrics details
+  type: object
+  properties:
+    migration_uuid:
+      type: string
+      format: uuid
+    table_name:
+      type: string
+    schema_name:
+      type: string
+    migration_phase:
+      type: integer
+    status:
+      type: integer
+    count_live_rows:
+      type: integer
+    count_total_rows:
+      type: integer
+    invocation_timestamp:
+      type: string
+# MigrateSchemaTasks:
+#   title: YB Voyager Migrate schema tasks
+#   description: List of schema migrations tasks
+#   type: object
+#   properties:
+#     metrics:
+#       type: array
+#       items:
+#         $ref: '#/MigrateSchemaTaskDetail'
+MigrateSchemaTaskInfo:
+  title: Details for export schema, import schema and analyze schema steps
+  description: Voyager data migration metrics details
+  type: object
+  properties:
+    migration_uuid:
+      type: string
+      format: uuid
+    overall_status:
+      type: string
+    export_schema:
+      type: string
+    analyze_schema:
+      type: string
+    import_schema:
+      type: string
+    suggestions_errors:
+      type: array
+      items:
+        $ref: '#/ErrorsAndSuggestionsDetails'
+    sql_objects:
+      type: array
+      items:
+        $ref: '#/SqlObjectsDetails'
+ErrorsAndSuggestionsDetails:
+  title: Errors and Suggestions details
+  description: Errors and suggestions details
+  type: object
+  properties:
+    objectType:
+      type: string
+    objectName:
+      type: string
+    reason:
+      type: string
+    sqlStatement:
+      type: string
+    filePath:
+      type: string
+    suggestion:
+      type: string
+    GH:
+      type: string
+SqlObjectsDetails:
+  title: Sql Objects
+  description: Sql obejcts type and count
+  type: object
+  properties:
+    objectType:
+      type: string
+    totalCount:
+      type: integer
+    invalidCount:
+      type: integer
+    objectNames:
+      type: string
+    objectDetails:
+      type: string
+MigrationAssesmentInfo:
+  title: Details for Voyager migrations assesment
+  description: Details for Voyager migrations assesment
+  type: object
+  properties:
+    assesment_status:
+      type: boolean
+    top_errors:
+      type: array
+      items:
+        type: string
+    top_suggestions:
+      type: array
+      items:
+        type: string
+    complexity_overview:
+      type: array
+      items:
+        $ref: '#/AssesmentComplexityInfo'
+AssesmentComplexityInfo:
+  title: Assesment complexity details
+  description: Assesment complexity details
+  type: object
+  properties:
+    schema:
+      type: string
+    sql_objects_count:
+      type: integer
+    table_count:
+      type: integer
+    complexity:
       type: string

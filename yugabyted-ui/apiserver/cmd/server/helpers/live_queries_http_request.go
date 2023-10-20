@@ -69,7 +69,10 @@ type LiveQueriesYcqlFuture struct {
     Error error
 }
 
-func GetLiveQueriesYsqlFuture(nodeHost string, future chan LiveQueriesYsqlFuture) {
+func (h *HelperContainer) GetLiveQueriesYsqlFuture(
+    nodeHost string,
+    future chan LiveQueriesYsqlFuture,
+) {
     liveQueries := LiveQueriesYsqlFuture{
         Items: []*models.LiveQueryResponseYsqlQueryItem{},
         Error: nil,
@@ -94,10 +97,9 @@ func GetLiveQueriesYsqlFuture(nodeHost string, future chan LiveQueriesYsqlFuture
     var ysqlResponse LiveQueryHttpYsqlResponse
     json.Unmarshal([]byte(body), &ysqlResponse)
     for _, connection := range ysqlResponse.Connections {
-        if connection.BackendType != "" && connection.SessionStatus != "" &&
-            connection.BackendType == "client backend" && connection.SessionStatus == "idle" {
+        if connection.Query != "" {
             // uuid is just a random number, it is used in the frontend as a table row key.
-            uuid, err := Random128BitString()
+            uuid, err := h.Random128BitString()
             if err != nil {
                 liveQueries.Error = err
                 future <- liveQueries
@@ -122,7 +124,10 @@ func GetLiveQueriesYsqlFuture(nodeHost string, future chan LiveQueriesYsqlFuture
     future <- liveQueries
 }
 
-func GetLiveQueriesYcqlFuture(nodeHost string, future chan LiveQueriesYcqlFuture) {
+func (h *HelperContainer) GetLiveQueriesYcqlFuture(
+    nodeHost string,
+    future chan LiveQueriesYcqlFuture,
+) {
     liveQueries := LiveQueriesYcqlFuture{
         Items: []*models.LiveQueryResponseYcqlQueryItem{},
         Error: nil,
@@ -164,7 +169,7 @@ func GetLiveQueriesYcqlFuture(nodeHost string, future chan LiveQueriesYcqlFuture
                         clientPort = ""
                     }
                     // uuid is just a random number, it is used in the frontend as a table row key.
-                    uuid, err := Random128BitString()
+                    uuid, err := h.Random128BitString()
                     if err != nil {
                         liveQueries.Error = err
                         future <- liveQueries
@@ -200,7 +205,10 @@ type ActiveYcqlConnectionsFuture struct {
     Error           error
 }
 
-func GetActiveYsqlConnectionsFuture(nodeHost string, future chan ActiveYsqlConnectionsFuture) {
+func (h *HelperContainer) GetActiveYsqlConnectionsFuture(
+    nodeHost string,
+    future chan ActiveYsqlConnectionsFuture,
+) {
     activeConnections := ActiveYsqlConnectionsFuture{
         YsqlConnections: 0,
         Error: nil,
@@ -232,7 +240,10 @@ func GetActiveYsqlConnectionsFuture(nodeHost string, future chan ActiveYsqlConne
     future <- activeConnections
 }
 
-func GetActiveYcqlConnectionsFuture(nodeHost string, future chan ActiveYcqlConnectionsFuture) {
+func (h *HelperContainer) GetActiveYcqlConnectionsFuture(
+    nodeHost string,
+    future chan ActiveYcqlConnectionsFuture,
+) {
     activeConnections := ActiveYcqlConnectionsFuture{
         YcqlConnections: 0,
         Error: nil,

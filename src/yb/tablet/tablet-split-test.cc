@@ -132,7 +132,7 @@ TEST_F(TabletSplitTest, SplitTablet) {
 
   VLOG(1) << "Source tablet:" << std::endl
           << docdb::DocDBDebugDumpToStr(
-                 tablet()->doc_db(), dockv::SchemaPackingStorage(tablet()->table_type()),
+                 tablet()->doc_db(), &tablet()->GetSchemaPackingProvider(),
                  docdb::IncludeBinary::kTrue);
   const auto source_docdb_dump_str = tablet()->TEST_DocDBDumpStr(IncludeIntents::kTrue);
   std::unordered_set<std::string> source_docdb_dump;
@@ -204,7 +204,7 @@ TEST_F(TabletSplitTest, SplitTablet) {
       ASSERT_EQ(source_rows.erase(row.ToString()), 1);
     }
 
-    split_tablet->TEST_ForceRocksDBCompact();
+    ASSERT_OK(split_tablet->ForceManualRocksDBCompact());
 
     VLOG(1) << split_tablet->tablet_id() << " compacted:" << std::endl
             << split_tablet->TEST_DocDBDumpStr(IncludeIntents::kTrue);
@@ -225,8 +225,8 @@ TEST_F(TabletSplitTest, SplitTablet) {
     // Each split tablet data size should be less than original data size divided by number
     // of split points.
     ASSERT_LT(
-        split_tablet->doc_db().regular->GetCurrentVersionDataSstFilesSize(),
-        tablet()->doc_db().regular->GetCurrentVersionDataSstFilesSize() / kNumSplits);
+        split_tablet->regular_db()->GetCurrentVersionDataSstFilesSize(),
+        tablet()->regular_db()->GetCurrentVersionDataSstFilesSize() / kNumSplits);
   }
 
   // Split tablets should have all data from the source tablet.

@@ -8,6 +8,8 @@ import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.EditBackupScheduleParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -19,10 +21,17 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Schedule.State;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.filters.ScheduleFilter;
 import com.yugabyte.yw.models.paging.SchedulePagedApiResponse;
 import com.yugabyte.yw.models.paging.SchedulePagedQuery;
 import com.yugabyte.yw.models.paging.SchedulePagedResponse;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.ebean.Model;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
@@ -51,11 +60,21 @@ public class ScheduleController extends AuthenticatedController {
     this.backupHelper = backupHelper;
   }
 
+  @Deprecated
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value = "List schedules",
+      value =
+          "Deprecated since YBA version 2.20.0.0."
+              + " Use 'List schedules V2' instead. List schedules",
       response = Schedule.class,
       responseContainer = "List",
       nickname = "listSchedules")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result list(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -73,6 +92,12 @@ public class ScheduleController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.paging.SchedulePagedApiQuery",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result pageScheduleList(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     SchedulePagedApiQuery apiQuery = parseJsonAndValidate(request, SchedulePagedApiQuery.class);
@@ -84,6 +109,12 @@ public class ScheduleController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Get Schedule", response = Schedule.class, nickname = "getSchedule")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result get(UUID customerUUID, UUID scheduleUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -91,10 +122,26 @@ public class ScheduleController extends AuthenticatedController {
     return PlatformResults.withData(schedule);
   }
 
+  @Deprecated
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value = "Delete a schedule",
+      value =
+          "Deprecated since YBA version 2.20.0.0."
+              + " Use 'Delete a schedule V2' instead. Delete a schedule",
       response = PlatformResults.YBPSuccess.class,
       nickname = "deleteSchedule")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation =
+            @Resource(
+                path = Util.UNIVERSE_UUID,
+                sourceType = SourceType.DB,
+                dbClass = Schedule.class,
+                identifier = "schedules",
+                columnName = "schedule_uuid"))
+  })
   public Result delete(UUID customerUUID, UUID scheduleUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -117,6 +164,18 @@ public class ScheduleController extends AuthenticatedController {
         required = true,
         dataType = "com.yugabyte.yw.forms.EditBackupScheduleParams",
         paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation =
+            @Resource(
+                path = Util.UNIVERSE_UUID,
+                sourceType = SourceType.DB,
+                dbClass = Schedule.class,
+                identifier = "schedules",
+                columnName = "schedule_uuid"))
   })
   public Result editBackupSchedule(UUID customerUUID, UUID scheduleUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -201,6 +260,18 @@ public class ScheduleController extends AuthenticatedController {
       value = "Delete a schedule V2",
       response = PlatformResults.YBPSuccess.class,
       nickname = "deleteScheduleV2")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation =
+            @Resource(
+                path = Util.UNIVERSE_UUID,
+                sourceType = SourceType.DB,
+                dbClass = Schedule.class,
+                identifier = "schedules",
+                columnName = "schedule_uuid"))
+  })
   public Result deleteYb(UUID customerUUID, UUID scheduleUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);

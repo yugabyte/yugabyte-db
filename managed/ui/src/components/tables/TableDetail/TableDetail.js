@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import { Grid, Row, Col, Tab } from 'react-bootstrap';
 import { Link } from 'react-router';
@@ -87,6 +87,7 @@ export default class TableDetail extends Component {
     ) {
       const nodePrefixes = [currentUniverse.data.universeDetails.nodePrefix];
       const tableName = currentTableDetail.tableDetails.tableName;
+
       tableMetricsContent = (
         <CustomerMetricsPanel
           origin={'table'}

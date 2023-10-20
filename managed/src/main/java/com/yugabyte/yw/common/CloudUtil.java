@@ -28,15 +28,19 @@ public interface CloudUtil extends StorageUtil {
 
   @AllArgsConstructor
   public static class ConfigLocationInfo {
-    String bucket;
-    String cloudPath;
+    public String bucket;
+    public String cloudPath;
   }
 
   public static enum ExtraPermissionToValidate {
     READ,
     LIST,
-    DELETE,
     NULL
+  }
+
+  public static enum Protocol {
+    TCP,
+    HTTP
   }
 
   public static final String KEY_LOCATION_SUFFIX = Util.KEY_LOCATION_SUFFIX;
@@ -114,9 +118,7 @@ public interface CloudUtil extends StorageUtil {
     if (checkFileExists(
         configData,
         /* Go to parent directory for backup_keys.json file. */
-        preflightParams
-            .getBackupLocations()
-            .parallelStream()
+        preflightParams.getBackupLocations().parallelStream()
             .map(bL -> bL.substring(0, bL.lastIndexOf('/')))
             .collect(Collectors.toSet()),
         BackupUtil.BACKUP_KEYS_JSON,

@@ -12,6 +12,7 @@ import com.google.common.base.Preconditions;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.logging.LogUtil;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
@@ -24,6 +25,7 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -79,11 +81,17 @@ public class CustomerTask extends Model {
     @EnumValue("XCluster Configuration")
     XClusterConfig(true),
 
+    @EnumValue("Disaster Recovery Config")
+    DrConfig(true),
+
     @EnumValue("Universe Key")
     UniverseKey(true),
 
     @EnumValue("Master Key")
-    MasterKey(true);
+    MasterKey(true),
+
+    @EnumValue("Node Agent")
+    NodeAgent(false);
 
     private final boolean universeTarget;
 
@@ -142,11 +150,23 @@ public class CustomerTask extends Model {
     @EnumValue("Synchronize")
     Sync,
 
+    @EnumValue("LdapSync")
+    LdapSync,
+
     @EnumValue("RestartUniverse")
     RestartUniverse,
 
     @EnumValue("SoftwareUpgrade")
     SoftwareUpgrade,
+
+    @EnumValue("SoftwareUpgradeYB")
+    SoftwareUpgradeYB,
+
+    @EnumValue("FinalizeUpgrade")
+    FinalizeUpgrade,
+
+    @EnumValue("RollbackUpgrade")
+    RollbackUpgrade,
 
     @EnumValue("GFlagsUpgrade")
     GFlagsUpgrade,
@@ -241,25 +261,36 @@ public class CustomerTask extends Model {
     @EnumValue("ExternalScript")
     ExternalScript,
 
-    /** @deprecated TargetType name must not be part of TaskType. Use {@link #Create} instead. */
+    /**
+     * @deprecated TargetType name must not be part of TaskType. Use {@link #Create} instead.
+     */
     @Deprecated
     @EnumValue("CreateXClusterConfig")
     CreateXClusterConfig,
 
-    /** @deprecated TargetType name must not be part of TaskType. Use {@link #Edit} instead. */
+    /**
+     * @deprecated TargetType name must not be part of TaskType. Use {@link #Edit} instead.
+     */
     @Deprecated
     @EnumValue("EditXClusterConfig")
     EditXClusterConfig,
 
-    /** @deprecated TargetType name must not be part of TaskType. Use {@link #Delete} instead. */
+    /**
+     * @deprecated TargetType name must not be part of TaskType. Use {@link #Delete} instead.
+     */
     @Deprecated
     @EnumValue("DeleteXClusterConfig")
     DeleteXClusterConfig,
 
-    /** @deprecated TargetType name must not be part of TaskType. Use {@link #Sync} instead. */
+    /**
+     * @deprecated TargetType name must not be part of TaskType. Use {@link #Sync} instead.
+     */
     @Deprecated
     @EnumValue("SyncXClusterConfig")
     SyncXClusterConfig,
+
+    @EnumValue("Failover")
+    Failover,
 
     @EnumValue("PrecheckNode")
     PrecheckNode,
@@ -275,6 +306,9 @@ public class CustomerTask extends Model {
 
     @EnumValue("ThirdpartySoftwareUpgrade")
     ThirdpartySoftwareUpgrade,
+
+    @EnumValue("ModifyAuditLoggingConfig")
+    ModifyAuditLoggingConfig,
 
     @EnumValue("RotateAccessKey")
     RotateAccessKey,
@@ -304,7 +338,13 @@ public class CustomerTask extends Model {
     ConfigureDBApisKubernetes,
 
     @EnumValue("CreateImageBundle")
-    CreateImageBundle;
+    CreateImageBundle,
+
+    @EnumValue("ReprovisionNode")
+    ReprovisionNode,
+
+    @EnumValue("Install")
+    Install;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -337,10 +377,18 @@ public class CustomerTask extends Model {
           return completed ? "Edited " : "Editing ";
         case Sync:
           return completed ? "Synchronized " : "Synchronizing ";
+        case LdapSync:
+          return completed ? "LDAP Sync Completed on " : "LDAP Sync in Progress on ";
         case RestartUniverse:
           return completed ? "Restarted " : "Restarting ";
         case SoftwareUpgrade:
           return completed ? "Upgraded Software " : "Upgrading Software ";
+        case SoftwareUpgradeYB:
+          return completed ? "Upgraded Software " : "Upgrading Software ";
+        case FinalizeUpgrade:
+          return completed ? "Finalized Upgrade" : "Finalizing Upgrade";
+        case RollbackUpgrade:
+          return completed ? "Rolled back upgrade" : "Rolling backup upgrade";
         case SystemdUpgrade:
           return completed ? "Upgraded to Systemd " : "Upgrading to Systemd ";
         case GFlagsUpgrade:
@@ -404,6 +452,8 @@ public class CustomerTask extends Model {
           return completed ? "Edited xcluster config " : "Editing xcluster config ";
         case SyncXClusterConfig:
           return completed ? "Synchronized xcluster config " : "Synchronizing xcluster config ";
+        case Failover:
+          return completed ? "Failed over dr confing " : "Failing over dr confing ";
         case PrecheckNode:
           return completed ? "Performed preflight check on " : "Performing preflight check on ";
         case Abort:
@@ -414,6 +464,10 @@ public class CustomerTask extends Model {
           return completed
               ? "Upgraded third-party software for "
               : "Upgrading third-party software for ";
+        case ModifyAuditLoggingConfig:
+          return completed
+              ? "Modified audit logging config for "
+              : "Modifying audit logging config for ";
         case CreateTableSpaces:
           return completed ? "Created tablespaces in " : "Creating tablespaces in ";
         case RotateAccessKey:
@@ -439,6 +493,10 @@ public class CustomerTask extends Model {
           return completed ? "Configured DB APIs" : "Configuring DB APIs";
         case CreateImageBundle:
           return completed ? "Created" : "Creating";
+        case ReprovisionNode:
+          return completed ? "Reprovisioned" : "Reprovisioning";
+        case Install:
+          return completed ? "Installed" : "Installing";
         default:
           return null;
       }
@@ -468,6 +526,8 @@ public class CustomerTask extends Model {
           return "Reboot";
         case RestartUniverse:
           return "Restart";
+        case ReprovisionNode:
+          return "Re-provision";
         default:
           return toFriendlyTypeName();
       }
@@ -669,7 +729,7 @@ public class CustomerTask extends Model {
   }
 
   /**
-   * deletes customer_task, task_info and all its subtasks of a given task. Assumes task_info tree
+   * Deletes customer_task, task_info and all its subtasks of a given task. Assumes task_info tree
    * is one level deep. If this assumption changes then this code needs to be reworked to recurse.
    * When successful; it deletes at least 2 rows because there is always customer_task and
    * associated task_info row that get deleted.
@@ -681,7 +741,12 @@ public class CustomerTask extends Model {
   public int cascadeDeleteCompleted() {
     Preconditions.checkNotNull(
         completionTime, String.format("CustomerTask %s has not completed", id));
-    TaskInfo rootTaskInfo = TaskInfo.get(taskUUID);
+    Optional<TaskInfo> optional = TaskInfo.maybeGet(taskUUID);
+    if (!optional.isPresent()) {
+      delete();
+      return 1;
+    }
+    TaskInfo rootTaskInfo = optional.get();
     if (!rootTaskInfo.hasCompleted()) {
       LOG.warn(
           "Completed CustomerTask(id:{}, type:{}) has incomplete task_info {}",
@@ -690,23 +755,11 @@ public class CustomerTask extends Model {
           rootTaskInfo);
       return 0;
     }
-    List<TaskInfo> subTasks = rootTaskInfo.getSubTasks();
-    List<TaskInfo> incompleteSubTasks =
-        subTasks.stream().filter(taskInfo -> !taskInfo.hasCompleted()).collect(Collectors.toList());
-    if (rootTaskInfo.getTaskState() == TaskInfo.State.Success && !incompleteSubTasks.isEmpty()) {
-      LOG.warn(
-          "For a customer_task.id: {}, Successful task_info.uuid ({}) has {} incomplete subtasks {}",
-          id,
-          rootTaskInfo.getTaskUUID(),
-          incompleteSubTasks.size(),
-          incompleteSubTasks);
-      return 0;
-    }
-    // Note: delete leaf nodes first to preserve referential integrity.
-    subTasks.forEach(Model::delete);
+    int subTaskSize = rootTaskInfo.getSubTasks().size();
+    // This performs cascade delete.
     rootTaskInfo.delete();
-    this.delete();
-    return 2 + subTasks.size();
+    delete();
+    return 2 + subTaskSize;
   }
 
   public static CustomerTask findByTaskUUID(UUID taskUUID) {
@@ -756,5 +809,38 @@ public class CustomerTask extends Model {
         .findAny()
         .map(Schedule::getUserEmail)
         .orElse("Unknown");
+  }
+
+  public boolean isDeletable() {
+    if (targetType.isUniverseTarget()) {
+      Optional<Universe> optional = Universe.maybeGet(targetUUID);
+      if (!optional.isPresent()) {
+        return true;
+      }
+      UniverseDefinitionTaskParams taskParams = optional.get().getUniverseDetails();
+      if (taskUUID.equals(taskParams.updatingTaskUUID)) {
+        LOG.debug("Universe task {} is not deletable", targetUUID);
+        return false;
+      }
+      if (taskUUID.equals(taskParams.placementModificationTaskUuid)) {
+        LOG.debug("Universe task {} is not deletable", targetUUID);
+        return false;
+      }
+    } else if (targetType == TargetType.Provider) {
+      Optional<Provider> optional = Provider.maybeGet(targetUUID);
+      if (!optional.isPresent()) {
+        return true;
+      }
+      CustomerTask lastTask = CustomerTask.getLastTaskByTargetUuid(targetUUID);
+      if (lastTask == null) {
+        // Not possible.
+        return true;
+      }
+      if (taskUUID.equals(lastTask.taskUUID)) {
+        LOG.debug("Provider task {} is not deletable", targetUUID);
+        return false;
+      }
+    }
+    return true;
   }
 }

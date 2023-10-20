@@ -44,8 +44,8 @@ service PgClientService {
   rpc GetCatalogMasterVersion(PgGetCatalogMasterVersionRequestPB)
       returns (PgGetCatalogMasterVersionResponsePB);
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
-  rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
   rpc GetLockStatus(PgGetLockStatusRequestPB) returns (PgGetLockStatusResponsePB);
+  rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
   rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
       returns (PgListLiveTabletServersResponsePB);
   rpc GetIndexBackfillProgress(PgGetIndexBackfillProgressRequestPB)
@@ -59,9 +59,7 @@ service PgClientService {
   rpc ReserveOids(PgReserveOidsRequestPB) returns (PgReserveOidsResponsePB);
   rpc RollbackToSubTransaction(PgRollbackToSubTransactionRequestPB)
       returns (PgRollbackToSubTransactionResponsePB);
-  // DEPRECATED
-  rpc SetActiveSubTransaction(PgSetActiveSubTransactionRequestPB)
-      returns (PgSetActiveSubTransactionResponsePB);
+
   rpc TabletServerCount(PgTabletServerCountRequestPB) returns (PgTabletServerCountResponsePB);
   rpc TruncateTable(PgTruncateTableRequestPB) returns (PgTruncateTableResponsePB);
   rpc ValidatePlacement(PgValidatePlacementRequestPB)
@@ -78,9 +76,19 @@ service PgClientService {
   rpc DeleteSequenceTuple(PgDeleteSequenceTupleRequestPB) returns (PgDeleteSequenceTupleResponsePB);
   rpc DeleteDBSequences(PgDeleteDBSequencesRequestPB) returns (PgDeleteDBSequencesResponsePB);
   rpc CheckIfPitrActive(PgCheckIfPitrActiveRequestPB) returns (PgCheckIfPitrActiveResponsePB);
+  rpc IsObjectPartOfXRepl(PgIsObjectPartOfXReplRequestPB)
+      returns (PgIsObjectPartOfXReplResponsePB);
   rpc GetTserverCatalogVersionInfo(PgGetTserverCatalogVersionInfoRequestPB)
       returns (PgGetTserverCatalogVersionInfoResponsePB);
   rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
+  rpc GetActiveTransactionList(PgGetActiveTransactionListRequestPB)
+      returns (PgGetActiveTransactionListResponsePB);
+
+  rpc GetTableKeyRanges(PgGetTableKeyRangesRequestPB) returns (PgGetTableKeyRangesResponsePB);
+
+  // DEPRECATED
+  rpc SetActiveSubTransaction(PgSetActiveSubTransactionRequestPB)
+      returns (PgSetActiveSubTransactionResponsePB);
 }
 
 message PgHeartbeatRequestPB {
@@ -172,6 +180,7 @@ message PgCreateColumnPB {
   bool is_range = 5;
   int32 sorting_type = 6;
   int32 attr_pgoid = 7;
+  QLValuePB attr_missing_val = 8;
 }
 
 message PgCreateSplitBoundaryPB {
@@ -302,8 +311,15 @@ message PgGetLockStatusRequestPB {
   // The table to scan. If unset, scan all tables
   bytes table_id = 1;
 
-  // If specified, only read the locks associated with this txn_id.
+  // If set, only read the locks associated with this txn_id and ignore the fields
+  // min_txn_age_ms and max_num_txns.
   bytes transaction_id = 2;
+
+  // Return lock statuses of transactions with age >= 'min_txn_age_ms'
+  uint32 min_txn_age_ms = 3;
+
+  // Limit number of old transactions whose lock info is retrieved.
+  uint32 max_num_txns = 4;
 }
 
 message PgGetLockStatusResponsePB {
@@ -316,6 +332,13 @@ message PgGetLockStatusResponsePB {
   }
 
   repeated NodeLockStatusResponsePB node_locks = 2;
+
+  message TransactionList {
+    repeated bytes transaction_ids = 1;
+  }
+
+  // Map of transactions keyed by the host node uuid.
+  map<string, TransactionList> transactions_by_node = 3;
 }
 
 message PgListLiveTabletServersRequestPB {
@@ -387,8 +410,8 @@ message PgPerformOpPB {
 
 enum ReadTimeManipulation {
   NONE = 0;
-  RESET = 1;
-  RESTART = 2;
+  RESTART = 1;
+  ENSURE_READ_TIME_IS_SET = 2;
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
@@ -401,10 +424,13 @@ message OptionalUint32PB {
   uint32 value = 1;
 }
 
+message OptionalUint64PB { uint64 value = 1; }
+
 message PgPerformOptionsPB {
   message CachingInfoPB {
-    bytes key = 1;
-    OptionalUint32PB lifetime_threshold_ms = 2;
+    uint64 key_group = 1;
+    bytes key_value = 2;
+    OptionalUint32PB lifetime_threshold_ms = 3;
   }
 
   // Cannot use IsolationLevel enum, since we cannot use proto2 enum in proto3 messages.
@@ -412,6 +438,7 @@ message PgPerformOptionsPB {
   uint32 isolation = 2;
   bool ddl_mode = 3;
   uint64 txn_serial_no = 4;
+  uint64 read_time_serial_no = 20;
 
   // See ReadHybridTimePB for information about in_txn_limit_ht.
   OptionalFixed64PB in_txn_limit_ht = 5;
@@ -429,6 +456,8 @@ message PgPerformOptionsPB {
   CachingInfoPB caching_info = 17;
   bool read_from_followers = 18;
   bool trace_requested = 19;
+  bool yb_non_ddl_txn_for_sys_tables_allowed = 21;
+  int64 pg_txn_start_us = 22;
 }
 
 message PgPerformRequestPB {
@@ -624,6 +653,15 @@ message PgCheckIfPitrActiveResponsePB {
   AppStatusPB status = 2;
 }
 
+message PgIsObjectPartOfXReplRequestPB {
+  PgObjectIdPB table_id = 2;
+}
+
+message PgIsObjectPartOfXReplResponsePB {
+  AppStatusPB status = 1;
+  bool is_object_part_of_xrepl = 2;
+}
+
 message PgGetTserverCatalogVersionInfoRequestPB {
   // True if we only want to return the size of the catalog version map from tserver.
   bool size_only = 1;
@@ -661,5 +699,31 @@ message PgCancelTransactionRequestPB {
 }
 
 message PgCancelTransactionResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgGetActiveTransactionListRequestPB { OptionalUint64PB session_id = 1; }
+
+message PgGetActiveTransactionListResponsePB {
+  message EntryPB {
+    uint64 session_id = 1;
+    bytes txn_id = 2;
+  }
+  AppStatusPB status = 1;
+  repeated EntryPB entries = 2;
+}
+
+message PgGetTableKeyRangesRequestPB {
+  uint64 session_id = 1;
+  PgObjectIdPB table_id = 2;
+  bytes lower_bound_key = 3;
+  bytes upper_bound_key = 4;
+  uint64 max_num_ranges = 5;
+  uint64 range_size_bytes = 6;
+  bool is_forward = 7;
+  uint32 max_key_length = 8;
+}
+
+message PgGetTableKeyRangesResponsePB {
   AppStatusPB status = 1;
 }

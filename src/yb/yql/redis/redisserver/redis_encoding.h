@@ -12,6 +12,8 @@
 //
 #pragma once
 
+#include <stdint.h>
+
 #include <string>
 
 #include <boost/preprocessor/seq/for_each.hpp>

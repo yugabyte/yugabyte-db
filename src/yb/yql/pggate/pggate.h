@@ -44,9 +44,11 @@
 #include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/uuid.h"
 
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_expr.h"
+#include "yb/yql/pggate/pg_function.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_sys_table_prefetcher.h"
@@ -132,6 +134,8 @@ class PgApiImpl {
   // If database_name is empty, a session is created without connecting to any database.
   Status InitSession(const std::string& database_name, YBCPgExecStatsState* session_stats);
 
+  uint64_t GetSessionID() const;
+
   PgMemctx *CreateMemctx();
   Status DestroyMemctx(PgMemctx *memctx);
   Status ResetMemctx(PgMemctx *memctx);
@@ -139,6 +143,10 @@ class PgApiImpl {
   // Cache statements in YB Memctx. When Memctx is destroyed, the statement is destructed.
   Status AddToCurrentPgMemctx(std::unique_ptr<PgStatement> stmt,
                               PgStatement **handle);
+
+  // Cache function calls in YB Memctx. When Memctx is destroyed, the function is destructed.
+  Status AddToCurrentPgMemctx(std::unique_ptr<PgFunction> func, PgFunction **handle);
+
   // Cache table descriptor in YB Memctx. When Memctx is destroyed, the descriptor is destructed.
   Status AddToCurrentPgMemctx(size_t table_desc_id,
                               const PgTableDescPtr &table_desc);
@@ -209,8 +217,6 @@ class PgApiImpl {
                            int64_t *last_val,
                            bool *is_called);
 
-  Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
-
   void DeleteStatement(PgStatement *handle);
 
   // Search for type_entity.
@@ -254,6 +260,8 @@ class PgApiImpl {
                      PgOid *end_oid);
 
   Status GetCatalogMasterVersion(uint64_t *version);
+
+  Status CancelTransaction(const unsigned char* transaction_id);
 
   // Load table.
   Result<PgTableDescPtr> LoadTable(const PgObjectId& table_id);
@@ -309,7 +317,8 @@ class PgApiImpl {
                        PgStatement **handle);
 
   Status AlterTableAddColumn(PgStatement *handle, const char *name,
-                             int order, const YBCPgTypeEntity *attr_type);
+                             int order, const YBCPgTypeEntity *attr_type,
+                             YBCPgExpr missing_value);
 
   Status AlterTableRenameColumn(PgStatement *handle, const char *oldname,
                                 const char *newname);
@@ -385,13 +394,26 @@ class PgApiImpl {
 
   Status ExecDropTable(PgStatement *handle);
 
+  Status ExecDropIndex(PgStatement *handle);
+
   Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version);
 
   Status BackfillIndex(const PgObjectId& table_id);
 
+  Status NewDropSequence(const YBCPgOid database_oid,
+                         const YBCPgOid sequence_oid,
+                         PgStatement **handle);
+
+  Status ExecDropSequence(PgStatement *handle);
+
+  Status NewDropDBSequences(const YBCPgOid database_oid,
+                            PgStatement **handle);
+
   //------------------------------------------------------------------------------------------------
   // All DML statements
   Status DmlAppendTarget(PgStatement *handle, PgExpr *expr);
+
+  Result<bool> DmlHasSystemTargets(PgStatement *handle);
 
   Status DmlAppendQual(PgStatement *handle, PgExpr *expr, bool is_primary);
 
@@ -482,9 +504,10 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // Insert.
   Status NewInsert(const PgObjectId& table_id,
-                   bool is_single_row_txn,
                    bool is_region_local,
-                   PgStatement **handle);
+                   PgStatement **handle,
+                   YBCPgTransactionSetting transaction_setting =
+                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecInsert(PgStatement *handle);
 
@@ -497,18 +520,20 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // Update.
   Status NewUpdate(const PgObjectId& table_id,
-                   bool is_single_row_txn,
                    bool is_region_local,
-                   PgStatement **handle);
+                   PgStatement **handle,
+                   YBCPgTransactionSetting transaction_setting =
+                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecUpdate(PgStatement *handle);
 
   //------------------------------------------------------------------------------------------------
   // Delete.
   Status NewDelete(const PgObjectId& table_id,
-                   bool is_single_row_txn,
                    bool is_region_local,
-                   PgStatement **handle);
+                   PgStatement **handle,
+                   YBCPgTransactionSetting transaction_setting =
+                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecDelete(PgStatement *handle);
 
@@ -517,9 +542,10 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // Colocated Truncate.
   Status NewTruncateColocated(const PgObjectId& table_id,
-                              bool is_single_row_txn,
                               bool is_region_local,
-                              PgStatement **handle);
+                              PgStatement **handle,
+                              YBCPgTransactionSetting transaction_setting =
+                                  YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecTruncateColocated(PgStatement *handle);
 
@@ -533,7 +559,28 @@ class PgApiImpl {
 
   Status SetForwardScan(PgStatement *handle, bool is_forward_scan);
 
+  Status SetDistinctPrefixLength(PgStatement *handle, int distinct_prefix_length);
+
   Status ExecSelect(PgStatement *handle, const PgExecParameters *exec_params);
+
+  //------------------------------------------------------------------------------------------------
+  // Functions.
+
+  Status NewSRF(PgFunction **handle, PgFunctionDataProcessor processor);
+
+  Status AddFunctionParam(
+      PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity,
+      uint64_t datum, bool is_null);
+
+  Status AddFunctionTarget(
+      PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity,
+      const YBCPgTypeAttrs type_attrs);
+
+  Status FinalizeFunctionTargets(PgFunction *handle);
+
+  Status SRFGetNext(PgFunction *handle, uint64_t *values, bool *is_nulls, bool *has_data);
+
+  Status NewGetLockStatusDataSRF(PgFunction **handle);
 
   //------------------------------------------------------------------------------------------------
   // Analyze.
@@ -552,11 +599,12 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Transaction control.
-  Status BeginTransaction();
+  Status BeginTransaction(int64_t start_time);
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
   Status RestartReadPoint();
+  bool IsRestartReadPointRequested();
   Status CommitTransaction();
   Status AbortTransaction();
   Status SetTransactionIsolationLevel(int isolation);
@@ -572,6 +620,8 @@ class PgApiImpl {
   Status RollbackToSubTransaction(SubTransactionId id);
   double GetTransactionPriority() const;
   TxnPriorityRequirement GetTransactionPriorityType() const;
+  Result<Uuid> GetActiveTransaction() const;
+  Status GetActiveTransactions(YBCPgSessionTxnInfo* infos, size_t num_infos);
 
   //------------------------------------------------------------------------------------------------
   // Expressions.
@@ -621,6 +671,8 @@ class PgApiImpl {
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
+  Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
+      const std::string &table_id, const std::string &transaction_id);
   Result<client::TabletServersInfo> ListTabletServers();
 
   Status GetIndexBackfillProgress(std::vector<PgObjectId> oids,
@@ -638,6 +690,12 @@ class PgApiImpl {
   Status ValidatePlacement(const char *placement_info);
 
   Result<bool> CheckIfPitrActive();
+
+  Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
+
+  Result<boost::container::small_vector<RefCntSlice, 2>> GetTableKeyRanges(
+      const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
 
   MemTracker &GetMemTracker() { return *mem_tracker_; }
 

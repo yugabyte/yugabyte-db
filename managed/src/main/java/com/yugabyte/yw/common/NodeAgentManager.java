@@ -14,6 +14,7 @@ import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
 import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
+import io.ebean.annotation.Transactional;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import java.io.BufferedInputStream;
@@ -81,10 +82,14 @@ public class NodeAgentManager {
   private final Config appConfig;
   private final ConfigHelper configHelper;
 
+  private final CertificateHelper certificateHelper;
+
   @Inject
-  public NodeAgentManager(Config appConfig, ConfigHelper configHelper) {
+  public NodeAgentManager(
+      Config appConfig, ConfigHelper configHelper, CertificateHelper certificateHelper) {
     this.appConfig = appConfig;
     this.configHelper = configHelper;
+    this.certificateHelper = certificateHelper;
   }
 
   @Getter
@@ -141,13 +146,13 @@ public class NodeAgentManager {
     return getOrCreateCertDirectory(nodeAgent, String.valueOf(Integer.parseInt(certDir) + 1));
   }
 
-  private static Pair<X509Certificate, KeyPair> createRootCert(
+  private Pair<X509Certificate, KeyPair> createRootCert(
       NodeAgent nodeAgent, String certPath, String keyPath) {
     try {
       String certLabel = nodeAgent.getUuid().toString();
       KeyPair keyPair = CertificateHelper.getKeyPairObject();
       X509Certificate x509 =
-          CertificateHelper.generateCACertificate(certLabel, keyPair, CERT_EXPIRY_YEARS);
+          certificateHelper.generateCACertificate(certLabel, keyPair, CERT_EXPIRY_YEARS);
       CertificateHelper.writeCertFileContentToCertPath(x509, certPath);
       CertificateHelper.writeKeyFileContentToKeyPath(keyPair.getPrivate(), keyPath);
       return new ImmutablePair<>(x509, keyPair);
@@ -417,13 +422,15 @@ public class NodeAgentManager {
    * @param includeCertContents if it is true, server cert and key contents are included.
    * @return the updated node agent record along with cert and key in the config.
    */
+  @Transactional
   public NodeAgent create(NodeAgent nodeAgent, boolean includeCertContents) {
     nodeAgent.setConfig(new NodeAgent.Config());
     nodeAgent.setState(State.REGISTERING);
     nodeAgent.insert();
     Path certDirPath = getOrCreateNextCertDirectory(nodeAgent);
     Pair<X509Certificate, KeyPair> serverPair = generateNodeAgentCerts(nodeAgent, certDirPath);
-    nodeAgent.updateCertDirPath(certDirPath);
+    nodeAgent.getConfig().setCertPath(certDirPath.toString());
+    nodeAgent.save();
     if (includeCertContents) {
       X509Certificate serverCert = serverPair.getLeft();
       KeyPair serverKeyPair = serverPair.getRight();
@@ -509,7 +516,7 @@ public class NodeAgentManager {
     }
     // Point to the new directory and persist in the DB before deleting.
     log.info("Updating the cert dir to {} for node agent {}", newCertDirPath, nodeAgent.getUuid());
-    nodeAgent.updateCertDirPath(newCertDirPath);
+    nodeAgent.updateCertDirPath(newCertDirPath, State.UPGRADED);
     try {
       // Delete the old cert directory.
       log.info(

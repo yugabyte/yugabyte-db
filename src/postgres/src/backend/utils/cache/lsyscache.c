@@ -1800,6 +1800,30 @@ get_rel_type_id(Oid relid)
 }
 
 /*
+ * yb_get_rel_reltuples
+ *
+ *		Returns the reltuples associated with a given relation.
+ */
+float4
+yb_get_rel_reltuples(Oid relid)
+{
+	HeapTuple	tp;
+
+	tp = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
+	if (HeapTupleIsValid(tp))
+	{
+		Form_pg_class reltup = (Form_pg_class) GETSTRUCT(tp);
+		float4		result;
+
+		result = reltup->reltuples;
+		ReleaseSysCache(tp);
+		return result;
+	}
+	else
+		return 0;
+}
+
+/*
  * get_rel_relkind
  *
  *		Returns the relkind associated with a given relation.
@@ -2857,6 +2881,39 @@ type_is_collatable(Oid typid)
 /*				---------- STATISTICS CACHE ----------					 */
 
 /*
+ * yb_get_attdistinctcount
+ *
+ *	  Given the table and attribute number of a column, get the estimate
+ *    distinct count of entries in the column. Return 0 if no data available.
+ *
+ * Currently this is only consulted for individual tables, not for inheritance
+ * trees, so we don't need an "inh" parameter.
+ */
+float4
+yb_get_attdistinctcount(Oid relid, AttrNumber attnum)
+{
+	HeapTuple	tp;
+	float4		stadistinct;
+
+	tp = SearchSysCache3(STATRELATTINH,
+						 ObjectIdGetDatum(relid),
+						 Int16GetDatum(attnum),
+						 BoolGetDatum(false));
+	if (HeapTupleIsValid(tp))
+	{
+		stadistinct = ((Form_pg_statistic) GETSTRUCT(tp))->stadistinct;
+		ReleaseSysCache(tp);
+		if (stadistinct < 0)
+		{
+			float4 reltuples = yb_get_rel_reltuples(relid);
+			stadistinct *= -1 * reltuples;
+		}
+		return stadistinct;
+	}
+	return 0;
+}
+
+/*
  * get_attavgwidth
  *
  *	  Given the table and attribute number of a column, get the average
@@ -2875,8 +2932,12 @@ get_attavgwidth(Oid relid, AttrNumber attnum)
 	HeapTuple	tp;
 	int32		stawidth;
 
-	/* Do not support avg width stats for YugaByte tables as of 14/12/2018 */
-	if (IsYugaByteEnabled())
+	/*
+	 * This functionality was left disabled even after ANALYZE was implemented.
+	 * This oversight was detected during cost model project. We protect it
+	 * under this feature toggle to prevent regressions. 
+	 */
+	if (!yb_enable_base_scans_cost_model)
 		return 0;
 
 	if (get_attavgwidth_hook)

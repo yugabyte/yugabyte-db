@@ -51,7 +51,9 @@ export const XClusterConfigAction = {
   RESTART: 'restart',
   DELETE: 'delete',
   ADD_TABLE: 'addTable',
-  EDIT: 'edit'
+  MANAGE_TABLE: 'manageTable',
+  EDIT: 'edit',
+  DB_SYNC: 'dbSync'
 } as const;
 export type XClusterConfigAction = typeof XClusterConfigAction[keyof typeof XClusterConfigAction];
 
@@ -76,7 +78,7 @@ export const XClusterTableEligibility = {
   // Ineligible statuses:
   // Ineligible - The table in use in another xCluster config
   INELIGIBLE_IN_USE: 'ineligibleInUse',
-  // Inenligible - No table with a matching indentifier (keyspace, table and schema name)
+  // Inenligible - No table with a matching identifier (keyspace, table and schema name)
   //               exists in the target universe
   INELIGIBLE_NO_MATCH: 'ineligibleNoMatch',
 
@@ -183,8 +185,16 @@ export const MetricTraceName = {
 
 export const REPLICATION_LAG_ALERT_NAME = 'Replication Lag';
 
-export const XCLUSTER_METRIC_REFETCH_INTERVAL_MS = 10_000;
-export const XCLUSTER_CONFIG_REFETCH_INTERVAL_MS = 30_000;
+export const PollingIntervalMs = {
+  DR_CONFIG: 30_000,
+  DR_CONFIG_STATE_TRANSITIONS: 10_000,
+  XCLUSTER_CONFIG: 30_000,
+  XCLUSTER_CONFIG_STATE_TRANSITIONS: 10_000,
+  XCLUSTER_METRICS: 10_000
+} as const;
+
+export const XCLUSTER_METRIC_REFETCH_INTERVAL_MS = PollingIntervalMs.XCLUSTER_METRICS;
+export const XCLUSTER_CONFIG_REFETCH_INTERVAL_MS = PollingIntervalMs.XCLUSTER_CONFIG;
 
 export const XClusterModalName = {
   EDIT_CONFIG: 'editXClusterConfigModal',
@@ -192,7 +202,8 @@ export const XClusterModalName = {
   RESTART_CONFIG: 'restartXClusterConfigModal',
   ADD_TABLE_TO_CONFIG: 'addTablesToXClusterConfigModal',
   REMOVE_TABLE_FROM_CONFIG: 'removeTableFromXClusterConfigModal',
-  TABLE_REPLICATION_LAG_GRAPH: 'tableReplicationLagGraphModal'
+  TABLE_REPLICATION_LAG_GRAPH: 'tableReplicationLagGraphModal',
+  SYNC_XCLUSTER_CONFIG_WITH_DB: 'syncXClusterConfigWithDB'
 } as const;
 
 /**

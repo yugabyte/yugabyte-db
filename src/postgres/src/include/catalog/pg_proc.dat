@@ -5178,9 +5178,9 @@
   proname => 'pg_stat_get_activity', prorows => '100', proisstrict => 'f',
   proretset => 't', provolatile => 's', proparallel => 'r',
   prorettype => 'record', proargtypes => 'int4',
-  proallargtypes => '{int4,oid,int4,oid,text,text,text,text,text,timestamptz,timestamptz,timestamptz,timestamptz,inet,text,int4,xid,xid,text,bool,text,text,int4,bool,text}',
-  proargmodes => '{i,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
-  proargnames => '{pid,datid,pid,usesysid,application_name,state,query,wait_event_type,wait_event,xact_start,query_start,backend_start,state_change,client_addr,client_hostname,client_port,backend_xid,backend_xmin,backend_type,ssl,sslversion,sslcipher,sslbits,sslcompression,sslclientdn}',
+  proallargtypes => '{int4,oid,int4,oid,text,text,text,text,text,timestamptz,timestamptz,timestamptz,timestamptz,inet,text,int4,xid,xid,text,bool,text,text,int4,bool,text,uuid}',
+  proargmodes => '{i,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
+  proargnames => '{pid,datid,pid,usesysid,application_name,state,query,wait_event_type,wait_event,xact_start,query_start,backend_start,state_change,client_addr,client_hostname,client_port,backend_xid,backend_xmin,backend_type,ssl,sslversion,sslcipher,sslbits,sslcompression,sslclientdn,yb_backend_xid}',
   prosrc => 'pg_stat_get_activity' },
 { oid => '8041',
   descr => 'statistics: terminated queries for the given database',
@@ -5865,6 +5865,13 @@
   proargmodes => '{o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
   proargnames => '{locktype,database,relation,page,tuple,virtualxid,transactionid,classid,objid,objsubid,virtualtransaction,pid,mode,granted,fastpath}',
   prosrc => 'pg_lock_status' },
+{ oid => '8062', descr => 'view yugabyte lock information',
+  proname => 'yb_lock_status', prorows => '1000', proretset => 't', proisstrict => 'f', provolatile => 'v',
+  prorettype => 'record', proargtypes => 'oid uuid',
+  proallargtypes => '{oid,uuid,text,oid,oid,int4,_text,bool,bool,timestamptz,timestamptz,text,text,uuid,int4,text,bool,_text,_text,int2,int4,bool,_uuid}',
+  proargmodes => '{i,i,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
+  proargnames => '{relation,transaction_id,locktype,database,relation,pid,mode,granted,fastpath,waitstart,waitend,node,tablet_id,transaction_id,subtransaction_id,status_tablet_id,is_explicit,hash_cols,range_cols,attnum,column_id,multiple_rows_locked,blocked_by}',
+  prosrc => 'yb_lock_status'},
 { oid => '2561',
   descr => 'get array of PIDs of sessions blocking specified backend PID from acquiring a heavyweight lock',
   proname => 'pg_blocking_pids', provolatile => 'v', prorettype => '_int4',
@@ -7724,6 +7731,11 @@
   prokind => 'f', proisstrict => 't', provolatile => 'v', proparallel => 'u',
   prorettype => 'void', proargtypes => 'bool', proargnames => '{per_database_mode}',
   prosrc => 'insert into pg_catalog.pg_yb_catalog_version select oid, 1, 1 from pg_catalog.pg_database where per_database_mode and (oid not in (select db_oid from pg_catalog.pg_yb_catalog_version)); delete from pg_catalog.pg_yb_catalog_version where (not per_database_mode and db_oid != 1) or (per_database_mode and db_oid not in (select oid from pg_catalog.pg_database))' },
+
+{ oid => '8061', descr => 'returns percentile given jsonb histogram and percentile integer',
+  proname => 'yb_get_percentile', prokind => 'f',
+  prorettype => 'float8', proargtypes => 'jsonb float8', proargnames => '{hist,percentile}',
+  prosrc => 'yb_get_percentile' },
 
 # non-persistent series generator
 { oid => '1066', descr => 'non-persistent series generator',
@@ -10446,5 +10458,17 @@
   proname => 'yb_get_effective_transaction_isolation_level', provolatile => 'v',
   prorettype => 'cstring', proargtypes => '',
   prosrc => 'yb_get_effective_transaction_isolation_level' },
+
+{ oid => '8063',
+  descr => 'Cancel/abort the transaction with specified transaction id',
+  proname => 'yb_cancel_transaction', provolatile => 'v', prorettype => 'bool',
+  proargtypes => 'uuid', proargnames => '{txid}',
+  prosrc => 'yb_cancel_transaction' },
+
+{ oid => '8064',
+  descr => 'Get the UUID of the current active distributed transaction. If no distributed transaction is active, return NULL',
+  proname => 'yb_get_current_transaction', provolatile => 'v',
+  prorettype => 'uuid', proargtypes => '',
+  prosrc => 'yb_get_current_transaction' },
 
 ]

@@ -13,12 +13,20 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.HAConfigFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -37,6 +45,12 @@ public class HAController extends AuthenticatedController {
   @Inject private PlatformReplicationManager replicationManager;
 
   // TODO: (Daniel) - This could be a task
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result createHAConfig(Http.Request request) {
     try {
       Form<HAConfigFormData> formData =
@@ -63,6 +77,14 @@ public class HAController extends AuthenticatedController {
     }
   }
 
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.OTHER,
+                action = Action.SUPER_ADMIN_ACTIONS),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getHAConfig() {
     try {
       Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get();
@@ -82,6 +104,12 @@ public class HAController extends AuthenticatedController {
     }
   }
 
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result editHAConfig(UUID configUUID, Http.Request request) {
     try {
       Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get(configUUID);
@@ -107,6 +135,12 @@ public class HAController extends AuthenticatedController {
   }
 
   // TODO: (Daniel) - This could be a task
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result deleteHAConfig(UUID configUUID, Http.Request request) {
     try {
       Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get(configUUID);
@@ -134,6 +168,12 @@ public class HAController extends AuthenticatedController {
     }
   }
 
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result generateClusterKey() {
     try {
       String clusterKey = HighAvailabilityConfig.generateClusterKey();

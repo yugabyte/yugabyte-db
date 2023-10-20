@@ -18,6 +18,7 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
@@ -29,6 +30,8 @@ import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil.GcpKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -40,8 +43,15 @@ import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.KmsHistoryId;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -130,9 +140,20 @@ public class EncryptionAtRestController extends AuthenticatedController {
         }
         break;
       case HASHICORP:
-        if (formData.get(HashicorpVaultConfigParams.HC_VAULT_ADDRESS) == null
-            || formData.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) == null) {
-          throw new PlatformServiceException(BAD_REQUEST, "Invalid VAULT URL OR TOKEN");
+        if (formData.get(HashicorpVaultConfigParams.HC_VAULT_ADDRESS) == null) {
+          throw new PlatformServiceException(BAD_REQUEST, "Invalid VAULT URL");
+        }
+        if (formData.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) == null
+            && (formData.get(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID) == null
+                || formData.get(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID) == null)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "VAULT TOKEN or AppRole credentials must be provided");
+        }
+        if (formData.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) != null
+            && (formData.get(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID) != null
+                || formData.get(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID) != null)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "One of Vault Token or AppRole credentials must be provided");
         }
         try {
           if (HashicorpEARServiceUtil.getVaultSecretEngine(formData) == null)
@@ -285,12 +306,34 @@ public class EncryptionAtRestController extends AuthenticatedController {
             HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH,
             authConfig.get(HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH));
 
-        if (formData.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) == null
-            && authConfig.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) != null) {
+        if (formData.get(HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE) == null
+            && authConfig.get(HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE) != null) {
           formData.set(
-              HashicorpVaultConfigParams.HC_VAULT_TOKEN,
-              authConfig.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN));
+              HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE,
+              authConfig.get(HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE));
         }
+
+        // all of the credentials (token or approle) are empty, populate the value from auth config
+        if (formData.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) == null
+            && (formData.get(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID) == null
+                || formData.get(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID) == null)) {
+          if (authConfig.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) != null) {
+            formData.set(
+                HashicorpVaultConfigParams.HC_VAULT_TOKEN,
+                authConfig.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN));
+          }
+          if (authConfig.get(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID) != null) {
+            formData.set(
+                HashicorpVaultConfigParams.HC_VAULT_ROLE_ID,
+                authConfig.get(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID));
+          }
+          if (authConfig.get(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID) != null) {
+            formData.set(
+                HashicorpVaultConfigParams.HC_VAULT_SECRET_ID,
+                authConfig.get(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID));
+          }
+        }
+
         break;
       case GCP:
         // All these fields must be kept the same from the old authConfig (if it has)
@@ -357,6 +400,12 @@ public class EncryptionAtRestController extends AuthenticatedController {
         dataType = "Object",
         paramType = "body")
   })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result createKMSConfig(UUID customerUUID, String keyProvider, Http.Request request) {
     LOG.info(
         String.format(
@@ -406,6 +455,12 @@ public class EncryptionAtRestController extends AuthenticatedController {
         required = true,
         dataType = "Object",
         paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result editKMSConfig(UUID customerUUID, UUID configUUID, Http.Request request) {
     LOG.info(
@@ -468,6 +523,12 @@ public class EncryptionAtRestController extends AuthenticatedController {
       value = "Get details of a KMS configuration",
       response = Object.class,
       responseContainer = "Map")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getKMSConfig(UUID customerUUID, UUID configUUID) {
     LOG.info(String.format("Retrieving KMS configuration %s", configUUID.toString()));
     Customer.getOrBadRequest(customerUUID);
@@ -487,6 +548,12 @@ public class EncryptionAtRestController extends AuthenticatedController {
       value = "List KMS configurations",
       response = Object.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result listKMSConfigs(UUID customerUUID) {
     LOG.info(String.format("Listing KMS configurations for customer %s", customerUUID.toString()));
     List<JsonNode> kmsConfigs =
@@ -522,6 +589,12 @@ public class EncryptionAtRestController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Delete a KMS configuration", response = YBPTask.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result deleteKMSConfig(UUID customerUUID, UUID configUUID, Http.Request request) {
     LOG.info(
         String.format(
@@ -561,12 +634,21 @@ public class EncryptionAtRestController extends AuthenticatedController {
     }
   }
 
-  @ApiOperation(value = "Refresh KMS Config", response = YBPSuccess.class)
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.19.0.0")
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. Refresh KMS Config",
+      response = YBPSuccess.class)
   @ApiResponses(
       @ApiResponse(
           code = 500,
           message = "If there is an error refreshing the KMS config.",
           response = YBPError.class))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result refreshKMSConfig(UUID customerUUID, UUID configUUID, Request request) {
     LOG.info(
         "Refreshing KMS configuration '{}' for customer '{}'.",
@@ -584,10 +666,21 @@ public class EncryptionAtRestController extends AuthenticatedController {
             kmsConfig.getKeyProvider().name(), configUUID));
   }
 
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value = "Retrive a universe's KMS key",
+      value = "YbaApi Internal. Retrive a universe's KMS key",
       response = Object.class,
       responseContainer = "Map")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT)),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result retrieveKey(UUID customerUUID, UUID universeUUID, Http.Request request) {
     LOG.info(
         String.format(
@@ -622,10 +715,17 @@ public class EncryptionAtRestController extends AuthenticatedController {
     return recoveredKey;
   }
 
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value = "Get a universe's key reference history",
+      value = "YbaApi Internal. Get a universe's key reference history",
       response = Object.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result getKeyRefHistory(UUID customerUUID, UUID universeUUID) {
     LOG.info(
         String.format(
@@ -647,7 +747,19 @@ public class EncryptionAtRestController extends AuthenticatedController {
             .collect(Collectors.toList()));
   }
 
-  @ApiOperation(value = "Remove a universe's key reference history", response = YBPSuccess.class)
+  @Deprecated
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
+  @ApiOperation(
+      value =
+          "Deprecated since YBA version 2.20.0.0. Do not use. This API removes a universe's key"
+              + " reference history",
+      response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result removeKeyRefHistory(UUID customerUUID, UUID universeUUID, Http.Request request) {
     LOG.info(
         String.format(
@@ -665,10 +777,17 @@ public class EncryptionAtRestController extends AuthenticatedController {
     return YBPSuccess.withMessage("Key ref was successfully removed");
   }
 
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value = "Get a universe's key reference",
+      value = "YbaApi Internal. Get a universe's key reference",
       response = Object.class,
       responseContainer = "Map")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result getCurrentKeyRef(UUID customerUUID, UUID universeUUID) {
     LOG.info(
         String.format(

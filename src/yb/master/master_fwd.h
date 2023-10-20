@@ -51,7 +51,7 @@ class CatalogManager;
 class CatalogManagerIf;
 class CatalogManagerBgTasks;
 class CDCConsumerSplitDriverIf;
-class CDCRpcTasks;
+class XClusterRpcTasks;
 class CDCSplitDriverIf;
 class ClusterConfigInfo;
 class ClusterLoadBalancer;
@@ -79,7 +79,7 @@ class SysRowEntries;
 class TSDescriptor;
 class TSManager;
 class UDTypeInfo;
-class XClusterSafeTimeService;
+class XClusterManager;
 class YQLPartitionsVTable;
 class YQLVirtualTable;
 class YsqlBackendsManager;
@@ -87,7 +87,7 @@ class YsqlTablegroupManager;
 class YsqlTablespaceManager;
 class YsqlTransactionDdl;
 
-struct CDCConsumerStreamInfo;
+struct XClusterConsumerStreamInfo;
 struct PgTableReadData;
 struct TableDescription;
 struct TabletReplica;
@@ -122,7 +122,7 @@ using TablespaceIdToReplicationInfoMap = std::unordered_map<
     TablespaceId, boost::optional<ReplicationInfoPB>>;
 
 using LeaderStepDownFailureTimes = std::unordered_map<TabletServerId, MonoTime>;
-using TabletReplicaMap = std::unordered_map<std::string, TabletReplica>;
+using TabletReplicaMap = std::unordered_map<TabletServerId, TabletReplica>;
 using TabletToTabletServerMap = std::unordered_map<TabletId, TabletServerId>;
 using TabletInfoMap = std::map<TabletId, scoped_refptr<TabletInfo>>;
 struct cloud_hash;
@@ -132,7 +132,9 @@ using BlacklistSet = std::unordered_set<HostPort, HostPortHash>;
 using RetryingTSRpcTaskPtr = std::shared_ptr<RetryingTSRpcTask>;
 
 // Use ordered map to make computing fingerprint of the map easier.
-using DbOidToCatalogVersionMap = std::map<uint32_t, std::pair<uint64_t, uint64_t>>;
+struct PgCatalogVersion;
+using DbOidToCatalogVersionMap = std::map<uint32_t, PgCatalogVersion>;
+
 using RelIdToAttributesMap = std::unordered_map<uint32_t, std::vector<PgAttributePB>>;
 using RelTypeOIDMap = std::unordered_map<uint32_t, uint32_t>;
 class CatalogManager;

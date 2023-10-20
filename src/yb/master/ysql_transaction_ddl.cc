@@ -10,17 +10,21 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <sstream>
 
 #include "yb/master/ysql_transaction_ddl.h"
 
 #include "yb/client/transaction_rpc.h"
 
 #include "yb/qlexpr/ql_expr.h"
+
+#include "yb/common/colocated_util.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
 
+#include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
 
 #include "yb/tablet/tablet.h"
@@ -50,6 +54,10 @@ using std::vector;
 
 namespace yb {
 namespace master {
+
+static const char* kTableNameColName = "relname";
+static const char* kTablegroupNameColName = "grpname";
+
 namespace {
 
 bool IsTableModifiedByTransaction(TableInfo* table,
@@ -70,6 +78,16 @@ bool IsTableModifiedByTransaction(TableInfo* table,
   return true;
 }
 
+string PrintPgCols(const vector<YsqlTransactionDdl::PgColumnFields>& pg_cols) {
+  std::stringstream ss;
+  ss << "{ ";
+  for (const auto& col : pg_cols) {
+    ss << "{" << col.attname << ", " << col.order << "} ";
+  }
+  ss << "}";
+  return ss.str();
+}
+
 } // namespace
 
 YsqlTransactionDdl::~YsqlTransactionDdl() {
@@ -80,7 +98,22 @@ YsqlTransactionDdl::~YsqlTransactionDdl() {
 Result<bool> YsqlTransactionDdl::PgEntryExists(const TableId& pg_table_id,
                                                PgOid entry_oid,
                                                boost::optional<PgOid> relfilenode_oid) {
-  auto read_data = VERIFY_RESULT(sys_catalog_->TableReadData(pg_table_id));
+  bool result = false;
+  RETURN_NOT_OK(sys_catalog_->ReadWithRestarts(std::bind(
+      &YsqlTransactionDdl::PgEntryExistsWithReadTime, this, pg_table_id, entry_oid, relfilenode_oid,
+      std::placeholders::_1, &result, std::placeholders::_2)));
+  return result;
+}
+
+Status YsqlTransactionDdl::PgEntryExistsWithReadTime(
+    const TableId& pg_table_id,
+    PgOid entry_oid,
+    boost::optional<PgOid>
+        relfilenode_oid,
+    const ReadHybridTime& read_time,
+    bool* result,
+    HybridTime* read_restart_ht) {
+  auto read_data = VERIFY_RESULT(sys_catalog_->TableReadData(pg_table_id, read_time));
 
   auto oid_col = VERIFY_RESULT(read_data.ColumnByName("oid")).rep();
   ColumnIdRep relfilenode_col = kInvalidColumnId.rep();
@@ -95,12 +128,16 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(const TableId& pg_table_id,
     projection.Init(read_data.schema(), {oid_col});
   }
 
-  auto iter = VERIFY_RESULT(GetPgCatalogTableScanIterator(read_data, entry_oid, projection));
+  RequestScope request_scope;
+  auto iter = VERIFY_RESULT(
+      GetPgCatalogTableScanIterator(read_data, entry_oid, projection, &request_scope));
 
   // If no rows found, the entry does not exist.
   qlexpr::QLTableRow row;
   if (!VERIFY_RESULT(iter->FetchNext(&row))) {
-    return false;
+    *read_restart_ht = VERIFY_RESULT(iter->RestartReadHt());
+    *result = false;
+    return Status::OK();
   }
 
   // The entry exists. Expect only one row.
@@ -108,16 +145,22 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(const TableId& pg_table_id,
   if (is_matview) {
     const auto& relfilenode = row.GetValue(relfilenode_col);
     if (relfilenode->uint32_value() != *relfilenode_oid) {
-      return false;
+      *read_restart_ht = VERIFY_RESULT(iter->RestartReadHt());
+      *result = false;
+      return Status::OK();
     }
   }
-  return true;
+  *read_restart_ht = VERIFY_RESULT(iter->RestartReadHt());
+  *result = true;
+  return Status::OK();
 }
 
 Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>>
-YsqlTransactionDdl::GetPgCatalogTableScanIterator(const PgTableReadData& read_data,
-                                                  PgOid oid_value,
-                                                  const dockv::ReaderProjection& projection) {
+YsqlTransactionDdl::GetPgCatalogTableScanIterator(
+    const PgTableReadData& read_data,
+    PgOid oid_value,
+    const dockv::ReaderProjection& projection,
+    RequestScope* request_scope) {
   // Use Scan to query the given table, filtering by lookup_oid_col.
   auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
 
@@ -129,6 +172,8 @@ YsqlTransactionDdl::GetPgCatalogTableScanIterator(const PgTableReadData& read_da
   docdb::DocPgsqlScanSpec spec(
       read_data.schema(), rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
       &cond, boost::none /* hash_code */, boost::none /* max_hash_code */);
+  // Grab a RequestScope to prevent intent clean up, before we Init the iterator.
+  *request_scope = VERIFY_RESULT(VERIFY_RESULT(sys_catalog_->Tablet())->CreateRequestScope());
   RETURN_NOT_OK(iter->Init(spec));
   return iter;
 }
@@ -246,14 +291,53 @@ void YsqlTransactionDdl::TransactionReceived(
 }
 
 Result<bool> YsqlTransactionDdl::PgSchemaChecker(const scoped_refptr<TableInfo>& table) {
-  const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
-  auto read_data = VERIFY_RESULT(sys_catalog_->TableReadData(database_oid, kPgClassTableOid));
+  bool result = false;
+  RETURN_NOT_OK(sys_catalog_->ReadWithRestarts(std::bind(
+      &YsqlTransactionDdl::PgSchemaCheckerWithReadTime, this, table, std::placeholders::_1, &result,
+      std::placeholders::_2)));
+  return result;
+}
 
-  PgOid oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
+Status YsqlTransactionDdl::PgSchemaCheckerWithReadTime(
+    const scoped_refptr<TableInfo>& table, const ReadHybridTime& read_time, bool* result,
+    HybridTime* read_restart_ht) {
+  PgOid oid = kPgInvalidOid;
+  string pg_catalog_table_id, name_col;
+  if (table->IsColocationParentTable()) {
+    // The table we have is a dummy parent table, hence not present in YSQL.
+    // We need to check a tablegroup instead.
+    const auto tablegroup_id = GetTablegroupIdFromParentTableId(table->id());
+    const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTablegroupId(tablegroup_id));
+    const auto pg_yb_tablegroup_table_id = GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid);
+    oid = VERIFY_RESULT(GetPgsqlTablegroupOid(tablegroup_id));
+    pg_catalog_table_id = GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid);
+    name_col = kTablegroupNameColName;
+  } else {
+    const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
+    pg_catalog_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
+    oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
+    name_col = kTableNameColName;
+  }
+
+  auto read_data = VERIFY_RESULT(sys_catalog_->TableReadData(pg_catalog_table_id, read_time));
   auto oid_col_id = VERIFY_RESULT(read_data.ColumnByName("oid")).rep();
-  auto relname_col_id = VERIFY_RESULT(read_data.ColumnByName("relname")).rep();
-  dockv::ReaderProjection projection(read_data.schema(), {oid_col_id, relname_col_id});
-  auto iter = VERIFY_RESULT(GetPgCatalogTableScanIterator(read_data, oid, projection));
+  auto relname_col_id = VERIFY_RESULT(read_data.ColumnByName(name_col)).rep();
+  dockv::ReaderProjection projection;
+
+  PgOid relfilenode_oid = kPgInvalidOid;
+  ColumnIdRep relfilenode_col = kInvalidColumnId.rep();
+  if (table->matview_pg_table_id().empty()) {
+    projection.Init(read_data.schema(), {oid_col_id, relname_col_id});
+  } else {
+    relfilenode_oid = oid;
+    oid = VERIFY_RESULT(GetPgsqlTableOid(table->matview_pg_table_id()));
+    relfilenode_col = VERIFY_RESULT(read_data.ColumnByName("relfilenode")).rep();
+    projection.Init(read_data.schema(), {oid_col_id, relname_col_id, relfilenode_col});
+  }
+
+  RequestScope request_scope;
+  auto iter =
+      VERIFY_RESULT(GetPgCatalogTableScanIterator(read_data, oid, projection, &request_scope));
 
   auto l = table->LockForRead();
   if (!l->has_ysql_ddl_txn_verifier_state()) {
@@ -262,27 +346,50 @@ Result<bool> YsqlTransactionDdl::PgSchemaChecker(const scoped_refptr<TableInfo>&
     return STATUS_FORMAT(Aborted, "Not performing transaction verification for table $0 as it no "
                          "longer has any transaction verification state", table->ToString());
   }
-  // Table not found in pg_class. This can only happen in two cases: Table creation failed,
-  // or a table deletion went through successfully.
+
   qlexpr::QLTableRow row;
-  if (!VERIFY_RESULT(iter->FetchNext(&row))) {
-    if (l->is_being_deleted_by_ysql_ddl_txn()) {
-      return true;
+  bool table_found = false;
+
+  if (VERIFY_RESULT(iter->FetchNext(&row))) {
+    // One row found in pg_class matching the oid. If this is not a matview, then we have found this
+    // table in pg catalog. But if this table is a matview, we should also check whether the
+    // relfilenode exists.
+    table_found = true;
+    if (relfilenode_oid != kPgInvalidOid) {
+      const auto& relfilenode = row.GetValue(relfilenode_col);
+      if (relfilenode->uint32_value() != relfilenode_oid) {
+        table_found = false;
+      }
     }
-    CHECK(l->is_being_created_by_ysql_ddl_txn());
-    return false;
   }
 
-  // Table found in pg_class.
+  // Table not found in pg_class. This can only happen in two cases: Table creation failed,
+  // or a table deletion went through successfully.
+  if (!table_found) {
+    *read_restart_ht = VERIFY_RESULT(iter->RestartReadHt());
+    if (l->is_being_deleted_by_ysql_ddl_txn()) {
+      *result = true;
+      return Status::OK();
+    }
+    CHECK(l->is_being_created_by_ysql_ddl_txn())
+        << table->ToString() << " " << l->pb.ysql_ddl_txn_verifier_state(0).ShortDebugString();
+    *result = false;
+    return Status::OK();
+  }
+
+  // Table present in PG catalog.
+  *read_restart_ht = VERIFY_RESULT(iter->RestartReadHt());
+
   if (l->is_being_deleted_by_ysql_ddl_txn()) {
     LOG(INFO) << "Ysql Drop transaction for " << table->ToString()
-              << " detected to have failed as table found "
-              << "in PG catalog";
-    return false;
+              << " detected to have failed as table found in PG catalog";
+    *result = false;
+    return Status::OK();
   }
 
   if (l->is_being_created_by_ysql_ddl_txn()) {
-    return true;
+    *result = true;
+    return Status::OK();
   }
 
   // Table was being altered. Check whether its current DocDB schema matches
@@ -297,7 +404,8 @@ Result<bool> YsqlTransactionDdl::PgSchemaChecker(const scoped_refptr<TableInfo>&
     LOG(INFO) << fail_msg << " Expected table name: " << table->name() << " Table name in PG: "
               << table_name;
     CHECK_EQ(table_name, l->ysql_ddl_txn_verifier_state().previous_table_name());
-    return false;
+    *result = false;
+    return Status::OK();
   }
 
   vector<YsqlTransactionDdl::PgColumnFields> pg_cols = VERIFY_RESULT(ReadPgAttribute(table));
@@ -310,7 +418,8 @@ Result<bool> YsqlTransactionDdl::PgSchemaChecker(const scoped_refptr<TableInfo>&
   RETURN_NOT_OK(table->GetSchema(&schema));
   if (MatchPgDocDBSchemaColumns(table, schema, pg_cols)) {
     // The PG catalog schema matches the current DocDB schema. The transaction was a success.
-    return true;
+    *result = true;
+    return Status::OK();
   }
 
   Schema previous_schema;
@@ -318,12 +427,18 @@ Result<bool> YsqlTransactionDdl::PgSchemaChecker(const scoped_refptr<TableInfo>&
   if (MatchPgDocDBSchemaColumns(table, previous_schema, pg_cols)) {
     // The PG catalog schema matches the DocDB schema of the table prior to this transaction. The
     // transaction must have aborted.
-    return false;
+    *result = false;
+    return Status::OK();
   }
 
   // The PG catalog schema does not match either the current schema nor the previous schema. This
   // is an unexpected state, do nothing.
-  return STATUS_FORMAT(IllegalState, "Failed to verify transaction for table $0",
+  LOG(WARNING) << "Unexpected state for table " << table->ToString() << " with current schema "
+               << schema.ToString() << " and previous schema " << previous_schema.ToString()
+               << " and PG catalog schema " << PrintPgCols(pg_cols)
+               << ". The transaction verification state is "
+               << l->ysql_ddl_txn_verifier_state().ShortDebugString();
+  return STATUS_FORMAT(Corruption, "Failed to verify DDL transaction for table $0",
                        table->ToString());
 }
 
@@ -332,41 +447,54 @@ bool YsqlTransactionDdl::MatchPgDocDBSchemaColumns(
   const Schema& schema,
   const vector<YsqlTransactionDdl::PgColumnFields>& pg_cols) {
 
-  const string& fail_msg = "Schema mismatch for table " + table->ToString();
-  const std::vector<ColumnSchema>& columns = schema.columns();
+  const string& fail_msg = "Schema mismatch for table " + table->ToString() + " with schema "
+                          + schema.ToString() + " and PG catalog schema " + PrintPgCols(pg_cols);
+  std::vector<ColumnSchema> columns = schema.columns();
+  // Sort the columns based on the "order" field. This corresponds to PG attnum field. The pg
+  // columns will also be sorted on attnum, so the comparison will be easier.
+  sort(columns.begin(), columns.end(), [](const auto& lhs, const auto& rhs) {
+    return lhs.order() < rhs.order();
+  });
 
-  size_t i = 0;
+  size_t pg_idx = 0;
   for (const auto& col : columns) {
     // 'ybrowid' is a column present only in DocDB. Skip it.
-    if (col.name() == "ybrowid") {
+    if (col.name() == "ybrowid" || col.name() == "ybidxbasectid") {
       continue;
     }
 
-    if (col.marked_for_deletion() && i < pg_cols.size() && col.order() == pg_cols[i].order) {
+    if (col.marked_for_deletion() && pg_idx < pg_cols.size() &&
+        col.order() == pg_cols[pg_idx].order) {
       LOG(INFO) << fail_msg << " Column " << col.name() << " is marked for deletion but found it "
           "in PG catalog";
       return false;
     }
 
-    if (i >= pg_cols.size()) {
+    // The column is marked for deletion on DocDB side. We didn't find it in the PG catalog as
+    // expected, so safely skip this column.
+    if (col.marked_for_deletion()) {
+      continue;
+    }
+
+    if (pg_idx >= pg_cols.size()) {
       LOG(INFO) << fail_msg << " Expected num_columns: " << columns.size()
                 << " but found num_columns in PG: " << pg_cols.size();
       return false;
     }
 
-    if (col.name().compare(pg_cols[i].attname) != 0) {
-      LOG(INFO) << fail_msg << " Expected column name for attnum: " << pg_cols[i].order
-                << " is :" << col.name() << " but column name at PG is " << pg_cols[i].attname;
+    if (col.name().compare(pg_cols[pg_idx].attname) != 0) {
+      LOG(INFO) << fail_msg << " Expected column name for attnum: " << pg_cols[pg_idx].order
+                << " is :" << col.name() << " but column name at PG is " << pg_cols[pg_idx].attname;
       return false;
     }
 
     // Verify whether attnum matches.
-    if (col.order() != pg_cols[i].order) {
-      LOG(INFO) << fail_msg << " At index " << i << " expected attnum is " << col.order()
-                << " but actual attnum is " << pg_cols[i].order;
+    if (col.order() != pg_cols[pg_idx].order) {
+      LOG(INFO) << fail_msg << " At index " << pg_idx << " expected attnum is " << col.order()
+                << " but actual attnum is " << pg_cols[pg_idx].order;
       return false;
     }
-    i++;
+    pg_idx++;
   }
 
   return true;
@@ -374,11 +502,24 @@ bool YsqlTransactionDdl::MatchPgDocDBSchemaColumns(
 
 Result<vector<YsqlTransactionDdl::PgColumnFields>>
 YsqlTransactionDdl::ReadPgAttribute(scoped_refptr<TableInfo> table) {
+  vector<PgColumnFields> pg_cols;
+  RETURN_NOT_OK(sys_catalog_->ReadWithRestarts(std::bind(
+      &YsqlTransactionDdl::ReadPgAttributeWithReadTime, this, table, std::placeholders::_1,
+      &pg_cols, std::placeholders::_2)));
+  return pg_cols;
+}
+
+Status YsqlTransactionDdl::ReadPgAttributeWithReadTime(
+    scoped_refptr<TableInfo> table,
+    const ReadHybridTime& read_time,
+    vector<PgColumnFields>* pg_cols,
+    HybridTime* read_restart_ht) {
   // Build schema using values read from pg_attribute.
 
   const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
   const PgOid table_oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
-  auto read_data = VERIFY_RESULT(sys_catalog_->TableReadData(database_oid, kPgAttributeTableOid));
+  auto read_data =
+      VERIFY_RESULT(sys_catalog_->TableReadData(database_oid, kPgAttributeTableOid, read_time));
   const auto attrelid_col_id = VERIFY_RESULT(read_data.ColumnByName("attrelid")).rep();
   const auto attname_col_id = VERIFY_RESULT(read_data.ColumnByName("attname")).rep();
   const auto atttypid_col_id = VERIFY_RESULT(read_data.ColumnByName("atttypid")).rep();
@@ -387,9 +528,10 @@ YsqlTransactionDdl::ReadPgAttribute(scoped_refptr<TableInfo> table) {
   dockv::ReaderProjection projection(
       read_data.schema(), { attrelid_col_id, attnum_col_id, attname_col_id, atttypid_col_id });
   PgOid oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
-  auto iter = VERIFY_RESULT(GetPgCatalogTableScanIterator(read_data, oid, projection));
+  RequestScope request_scope;
+  auto iter =
+      VERIFY_RESULT(GetPgCatalogTableScanIterator(read_data, oid, projection, &request_scope));
 
-  vector<PgColumnFields> pg_cols;
   qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& attname_col = row.GetValue(attname_col_id);
@@ -420,10 +562,11 @@ YsqlTransactionDdl::ReadPgAttribute(scoped_refptr<TableInfo> table) {
       continue;
     }
     VLOG(3) << "attrelid: " << table_oid << " attname: " << attname << " atttypid: " << atttypid;
-    pg_cols.emplace_back(attnum, attname);
+    pg_cols->emplace_back(attnum, attname);
   }
 
-  return pg_cols;
+  *read_restart_ht = VERIFY_RESULT(iter->RestartReadHt());
+  return Status::OK();
 }
 
 }  // namespace master

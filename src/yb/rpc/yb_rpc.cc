@@ -230,15 +230,17 @@ void YBInboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents) 
         // for sending is still in queue due to RPC/networking issues, so no need to queue
         // another one.
         VLOG(4) << connection->ToString() << ": " << "Sending heartbeat, now: " << AsString(now)
-                << ", deadline: " << AsString(deadline)
+                << ", deadline: " << ToStringRelativeToNow(deadline, now)
                 << ", last_write_time_: " << AsString(last_write_time_)
                 << ", last_heartbeat_sending_time_: " << AsString(last_heartbeat_sending_time_);
         auto queuing_status = connection->QueueOutboundData(HeartbeatOutboundData::Instance());
         if (queuing_status.ok()) {
           last_heartbeat_sending_time_ = now;
         } else {
-          LOG(DFATAL) << "Could not queue an inbound connection heartbeat message: "
-                      << queuing_status;
+          // Do not DFATAL here. This happens during shutdown and should not result in frequent
+          // log messages.
+          LOG(WARNING) << "Could not queue an inbound connection heartbeat message: "
+                       << queuing_status;
           // We will try again at the next timer event.
         }
       }
@@ -272,8 +274,7 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
   TRACE_EVENT_FLOW_BEGIN0("rpc", "YBInboundCall", this);
   TRACE_EVENT0("rpc", "YBInboundCall::ParseFrom");
 
-  Slice source(call_data->data(), call_data->size());
-  RETURN_NOT_OK(ParseYBMessage(source, &header_, &serialized_request_));
+  RETURN_NOT_OK(ParseYBMessage(*call_data, &header_, &serialized_request_, &received_sidecars_));
   DVLOG(4) << "Parsed YBInboundCall header: " << header_.call_id;
 
   consumption_ = ScopedTrackedConsumption(mem_tracker, call_data->size());
@@ -440,6 +441,10 @@ void YBInboundCall::Respond(AnyMessageConstPtr response, bool is_success) {
 Slice YBInboundCall::method_name() const {
   auto parsed_remote_method = ParseRemoteMethod(header_.remote_method);
   return parsed_remote_method.ok() ? parsed_remote_method->method : Slice();
+}
+
+Result<RefCntSlice> YBInboundCall::ExtractSidecar(size_t idx) const {
+  return received_sidecars_.Extract(request_data_.buffer(), idx);
 }
 
 Status YBOutboundConnectionContext::HandleCall(

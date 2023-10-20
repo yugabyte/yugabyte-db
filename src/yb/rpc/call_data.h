@@ -13,6 +13,9 @@
 
 #pragma once
 
+#include "yb/rpc/rpc_fwd.h"
+
+#include "yb/util/memory/memory_usage.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/strongly_typed_bool.h"
 
@@ -65,6 +68,31 @@ struct CallData {
   }
 
   RefCntBuffer buffer_;
+};
+
+class ReceivedSidecars {
+ public:
+  Result<RefCntSlice> Extract(const RefCntBuffer& buffer, size_t idx) const;
+
+  Result<SidecarHolder> GetHolder(const RefCntBuffer& buffer, size_t idx) const;
+
+  size_t Transfer(const RefCntBuffer& buffer, Sidecars* dest);
+
+  Status Parse(Slice message, const boost::iterator_range<const uint32_t*>& offsets);
+
+  size_t DynamicMemoryUsage() const {
+    return GetFlatDynamicMemoryUsageOf(sidecar_bounds_);
+  }
+
+  size_t GetCount() const {
+    return sidecar_bounds_.size() > 0 ? sidecar_bounds_.size() - 1 : 0;
+  }
+
+ private:
+  static constexpr size_t kMinBufferForSidecarSlices = 16;
+  // Slices of data for rpc sidecars. They point into memory owned by transfer_.
+  // Number of sidecars should be obtained from header_.
+  boost::container::small_vector<const uint8_t*, kMinBufferForSidecarSlices> sidecar_bounds_;
 };
 
 } // namespace rpc

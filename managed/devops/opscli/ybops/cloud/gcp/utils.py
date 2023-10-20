@@ -718,8 +718,8 @@ class GoogleCloudAdmin():
                     "Instance %s's volume %s has not changed from %s",
                     instance, disk["deviceName"], disk["diskSizeGb"])
 
-    def change_instance_type(self, zone, instance_name, newInstanceType):
-        new_machine_type = f"zones/{zone}/machineTypes/{newInstanceType}"
+    def change_instance_type(self, zone, instance_name, instance_type):
+        new_machine_type = f"zones/{zone}/machineTypes/{instance_type}"
         body = {
             "machineType": new_machine_type
         }
@@ -893,7 +893,8 @@ class GoogleCloudAdmin():
                 root_volume=root_vol.get("source") if root_vol else None,
                 root_volume_device_name=root_vol.get("deviceName") if root_vol else None,
                 instance_state=instance_state,
-                is_running=True if instance_state == "RUNNING" else False
+                is_running=True if instance_state == "RUNNING" else False,
+                metadata=data.get("metadata")
             )
             if not get_all:
                 return result
@@ -946,10 +947,16 @@ class GoogleCloudAdmin():
                 static_ip_name, instance_name, region)
             static_ip_body = {"name": static_ip_name, "description": static_ip_description}
             logging.info("[app] Creating " + static_ip_description)
-            self.waiter.wait(self.compute.addresses().insert(
-                project=self.project,
-                region=region,
-                body=static_ip_body).execute(), region=region)
+
+            try:
+                self.waiter.wait(self.compute.addresses().insert(
+                    project=self.project,
+                    region=region,
+                    body=static_ip_body).execute(), region=region)
+            except HttpError as e:
+                if e.resp.status == 409 and 'already exists' in str(e):
+                    logging.warning(f"{static_ip_name} already exists")
+
             static_ip = self.compute.addresses().get(
                 project=self.project,
                 region=region,
@@ -1064,6 +1071,30 @@ class GoogleCloudAdmin():
         except HttpError:
             logging.exception('Failed to get console output from {}'.format(instance_name))
             return ''
+
+    def update_boot_script(self, args, instance, boot_script):
+        metadata = instance['metadata']
+        # Get the current metadata 'items' list or initialize it if not present
+        current_items = metadata.get('items', [])
+
+        # Find the index of the 'startup-script' metadata item, or -1 if not found
+        startup_script_index = next((index for index, item in enumerate(current_items)
+                                     if item['key'] == 'startup-script'), -1)
+
+        # If the 'startup-script' metadata item exists, update the value;
+        # otherwise, append a new item
+        if startup_script_index != -1:
+            current_items[startup_script_index]['value'] = boot_script
+        else:
+            current_items.append({'key': 'startup-script', 'value': boot_script})
+
+        # Update the instance metadata with the new items list
+        self.waiter.wait(self.compute.instances().setMetadata(
+            project=self.project,
+            zone=args.zone,
+            instance=instance['name'],
+            body={'fingerprint': metadata.get('fingerprint'), 'items': current_items}
+        ).execute(), zone=args.zone)
 
     def modify_tags(self, args, instance, tags_to_set_str, tags_to_remove_str):
         tags_to_set = json.loads(tags_to_set_str) if tags_to_set_str is not None else {}

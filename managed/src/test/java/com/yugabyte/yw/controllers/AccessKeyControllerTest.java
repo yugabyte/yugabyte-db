@@ -9,6 +9,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.AssertHelper.assertUnauthorizedNoException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.hamcrest.CoreMatchers.allOf;
@@ -43,19 +44,31 @@ import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.rbac.Permission;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.rbac.ResourceGroup;
+import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
+import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.Role.RoleType;
+import com.yugabyte.yw.models.rbac.RoleBinding;
+import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
@@ -74,9 +87,16 @@ public class AccessKeyControllerTest extends FakeDBApplication {
   Customer defaultCustomer;
   Users defaultUser;
   Region defaultRegion;
+  Role role;
+  ResourceDefinition rd1;
 
   static final Integer SSH_PORT = 12345;
   static final String DEFAULT_SUDO_SSH_USER = "ssh-user";
+
+  Permission permission1 = new Permission(ResourceType.OTHER, Action.CREATE);
+  Permission permission2 = new Permission(ResourceType.OTHER, Action.READ);
+  Permission permission3 = new Permission(ResourceType.OTHER, Action.UPDATE);
+  Permission permission4 = new Permission(ResourceType.OTHER, Action.DELETE);
 
   @Before
   public void before() {
@@ -84,6 +104,18 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultProvider = ModelFactory.onpremProvider(defaultCustomer);
     defaultRegion = Region.create(defaultProvider, "us-west-2", "us-west-2", "yb-image");
+    role =
+        Role.create(
+            defaultCustomer.getUuid(),
+            "FakeRole1",
+            "testDescription",
+            RoleType.Custom,
+            new HashSet<>(Arrays.asList(permission1, permission2, permission3, permission4)));
+    rd1 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.OTHER)
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(defaultCustomer.getUuid())))
+            .build();
     when(mockFileHelperService.createTempFile(anyString(), anyString()))
         .thenAnswer(
             i -> {
@@ -266,6 +298,49 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     assertValue(idKey, "keyCode", accessKey.getKeyCode());
     assertValue(idKey, "providerUUID", accessKey.getProviderUUID().toString());
     assertAuditEntry(0, defaultCustomer.getUuid());
+  }
+
+  @Test
+  public void testGetAccessKeyWithValidKeyCodeUsingNewRbacAuthzWithNoPermissions() {
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    AccessKey accessKey =
+        AccessKey.create(defaultProvider.getUuid(), "foo", new AccessKey.KeyInfo());
+    Result result = getAccessKey(defaultProvider.getUuid(), accessKey.getKeyCode());
+    assertUnauthorizedNoException(result, "Unable to authorize user");
+  }
+
+  @Test
+  public void testGetAccessKeyWithValidKeyCodeUsingNewRbacAuthzWithPermissions() {
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
+    RoleBinding.create(defaultUser, RoleBindingType.Custom, role, rG);
+    AccessKey accessKey =
+        AccessKey.create(defaultProvider.getUuid(), "foo", new AccessKey.KeyInfo());
+    Result result = getAccessKey(defaultProvider.getUuid(), accessKey.getKeyCode());
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    JsonNode idKey = json.get("idKey");
+    assertValue(idKey, "keyCode", accessKey.getKeyCode());
+    assertValue(idKey, "providerUUID", accessKey.getProviderUUID().toString());
+    assertAuditEntry(0, defaultCustomer.getUuid());
+  }
+
+  @Test
+  public void testGetAccessKeyWithValidKeyCodeUsingNewRbacAuthzWithIncorrectPermissions() {
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    Role role1 =
+        Role.create(
+            defaultCustomer.getUuid(),
+            "FakeRole2",
+            "testDescription",
+            RoleType.Custom,
+            new HashSet<>(Arrays.asList(permission1, permission3, permission4)));
+    ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
+    RoleBinding.create(defaultUser, RoleBindingType.Custom, role1, rG);
+    AccessKey accessKey =
+        AccessKey.create(defaultProvider.getUuid(), "foo", new AccessKey.KeyInfo());
+    Result result = getAccessKey(defaultProvider.getUuid(), accessKey.getKeyCode());
+    assertUnauthorizedNoException(result, "Unable to authorize user");
   }
 
   @Test

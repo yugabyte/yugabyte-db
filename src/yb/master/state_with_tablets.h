@@ -65,7 +65,7 @@ class StateWithTablets {
   bool PassedSinceCompletion(const MonoDelta& duration) const;
   std::vector<TabletId> TabletIdsInState(SysSnapshotEntryPB::State state);
   void Done(const TabletId& tablet_id, Status status);
-  bool AllInState(SysSnapshotEntryPB::State state);
+  bool AllInState(SysSnapshotEntryPB::State state) const;
   bool HasInState(SysSnapshotEntryPB::State state);
   void SetInitialTabletsState(SysSnapshotEntryPB::State state);
 
@@ -161,6 +161,7 @@ class StateWithTablets {
     SysSnapshotEntryPB::State state;
     Status last_error;
     bool running = false;
+    bool aborted = false;
 
     TabletData(const TabletId& id_, SysSnapshotEntryPB::State state_)
         : id(id_), state(state_) {
@@ -190,6 +191,11 @@ class StateWithTablets {
 
   const Tablets& tablets() const {
     return tablets_;
+  }
+
+  void DecrementTablets() {
+    --num_tablets_in_initial_state_;
+    CheckCompleteness();
   }
 
   SysSnapshotEntryPB::State initial_state_;

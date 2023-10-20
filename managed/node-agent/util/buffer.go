@@ -25,6 +25,7 @@ type Buffer interface {
 type ResettableBuffer interface {
 	io.Reader
 	Reset()
+	DisableReset()
 }
 
 // simpleBuffer implements Buffer.
@@ -36,8 +37,9 @@ type simpleBuffer struct {
 
 // resettableBuffer is a resettable bufer which extends io.Reader.
 type resettableBuffer struct {
-	source     io.Reader
-	readBuffer *bytes.Buffer
+	source       io.Reader
+	readBuffer   *bytes.Buffer
+	disableReset bool
 }
 
 // NewBuffer creates an instance of Buffer.
@@ -93,19 +95,27 @@ func (p *simpleBuffer) StringWithLen() (string, int) {
 
 // NewResettableBuffer returns a new instance of resettable buffer reader.
 func NewResettableBuffer(source io.Reader) ResettableBuffer {
-	return &resettableBuffer{source: source, readBuffer: &bytes.Buffer{}}
+	return &resettableBuffer{source: source, readBuffer: &bytes.Buffer{}, disableReset: false}
 }
 
 // Reset resets the buffer.
 func (rb *resettableBuffer) Reset() {
-	if rb.readBuffer.Len() > 0 {
+	if !rb.disableReset && rb.readBuffer.Len() > 0 {
 		readBuffer := &bytes.Buffer{}
 		rb.readBuffer.WriteTo(readBuffer)
 		rb.source = io.MultiReader(readBuffer, rb.source)
 	}
 }
 
+// DisableReset disables further reset.
+func (rb *resettableBuffer) DisableReset() {
+	rb.disableReset = true
+}
+
 // Read reads bytes from the buffer.
 func (rb *resettableBuffer) Read(p []byte) (int, error) {
+	if rb.disableReset {
+		return rb.source.Read(p)
+	}
 	return io.TeeReader(rb.source, rb.readBuffer).Read(p)
 }

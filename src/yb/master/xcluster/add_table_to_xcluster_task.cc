@@ -14,6 +14,7 @@
 #include "yb/master/xcluster/add_table_to_xcluster_task.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+#include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/rpc/messenger.h"
 #include "yb/util/source_location.h"
@@ -53,8 +54,8 @@ namespace yb::master {
 const auto kDefaultReactorDelay = MonoDelta::FromMilliseconds(200);
 
 AddTableToXClusterTask::AddTableToXClusterTask(
-    CatalogManager* catalog_manager, TableInfoPtr table_info)
-    : catalog_manager_(catalog_manager), table_info_(table_info) {}
+    CatalogManager* catalog_manager, TableInfoPtr table_info, LeaderEpoch epoch)
+    : catalog_manager_(catalog_manager), table_info_(table_info), epoch_(std::move(epoch)) {}
 
 std::string AddTableToXClusterTask::description() const {
   return Format("AddTableToXClusterTask [$0]", table_info_->id());
@@ -77,7 +78,7 @@ void AddTableToXClusterTask::RunInternal() {
             table_info_->ToString()));
   }
 
-  auto stream_ids = catalog_manager_->GetXClusterStreamInfoForConsumerTable(table_info_->id());
+  auto stream_ids = catalog_manager_->GetXClusterConsumerStreamIdsForTable(table_info_->id());
   if (!stream_ids.empty()) {
     LOG_WITH_PREFIX(INFO) << "Table is already part of xcluster replication "
                           << yb::ToString(stream_ids);
@@ -175,7 +176,9 @@ void AddTableToXClusterTask::RefreshAndGetXClusterSafeTime() {
   // replication.
   auto namespace_id = table_info_->namespace_id();
   auto initial_safe_time = VERIFY_RESULT_AND_FAIL_TASK(
-      catalog_manager_->xcluster_safe_time_service_->RefreshAndGetXClusterNamespaceToSafeTimeMap());
+      catalog_manager_->GetXClusterManager()
+          ->xcluster_safe_time_service_->RefreshAndGetXClusterNamespaceToSafeTimeMap(
+              catalog_manager_->GetLeaderEpochInternal()));
   if (!initial_safe_time.contains(namespace_id)) {
     // Namespace is no longer part of any xCluster replication.
     CompleteTableCreation();
@@ -209,7 +212,7 @@ void AddTableToXClusterTask::WaitForXClusterSafeTimeCaughtUp() {
 }
 
 void AddTableToXClusterTask::CompleteTableCreation() {
-  FAIL_TASK_AND_RETURN_IF_NOT_OK(catalog_manager_->PromoteTableToRunningState(table_info_));
+  FAIL_TASK_AND_RETURN_IF_NOT_OK(catalog_manager_->PromoteTableToRunningState(table_info_, epoch_));
 
   LOG(INFO) << "Table " << table_info_->ToString()
             << " successfully added to xcluster universe replication";

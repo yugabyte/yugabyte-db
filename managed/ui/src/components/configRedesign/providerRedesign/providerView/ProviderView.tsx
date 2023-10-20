@@ -4,7 +4,7 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import React, { useState } from 'react';
+import { useState } from 'react';
 import clsx from 'clsx';
 import { ArrowBack } from '@material-ui/icons';
 import { Typography } from '@material-ui/core';
@@ -28,6 +28,8 @@ import { getInfraProviderTab, getLinkedUniverses } from '../utils';
 import styles from './ProviderView.module.scss';
 import { ProviderStatusLabel } from '../components/ProviderStatusLabel';
 import { useInterval } from 'react-use';
+import { RbacValidator, hasNecessaryPerm } from '../../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../../redesign/features/rbac/UserPermPathMapping';
 
 interface ProviderViewProps {
   providerUUID: string;
@@ -95,13 +97,25 @@ export const ProviderView = ({ providerUUID }: ProviderViewProps) => {
           id="provider-overview-actions"
           pullRight
         >
-          <MenuItem
-            eventKey="1"
-            onSelect={showDeleteProviderModal}
-            disabled={linkedUniverses.length > 0}
+          <RbacValidator
+            accessRequiredOn={{
+              onResource: "CUSTOMER_ID",
+              ...UserPermissionMap.deleteProvider
+            }}
+            isControl
+            overrideStyle={{ display: 'block' }}
           >
-            <YBLabelWithIcon icon="fa fa-trash">Delete Configuration</YBLabelWithIcon>
-          </MenuItem>
+            <MenuItem
+              eventKey="1"
+              onSelect={showDeleteProviderModal}
+              disabled={linkedUniverses.length > 0 || !hasNecessaryPerm({
+                onResource: "CUSTOMER_ID",
+                ...UserPermissionMap.deleteProvider
+              })}
+            >
+              <YBLabelWithIcon icon="fa fa-trash">Delete Configuration</YBLabelWithIcon>
+            </MenuItem>
+          </RbacValidator>
         </DropdownButton>
       </div>
       <ProviderDetails linkedUniverses={linkedUniverses} providerConfig={providerConfig} />

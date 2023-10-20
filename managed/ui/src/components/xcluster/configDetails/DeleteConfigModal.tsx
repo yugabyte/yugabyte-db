@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQueryClient } from 'react-query';
 import { browserHistory } from 'react-router';
 import { toast } from 'react-toastify';
@@ -12,6 +12,7 @@ import {
 import { YBModalForm } from '../../common/forms';
 import { YBCheckBox } from '../../common/forms/fields';
 import { handleServerError } from '../../../utils/errorHandlingUtils';
+import { universeQueryKey, xClusterQueryKey } from '../../../redesign/helpers/api';
 
 import styles from './DeleteConfigModal.module.scss';
 
@@ -67,23 +68,27 @@ export const DeleteConfigModal = ({
                 </span>
               );
               // Invalidate the cached data for current xCluster config.
-              queryClient.invalidateQueries(['Xcluster', xClusterConfigUUID]);
+              queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfigUUID));
             }
 
             // This xCluster config will be removed from the sourceXClusterConfigs for the source universe and
             // from the targetXClusterConfigs for the target universe.
             // Invalidate queries for the participating universes.
             if (sourceUniverseUUID) {
-              queryClient.invalidateQueries(['universe', sourceUniverseUUID], { exact: true });
+              queryClient.invalidateQueries(universeQueryKey.detail(sourceUniverseUUID), {
+                exact: true
+              });
             }
             if (targetUniverseUUID) {
-              queryClient.invalidateQueries(['universe', targetUniverseUUID], { exact: true });
+              queryClient.invalidateQueries(universeQueryKey.detail(targetUniverseUUID), {
+                exact: true
+              });
             }
           },
           () => {
             // Invalidate the cached data for current xCluster config. The xCluster config status should change to
             // 'in progress' once the restart config task starts.
-            queryClient.invalidateQueries(['Xcluster', xClusterConfigUUID]);
+            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfigUUID));
           }
         );
       },

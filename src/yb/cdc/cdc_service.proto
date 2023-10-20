@@ -101,8 +101,9 @@ message CDCErrorPB {
 
 enum CDCRecordType {
   CHANGE = 1;
-  AFTER = 2;
   ALL = 3;
+  FULL_ROW_NEW_IMAGE = 4;
+  MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES = 5;
 }
 
 enum CDCRecordFormat {
@@ -128,7 +129,7 @@ message CreateCDCStreamRequestPB {
   optional CDCRecordFormat record_format = 3 [default = JSON];
   optional string namespace_name = 4;
   optional CDCRequestSource source_type = 5 [default = XCLUSTER];
-  optional CDCCheckpointType checkpoint_type = 6 [default = IMPLICIT];
+  optional CDCCheckpointType checkpoint_type = 6;
   optional bool transactional = 7; // [default = false]
   optional YQLDatabase db_type = 8 [default = YQL_DATABASE_PGSQL] ;
 }
@@ -231,8 +232,8 @@ message CDCRecordPB {
     APPLY = 3;
     SPLIT_OP = 4;
     CHANGE_METADATA = 5;
-    TRANSACTION_COMMITTED = 6;
-    TRANSACTION_CREATED = 7;
+    // Reserved for deprecated TRANSACTION_COMMITTED and TRANSACTION_CREATED fields.
+    reserved 6, 7;
   }
   optional uint64 time = 1;
   optional OperationType operation = 2;

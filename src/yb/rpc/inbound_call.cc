@@ -88,7 +88,7 @@ InboundCall::~InboundCall() {
   DecrementGauge(rpc_metrics_->inbound_calls_alive);
 }
 
-void InboundCall::NotifyTransferred(const Status& status, Connection* conn) {
+void InboundCall::NotifyTransferred(const Status& status, const ConnectionPtr& conn) {
   if (status.ok()) {
     TRACE_TO(trace(), "Transfer finished");
   } else {
@@ -148,7 +148,7 @@ void InboundCall::RecordCallReceived() {
   timing_.time_received = MonoTime::Now();
 }
 
-void InboundCall::RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time) {
+void InboundCall::RecordHandlingStarted(scoped_refptr<EventStats> incoming_queue_time) {
   DCHECK(incoming_queue_time != nullptr);
   // Protect against multiple calls.
   LOG_IF_WITH_PREFIX(DFATAL, timing_.time_handled.Initialized()) << "Already marked as started";
@@ -201,7 +201,9 @@ void InboundCall::QueueResponse(bool is_success) {
   if (responded_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
     auto queuing_status =
         connection()->context().QueueResponse(connection(), shared_from(this));
-    LOG_IF_WITH_PREFIX(DFATAL, !queuing_status.ok())
+    // Do not DFATAL here because it is a normal situation during reactor shutdown. The client
+    // should detect and handle the error.
+    LOG_IF_WITH_PREFIX(WARNING, !queuing_status.ok())
         << "Could not queue response to an inbound call: " << queuing_status;
   } else {
     LOG_WITH_PREFIX(DFATAL) << "Response already queued";

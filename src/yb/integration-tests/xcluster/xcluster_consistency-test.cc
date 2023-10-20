@@ -16,10 +16,11 @@
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
-#include "yb/integration-tests/xcluster_ysql_test_base.h"
+#include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -67,7 +68,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
     auto producer_cluster_future = std::async(std::launch::async, [&] {
       auto table_name = ASSERT_RESULT(CreateYsqlTable(
           &producer_cluster_,
-          kDatabaseName,
+          namespace_name,
           "" /* schema_name */,
           kTableName,
           {} /*tablegroup_name*/,
@@ -76,7 +77,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
 
       auto table_name2 = ASSERT_RESULT(CreateYsqlTable(
           &producer_cluster_,
-          kDatabaseName,
+          namespace_name,
           "" /* schema_name */,
           kTableName2,
           {} /*tablegroup_name*/,
@@ -87,7 +88,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
     auto consumer_cluster_future = std::async(std::launch::async, [&] {
       auto table_name = ASSERT_RESULT(CreateYsqlTable(
           &consumer_cluster_,
-          kDatabaseName,
+          namespace_name,
           "" /* schema_name */,
           kTableName,
           {} /*tablegroup_name*/,
@@ -96,7 +97,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
 
       auto table_name2 = ASSERT_RESULT(CreateYsqlTable(
           &consumer_cluster_,
-          kDatabaseName,
+          namespace_name,
           "" /* schema_name */,
           kTableName2,
           {} /*tablegroup_name*/,
@@ -130,14 +131,16 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
     ASSERT_OK(GetCDCStreamForTable(producer_table1_->id(), &stream_resp));
     ASSERT_EQ(stream_resp.streams_size(), 1);
     ASSERT_EQ(stream_resp.streams(0).table_id().Get(0), producer_table1_->id());
-    stream_ids_.push_back(stream_resp.streams(0).stream_id());
+    stream_ids_.emplace_back(
+        ASSERT_RESULT(xrepl::StreamId::FromString(stream_resp.streams(0).stream_id())));
 
     ASSERT_OK(GetCDCStreamForTable(producer_table2_->id(), &stream_resp));
     ASSERT_EQ(stream_resp.streams_size(), 1);
     ASSERT_EQ(stream_resp.streams(0).table_id().Get(0), producer_table2_->id());
-    stream_ids_.push_back(stream_resp.streams(0).stream_id());
+    stream_ids_.emplace_back(
+        ASSERT_RESULT(xrepl::StreamId::FromString(stream_resp.streams(0).stream_id())));
 
-    ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), kTabletCount + 1));
+    ASSERT_OK(CorrectlyPollingAllTablets(kTabletCount + 1));
     ASSERT_OK(PostReplicationSetup());
   }
 
@@ -235,7 +238,8 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
   Result<uint64_t> GetXClusterSafeTimeLagFromMetrics(const NamespaceId& namespace_id) {
     auto& cm = VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
     const auto metrics =
-        cm.TEST_xcluster_safe_time_service()->TEST_GetMetricsForNamespace(namespace_id);
+        cm.GetXClusterManager()->TEST_xcluster_safe_time_service()->TEST_GetMetricsForNamespace(
+            namespace_id);
     const auto safe_time_lag = metrics->consumer_safe_time_lag->value();
     const auto safe_time_skew = metrics->consumer_safe_time_skew->value();
     CHECK_GE(safe_time_lag, safe_time_skew);
@@ -245,7 +249,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
   }
 
  protected:
-  std::vector<std::string> stream_ids_;
+  std::vector<xrepl::StreamId> stream_ids_;
   std::shared_ptr<client::YBTable> producer_table1_, producer_table2_;
   std::shared_ptr<client::YBTable> consumer_table1_, consumer_table2_;
   std::vector<TabletId> producer_tablet_ids_;
@@ -386,8 +390,8 @@ class XClusterConsistencyTestWithBootstrap : public XClusterConsistencyTest {
     for (auto& bootstrap_id : bootstrap_ids_) {
       auto it = std::find(stream_ids_.begin(), stream_ids_.end(), bootstrap_id);
       ASSERT_TRUE(it != stream_ids_.end())
-          << "Bootstrap Ids " << JoinStrings(bootstrap_ids_, ",") << " and Stream Ids "
-          << JoinStrings(stream_ids_, ",") << " should match";
+          << "Bootstrap Ids " << yb::ToString(bootstrap_ids_) << " and Stream Ids "
+          << yb::ToString(stream_ids_) << " should match";
     }
   }
 
@@ -417,7 +421,7 @@ class XClusterConsistencyTestWithBootstrap : public XClusterConsistencyTest {
         bootstrap_ids_, opts);
   }
 
-  std::vector<std::string> bootstrap_ids_;
+  std::vector<xrepl::StreamId> bootstrap_ids_;
 };
 
 // Test Setup with Bootstrap works.
@@ -453,7 +457,7 @@ class XClusterSingleClusterTest : public XClusterYsqlTestBase {
 
     auto table_name = ASSERT_RESULT(CreateYsqlTable(
         &producer_cluster_,
-        kDatabaseName,
+        namespace_name,
         "" /* schema_name */,
         kTableName,
         {} /*tablegroup_name*/,

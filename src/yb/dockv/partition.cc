@@ -457,27 +457,41 @@ uint16_t PartitionSchema::DecodeMultiColumnHashRightBound(Slice partition_key) {
   return value - 1;
 }
 
-Result<std::string> PartitionSchema::GetEncodedKeyPrefix(
-    const std::string& partition_key, const PartitionSchemaPB& partition_schema) {
-  if (partition_schema.has_hash_schema()) {
-    const auto doc_key_hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+namespace {
 
-    // Following the standard flow to get the hash part of a key instead of simple `AppendHash` call
-    // in order to be guarded from any possible future update in the flow.
-    KeyBytes prefix_bytes;
-    DocKeyEncoderAfterTableIdStep(&prefix_bytes)
-        .Hash(doc_key_hash, KeyEntryValues());
-    const auto prefix_size = VERIFY_RESULT(DocKey::EncodedSize(
-        prefix_bytes, DocKeyPart::kUpToHashCode));
-    if (PREDICT_FALSE((prefix_size == 0))) {
-      // Sanity check, should not happen for normal state.
-      return STATUS(IllegalState,
-          Format("Failed to get encoded size of a hash key, key: $0", prefix_bytes));
-    }
-    prefix_bytes.Truncate(prefix_size);
-    return prefix_bytes.ToStringBuffer();
+Result<std::string> GetEncodedHashPartitionKey(const std::string& partition_key) {
+  const auto doc_key_hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+
+  // Following the standard flow to get the hash part of a key instead of simple `AppendHash` call
+  // in order to be guarded from any possible future update in the flow.
+  KeyBytes prefix_bytes;
+  DocKeyEncoderAfterTableIdStep(&prefix_bytes).Hash(doc_key_hash, KeyEntryValues());
+  const auto prefix_size =
+      VERIFY_RESULT(DocKey::EncodedSize(prefix_bytes, DocKeyPart::kUpToHashCode));
+  if (PREDICT_FALSE((prefix_size == 0))) {
+    // Sanity check, should not happen for normal state.
+    return STATUS(IllegalState,
+        Format("Failed to get encoded size of a hash key, key: $0", prefix_bytes));
   }
-  return partition_key;
+  prefix_bytes.Truncate(prefix_size);
+  return prefix_bytes.ToStringBuffer();
+}
+
+} // namespace
+
+Result<std::string> PartitionSchema::GetEncodedPartitionKey(const std::string& partition_key) {
+  if (!IsHashPartitioning() || partition_key.empty()) {
+    return partition_key;
+  }
+  return GetEncodedHashPartitionKey(partition_key);
+}
+
+Result<std::string> PartitionSchema::GetEncodedPartitionKey(
+    const std::string& partition_key, const PartitionSchemaPB& partition_schema) {
+  if (!IsHashPartitioning(partition_schema) || partition_key.empty()) {
+    return partition_key;
+  }
+  return GetEncodedHashPartitionKey(partition_key);
 }
 
 Status PartitionSchema::IsValidHashPartitionRange(const string& partition_key_start,

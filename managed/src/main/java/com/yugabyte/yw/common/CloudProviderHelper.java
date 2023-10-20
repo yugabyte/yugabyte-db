@@ -20,6 +20,9 @@ import com.yugabyte.yw.controllers.handlers.AvailabilityZoneHandler;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.ImageBundle.ImageBundleType;
+import com.yugabyte.yw.models.ImageBundleDetails;
+import com.yugabyte.yw.models.ImageBundleDetails.BundleInfo;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -30,11 +33,16 @@ import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.ProviderValidator;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
+import io.fabric8.kubernetes.api.model.Config;
 import io.fabric8.kubernetes.api.model.Container;
+import io.fabric8.kubernetes.api.model.NamedAuthInfo;
+import io.fabric8.kubernetes.api.model.NamedCluster;
+import io.fabric8.kubernetes.api.model.NamedContext;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Secret;
+import io.fabric8.kubernetes.client.internal.KubeConfigUtils;
 import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -42,6 +50,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -85,6 +94,7 @@ public class CloudProviderHelper {
   @Inject private KubernetesManagerFactory kubernetesManagerFactory;
   @Inject private ProviderValidator providerValidator;
   @Inject private RuntimeConfGetter confGetter;
+  @Inject private PrometheusConfigManager prometheusConfigManager;
 
   public boolean editKubernetesProvider(
       Provider provider, Provider editProviderReq, Set<Region> regionsToAdd) {
@@ -144,8 +154,18 @@ public class CloudProviderHelper {
       regionList = reqProvider.getRegions();
     }
 
+    Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(reqProvider);
+    boolean isConfigInProvider = updateKubeConfig(provider, providerConfig, edit);
+    // We will update the pull secret related information for the provider.
+    Map<String, String> updatedProviderConfig = CloudInfoInterface.fetchEnvVars(provider);
+
     for (Region region : regionList) {
       bootstrapKubernetesProvider(provider, reqProvider, region, region.getZones(), edit);
+    }
+    if (isConfigInProvider || !providerConfig.equals(updatedProviderConfig)) {
+      // Top level provider properties are handled in `updateProviderData` with other provider
+      // types.
+      provider.save();
     }
     return provider;
   }
@@ -159,11 +179,6 @@ public class CloudProviderHelper {
     if (azList == null) {
       azList = rd.getZones();
     }
-
-    Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(reqProvider);
-    boolean isConfigInProvider = updateKubeConfig(provider, providerConfig, edit);
-    // We will update the pull secret related information for the provider.
-    Map<String, String> updatedProviderConfig = CloudInfoInterface.fetchEnvVars(provider);
 
     Map<String, String> regionConfig = CloudInfoInterface.fetchEnvVars(rd);
     String regionCode = rd.getCode();
@@ -217,6 +232,8 @@ public class CloudProviderHelper {
         az.setDetails(zone.getDetails());
       }
       boolean isConfigInZone = updateKubeConfigForZone(provider, region, az, zoneConfig, edit);
+      KubernetesInfo k8sProviderInfo = CloudInfoInterface.get(provider);
+      boolean isConfigInProvider = k8sProviderInfo.getKubeConfig() != null;
       boolean useInClusterServiceAccount =
           !(isConfigInProvider || isConfigInRegion || isConfigInZone) && !edit;
       if (useInClusterServiceAccount) {
@@ -231,11 +248,7 @@ public class CloudProviderHelper {
     if (regionUpdateNeeded || isConfigInRegion) {
       region.save();
     }
-    if (isConfigInProvider || !providerConfig.equals(updatedProviderConfig)) {
-      // Top level provider properties are handled in `updateProviderData` with other provider
-      // types.
-      provider.save();
-    }
+
     return provider;
   }
 
@@ -289,6 +302,15 @@ public class CloudProviderHelper {
       kubeConfigFile = accessManager.createKubernetesConfig(path, config, edit);
       if (kubeConfigFile != null) {
         k8sMetadata.setKubeConfig(kubeConfigFile);
+        try {
+          saveKubeConfigAuthData(k8sMetadata, path, edit);
+        } catch (Exception e) {
+          log.warn(
+              "Failed to save authentication data from the kubeconfig. "
+                  + "Metrics from this Kubernetes cluster won't be available "
+                  + "if it is an external cluster: {}",
+              e.getMessage());
+        }
         k8sMetadata.setKubeConfigContent(null);
         k8sMetadata.setKubeConfigName(null);
       }
@@ -314,6 +336,76 @@ public class CloudProviderHelper {
       }
     }
     return hasKubeConfig;
+  }
+
+  /**
+   * Parses the given kubeconfig content and saves the details requried by Prometheus to
+   * authenticate with the API server to given k8sInfo.
+   */
+  private KubernetesInfo saveKubeConfigAuthData(KubernetesInfo k8sInfo, String path, boolean edit) {
+    String kubeConfigContent = k8sInfo.getKubeConfigContent();
+    String kubeConfigName = k8sInfo.getKubeConfigName();
+    if (edit && (kubeConfigContent == null || kubeConfigName == null)) {
+      return null;
+    }
+    if (kubeConfigContent == null) {
+      throw new RuntimeException("Missing kubeconfig content data in the kubernetesinfo");
+    } else if (kubeConfigName == null) {
+      throw new RuntimeException("Missing kubeconfig name in the kubernetesinfo");
+    }
+
+    Config kubeconfig = null;
+    kubeconfig = KubeConfigUtils.parseConfigFromString(kubeConfigContent);
+
+    String contextName = kubeconfig.getCurrentContext();
+    NamedContext currentContext =
+        kubeconfig.getContexts().stream()
+            .filter(ctx -> ctx.getName().equals(contextName))
+            .findFirst()
+            .orElse(null);
+    if (currentContext == null) {
+      throw new RuntimeException("Context set as current context is not present in the kubeconfig");
+    }
+    String clusterName = currentContext.getContext().getCluster();
+    String userName = currentContext.getContext().getUser();
+    NamedCluster cluster =
+        kubeconfig.getClusters().stream()
+            .filter(c -> c.getName().equals(clusterName))
+            .findFirst()
+            .orElse(null);
+    if (cluster == null) {
+      throw new RuntimeException("Cluster from current context is not present in the kubeconfig");
+    }
+    NamedAuthInfo authInfo =
+        kubeconfig.getUsers().stream()
+            .filter(u -> u.getName().equals(userName))
+            .findFirst()
+            .orElse(null);
+    if (authInfo == null) {
+      throw new RuntimeException("User from current context is not present in the kubeconfig");
+    }
+
+    k8sInfo.setApiServerEndpoint(cluster.getCluster().getServer());
+
+    String certBase64 = cluster.getCluster().getCertificateAuthorityData();
+    if (StringUtils.isBlank(certBase64)) {
+      throw new RuntimeException("Certificate authority data is missing in the kubeconfig");
+    }
+    k8sInfo.setKubeConfigCAFile(
+        accessManager.createKubernetesAuthDataFile(
+            path,
+            kubeConfigName + "-ca.crt",
+            new String(Base64.getDecoder().decode(certBase64)),
+            edit));
+
+    String token = authInfo.getUser().getToken();
+    if (StringUtils.isBlank(token)) {
+      throw new RuntimeException("Token is missing in the kubeconfig");
+    }
+    k8sInfo.setKubeConfigTokenFile(
+        accessManager.createKubernetesAuthDataFile(
+            path, kubeConfigName + "-token.txt", token, edit));
+    return k8sInfo;
   }
 
   public boolean maybeUpdateCloudProviderConfig(
@@ -888,20 +980,31 @@ public class CloudProviderHelper {
     // So the user must have entered the VPC Info for the regions, as well as
     // the zone info.
     if (!regionsToAdd.isEmpty()) {
+      List<ImageBundle> bundles =
+          editProviderReq.getImageBundles().stream()
+              .filter(iB -> iB.getMetadata().getType() != ImageBundleType.YBA_ACTIVE)
+              .collect(Collectors.toList());
+      boolean enableVMOSPatching = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
       for (Region region : regionsToAdd) {
-        if (region.getZones() == null || region.getZones().isEmpty()) {
-          throw new PlatformServiceException(
-              BAD_REQUEST, "Zone info needs to be specified for region: " + region.getCode());
+        if (region.getZones() != null || !region.getZones().isEmpty()) {
+          region
+              .getZones()
+              .forEach(
+                  zone -> {
+                    if (zone.getSubnet() == null
+                        && provider.getCloudCode() != CloudType.onprem
+                        && provider.getCloudCode() != CloudType.kubernetes) {
+                      throw new PlatformServiceException(
+                          BAD_REQUEST, "Required field subnet for zone: " + zone.getCode());
+                    }
+                  });
         }
-        region
-            .getZones()
-            .forEach(
-                zone -> {
-                  if (zone.getSubnet() == null && provider.getCloudCode() != CloudType.onprem) {
-                    throw new PlatformServiceException(
-                        BAD_REQUEST, "Required field subnet for zone: " + zone.getCode());
-                  }
-                });
+
+        if (enableVMOSPatching && provider.getCloudCode() == CloudType.aws) {
+          // Validate the image_bundles when the VM OS Patching is enabled
+          // for AWS providers, as these only have the concept the per region AMIs.
+          validateImageBundles(region, bundles);
+        }
       }
     }
     // TODO: Remove this code once the validators are added for all cloud provider.
@@ -928,6 +1031,43 @@ public class CloudProviderHelper {
       }
     }
     provider.setLastValidationErrors(newErrors);
+  }
+
+  public void validateImageBundles(Region region, List<ImageBundle> bundles) {
+    /*
+     * Utility function for validating the image bundle when the region is added to
+     * the AWS provider.
+     * We will validate as follows:
+     * 1. YBA_ACTIVE: No Validation
+     * 2. YBA_DEPRECATED: In case the region is not present, we will mark the bundle
+     * with `active: false`, indicating that the user should take action if they want to use
+     * the new region with the image bundle.
+     * 3. CUSTOM: An exception is thrown in case the region is not present.
+     */
+    for (ImageBundle bundle : bundles) {
+      ImageBundleDetails details = bundle.getDetails();
+      ImageBundle.Metadata metadata = bundle.getMetadata();
+      if (details != null) {
+        Map<String, BundleInfo> regionBundleInfo = details.getRegions();
+        if (!regionBundleInfo.containsKey(region.getCode())) {
+          if (metadata != null && metadata.getType() == ImageBundleType.YBA_DEPRECATED) {
+            // For the YBA_DEPRECATED bundles we won't throw the error,
+            // instead modify the state to not Active.
+            log.debug(
+                String.format(
+                    "Marking bundle %s as inactive as region %s AMI is not present",
+                    bundle.getName(), region.getCode()));
+            bundle.setActive(false);
+          } else {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Specify the AMI for the region %s in the image bundle %s",
+                    region.getCode(), bundle.getName()));
+          }
+        }
+      }
+    }
   }
 
   public static String getFirstRegionCode(Provider provider) {
@@ -1004,5 +1144,12 @@ public class CloudProviderHelper {
     }
 
     return kubernetesConfigType;
+  }
+
+  // Triggers the Prometheus scrape config update
+  public void updatePrometheusConfig(Provider p) {
+    if (p.getCloudCode() == CloudType.kubernetes) {
+      prometheusConfigManager.updateK8sScrapeConfigs();
+    }
   }
 }

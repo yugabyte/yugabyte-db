@@ -8,23 +8,24 @@ menu:
   preview_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-2-kubernetes
-    weight: 77
+    weight: 80
 type: docs
 ---
 
-Use the following instructions to install YugabyteDB Anywhere software. For guidance on which method to choose, see [YBA Prerequisites](../../prerequisites/default/).
+Use the following instructions to install YugabyteDB Anywhere software. For guidance on which method to choose, see [YBA prerequisites](../../prerequisites/installer/).
 
 Note: For higher availability, one or more additional YugabyteDB Anywhere instances can be separately installed, and then configured later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+
   <li>
-    <a href="../default/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Replicated</a>
+    <a href="../installer/" class="nav-link">
+      <i class="fa-solid fa-building"></i>YBA Installer</a>
   </li>
 
   <li>
-    <a href="../airgapped/" class="nav-link">
-      <i class="fa-solid fa-link-slash"></i>Replicated - Airgapped</a>
+    <a href="../default/" class="nav-link">
+      <i class="fa-solid fa-cloud"></i>Replicated</a>
   </li>
 
   <li>
@@ -35,11 +36,6 @@ Note: For higher availability, one or more additional YugabyteDB Anywhere instan
   <li>
     <a href="../openshift/" class="nav-link">
       <i class="fa-brands fa-redhat"></i>OpenShift</a>
-  </li>
-
-  <li>
-    <a href="../installer/" class="nav-link">
-      <i class="fa-solid fa-building"></i>YBA Installer</a>
   </li>
 
 </ul>

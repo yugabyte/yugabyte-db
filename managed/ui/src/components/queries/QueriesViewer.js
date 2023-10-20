@@ -1,4 +1,3 @@
-import React from 'react';
 import { Tab } from 'react-bootstrap';
 import { YBTabsPanel } from '../panels';
 import { LiveQueries } from './index';

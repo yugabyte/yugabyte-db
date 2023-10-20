@@ -10,6 +10,7 @@ menu:
     parent: date-time-functions
     weight: 60
 type: indexpage
+showRightNav: true
 ---
 
 ## function isfinite() returns boolean

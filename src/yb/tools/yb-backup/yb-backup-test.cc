@@ -86,27 +86,18 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupWithEnum)) {
 }
 
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLPgBasedBackup)) {
-  ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v TEXT)"));
-  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (100, 'abc')"));
+  DoTestYSQLRestoreBackup(std::nullopt /* db_catalog_version_mode */);
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
 
-  const string backup_dir = GetTempDir("backup");
-  ASSERT_OK(RunBackupCommand(
-      {"--pg_based_backup", "--backup_location", backup_dir, "--keyspace", "ysql.yugabyte",
-       "create"}));
-  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (999, 'foo')"));
-  ASSERT_OK(RunBackupCommand(
-      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToDBCatalogVersionMode)) {
+  DoTestYSQLRestoreBackup(true /* db_catalog_version_mode */);
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
 
-  SetDbName("yugabyte_new"); // Connecting to the second DB from the moment.
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      "SELECT k, v FROM mytbl ORDER BY k",
-      R"#(
-          k  |  v
-        -----+-----
-         100 | abc
-        (1 row)
-      )#"
-  ));
+TEST_F(YBBackupTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToGlobalCatalogVersionMode)) {
+  DoTestYSQLRestoreBackup(false /* db_catalog_version_mode */);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
@@ -664,6 +655,81 @@ TEST_F(YBBackupTest,
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
+TEST_F(YBBackupTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(BackupRaceWithDropTable)) {
+  const string table_name = "mytbl";
+
+  // Create table.
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT PRIMARY KEY)", table_name)));
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 VALUES (generate_series(1, 1000))", table_name), 1000));
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte",
+       "--TEST_drop_table_before_upload", "create"}));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+
+  // Check that the restored database has the new table with data.
+  SetDbName("yugabyte_new");
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT * FROM mytbl WHERE k <= 5 ORDER BY k ASC",
+      R"#(
+         k
+        ---
+         1
+         2
+         3
+         4
+         5
+        (5 rows)
+      )#"
+  ));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(YBBackupTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(BackupRaceWithDropColocatedTable)) {
+  const string table_name = "mytbl";
+  // Create colocated database.
+  ASSERT_RESULT(RunPsqlCommand("CREATE DATABASE demo WITH colocation=true"));
+
+  // Create table.
+  SetDbName("demo");
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT PRIMARY KEY)", table_name)));
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 VALUES (generate_series(1, 1000))", table_name), 1000));
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.demo",
+       "--TEST_drop_table_before_upload", "create"}));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.demo_new", "restore"}));
+
+  // Check that the restored database has the new table with data.
+  SetDbName("demo_new");
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT * FROM mytbl WHERE k <= 5 ORDER BY k ASC",
+      R"#(
+         k
+        ---
+         1
+         2
+         3
+         4
+         5
+        (5 rows)
+      )#"
+  ));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 // When trying to run yb_admin with a command that is not supported, we should get a
 // YbAdminOpNotSupportedException.
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYBAdminUnsupportedCommands)) {
@@ -917,7 +983,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestRestoreSnapshotWithDelete
   // Make sure the restoration process fails
   LOG(INFO) << "Wait restoration to fail";
   ASSERT_OK(
-      snapshot_util_->WaitRestorationInState(restoration_id, master::SysSnapshotEntryPB::FAILED));
+      snapshot_util_->WaitRestorationInState(restoration_id, master::SysSnapshotEntryPB::RESTORED));
 }
 
 TEST_F(YBBackupTest,

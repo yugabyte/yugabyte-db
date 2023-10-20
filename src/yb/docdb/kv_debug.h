@@ -36,15 +36,5 @@ Result<std::string> DocDBValueToDebugStr(
     Slice key, StorageDbType db_type, Slice value,
     SchemaPackingProvider* schema_packing_provider /*null ok*/);
 
-__attribute__((deprecated))
-Result<std::string> DocDBValueToDebugStr(
-    KeyType key_type, Slice key, Slice value,
-    const dockv::SchemaPackingStorage& schema_packing_storage);
-
-__attribute__((deprecated))
-Result<std::string> DocDBValueToDebugStr(
-    Slice key, StorageDbType db_type, Slice value,
-    const dockv::SchemaPackingStorage& schema_packing_storage);
-
 }  // namespace docdb
 }  // namespace yb

@@ -16,15 +16,18 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.google.protobuf.ByteString;
+import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.PerLocationBackupInfo;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.replication.ValidateReplicationInfo;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestorePreflightParams;
@@ -69,6 +72,8 @@ public class BackupHelperTest extends FakeDBApplication {
   private BackupHelper spyBackupHelper;
   private CustomerConfigService mockConfigService;
   private RuntimeConfGetter mockRuntimeConfGetter;
+  private ValidateReplicationInfo mockValidateReplicationInfo;
+  private NodeUniverseManager mockNodeUniverseManager;
 
   @Before
   public void setup() {
@@ -76,6 +81,9 @@ public class BackupHelperTest extends FakeDBApplication {
     testUniverse = ModelFactory.createUniverse(testCustomer.getId());
     mockConfigService = mock(CustomerConfigService.class);
     mockRuntimeConfGetter = mock(RuntimeConfGetter.class);
+    mockCommissioner = mock(Commissioner.class);
+    mockValidateReplicationInfo = mock(ValidateReplicationInfo.class);
+    mockNodeUniverseManager = mock(NodeUniverseManager.class);
     spyBackupHelper =
         Mockito.spy(
             new BackupHelper(
@@ -83,7 +91,10 @@ public class BackupHelperTest extends FakeDBApplication {
                 mockService,
                 mockConfigService,
                 mockRuntimeConfGetter,
-                mockStorageUtilFactory));
+                mockStorageUtilFactory,
+                mockCommissioner,
+                mockValidateReplicationInfo,
+                mockNodeUniverseManager));
     when(mockStorageUtilFactory.getStorageUtil(eq("S3"))).thenReturn(mockAWSUtil);
     when(mockStorageUtilFactory.getStorageUtil(eq("NFS"))).thenReturn(mockNfsUtil);
   }
@@ -259,10 +270,7 @@ public class BackupHelperTest extends FakeDBApplication {
     assertEquals(backup.getCategory(), preflightResponse.getBackupCategory());
     assertTrue(preflightResponse.getHasKMSHistory().equals(isKMS));
     assertFalse(bInfo.getIsYSQLBackup());
-    bInfo
-        .getPerBackupLocationKeyspaceTables()
-        .getTableNameList()
-        .parallelStream()
+    bInfo.getPerBackupLocationKeyspaceTables().getTableNameList().parallelStream()
         .forEach(t -> assertTrue(tableNameList.contains(t)));
     assertTrue(bInfo.getPerBackupLocationKeyspaceTables().getOriginalKeyspace().equals("foo"));
   }
@@ -493,7 +501,7 @@ public class BackupHelperTest extends FakeDBApplication {
                 .build());
     RestorePreflightResponse preflightResponse =
         spyBackupHelper.generateYBCRestorePreflightResponseWithoutBackupObject(
-            preflightParams, testStorageConfigS3, filterIndexes);
+            preflightParams, testStorageConfigS3, filterIndexes, testUniverse);
 
     List<String> expectedNonIndexTables =
         Arrays.asList("batch_ts_metrics_raw", "cassandrasecondaryindex");

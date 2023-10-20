@@ -1,4 +1,4 @@
-import React, { FC, useContext, useState } from 'react';
+import { FC, useContext, useState } from 'react';
 import _ from 'lodash';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
@@ -105,6 +105,7 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid }) => {
         onFormSubmit={(data: UniverseFormData) => onSubmit(data)}
         onCancel={onCancel}
         onDeleteRR={() => setShowDeleteRRModal(true)} //Deleting existing RR (API)
+        universeUUID={uuid}
       />
     </>
   );

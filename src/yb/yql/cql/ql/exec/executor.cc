@@ -113,14 +113,13 @@ DEFINE_UNKNOWN_bool(ycql_serial_operation_in_transaction_block, true,
 
 extern ErrorCode QLStatusToErrorCode(QLResponsePB::QLStatus status);
 
-Executor::Executor(QLEnv* ql_env, AuditLogger* audit_logger, Rescheduler* rescheduler,
-                   const QLMetrics* ql_metrics)
+Executor::Executor(
+    QLEnv* ql_env, AuditLogger* audit_logger, Rescheduler* rescheduler, const QLMetrics* ql_metrics)
     : ql_env_(ql_env),
       audit_logger_(*audit_logger),
       rescheduler_(rescheduler),
-      session_(ql_env_->NewSession()),
-      ql_metrics_(ql_metrics) {
-}
+      session_(ql_env_->NewSession(rescheduler->GetDeadline())),
+      ql_metrics_(ql_metrics) {}
 
 Executor::~Executor() {
   LOG_IF(DFATAL, HasAsyncCalls())
@@ -2668,6 +2667,8 @@ QLExpressionPB* CreateQLExpression(QLWriteRequestPB *req, const ColumnDesc& col_
   }
 }
 
+// ------------------------------------------------------------------------------------------------
+
 Executor::ExecutorTask& Executor::ExecutorTask::Bind(
     Executor* executor, Executor::ResetAsyncCalls* reset_async_calls) {
   executor_ = executor;
@@ -2687,6 +2688,8 @@ void Executor::ExecutorTask::Done(const Status& status) {
   }
 }
 
+// ------------------------------------------------------------------------------------------------
+
 Executor::ResetAsyncCalls::ResetAsyncCalls(std::atomic<int64_t>* num_async_calls)
     : num_async_calls_(num_async_calls) {
   LOG_IF(DFATAL, num_async_calls && num_async_calls->load(std::memory_order_acquire))
@@ -2701,14 +2704,17 @@ Executor::ResetAsyncCalls::ResetAsyncCalls(ResetAsyncCalls&& rhs)
 }
 
 void Executor::ResetAsyncCalls::operator=(ResetAsyncCalls&& rhs) {
-  Perform();
-  num_async_calls_ = rhs.num_async_calls_;
-  rhs.num_async_calls_ = nullptr;
+  auto* rhs_counter_ptr = rhs.Move();
+
+  std::lock_guard guard(num_async_calls_mutex_);
+  PerformUnlocked();
+  num_async_calls_ = rhs_counter_ptr;
   LOG_IF(DFATAL, num_async_calls_ && num_async_calls_->load(std::memory_order_acquire))
       << "Expected 0 async calls, but have: " << num_async_calls_->load(std::memory_order_acquire);
 }
 
 void Executor::ResetAsyncCalls::Cancel() {
+  std::lock_guard guard(num_async_calls_mutex_);
   num_async_calls_ = nullptr;
 }
 
@@ -2717,6 +2723,11 @@ Executor::ResetAsyncCalls::~ResetAsyncCalls() {
 }
 
 void Executor::ResetAsyncCalls::Perform() {
+  std::lock_guard guard(num_async_calls_mutex_);
+  PerformUnlocked();
+}
+
+void Executor::ResetAsyncCalls::PerformUnlocked() {
   if (!num_async_calls_) {
     return;
   }
@@ -2725,6 +2736,13 @@ void Executor::ResetAsyncCalls::Perform() {
       << "Expected 0 async calls, but have: " << num_async_calls_->load(std::memory_order_acquire);
   num_async_calls_->store(kAsyncCallsIdle, std::memory_order_release);
   num_async_calls_ = nullptr;
+}
+
+std::atomic<int64_t>* Executor::ResetAsyncCalls::Move() EXCLUDES(num_async_calls_mutex_) {
+  std::lock_guard lock(num_async_calls_mutex_);
+  auto* old_value = num_async_calls_;
+  num_async_calls_ = nullptr;
+  return old_value;
 }
 
 }  // namespace ql

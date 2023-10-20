@@ -98,7 +98,9 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
         throw new RuntimeException(msg);
       }
 
-      currentNode.validateActionOnState(NodeActionType.REMOVE);
+      if (isFirstTry()) {
+        currentNode.validateActionOnState(NodeActionType.REMOVE);
+      }
 
       preTaskActions();
 
@@ -117,7 +119,8 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
 
       // Mark the tserver as blacklisted on the master leader.
-      createPlacementInfoTask(Collections.singleton(currentNode))
+      createPlacementInfoTask(
+              Collections.singleton(currentNode), universe.getUniverseDetails().clusters)
           .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
       // Wait for tablet quorums to remove the blacklisted tserver. Do not perform load balance
@@ -189,7 +192,7 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
           masterReachable);
 
       // Update the DNS entry for this universe.
-      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
           .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
 
       // Update Node State to Removed

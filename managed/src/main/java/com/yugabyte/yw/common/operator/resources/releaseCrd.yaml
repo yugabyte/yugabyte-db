@@ -1,0 +1,99 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: releases.operator.yugabyte.io
+spec:
+  group: operator.yugabyte.io
+  scope: Namespaced
+  names:
+    plural: releases
+    singular: release
+    kind: Release
+  versions:
+    - name: v1alpha1
+      subresources:
+        status: {}
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            status:
+              type: object
+              properties:
+                message:
+                  type: string
+                success:
+                  type: boolean
+                resourceUUID:
+                  type: string
+            spec:
+              type: object
+              properties:
+                config:
+                  type: object
+                  properties:
+                    version:
+                      type: string
+                    downloadConfig:
+                      type: object
+                      properties:
+                        s3:
+                          type: object
+                          properties:
+                            accessKeyId:
+                              type: string
+                            secretAccessKey:
+                              type: string
+                            paths:
+                              type: object
+                              properties:
+                                x86_64:
+                                  type: string
+                                  description: Path to x86_64 package
+                                x86_64_checksum:
+                                  type: string
+                                  description: Checksum for x86_64 package
+                                helmChart:
+                                  type: string
+                                  description: Path to the Helm chart package
+                                helmChartChecksum:
+                                  type: string
+                        gcs:
+                          type: object
+                          properties:
+                            paths:
+                              type: object
+                              properties:
+                                x86_64:
+                                  type: string
+                                  description: Path to x86_64 package
+                                x86_64_checksum:
+                                  type: string
+                                  description: Checksum for x86_64 package
+                                helmChart:
+                                  type: string
+                                  description: Path to the Helm chart package
+                                helmChartChecksum:
+                                  type: string
+                            credentialsJson:
+                              type: string
+                              description: GCS service key JSON
+                        http:
+                          type: object
+                          properties:
+                            paths:
+                              type: object
+                              properties:
+                                x86_64:
+                                  type: string
+                                  description: Path to x86_64 package
+                                x86_64_checksum:
+                                  type: string
+                                  description: Checksum for x86_64 package
+                                helmChart:
+                                  type: string
+                                  description: Path to the Helm chart package
+                                helmChartChecksum:
+                                  type: string

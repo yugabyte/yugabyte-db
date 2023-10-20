@@ -18,6 +18,7 @@ import sys
 import os
 import argparse
 import logging
+import shlex
 
 from typing import List, Optional, Set, Dict, Union
 
@@ -49,6 +50,12 @@ def add_extra_yb_build_args(yb_build_args: List[str], extra_args: List[str]) -> 
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog=sys.argv[0])
+
+    remote_build_args_file = 'YB_REMOTE_BUILD_ARGS_FILE'
+    if remote_build_args_file in os.environ:
+        with open(os.environ[remote_build_args_file], "wt") as out:
+            for arg in sys.argv[1:]:
+                out.write(" " + shlex.quote(arg))
 
     parser.add_argument('build_args', nargs=argparse.REMAINDER,
                         help='arguments for yb_build.sh')

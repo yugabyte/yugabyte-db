@@ -574,11 +574,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // The maximum delta is capped by 'FLAGS_leader_failure_exp_backoff_max_delta_ms'.
   MonoDelta LeaderElectionExpBackoffDeltaUnlocked();
 
-  // Checks if the leader is ready to process a change config request (one requirement for this is
-  // for it to have at least one committed op in the current term). Also checks that there are no
-  // voters in transition in the active config state. Status OK() implies leader is ready.
-  // server_uuid is the uuid of the server that we are trying to remove, add, or change its
-  // role.
+  // Checks if the leader is ready to process a change config request
+  // 1. has at least one committed op in the current term
+  // 2. has no pending change config request
+  //
+  // For sys catalog tablet, the function additionally ensures that there are no servers
+  // currently amidst transition.
   Status IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type,
                                               const std::string& server_uuid);
 
@@ -738,7 +739,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   std::mutex leader_lease_wait_mtx_;
   std::condition_variable leader_lease_wait_cond_;
 
-  scoped_refptr<Histogram> update_raft_config_dns_latency_;
+  scoped_refptr<EventStats> update_raft_config_dns_latency_;
 
   // Used only when TEST_follower_reject_update_consensus_requests_seconds is greater than 0.
   // Any requests to update the replica will be rejected until this time. For testing only.
@@ -753,6 +754,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   std::atomic<uint64_t> majority_num_sst_files_{0};
 
   const TabletId split_parent_tablet_id_;
+
+  std::atomic<uint64_t> follower_last_update_received_time_ms_{0};
 
   DISALLOW_COPY_AND_ASSIGN(RaftConsensus);
 };

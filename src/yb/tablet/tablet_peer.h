@@ -240,7 +240,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   bool ShouldApplyWrite() override;
 
   // Returns valid shared pointer to the consensus. Returns a not OK status if the consensus is not
-  // in a valid state.
+  // in a valid state or a peer is not running (shutting down or shut down).
   Result<std::shared_ptr<consensus::Consensus>> GetConsensus() const EXCLUDES(lock_);
   Result<std::shared_ptr<consensus::RaftConsensus>> GetRaftConsensus() const EXCLUDES(lock_);
 
@@ -360,6 +360,9 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   consensus::LeaderStatus LeaderStatus(bool allow_stale = false) const;
   Result<HybridTime> LeaderSafeTime() const override;
 
+  bool IsLeaderAndReady() const;
+  bool IsNotLeader() const;
+
   Result<HybridTime> HtLeaseExpiration() const override;
 
   const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry() const {
@@ -453,6 +456,9 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   void EnableFlushRetryableRequests();
 
   bool TEST_HasRetryableRequestsOnDisk();
+  RetryableRequestsFlushState TEST_RetryableRequestsFlusherState() const;
+
+  Preparer* DEBUG_GetPreparer();
 
  protected:
   friend class RefCountedThreadSafe<TabletPeer>;

@@ -701,7 +701,8 @@ Status ReplicaState::AddPendingOperation(const ConsensusRoundPtr& round, Operati
   } else if (op_type == WRITE_OP) {
     // Leader registers an operation with RetryableRequests even before assigning an op id.
     if (mode == OperationMode::kFollower) {
-      auto result = retryable_requests_manager_.retryable_requests().Register(round);
+      auto result = retryable_requests_manager_.retryable_requests().Register(
+          round, tablet::IsLeaderSide::kFalse);
       const auto error_msg = "Cannot register retryable request on follower";
       if (!result.ok()) {
         // This can happen if retryable requests have been cleaned up on leader before the follower,
@@ -711,7 +712,8 @@ Status ReplicaState::AddPendingOperation(const ConsensusRoundPtr& round, Operati
                             << ". Cleaning retryable requests";
         auto min_op_id ATTRIBUTE_UNUSED =
             retryable_requests_manager_.retryable_requests().CleanExpiredReplicatedAndGetMinOpId();
-        result = retryable_requests_manager_.retryable_requests().Register(round);
+        result = retryable_requests_manager_.retryable_requests().Register(
+            round, tablet::IsLeaderSide::kFalse);
       }
       if (!result.ok()) {
         return result.status()
@@ -809,6 +811,7 @@ void ReplicaState::SetLastCommittedIndexUnlocked(const yb::OpId& committed_op_id
 }
 
 Status ReplicaState::InitCommittedOpIdUnlocked(const yb::OpId& committed_op_id) {
+  TRACE_FUNC();
   if (!last_committed_op_id_.empty()) {
     return STATUS_FORMAT(
         IllegalState,
@@ -877,6 +880,7 @@ Result<bool> ReplicaState::AdvanceCommittedOpIdUnlocked(
 
 Status ReplicaState::ApplyPendingOperationsUnlocked(
     const yb::OpId& committed_op_id, CouldStop could_stop) {
+  TRACE_BEGIN_END_FUNC();
   DCHECK(IsLocked());
   VLOG_WITH_PREFIX(1) << "Last triggered apply was: " <<  last_committed_op_id_;
 
@@ -1342,6 +1346,25 @@ MonoDelta ReplicaState::RemainingOldLeaderLeaseDuration(CoarseTimePoint* now) co
   return result;
 }
 
+MonoDelta ReplicaState::RemainingMajorityReplicatedLeaderLeaseDuration() const {
+  MonoDelta result;
+  if (majority_replicated_lease_expiration_ == CoarseTimeLease::NoneValue()) {
+    return result;
+  }
+  CoarseTimePoint now_local = CoarseMonoClock::Now();
+  if (now_local > majority_replicated_lease_expiration_) {
+    // Reset the majority replicated leader lease expiration time so that we
+    // don't have to check it anymore.
+    LOG_WITH_PREFIX(INFO)
+        << "Reset our lease: "
+        << MonoDelta(CoarseMonoClock::now() - majority_replicated_lease_expiration_);
+    majority_replicated_lease_expiration_ = CoarseTimeLease::NoneValue();
+  } else {
+    result = majority_replicated_lease_expiration_ - now_local;
+  }
+  return result;
+}
+
 Result<MicrosTime> ReplicaState::MajorityReplicatedHtLeaseExpiration(
     MicrosTime min_allowed, CoarseTimePoint deadline) const {
   if (FLAGS_ht_lease_duration_ms == 0) {
@@ -1419,8 +1442,11 @@ uint64_t ReplicaState::OnDiskSize() const {
   return cmeta_->on_disk_size();
 }
 
-Result<bool> ReplicaState::RegisterRetryableRequest(const ConsensusRoundPtr& round) {
-  return retryable_requests_manager_.retryable_requests().Register(round);
+Result<bool> ReplicaState::RegisterRetryableRequest(
+    const ConsensusRoundPtr& round, tablet::IsLeaderSide is_leader_side) {
+  CHECK(is_leader_side);
+  return retryable_requests_manager_.retryable_requests().Register(
+      round, tablet::IsLeaderSide::kTrue);
 }
 
 OpId ReplicaState::MinRetryableRequestOpId() {

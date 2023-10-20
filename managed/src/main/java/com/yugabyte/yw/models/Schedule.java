@@ -415,6 +415,10 @@ public class Schedule extends Model {
         .findList();
   }
 
+  public static List<Schedule> getAllSchedulesByOwnerUUID(UUID ownerUUID) {
+    return find.query().where().eq("owner_uuid", ownerUUID).findList();
+  }
+
   public static List<Schedule> getAllSchedulesByOwnerUUIDAndType(
       UUID ownerUUID, TaskType taskType) {
     return find.query().where().eq("owner_uuid", ownerUUID).in("task_type", taskType).findList();
@@ -641,6 +645,7 @@ public class Schedule extends Model {
             .fullBackup(CollectionUtils.isEmpty(params.keyspaceTableList))
             .useTablespaces(params.useTablespaces)
             .expiryTimeUnit(params.expiryTimeUnit)
+            .parallelism(params.parallelism)
             .build();
     return backupInfo;
   }
@@ -666,6 +671,7 @@ public class Schedule extends Model {
             .expiryTimeUnit(params.expiryTimeUnit)
             .fullBackup(StringUtils.isEmpty(params.getKeyspace()))
             .useTablespaces(params.useTablespaces)
+            .parallelism(params.parallelism)
             .build();
     return backupInfo;
   }

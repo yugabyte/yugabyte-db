@@ -4,31 +4,28 @@ headerTitle: Install YugabyteDB Anywhere
 linkTitle: Install YBA software
 description: Install YugabyteDB Anywhere software using YBA Installer
 headContent: Install YBA software using YBA Installer
-earlyAccess: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   stable_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-4-installer
-    weight: 88
+    weight: 77
 rightNav:
   hideH4: true
 type: docs
 ---
 
-Use the following instructions to install YugabyteDB Anywhere (YBA) software. For guidance on which method to choose, see [YBA Prerequisites](../../prerequisites/default/).
+Use the following instructions to install YugabyteDB Anywhere (YBA) software. For guidance on which method to choose, see [YBA prerequisites](../../prerequisites/installer/).
 
 Note: For higher availability, one or more additional YBA instances can be separately installed, and then configured later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
+  <li>
+    <a href="../installer/" class="nav-link active">
+      <i class="fa-solid fa-building"></i>YBA Installer</a>
+  </li>
   <li>
     <a href="../default/" class="nav-link">
       <i class="fa-solid fa-cloud"></i>Replicated</a>
-  </li>
-
-  <li>
-    <a href="../airgapped/" class="nav-link">
-      <i class="fa-solid fa-link-slash"></i>Replicated - Airgapped</a>
   </li>
 
   <li>
@@ -41,14 +38,13 @@ Note: For higher availability, one or more additional YBA instances can be separ
       <i class="fa-brands fa-redhat"></i>OpenShift</a>
   </li>
 
-  <li>
-    <a href="../installer/" class="nav-link active">
-      <i class="fa-solid fa-building"></i>YBA Installer</a>
-  </li>
-
 </ul>
 
-Use YBA Installer to install YBA on a host. YBA Installer performs preflight checks to validate the workspace is ready to run YBA. YBA Installer also provides basic functionality for managing installations, including backup and restore of an installation, upgrading, basic licensing, and uninstalling the software.
+Use YBA Installer to install YBA on a host, either online or airgapped. YBA Installer performs preflight checks to validate the workspace is ready to run YBA. YBA Installer also provides basic functionality for managing installations, including backup and restore of an installation, upgrading, basic licensing, and uninstalling the software.
+
+{{< warning >}}
+You can use YBA Installer only if you are about to perform a new install. Currently, you cannot switch your existing YBA software installed via Replicated to be installed using YBA Installer.
+{{< /warning >}}
 
 ## Prerequisites
 
@@ -171,7 +167,7 @@ Services:
   Systemd service |       Version |  Port |                            Log File Locations |  Running Status |
          postgres |         10.23 |  5432 |          /opt/yugabyte/data/logs/postgres.log |         Running |
        prometheus |        2.42.0 |  9090 |  /opt/yugabyte/data/prometheus/prometheus.log |         Running |
-      yb-platform |  2.19.0.0-b51 |   443 |       /opt/yugabyte/data/logs/application.log |         Running |
+      yb-platform |  {{<yb-version version="stable" format="build">}} |   443 |       /opt/yugabyte/data/logs/application.log |         Running |
 INFO[2023-04-24T23:19:59Z] Successfully installed YugabyteDB Anywhere!
 ```
 
@@ -214,7 +210,7 @@ Services:
   Systemd service |       Version |  Port |                            Log File Locations |  Running Status |
          postgres |         10.23 |  5432 |          /opt/yugabyte/data/logs/postgres.log |         Running |
        prometheus |        2.42.0 |  9090 |  /opt/yugabyte/data/prometheus/prometheus.log |         Running |
-      yb-platform |  2.19.0.0-b59 |   443 |       /opt/yugabyte/data/logs/application.log |         Running |
+      yb-platform |  {{<yb-version version="stable" format="build">}} |   443 |       /opt/yugabyte/data/logs/application.log |         Running |
 ```
 
 ### Upgrade
@@ -264,10 +260,10 @@ INFO[2023-04-24T23:58:14Z] Uninstalling prometheus
 INFO[2023-04-24T23:58:14Z] Uninstalling postgres
 ```
 
-To delete all data, run `clean` with the `–all` flag as follows:
+To delete all data, run `clean` with the `--all` flag as follows:
 
 ```sh
-$ sudo yba-ctl clean -all
+$ sudo yba-ctl clean --all
 ```
 
 ```output
@@ -338,7 +334,7 @@ You can configure the following YBA configuration options.
 
 | Option | Description |
 | :--- | :--- |
-| `Port` | Specify a custom port for the YBA UI to run on.
+| `port` | Specify a custom port for the YBA UI to run on.
 | `keyStorePassword` | Password for the Java keystore. Auto-generated if left empty.
 | `appSecret` | Play framework crypto secret. Auto-generated if left empty.
 
@@ -372,13 +368,13 @@ Http and Https proxy settings are described in the following table.
 
 | Option | Description |
 | :--- | :--- |
-| `Port` | External Prometheus port
+| `port` | External Prometheus port
 | `restartSeconds` | Systemd will restart Prometheus after this number of seconds after a crash.
 | `scrapeInterval` | How often Prometheus scrapes for database metrics.
 | `scrapeTimeout` | Timeout for inactivity during scraping.
 | `maxConcurrency` | Maximum concurrent queries to be executed by Prometheus.
 | `maxSamples` | Maximum number of samples that a single query can load into memory.
-| `Timeout` | The time threshold for inactivity after which Prometheus will be declared inactive.
+| `timeout` | The time threshold for inactivity after which Prometheus will be declared inactive.
 
 ### Configure PostgreSQL
 
@@ -395,15 +391,15 @@ These options are mutually exclusive, and can be turned on or off using the _ena
 
 | Option | Description |
 | :--- | :--- |
-| Port | Port PostgreSQL is listening to.
-| restartSecond | Wait time to restart PostgreSQL if the service crashes.
-| locale | locale is used during initialization of the db.
+| `port` | Port PostgreSQL is listening to.
+| `restartSecond` | Wait time to restart PostgreSQL if the service crashes.
+| `locale` | locale is used during initialization of the db.
 
 **useExisting options**
 
 | Option | Description |
 | :--- | :--- |
-| Host | IP address/domain name of the PostgreSQL server.
-| Port | Port PostgreSQL is running on.
-| Username and password | Used to authenticate with PostgreSQL.
-| Pg_dump_path<br/>pg_restore_path | Required paths to `pgdump` and `pgrestore` on the locale system that are compatible with the version of PostgreSQL you provide. `pgdump` and `pgrestore` are used for backup and restore workflows, and are required for a functioning install.
+| `host` | IP address/domain name of the PostgreSQL server.
+| `port` | Port PostgreSQL is running on.
+| `username` and `password` | Used to authenticate with PostgreSQL.
+| `pg_dump_path`<br/>`pg_restore_path` | Required paths to `pgdump` and `pgrestore` on the locale system that are compatible with the version of PostgreSQL you provide. `pgdump` and `pgrestore` are used for backup and restore workflows, and are required for a functioning install.

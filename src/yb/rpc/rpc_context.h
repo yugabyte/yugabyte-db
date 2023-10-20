@@ -312,6 +312,8 @@ class RpcContext {
 
   std::string ToString() const;
 
+  Result<RefCntSlice> ExtractSidecar(size_t idx) const;
+
  private:
   std::shared_ptr<YBInboundCall> call_;
   std::shared_ptr<RpcCallParams> params_;
@@ -324,6 +326,14 @@ void PanicRpc(RpcContext* context, const char* file, int line_number, const std:
   do { \
     yb::rpc::PanicRpc((rpc_context), __FILE__, __LINE__, (message)); \
   } while (false)
+
+inline std::string RequestorString(yb::rpc::RpcContext* rpc) {
+  if (rpc) {
+    return rpc->requestor_string();
+  } else {
+    return "internal request";
+  }
+}
 
 } // namespace rpc
 } // namespace yb

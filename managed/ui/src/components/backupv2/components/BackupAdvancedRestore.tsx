@@ -39,6 +39,7 @@ import clsx from 'clsx';
 
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
+import { handleCACertErrMsg } from '../../customCACerts';
 import './BackupAdvancedRestore.scss';
 
 const TEXT_RESTORE = 'Restore';
@@ -136,7 +137,7 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
       onError: (resp: any) => {
         onHide();
         setCurrentStep(0);
-        toast.error(resp.response.data.error);
+        !handleCACertErrMsg(resp) && toast.error(resp.response.data.error);
       }
     }
   );
@@ -204,7 +205,10 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
     })
   });
 
-  const doRestore = (values: typeof initialValues) => {
+  const doRestore = (
+    values: typeof initialValues,
+    setSubmitting: (isSubmitting: boolean) => void
+  ) => {
     values['keyspaces'] = [
       values['should_rename_keyspace'] ? values['new_keyspace_name'] : values['keyspace_name']
     ];
@@ -227,7 +231,10 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
         ]
       } as any
     };
-    restore.mutateAsync({ backup_details: backup as any, values });
+    restore.mutate(
+      { backup_details: backup as any, values },
+      { onSettled: () => setSubmitting(false) }
+    );
   };
 
   if (!visible) return null;
@@ -245,12 +252,15 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
       validationSchema={validationSchema}
       dialogClassName="advanced-restore-modal"
       submitLabel={overrideSubmitLabel ?? STEPS[currentStep].submitLabel}
-      onFormSubmit={(values: any, { setSubmitting }: { setSubmitting: Function }) => {
-        setSubmitting(false);
+      onFormSubmit={(
+        values: any,
+        { setSubmitting }: { setSubmitting: (isSubmitting: boolean) => void }
+      ) => {
         if (values['should_rename_keyspace'] && currentStep < STEPS.length - 1) {
           setCurrentStep(currentStep + 1);
+          setSubmitting(false);
         } else {
-          doRestore(values);
+          doRestore(values, setSubmitting);
         }
       }}
       headerClassName={clsx({

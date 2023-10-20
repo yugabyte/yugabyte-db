@@ -16,8 +16,6 @@ export { default as NodeActionModalContainer } from './NodeDetails/NodeActionMod
 export { default as UniverseDetail } from './UniverseDetail/UniverseDetail';
 export { default as UniverseDetailMetrics } from './UniverseDetail/UniverseDetail';
 export { default as UniverseDetailContainer } from './UniverseDetail/UniverseDetailContainer';
-export { default as UniverseForm } from './UniverseForm/UniverseForm';
-export { default as UniverseFormContainer } from './UniverseForm/UniverseFormContainer';
 export { default as UniverseStatus } from './UniverseStatus/UniverseStatus';
 export { default as UniverseStatusContainer } from './UniverseStatus/UniverseStatusContainer';
 export { UniverseView } from './UniverseView/UniverseView';

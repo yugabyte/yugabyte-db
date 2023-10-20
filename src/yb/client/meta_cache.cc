@@ -116,7 +116,7 @@ DEFINE_test_flag(double, simulate_lookup_timeout_probability, 0,
 DEFINE_test_flag(double, simulate_lookup_partition_list_mismatch_probability, 0,
                  "Probability for simulating the partition list mismatch error on tablet lookup.");
 
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
   server, dns_resolve_latency_during_init_proxy,
   "yb.client.MetaCache.InitProxy DNS Resolve",
   yb::MetricUnit::kMicroseconds,
@@ -193,10 +193,10 @@ Status RemoteTabletServer::InitProxy(YBClient* client) {
     return Status::OK();
   }
 
-  if (!dns_resolve_histogram_) {
+  if (!dns_resolve_stats_) {
     auto metric_entity = client->metric_entity();
     if (metric_entity) {
-      dns_resolve_histogram_ = METRIC_dns_resolve_latency_during_init_proxy.Instantiate(
+      dns_resolve_stats_ = METRIC_dns_resolve_latency_during_init_proxy.Instantiate(
           metric_entity);
     }
   }
@@ -207,7 +207,7 @@ Status RemoteTabletServer::InitProxy(YBClient* client) {
       public_rpc_hostports_, private_rpc_hostports_, cloud_info_pb_,
       client->data_->cloud_info_pb_));
   CHECK(!hostport.host().empty());
-  ScopedDnsTracker dns_tracker(dns_resolve_histogram_.get());
+  ScopedDnsTracker dns_tracker(dns_resolve_stats_.get());
   proxy_.reset(new TabletServerServiceProxy(client->data_->proxy_cache_.get(), hostport));
   proxy_endpoint_ = hostport;
 
@@ -326,9 +326,9 @@ RemoteTablet::~RemoteTablet() {
     // Let's verify that none of the replicas are marked as failed. The test should always wait
     // enough time so that the lookup cache can be refreshed after force_lookup_cache_refresh_secs.
     for (const auto& replica : replicas_) {
-      if (replica.Failed()) {
-        LOG_WITH_PREFIX(FATAL) << "Remote tablet server " << replica.ts->ToString()
-                               << " with role " << PeerRole_Name(replica.role)
+      if (replica->Failed()) {
+        LOG_WITH_PREFIX(FATAL) << "Remote tablet server " << replica->ts->ToString()
+                               << " with role " << PeerRole_Name(replica->role)
                                << " is marked as failed";
       }
     }
@@ -343,7 +343,7 @@ void RemoteTablet::Refresh(
   std::vector<std::string> old_uuids;
   old_uuids.reserve(replicas_.size());
   for (const auto& replica : replicas_) {
-    old_uuids.push_back(replica.ts->permanent_uuid());
+    old_uuids.push_back(replica->ts->permanent_uuid());
   }
   std::sort(old_uuids.begin(), old_uuids.end());
   replicas_.clear();
@@ -351,7 +351,7 @@ void RemoteTablet::Refresh(
   for (const TabletLocationsPB_ReplicaPB& r : replicas) {
     auto it = tservers.find(r.ts_info().permanent_uuid());
     CHECK(it != tservers.end());
-    replicas_.emplace_back(it->second.get(), r.role());
+    replicas_.emplace_back(std::make_shared<RemoteReplica>(it->second.get(), r.role()));
     has_new_replica =
         has_new_replica ||
         !std::binary_search(old_uuids.begin(), old_uuids.end(), r.ts_info().permanent_uuid());
@@ -390,9 +390,9 @@ bool RemoteTablet::MarkReplicaFailed(RemoteTabletServer *ts, const Status& statu
   VLOG_WITH_PREFIX(2) << "Current remote replicas in meta cache: "
                       << ReplicasAsStringUnlocked() << ". Replica " << ts->ToString()
                       << " has failed: " << status.ToString();
-  for (RemoteReplica& rep : replicas_) {
-    if (rep.ts == ts) {
-      rep.MarkFailed();
+  for (auto& rep : replicas_) {
+    if (rep->ts == ts) {
+      rep->MarkFailed();
       return true;
     }
   }
@@ -402,8 +402,8 @@ bool RemoteTablet::MarkReplicaFailed(RemoteTabletServer *ts, const Status& statu
 int RemoteTablet::GetNumFailedReplicas() const {
   int failed = 0;
   SharedLock lock(mutex_);
-  for (const RemoteReplica& rep : replicas_) {
-    if (rep.Failed()) {
+  for (const auto& rep : replicas_) {
+    if (rep->Failed()) {
       failed++;
     }
   }
@@ -444,9 +444,9 @@ void RemoteTablet::SetAliveReplicas(int alive_live_replicas, int alive_read_repl
 
 RemoteTabletServer* RemoteTablet::LeaderTServer() const {
   SharedLock lock(mutex_);
-  for (const RemoteReplica& replica : replicas_) {
-    if (!replica.Failed() && replica.role == PeerRole::LEADER) {
-      return replica.ts;
+  for (const auto& replica : replicas_) {
+    if (!replica->Failed() && replica->role == PeerRole::LEADER) {
+      return replica->ts;
     }
   }
   return nullptr;
@@ -460,7 +460,7 @@ void RemoteTablet::GetRemoteTabletServers(
     std::vector<RemoteTabletServer*>* servers, IncludeFailedReplicas include_failed_replicas) {
   DCHECK(servers->empty());
   struct ReplicaUpdate {
-    RemoteReplica* replica;
+    std::shared_ptr<RemoteReplica> replica;
     tablet::RaftGroupStatePB new_state;
     bool clear_failed;
   };
@@ -469,31 +469,31 @@ void RemoteTablet::GetRemoteTabletServers(
     SharedLock lock(mutex_);
     int num_alive_live_replicas = 0;
     int num_alive_read_replicas = 0;
-    for (RemoteReplica& replica : replicas_) {
-      if (replica.Failed()) {
+    for (auto& replica : replicas_) {
+      if (replica->Failed()) {
         if (include_failed_replicas) {
-          servers->push_back(replica.ts);
+          servers->push_back(replica->ts);
           continue;
         }
-        ReplicaUpdate replica_update = {&replica, RaftGroupStatePB::UNKNOWN, false};
+        ReplicaUpdate replica_update = {replica, RaftGroupStatePB::UNKNOWN, false};
         VLOG_WITH_PREFIX(4)
-            << "Replica " << replica.ts->ToString()
-            << " failed, state: " << RaftGroupStatePB_Name(replica.state)
-            << ", is local: " << replica.ts->IsLocal()
-            << ", time since failure: " << (MonoTime::Now() - replica.last_failed_time);
-        switch (replica.state) {
+            << "Replica " << replica->ts->ToString()
+            << " failed, state: " << RaftGroupStatePB_Name(replica->state)
+            << ", is local: " << replica->ts->IsLocal()
+            << ", time since failure: " << (MonoTime::Now() - replica->last_failed_time);
+        switch (replica->state) {
           case RaftGroupStatePB::UNKNOWN: FALLTHROUGH_INTENDED;
           case RaftGroupStatePB::NOT_STARTED: FALLTHROUGH_INTENDED;
           case RaftGroupStatePB::BOOTSTRAPPING: FALLTHROUGH_INTENDED;
           case RaftGroupStatePB::RUNNING:
             // These are non-terminal states that may retry. Check and update failed local replica's
             // current state. For remote replica, just wait for some time before retrying.
-            if (replica.ts->IsLocal()) {
+            if (replica->ts->IsLocal()) {
               tserver::GetTabletStatusRequestPB req;
               tserver::GetTabletStatusResponsePB resp;
               req.set_tablet_id(tablet_id_);
               const Status status =
-                  CHECK_NOTNULL(replica.ts->local_tserver())->GetTabletStatus(&req, &resp);
+                  CHECK_NOTNULL(replica->ts->local_tserver())->GetTabletStatus(&req, &resp);
               if (!status.ok() || resp.has_error()) {
                 LOG_WITH_PREFIX(ERROR)
                     << "Received error from GetTabletStatus: "
@@ -509,21 +509,21 @@ void RemoteTablet::GetRemoteTabletServers(
               DCHECK_EQ(resp.tablet_status().tablet_id(), tablet_id_);
               VLOG_WITH_PREFIX(3) << "GetTabletStatus returned status: "
                                   << tablet::RaftGroupStatePB_Name(resp.tablet_status().state())
-                                  << " for replica " << replica.ts->ToString();
+                                  << " for replica " << replica->ts->ToString();
               replica_update.new_state = resp.tablet_status().state();
               if (replica_update.new_state != tablet::RaftGroupStatePB::RUNNING) {
-                if (replica_update.new_state != replica.state) {
+                if (replica_update.new_state != replica->state) {
                   // Cannot update replica here directly because holding only shared lock on mutex.
                   replica_updates.push_back(replica_update); // Update only state
                 }
                 continue;
               }
-              if (!replica.ts->local_tserver()->LeaderAndReady(
+              if (!replica->ts->local_tserver()->LeaderAndReady(
                       tablet_id_, /* allow_stale */ true)) {
                 // Should continue here because otherwise failed state will be cleared.
                 continue;
               }
-            } else if ((MonoTime::Now() - replica.last_failed_time) <
+            } else if ((MonoTime::Now() - replica->last_failed_time) <
                        FLAGS_retry_failed_replica_ms * 1ms) {
               continue;
             }
@@ -535,19 +535,19 @@ void RemoteTablet::GetRemoteTabletServers(
             continue;
         }
 
-        VLOG_WITH_PREFIX(3) << "Changing state of replica " << replica.ts->ToString()
+        VLOG_WITH_PREFIX(3) << "Changing state of replica " << replica->ts->ToString()
                             << " from failed to not failed";
         replica_update.clear_failed = true;
         // Cannot update replica here directly because holding only shared lock on mutex.
         replica_updates.push_back(replica_update);
       } else {
-        if (replica.role == PeerRole::READ_REPLICA) {
+        if (replica->role == PeerRole::READ_REPLICA) {
           num_alive_read_replicas++;
-        } else if (replica.role == PeerRole::FOLLOWER || replica.role == PeerRole::LEADER) {
+        } else if (replica->role == PeerRole::FOLLOWER || replica->role == PeerRole::LEADER) {
           num_alive_live_replicas++;
         }
       }
-      servers->push_back(replica.ts);
+      servers->push_back(replica->ts);
     }
     SetAliveReplicas(num_alive_live_replicas, num_alive_read_replicas);
   }
@@ -577,12 +577,12 @@ bool RemoteTablet::IsLocalRegion() {
 bool RemoteTablet::MarkTServerAsLeader(const RemoteTabletServer* server) {
   bool found = false;
   std::lock_guard lock(mutex_);
-  for (RemoteReplica& replica : replicas_) {
-    if (replica.ts == server) {
-      replica.role = PeerRole::LEADER;
+  for (auto& replica : replicas_) {
+    if (replica->ts == server) {
+      replica->role = PeerRole::LEADER;
       found = true;
-    } else if (replica.role == PeerRole::LEADER) {
-      replica.role = PeerRole::FOLLOWER;
+    } else if (replica->role == PeerRole::LEADER) {
+      replica->role = PeerRole::FOLLOWER;
     }
   }
   VLOG_WITH_PREFIX(3) << "Latest replicas: " << ReplicasAsStringUnlocked();
@@ -594,9 +594,9 @@ bool RemoteTablet::MarkTServerAsLeader(const RemoteTabletServer* server) {
 void RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
   bool found = false;
   std::lock_guard lock(mutex_);
-  for (RemoteReplica& replica : replicas_) {
-    if (replica.ts == server) {
-      replica.role = PeerRole::FOLLOWER;
+  for (auto& replica : replicas_) {
+    if (replica->ts == server) {
+      replica->role = PeerRole::FOLLOWER;
       found = true;
     }
   }
@@ -613,9 +613,9 @@ std::string RemoteTablet::ReplicasAsString() const {
 std::string RemoteTablet::ReplicasAsStringUnlocked() const {
   DCHECK(mutex_.is_locked());
   string replicas_str;
-  for (const RemoteReplica& rep : replicas_) {
+  for (const auto& rep : replicas_) {
     if (!replicas_str.empty()) replicas_str += ", ";
-    replicas_str += rep.ToString();
+    replicas_str += rep->ToString();
   }
   return replicas_str;
 }
@@ -859,9 +859,13 @@ void LookupRpc::DoProcessResponse(const Status& status, const Response& resp) {
 namespace {
 
 Status CheckTabletLocations(
-    const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations) {
+    const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
+    AllowSplitTablet allow_split_tablets) {
   const std::string* prev_partition_end = nullptr;
   for (const TabletLocationsPB& loc : locations) {
+    LOG_IF(DFATAL, !allow_split_tablets && loc.split_tablet_ids().size() > 0)
+        << "Processing remote tablet location with split children id set: "
+        << loc.ShortDebugString() << " when allow_split_tablets was set to false.";
     if (prev_partition_end && *prev_partition_end > loc.partition().partition_key_start()) {
       LOG(DFATAL) << "There should be no overlaps in tablet partitions and they should be sorted "
                   << "by partition_key_start. Prev partition end: "
@@ -926,7 +930,8 @@ class FullTableLookup : public ToStringable {
 
 Status MetaCache::ProcessTabletLocations(
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
-    boost::optional<PartitionListVersion> table_partition_list_version, LookupRpc* lookup_rpc) {
+    boost::optional<PartitionListVersion> table_partition_list_version, LookupRpc* lookup_rpc,
+    AllowSplitTablet allow_split_tablets) {
   if (VLOG_IS_ON(2)) {
     VLOG_WITH_PREFIX_AND_FUNC(2) << "lookup_rpc: " << AsString(lookup_rpc);
     for (const auto& loc : locations) {
@@ -937,7 +942,7 @@ Status MetaCache::ProcessTabletLocations(
     VLOG_WITH_PREFIX_AND_FUNC(4) << AsString(locations);
   }
 
-  RETURN_NOT_OK(CheckTabletLocations(locations));
+  RETURN_NOT_OK(CheckTabletLocations(locations, allow_split_tablets));
 
   std::vector<std::pair<LookupCallback, LookupCallbackVisitor>> to_notify;
   {
@@ -1053,23 +1058,19 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocation(
     }
 
     if (remote) {
-      // Partition should not have changed.
+      // For colocated tables, RemoteTablet already exists because it was processed in a previous
+      // iteration of the for loop (for location.table_ids()). Assert that the partition splits
+      // are still the same.
       DCHECK_EQ(location.partition().partition_key_start(),
                 remote->partition().partition_key_start());
       DCHECK_EQ(location.partition().partition_key_end(),
                 remote->partition().partition_key_end());
 
-      // For colocated tables, RemoteTablet already exists because it was processed
-      // in a previous iteration of the for loop (for location.table_ids()).
-      // We need to add this tablet to the current table's tablets_by_key map.
-      if (tablets_by_key) {
-        (*tablets_by_key)[remote->partition().partition_key_start()] = remote;
-      }
-
       VLOG_WITH_PREFIX(5) << "Refreshing tablet " << tablet_id << ": "
-                          << location.ShortDebugString();
+                          << location.ShortDebugString() << " if not split.";
     } else {
-      VLOG_WITH_PREFIX(5) << "Caching tablet " << tablet_id << ": " << location.ShortDebugString();
+      VLOG_WITH_PREFIX(5) << "Caching tablet " << tablet_id << ": "
+                          << location.ShortDebugString() << " if not split.";
 
       dockv::Partition partition;
       dockv::Partition::FromPB(location.partition(), &partition);
@@ -1078,8 +1079,17 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocation(
           location.split_parent_tablet_id());
 
       CHECK(tablets_by_id_.emplace(tablet_id, remote).second);
-      if (tablets_by_key) {
-        (*tablets_by_key)[partition.partition_key_start()] = remote;
+    }
+    // Add this tablet to the current table's tablets_by_key map.
+    if (tablets_by_key) {
+      if (location.split_tablet_ids().size() == 0) {
+        (*tablets_by_key)[remote->partition().partition_key_start()] = remote;
+      } else {
+        // We should not update the partition cache with the remote tablet if it has been split.
+        // Also, we cannot return TABLET_SPLIT error since use cases like x-cluster and cdc access
+        // the parent tablet by id after the split has been processed.
+        VLOG_WITH_PREFIX(5) << "Skipped caching tablet " << tablet_id << " by key since it has "
+                            << "been split: " << yb::ToString(location.split_tablet_ids());
       }
     }
     remote->Refresh(ts_cache_, location.replicas());
@@ -1339,8 +1349,10 @@ class LookupByIdRpc : public LookupRpc {
   Status ProcessTabletLocations(
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
       boost::optional<PartitionListVersion> table_partition_list_version) override {
+    // Use cases like x-cluster and cdc access the split parent tablet explicitly by id post split.
+    // Hence we expect to see split tablets in the response.
     return meta_cache()->ProcessTabletLocations(
-        locations, table_partition_list_version, this);
+        locations, table_partition_list_version, this, AllowSplitTablet::kTrue);
   }
 
   // Tablet to lookup.
@@ -1442,8 +1454,10 @@ class LookupFullTableRpc : public LookupRpc {
   Status ProcessTabletLocations(
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
       boost::optional<PartitionListVersion> table_partition_list_version) override {
+    // On LookupFullTableRpc, master reads from the active 'partitions_' map, so it would never
+    // return location(s) containing split_tablet_ids.
     return meta_cache()->ProcessTabletLocations(
-        locations, table_partition_list_version, this);
+        locations, table_partition_list_version, this, AllowSplitTablet::kFalse);
   }
 
   // Request body.
@@ -1607,8 +1621,10 @@ class LookupByKeyRpc : public LookupRpc {
     VLOG_WITH_PREFIX_AND_FUNC(2) << "partition_group_start: " << partition_group_start_.ToString();
     // This condition is guaranteed by VerifyResponse function:
     CHECK(resp_.partition_list_version() == partition_group_start_.partition_list_version);
-
-    return meta_cache()->ProcessTabletLocations(locations, table_partition_list_version, this);
+    // On LookupByKeyRpc, master reads from the active 'partitions_' map, so it would never
+    // return location(s) containing split_tablet_ids.
+    return meta_cache()->ProcessTabletLocations(
+        locations, table_partition_list_version, this, AllowSplitTablet::kFalse);
   }
 
   // Encoded partition group start key to lookup.
@@ -1994,6 +2010,14 @@ void MetaCache::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                                   CoarseTimePoint deadline,
                                   LookupTabletCallback callback,
                                   FailOnPartitionListRefreshed fail_on_partition_list_refreshed) {
+  const auto now = CoarseMonoClock::Now();
+  if (deadline < now) {
+    callback(STATUS_FORMAT(
+        TimedOut, "LookupTabletByKey attempted after deadline expired, passed since deadline: $0",
+        now - deadline));
+    return;
+  }
+
   if (table->ArePartitionsStale()) {
     RefreshTablePartitions(
         table,

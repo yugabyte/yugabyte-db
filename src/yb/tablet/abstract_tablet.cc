@@ -27,10 +27,7 @@
 
 #include "yb/util/trace.h"
 
-using std::vector;
-
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 Result<HybridTime> AbstractTablet::SafeTime(RequireLease require_lease,
                                             HybridTime min_allowed,
@@ -42,6 +39,7 @@ Status AbstractTablet::HandleQLReadRequest(
     const docdb::ReadOperationData& read_operation_data,
     const QLReadRequestPB& ql_read_request,
     const TransactionOperationContext& txn_op_context,
+    const docdb::YQLStorageIf& ql_storage,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
     QLReadRequestResult* result,
     WriteBuffer* rows_data) {
@@ -56,7 +54,7 @@ Status AbstractTablet::HandleQLReadRequest(
 
   TRACE("Start Execute");
   const Status s = doc_op.Execute(
-      QLStorage(), read_operation_data, *doc_read_context, pending_op, &resultset,
+      ql_storage, read_operation_data, *doc_read_context, pending_op, &resultset,
       &result->restart_read_ht);
   TRACE("Done Execute");
   if (!s.ok()) {
@@ -83,6 +81,7 @@ Status AbstractTablet::ProcessPgsqlReadRequest(
     const PgsqlReadRequestPB& pgsql_read_request,
     const std::shared_ptr<TableInfo>& table_info,
     const TransactionOperationContext& txn_op_context,
+    const docdb::YQLStorageIf& ql_storage,
     const docdb::DocDBStatistics* statistics,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
     PgsqlReadRequestResult* result) {
@@ -95,13 +94,16 @@ Status AbstractTablet::ProcessPgsqlReadRequest(
 
   TRACE("Start Execute");
   auto fetched_rows = doc_op.Execute(
-      QLStorage(), read_operation_data, is_explicit_request_read_time, *doc_read_context,
+      ql_storage, read_operation_data, is_explicit_request_read_time, *doc_read_context,
       index_doc_read_context.get(), pending_op, result->rows_data, &result->restart_read_ht,
       statistics);
   TRACE("Done Execute");
   if (!fetched_rows.ok()) {
     result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
     const auto& s = fetched_rows.status();
+
+    // TODO(14814, 18387): At the moment only one error status is supported.
+    result->response.mutable_error_status()->Clear();
     StatusToPB(s, result->response.add_error_status());
     // For backward compatibility set also deprecated error message
     result->response.set_error_message(s.message().cdata(), s.message().size());
@@ -126,5 +128,4 @@ Status AbstractTablet::ProcessPgsqlReadRequest(
   return Status::OK();
 }
 
-}  // namespace tablet
-}  // namespace yb
+}  // namespace yb::tablet

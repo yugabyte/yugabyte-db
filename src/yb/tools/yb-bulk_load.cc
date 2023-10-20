@@ -332,8 +332,8 @@ Status BulkLoadTask::InsertRow(const string &row,
   auto doc_read_context = std::make_shared<docdb::DocReadContext>(
       "BULK LOAD: ", TableType::YQL_TABLE_TYPE, docdb::Index::kFalse, schema, schema_version);
   docdb::QLWriteOperation op(
-      req, schema_version, doc_read_context, index_map, /* unique_index_key_projection= */ nullptr,
-      TransactionOperationContext());
+      req, schema_version, doc_read_context, index_map,
+      /* unique_index_key_projection= */ nullptr, TransactionOperationContext());
   RETURN_NOT_OK(op.Init(&resp));
   RETURN_NOT_OK(op.Apply(docdb::DocOperationApplyData{
       .doc_write_batch = doc_write_batch,
@@ -342,6 +342,7 @@ Status BulkLoadTask::InsertRow(const string &row,
       .restart_read_ht = nullptr,
       .iterator = nullptr,
       .restart_seek = true,
+      .schema_packing_provider = db_fixture,
   }));
   return Status::OK();
 }
@@ -433,11 +434,13 @@ Status BulkLoad::FinishTabletProcessing(const TabletId &tablet_id,
   }
 
   // Find replicas for the tablet.
-  master::TabletLocationsPB tablet_locations;
-  RETURN_NOT_OK(client_->GetTabletLocation(tablet_id, &tablet_locations));
+  auto resp = VERIFY_RESULT(client_->GetTabletLocations({tablet_id}));
+  RSTATUS_DCHECK(
+      resp.tablet_locations_size() == 1, InternalError,
+      Format("Unexpected number of tablet locations in response: $0", resp.ShortDebugString()));
   string csv_replicas;
   std::map<string, int32_t> host_to_rpcport;
-  for (const master::TabletLocationsPB_ReplicaPB &replica : tablet_locations.replicas()) {
+  for (const master::TabletLocationsPB_ReplicaPB &replica : resp.tablet_locations(0).replicas()) {
     if (!csv_replicas.empty()) {
       csv_replicas += ",";
     }

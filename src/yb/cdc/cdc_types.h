@@ -22,9 +22,18 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/util/enums.h"
 #include "yb/util/strongly_typed_bool.h"
-#include "yb/util/strongly_typed_string.h"
+#include "yb/util/strongly_typed_uuid.h"
 
-namespace yb::cdc {
+namespace yb {
+
+// Object types used to manage eXternal REPLication (XREPL) of data from a YugabyteDB.
+// xCluster replicates data to another YugabyteDB, and CDC replicates the data to external
+// databases or files.
+namespace xrepl {
+YB_STRONGLY_TYPED_UUID_DECL(StreamId);
+}
+
+namespace cdc {
 static const char* const kIdType = "id_type";
 static const char* const kTableId = "TABLEID";
 
@@ -32,18 +41,19 @@ YB_STRONGLY_TYPED_STRING(ReplicationGroupId);
 
 // Maps a tablet id -> stream id -> replication error -> error detail.
 typedef std::unordered_map<ReplicationErrorPb, std::string> ReplicationErrorMap;
-typedef std::unordered_map<CDCStreamId, ReplicationErrorMap> StreamReplicationErrorMap;
+typedef std::unordered_map<xrepl::StreamId, ReplicationErrorMap> StreamReplicationErrorMap;
 typedef std::unordered_map<TabletId, StreamReplicationErrorMap> TabletReplicationErrorMap;
 
 typedef std::unordered_map<SchemaVersion, SchemaVersion> XClusterSchemaVersionMap;
 typedef std::unordered_map<uint32_t, XClusterSchemaVersionMap> ColocatedSchemaVersionMap;
-typedef std::unordered_map<CDCStreamId, XClusterSchemaVersionMap> StreamSchemaVersionMap;
-typedef std::unordered_map<CDCStreamId, ColocatedSchemaVersionMap> StreamColocatedSchemaVersionMap;
+typedef std::unordered_map<xrepl::StreamId, XClusterSchemaVersionMap> StreamSchemaVersionMap;
+typedef std::unordered_map<xrepl::StreamId, ColocatedSchemaVersionMap>
+    StreamColocatedSchemaVersionMap;
 
 constexpr uint32_t kInvalidSchemaVersion = std::numeric_limits<uint32_t>::max();
 
-typedef std::pair<uint32_t, uint32_t> SchemaVersionMapping;
 
 YB_STRONGLY_TYPED_BOOL(StreamModeTransactional);
 YB_DEFINE_ENUM(RefreshStreamMapOption, (kNone)(kAlways)(kIfInitiatedState));
-}  // namespace yb::cdc
+}  // namespace cdc
+}  // namespace yb

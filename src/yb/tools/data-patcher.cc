@@ -92,32 +92,20 @@ using docdb::StorageDbType;
 YB_DEFINE_ENUM(DataPatcherAction, DATA_PATCHER_ACTIONS);
 YB_DEFINE_ENUM(FileType, (kSST)(kWAL));
 
-const std::string kHelpDescription = "Show help on command";
-
 // ------------------------------------------------------------------------------------------------
 // Help command
 // ------------------------------------------------------------------------------------------------
 
-struct HelpArguments {
-  std::string command;
-};
+const std::string kHelpDescription = kCommonHelpDescription;
+
+using HelpArguments = CommonHelpArguments;
 
 std::unique_ptr<OptionsDescription> HelpOptions() {
-  auto result = std::make_unique<OptionsDescriptionImpl<HelpArguments>>(kHelpDescription);
-  result->positional.add("command", 1);
-  result->hidden.add_options()
-      ("command", po::value(&result->args.command));
-  return result;
+  return CommonHelpOptions();
 }
 
 Status HelpExecute(const HelpArguments& args) {
-  if (args.command.empty()) {
-    ShowCommands<DataPatcherAction>();
-    return Status::OK();
-  }
-
-  ShowHelp(VERIFY_RESULT(ActionByName<DataPatcherAction>(args.command)));
-  return Status::OK();
+  return CommonHelpExecute<DataPatcherAction>(args);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -373,18 +361,15 @@ Status AddDeltaToSstFile(
     auto builder = helper->NewTableBuilder(base_file_writer.get(), data_file_writer.get());
     const auto add_kv = [&builder, debug, storage_db_type](const Slice& k, const Slice& v) {
       if (debug) {
-        static dockv::SchemaPackingStorage schema_packing_storage(TableType::YQL_TABLE_TYPE);
         const Slice user_key(k.data(), k.size() - kKeySuffixLen);
         auto key_type = docdb::GetKeyType(user_key, storage_db_type);
         auto rocksdb_value_type = static_cast<rocksdb::ValueType>(*(k.end() - kKeySuffixLen));
         LOG(INFO) << "DEBUG: output KV pair "
-                  << "(db_type=" << storage_db_type
-                  << ", key_type=" << key_type
+                  << "(db_type=" << storage_db_type << ", key_type=" << key_type
                   << ", rocksdb_value_type=" << static_cast<uint64_t>(rocksdb_value_type)
-                  << "): "
-                  << docdb::DocDBKeyToDebugStr(user_key, storage_db_type)
-                  << " => "
-                  << docdb::DocDBValueToDebugStr(key_type, user_key, v, schema_packing_storage);
+                  << "): " << docdb::DocDBKeyToDebugStr(user_key, storage_db_type) << " => "
+                  << docdb::DocDBValueToDebugStr(
+                         key_type, user_key, v, nullptr /*schema_packing_provider*/);
       }
       builder->Add(k, v);
     };
@@ -495,21 +480,22 @@ Status AddDeltaToSstFile(
         if (is_final_pass) {
           auto value_end = VERIFY_RESULT_PREPEND(
               delta_data.AddDeltaToSstKey(iterator->value(), &buffer),
-              Format("Intent key $0, value: $1, filename: $2",
-                      iterator->key().ToDebugHexString(), iterator->value().ToDebugHexString(),
-                      fname));
+              Format(
+                  "Intent key $0, value: $1, filename: $2", iterator->key().ToDebugHexString(),
+                  iterator->value().ToDebugHexString(), fname));
           add_kv(iterator->key(), Slice(buffer.data(), value_end));
         } else {
           auto value = iterator->value();
           auto doc_ht_result = DocHybridTime::DecodeFromEnd(&value);
           if (!doc_ht_result.ok()) {
-            LOG(INFO)
-                << "Failed to decode hybrid time from the end of value for "
-                << "key " << key.ToDebugHexString() << " (" << FormatSliceAsStr(key) << "), "
-                << "value " << value.ToDebugHexString() << " (" << FormatSliceAsStr(value) << "), "
-                << "decoded value " << DocDBValueToDebugStr(
-                    docdb::KeyType::kReverseTxnKey, iterator->key(), iterator->value(),
-                    dockv::SchemaPackingStorage(TableType::YQL_TABLE_TYPE));
+            LOG(INFO) << "Failed to decode hybrid time from the end of value for "
+                      << "key " << key.ToDebugHexString() << " (" << FormatSliceAsStr(key) << "), "
+                      << "value " << value.ToDebugHexString() << " (" << FormatSliceAsStr(value)
+                      << "), "
+                      << "decoded value "
+                      << DocDBValueToDebugStr(
+                             docdb::KeyType::kReverseTxnKey, iterator->key(), iterator->value(),
+                             nullptr /*schema_packing_provider*/);
             return doc_ht_result.status();
           }
           delta_data.AddEarlyTime(doc_ht_result->hybrid_time());
@@ -706,11 +692,22 @@ Status ChangeTimeInWalDir(
           }
         } else if (replicate.has_history_cutoff()) {
           auto& state = *replicate.mutable_history_cutoff();
-          auto history_cutoff_ht = HybridTime(state.history_cutoff());
-          if (is_final_step) {
-            state.set_history_cutoff(VERIFY_RESULT(add_delta(history_cutoff_ht)));
-          } else {
-            delta_data.AddEarlyTime(history_cutoff_ht);
+          if (state.has_primary_cutoff_ht()) {
+            auto history_cutoff_ht = HybridTime(state.primary_cutoff_ht());
+            if (is_final_step) {
+              state.set_primary_cutoff_ht(VERIFY_RESULT(add_delta(history_cutoff_ht)));
+            } else {
+              delta_data.AddEarlyTime(history_cutoff_ht);
+            }
+          }
+          if (state.has_cotables_cutoff_ht()) {
+            auto history_cutoff_ht = HybridTime(state.cotables_cutoff_ht());
+            if (is_final_step) {
+              state.set_cotables_cutoff_ht(
+                  VERIFY_RESULT(add_delta(history_cutoff_ht)));
+            } else {
+              delta_data.AddEarlyTime(history_cutoff_ht);
+            }
           }
         }
         if (is_final_step) {
@@ -920,7 +917,9 @@ class ApplyPatch {
             RETURN_NOT_OK(patcher.UpdateFileSizes());
             docdb::ConsensusFrontier frontier;
             frontier.set_hybrid_time(HybridTime::kMin);
-            frontier.set_history_cutoff(HybridTime::FromMicros(kYugaByteMicrosecondEpoch));
+            frontier.set_history_cutoff_information(
+                { HybridTime::FromMicros(kYugaByteMicrosecondEpoch),
+                  HybridTime::FromMicros(kYugaByteMicrosecondEpoch) });
             RETURN_NOT_OK(patcher.ModifyFlushedFrontier(frontier));
           } else {
             LOG(INFO) << "We did not see RocksDB CURRENT or MANIFEST-... files in "

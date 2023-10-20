@@ -41,6 +41,8 @@
 
 #include "yb/gutil/stl_util.h"  // For VectorToSet
 
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/tostring.h"
 
@@ -105,7 +107,6 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
     } \
   } while (0)
 
-#define ASSERT_NOT_OK(s) ASSERT_FALSE((s).ok())
 #define ASSERT_NOK(s) ASSERT_FALSE((s).ok())
 
 #define ASSERT_OK_PREPEND(status, msg) do { \
@@ -130,7 +131,6 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
     } \
   } while (0)
 
-#define EXPECT_NOT_OK(s) EXPECT_FALSE((s).ok())
 #define EXPECT_NOK(s) EXPECT_FALSE((s).ok())
 
 // Like the above, but doesn't record successful
@@ -161,6 +161,18 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
       ADD_FAILURE() << "Unexpected error: " << ec.message(); \
     } \
   } while (false)
+
+// Asserts that result is ok, extracts result value is case of success.
+#define ASSERT_RESULT(expr) \
+  RESULT_CHECKER_HELPER(expr, ASSERT_OK(__result))
+
+// Expects that result is ok, extracts result value is case of success.
+#define EXPECT_RESULT(expr) \
+  RESULT_CHECKER_HELPER(expr, EXPECT_OK(__result))
+
+// Asserts that result is ok, extracts result value is case of success.
+#define ASSERT_RESULT_FAST(expr) \
+  RESULT_CHECKER_HELPER(expr, ASSERT_OK_FAST(__result))
 
 #ifdef THREAD_SANITIZER
 #define ASSERT_PERF_LE(lhs, rhs) do { (void)(lhs); (void)(rhs); } while(false)

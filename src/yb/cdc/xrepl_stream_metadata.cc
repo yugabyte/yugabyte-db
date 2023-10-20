@@ -61,8 +61,27 @@ std::shared_ptr<StreamMetadata::StreamTabletMetadata> StreamMetadata::GetTabletM
   return metadata;
 }
 
+std::vector<xrepl::StreamTabletStats> StreamMetadata::GetAllStreamTabletStats(
+    const xrepl::StreamId& stream_id) const {
+  std::vector<xrepl::StreamTabletStats> result;
+  const auto table_ids = GetTableIds();
+  SharedLock l(tablet_metadata_map_mutex_);
+  for (const auto& [tablet_id, metadata] : tablet_metadata_map_) {
+    xrepl::StreamTabletStats stat;
+    stat.stream_id_str = stream_id.ToString();
+    stat.producer_tablet_id = tablet_id;
+    stat.producer_table_id = table_ids.size() == 1 ? table_ids[0] : yb::AsString(table_ids);
+    stat.state = SysCDCStreamEntryPB_State_Name(state_);
+    metadata->PopulateStats(&stat);
+
+    result.emplace_back(std::move(stat));
+  }
+
+  return result;
+}
+
 Status StreamMetadata::InitOrReloadIfNeeded(
-    const std::string& stream_id, RefreshStreamMapOption opts, client::YBClient* client) {
+    const xrepl::StreamId& stream_id, RefreshStreamMapOption opts, client::YBClient* client) {
   std::lock_guard l(load_mutex_);
   if (!loaded_ || opts == RefreshStreamMapOption::kAlways ||
       (opts == RefreshStreamMapOption::kIfInitiatedState &&
@@ -74,7 +93,7 @@ Status StreamMetadata::InitOrReloadIfNeeded(
 }
 
 Status StreamMetadata::GetStreamInfoFromMaster(
-    const std::string& stream_id, client::YBClient* client) {
+    const xrepl::StreamId& stream_id, client::YBClient* client) {
   bool is_refresh = loaded_.load(std::memory_order_acquire);
   // If this is the first time we are loading the metadata then we populate all the fields.
   // If this is a refresh, then only table_ids_, state_, tablet_metadata_map_ and transactional_ are
@@ -145,6 +164,17 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   }
 
   return Status::OK();
+}
+
+void StreamMetadata::StreamTabletMetadata::UpdateStats(
+    const MonoTime& start_time, const Status& status, int num_records, size_t bytes_sent,
+    int64_t sent_index, int64_t latest_wal_index) {
+  stats_history_.UpdateStats(
+      start_time, status, num_records, bytes_sent, sent_index, latest_wal_index);
+}
+
+void StreamMetadata::StreamTabletMetadata::PopulateStats(xrepl::StreamTabletStats* stats) const {
+  stats_history_.PopulateStats(stats);
 }
 
 }  // namespace cdc

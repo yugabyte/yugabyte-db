@@ -77,14 +77,25 @@
       state: present
     tags: yb-prebuilt-ami
 
+- name: Provision | Ensure mount paths exist.
+  shell: |
+    mkdir -p {{ item }}
+  become: yes
+  become_method: sudo
+  with_items: "{{ mount_points.split(',') }}"
+
+- name: Provision | Ensure proper ownership for mount paths.
+  shell: |
+    chown -R {{ user_name }}:{{ user_name }} {{ item }}
+  become: yes
+  become_method: sudo
+  with_items: "{{ mount_points.split(',') }}"
+
 - name: Provision | Ensure proper permissions for mount paths.
-  file:
-    mode: 0755
-    path: "{{ item }}"
-    state: directory
-    owner: "{{ user_name }}"
-    group: "{{ user_name }}"
-    recurse: yes
+  shell: |
+    chmod -R 755 {{ item }}
+  become: yes
+  become_method: sudo
   with_items: "{{ mount_points.split(',') }}"
 
 - name: setup-postgres-cgroups
@@ -303,16 +314,16 @@
       group: "{{ user_name }}"
       mode: 0644
 
-  - name: Create or Update .bashrc file
+  - name: Create or Update .bashrc file to display systemd mode upon ssh login
     blockinfile:
-      dest: "{{ yb_home_dir }}/.bashrc"
+      dest: "{{ yb_home_dir }}/.bash_profile"
       block: |
         ORANGE='\033[0;33m'
         NC='\033[0m' # No Color
 
         if [[ $- == *i* ]]
             then export PS1="[\u@\h ~]\$ "
-            if [ "$EUID" -e 0 ]
+            if [ "$EUID" -eq 0 ]
                 then echo -e "Use ${ORANGE}'sudo systemctl'${NC} to manage YB software"
                 else echo -e "Use ${ORANGE}'systemctl --user'${NC} to manage YB software"
             fi

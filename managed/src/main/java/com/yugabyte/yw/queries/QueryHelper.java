@@ -15,7 +15,9 @@ import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
@@ -44,8 +46,8 @@ import play.libs.ws.WSClient;
 public class QueryHelper {
   private static final String RESET_QUERY_SQL = "SELECT pg_stat_statements_reset()";
   private static final String SLOW_QUERY_STATS_UNLIMITED_SQL_1 =
-      "SELECT s.userid::regrole, d.datname, s.queryid, s.query, s.calls, s.total_time, s.rows, "
-          + "s.min_time, s.max_time, s.mean_time, s.stddev_time, "
+      "SELECT s.userid::regrole as rolname, d.datname, s.queryid, s.query, s.calls, s.total_time,"
+          + " s.rows, s.min_time, s.max_time, s.mean_time, s.stddev_time, "
           + "s.local_blks_hit, s.local_blks_written ";
   private static final String SLOW_QUERY_STATS_UNLIMITED_SQL_2 =
       "FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid";
@@ -63,6 +65,13 @@ public class QueryHelper {
   public static final String LIST_USER_DATABASES_SQL =
       "SELECT datname from pg_database where datname NOT IN "
           + "('template1', 'template0', 'system_platform')";
+
+  /** YBDB 2.18 versions above this threshold support latency histogram. */
+  public static final String MINIMUM_VERSION_THRESHOLD_LATENCY_HISTOGRAM_SUPPORT_2_18 =
+      "2.18.1.0-b67";
+
+  /** YBDB versions above this threshold support latency histogram. */
+  public static final String MINIMUM_VERSION_THRESHOLD_LATENCY_HISTOGRAM_SUPPORT = "2.19.1.0-b80";
 
   private final RuntimeConfigFactory runtimeConfigFactory;
   private final ExecutorService threadPool;
@@ -99,6 +108,7 @@ public class QueryHelper {
   }
 
   @Inject YsqlQueryExecutor ysqlQueryExecutor;
+  @Inject RuntimeConfGetter confGetter;
 
   public JsonNode liveQueries(Universe universe) {
     return queryUniverseNodes(universe, QueryAction.FETCH_LIVE_QUERIES);
@@ -112,6 +122,25 @@ public class QueryHelper {
     return queryUniverseNodes(universe, QueryAction.RESET_STATS);
   }
 
+  public static boolean supportsLatencyHistogram(Universe universe) {
+    return universe.getVersions().stream()
+        .allMatch(
+            clusterVersion ->
+                Util.compareYbVersions(
+                            MINIMUM_VERSION_THRESHOLD_LATENCY_HISTOGRAM_SUPPORT,
+                            clusterVersion,
+                            true /* suppressFormatError */)
+                        < 0
+                    || (Util.compareYbVersions(
+                                MINIMUM_VERSION_THRESHOLD_LATENCY_HISTOGRAM_SUPPORT_2_18,
+                                clusterVersion,
+                                true /* suppressFormatError */)
+                            < 0
+                        && Util.compareYbVersions(
+                                clusterVersion, "2.19.0.0-b0", true /* suppressFormatError */)
+                            < 0));
+  }
+
   /** Runs provided {@link QueryAction QueryAction} on every node in the provided universe. */
   public JsonNode queryUniverseNodes(Universe universe, QueryAction queryAction)
       throws IllegalArgumentException {
@@ -120,9 +149,7 @@ public class QueryHelper {
       throw new PlatformServiceException(
           SERVICE_UNAVAILABLE, "Not enough room to queue the requested tasks");
     }
-    Boolean histogramSupport =
-        universe.getVersions().stream()
-            .allMatch(v -> Util.compareYbVersions(v, "2.19.1.0-b81") >= 0);
+    Boolean supportsLatencyHistogram = supportsLatencyHistogram(universe);
     int ysqlErrorCount = 0;
     int ycqlErrorCount = 0;
     ObjectNode responseJson = Json.newObject();
@@ -157,9 +184,15 @@ public class QueryHelper {
               callable =
                   () -> {
                     RunQueryFormData ysqlQuery = new RunQueryFormData();
-                    ysqlQuery.query = slowQuerySqlWithLimit(config, universe, histogramSupport);
+                    ysqlQuery.query =
+                        slowQuerySqlWithLimit(config, universe, supportsLatencyHistogram);
                     ysqlQuery.db_name = "postgres";
-                    return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery, node);
+                    return ysqlQueryExecutor.executeQueryInNodeShell(
+                        universe,
+                        ysqlQuery,
+                        node,
+                        confGetter.getConfForScope(
+                            universe, UniverseConfKeys.slowQueryTimeoutSecs));
                   };
 
               Future<JsonNode> future = threadPool.submit(callable);
@@ -233,7 +266,7 @@ public class QueryHelper {
             for (JsonNode queryObject : ysqlResponse) {
               String queryID = queryObject.get("queryid").asText();
               String queryStatement = queryObject.get("query").asText();
-              if (!isExcluded(queryStatement, config, histogramSupport)) {
+              if (!isExcluded(queryStatement, config, supportsLatencyHistogram)) {
                 if (queryMap.containsKey(queryID)) {
                   // Calculate new query stats
                   ObjectNode previousQueryObj = (ObjectNode) queryMap.get(queryID);
@@ -290,7 +323,7 @@ public class QueryHelper {
                   previousQueryObj.put("local_blks_written", tmpTables);
                   previousQueryObj.put("stddev_time", stdDevTime);
 
-                  if (histogramSupport) {
+                  if (supportsLatencyHistogram) {
                     Histogram histogram_a =
                         new Histogram(
                             Json.fromJson(
@@ -308,7 +341,7 @@ public class QueryHelper {
               }
             }
 
-            if (histogramSupport) {
+            if (supportsLatencyHistogram) {
               queryMap.forEach(
                   (queryId, queryObj) -> {
                     ObjectNode objNode = (ObjectNode) queryObj;
@@ -370,7 +403,8 @@ public class QueryHelper {
   }
 
   @VisibleForTesting
-  public String slowQuerySqlWithLimit(Config config, Universe universe, Boolean histogramSupport) {
+  public String slowQuerySqlWithLimit(
+      Config config, Universe universe, Boolean supportsLatencyHistogram) {
     String orderBy = config.getString(QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY);
     int limit = config.getInt(QUERY_STATS_SLOW_QUERIES_LIMIT_KEY);
     String setEnableNestloopOffStatementOptional =
@@ -381,7 +415,7 @@ public class QueryHelper {
         "/*+ Leading((d pg_stat_statements)) %s */ %s ORDER BY s.%s DESC LIMIT %d",
         setEnableNestloopOffStatementOptional,
         SLOW_QUERY_STATS_UNLIMITED_SQL_1
-            + (histogramSupport ? HISTOGRAM_QUERY : "")
+            + (supportsLatencyHistogram ? HISTOGRAM_QUERY : "")
             + SLOW_QUERY_STATS_UNLIMITED_SQL_2,
         orderBy,
         limit);
@@ -395,13 +429,14 @@ public class QueryHelper {
     return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery, randomTServer);
   }
 
-  private boolean isExcluded(String queryStatement, Config config, Boolean histogramSupport) {
+  private boolean isExcluded(
+      String queryStatement, Config config, Boolean supportsLatencyHistogram) {
     final List<String> excludedQueries = config.getStringList("yb.query_stats.excluded_queries");
     final List<String> excludedPerfAdvisorQueries = Utils.getScriptQueryStatements();
     return excludedQueries.contains(queryStatement)
         || queryStatement.contains(
             SLOW_QUERY_STATS_UNLIMITED_SQL_1
-                + (histogramSupport ? HISTOGRAM_QUERY : "")
+                + (supportsLatencyHistogram ? HISTOGRAM_QUERY : "")
                 + SLOW_QUERY_STATS_UNLIMITED_SQL_2)
         || queryStatement.contains(LIST_USER_DATABASES_SQL)
         || excludedPerfAdvisorQueries.contains(queryStatement);

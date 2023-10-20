@@ -35,6 +35,7 @@
 #include "utils/rel.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "pg_yb_utils.h"
 
 YbCatalogVersionType yb_catalog_version_type = CATALOG_VERSION_UNSET;
@@ -150,9 +151,9 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(
 	/* The table pg_yb_catalog_version is in template1. */
 	HandleYBStatus(YBCPgNewUpdate(TemplateDbOid,
 								  YBCatalogVersionRelationId,
-								  false /* is_single_row_txn */,
 								  false /* is_region_local */,
-								  &update_stmt));
+								  &update_stmt,
+									YB_TRANSACTIONAL));
 
 	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 	Datum ybctid = YbGetMasterCatalogVersionTableEntryYbctid(rel, db_oid);
@@ -218,7 +219,20 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(
 						__func__, is_breaking_change ? "" : "non", tmpbuf)));
 	}
 	HandleYBStatus(YBCPgDmlExecWriteOp(update_stmt, &rows_affected_count));
-	Assert(rows_affected_count == 1);
+	/*
+	 * Under normal situation rows_affected_count should be exactly 1. However
+	 * when a connection is established in per-database catalog version mode,
+	 * if the table pg_yb_catalog_version is updated to only have one row
+	 * for database template1 which is part of the process of converting to
+	 * global catalog version mode, this connection remains in per-database
+	 * catalog version mode. In this case rows_affected_count will be 0 unless
+	 * MyDatabaseId is template1 because in pg_yb_catalog_version the row for
+	 * MyDatabaseId no longer exists.
+	 */
+	if (rows_affected_count == 0)
+		Assert(YBIsDBCatalogVersionMode());
+	else
+		Assert(rows_affected_count == 1);
 
 	/* Cleanup. */
 	update_stmt = NULL;
@@ -287,9 +301,9 @@ void YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid)
 	YBCPgStatement insert_stmt = NULL;
 	HandleYBStatus(YBCPgNewInsert(TemplateDbOid,
 								  YBCatalogVersionRelationId,
-								  true /* is_single_row_txn */,
 								  false /* is_region_local */,
-								  &insert_stmt));
+								  &insert_stmt,
+								  YB_SINGLE_SHARD_TRANSACTION));
 
 	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 	Datum ybctid = YbGetMasterCatalogVersionTableEntryYbctid(rel, db_oid);
@@ -337,9 +351,9 @@ void YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid)
 	YBCPgStatement delete_stmt = NULL;
 	HandleYBStatus(YBCPgNewDelete(TemplateDbOid,
 								  YBCatalogVersionRelationId,
-								  true /* is_single_row_txn */,
 								  false /* is_region_local */,
-								  &delete_stmt));
+								  &delete_stmt,
+									YB_SINGLE_SHARD_TRANSACTION));
 
 	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 	Datum ybctid = YbGetMasterCatalogVersionTableEntryYbctid(rel, db_oid);

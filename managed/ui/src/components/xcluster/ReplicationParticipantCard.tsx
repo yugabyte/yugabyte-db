@@ -1,23 +1,27 @@
-import React from 'react';
 import clsx from 'clsx';
 
 import { YBLoadingCircleIcon } from '../common/indicators';
 import { usePillStyles } from '../configRedesign/providerRedesign/utils';
+import { XClusterConfigType } from './constants';
 
 import styles from './ReplicationParticipantCard.module.scss';
 
 interface ReplicationParticipantCardProps {
   clusterName: string;
+  isActive: boolean;
   isCurrentUniverse: boolean;
   isLoading: boolean;
   isSource: boolean;
+  xClusterConfigType: XClusterConfigType;
 }
 
 export const ReplicationParticipantCard = ({
   clusterName,
+  isActive,
   isCurrentUniverse,
   isLoading,
-  isSource
+  isSource,
+  xClusterConfigType
 }: ReplicationParticipantCardProps) => {
   const pillClasses = usePillStyles();
   return (
@@ -26,7 +30,13 @@ export const ReplicationParticipantCard = ({
     >
       {!isLoading ? (
         <>
-          <div className={pillClasses.pill}>{isSource ? 'Source' : 'Target'}</div>
+          <div className={styles.pillContainer}>
+            <div className={pillClasses.pill}>{isSource ? 'Source' : 'Target'}</div>
+            {xClusterConfigType === XClusterConfigType.TXN && (
+              <div className={pillClasses.pill}>{isActive ? 'Active' : 'Standby'}</div>
+            )}
+          </div>
+
           <div className={styles.participantName}>{clusterName}</div>
         </>
       ) : (

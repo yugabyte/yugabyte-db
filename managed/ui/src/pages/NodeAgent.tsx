@@ -4,9 +4,19 @@
  * Copyright 2023 YugaByte, Inc. and Contributors
  */
 
-import React from 'react';
-import { NodeAgentConfig } from '../redesign/features/NodeAgent';
+import { lazy, Suspense } from 'react';
+import { YBLoadingCircleIcon } from '../components/common/indicators';
+
+const NodeAgentConfigComponent = lazy(() =>
+  import('../redesign/features/NodeAgent/NodeAgentConfig').then(({ NodeAgentConfig }) => ({
+    default: NodeAgentConfig
+  }))
+);
 
 export const NodeAgent = () => {
-  return <NodeAgentConfig />;
+  return (
+    <Suspense fallback={YBLoadingCircleIcon}>
+      <NodeAgentConfigComponent />
+    </Suspense>
+  );
 };

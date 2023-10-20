@@ -29,6 +29,7 @@ import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.AppConfigHelper;
+import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -47,7 +48,9 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -81,6 +84,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.DB;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -94,6 +98,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -102,6 +107,7 @@ import play.mvc.Http;
 import play.mvc.Http.Status;
 
 @Singleton
+@Slf4j
 public class UniverseCRUDHandler {
 
   private static final Logger LOG = LoggerFactory.getLogger(UniverseCRUDHandler.class);
@@ -126,6 +132,8 @@ public class UniverseCRUDHandler {
   @Inject YbcManager ybcManager;
 
   @Inject ReleaseManager releaseManager;
+
+  @Inject CertificateHelper certificateHelper;
 
   private enum OpType {
     CONFIGURE,
@@ -203,14 +211,31 @@ public class UniverseCRUDHandler {
         && (result.isEmpty()
             || result.equals(
                 Collections.singleton(UniverseDefinitionTaskParams.UpdateOptions.FULL_MOVE)))) {
-      if (cluster.userIntent.instanceType == null
-          || cluster.userIntent.instanceType.equals(currentCluster.userIntent.instanceType)) {
+      if (isSameInstanceTypes(
+          cluster.userIntent,
+          currentCluster.userIntent,
+          taskParams.getNodesInCluster(cluster.uuid))) {
         result.add(UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE_NON_RESTART);
       } else if (cluster.userIntent.providerType != Common.CloudType.kubernetes) {
         result.add(UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE);
       }
     }
     return result;
+  }
+
+  private boolean isSameInstanceTypes(
+      UserIntent newIntent, UserIntent currentIntent, Collection<NodeDetails> nodes) {
+    if (nodes.isEmpty()) {
+      return Objects.equals(newIntent.getBaseInstanceType(), currentIntent.getBaseInstanceType());
+    }
+    for (NodeDetails nodeDetails : nodes) {
+      if (!Objects.equals(
+          newIntent.getInstanceTypeForNode(nodeDetails),
+          currentIntent.getInstanceTypeForNode(nodeDetails))) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private Cluster getClusterFromTaskParams(UniverseConfigureTaskParams taskParams) {
@@ -242,6 +267,9 @@ public class UniverseCRUDHandler {
     //  uuid.
     Cluster cluster = getClusterFromTaskParams(taskParams);
     UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
+    if (userIntent.deviceInfo != null) {
+      userIntent.deviceInfo.validate();
+    }
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.CONFIGURE);
 
@@ -346,7 +374,7 @@ public class UniverseCRUDHandler {
       } else {
         // create self-signed rootCA in case it is not provided by the user.
         taskParams.rootCA =
-            CertificateHelper.createRootCA(
+            certificateHelper.createRootCA(
                 runtimeConfigFactory.staticApplicationConf(),
                 taskParams.nodePrefix,
                 customer.getUuid());
@@ -363,7 +391,7 @@ public class UniverseCRUDHandler {
           // create self-signed clientRootCA in case it is not provided by the user
           // and root and clientRoot CA needs to be different
           taskParams.setClientRootCA(
-              CertificateHelper.createClientRootCA(
+              certificateHelper.createClientRootCA(
                   runtimeConfigFactory.staticApplicationConf(),
                   taskParams.nodePrefix,
                   customer.getUuid()));
@@ -461,7 +489,7 @@ public class UniverseCRUDHandler {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
       // Set the provider code.
       c.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
-      c.validate(!cloudEnabled, isAuthEnforced);
+      c.validate(!cloudEnabled, isAuthEnforced, taskParams.nodeDetailsSet);
       // Enforce user tags.
       validateUserTags(customer, c.userIntent);
       // Check if for a new create, no value is set, we explicitly set it to UNEXPOSED.
@@ -474,11 +502,27 @@ public class UniverseCRUDHandler {
       // Configure the defaultimageBundle in case not specified.
       if (c.userIntent.imageBundleUUID == null && provider.getCloudCode().imageBundleSupported()) {
         if (provider.getImageBundles().size() > 0) {
-          ImageBundle bundle = ImageBundle.getDefaultForProvider(provider.getUuid());
-          if (bundle != null) {
+          List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
+          if (bundles.size() > 0) {
+            ImageBundle bundle =
+                ImageBundleUtil.getDefaultBundleForUniverse(taskParams.arch, bundles);
             c.userIntent.imageBundleUUID = bundle.getUuid();
           }
         }
+      }
+
+      if (taskParams.arch == null && c.userIntent.imageBundleUUID != null) {
+        /*
+         * In case the architecture is not specified as part of universe creation.
+         * We will try:
+         * 1. Try reading the architecture of the imageBundle specified.
+         * 2. In case image bundle is not specified we will proceed with the architecture
+         * of the default image bundle (#2 is already taken care of in the above set of statements.)
+         */
+
+        ImageBundle universeBundle =
+            ImageBundle.getOrBadRequest(provider.getUuid(), c.userIntent.imageBundleUUID);
+        taskParams.arch = universeBundle.getDetails().getArch();
       }
 
       // Set the node exporter config based on the provider
@@ -505,6 +549,9 @@ public class UniverseCRUDHandler {
 
       PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
       PlacementInfoUtil.finalSanityCheckConfigure(c, taskParams.getNodesInCluster(c.uuid));
+
+      taskParams.otelCollectorEnabled =
+          confGetter.getConfForScope(provider, ProviderConfKeys.otelCollectorEnabled);
     }
 
     if (taskParams.getPrimaryCluster() != null) {
@@ -529,12 +576,14 @@ public class UniverseCRUDHandler {
                     + Util.K8S_YBC_COMPATIBLE_DB_VERSION);
           }
         } else if (Util.compareYbVersions(
-                userIntent.ybSoftwareVersion, Util.YBC_COMPATIBLE_DB_VERSION, true)
+                userIntent.ybSoftwareVersion,
+                confGetter.getGlobalConf(GlobalConfKeys.ybcCompatibleDbVersion),
+                true)
             < 0) {
           taskParams.setEnableYbc(false);
           LOG.error(
               "Ybc installation is skipped on VM universe with DB version lower than "
-                  + Util.YBC_COMPATIBLE_DB_VERSION);
+                  + confGetter.getGlobalConf(GlobalConfKeys.ybcCompatibleDbVersion));
         } else {
           taskParams.setYbcSoftwareVersion(
               StringUtils.isNotBlank(taskParams.getYbcSoftwareVersion())
@@ -571,7 +620,12 @@ public class UniverseCRUDHandler {
             ReleaseManager.ReleaseMetadata ybReleaseMetadata =
                 releaseManager.getReleaseByVersion(userIntent.ybSoftwareVersion);
             AvailabilityZone az = AvailabilityZone.getOrBadRequest(nodeDetails.azUuid);
-            String ybServerPackage = ybReleaseMetadata.getFilePath(az.getRegion());
+            String ybServerPackage;
+            if (taskParams.arch != null) {
+              ybServerPackage = ybReleaseMetadata.getFilePath(taskParams.arch);
+            } else {
+              ybServerPackage = ybReleaseMetadata.getFilePath(az.getRegion());
+            }
             Pair<String, String> ybcPackageDetails =
                 Util.getYbcPackageDetailsFromYbServerPackage(ybServerPackage);
             ReleaseManager.ReleaseMetadata ybcReleaseMetadata =
@@ -587,7 +641,12 @@ public class UniverseCRUDHandler {
                       taskParams.getYbcSoftwareVersion()));
             }
 
-            String ybcPackage = ybcReleaseMetadata.getFilePath(az.getRegion());
+            String ybcPackage;
+            if (taskParams.arch != null) {
+              ybcPackage = ybcReleaseMetadata.getFilePath(taskParams.arch);
+            } else {
+              ybcPackage = ybcReleaseMetadata.getFilePath(az.getRegion());
+            }
             if (StringUtils.isBlank(ybcPackage)) {
               throw new PlatformServiceException(
                   BAD_REQUEST,
@@ -615,19 +674,19 @@ public class UniverseCRUDHandler {
             BAD_REQUEST, "Cannot enable YCQL Authentication if YCQL endpoint is disabled.");
       }
       try {
-        if (userIntent.enableYSQLAuth) {
+        userIntent.defaultYsqlPassword = false;
+        userIntent.defaultYcqlPassword = false;
+        if (userIntent.enableYSQLAuth
+            && (!cloudEnabled || StringUtils.isNotBlank(userIntent.ysqlPassword))) {
           passwordPolicyService.checkPasswordPolicy(null, userIntent.ysqlPassword);
-          if (confGetter.getConfForScope(
-              customer, CustomerConfKeys.enforceSecureUniversePassword)) {
-            passwordPolicyService.validatePasswordNotLeaked("YSQL", userIntent.ysqlPassword);
-          }
+        } else if (userIntent.enableYSQLAuth) {
+          userIntent.defaultYsqlPassword = true;
         }
-        if (userIntent.enableYCQLAuth) {
+        if (userIntent.enableYCQLAuth
+            && (!cloudEnabled || StringUtils.isNotBlank(userIntent.ycqlPassword))) {
           passwordPolicyService.checkPasswordPolicy(null, userIntent.ycqlPassword);
-          if (confGetter.getConfForScope(
-              customer, CustomerConfKeys.enforceSecureUniversePassword)) {
-            passwordPolicyService.validatePasswordNotLeaked("YCQL", userIntent.ycqlPassword);
-          }
+        } else if (userIntent.enableYCQLAuth) {
+          userIntent.defaultYcqlPassword = true;
         }
       } catch (Exception e) {
         throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
@@ -1028,6 +1087,18 @@ public class UniverseCRUDHandler {
       boolean isForceDelete,
       boolean isDeleteBackups,
       boolean isDeleteAssociatedCerts) {
+    return destroy(
+        customer, universe, isForceDelete, isDeleteBackups, isDeleteAssociatedCerts, null);
+  }
+
+  // destroy with KubernetesResourceDetails is to allow the operator to
+  public UUID destroy(
+      Customer customer,
+      Universe universe,
+      boolean isForceDelete,
+      boolean isDeleteBackups,
+      boolean isDeleteAssociatedCerts,
+      KubernetesResourceDetails resourceDetails) {
     LOG.info(
         "Destroy universe, customer uuid: {}, universe: {} [ {} ] ",
         customer.getUuid(),
@@ -1049,6 +1120,9 @@ public class UniverseCRUDHandler {
     Cluster primaryCluster = universeDetails.getPrimaryCluster();
     if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       taskType = TaskType.DestroyKubernetesUniverse;
+      if (resourceDetails != null) {
+        taskParams.setKubernetesResourceDetails(resourceDetails);
+      }
     }
 
     // Update all current tasks for this universe to be marked as done if it is a force delete.
@@ -1166,7 +1240,11 @@ public class UniverseCRUDHandler {
         runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     addOnCluster.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
-    addOnCluster.validate(!cloudEnabled, isAuthEnforced);
+    addOnCluster.validate(!cloudEnabled, isAuthEnforced, taskParams.nodeDetailsSet);
+    addOnCluster.userIntent.enableNodeToNodeEncrypt =
+        primaryCluster.userIntent.enableNodeToNodeEncrypt;
+    addOnCluster.userIntent.enableClientToNodeEncrypt =
+        primaryCluster.userIntent.enableClientToNodeEncrypt;
 
     TaskType taskType = TaskType.AddOnClusterCreate;
     if (addOnCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
@@ -1242,7 +1320,14 @@ public class UniverseCRUDHandler {
         runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     readOnlyCluster.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
-    readOnlyCluster.validate(!cloudEnabled, isAuthEnforced);
+    readOnlyCluster.validate(!cloudEnabled, isAuthEnforced, taskParams.nodeDetailsSet);
+    if (readOnlyCluster.userIntent.specificGFlags != null
+        && readOnlyCluster.userIntent.specificGFlags.isInheritFromPrimary()) {
+      SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
+      readOnlyCluster.userIntent.specificGFlags.setPerProcessFlags(
+          primaryGFlags.getPerProcessFlags());
+      readOnlyCluster.userIntent.specificGFlags.setPerAZ(primaryGFlags.getPerAZ());
+    }
 
     TaskType taskType = TaskType.ReadOnlyClusterCreate;
     if (readOnlyCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
@@ -1489,7 +1574,7 @@ public class UniverseCRUDHandler {
     // Validate if any required params are missed based on the taskType
     switch (taskParams.taskType) {
       case VMImage:
-        if (!runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")) {
+        if (!runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")) {
           throw new PlatformServiceException(
               Http.Status.METHOD_NOT_ALLOWED, "VM image upgrade is disabled");
         }
@@ -1501,7 +1586,7 @@ public class UniverseCRUDHandler {
               "VM image upgrade is only supported for AWS / GCP, got: " + provider.toString());
         }
 
-        if (UniverseDefinitionTaskParams.hasEphemeralStorage(primaryIntent)) {
+        if (UniverseDefinitionTaskParams.hasEphemeralStorage(universe.getUniverseDetails())) {
           throw new PlatformServiceException(
               BAD_REQUEST, "Cannot upgrade a universe with ephemeral storage");
         }
@@ -1670,7 +1755,7 @@ public class UniverseCRUDHandler {
     if (taskParams.size <= primaryIntent.deviceInfo.volumeSize) {
       throw new PlatformServiceException(BAD_REQUEST, "Size can only be increased.");
     }
-    if (UniverseDefinitionTaskParams.hasEphemeralStorage(primaryIntent)) {
+    if (UniverseDefinitionTaskParams.hasEphemeralStorage(universe.getUniverseDetails())) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot modify instance volumes.");
     }
 
@@ -1831,7 +1916,7 @@ public class UniverseCRUDHandler {
 
     if (isRootCA && taskParams.createNewRootCA) {
       taskParams.rootCA =
-          CertificateHelper.createRootCA(
+          certificateHelper.createRootCA(
               runtimeConfigFactory.staticApplicationConf(),
               universeDetails.nodePrefix,
               customer.getUuid());
@@ -1839,7 +1924,7 @@ public class UniverseCRUDHandler {
 
     if (isClientRootCA && taskParams.createNewClientRootCA) {
       taskParams.setClientRootCA(
-          CertificateHelper.createClientRootCA(
+          certificateHelper.createClientRootCA(
               runtimeConfigFactory.staticApplicationConf(),
               universeDetails.nodePrefix,
               customer.getUuid()));

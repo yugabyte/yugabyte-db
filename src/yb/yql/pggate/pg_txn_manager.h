@@ -31,8 +31,7 @@
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_callbacks.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 // These should match XACT_READ_UNCOMMITED, XACT_READ_COMMITED, XACT_REPEATABLE_READ,
 // XACT_SERIALIZABLE from xact.h. Please do not change this enum.
@@ -44,19 +43,22 @@ YB_DEFINE_ENUM(
   ((SERIALIZABLE, 3))
 );
 
+YB_STRONGLY_TYPED_BOOL(EnsureReadTimeIsSet);
+
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
   PgTxnManager(PgClient* pg_client, scoped_refptr<ClockBase> clock, PgCallbacks pg_callbacks);
 
   virtual ~PgTxnManager();
 
-  Status BeginTransaction();
+  Status BeginTransaction(int64_t start_time);
 
   Status CalculateIsolation(bool read_only_op, TxnPriorityRequirement txn_priority_requirement);
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
   Status RestartReadPoint();
+  bool IsRestartReadPointRequested();
   void SetActiveSubTransactionId(SubTransactionId id);
   Status CommitTransaction();
   Status AbortTransaction();
@@ -75,7 +77,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool IsDdlMode() const { return ddl_type_ != DdlType::NonDdl; }
   bool ShouldEnableTracing() const { return enable_tracing_; }
 
-  uint64_t SetupPerformOptions(tserver::PgPerformOptionsPB* options);
+  void SetupPerformOptions(
+      tserver::PgPerformOptionsPB* options, EnsureReadTimeIsSet ensure_read_time);
 
   double GetTransactionPriority() const;
   TxnPriorityRequirement GetTransactionPriorityType() const;
@@ -95,6 +98,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   Status FinishTransaction(Commit commit);
 
+  void IncTxnSerialNo();
+
   // ----------------------------------------------------------------------------------------------
 
   PgClient* client_;
@@ -103,6 +108,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool txn_in_progress_ = false;
   IsolationLevel isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
   uint64_t txn_serial_no_ = 0;
+  uint64_t read_time_serial_no_ = 0;
   SubTransactionId active_sub_transaction_id_ = 0;
   bool need_restart_ = false;
   bool need_defer_read_point_ = false;
@@ -124,11 +130,11 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   // and cancels the other transaction.
   uint64_t priority_ = 0;
   SavePriority use_saved_priority_ = SavePriority::kFalse;
+  int64_t pg_txn_start_us_ = 0;
 
   PgCallbacks pg_callbacks_;
 
   DISALLOW_COPY_AND_ASSIGN(PgTxnManager);
 };
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

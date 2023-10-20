@@ -45,7 +45,7 @@ class RefCntBuffer {
 
   explicit RefCntBuffer(const faststring& str);
 
-  explicit RefCntBuffer(const Slice& slice) :
+  explicit RefCntBuffer(Slice slice) :
       RefCntBuffer(slice.data(), slice.size()) {}
 
   RefCntBuffer(const RefCntBuffer& rhs) noexcept;
@@ -152,7 +152,7 @@ class RefCntPrefix {
   explicit RefCntPrefix(const std::string& str)
       : bytes_(RefCntBuffer(str)), size_(bytes_.size()) {}
 
-  explicit RefCntPrefix(const Slice& slice)
+  explicit RefCntPrefix(Slice slice)
       : bytes_(RefCntBuffer(slice)), size_(bytes_.size()) {}
 
   RefCntPrefix(RefCntBuffer bytes) // NOLINT
@@ -194,7 +194,7 @@ class RefCntPrefix {
     return r;
   }
 
-  std::string ShortDebugString() const;
+  std::string ToString() const;
 
  private:
   RefCntBuffer bytes_;
@@ -222,7 +222,7 @@ class RefCntSlice {
   explicit RefCntSlice(RefCntBuffer holder)
       : holder_(std::move(holder)), slice_(holder_.AsSlice()) {}
 
-  RefCntSlice(RefCntBuffer holder, const Slice& slice)
+  RefCntSlice(RefCntBuffer holder, Slice slice)
       : holder_(std::move(holder)), slice_(slice) {}
 
   explicit operator bool() const {
@@ -269,9 +269,29 @@ class RefCntSlice {
     return holder_.unique();
   }
 
+  void Resize(size_t new_size) {
+    slice_ = Slice(slice_.mutable_data(), new_size);
+  }
+
+  std::string ToString() const;
+
  private:
   RefCntBuffer holder_;
   Slice slice_;
+
+  friend inline auto operator<=>(const RefCntSlice& lhs, const RefCntSlice& rhs) {
+    return lhs.AsSlice() <=> rhs.AsSlice();
+  }
+
+  friend inline bool operator==(const RefCntSlice& lhs, const RefCntSlice& rhs) {
+    return lhs.AsSlice() == rhs.AsSlice();
+  }
+};
+
+struct RefCntSliceHash {
+  size_t operator()(const RefCntSlice& inp) const {
+    return inp.AsSlice().hash();
+  }
 };
 
 } // namespace yb

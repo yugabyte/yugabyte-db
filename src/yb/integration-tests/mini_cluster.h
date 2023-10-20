@@ -117,14 +117,19 @@ class MiniCluster : public MiniClusterBase {
 
   // Start a cluster with a Master and 'num_tablet_servers' TabletServers.
   // All servers run on the loopback interface with ephemeral ports.
-  Status Start(
+  Status StartAsync(
       const std::vector<tserver::TabletServerOptions>& extra_tserver_options =
-      std::vector<tserver::TabletServerOptions>());
+          std::vector<tserver::TabletServerOptions>());
 
   // Like the previous method but performs initialization synchronously, i.e.
   // this will wait for all TS's to be started and initialized. Tests should
   // use this if they interact with tablets immediately after Start();
-  Status StartSync();
+  Status Start(
+      const std::vector<tserver::TabletServerOptions>& extra_tserver_options =
+      std::vector<tserver::TabletServerOptions>());
+
+  // Deprecated. Use Start() instead.
+  Status StartSync() { return Start(); }
 
   // Stop and restart the mini cluster synchronously. The cluster's persistent state will be kept.
   Status RestartSync();
@@ -154,6 +159,14 @@ class MiniCluster : public MiniClusterBase {
   Status AddTServerToBlacklist(const tserver::MiniTabletServer& ts);
   Status AddTServerToLeaderBlacklist(const tserver::MiniTabletServer& ts);
   Status ClearBlacklist();
+
+  Status AddTServerToBlacklist(size_t idx) {
+    return AddTServerToBlacklist(*mini_tablet_server(idx));
+  }
+
+  Status AddTServerToLeaderBlacklist(size_t idx) {
+    return AddTServerToLeaderBlacklist(*mini_tablet_server(idx));
+  }
 
   // If this cluster is configured for a single non-distributed
   // master, return the single master. Exits with a CHECK failure if
@@ -218,8 +231,9 @@ class MiniCluster : public MiniClusterBase {
   // count. Returns Status::TimedOut if the desired count is not achieved
   // within kRegistrationWaitTimeSeconds.
   Status WaitForTabletServerCount(size_t count);
-  Status WaitForTabletServerCount(
-      size_t count, std::vector<std::shared_ptr<master::TSDescriptor>>* descs);
+  Status WaitForTabletServerCount(size_t count,
+                                  std::vector<std::shared_ptr<master::TSDescriptor>>* descs,
+                                  bool live_only = false);
 
   // Wait for all tablet servers to be registered. Returns Status::TimedOut if the desired count is
   // not achieved within kRegistrationWaitTimeSeconds.
@@ -394,13 +408,15 @@ Status WaitForAnySstFiles(
     MiniCluster* cluster, const TabletId& tablet_id,
     MonoDelta timeout = MonoDelta::FromSeconds(5) * kTimeMultiplier);
 
-Status WaitForPeersAreFullyCompacted(
+Status WaitForPeersPostSplitCompacted(
     MiniCluster* cluster, const std::vector<TabletId>& tablet_ids,
     MonoDelta timeout = MonoDelta::FromSeconds(15) * kTimeMultiplier);
 
 Status WaitForTableIntentsApplied(
-    MiniCluster* cluster, const TableId& table_id,
-    MonoDelta timeout = MonoDelta::FromSeconds(30));
+    MiniCluster* cluster, const TableId& table_id, MonoDelta timeout = MonoDelta::FromSeconds(30));
+
+Status WaitForAllIntentsApplied(
+    MiniCluster* cluster, MonoDelta timeout = MonoDelta::FromSeconds(30));
 
 // Activate compaction time logging on existing cluster tablet server.
 // Multiple calls will result in duplicate logging.

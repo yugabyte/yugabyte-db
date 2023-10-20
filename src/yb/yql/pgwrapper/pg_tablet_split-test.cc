@@ -11,6 +11,14 @@
 // under the License.
 //
 
+#include <optional>
+
+#include "yb/client/client_fwd.h"
+#include "yb/client/meta_cache.h"
+#include "yb/client/table.h"
+#include "yb/client/table_info.h"
+#include "yb/client/yb_table_name.h"
+
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -28,6 +36,7 @@
 #include "yb/master/mini_master.h"
 
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/filename.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -36,13 +45,17 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_service.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_error.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/range.h"
 #include "yb/util/string_case.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -51,33 +64,35 @@
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
-DECLARE_int32(ysql_client_read_write_timeout_ms);
+DECLARE_bool(enable_wait_queues);
 DECLARE_bool(ysql_enable_packed_row);
-
-DECLARE_int32(TEST_fetch_next_delay_ms);
-DECLARE_bool(TEST_skip_partitioning_version_validation);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_int32(ysql_client_read_write_timeout_ms);
+DECLARE_int32(ysql_max_write_restart_attempts);
+DECLARE_int64(db_block_size_bytes);
+DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
+
+DECLARE_bool(TEST_asyncrpc_common_response_check_fail_once);
+DECLARE_bool(TEST_pause_before_full_compaction);
+DECLARE_bool(TEST_skip_deleting_split_tablets);
+DECLARE_bool(TEST_skip_partitioning_version_validation);
+DECLARE_bool(TEST_skip_post_split_compaction);
+DECLARE_int32(TEST_fetch_next_delay_ms);
 DECLARE_int32(TEST_partitioning_version);
-DECLARE_bool(ysql_enable_packed_row);
+DECLARE_uint64(TEST_delay_before_get_locks_status_ms);
+DECLARE_uint64(TEST_wait_row_mark_exclusive_count);
 
 using yb::test::Partitioning;
 using namespace std::literals;
 
-namespace yb {
-namespace pgwrapper {
+namespace yb::pgwrapper {
 
 // SQL helpers
 namespace {
 
 // Another name as YbTableProperties is a pointer in ybc_pg_typedefs.h, it may be confusing.
 using PgYbTableProperties = YbTablePropertiesData;
-
-// Returns cell value or default value in case of null.
-template<typename T>
-GetValueResult<T> GetValueOrDefault(PGresult* result, int row, int column,
-    typename GetValueResult<T>::ValueType default_value = {}) {
-  return PQgetisnull(result, row, column) ? default_value : GetValue<T>(result, row, column);
-}
 
 // Fetches rows count with a simple request.
 GetValueResult<PGUint64> FetchTableRowsCount(
@@ -103,8 +118,10 @@ Result<PgYbTableProperties> FetchYbTableProperties(PGConn* conn, Oid table_oid) 
   props.num_tablets = VERIFY_RESULT(GetValue<PGUint64>(res.get(), 0, 0));
   props.num_hash_key_columns = VERIFY_RESULT(GetValue<PGUint64>(res.get(), 0, 1));
   props.is_colocated = VERIFY_RESULT(GetValue<bool>(res.get(), 0, 2));
-  props.tablegroup_oid = VERIFY_RESULT(GetValueOrDefault<PGOid>(res.get(), 0, 3));
-  props.colocation_id = VERIFY_RESULT(GetValueOrDefault<PGOid>(res.get(), 0, 4));
+  props.tablegroup_oid =
+      VERIFY_RESULT(GetValue<std::optional<PGOid>>(res.get(), 0, 3)).value_or(PgOid{});
+  props.colocation_id =
+      VERIFY_RESULT(GetValue<std::optional<PGOid>>(res.get(), 0, 4)).value_or(PgOid{});
   return props;
 }
 
@@ -135,6 +152,9 @@ Status SetEnableIndexScan(PGConn* conn, bool indexscan) {
 using TabletRecordsInfo =
     std::unordered_map<std::string, std::tuple<docdb::KeyBounds, ssize_t>>;
 
+using client::UseCache;
+using client::internal::RemoteTabletPtr;
+
 class PgTabletSplitTest : public PgTabletSplitTestBase {
  protected:
   void SetUp() override {
@@ -160,21 +180,40 @@ class PgTabletSplitTest : public PgTabletSplitTestBase {
       return Status::OK();
     };
 
-    return InvokeSplitsAndWaitForCompletion(
+    return InvokeSplitsAndWaitForDataCompacted(
         table_id, [&selector](const auto& tablets) { return selector(tablets); });
   }
 
-  Status WaitForSplitCompletion(const TableId& table_id, const size_t expected_active_leaders = 2) {
-    return WaitFor(
-        [&]() -> Result<bool> {
-          return ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size() ==
-                 expected_active_leaders;
-        },
-        15s * kTimeMultiplier, "Wait for split completion.");
+  Status WaitForIntentsAppliedAndFlush(tablet::TabletPeer* peer) {
+    SCHECK_NOTNULL(peer);
+    RETURN_NOT_OK(WaitForTableIntentsApplied(cluster_.get(), peer->tablet_metadata()->table_id()));
+    auto tablet = peer->shared_tablet();
+    SCHECK_NOTNULL(tablet);
+    return tablet->Flush(tablet::FlushMode::kSync);
+  }
+
+  Result<RemoteTabletPtr> LookupTabletById(const TabletId& tablet_id,
+                                           const std::shared_ptr<client::YBTable>& table = nullptr,
+                                           UseCache use_cache = client::UseCache::kTrue) {
+    auto deadline = ToCoarse(MonoTime::Now() + MonoDelta::FromSeconds(3 * kTimeMultiplier));
+    auto remote_tablet_future = MakeFuture<Result<RemoteTabletPtr>>([&](auto callback) {
+      client_->LookupTabletById(
+          tablet_id, table, master::IncludeInactive::kFalse, master::IncludeDeleted::kFalse,
+          deadline, [callback] (const auto& lookup_result) {
+            callback(lookup_result);
+          }, use_cache);
+    });
+    return VERIFY_RESULT(remote_tablet_future.get());
+  }
+
+  Result<RemoteTabletPtr> LookupTabletByKey(const std::shared_ptr<client::YBTable>& table,
+                                            const std::string& partition_key) {
+    auto deadline = ToCoarse(MonoTime::Now() + MonoDelta::FromSeconds(3 * kTimeMultiplier));
+    return VERIFY_RESULT(client_->LookupTabletByKeyFuture(table, partition_key, deadline).get());
   }
 };
 
-TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitDuringLongRunningTransaction)) {
+TEST_F(PgTabletSplitTest, SplitDuringLongRunningTransaction) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t(k INT, v INT) SPLIT INTO 1 TABLETS;"));
@@ -264,6 +303,51 @@ TEST_F(PgTabletSplitTest, SplitDuringLongScan) {
   ASSERT_OK(WaitForSplitCompletion(table_id));
 }
 
+#ifndef NDEBUG
+// Repro for https://github.com/yugabyte/yugabyte-db/issues/18387.
+// The test checks that we are getting the expected error if an operation is failing several
+// times in a row: in this case it is expected to get the latest error status.
+// The test reproduces two failure. The first failure is happening after a tablet has been split
+// and the request should be forwarded to the one of its children. The second failure is generated
+// synthetically in AsyncRpcBase::CommonResponseCheck(). Before the fix, the test fails with
+// DCHECK_EQ(response.error_status().size(), 1) in pg_client_session.cc:HandleResponse() due to
+// PgsqlResponsePB::error_status contains two entries because this collection was not cleaned
+// before the retry in the original change (where error_status has been introduced).
+TEST_F(PgTabletSplitTest, CommonResponseCheckFailureAfterOperationRetry) {
+  constexpr auto kNumRows = 100;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS;"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT i, 1 FROM (SELECT generate_series(1, $0) i) t2;", kNumRows));
+
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_EQ(1, peers.size());
+
+  // Flush tablets and make sure SST files have appeared to be able to split.
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(WaitForAnySstFiles(peers.front()));
+
+  ASSERT_OK(SplitSingleTabletAndWaitForActiveChildTablets(table_id));
+
+  yb::SyncPoint::GetInstance()->SetCallBack("BatcherFlushDone:Retry:1", [&](void* arg) {
+    LOG(INFO) << "Batcher retry detected: setting flag to fail retry.";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_common_response_check_fail_once) = true;
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  // Select and stop on retry
+  auto result = conn.Fetch("SELECT * FROM t");
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "CommonResponseCheck test runtime error");
+
+  yb::SyncPoint::GetInstance()->DisableProcessing();
+  yb::SyncPoint::GetInstance()->ClearAllCallBacks();
+}
+#endif // NDEBUG
+
 TEST_F(PgTabletSplitTest, SplitSequencesDataTable) {
   // Test that tablet splitting is blocked on system_postgres.sequences_data table
   auto conn = ASSERT_RESULT(Connect());
@@ -282,7 +366,7 @@ TEST_F(PgTabletSplitTest, SplitSequencesDataTable) {
   }
 }
 
-TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitKeyMatchesPartitionBound)) {
+TEST_F(PgTabletSplitTest, SplitKeyMatchesPartitionBound) {
   // The intent of the test is to check that splitting is not happening when middle split key
   // matches one of the bounds (it actually can match only lower bound). Placed the test at this
   // file as it's hard to create a table of such structure with the functionality inside
@@ -353,17 +437,273 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitKeyMatchesPartitionBound)
   ASSERT_NE(result.status().ToString().find("with partition bounds"), std::string::npos);
 }
 
+// Tests for post split compaction with limit by size and upper bound.
+// TODO(pscompact): add a test to check the impact of background compactions.
+TEST_F(PgTabletSplitTest, PostSplitCompactionWithLimitedSize) {
+  // Lower the limits and enabling packed rows explicitly to have a bit more predictable SST files.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 256;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  // Disable automatic compactions.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      std::numeric_limits<int32>::max();
+
+  // Create custom RocksDB listener to analyse files in a compaction.
+  struct Listener : public rocksdb::EventListener {
+    void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo& ci) override {
+      LOG(INFO) << "Compaction completed: db = " << db
+                << ", job id = " << ci.job_id
+                << ", reason = " << ci.compaction_reason
+                << ", full = "   << ci.is_full_compaction
+                << ", no-op = "  << ci.is_no_op_compaction
+                << ", input files num = " << ci.input_files.size();
+      EXPECT_EQ(ci.compaction_reason, rocksdb::CompactionReason::kPostSplitCompaction);
+      if (ci.is_no_op_compaction) {
+        EXPECT_TRUE(ci.input_files.empty());
+      }
+      CompactedFiles files;
+      files.reserve(ci.input_files.size());
+      for (const auto& name : ci.input_files) {
+        uint64_t file_number = rocksdb::TableFileNameToNumber(name);
+        EXPECT_GT(file_number, 0);
+        files.push_back(file_number);
+      }
+      compactions_per_db[db].push_back(std::move(files));
+      compactions_done.CountDown();
+    }
+
+    using CompactedFiles = std::vector<uint64_t>;
+    using CompactionJob  = std::vector<CompactedFiles>;
+    std::unordered_map<rocksdb::DB*, CompactionJob> compactions_per_db;
+
+    // For each regular db we expect 4 post split compactions with files and 1 empty post split
+    // compaction, which is triggered to signal the whole post split compaction is done (all its
+    // iterations are done). For each intents db we expect 1 empty post split compaction as no
+    // intents are expected but post split compaction is also triggered for intents db. And it is
+    // expected two tablets ara going to post split compact.
+    CountDownLatch compactions_done { 2 * (4 + 1 + 1) };
+  } compactions_listener;
+
+  // Patch tablet options inside tablet manager, will be applied to newly created tablets.
+  for (size_t i = 0 ; i < NumTabletServers(); ++i) {
+    ANNOTATE_IGNORE_WRITES_BEGIN();
+    cluster_->GetTabletManager(i)->TEST_tablet_options()->listeners.push_back(
+        std::shared_ptr<rocksdb::EventListener>(&compactions_listener, [](auto*){}));
+    ANNOTATE_IGNORE_WRITES_END();
+  }
+
+  // Create a table and make a series of write followed by flushed to have several files.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+  auto peers = ListTableActiveTabletPeers(cluster_.get(), table_id);
+  ASSERT_EQ(1, peers.size());
+  // The first and second files contain only new rows.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i, i FROM generate_series(1, 100) AS i"));
+  ASSERT_OK(WaitForIntentsAppliedAndFlush(peers.front().get()));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i, i FROM generate_series(4051, 5000) AS i"));
+  ASSERT_OK(WaitForIntentsAppliedAndFlush(peers.front().get()));
+
+  // The third file contains several new rows and some of existing rows deleted.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i, i FROM generate_series(101, 150) AS i"));
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM t WHERE v < 51"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i, i FROM generate_series(151, 2000) AS i"));
+  ASSERT_OK(WaitForIntentsAppliedAndFlush(peers.front().get()));
+
+  // The forth file contains several new rows and updates.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i, i FROM generate_series(2001, 4000) AS i"));
+  ASSERT_OK(conn.ExecuteFormat("UPDATE t SET v = -1 * k WHERE k < 101"));
+  ASSERT_OK(WaitForIntentsAppliedAndFlush(peers.front().get()));
+
+  // The fifth and sixth files contain several new rows.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i, i FROM generate_series(5001, 5100) AS i"));
+  ASSERT_OK(WaitForIntentsAppliedAndFlush(peers.front().get()));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i, i FROM generate_series(4001, 4050) AS i"));
+  ASSERT_OK(WaitForIntentsAppliedAndFlush(peers.front().get()));
+
+  // The expectation at this point is that files #3 and #4 are the largest files and we're going
+  // to pick the limit higher than max size of #1 + #2 and #5 + #6 but lower than sum of #3 + #4.
+  // Such limit will allow to compact [#1, #2] into one file as well as [#5, #6] into a different
+  // single file. The order of files in the collection is preserved and sorted in accordance with
+  // with the record age, form the newest to oldest files.
+  auto parent_tablet = peers.front()->shared_tablet();
+  const auto parent_files = parent_tablet->regular_db()->GetLiveFilesMetaData();
+  const auto input_limit  = ASSERT_RESULT([&parent_files]() -> Result<uint64_t> {
+    SCHECK_EQ(6, parent_files.size(), IllegalState, "");
+    const uint64_t max_size = parent_files[2].total_size + parent_files[3].total_size;
+    const uint64_t min_size = std::max(parent_files[0].total_size + parent_files[1].total_size,
+                                       parent_files[4].total_size + parent_files[5].total_size);
+    SCHECK_LT(min_size + 1, max_size, IllegalState, "");
+    return min_size + 1;
+  }());
+  LOG(INFO) << "Selecting input size limit to " << input_limit
+            << " should allow to post split into 4 files.";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_post_split_compaction_input_size_threshold_bytes) = input_limit;
+
+  // Prepare result for these 6 files.
+  std::string expected_data = []() {
+    std::stringstream ss;
+    for (auto k = 51; k <= 5100; ++k) {
+      ss << (k != 51 ? DefaultRowSeparator() : "");
+      ss << k << DefaultColumnSeparator();
+      ss << (k > 100 ? k : -k);
+    }
+    return ss.str();
+  }();
+
+  // Fetch all rows and check result.
+  auto actual_data = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t ORDER BY k ASC"));
+  ASSERT_STR_EQ(expected_data, actual_data);
+
+  // Remember the id of the newest file.
+  const auto parent_latest_file_id =
+      parent_tablet->regular_db()->GetLiveFilesMetaData().front().name_id;
+
+  // We want to pause post split compactions to write new data and get new files for children.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = true;
+
+  // Split and check data is expected. Post split compaction is not yet done, it is paused.
+  ASSERT_OK(SplitSingleTabletAndWaitForActiveChildTablets(table_id));
+  actual_data = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t ORDER BY k ASC"));
+  ASSERT_STR_EQ(expected_data, actual_data);
+
+  // Write data which will be hosted in children as a new files. Remember the file number.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t SELECT i, i FROM generate_series(5101, 5200) AS i"));
+  peers = ListTableActiveTabletPeers(cluster_.get(), table_id);
+  ASSERT_EQ(2, peers.size());
+  uint64_t child_latest_file_id = 0;
+  for (const auto& peer : peers) {
+    auto tablet = peer->shared_tablet();
+    ASSERT_OK(WaitForIntentsAppliedAndFlush(peer.get()));
+
+    // Sometime even sync flush is ended a bit earlier the version storage sees a new file. The
+    // latest insert statement must generate a new file for each child, so let's wait for it.
+    uint64_t latest_file_id = tablet->regular_db()->GetLiveFilesMetaData().front().name_id;
+    ASSERT_GT(latest_file_id, parent_latest_file_id);
+    if (child_latest_file_id == 0) {
+      child_latest_file_id = latest_file_id;
+      continue;
+    }
+
+    // Both children should have the same id for the newest file.
+    ASSERT_EQ(latest_file_id, child_latest_file_id);
+  }
+
+  // Update expected data to reflect new rows.
+  expected_data += []() {
+    std::stringstream ss;
+    for (auto k = 5101; k <= 5200; ++k) {
+      ss << DefaultRowSeparator() << k << DefaultColumnSeparator() << k;
+    }
+    return ss.str();
+  }();
+
+  // Resume post split compaciton and wait for a completion.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
+  ASSERT_OK(WaitForPeersPostSplitCompacted(
+      cluster_.get(), { peers.front()->tablet_id(), peers.back()->tablet_id() }));
+
+  // WaitForPeersPostSplitCompacted() is waiting on tablet's meta `parent_data_compacted` field,
+  // which is updated only when regular db instances are compacted as we are not so interested in
+  // intents db compactions. That's why the waiting loop can finish when the latest intents db
+  // post split compaction is still running or not yet started. But in this test we are going to
+  // track all compaction jobs, that's why let's wait for all expected compactions are done.
+  compactions_listener.compactions_done.WaitFor(15s * kTimeMultiplier);
+
+  // Analyse compactions. The order is preserved.
+  // 1) We expected 4 instances (1 regular db and 1 intents db per child).
+  ASSERT_EQ(4, compactions_listener.compactions_per_db.size());
+  for (const auto& jobs : compactions_listener.compactions_per_db) {
+    // 2) We expect at least one job.
+    ASSERT_FALSE(jobs.second.empty());
+    // Get type of DB.
+    bool is_intents = (jobs.first == peers.front()->shared_tablet()->intents_db() ||
+                       jobs.first == peers.back()->shared_tablet()->intents_db());
+    // 3) For intents we expect one empty job.
+    if (is_intents) {
+      ASSERT_EQ(1, jobs.second.size());
+      ASSERT_TRUE(jobs.second.front().empty());
+      continue;
+    }
+    // 4) For each regular db we expect 5 compaction jobs.
+    ASSERT_EQ(5, jobs.second.size());
+    // 5) First job should compact 2 oldest parent files.
+    ASSERT_EQ(2, jobs.second[0].size());
+    ASSERT_EQ(parent_files[5].name_id, jobs.second[0][0]);
+    ASSERT_EQ(parent_files[4].name_id, jobs.second[0][1]);
+    // 6) Second job should compact third oldest parent file.
+    ASSERT_EQ(1, jobs.second[1].size());
+    ASSERT_EQ(parent_files[3].name_id, jobs.second[1][0]);
+    // 7) Third job should compact forth oldest parent file.
+    ASSERT_EQ(1, jobs.second[2].size());
+    ASSERT_EQ(parent_files[2].name_id, jobs.second[2][0]);
+    // 8) Forth job should compact 2 newest parent files.
+    ASSERT_EQ(2, jobs.second[3].size());
+    ASSERT_EQ(parent_files[1].name_id, jobs.second[3][0]);
+    ASSERT_EQ(parent_files[0].name_id, jobs.second[3][1]);
+    // 9) Firth job should is empty job indicating post split compaction is done.
+    ASSERT_TRUE(jobs.second[4].empty());
+  }
+
+  // Check the number of files for each child is expected and the order of files should be
+  // preserved, where file with newer data but with smaller number should still be sorted to the
+  // front of the collection.
+  for (const auto& peer : peers) {
+    const auto files = peer->shared_tablet()->regular_db()->GetLiveFilesMetaData();
+    ASSERT_EQ(5, files.size());
+    for (size_t n = 0; n < files.size(); ++n) {
+      if (n == 0) {
+        ASSERT_EQ(child_latest_file_id, files[n].name_id);
+      } else {
+        ASSERT_LT(child_latest_file_id, files[n].name_id);
+      }
+    }
+  }
+
+  // Make sure we still have the expected data.
+  actual_data = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t ORDER BY k ASC"));
+  ASSERT_STR_EQ(expected_data, actual_data);
+}
+
+TEST_F(PgTabletSplitTest, TestMetaCacheLookupsPostSplit) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+
+  auto conn = ASSERT_RESULT(Connect());
+  const auto table_name = "foo";
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT, v INT) SPLIT INTO 1 TABLETS;", table_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, 10000), 0;", table_name));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(table_name));
+  auto tablets = ListTabletIdsForTable(cluster_.get(), table_id);
+  ASSERT_EQ(tablets.size(), 1);
+  auto parent_tablet_id = *tablets.begin();
+
+  ASSERT_OK(WaitForAnySstFiles(cluster_.get(), parent_tablet_id));
+
+  ASSERT_OK(SplitSingleTablet(table_id));
+  ASSERT_OK(WaitForSplitCompletion(table_id));
+
+  // The below resets the partition map and registers child tablets. The first child tablet is
+  // registered against an empty partition start key.
+  auto table = ASSERT_RESULT(client_->OpenTable(table_id));
+  table->MarkPartitionsAsStale();
+  auto remote_child = ASSERT_RESULT(LookupTabletByKey(table, ""));
+  ASSERT_NE(remote_child->tablet_id(), parent_tablet_id);
+  // LookupTabletById should still return the split parent location info, and shouldn't overwrite
+  // entries in the partition map.
+  auto remote_parent = ASSERT_RESULT(LookupTabletById(parent_tablet_id, table, UseCache::kFalse));
+  ASSERT_EQ(remote_parent->tablet_id(), parent_tablet_id);
+  // Execute another LookupTabletByKey to confirm the the above LookupTabletById didn't overwrite
+  // the partition map cache.
+  remote_child = ASSERT_RESULT(LookupTabletByKey(table, ""));
+  ASSERT_NE(remote_child->tablet_id(), parent_tablet_id);
+}
+
 class PgPartitioningVersionTest :
     public PgTabletSplitTest,
     public testing::WithParamInterface<uint32_t> {
  protected:
   using PartitionBounds = std::pair<std::string, std::string>;
-
-  void SetUp() override {
-    // Additional disabling is required due to initdb timeout in TSAN mode.
-    YB_SKIP_TEST_IN_TSAN();
-    PgTabletSplitTest::SetUp();
-  }
 
   Status SplitTableWithSingleTablet(
       const std::string& table_name, uint32_t expected_partitioning_version) {
@@ -381,7 +721,7 @@ class PgPartitioningVersionTest :
 
     // Make sure SST files appear to be able to split
     RETURN_NOT_OK(WaitForAnySstFiles(cluster_.get(), peer->tablet_id()));
-    return InvokeSplitTabletRpcAndWaitForSplitCompleted(peer->tablet_id());
+    return InvokeSplitTabletRpcAndWaitForDataCompacted(peer->tablet_id());
   }
 
   Result<TabletRecordsInfo> GetTabletRecordsInfo(
@@ -631,7 +971,7 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
       LOG(INFO) << "Split key: " << AsString(split_key);
 
       // Split index table.
-      ASSERT_OK(InvokeSplitTabletRpcAndWaitForSplitCompleted(parent_peer->tablet_id()));
+      ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(parent_peer->tablet_id()));
       ASSERT_EQ(kNumRows, ASSERT_RESULT(FetchTableRowsCount(&conn, table_name)));
 
       // Keep current numbers of records persisted in tablets for further analyses.
@@ -742,7 +1082,7 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
     LOG(INFO) << "Split key values: t0 = \"" << idx1_t0 << "\", i0 = " << idx1_i0;
 
     // Split unique index table (idx1).
-    ASSERT_OK(InvokeSplitTabletRpcAndWaitForSplitCompleted(parent_peer->tablet_id()));
+    ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(parent_peer->tablet_id()));
     ASSERT_EQ(kNumRows, ASSERT_RESULT(FetchTableRowsCount(&conn, table_name)));
 
     // Turn compaction off to make all subsequent deletes are kept in regular db.
@@ -873,7 +1213,7 @@ class PgRangePartitionedTableSplitTest : public PgTabletSplitTest {
   }
 };
 
-TEST_F(PgRangePartitionedTableSplitTest, YB_DISABLE_TEST_IN_TSAN(SelectMinMaxAfterSplit)) {
+TEST_F(PgRangePartitionedTableSplitTest, SelectMinMaxAfterSplit) {
   constexpr auto kNumRows = 4000;
   constexpr auto kNumSplits = 3;
   const auto table_name = "t";
@@ -900,7 +1240,7 @@ TEST_F(PgRangePartitionedTableSplitTest, YB_DISABLE_TEST_IN_TSAN(SelectMinMaxAft
   }
 }
 
-TEST_F(PgRangePartitionedTableSplitTest, YB_DISABLE_TEST_IN_TSAN(SelectRangeAfterManualSplit)) {
+TEST_F(PgRangePartitionedTableSplitTest, SelectRangeAfterManualSplit) {
   constexpr auto kNumRows = 4000;
   constexpr auto kNumSplits = 3;
   const auto table_name = "t";
@@ -930,8 +1270,7 @@ TEST_F(PgRangePartitionedTableSplitTest, YB_DISABLE_TEST_IN_TSAN(SelectRangeAfte
   }
 }
 
-TEST_F(PgRangePartitionedTableSplitTest,
-       YB_DISABLE_TEST_IN_TSAN(SelectMiddleRangeAfterManualSplit)) {
+TEST_F(PgRangePartitionedTableSplitTest, SelectMiddleRangeAfterManualSplit) {
   // The intent of the test is to select a range that covers only a middle tablet, and to make sure
   // we get the expected result when middle tablet has been split.
   constexpr size_t kNumRows = 4000;
@@ -964,7 +1303,7 @@ TEST_F(PgRangePartitionedTableSplitTest,
       // Wrapping into a block to unlock tablet after parsing is done.
       {
         const auto middle_tablet = (++tablets.begin())->second;
-        const auto& partition = middle_tablet->LockForRead()->pb.partition();
+        const auto partition = middle_tablet->LockForRead()->pb.partition();
         ASSERT_TRUE(partition.has_partition_key_start());
         ASSERT_TRUE(partition.has_partition_key_end());
         partition_start = ASSERT_RESULT(parse_partition_key(partition.partition_key_start()));
@@ -977,7 +1316,7 @@ TEST_F(PgRangePartitionedTableSplitTest,
       }
 
       // Split middle tablet
-      ASSERT_OK(InvokeSplitsAndWaitForCompletion(
+      ASSERT_OK(InvokeSplitsAndWaitForDataCompacted(
           table_id, TabletSelector(1, SelectMiddleTabletPolicy())));
 
       // Prepare expected result.
@@ -1005,7 +1344,7 @@ class PgPartitioningTest :
     public testing::WithParamInterface<Partitioning> {
 };
 
-TEST_P(PgPartitioningTest, YB_DISABLE_TEST_IN_TSAN(PgGatePartitionsListAfterSplit)) {
+TEST_P(PgPartitioningTest, PgGatePartitionsListAfterSplit) {
   constexpr auto kNumRows = 2000U;
   constexpr auto kSplitsNumber = 3U;
   const std::string table_name = "test";
@@ -1050,7 +1389,7 @@ TEST_P(PgPartitioningTest, YB_DISABLE_TEST_IN_TSAN(PgGatePartitionsListAfterSpli
     expected_clause << "SPLIT AT VALUES (";
     bool need_comma = false;
     for (size_t n = 0; n < tablets.size(); ++n) {
-      const auto& partition = tablets[n]->LockForRead()->pb.partition();
+      const auto partition = tablets[n]->LockForRead()->pb.partition();
       if (partition.has_partition_key_start()) {
         if (partition.partition_key_start().empty()) {
           continue;
@@ -1082,6 +1421,156 @@ TEST_P(PgPartitioningTest, YB_DISABLE_TEST_IN_TSAN(PgGatePartitionsListAfterSpli
   }
 }
 
+class PgLocksTabletSplitTest : public PgTabletSplitTest {
+ protected:
+  Result<PGConn> InitConnection(const std::string& table, int num_keys_to_lock) {
+    const auto num_rows_str = "10000";
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT, v INT) SPLIT INTO 1 TABLETS", table));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT generate_series(1, $1), 0", table, num_rows_str));
+    RETURN_NOT_OK(cluster_->FlushTablets());
+
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    for (auto i = 1 ; i <= num_keys_to_lock ; i++) {
+      RETURN_NOT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=$1 FOR UPDATE", table, i));
+    }
+    return conn;
+  }
+
+  static constexpr int kMinTxnAgeSeconds = 1;
+};
+
+TEST_F(PgLocksTabletSplitTest, TestPgLocks) {
+  const auto table = "foo";
+  const auto num_keys_to_lock = 1;
+  auto conn = ASSERT_RESULT(InitConnection(table, num_keys_to_lock));
+
+  SleepFor(kMinTxnAgeSeconds * 1s * kTimeMultiplier);
+  auto locks_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(locks_conn.ExecuteFormat("SET yb_locks_min_txn_age='$0s'", kMinTxnAgeSeconds));
+  ASSERT_EQ(ASSERT_RESULT(locks_conn.FetchValue<int64>(
+      "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks")), 1);
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(table));
+  ASSERT_OK(SplitSingleTablet(table_id));
+  ASSERT_OK(WaitForSplitCompletion(table_id));
+
+  SleepFor(FLAGS_cleanup_split_tablets_interval_sec * 2s * kTimeMultiplier);
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return ListTabletIdsForTable(cluster_.get(), table_id).size() == 2;
+  }, 5s * kTimeMultiplier, "Wait for clean up of split parent tablet."));
+
+  ASSERT_EQ(ASSERT_RESULT(locks_conn.FetchValue<int64>(
+      "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks")), 1);
+  ASSERT_EQ(ASSERT_RESULT(locks_conn.FetchValue<int64>(
+      "SELECT COUNT(*) FROM pg_locks")), num_keys_to_lock * 2);
+}
+
+TEST_F(PgLocksTabletSplitTest, TestPgLocksSplitAfterFetchingParentLocation) {
+  const auto table = "foo";
+  const auto num_keys_to_lock = 1;
+  auto conn = ASSERT_RESULT(InitConnection(table, num_keys_to_lock));
+
+  SleepFor(kMinTxnAgeSeconds * 1s * kTimeMultiplier);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_before_get_locks_status_ms) =
+      15 * kTimeMultiplier * 1s / 1ms;
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    auto locks_conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(locks_conn.ExecuteFormat("SET yb_locks_min_txn_age='$0s'", kMinTxnAgeSeconds));
+    auto num_txns = VERIFY_RESULT(locks_conn.FetchValue<int64>(
+        "SELECT COUNT(DISTINCT(ybdetails->>'transactionid')) FROM pg_locks"));
+    RSTATUS_DCHECK_EQ(num_txns, 1, IllegalState,
+                      Format("Expected to see $0 (vs $1) transactions in pg_locks", 1, num_txns));
+    auto num_locks = VERIFY_RESULT(locks_conn.FetchValue<int64>(
+        "SELECT COUNT(*) FROM pg_locks"));
+    RSTATUS_DCHECK_EQ(num_locks, 2, IllegalState,
+                      Format("Expected to see $0 (vs $1) locks", 2 * num_keys_to_lock, num_locks));
+    return Status::OK();
+  });
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName(table));
+  ASSERT_OK(SplitSingleTablet(table_id));
+  ASSERT_OK(WaitForSplitCompletion(table_id));
+  ASSERT_OK(status_future.get());
+}
+
+class PgPartitioningWaitQueuesOffTest : public PgPartitioningTest {
+  void SetUp() override {
+    // Disable wait queues to fail faster in case of transactions conflict instead of waiting until
+    // request times out.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    // Fail txn early in case of conflict to reduce test runtime.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_write_restart_attempts) = 0;
+    PgPartitioningTest::SetUp();
+  }
+};
+
+TEST_P(PgPartitioningWaitQueuesOffTest, RowLockWithSplit) {
+  constexpr auto* kTableName = "test_table";
+
+  // At least one key should go into second child tablet after split to test the routing behavior.
+  constexpr auto kUpdateKeyMin = 1;
+  constexpr auto kUpdateKeyMax = 10;
+  const auto keys = RangeObject<int>(kUpdateKeyMin, kUpdateKeyMax + 1, /* step = */ 1);
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  const auto* create_table_template = [partitioning = GetParam()] {
+    switch (partitioning) {
+      case Partitioning::kHash:
+        return "CREATE TABLE $0(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS";
+      case Partitioning::kRange:
+        return "CREATE TABLE $0(k INT, v INT, PRIMARY KEY (k ASC))";
+    }
+    FATAL_INVALID_ENUM_VALUE(Partitioning, partitioning);
+  }();
+
+  ASSERT_OK(conn.ExecuteFormat(create_table_template, kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(-100, 100), 0", kTableName));
+  ASSERT_OK(cluster_->FlushTablets());
+
+#ifndef NDEBUG
+  auto& sync_point = *SyncPoint::GetInstance();
+  sync_point.LoadDependency({
+      {"TabletServiceImpl::Read::RowMarkExclusive:1", "RowLockWithSplitTest::BeforeSplit"},
+      {"RowLockWithSplitTest::AfterSplit", "TabletServiceImpl::Read::RowMarkExclusive:2"},
+  });
+  sync_point.EnableProcessing();
+  auto sync_point_guard = ScopeExit([&sync_point] { sync_point.DisableProcessing(); });
+#endif // NDEBUG
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_wait_row_mark_exclusive_count) = keys.size();
+
+  std::vector<PGConn> select_connections;
+  select_connections.reserve(keys.size());
+  {
+    TestThreadHolder select_threads;
+    for (const auto& key : keys) {
+      select_connections.push_back(ASSERT_RESULT(Connect()));
+      select_threads.AddThreadFunctor([&conn = select_connections.back(), kTableName, key] {
+        ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=$1 FOR UPDATE", kTableName, key));
+      });
+    }
+
+    const auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
+    TEST_SYNC_POINT("RowLockWithSplitTest::BeforeSplit");
+    ASSERT_OK(SplitSingleTabletAndWaitForActiveChildTablets(table_id));
+    TEST_SYNC_POINT("RowLockWithSplitTest::AfterSplit");
+  }
+
+  LOG(INFO) << "Running updates";
+  for (const auto& key : keys) {
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    const auto update_status = conn.ExecuteFormat("UPDATE $0 SET v=10 WHERE k=$1", kTableName, key);
+    ASSERT_NOK(update_status);
+    ASSERT_STR_CONTAINS(
+        update_status.ToString(), "could not serialize access due to concurrent update");
+    ASSERT_OK(conn.RollbackTransaction());
+  }
+}
+
 namespace {
 
 template <typename T>
@@ -1099,8 +1588,13 @@ INSTANTIATE_TEST_CASE_P(
 
 INSTANTIATE_TEST_CASE_P(
     PgTabletSplitTest,
+    PgPartitioningWaitQueuesOffTest,
+    ::testing::ValuesIn(test::kPartitioningArray),
+    TestParamToString<test::Partitioning>);
+
+INSTANTIATE_TEST_CASE_P(
+    PgTabletSplitTest,
     PgPartitioningVersionTest,
     ::testing::Values(0U, 1U));
 
-} // namespace pgwrapper
-} // namespace yb
+} // namespace yb::pgwrapper

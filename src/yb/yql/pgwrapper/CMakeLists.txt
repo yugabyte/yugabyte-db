@@ -19,6 +19,7 @@ set(PGWRAPPER_SRCS
 set(PGWRAPPER_LIBS
     yb_common
     yb_pggate_flags
+    yb_process_wrapper
     yb_util)
 ADD_YB_LIBRARY(yb_pgwrapper
                SRCS ${PGWRAPPER_SRCS}
@@ -61,7 +62,9 @@ set(PG_WRAPPER_TEST_BASE_SRCS
     libpq_test_base.cc
     pg_mini_test_base.cc
     pg_tablet_split_test_base.cc
-    pg_wrapper_test_base.cc)
+    pg_test_utils.cc
+    pg_wrapper_test_base.cc
+    pg_ddl_atomicity_test_base.cc)
 set(PG_WRAPPER_TEST_BASE_DEPS
     pq_utils
     yb_client_test_util)
@@ -108,8 +111,10 @@ ADD_YB_TEST(alter_table_with_concurrent_txn-test)
 ADD_YB_TEST(colocation-test)
 ADD_YB_TEST(geo_transactions-test)
 ADD_YB_TEST(geo_transactions_promotion-test)
+ADD_YB_TEST(pg_alter_add_column_default-test)
 ADD_YB_TEST(pg_auto_analyze-test)
 ADD_YB_TEST(pg_backends-test)
+ADD_YB_TEST(pg_misc_conflicts-test)
 ADD_YB_TEST(pg_cache_refresh-test)
 ADD_YB_TEST(pg_cancel_transaction-test)
 ADD_YB_TEST(pg_catalog_perf-test)
@@ -130,16 +135,21 @@ ADD_YB_TEST(pg_load_balancer-test)
 ADD_YB_TEST(pg_master_failover-test)
 ADD_YB_TEST(pg_mini-test)
 ADD_YB_TEST(pg_namespace-test)
-ADD_YB_TEST(pg_old_txn-test)
+ADD_YB_TEST(pg_namespace_master_restart-test)
 ADD_YB_TEST(pg_on_conflict-test)
 ADD_YB_TEST(pg_op_buffering-test)
 ADD_YB_TEST(pg_packed_row-test)
+ADD_YB_TEST(pg_read_time-test)
 ADD_YB_TEST(pg_row_lock-test)
+ADD_YB_TEST(pg_server_restart-test)
+ADD_YB_TEST(pg_shared_mem-test)
 ADD_YB_TEST(pg_single_tserver-test)
+ADD_YB_TEST(pg_stat_activity-test)
 ADD_YB_TEST(pg_table_size-test)
 ADD_YB_TEST(pg_tablet_shutdown-test)
 ADD_YB_TEST(pg_tablet_split-test)
 ADD_YB_TEST(pg_txn-test)
+ADD_YB_TEST(pg_txn_status-test)
 ADD_YB_TEST(pg_wait_on_conflict-test)
 ADD_YB_TEST(pg_wrapper-test)
 

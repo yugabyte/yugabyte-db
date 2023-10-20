@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -23,12 +24,14 @@ import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse.PresetThrottleValues;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
@@ -40,7 +43,9 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -50,6 +55,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -603,9 +609,10 @@ public class YbcManager {
   public Pair<String, String> getYbcPackageDetailsForNode(Universe universe, NodeDetails node) {
     Cluster nodeCluster = universe.getCluster(node.placementUuid);
     String ybSoftwareVersion = nodeCluster.userIntent.ybSoftwareVersion;
+    Architecture arch = universe.getUniverseDetails().arch;
     String ybServerPackage =
         nodeManager.getYbServerPackageName(
-            ybSoftwareVersion, getFirstRegion(universe, Objects.requireNonNull(nodeCluster)));
+            ybSoftwareVersion, getFirstRegion(universe, Objects.requireNonNull(nodeCluster)), arch);
     return Util.getYbcPackageDetailsFromYbServerPackage(ybServerPackage);
   }
 
@@ -637,10 +644,16 @@ public class YbcManager {
     ReleaseManager.ReleaseMetadata releaseMetadata =
         releaseManager.getYbcReleaseByVersion(
             ybcVersion, ybcPackageDetails.getFirst(), ybcPackageDetails.getSecond());
-    String ybcServerPackage =
-        releaseMetadata.getFilePath(
-            getFirstRegion(
-                universe, Objects.requireNonNull(universe.getCluster(node.placementUuid))));
+    Architecture arch = universe.getUniverseDetails().arch;
+    String ybcServerPackage;
+    if (arch != null) {
+      ybcServerPackage = releaseMetadata.getFilePath(arch);
+    } else {
+      ybcServerPackage =
+          releaseMetadata.getFilePath(
+              getFirstRegion(
+                  universe, Objects.requireNonNull(universe.getCluster(node.placementUuid))));
+    }
     if (StringUtils.isBlank(ybcServerPackage)) {
       throw new RuntimeException("Ybc package cannot be empty.");
     }
@@ -687,26 +700,46 @@ public class YbcManager {
   }
 
   /**
-   * Returns a YbcClient <-> node-ip pair if available, after doing a ping check. If nodeIp provided
-   * in params is non-null, will attempt to create client with only that node-ip. Throws
-   * RuntimeException if client creation fails.
+   * Return YBC client and corresponding node-ip pair if available. If enablePreference is set, the
+   * order of trying nodes with YBC ping check is pre-defined. The highest preference is given to
+   * master leader, followed by same AZ nodes, followed by same region nodes.
    *
-   * @param nodeIp
-   * @param universeUUID
+   * @param universeUUID The universe UUID
+   * @param enablePreference If trying nodes for YBC ping check should be based on preference
+   * @return The YBC client - node_ip pair
    */
   public Pair<YbcClient, String> getAvailableYbcClientIpPair(
-      UUID universeUUID, List<String> nodeIPList) {
+      UUID universeUUID, boolean enablePreference) {
+    if (enablePreference) {
+      Universe universe = Universe.getOrBadRequest(universeUUID);
+      List<String> nodeIPsWithPreference = getPreferenceBasedYBCNodeIPsList(universe);
+      String certFile = universe.getCertificateNodetoNode();
+      int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
+      return getAvailableYbcClientIpPair(nodeIPsWithPreference, ybcPort, certFile);
+    } else {
+      return getAvailableYbcClientIpPair(universeUUID, null);
+    }
+  }
+
+  /**
+   * Returns a YbcClient <-> node-ip pair if available, after doing a ping check. If
+   * nodeIPListOverride provided in params is non-null, will attempt to create client with only that
+   * node-ip. Throws RuntimeException if client creation fails.
+   *
+   * @param universeUUID
+   * @param nodeIPListOverride
+   */
+  public Pair<YbcClient, String> getAvailableYbcClientIpPair(
+      UUID universeUUID, @Nullable List<String> nodeIPListOverride) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     String certFile = universe.getCertificateNodetoNode();
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     List<String> nodeIPs = new ArrayList<>();
-    if (CollectionUtils.isNotEmpty(nodeIPList)) {
-      nodeIPs = nodeIPList;
+    if (CollectionUtils.isNotEmpty(nodeIPListOverride)) {
+      nodeIPs = nodeIPListOverride;
     } else {
       nodeIPs.addAll(
-          universe
-              .getLiveTServersInPrimaryCluster()
-              .parallelStream()
+          universe.getRunningTserversInPrimaryCluster().parallelStream()
               .map(nD -> nD.cloudInfo.private_ip)
               .collect(Collectors.toList()));
     }
@@ -716,8 +749,7 @@ public class YbcManager {
   public Pair<YbcClient, String> getAvailableYbcClientIpPair(
       List<String> nodeIps, int ybcPort, String certFile) {
     Optional<Pair<YbcClient, String>> clientIpPair =
-        nodeIps
-            .parallelStream()
+        nodeIps.stream()
             .map(
                 ip -> {
                   YbcClient ybcClient = ybcClientService.getNewClient(ip, ybcPort, certFile);
@@ -726,11 +758,55 @@ public class YbcManager {
                       : null;
                 })
             .filter(Objects::nonNull)
-            .findAny();
+            .findFirst();
     if (!clientIpPair.isPresent()) {
       throw new RuntimeException("YB-Controller server unavailable");
     }
     return clientIpPair.get();
+  }
+
+  public static List<String> getPreferenceBasedYBCNodeIPsList(Universe universe) {
+    return getPreferenceBasedYBCNodeIPsList(universe, new HashSet<>());
+  }
+
+  public static List<String> getPreferenceBasedYBCNodeIPsList(
+      Universe universe, Set<String> excludeNodeIPs) {
+    NodeDetails leaderMasterNodeDetails = universe.getMasterLeaderNode();
+    List<String> nodesToCheckInPreference = new ArrayList<>();
+    String masterLeaderIP = leaderMasterNodeDetails.cloudInfo.private_ip;
+    // Add master leader to first preference.
+    if (leaderMasterNodeDetails.isTserver && !excludeNodeIPs.contains(masterLeaderIP)) {
+      nodesToCheckInPreference.add(masterLeaderIP);
+    }
+
+    // Give second preference to same AZ nodes.
+    Set<String> sameAZNodes =
+        universe.getRunningTserversInPrimaryCluster().stream()
+            .filter(
+                nD ->
+                    !nD.cloudInfo.private_ip.equals(masterLeaderIP)
+                        && !excludeNodeIPs.contains(masterLeaderIP)
+                        && nD.getAzUuid().equals(leaderMasterNodeDetails.getAzUuid()))
+            .map(nD -> nD.cloudInfo.private_ip)
+            .collect(Collectors.toSet());
+    nodesToCheckInPreference.addAll(sameAZNodes);
+
+    // Give third preference to same region nodes.
+    List<String> regionSortedList =
+        universe.getRunningTserversInPrimaryCluster().stream()
+            .filter(
+                nD ->
+                    !nD.cloudInfo.private_ip.equals(masterLeaderIP)
+                        && !excludeNodeIPs.contains(masterLeaderIP)
+                        && !sameAZNodes.contains(nD.cloudInfo.private_ip))
+            .sorted(
+                Comparator.<NodeDetails, Boolean>comparing(
+                        nD -> nD.getRegion().equals(leaderMasterNodeDetails.getRegion()))
+                    .reversed())
+            .map(nD -> nD.cloudInfo.private_ip)
+            .collect(Collectors.toList());
+    nodesToCheckInPreference.addAll(regionSortedList);
+    return nodesToCheckInPreference;
   }
 
   public YbcClient getYbcClient(List<String> nodeIps, int ybcPort, String certFile) {
@@ -765,8 +841,37 @@ public class YbcManager {
             OsType.LINUX.toString().toLowerCase(),
             Architecture.x86_64.name().toLowerCase());
     String ybcPackage = releaseMetadata.filePath;
+    UUID providerUUID =
+        UUID.fromString(universe.getCluster(nodeDetails.placementUuid).userIntent.provider);
+    Provider provider =
+        Provider.get(Customer.get(universe.getCustomerId()).getUuid(), providerUUID);
+    boolean listenOnAllInterfaces =
+        confGetter.getConfForScope(provider, ProviderConfKeys.ybcListenOnAllInterfacesK8s);
+    int hardwareConcurrency;
+    UserIntent userIntent =
+        universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid).userIntent;
+    if (!confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+      hardwareConcurrency =
+          (int)
+              Math.ceil(
+                  InstanceType.getOrBadRequest(
+                          provider.getUuid(), nodeDetails.cloudInfo.instance_type)
+                      .getNumCores());
+    } else {
+      if (userIntent.tserverK8SNodeResourceSpec != null) {
+        hardwareConcurrency = (int) Math.ceil(userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+      } else {
+        hardwareConcurrency = 2;
+        LOG.warn(
+            "Could not determine hardware concurrency based on resource spec, assuming default");
+      }
+    }
     Map<String, String> ybcGflags =
-        GFlagsUtil.getYbcFlagsForK8s(universe.getUniverseUUID(), nodeDetails.nodeName);
+        GFlagsUtil.getYbcFlagsForK8s(
+            universe.getUniverseUUID(),
+            nodeDetails.nodeName,
+            listenOnAllInterfaces,
+            hardwareConcurrency);
     try {
       Path confFilePath =
           fileHelperService.createTempFile(

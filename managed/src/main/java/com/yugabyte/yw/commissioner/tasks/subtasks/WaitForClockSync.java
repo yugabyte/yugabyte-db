@@ -13,10 +13,12 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
@@ -82,6 +84,11 @@ public class WaitForClockSync extends NodeTaskBase {
               + taskParams().nodeName
               + " not found in universe "
               + taskParams().getUniverseUUID());
+    }
+    UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
+    if (cluster.userIntent.providerType == Common.CloudType.local) {
+      log.info("Skipping sync for local provider");
+      return;
     }
 
     // It ensures that the chrony service has started, and the last system clock offset is applied

@@ -4,12 +4,14 @@ package com.yugabyte.yw.common;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -49,7 +51,6 @@ import play.libs.Json;
 public class NodeUniverseManager extends DevopsBase {
   private static final ShellProcessContext DEFAULT_CONTEXT =
       ShellProcessContext.builder().logCmdOutput(true).build();
-  public static final long YSQL_COMMAND_DEFAULT_TIMEOUT_SEC = TimeUnit.MINUTES.toSeconds(3);
   public static final String NODE_ACTION_SSH_SCRIPT = "bin/run_node_action.py";
   public static final String CERTS_DIR = "/yugabyte-tls-config";
   public static final String K8S_CERTS_DIR = "/opt/certs/yugabyte";
@@ -61,6 +62,7 @@ public class NodeUniverseManager extends DevopsBase {
   @Inject NodeAgentClient nodeAgentClient;
   @Inject NodeAgentPoller nodeAgentPoller;
   @Inject RuntimeConfGetter confGetter;
+  @Inject LocalNodeManager localNodeManager;
 
   @Override
   protected String getCommandType() {
@@ -325,11 +327,38 @@ public class NodeUniverseManager extends DevopsBase {
 
   public ShellResponse runYsqlCommand(
       NodeDetails node, Universe universe, String dbName, String ysqlCommand) {
-    return runYsqlCommand(node, universe, dbName, ysqlCommand, YSQL_COMMAND_DEFAULT_TIMEOUT_SEC);
+    return runYsqlCommand(
+        node,
+        universe,
+        dbName,
+        ysqlCommand,
+        confGetter.getConfForScope(universe, UniverseConfKeys.ysqlTimeoutSecs));
   }
 
   public ShellResponse runYsqlCommand(
       NodeDetails node, Universe universe, String dbName, String ysqlCommand, long timeoutSec) {
+    boolean authEnabled =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled();
+    return runYsqlCommand(
+        node,
+        universe,
+        dbName,
+        ysqlCommand,
+        confGetter.getConfForScope(universe, UniverseConfKeys.ysqlTimeoutSecs),
+        authEnabled);
+  }
+
+  public ShellResponse runYsqlCommand(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      String ysqlCommand,
+      long timeoutSec,
+      boolean authEnabled) {
+    Cluster curCluster = universe.getCluster(node.placementUuid);
+    if (curCluster.userIntent.providerType == CloudType.local) {
+      return localNodeManager.runYsqlCommand(node, universe, dbName, ysqlCommand, timeoutSec);
+    }
     List<String> command = new ArrayList<>();
     command.add("bash");
     command.add("-c");
@@ -341,7 +370,7 @@ public class NodeUniverseManager extends DevopsBase {
     }
     bashCommand.add(getYbHomeDir(node, universe) + "/tserver/bin/ysqlsh");
     bashCommand.add("-h");
-    if (cluster.userIntent.isYSQLAuthEnabled()) {
+    if (authEnabled) {
       bashCommand.add(
           String.format(
               "$(dirname \"$(ls -t %s/.yb.*/.s.PGSQL.* | head -1)\")", customTmpDirectory));
@@ -352,8 +381,10 @@ public class NodeUniverseManager extends DevopsBase {
     bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
     bashCommand.add("-U");
     bashCommand.add("yugabyte");
-    bashCommand.add("-d");
-    bashCommand.add(dbName);
+    if (StringUtils.isNotEmpty(dbName)) {
+      bashCommand.add("-d");
+      bashCommand.add(dbName);
+    }
     bashCommand.add("-c");
     // Escaping double quotes and $ at first.
     String escapedYsqlCommand = ysqlCommand.replace("\"", "\\\"");
@@ -437,9 +468,11 @@ public class NodeUniverseManager extends DevopsBase {
       if (cluster.userIntent.imageBundleUUID != null) {
         imageBundleUUID = cluster.userIntent.imageBundleUUID;
       } else {
-        ImageBundle bundle = ImageBundle.getDefaultForProvider(provider.getUuid());
-        if (bundle != null) {
-          imageBundleUUID = bundle.getUuid();
+        List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
+        if (bundles.size() > 0) {
+          Architecture arch = universe.getUniverseDetails().arch;
+          ImageBundle defaultBundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
+          imageBundleUUID = defaultBundle.getUuid();
         }
       }
       if (imageBundleUUID != null) {
@@ -565,7 +598,7 @@ public class NodeUniverseManager extends DevopsBase {
     findCommandParams.add(fileType);
     findCommandParams.add(remoteTempFilePath);
 
-    ShellResponse shellOutput = runScript(node, universe, NODE_UTILS_SCRIPT, findCommandParams);
+    runScript(node, universe, NODE_UTILS_SCRIPT, findCommandParams);
     // Download the files list.
     copyFileFromNode(node, universe, remoteTempFilePath, localTempFilePath);
 
@@ -573,14 +606,14 @@ public class NodeUniverseManager extends DevopsBase {
     List<String> removeCommand = new ArrayList<>();
     removeCommand.add("rm");
     removeCommand.add(remoteTempFilePath);
-    shellOutput = runCommand(node, universe, removeCommand);
+    runCommand(node, universe, removeCommand);
 
     // Populate the text file into array.
     List<String> nodeFilePathStrings = Arrays.asList();
     try {
       nodeFilePathStrings = Files.readAllLines(Paths.get(localTempFilePath));
     } catch (IOException e) {
-      e.printStackTrace();
+      log.error("Error occurred", e);
     } finally {
       FileUtils.deleteQuietly(new File(localTempFilePath));
     }

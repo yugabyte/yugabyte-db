@@ -20,8 +20,8 @@ namespace master {
 
 #define YB_MASTER_BACKUP_SERVICE_METHODS \
   (CreateSnapshot)(ListSnapshots)(ListSnapshotRestorations)(RestoreSnapshot)(DeleteSnapshot) \
-  (ImportSnapshotMeta)(CreateSnapshotSchedule)(ListSnapshotSchedules)(DeleteSnapshotSchedule) \
-  (EditSnapshotSchedule)(RestoreSnapshotSchedule)
+  (AbortSnapshotRestore)(ImportSnapshotMeta)(CreateSnapshotSchedule)(ListSnapshotSchedules) \
+  (DeleteSnapshotSchedule)(EditSnapshotSchedule)(RestoreSnapshotSchedule)
 
 #define YB_MASTER_BACKUP_SERVICE_METHOD_DECLARE(r, data, elem) \
   void elem( \

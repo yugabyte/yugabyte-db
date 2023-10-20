@@ -68,6 +68,7 @@
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 using std::future;
 using std::pair;
@@ -107,11 +108,11 @@ class PgLibPqTest : public LibPqTestBase {
 
   void TestMultiBankAccount(IsolationLevel isolation, const bool colocation = false);
 
-  void DoIncrement(int key, int num_increments, IsolationLevel isolation);
+  void DoIncrement(int key, int num_increments, IsolationLevel isolation, bool lock_first = false);
 
   void TestParallelCounter(IsolationLevel isolation);
 
-  void TestConcurrentCounter(IsolationLevel isolation);
+  void TestConcurrentCounter(IsolationLevel isolation, bool lock_first = false);
 
   void TestOnConflict(bool kill_master, const MonoDelta& duration);
 
@@ -121,7 +122,8 @@ class PgLibPqTest : public LibPqTestBase {
       const string database_name, const string tablegroup_name, yb::pgwrapper::PGConn* conn);
 
   void PerformSimultaneousTxnsAndVerifyConflicts(
-      const string database_name, bool colocated, const string tablegroup_name = "");
+      const string database_name, bool colocated, const string tablegroup_name = "",
+      const string query_statement = "SELECT * FROM t FOR UPDATE");
 
   void FlushTablesAndPerformBootstrap(
       const string database_name,
@@ -157,6 +159,10 @@ class PgLibPqTest : public LibPqTestBase {
 
   Status TestDuplicateCreateTableRequest(PGConn conn);
 
+  void KillPostmasterProcessOnTservers();
+
+  Result<string> GetSchemaName(const string& relname, PGConn* conn);
+
  private:
   Result<PGConn> RestartTSAndConnectToPostgres(int ts_idx, const std::string& db_name);
 };
@@ -164,9 +170,7 @@ class PgLibPqTest : public LibPqTestBase {
 class PgLibPqFailOnConflictTest : public PgLibPqTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    // This test depends on fail-on-conflict concurrency control to perform its validation.
-    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    options->extra_tserver_flags.push_back("--enable_wait_queues=false");
+    UpdateMiniClusterFailOnConflict(options);
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -191,132 +195,15 @@ TEST_F(PgLibPqTest, Simple) {
     auto columns = PQnfields(res.get());
     ASSERT_EQ(2, columns);
 
-    auto key = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+    auto key = ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0));
     ASSERT_EQ(key, 1);
-    auto value = ASSERT_RESULT(GetString(res.get(), 0, 1));
+    auto value = ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 1));
     ASSERT_EQ(value, "hello");
   }
 }
 
-// Test that repeats example from this article:
-// https://blogs.msdn.microsoft.com/craigfr/2007/05/16/serializable-vs-snapshot-isolation-level/
-//
-// Multiple rows with values 0 and 1 are stored in table.
-// Two concurrent transaction fetches all rows from table and does the following.
-// First transaction changes value of all rows with value 0 to 1.
-// Second transaction changes value of all rows with value 1 to 0.
-// As outcome we should have rows with the same value.
-//
-// The described procedure is repeated multiple times to increase probability of catching bug,
-// w/o running test multiple times.
 TEST_F_EX(PgLibPqTest, SerializableColoring, PgLibPqFailOnConflictTest) {
-  constexpr auto kKeys = RegularBuildVsSanitizers(10, 20);
-  constexpr auto kColors = 2;
-  constexpr auto kIterations = 20;
-
-  auto conn = ASSERT_RESULT(Connect());
-
-  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, color INT)"));
-
-  auto iterations_left = kIterations;
-
-  for (int iteration = 0; iterations_left > 0; ++iteration) {
-    auto iteration_title = Format("Iteration: $0", iteration);
-    SCOPED_TRACE(iteration_title);
-    LOG(INFO) << iteration_title;
-
-    auto s = conn.Execute("DELETE FROM t");
-    if (!s.ok()) {
-      ASSERT_TRUE(HasTransactionError(s)) << s;
-      continue;
-    }
-    for (int k = 0; k != kKeys; ++k) {
-      int32_t color = RandomUniformInt(0, kColors - 1);
-      ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (key, color) VALUES ($0, $1)", k, color));
-    }
-
-    std::atomic<int> complete{ 0 };
-    std::vector<std::thread> threads;
-    for (int i = 0; i != kColors; ++i) {
-      int32_t color = i;
-      threads.emplace_back([this, color, kKeys, &complete] {
-        auto connection = ASSERT_RESULT(Connect());
-
-        ASSERT_OK(connection.Execute("BEGIN"));
-        ASSERT_OK(connection.Execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
-
-        auto res = connection.Fetch("SELECT * FROM t");
-        if (!res.ok()) {
-          // res will have failed status here for conflicting transactions as long as we are using
-          // fail-on-conflict concurrency control. Hence this test runs with wait-on-conflict
-          // disabled.
-          ASSERT_TRUE(HasTransactionError(res.status())) << res.status();
-          return;
-        }
-        auto columns = PQnfields(res->get());
-        ASSERT_EQ(2, columns);
-
-        auto lines = PQntuples(res->get());
-        ASSERT_EQ(kKeys, lines);
-        for (int j = 0; j != lines; ++j) {
-          if (ASSERT_RESULT(GetInt32(res->get(), j, 1)) == color) {
-            continue;
-          }
-
-          auto key = ASSERT_RESULT(GetInt32(res->get(), j, 0));
-          auto status = connection.ExecuteFormat(
-              "UPDATE t SET color = $1 WHERE key = $0", key, color);
-          if (!status.ok()) {
-            auto msg = status.message().ToBuffer();
-            ASSERT_TRUE(HasTransactionError(status)) << status;
-            break;
-          }
-        }
-
-        auto status = connection.Execute("COMMIT");
-        if (!status.ok()) {
-          ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << status;
-          return;
-        }
-
-        ++complete;
-      });
-    }
-
-    for (auto& thread : threads) {
-      thread.join();
-    }
-
-    if (complete == 0) {
-      continue;
-    }
-
-    auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
-    auto columns = PQnfields(res.get());
-    ASSERT_EQ(2, columns);
-
-    auto lines = PQntuples(res.get());
-    ASSERT_EQ(kKeys, lines);
-
-    std::vector<int32_t> zeroes, ones;
-    for (int i = 0; i != lines; ++i) {
-      auto key = ASSERT_RESULT(GetInt32(res.get(), i, 0));
-      auto current = ASSERT_RESULT(GetInt32(res.get(), i, 1));
-      if (current == 0) {
-        zeroes.push_back(key);
-      } else {
-        ones.push_back(key);
-      }
-    }
-
-    std::sort(ones.begin(), ones.end());
-    std::sort(zeroes.begin(), zeroes.end());
-
-    LOG(INFO) << "Zeroes: " << yb::ToString(zeroes) << ", ones: " << yb::ToString(ones);
-    ASSERT_TRUE(zeroes.empty() || ones.empty());
-
-    --iterations_left;
-  }
+  SerializableColoringHelper();
 }
 
 TEST_F_EX(PgLibPqTest, SerializableReadWriteConflict, PgLibPqFailOnConflictTest) {
@@ -426,17 +313,9 @@ TEST_F(PgLibPqTest, ReadRestart) {
     SCOPED_TRACE(Format("Reading: $0", read_key));
 
     ASSERT_OK(conn.Execute("BEGIN"));
-
-    auto res = ASSERT_RESULT(conn.FetchFormat("SELECT * FROM t WHERE key = $0", read_key));
-    auto columns = PQnfields(res.get());
-    ASSERT_EQ(1, columns);
-
-    auto lines = PQntuples(res.get());
-    ASSERT_EQ(1, lines);
-
-    auto key = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+    auto key = ASSERT_RESULT(conn.FetchValue<int32_t>(Format(
+        "SELECT * FROM t WHERE key = $0", read_key)));
     ASSERT_EQ(key, read_key);
-
     ASSERT_OK(conn.Execute("ROLLBACK"));
   }
 
@@ -768,6 +647,7 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation, const bool colo
 class PgLibPqFailoverDuringInitDb : public LibPqTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // Use small clock skew, to decrease number of read restarts.
+    options->allow_crashes_during_init_db = true;
     options->extra_master_flags.push_back("--TEST_fail_initdb_after_snapshot_restore=true");
   }
 
@@ -789,9 +669,7 @@ class PgLibPqSmallClockSkewFailOnConflictTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // Use small clock skew, to decrease number of read restarts.
     options->extra_tserver_flags.push_back("--max_clock_skew_usec=5000");
-    // This test depends on fail-on-conflict concurrency control to perform its validation.
-    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    options->extra_tserver_flags.push_back("--enable_wait_queues=false");
+    UpdateMiniClusterFailOnConflict(options);
   }
 };
 
@@ -812,7 +690,8 @@ TEST_F_EX(PgLibPqTest, MultiBankAccountSerializableWithColocation, PgLibPqFailOn
   TestMultiBankAccount(IsolationLevel::SERIALIZABLE_ISOLATION, true /* colocation */);
 }
 
-void PgLibPqTest::DoIncrement(int key, int num_increments, IsolationLevel isolation) {
+void PgLibPqTest::DoIncrement(
+    int key, int num_increments, IsolationLevel isolation, bool lock_first) {
   auto conn = ASSERT_RESULT(Connect());
 
   // Perform increments
@@ -820,6 +699,9 @@ void PgLibPqTest::DoIncrement(int key, int num_increments, IsolationLevel isolat
   while (succeeded_incs < num_increments) {
     ASSERT_OK(conn.StartTransaction(isolation));
     bool committed = false;
+    if (lock_first) {
+      ASSERT_OK(conn.FetchFormat("SELECT * FROM t WHERE key = $0 FOR UPDATE", key));
+    }
     auto exec_status = conn.ExecuteFormat("UPDATE t SET value = value + 1 WHERE key = $0", key);
     if (exec_status.ok()) {
       auto commit_status = conn.Execute("COMMIT");
@@ -860,10 +742,9 @@ void PgLibPqTest::TestParallelCounter(IsolationLevel isolation) {
 
   // Check each counter
   for (int i = 0; i < kThreads; i++) {
-    auto res = ASSERT_RESULT(conn.FetchFormat("SELECT value FROM t WHERE key = $0", i));
-
-    auto row_val = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
-    ASSERT_EQ(row_val, kIncrements);
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<int32_t>(Format("SELECT value FROM t WHERE key = $0",
+                                                            i))),
+              kIncrements);
   }
 }
 
@@ -875,7 +756,7 @@ TEST_F(PgLibPqTest, TestParallelCounterRepeatableRead) {
   TestParallelCounter(IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
-void PgLibPqTest::TestConcurrentCounter(IsolationLevel isolation) {
+void PgLibPqTest::TestConcurrentCounter(IsolationLevel isolation, bool lock_first) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT, value INT)"));
@@ -888,8 +769,8 @@ void PgLibPqTest::TestConcurrentCounter(IsolationLevel isolation) {
   // Have each thread increment the same already-created counter
   std::vector<std::thread> threads;
   while (threads.size() != kThreads) {
-    threads.emplace_back([this, isolation] {
-      DoIncrement(0, kIncrements, isolation);
+    threads.emplace_back([this, isolation, lock_first] {
+      DoIncrement(0, kIncrements, isolation, lock_first);
     });
   }
 
@@ -899,21 +780,38 @@ void PgLibPqTest::TestConcurrentCounter(IsolationLevel isolation) {
   }
 
   // Check that we incremented exactly the desired number of times
-  auto res = ASSERT_RESULT(conn.Fetch("SELECT value FROM t WHERE key = 0"));
-
-  auto row_val = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
-  ASSERT_EQ(row_val, kThreads * kIncrements);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT value FROM t WHERE key = 0")),
+            kThreads * kIncrements);
 }
 
 TEST_F_EX(PgLibPqTest, TestConcurrentCounterSerializable, PgLibPqFailOnConflictTest) {
-  // TODO(wait-queues): Re-enable wait-on-conflict behavior in this test. It is currently failing
-  // because concurrent threads repeatedly deadlock with each other. See:
-  // https://github.com/yugabyte/yugabyte-db/issues/18019
+  // Each of the three threads perform the following:
+  // BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+  // UPDATE t SET value = value + 1 WHERE key = 0;
+  // COMMIT;
+  // The UPDATE first does a read and acquires a kStrongRead lock on the key=0 row. So each thread
+  // is able to acquire this lock concurrently. The UPDATE then does a write to the same row and
+  // gets blocked. With fail-on-conflict behavior, one of the threads will win at the second RPC and
+  // progress can be made. But with wait-on-conflict behavior, progress cannot be made since
+  // deadlock is repeatedly encountered by all threads most of the time.
+  //
+  // In order to test a similar scenario with wait-on-conflict behavior,
+  // TestLockedConcurrentCounterSerializable adds a SELECT...FOR UPDATE before the UPDATE, so only
+  // one thread can block the row and deadlocks are not encountered.
   TestConcurrentCounter(IsolationLevel::SERIALIZABLE_ISOLATION);
+}
+
+TEST_F(PgLibPqTest, TestLockedConcurrentCounterSerializable) {
+  // See comment in TestConcurrentCounterSerializable.
+  TestConcurrentCounter(IsolationLevel::SERIALIZABLE_ISOLATION, /* lock_first = */ true);
 }
 
 TEST_F(PgLibPqTest, TestConcurrentCounterRepeatableRead) {
   TestConcurrentCounter(IsolationLevel::SNAPSHOT_ISOLATION);
+}
+
+TEST_F(PgLibPqTest, TestConcurrentCounterReadCommitted) {
+  TestConcurrentCounter(IsolationLevel::READ_COMMITTED);
 }
 
 TEST_F(PgLibPqTest, SecondaryIndexInsertSelect) {
@@ -1521,7 +1419,8 @@ TEST_F_EX(
 }
 
 void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
-    const string database_name, bool colocated, const string tablegroup_name) {
+    const string database_name, bool colocated, const string tablegroup_name,
+    const string query_statement) {
   auto conn1 = ASSERT_RESULT(ConnectToDB(database_name));
   auto conn2 = ASSERT_RESULT(ConnectToDB(database_name));
 
@@ -1537,13 +1436,11 @@ void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
   // From conn1, select the row in UPDATE row lock mode. From conn2, delete the row.
   // Ensure that conn1's transaction will detect a conflict at the time of commit.
   ASSERT_OK(conn1.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-  auto res = ASSERT_RESULT(conn1.Fetch("SELECT * FROM t FOR UPDATE"));
+  auto res = ASSERT_RESULT(conn1.Fetch(query_statement));
   ASSERT_EQ(PQntuples(res.get()), 1);
 
   auto status = conn2.Execute("DELETE FROM t WHERE a = 1");
-  ASSERT_FALSE(status.ok());
-  ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << status;
-  ASSERT_STR_CONTAINS(status.ToString(), "could not serialize access due to concurrent update");
+  ASSERT_TRUE(IsSerializeAccessError(status)) <<  status;
   ASSERT_STR_CONTAINS(status.ToString(), "conflicts with higher priority transaction");
 
   ASSERT_OK(conn1.CommitTransaction());
@@ -1588,6 +1485,30 @@ TEST_F_EX(PgLibPqTest, TxnConflictsForTablegroups, PgLibPqFailOnConflictTest) {
       "test_db" /* database_name */,
       true, /* colocated */
       "test_tgroup" /* tablegroup_name */);
+}
+
+// Test for ensuring that transaction conflicts work as expected for Tablegroups, where the SELECT
+// is done with pg_hint_plan to use YB Sequential Scan.
+TEST_F_EX(PgLibPqTest, TxnConflictsForTablegroupsYbSeq, PgLibPqFailOnConflictTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  CreateDatabaseWithTablegroup(
+      "test_db" /* database_name */, "test_tgroup" /* tablegroup_name */, &conn);
+  PerformSimultaneousTxnsAndVerifyConflicts(
+      "test_db" /* database_name */, true, /* colocated */
+      "test_tgroup" /* tablegroup_name */,
+      "/*+ SeqScan(t) */ SELECT * FROM t FOR UPDATE" /* query_statement */);
+}
+
+// Test for ensuring that transaction conflicts work as expected for Tablegroups, where the SELECT
+// is done with an ORDER BY clause.
+TEST_F_EX(PgLibPqTest, TxnConflictsForTablegroupsOrdered, PgLibPqFailOnConflictTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  CreateDatabaseWithTablegroup(
+      "test_db" /* database_name */, "test_tgroup" /* tablegroup_name */, &conn);
+  PerformSimultaneousTxnsAndVerifyConflicts(
+      "test_db" /* database_name */, true, /* colocated */
+      "test_tgroup" /* tablegroup_name */,
+      "SELECT * FROM t ORDER BY a FOR UPDATE" /* query_statement */);
 }
 
 Result<PGConn> PgLibPqTest::RestartTSAndConnectToPostgres(
@@ -1734,6 +1655,13 @@ Status PgLibPqTest::TestDuplicateCreateTableRequest(PGConn conn) {
   return Status::OK();
 }
 
+Result<string> PgLibPqTest::GetSchemaName(const string& relname, PGConn* conn) {
+  return conn->FetchValue<std::string>(Format(
+      "SELECT nspname FROM pg_class JOIN pg_namespace "
+      "ON pg_class.relnamespace = pg_namespace.oid WHERE relname = '$0'",
+      relname));
+}
+
 // Ensure if client sends out duplicate create table requests, one create table request can
 // succeed and the other create table request should fail.
 TEST_F_EX(PgLibPqTest, DuplicateCreateTableRequest, PgLibPqDuplicateClientCreateTableTest) {
@@ -1868,7 +1796,6 @@ class PgLibPqTablegroupTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // Enable tablegroup beta feature
     options->extra_tserver_flags.push_back("--ysql_beta_feature_tablegroup=true");
-    options->extra_master_flags.push_back("--ysql_beta_feature_tablegroup=true");
   }
 };
 
@@ -2148,13 +2075,19 @@ TEST_F_EX(
   auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM foo ORDER BY a"));
   ASSERT_EQ(PQntuples(res.get()), 3);
   ASSERT_EQ(PQnfields(res.get()), 2);
-  std::vector<std::pair<int, std::string>> values = {
-      std::make_pair(
-          ASSERT_RESULT(GetInt32(res.get(), 0, 0)), ASSERT_RESULT(GetString(res.get(), 0, 1))),
-      std::make_pair(
-          ASSERT_RESULT(GetInt32(res.get(), 1, 0)), ASSERT_RESULT(GetString(res.get(), 1, 1))),
-      std::make_pair(
-          ASSERT_RESULT(GetInt32(res.get(), 2, 0)), ASSERT_RESULT(GetString(res.get(), 2, 1))),
+  std::vector<std::pair<int32_t, std::string>> values = {
+    {
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+      ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 1)),
+    },
+    {
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
+      ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 1)),
+    },
+    {
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 2, 0)),
+      ASSERT_RESULT(GetValue<std::string>(res.get(), 2, 1)),
+    },
   };
   ASSERT_EQ(values[0].first, 1);
   ASSERT_EQ(values[0].second, "hello");
@@ -2175,9 +2108,9 @@ TEST_F_EX(
   res = ASSERT_RESULT(conn.Fetch("SELECT * FROM bar ORDER BY a DESC"));
   ASSERT_EQ(PQntuples(res.get()), 2);
   ASSERT_EQ(PQnfields(res.get()), 1);
-  std::vector<int> bar_values = {
-      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
-      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+  std::vector bar_values = {
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
   };
   ASSERT_EQ(bar_values[0], 200);
   ASSERT_EQ(bar_values[1], 100);
@@ -2198,8 +2131,8 @@ TEST_F_EX(
   ASSERT_EQ(PQntuples(res.get()), 2);
   ASSERT_EQ(PQnfields(res.get()), 1);
   bar_values = {
-      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
-      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
   };
   ASSERT_EQ(bar_values[0], 200);
   ASSERT_EQ(bar_values[1], 100);
@@ -2241,11 +2174,16 @@ TEST_F_EX(
   auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM odd_a_view ORDER BY a"));
   ASSERT_EQ(PQntuples(res.get()), 2);
   ASSERT_EQ(PQnfields(res.get()), 2);
-  std::vector<std::pair<int, std::string>> values = {
-      std::make_pair(
-          ASSERT_RESULT(GetInt32(res.get(), 0, 0)), ASSERT_RESULT(GetString(res.get(), 0, 1))),
-      std::make_pair(
-          ASSERT_RESULT(GetInt32(res.get(), 1, 0)), ASSERT_RESULT(GetString(res.get(), 1, 1)))};
+  std::vector<std::pair<int32_t, std::string>> values = {
+    {
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+      ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 1)),
+    },
+    {
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
+      ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 1))
+    },
+  };
   ASSERT_EQ(values[0].first, 1);
   ASSERT_EQ(values[0].second, "hello");
   ASSERT_EQ(values[1].first, 3);
@@ -2329,6 +2267,7 @@ TEST_F_EX(
 
   // Expect the next tablegroup created to take the next OID.
   PgOid next_tg_oid = ASSERT_RESULT(GetTablegroupOid(&conn, "tg1")) + 1;
+  const auto database_oid = ASSERT_RESULT(GetDatabaseOid(&conn, kDatabaseName));
 
   // Force CREATE TABLEGROUP to fail, and delay the cleanup.
   ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "3000"));
@@ -2337,6 +2276,18 @@ TEST_F_EX(
   // Verify that tablegroup is cleaned up on startup.
   cluster_->Shutdown();
   ASSERT_OK(cluster_->Restart());
+
+  // Wait for cleanup thread to delete a table.
+  // Since delete hasn't started initially, WaitForDeleteTableToFinish will error out.
+  TablegroupId next_tg_id = GetPgsqlTablegroupId(database_oid, next_tg_oid);
+  const auto tg_parent_table_id = GetTablegroupParentTableId(next_tg_id);
+  ASSERT_OK(WaitFor(
+    [&client, &tg_parent_table_id] {
+      Status s = client->WaitForDeleteTableToFinish(tg_parent_table_id);
+      return s.ok();
+    },
+    30s,
+    "Wait for tablegroup cleanup"));
 
   conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
 
@@ -2383,13 +2334,19 @@ TEST_F_EX(
     ASSERT_EQ(PQntuples(res.get()), 3);
     ASSERT_EQ(PQnfields(res.get()), 2);
     {
-      std::vector<std::pair<int, std::string>> values = {
-          std::make_pair(
-              ASSERT_RESULT(GetInt32(res.get(), 0, 0)), ASSERT_RESULT(GetString(res.get(), 0, 1))),
-          std::make_pair(
-              ASSERT_RESULT(GetInt32(res.get(), 1, 0)), ASSERT_RESULT(GetString(res.get(), 1, 1))),
-          std::make_pair(
-              ASSERT_RESULT(GetInt32(res.get(), 2, 0)), ASSERT_RESULT(GetString(res.get(), 2, 1))),
+      std::vector<std::pair<int32_t, std::string>> values = {
+        {
+          ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+          ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 1)),
+        },
+        {
+          ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
+          ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 1)),
+        },
+        {
+          ASSERT_RESULT(GetValue<int32_t>(res.get(), 2, 0)),
+          ASSERT_RESULT(GetValue<std::string>(res.get(), 2, 1)),
+        },
       };
       ASSERT_EQ(values[0].first, 1);
       ASSERT_EQ(values[0].second, "hello");
@@ -2408,13 +2365,19 @@ TEST_F_EX(
     ASSERT_EQ(PQntuples(res.get()), 3);
     ASSERT_EQ(PQnfields(res.get()), 2);
     {
-      std::vector<std::pair<int, std::string>> values = {
-          std::make_pair(
-              ASSERT_RESULT(GetInt32(res.get(), 0, 0)), ASSERT_RESULT(GetString(res.get(), 0, 1))),
-          std::make_pair(
-              ASSERT_RESULT(GetInt32(res.get(), 1, 0)), ASSERT_RESULT(GetString(res.get(), 1, 1))),
-          std::make_pair(
-              ASSERT_RESULT(GetInt32(res.get(), 2, 0)), ASSERT_RESULT(GetString(res.get(), 2, 1))),
+      std::vector<std::pair<int32_t, std::string>> values = {
+        {
+          ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+          ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 1)),
+        },
+        {
+          ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
+          ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 1)),
+        },
+        {
+          ASSERT_RESULT(GetValue<int32_t>(res.get(), 2, 0)),
+          ASSERT_RESULT(GetValue<std::string>(res.get(), 2, 1)),
+        },
       };
       ASSERT_EQ(values[0].first, 1);
       ASSERT_EQ(values[0].second, "hello");
@@ -2431,10 +2394,10 @@ TEST_F_EX(
     ASSERT_EQ(PQntuples(res.get()), 3);
     ASSERT_EQ(PQnfields(res.get()), 1);
     {
-      std::vector<int> values = {
-          ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
-          ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
-          ASSERT_RESULT(GetInt32(res.get(), 2, 0)),
+      std::vector values = {
+          ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+          ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
+          ASSERT_RESULT(GetValue<int32_t>(res.get(), 2, 0)),
       };
       ASSERT_EQ(values[0], 1);
       ASSERT_EQ(values[1], 2);
@@ -3008,6 +2971,25 @@ class PgLibPqTestEnumType: public PgLibPqTest {
   }
 };
 
+void PgLibPqTest::KillPostmasterProcessOnTservers() {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ExternalTabletServer* ts = cluster_->tablet_server(i);
+    const string pg_pid_file = JoinPathSegments(ts->GetRootDir(), "pg_data",
+                                                "postmaster.pid");
+
+    LOG(INFO) << "pg_pid_file: " << pg_pid_file;
+    ASSERT_TRUE(Env::Default()->FileExists(pg_pid_file));
+    std::ifstream pg_pid_in;
+    pg_pid_in.open(pg_pid_file, std::ios_base::in);
+    ASSERT_FALSE(pg_pid_in.eof());
+    pid_t pg_pid = 0;
+    pg_pid_in >> pg_pid;
+    ASSERT_GT(pg_pid, 0);
+    LOG(INFO) << "Killing PostgresSQL process: " << pg_pid;
+    ASSERT_EQ(kill(pg_pid, SIGKILL), 0);
+  }
+}
+
 // Make sure that enum type backfill works.
 TEST_F_EX(PgLibPqTest,
           EnumType,
@@ -3034,10 +3016,10 @@ TEST_F_EX(PgLibPqTest,
   PGResultPtr res = ASSERT_RESULT(conn->Fetch(query));
   ASSERT_EQ(PQntuples(res.get()), 3);
   ASSERT_EQ(PQnfields(res.get()), 1);
-  std::vector<string> values = {
-    ASSERT_RESULT(GetString(res.get(), 0, 0)),
-    ASSERT_RESULT(GetString(res.get(), 1, 0)),
-    ASSERT_RESULT(GetString(res.get(), 2, 0)),
+  std::vector values = {
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 2, 0)),
   };
   ASSERT_EQ(values[0], "b");
   ASSERT_EQ(values[1], "c");
@@ -3055,22 +3037,7 @@ TEST_F_EX(PgLibPqTest,
   // A new PostgreSQL process will be respawned by the tablet server and
   // inherit the new --TEST_do_not_add_enum_sort_order flag from the tablet
   // server.
-  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
-    ExternalTabletServer* ts = cluster_->tablet_server(i);
-    const string pg_pid_file = JoinPathSegments(ts->GetRootDir(), "pg_data",
-                                                "postmaster.pid");
-
-    LOG(INFO) << "pg_pid_file: " << pg_pid_file;
-    ASSERT_TRUE(Env::Default()->FileExists(pg_pid_file));
-    std::ifstream pg_pid_in;
-    pg_pid_in.open(pg_pid_file, std::ios_base::in);
-    ASSERT_FALSE(pg_pid_in.eof());
-    pid_t pg_pid = 0;
-    pg_pid_in >> pg_pid;
-    ASSERT_GT(pg_pid, 0);
-    LOG(INFO) << "Killing PostgresSQL process: " << pg_pid;
-    ASSERT_EQ(kill(pg_pid, SIGKILL), 0);
-  }
+  KillPostmasterProcessOnTservers();
 
   // Reconnect to the database after the new PostgreSQL starts.
   conn = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB(kDatabaseName)));
@@ -3090,12 +3057,12 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_EQ(PQntuples(res.get()), 6);
   ASSERT_EQ(PQnfields(res.get()), 1);
   values = {
-    ASSERT_RESULT(GetString(res.get(), 0, 0)),
-    ASSERT_RESULT(GetString(res.get(), 1, 0)),
-    ASSERT_RESULT(GetString(res.get(), 2, 0)),
-    ASSERT_RESULT(GetString(res.get(), 3, 0)),
-    ASSERT_RESULT(GetString(res.get(), 4, 0)),
-    ASSERT_RESULT(GetString(res.get(), 5, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 2, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 3, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 4, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 5, 0)),
   };
   ASSERT_EQ(values[0], "b");
   ASSERT_EQ(values[1], "e");
@@ -3113,12 +3080,12 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_EQ(PQntuples(res.get()), 6);
   ASSERT_EQ(PQnfields(res.get()), 1);
   values = {
-    ASSERT_RESULT(GetString(res.get(), 0, 0)),
-    ASSERT_RESULT(GetString(res.get(), 1, 0)),
-    ASSERT_RESULT(GetString(res.get(), 2, 0)),
-    ASSERT_RESULT(GetString(res.get(), 3, 0)),
-    ASSERT_RESULT(GetString(res.get(), 4, 0)),
-    ASSERT_RESULT(GetString(res.get(), 5, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 2, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 3, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 4, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 5, 0)),
   };
   ASSERT_EQ(values[0], "b");
   ASSERT_EQ(values[1], "e");
@@ -3130,11 +3097,7 @@ TEST_F_EX(PgLibPqTest,
   // Test where clause.
   const std::string query2 = Format("SELECT * FROM $0 where id = 'b'", kTableName);
   ASSERT_TRUE(ASSERT_RESULT(conn->HasIndexScan(query2)));
-  res = ASSERT_RESULT(conn->Fetch(query2));
-  ASSERT_EQ(PQntuples(res.get()), 1);
-  ASSERT_EQ(PQnfields(res.get()), 1);
-  const string value = ASSERT_RESULT(GetString(res.get(), 0, 0));
-  ASSERT_EQ(value, "b");
+  ASSERT_EQ(ASSERT_RESULT(conn->FetchValue<std::string>(query2)), "b");
 }
 
 // Test postgres large oid (>= 2^31). Internally postgres oid is an unsigned 32-bit integer. But
@@ -3198,10 +3161,10 @@ TEST_F_EX(PgLibPqTest,
   res = ASSERT_RESULT(conn.Fetch(query));
   ASSERT_EQ(PQntuples(res.get()), 3);
   ASSERT_EQ(PQnfields(res.get()), 1);
-  std::vector<string> enum_values = {
-    ASSERT_RESULT(GetString(res.get(), 0, 0)),
-    ASSERT_RESULT(GetString(res.get(), 1, 0)),
-    ASSERT_RESULT(GetString(res.get(), 2, 0)),
+  std::vector enum_values = {
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 2, 0)),
   };
   ASSERT_EQ(enum_values[0], "a");
   ASSERT_EQ(enum_values[1], "b");
@@ -3347,9 +3310,7 @@ TEST_F_EX(PgLibPqTest,
           PgLibPqYSQLBackendCrash) {
 
   auto conn = ASSERT_RESULT(Connect());
-  auto res = ASSERT_RESULT(conn.Fetch("SELECT pg_backend_pid()"));
-
-  auto backend_pid = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+  auto backend_pid = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT pg_backend_pid()"));
   std::string file_name = "/proc/" + std::to_string(backend_pid) + "/oom_score_adj";
   std::ifstream fPtr(file_name);
   std::string oom_score_adj;
@@ -3357,54 +3318,6 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_EQ(oom_score_adj, expected_oom_score);
 }
 #endif
-
-class PgLibPqRefreshMatviewFailure: public PgLibPqTest {
- public:
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.push_back(
-        Format("--TEST_yb_test_fail_matview_refresh_after_creation=true"));
-    options->extra_master_flags.push_back("--ysql_transaction_bg_task_wait_ms=3000");
-  }
-};
-
-// Test that an orphaned table left after a failed refresh on a materialized view is cleaned up
-// by transaction GC.
-TEST_F_EX(PgLibPqTest,
-          TestRefreshMatviewFailure,
-          PgLibPqRefreshMatviewFailure) {
-
-  const string kDatabaseName = "yugabyte";
-
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t(id int)"));
-  ASSERT_OK(conn.ExecuteFormat("CREATE MATERIALIZED VIEW mv AS SELECT * FROM t"));
-  auto matview_oid = ASSERT_RESULT(conn.FetchValue<PGOid>(
-      "SELECT oid FROM pg_class WHERE relname = 'mv'"));
-  auto pg_temp_table_name = "pg_temp_" + std::to_string(matview_oid);
-  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_user_ddl_operation_timeout_sec", "1"));
-  ASSERT_NOK(conn.ExecuteFormat("REFRESH MATERIALIZED VIEW mv"));
-
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-
-  // Wait for DocDB Table (materialized view) creation, even though it will fail in PG layer.
-  // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
-  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    LOG(INFO) << "Requesting TableExists";
-    auto ret = client->TableExists(
-        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, pg_temp_table_name));
-    WARN_NOT_OK(ResultToStatus(ret), "");
-    return ret.ok() && ret.get() == true;
-  }, MonoDelta::FromSeconds(20), "Verify Table was created in DocDB"));
-
-  // DocDB will notice the PG layer failure because the transaction aborts.
-  // Confirm that DocDB async deletes the orphaned materialized view.
-  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
-    auto ret = client->TableExists(
-        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, pg_temp_table_name));
-    WARN_NOT_OK(ResultToStatus(ret), "");
-    return ret.ok() && ret.get() == false;
-  }, MonoDelta::FromSeconds(40), "Verify Table was removed by Transaction GC"));
-}
 
 TEST_F_EX(PgLibPqTest, YbTableProperties, PgLibPqTestRF1) {
   const string kDatabaseName = "yugabyte";
@@ -3502,9 +3415,7 @@ class PgLibPqLegacyColocatedDBTest : public PgLibPqTest {
 
 class PgLibPqLegacyColocatedDBFailOnConflictTest : public PgLibPqLegacyColocatedDBTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    // This test depends on fail-on-conflict concurrency control to perform its validation.
-    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    options->extra_tserver_flags.push_back("--enable_wait_queues=false");
+    UpdateMiniClusterFailOnConflict(options);
     PgLibPqLegacyColocatedDBTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -3585,7 +3496,6 @@ class PgLibPqTestStatementTimeout : public PgLibPqTest {
     options->extra_tserver_flags.push_back(
         Format("--ysql_pg_conf_csv=statement_timeout=$0", kClientStatementTimeoutSeconds * 1000));
     options->extra_tserver_flags.push_back("--enable_wait_queues=true");
-    options->extra_tserver_flags.push_back("--enable_deadlock_detection=true");
   }
 
   Result<std::future<Status>> ExpectBlockedAsync(
@@ -3629,6 +3539,184 @@ TEST_F_EX(
     return status_future.wait_for(0s) == std::future_status::ready;
   }, 1s, "Wait for status_future to be available"));
   ASSERT_NOK(status_future.get());
+}
+
+// This test verifies retry solves CREATE DATABASE OID collision issue.
+// Using our current YSQL OID allocation method, we can hit the following OID collision for
+// PG CREATE DATABASE.
+// Connections used in the example:
+// Connection 1 on tserver 0 (Conn1) && Connection 2 on tserver 1 (Conn2)
+// Example:
+// Conn1: CREATE DATABASE db1; -- db1 OID: 16384; OID range: [16384, 16640) on tserver 0
+// -- db2 OID: 16385; db2 is used to trigger the same range of OID allocation on tserver 1
+// Conn1: CREATE DATABASE db2;
+// Conn1: DROP DATABASE db1;
+// Conn2: \c db2
+// Conn2: CREATE DATABASE db3; -- db3 OID: 16384; OID range: [16384, 16640) on tserver 1
+// ERROR:  Keyspace 'db3' already exists
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RetryCreateDatabasePgOidCollisionFromTservers)) {
+  const string db1 = "db1";
+  const string db2 = "db2";
+  const string db3 = "db3";
+
+  // Tserver 0
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0", db1));
+  ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0", db2));
+  ASSERT_OK(conn1.ExecuteFormat("DROP DATABASE $0", db1));
+
+  // Tserver 1
+  LOG(INFO) << "Make a new connection to a different node at index 1";
+  pg_ts = cluster_->tablet_server(1);
+  auto conn2 = ASSERT_RESULT(ConnectToDB(db2));
+  ASSERT_OK(conn2.ExecuteFormat("CREATE DATABASE $0", db3));
+
+  // Verify internally retry CREATE DATABASE works.
+  int db3_oid = ASSERT_RESULT(conn2.FetchValue<int32_t>(
+      Format("SELECT oid FROM pg_database WHERE datname = \'$0\'", db3)));
+  ASSERT_EQ(db3_oid, 16386);
+
+  // Verify the keyspace already exists issue still exists if we disable retry.
+  // Connection to db3 on Tserver 2 uses 16384 as the next available oid.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_enable_create_database_oid_collision_retry",
+                                        "false"));
+  KillPostmasterProcessOnTservers();
+  pg_ts = cluster_->tablet_server(2);
+  auto conn3 = ASSERT_RESULT(ConnectToDB(db3));
+  Status s = conn3.ExecuteFormat("CREATE DATABASE createdb_oid_collision");
+  ASSERT_NOK(s);
+  ASSERT_TRUE(s.message().ToBuffer().find("Keyspace with id") != std::string::npos);
+  ASSERT_TRUE(s.message().ToBuffer().find("already exists") != std::string::npos);
+}
+
+class PgLibPqTempTest: public PgLibPqTest {
+ public:
+  Status TestDeletedByQuery(
+      const std::vector<string>& relnames, const string& query, PGConn* conn) {
+    std::vector<string> filepaths;
+    filepaths.reserve(relnames.size());
+    for (const string& relname : relnames) {
+      string pg_filepath = VERIFY_RESULT(
+          conn->FetchValue<std::string>(Format("SELECT pg_relation_filepath('$0')", relname)));
+      filepaths.push_back(JoinPathSegments(pg_ts->GetRootDir(), "pg_data", pg_filepath));
+    }
+    for (const string& filepath : filepaths) {
+      SCHECK(Env::Default()->FileExists(filepath), IllegalState,
+             Format("File $0 should exist, but does not", filepath));
+    }
+    RETURN_NOT_OK(conn->Execute(query));
+    for (const string& filepath : filepaths) {
+      SCHECK(!Env::Default()->FileExists(filepath), IllegalState,
+             Format("File $0 should not exist, but does", filepath));
+    }
+    return Status::OK();
+  }
+
+  Status TestRemoveTempTable(bool is_drop) {
+    PGConn conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.Execute("CREATE TEMP TABLE foo (k INT PRIMARY KEY, v INT)"));
+    const string schema = VERIFY_RESULT(GetSchemaName("foo", &conn));
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE $0.bar (k INT PRIMARY KEY, v INT)", schema));
+
+    string command = is_drop ? "DROP TABLE foo, bar" : "DISCARD TEMP";
+    RETURN_NOT_OK(TestDeletedByQuery({"foo", "foo_pkey", "bar", "bar_pkey"}, command, &conn));
+    return Status::OK();
+  }
+
+  Status TestRemoveTempSequence(bool is_drop) {
+    PGConn conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.Execute("CREATE TEMP SEQUENCE foo"));
+    const string schema = VERIFY_RESULT(GetSchemaName("foo", &conn));
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE SEQUENCE $0.bar ", schema));
+
+    if (is_drop) {
+      // TODO(#880): use single call to drop both sequences at the same time.
+      RETURN_NOT_OK(TestDeletedByQuery({"foo"}, "DROP SEQUENCE foo", &conn));
+      RETURN_NOT_OK(TestDeletedByQuery({"bar"}, "DROP SEQUENCE bar", &conn));
+    } else {
+      RETURN_NOT_OK(TestDeletedByQuery({"foo", "bar"}, "DISCARD TEMP", &conn));
+    }
+    return Status::OK();
+  }
+};
+
+// Test that the physical storage for a temporary sequence is removed
+// when calling DROP SEQUENCE.
+TEST_F(PgLibPqTempTest, DropTempSequence) {
+  ASSERT_OK(TestRemoveTempSequence(true));
+}
+
+// Test that the physical storage for a temporary sequence is removed
+// when calling DISCARD TEMP.
+TEST_F(PgLibPqTempTest, DiscardTempSequence) {
+  ASSERT_OK(TestRemoveTempSequence(false));
+}
+
+// Test that the physical storage for a temporary table and index are removed
+// when calling DROP TABLE.
+TEST_F(PgLibPqTempTest, DropTempTable) {
+  ASSERT_OK(TestRemoveTempTable(true));
+}
+
+// Test that the physical storage for a temporary table and index are removed
+// when calling DISCARD TEMP.
+TEST_F(PgLibPqTempTest, DiscardTempTable) {
+  ASSERT_OK(TestRemoveTempTable(false));
+}
+
+// Drop Sequence test.
+TEST_F(PgLibPqTest, DropSequenceTest) {
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE foo"));
+
+  // Verify that if DROP SEQUENCE fails, the sequence is actually not
+  // dropped.
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  ASSERT_NOK(conn.Execute("DROP SEQUENCE foo"));
+  auto result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('foo')"));
+  LOG(INFO) << "Sequence " << result;
+  ASSERT_EQ(result, "1");
+
+  // Verify same behavior for sequences created using CREATE TABLE.
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k SERIAL)"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  ASSERT_NOK(conn.Execute("DROP SEQUENCE t_k_seq CASCADE"));
+  result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('t_k_seq')"));
+  LOG(INFO) << "Sequence " << result;
+  ASSERT_EQ(result, "1");
+
+  // Verify same behavior is seen while trying to drop the table.
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  ASSERT_NOK(conn.Execute("DROP TABLE t"));
+  result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('t_k_seq')"));
+  LOG(INFO) << "Sequence " << result;
+  ASSERT_EQ(result, "2");
+
+  // Verify that if DROP SEQUENCE is successful, we cannot query the sequence
+  // anymore.
+  ASSERT_OK(conn.Execute("DROP SEQUENCE foo"));
+  ASSERT_NOK(conn.FetchRowAsString("SELECT nextval('foo')"));
+}
+
+TEST_F(PgLibPqTest, TempTableViewFileCountTest) {
+  const std::string kTableName = "foo";
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE TEMP TABLE $0 (k INT)", kTableName));
+
+  // Check that only one file is present in this database and that corresponds to temp table foo.
+  auto query = Format(
+      "SELECT pg_ls_dir('$0/pg_data/' || substring(pg_relation_filepath('$1') from '.*/')) = 't1_' "
+      "|| '$1'::regclass::oid::text;",
+      pg_ts->GetRootDir(), kTableName);
+  auto values = ASSERT_RESULT(conn.FetchAll<bool>(query));
+  decltype(values) expected_values = {{true}};
+  ASSERT_EQ(values, expected_values);
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE VIEW tempview AS SELECT * FROM $0", kTableName));
+
+  // Check that no new files are created on view creation.
+  values = ASSERT_RESULT(conn.FetchAll<bool>(query));
+  ASSERT_EQ(values, expected_values);
 }
 
 } // namespace pgwrapper

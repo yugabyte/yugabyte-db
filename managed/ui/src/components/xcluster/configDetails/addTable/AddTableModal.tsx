@@ -1,10 +1,10 @@
 import { FormikActions, FormikErrors, FormikProps } from 'formik';
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import { AxiosError } from 'axios';
 
-import { api, universeQueryKey } from '../../../../redesign/helpers/api';
+import { api, universeQueryKey, xClusterQueryKey } from '../../../../redesign/helpers/api';
 import { TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/dtos';
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBButton, YBModal } from '../../../common/forms/fields';
@@ -18,16 +18,20 @@ import {
   XClusterConfigAction,
   XClusterConfigType
 } from '../../constants';
-import { getTablesForBootstrapping, parseFloatIfDefined } from '../../ReplicationUtils';
+import {
+  getTablesForBootstrapping,
+  getXClusterConfigTableType,
+  parseFloatIfDefined
+} from '../../ReplicationUtils';
 import {
   editXClusterConfigTables,
   fetchUniverseDiskUsageMetric,
   fetchTaskUntilItCompletes,
   fetchTablesInUniverse
 } from '../../../../actions/xClusterReplication';
-import { TableSelect } from '../../common/tableSelect/TableSelect';
+import { TableSelect } from '../../sharedComponents/tableSelect/TableSelect';
 
-import { XClusterConfig, XClusterTableType } from '../..';
+import { XClusterConfig } from '../..';
 
 import styles from './AddTableModal.module.scss';
 
@@ -56,7 +60,8 @@ interface AddTableModalProps {
   isVisible: boolean;
   onHide: () => void;
   xClusterConfig: XClusterConfig;
-  configTableType: XClusterTableType;
+
+  isDrConfig?: boolean;
 }
 
 const MODAL_TITLE = 'Add Tables to Replication';
@@ -83,7 +88,7 @@ export const AddTableModal = ({
   isVisible,
   onHide,
   xClusterConfig,
-  configTableType
+  isDrConfig = false
 }: AddTableModalProps) => {
   const [currentStep, setCurrentStep] = useState<FormStep>(FIRST_FORM_STEP);
   const [formWarnings, setFormWarnings] = useState<AddTableFormWarnings>();
@@ -97,7 +102,7 @@ export const AddTableModal = ({
   const formik = useRef({} as FormikProps<AddTableFormValues>);
 
   const sourceUniverseQuery = useQuery<Universe>(
-    ['universe', xClusterConfig.sourceUniverseUUID],
+    universeQueryKey.detail(xClusterConfig.sourceUniverseUUID),
     () => api.fetchUniverse(xClusterConfig.sourceUniverseUUID)
   );
 
@@ -133,29 +138,25 @@ export const AddTableModal = ({
         closeModal();
 
         fetchTaskUntilItCompletes(
-          response.data.taskUUID,
+          response.taskUUID,
           (err: boolean) => {
             if (err) {
               toast.error(
                 <span className={styles.alertMsg}>
                   <i className="fa fa-exclamation-circle" />
                   <span>{`Add table to xCluster config failed: ${xClusterConfig.name}`}</span>
-                  <a
-                    href={`/tasks/${response.data.taskUUID}`}
-                    rel="noopener noreferrer"
-                    target="_blank"
-                  >
+                  <a href={`/tasks/${response.taskUUID}`} rel="noopener noreferrer" target="_blank">
                     View Details
                   </a>
                 </span>
               );
             }
-            queryClient.invalidateQueries(['Xcluster', xClusterConfig.uuid]);
+            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
           },
           // Invalidate the cached data for current xCluster config. The xCluster config status should change to
           // 'in progress' once the task starts.
           () => {
-            queryClient.invalidateQueries(['Xcluster', xClusterConfig.uuid]);
+            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
           }
         );
       },
@@ -247,7 +248,12 @@ export const AddTableModal = ({
     );
   }
 
-  if (sourceUniverseQuery.isError || sourceUniverseTablesQuery.isError) {
+  const xClusterConfigTableType = getXClusterConfigTableType(xClusterConfig);
+  if (
+    sourceUniverseQuery.isError ||
+    sourceUniverseTablesQuery.isError ||
+    !xClusterConfigTableType
+  ) {
     return (
       <YBModal
         size="large"
@@ -305,26 +311,25 @@ export const AddTableModal = ({
             return (
               <>
                 <div className={styles.formInstruction}>
-                  {`1. Select the ${TableTypeLabel[configTableType]} tables you want to add to the xCluster configuration.`}
+                  {`1. Select the ${TableTypeLabel[xClusterConfigTableType]} tables you want to add to the xCluster configuration.`}
                 </div>
                 <TableSelect
                   {...{
                     configAction: XClusterConfigAction.ADD_TABLE,
-                    xClusterConfigUUID: xClusterConfig.uuid,
-                    sourceUniverseUUID: xClusterConfig.sourceUniverseUUID,
-                    targetUniverseUUID: xClusterConfig.targetUniverseUUID,
-                    currentStep,
-                    setCurrentStep,
+                    isDrConfig,
+                    isFixedTableType: true,
+                    selectedKeyspaces,
                     selectedTableUUIDs: formik.current.values.tableUUIDs,
+                    selectionError: errors.tableUUIDs,
+                    selectionWarning: formWarnings?.tableUUIDs,
+                    setSelectedKeyspaces,
                     setSelectedTableUUIDs: (tableUUIDs: string[]) =>
                       setSelectedTableUUIDs(tableUUIDs, formik.current),
-                    tableType: configTableType,
-                    isFixedTableType: true,
                     setTableType: (_) => null,
-                    selectedKeyspaces,
-                    setSelectedKeyspaces,
-                    selectionError: errors.tableUUIDs,
-                    selectionWarning: formWarnings?.tableUUIDs
+                    sourceUniverseUUID: xClusterConfig.sourceUniverseUUID,
+                    tableType: xClusterConfigTableType,
+                    targetUniverseUUID: xClusterConfig.targetUniverseUUID,
+                    xClusterConfigUUID: xClusterConfig.uuid
                   }}
                 />
               </>

@@ -1,15 +1,21 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.YbcTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.RestoreBackupParams;
@@ -17,8 +23,11 @@ import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.RestoreKeyspace;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.IOException;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import javax.inject.Inject;
 import lombok.Getter;
@@ -90,7 +99,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
     try {
       if (StringUtils.isBlank(nodeIp)) {
         Pair<YbcClient, String> clientIPPair =
-            ybcManager.getAvailableYbcClientIpPair(taskParams().getUniverseUUID(), null);
+            ybcManager.getAvailableYbcClientIpPair(taskParams().getUniverseUUID(), true);
         ybcClient = clientIPPair.getFirst();
         nodeIp = clientIPPair.getSecond();
       } else {
@@ -129,6 +138,33 @@ public class RestoreBackupYbc extends YbcTaskBase {
                 + "-"
                 + Integer.toString(taskParams().index);
         try {
+          // For xcluster task, success marker is empty until task execution
+          if (taskParams().getSuccessMarker() == null) {
+            String dsmTaskId = taskId.concat(YbcBackupUtil.YBC_SUCCESS_MARKER_TASK_SUFFIX);
+            BackupServiceTaskCreateRequest downloadSuccessMarkerRequest =
+                ybcBackupUtil.createDsmRequest(
+                    taskParams().customerUUID,
+                    taskParams().storageConfigUUID,
+                    dsmTaskId,
+                    backupStorageInfo);
+            String successMarkerString =
+                ybcManager.downloadSuccessMarker(
+                    downloadSuccessMarkerRequest, taskParams().getUniverseUUID(), dsmTaskId);
+            if (StringUtils.isEmpty(successMarkerString)) {
+              throw new PlatformServiceException(
+                  INTERNAL_SERVER_ERROR, "Got empty success marker response, exiting.");
+            }
+            YbcBackupResponse successMarker =
+                YbcBackupUtil.parseYbcBackupResponse(successMarkerString);
+            taskParams().setSuccessMarker(successMarker);
+          }
+
+          Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+          if (!confGetter.getConfForScope(
+              universe, UniverseConfKeys.skipBackupMetadataValidation)) {
+            validateBackupMetadata(universe);
+          }
+
           backupSize = Long.parseLong(taskParams().getSuccessMarker().backupSize);
           BackupServiceTaskCreateRequest restoreTaskCreateRequest =
               ybcBackupUtil.createYbcRestoreRequest(
@@ -213,6 +249,53 @@ public class RestoreBackupYbc extends YbcTaskBase {
       if (ybcClient != null) {
         ybcService.closeClient(ybcClient);
       }
+    }
+  }
+
+  private void validateBackupMetadata(Universe universe) {
+    try {
+      String restoreUniverseDBVersion =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+      ObjectMapper mapper = new ObjectMapper();
+      String extendedArgs = taskParams().successMarker.extendedArgsString;
+      if (StringUtils.isEmpty(extendedArgs)) {
+        return;
+      }
+      YbcBackupUtil.YbcSuccessBackupConfig backupConfig =
+          mapper.readValue(
+              taskParams().successMarker.extendedArgsString,
+              YbcBackupUtil.YbcSuccessBackupConfig.class);
+      if (backupConfig == null) {
+        return;
+      }
+      // Restore universe DB version should be greater or equal to the backup DB version.
+      if (backupConfig.ybdbVersion != null
+          && Util.compareYbVersions(
+                  restoreUniverseDBVersion, backupConfig.ybdbVersion, true /*suppressFormatError*/)
+              < 0) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Unable to restore backup as it was taken on higher DB version.");
+      }
+      // Validate that all master and tserver auto flags present during backup
+      // should exist in restore universe.
+      if (backupConfig.masterAutoFlags != null && backupConfig.tserverAutoFlags != null) {
+        if (Util.compareYbVersions(
+                restoreUniverseDBVersion,
+                YbcBackupUtil.YBDB_AUTOFLAG_BACKUP_SUPPORT_VERSION,
+                true /*suppressFormatError*/)
+            < 0) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "Unable to restore backup as the universe does not support auto flags.");
+        }
+        Set<String> masterAutoFlags = backupConfig.masterAutoFlags;
+        Set<String> tserverAutoFlags = backupConfig.tserverAutoFlags;
+        ybcBackupUtil.validateAutoFlagCompatibility(universe, masterAutoFlags, tserverAutoFlags);
+      }
+    } catch (IOException e) {
+      log.error("Error while validating backup metadata: ", e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          "Error occurred while validating backup metadata " + e.getMessage());
     }
   }
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import AceEditor from 'react-ace';
 import { YBModal } from '../../common/forms/fields';
 //Icons
@@ -36,7 +36,7 @@ const OIDCMetadataModal = ({ value, open, onSubmit, onClose }) => {
       cancelBtnProps={{
         className: 'btn btn-default pull-left oidc-cancel-btn'
       }}
-      disableSubmit={!editorValue || editorErrors.length > 0}
+      disableSubmit={editorErrors.length > 0}
       onHide={onClose}
       onFormSubmit={() => onSubmit(editorValue)}
     >

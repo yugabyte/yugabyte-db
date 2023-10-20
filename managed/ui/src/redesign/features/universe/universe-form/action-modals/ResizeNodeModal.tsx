@@ -1,4 +1,4 @@
-import React, { FC, useState } from 'react';
+import { FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { Box, Typography } from '@material-ui/core';
@@ -88,7 +88,7 @@ export const ResizeNodeModal: FC<RNModalProps> = ({ open, universeData, onClose 
       overrideHeight={220}
       overrideWidth={600}
       titleSeparator
-      actionsInfo={confirmResizeCheckBox()}
+      footerAccessory={confirmResizeCheckBox()}
       submitTestId="submit-resize-node"
       cancelTestId="close-resize-node"
     >

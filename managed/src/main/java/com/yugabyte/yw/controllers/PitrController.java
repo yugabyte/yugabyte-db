@@ -7,18 +7,26 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.ApiType;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -67,6 +75,14 @@ public class PitrController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.CreatePitrConfigParams",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result createPitrConfig(
       UUID customerUUID,
       UUID universeUUID,
@@ -106,6 +122,18 @@ public class PitrController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, "PITR Config is already present");
     }
 
+    UniverseDefinitionTaskParams.UserIntent primaryClusterUserIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    if (type != null) {
+      if (type.equals(TableType.YQL_TABLE_TYPE) && !primaryClusterUserIntent.enableYCQL) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot enable PITR on YCQL tables when API is disabled");
+      } else if (type.equals(TableType.PGSQL_TABLE_TYPE) && !primaryClusterUserIntent.enableYSQL) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot enable PITR on YSQL tables when API is disabled");
+      }
+    }
+
     taskParams.setUniverseUUID(universeUUID);
     taskParams.customerUUID = customerUUID;
     taskParams.tableType = type;
@@ -135,10 +163,15 @@ public class PitrController extends AuthenticatedController {
       response = PitrConfig.class,
       responseContainer = "List",
       nickname = "ListOfPitrConfigs")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result listPitrConfigs(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
-
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
@@ -201,7 +234,17 @@ public class PitrController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.RestoreSnapshotScheduleParams",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result restore(UUID customerUUID, UUID universeUUID, Http.Request request) {
+    log.info("Received restore PITR config request");
+
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
@@ -267,6 +310,14 @@ public class PitrController extends AuthenticatedController {
       value = "Delete pitr config on a universe",
       nickname = "deletePitrConfig",
       response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result deletePitrConfig(
       UUID customerUUID, UUID universeUUID, UUID pitrConfigUUID, Http.Request request) {
     // Validate customer UUID
@@ -283,6 +334,13 @@ public class PitrController extends AuthenticatedController {
           BAD_REQUEST, "Cannot delete PITR config when the universe is in locked state");
     }
     PitrConfig pitrConfig = PitrConfig.getOrBadRequest(pitrConfigUUID);
+
+    if (pitrConfig.isUsedForXCluster()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "This PITR config is used for transactional xCluster and cannot be deleted; "
+              + "to delete you need to first delete the related xCluster config");
+    }
 
     DeletePitrConfig.Params deletePitrConfigParams = new DeletePitrConfig.Params();
     deletePitrConfigParams.setUniverseUUID(universeUUID);

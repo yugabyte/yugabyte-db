@@ -61,8 +61,6 @@ namespace {
 
 constexpr std::chrono::duration<int64> kRpcTimeout = std::chrono::seconds(60) * kTimeMultiplier;
 
-const std::string empty_partition_key;
-
 bool IsTabletInCollection(const master::TabletInfoPtr& tablet, const master::TabletInfos& tablets) {
   return tablets.end() != std::find_if(
       tablets.begin(), tablets.end(),
@@ -123,13 +121,28 @@ void PgTabletSplitTestBase::SetUp() {
   proxy_cache_ = std::make_unique<rpc::ProxyCache>(client_->messenger());
 }
 
+Result<TabletId> PgTabletSplitTestBase::GetOnlyTabletId(const TableId& table_id) {
+  const auto tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  SCHECK_EQ(
+      tablets.size(), 1, InternalError,
+      Format("Expected single tablet, found $0.", tablets.size()));
+  return tablets.front()->tablet_id();
+}
+
+Status PgTabletSplitTestBase::SplitTablet(const TabletId& tablet_id) {
+  auto epoch = VERIFY_RESULT(catalog_manager())->GetLeaderEpochInternal();
+  return VERIFY_RESULT(catalog_manager())->SplitTablet(
+      tablet_id, master::ManualSplit::kTrue, epoch);
+}
+
 Status PgTabletSplitTestBase::SplitSingleTablet(const TableId& table_id) {
-  auto tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
-  if (tablets.size() != 1) {
-    return STATUS_FORMAT(InternalError, "Expected single tablet, found $0.", tablets.size());
-  }
-  auto tablet_id = tablets.front()->tablet_id();
-  return VERIFY_RESULT(catalog_manager())->SplitTablet(tablet_id, master::ManualSplit::kTrue);
+  return SplitTablet(VERIFY_RESULT(GetOnlyTabletId(table_id)));
+}
+
+Status PgTabletSplitTestBase::SplitSingleTabletAndWaitForActiveChildTablets(
+    const TableId& table_id) {
+  RETURN_NOT_OK(SplitSingleTablet(table_id));
+  return WaitForSplitCompletion(table_id, /* expected_active_leaders = */ 2);
 }
 
 Status PgTabletSplitTestBase::InvokeSplitTabletRpc(const std::string& tablet_id) {
@@ -149,7 +162,7 @@ Status PgTabletSplitTestBase::InvokeSplitTabletRpc(const std::string& tablet_id)
   return Status::OK();
 }
 
-Status PgTabletSplitTestBase::InvokeSplitTabletRpcAndWaitForSplitCompleted(
+Status PgTabletSplitTestBase::InvokeSplitTabletRpcAndWaitForDataCompacted(
     const std::string& tablet_id) {
   const auto catalog_mgr = VERIFY_RESULT(catalog_manager());
   const auto tablet = VERIFY_RESULT(catalog_mgr->GetTabletInfo(tablet_id));
@@ -157,10 +170,10 @@ Status PgTabletSplitTestBase::InvokeSplitTabletRpcAndWaitForSplitCompleted(
   // Get current number of tablets for the table.
   const auto table = catalog_mgr->GetTableInfo(tablet->table()->id());
 
-  return DoInvokeSplitTabletRpcAndWaitForCompletion(table, tablet);
+  return DoInvokeSplitTabletRpcAndWaitForDataCompacted(table, tablet);
 }
 
-Status PgTabletSplitTestBase::InvokeSplitsAndWaitForCompletion(
+Status PgTabletSplitTestBase::InvokeSplitsAndWaitForDataCompacted(
     const TableId& table_id, SelectTabletCallback select_tablet) {
   // Get initial tables.
   const auto catalog_mgr = VERIFY_RESULT(catalog_manager());
@@ -183,7 +196,7 @@ Status PgTabletSplitTestBase::InvokeSplitsAndWaitForCompletion(
     parent = tablet;
 
     // Invoke split tablet RPC and wait for the split is done.
-    RETURN_NOT_OK(DoInvokeSplitTabletRpcAndWaitForCompletion(table, tablet));
+    RETURN_NOT_OK(DoInvokeSplitTabletRpcAndWaitForDataCompacted(table, tablet));
   }
 
   return Status::OK();
@@ -191,18 +204,28 @@ Status PgTabletSplitTestBase::InvokeSplitsAndWaitForCompletion(
 
 Status PgTabletSplitTestBase::DisableCompaction(std::vector<tablet::TabletPeerPtr>* peers) {
   for (auto& peer : *peers) {
-    RETURN_NOT_OK(peer->tablet()->doc_db().regular->SetOptions({
+    RETURN_NOT_OK(peer->tablet()->regular_db()->SetOptions({
         {"level0_file_num_compaction_trigger", std::to_string(std::numeric_limits<int32>::max())}
     }));
   }
   return Status::OK();
 }
 
+Status PgTabletSplitTestBase::WaitForSplitCompletion(
+    const TableId& table_id, const size_t expected_active_leaders) {
+  return LoggedWaitFor(
+      [cluster = cluster_.get(), &table_id, expected_active_leaders]() -> Result<bool> {
+        return ListTableActiveTabletLeadersPeers(cluster, table_id).size() ==
+               expected_active_leaders;
+      },
+      15s * kTimeMultiplier, "Wait for split completion.");
+}
+
 size_t PgTabletSplitTestBase::NumTabletServers() {
   return 1;
 }
 
-Status PgTabletSplitTestBase::DoInvokeSplitTabletRpcAndWaitForCompletion(
+Status PgTabletSplitTestBase::DoInvokeSplitTabletRpcAndWaitForDataCompacted(
     const master::TableInfoPtr& table, const master::TabletInfoPtr& tablet) {
   // Keep current tablets.
   const auto tablets = table->GetTablets();
@@ -220,8 +243,8 @@ Status PgTabletSplitTestBase::DoInvokeSplitTabletRpcAndWaitForCompletion(
       cluster_.get(), table->id(), tablets.size() + 1));
 
   // Wait until split is replicated across all tablet servers.
-    RETURN_NOT_OK(WaitAllReplicasReady(
-        cluster_.get(), table->id(), MonoDelta::FromSeconds(20) * kTimeMultiplier));
+  RETURN_NOT_OK(WaitAllReplicasReady(
+      cluster_.get(), table->id(), MonoDelta::FromSeconds(20) * kTimeMultiplier));
 
   // Select new tablets ids
   const auto all_tablets = table->GetTablets();
@@ -234,7 +257,7 @@ Status PgTabletSplitTestBase::DoInvokeSplitTabletRpcAndWaitForCompletion(
   }
 
   // Wait for new peers are fully compacted.
-  return WaitForPeersAreFullyCompacted(cluster_.get(), new_tablet_ids);
+  return WaitForPeersPostSplitCompacted(cluster_.get(), new_tablet_ids);
 }
 
 PartitionKeyTabletMap GetTabletsByPartitionKey(const master::TableInfoPtr& table) {
@@ -242,11 +265,8 @@ PartitionKeyTabletMap GetTabletsByPartitionKey(const master::TableInfoPtr& table
   // as we are holding a std::string_view to partition_key_start.
   PartitionKeyTabletMap tablets;
   for (auto& t : table->GetTablets()) {
-    const auto& partition = t->LockForRead()->pb.partition();
-    const auto& partition_key =
-        partition.has_partition_key_start() ? partition.partition_key_start()
-                                            : empty_partition_key;
-    tablets.emplace(partition_key, t);
+    const auto partition = t->LockForRead()->pb.partition();
+    tablets.emplace(partition.has_partition_key_start() ? partition.partition_key_start() : "", t);
   }
   return tablets;
 }

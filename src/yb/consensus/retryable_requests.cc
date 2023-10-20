@@ -23,9 +23,12 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/opid_util.h"
 
+#include "yb/server/clock.h"
+
 #include "yb/tablet/operations.pb.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -47,6 +50,11 @@ DEFINE_RUNTIME_int32(retryable_request_timeout_secs, 660,
 // dropped independently.
 DEFINE_UNKNOWN_int32(retryable_request_range_time_limit_secs, 30,
              "Max delta in time for single op id range.");
+
+DEFINE_UNKNOWN_bool(enable_check_retryable_request_timeout, true,
+                    "Whether to check if retryable request exceeds the timeout.");
+
+DECLARE_uint64(max_clock_skew_usec);
 
 METRIC_DEFINE_gauge_int64(tablet, running_retryable_requests,
                           "Number of running retryable requests.",
@@ -128,7 +136,8 @@ typedef boost::multi_index_container <
                 RunningRetryableRequest, RetryableRequestId, &RunningRetryableRequest::request_id
             >
         >
-    >
+    >,
+    MemTrackerAllocator<RunningRetryableRequest>
 > RunningRetryableRequests;
 
 typedef boost::multi_index_container <
@@ -148,17 +157,34 @@ typedef boost::multi_index_container <
                 &ReplicatedRetryableRequestRange::min_op_id
             >
         >
-    >
+    >,
+    MemTrackerAllocator<ReplicatedRetryableRequestRange>
 > ReplicatedRetryableRequestRanges;
 
 typedef ReplicatedRetryableRequestRanges::index<LastIdIndex>::type
     ReplicatedRetryableRequestRangesByLastId;
 
 struct ClientRetryableRequests {
-  RunningRetryableRequests running;
-  ReplicatedRetryableRequestRanges replicated;
+  std::unique_ptr<RunningRetryableRequests> running;
+  std::unique_ptr<ReplicatedRetryableRequestRanges> replicated;
   RetryableRequestId min_running_request_id = 0;
   RestartSafeCoarseTimePoint empty_since;
+
+  explicit ClientRetryableRequests(const MemTrackerPtr& mem_tracker)
+      : running(std::make_unique<RunningRetryableRequests>(
+            RunningRetryableRequests::ctor_args_list(),
+            MemTrackerAllocator<RunningRetryableRequest>(mem_tracker))),
+        replicated(std::make_unique<ReplicatedRetryableRequestRanges>(
+            ReplicatedRetryableRequestRanges::ctor_args_list(),
+            MemTrackerAllocator<ReplicatedRetryableRequestRange>(mem_tracker))) {
+  }
+
+  ClientRetryableRequests(const ClientRetryableRequests& c)
+      : running(new RunningRetryableRequests(*c.running)),
+        replicated(new ReplicatedRetryableRequestRanges(*c.replicated)),
+        min_running_request_id(c.min_running_request_id),
+        empty_since(c.empty_since) {
+  }
 };
 
 std::chrono::seconds RangeTimeLimit() {
@@ -219,7 +245,8 @@ std::ostream& operator<<(std::ostream& out, const ReplicateData& data) {
 
 } // namespace
 
-Status RetryableRequestsManager::Init() {
+Status RetryableRequestsManager::Init(const server::ClockPtr& clock) {
+  retryable_requests_->SetServerClock(clock);
   if (!fs_manager_->Exists(dir_)) {
     LOG(INFO) << "Wal dir is not created, skip initializing RetryableRequestsManager for "
               << tablet_id_;
@@ -267,7 +294,7 @@ Status RetryableRequestsManager::LoadFromDisk() {
   RETURN_NOT_OK_PREPEND(
       pb_util::ReadPBContainerFromPath(fs_manager()->env(), path, &pb),
       Format("Could not load retryable requests from $0", path));
-  retryable_requests_.FromPB(pb);
+  retryable_requests_->FromPB(pb);
   LOG(INFO) << Format("Loaded tablet ($0) retryable requests "
                       "(max_replicated_op_id_=$1) from $2",
                       tablet_id_, pb.last_op_id(), path);
@@ -299,7 +326,7 @@ std::unique_ptr<RetryableRequests> RetryableRequestsManager::TakeSnapshotOfRetry
         << "Tablet " << tablet_id_ << " has no new retryable requests to flush";
     return nullptr;
   }
-  return std::make_unique<RetryableRequests>(retryable_requests_);
+  return std::make_unique<RetryableRequests>(*retryable_requests_);
 }
 
 Status RetryableRequestsManager::DoInit() {
@@ -326,8 +353,42 @@ Status RetryableRequestsManager::DoInit() {
 
 class RetryableRequests::Impl {
  public:
-  explicit Impl(std::string log_prefix) : log_prefix_(std::move(log_prefix)) {
+  explicit Impl(const MemTrackerPtr& tablet_mem_tracker, std::string log_prefix)
+      : log_prefix_(std::move(log_prefix)),
+        mem_tracker_(MemTracker::FindOrCreateTracker(
+            "Retryable Requests", tablet_mem_tracker)) {
     VLOG_WITH_PREFIX(1) << "Start";
+  }
+
+  Impl(const Impl& rhs) {
+    CopyFrom(rhs);
+  }
+
+  void CopyFrom(const Impl& rhs) {
+    log_prefix_ = rhs.log_prefix_;
+    max_replicated_op_id_ = rhs.max_replicated_op_id_;
+    last_flushed_op_id_ = rhs.last_flushed_op_id_;
+    clock_ = rhs.clock_;
+    running_requests_gauge_ = rhs.running_requests_gauge_;
+    replicated_request_ranges_gauge_ = rhs.replicated_request_ranges_gauge_;
+
+    for (const auto& rhs_client_requests : rhs.clients_) {
+      ClientId client_id = rhs_client_requests.first;
+      if (clients_.find(client_id) == clients_.end()) {
+        clients_.emplace(client_id, ClientRetryableRequests(
+            (mem_tracker_) ? mem_tracker_ : rhs.mem_tracker_));
+      }
+      auto& client_requests = clients_.at(client_id);
+
+      auto& replicated_requests = client_requests.replicated;
+      for (auto& rhs_replicated_request : *rhs_client_requests.second.replicated) {
+        replicated_requests->emplace(rhs_replicated_request);
+      }
+      auto& running_requests = client_requests.running;
+      for (auto& rhs_running_request : *rhs_client_requests.second.running) {
+        running_requests->emplace(rhs_running_request);
+      }
+    }
   }
 
   bool HasUnflushedData() const {
@@ -359,8 +420,8 @@ class RetryableRequests::Impl {
       client_requests_pb->set_client_id1(pair.first);
       client_requests_pb->set_client_id2(pair.second);
       VLOG_WITH_PREFIX(4) << Format("Saving $0 ranges for client $1",
-          client_requests.second.replicated.size(), client_requests.first);
-      for (const auto& range : client_requests.second.replicated) {
+          client_requests.second.replicated->size(), client_requests.first);
+      for (const auto& range : *client_requests.second.replicated) {
         auto* range_pb = client_requests_pb->add_range();
         range_pb->set_first_id(range.first_id);
         range_pb->set_last_id(range.last_id);
@@ -375,15 +436,15 @@ class RetryableRequests::Impl {
     max_replicated_op_id_ = last_flushed_op_id_ = OpId::FromPB(pb.last_op_id());
     for (auto& reqs : pb.client_requests()) {
       ClientId client_id(reqs.client_id1(), reqs.client_id2());
-      auto& client_requests = clients_[client_id];
+     auto& client_requests = clients_.try_emplace(client_id, mem_tracker_).first->second;
       auto& replicated_requests = client_requests.replicated;
       VLOG_WITH_PREFIX(4) << Format("Loaded $0 ranges for client $1:\n$2",
           reqs.range_size(), client_id, reqs.DebugString());
       for (auto& r : reqs.range()) {
-        replicated_requests.emplace(r.first_id(), r.last_id(),
-                                    OpId::FromPB(r.min_op_id()),
-                                    RestartSafeCoarseTimePoint::FromUInt64(r.min_time()),
-                                    RestartSafeCoarseTimePoint::FromUInt64(r.max_time()));
+        replicated_requests->emplace(r.first_id(), r.last_id(),
+                                     OpId::FromPB(r.min_op_id()),
+                                     RestartSafeCoarseTimePoint::FromUInt64(r.min_time()),
+                                     RestartSafeCoarseTimePoint::FromUInt64(r.max_time()));
         if (replicated_request_ranges_gauge_) {
           replicated_request_ranges_gauge_->Increment();
         }
@@ -391,7 +452,10 @@ class RetryableRequests::Impl {
     }
   }
 
-  Result<bool> Register(const ConsensusRoundPtr& round, RestartSafeCoarseTimePoint entry_time) {
+  Result<bool> Register(
+      const ConsensusRoundPtr& round,
+      tablet::IsLeaderSide is_leader_side,
+      RestartSafeCoarseTimePoint entry_time) {
     auto data = ReplicateData::FromMsg(*round->replicate_msg());
     if (!data) {
       return true;
@@ -401,7 +465,8 @@ class RetryableRequests::Impl {
       entry_time = clock_.Now();
     }
 
-    ClientRetryableRequests& client_retryable_requests = clients_[data.client_id()];
+    auto& client_retryable_requests = clients_.try_emplace(
+        data.client_id(), mem_tracker_).first->second;
 
     CleanupReplicatedRequests(
         data.write().min_running_request_id(), &client_retryable_requests);
@@ -413,7 +478,7 @@ class RetryableRequests::Impl {
           data.client_id(), client_retryable_requests.min_running_request_id);
     }
 
-    auto& replicated_indexed_by_last_id = client_retryable_requests.replicated.get<LastIdIndex>();
+    auto& replicated_indexed_by_last_id = client_retryable_requests.replicated->get<LastIdIndex>();
     auto it = replicated_indexed_by_last_id.lower_bound(data.request_id());
     if (it != replicated_indexed_by_last_id.end() && it->first_id <= data.request_id()) {
       return STATUS_FORMAT(
@@ -422,7 +487,33 @@ class RetryableRequests::Impl {
               client_retryable_requests.min_running_request_id);
     }
 
-    auto& running_indexed_by_request_id = client_retryable_requests.running.get<RequestIdIndex>();
+    // If there's start_time specified, check if the request is too old.
+    // This should only be checked from the leader side.
+    if (is_leader_side &&
+        FLAGS_enable_check_retryable_request_timeout &&
+        server_clock_ &&
+        data.write().start_time_micros() > 0) {
+      const auto retryable_request_timeout =
+          GetAtomicFlag(&FLAGS_retryable_request_timeout_secs) * 1s;
+      const auto max_clock_skew = FLAGS_max_clock_skew_usec * 1us;
+      if (PREDICT_TRUE(retryable_request_timeout > max_clock_skew)) {
+        const auto now_micros = server_clock_->Now().GetPhysicalValueMicros();
+        VLOG_WITH_PREFIX(4) << Format(
+            "Checking start_time(now:$0 start:$1)", now_micros, data.write().start_time_micros());
+        if (data.write().start_time_micros() * 1us <
+                now_micros * 1us - retryable_request_timeout + max_clock_skew) {
+          return STATUS_EC_FORMAT(
+              Expired,
+              MinRunningRequestIdStatusData(client_retryable_requests.min_running_request_id),
+              "Request id $0 from client $1 is too old (now=$2, start_time=$3, request timeout $4, "
+              "max clock skew $5)",
+              data.request_id(), data.client_id(), now_micros, data.write().start_time_micros(),
+              retryable_request_timeout, max_clock_skew);
+        }
+      }
+    }
+
+    auto& running_indexed_by_request_id = client_retryable_requests.running->get<RequestIdIndex>();
     auto emplace_result = running_indexed_by_request_id.emplace(data.request_id(), entry_time);
     if (!emplace_result.second) {
       emplace_result.first->duplicate_rounds.push_back(round);
@@ -443,7 +534,7 @@ class RetryableRequests::Impl {
     auto clean_start = now - GetAtomicFlag(&FLAGS_retryable_request_timeout_secs) * 1s;
     for (auto ci = clients_.begin(); ci != clients_.end();) {
       ClientRetryableRequests& client_retryable_requests = ci->second;
-      auto& op_id_index = client_retryable_requests.replicated.get<OpIdIndex>();
+      auto& op_id_index = client_retryable_requests.replicated->get<OpIdIndex>();
       auto it = op_id_index.begin();
       int64_t count = 0;
       while (it != op_id_index.end() && it->max_time < clean_start) {
@@ -459,7 +550,7 @@ class RetryableRequests::Impl {
       } else {
         op_id_index.clear();
       }
-      if (op_id_index.empty() && client_retryable_requests.running.empty()) {
+      if (op_id_index.empty() && client_retryable_requests.running->empty()) {
         // We delay deleting client with empty requests, to be able to filter requests with too
         // small request id.
         if (client_retryable_requests.empty_since == RestartSafeCoarseTimePoint()) {
@@ -482,8 +573,9 @@ class RetryableRequests::Impl {
       return;
     }
 
-    auto& client_retryable_requests = clients_[data.client_id()];
-    auto& running_indexed_by_request_id = client_retryable_requests.running.get<RequestIdIndex>();
+    auto& client_retryable_requests = clients_.try_emplace(
+        data.client_id(), mem_tracker_).first->second;
+    auto& running_indexed_by_request_id = client_retryable_requests.running->get<RequestIdIndex>();
     auto running_it = running_indexed_by_request_id.find(data.request_id());
     if (running_it == running_indexed_by_request_id.end()) {
 #ifndef NDEBUG
@@ -525,8 +617,9 @@ class RetryableRequests::Impl {
       return;
     }
 
-    auto& client_retryable_requests = clients_[data.client_id()];
-    auto& running_indexed_by_request_id = client_retryable_requests.running.get<RequestIdIndex>();
+    auto& client_retryable_requests = clients_.try_emplace(
+        data.client_id(), mem_tracker_).first->second;
+    auto& running_indexed_by_request_id = client_retryable_requests.running->get<RequestIdIndex>();
     if (running_indexed_by_request_id.count(data.request_id()) != 0) {
 #ifndef NDEBUG
       LOG_WITH_PREFIX(ERROR) << "Running requests: "
@@ -556,11 +649,15 @@ class RetryableRequests::Impl {
         metric_entity, counts.replicated);
   }
 
+  void SetServerClock(const server::ClockPtr& clock) {
+    server_clock_ = clock;
+  }
+
   RetryableRequestsCounts Counts() {
     RetryableRequestsCounts result;
     for (const auto& p : clients_) {
-      result.running += p.second.running.size();
-      result.replicated += p.second.replicated.size();
+      result.running += p.second.running->size();
+      result.replicated += p.second.replicated->size();
       LOG_WITH_PREFIX(INFO) << "Replicated: " << yb::ToString(p.second.replicated);
     }
     return result;
@@ -578,7 +675,7 @@ class RetryableRequests::Impl {
   void CleanupReplicatedRequests(
       RetryableRequestId new_min_running_request_id,
       ClientRetryableRequests* client_retryable_requests) {
-    auto& replicated_indexed_by_last_id = client_retryable_requests->replicated.get<LastIdIndex>();
+    auto& replicated_indexed_by_last_id = client_retryable_requests->replicated->get<LastIdIndex>();
     if (new_min_running_request_id > client_retryable_requests->min_running_request_id) {
       // We are not interested in ids below write_request.min_running_request_id() anymore.
       //
@@ -603,7 +700,7 @@ class RetryableRequests::Impl {
   void AddReplicated(yb::OpId op_id, const ReplicateData& data, RestartSafeCoarseTimePoint time,
                      ClientRetryableRequests* client) {
     auto request_id = data.request_id();
-    auto& replicated_indexed_by_last_id = client->replicated.get<LastIdIndex>();
+    auto& replicated_indexed_by_last_id = client->replicated->get<LastIdIndex>();
     auto request_it = replicated_indexed_by_last_id.lower_bound(request_id);
     if (request_it != replicated_indexed_by_last_id.end() && request_it->first_id <= request_id) {
 #ifndef NDEBUG
@@ -639,7 +736,7 @@ class RetryableRequests::Impl {
       return;
     }
 
-    client->replicated.emplace(request_id, op_id, time);
+    client->replicated->emplace(request_id, op_id, time);
     if (replicated_request_ranges_gauge_) {
       replicated_request_ranges_gauge_->Increment();
     }
@@ -730,12 +827,15 @@ class RetryableRequests::Impl {
   OpId last_flushed_op_id_ = OpId::Min();
   std::unordered_map<ClientId, ClientRetryableRequests, ClientIdHash> clients_;
   RestartSafeCoarseMonoClock clock_;
+  server::ClockPtr server_clock_;
   scoped_refptr<AtomicGauge<int64_t>> running_requests_gauge_;
   scoped_refptr<AtomicGauge<int64_t>> replicated_request_ranges_gauge_;
+  MemTrackerPtr mem_tracker_;
 };
 
-RetryableRequests::RetryableRequests(std::string log_prefix)
-    : impl_(new Impl(std::move(log_prefix))) {
+RetryableRequests::RetryableRequests(const MemTrackerPtr& tablet_mem_tracker,
+                                     std::string log_prefix)
+    : impl_(new Impl(tablet_mem_tracker, std::move(log_prefix))) {
 }
 
 RetryableRequests::~RetryableRequests() {
@@ -746,6 +846,10 @@ RetryableRequests::RetryableRequests(const RetryableRequests& rhs)
 }
 
 RetryableRequests::RetryableRequests(RetryableRequests&& rhs) : impl_(std::move(rhs.impl_)) {}
+
+void RetryableRequests::CopyFrom(const RetryableRequests& rhs) {
+  impl_->CopyFrom(*rhs.impl_);
+}
 
 void RetryableRequests::operator=(RetryableRequests&& rhs) {
   impl_ = std::move(rhs.impl_);
@@ -772,8 +876,10 @@ void RetryableRequests::FromPB(const RetryableRequestsPB &pb) {
 }
 
 Result<bool> RetryableRequests::Register(
-    const ConsensusRoundPtr& round, RestartSafeCoarseTimePoint entry_time) {
-  return impl_->Register(round, entry_time);
+    const ConsensusRoundPtr& round,
+    tablet::IsLeaderSide is_leader_side,
+    RestartSafeCoarseTimePoint entry_time) {
+  return impl_->Register(round, is_leader_side, entry_time);
 }
 
 yb::OpId RetryableRequests::CleanExpiredReplicatedAndGetMinOpId() {
@@ -813,6 +919,10 @@ void RetryableRequests::set_log_prefix(const std::string& log_prefix) {
 
 bool RetryableRequests::HasUnflushedData() const {
   return impl_->HasUnflushedData();
+}
+
+void RetryableRequests::SetServerClock(const server::ClockPtr& clock) {
+  impl_->SetServerClock(clock);
 }
 
 } // namespace consensus

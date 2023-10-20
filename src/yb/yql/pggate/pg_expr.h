@@ -81,6 +81,8 @@ class PgExpr {
 
   virtual Result<LWQLValuePB*> Eval();
 
+  virtual std::string ToString() const;
+
   // Access methods.
   Opcode opcode() const {
     return opcode_;
@@ -112,6 +114,11 @@ class PgExpr {
   }
 
   virtual bool is_ybbasetid() const {
+    return false;
+  }
+
+  // is expression a system column reference (i.e. oid, ybctid)
+  virtual bool is_system() const {
     return false;
   }
 
@@ -180,6 +187,8 @@ class PgConstant : public PgExpr {
   // Expression to PB.
   Result<LWQLValuePB*> Eval() override;
 
+  std::string ToString() const override;
+
   // Read binary value.
   Slice binary_value() {
     return ql_value_.binary_value();
@@ -207,6 +216,8 @@ class PgColumnRef : public PgExpr, public PgFetchedTarget {
   GetColumns(PgTable *pg_table) const override;
 
   bool is_ybbasetid() const override;
+
+  bool is_system() const override;
 
   int attr_num() const {
     return attr_num_;

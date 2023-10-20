@@ -201,6 +201,9 @@ typedef struct TransactionStateData
 	List		*YBPostponedDdlOps; /* We postpone execution of non-revertable
 				                     * DocDB operations (e.g. drop table/index)
 				                     * until the rest of the txn succeeds */
+	int			ybUncommittedStickyObjectCount;	/* Count of objects that require stickiness
+									 		 * within a certain transaction (e.g. TEMP
+									 		 * TABLES/WITH HOLD CURSORS)*/
 } TransactionStateData;
 
 typedef TransactionStateData *TransactionState;
@@ -1936,7 +1939,7 @@ YBInitializeTransaction(void)
 {
 	if (YBTransactionsEnabled())
 	{
-		HandleYBStatus(YBCPgBeginTransaction());
+		HandleYBStatus(YBCPgBeginTransaction(xactStartTimestamp));
 
 		HandleYBStatus(
 			YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
@@ -2102,6 +2105,7 @@ StartTransaction(void)
 
 	YBStartTransaction(s);
 
+	s->ybUncommittedStickyObjectCount = 0;
 	ShowTransactionState("StartTransaction");
 }
 
@@ -2851,6 +2855,9 @@ AbortTransaction(void)
 
 	YBCAbortTransaction();
 
+	/* Reset the value of the sticky connection */
+	s->ybUncommittedStickyObjectCount = 0;
+
 	/*
 	 * State remains TRANS_ABORT until CleanupTransaction().
 	 */
@@ -3062,6 +3069,49 @@ void
 CommitTransactionCommand(void)
 {
 	TransactionState s = CurrentTransactionState;
+
+	/* Update the session parameter to the shared memory */
+	if (YbIsClientYsqlConnMgr())
+	{
+		/*
+		 * At the end of a single query transaction (when autocommit is enabled)
+		 * the blockState will be TBLOCK_STARTED.
+		 * At the end of a normal transaction (when autocommit is disabled)
+		 * the blockState will be TBLOCK_END.
+		 * So in the case of TBLOCK_ENDand TBLOCK_STARTED,
+		 *
+		 * UpdateSharedMemory is called at the end of a transaction.
+		 * i.e. TBLOCK_END and TBLOCK_STARTED, not TBLOCK_BEGIN.
+		 * This is done to update the shared memory in case any
+		 * session parameter might have changed.
+		 *
+		 * YbCleanChangedSessionParameter is called both at the beginning
+		 * and at the end of the transaction (after updating shared memory) .
+		 * YbCleanChangedSessionParameter basically cleans the local cach, so
+		 * when a logical connection is attached to a new physical connection,
+		 * the cach needs to be cleaned. Also once this cach has been used to
+		 * update the shared memory (YbUpdateSharedMemory) this cach should be
+		 * cleaned.
+		 */
+		switch (s->blockState)
+		{
+			case TBLOCK_END:	 /* COMMIT received */
+			case TBLOCK_STARTED: /* running single-query transaction */
+				/* Copy the session parameter from the local memory to the
+				 * shared memory */
+				YbUpdateSharedMemory();
+
+				YbCleanChangedSessionParameters();
+				break;
+			case TBLOCK_BEGIN:
+				YbCleanChangedSessionParameters();
+				break;
+			default:
+				/* do nothing for sub transaction, process changed session
+				 * parameters only at the end of the transaction. */
+				break;
+		}
+	}
 
 	switch (s->blockState)
 	{
@@ -4834,7 +4884,9 @@ TransactionBlockStatusCode(void)
 	{
 		case TBLOCK_DEFAULT:
 		case TBLOCK_STARTED:
-			return 'I';			/* idle --- not in transaction */
+			return ((YbIsClientYsqlConnMgr() && \
+					YbIsStickyConnection(&(s->ybUncommittedStickyObjectCount)))
+				? 'i' : 'I');			/* idle --- not in transaction */
 		case TBLOCK_BEGIN:
 		case TBLOCK_SUBBEGIN:
 		case TBLOCK_INPROGRESS:
@@ -4919,6 +4971,13 @@ StartSubTransaction(void)
 						 s->parent->subTransactionId);
 
 	ShowTransactionState("StartSubTransaction");
+
+	/* 
+	 * Update the value of the sticky objects from parent transaction
+	 */
+	if(CurrentTransactionState->parent)
+		CurrentTransactionState->ybUncommittedStickyObjectCount =
+			CurrentTransactionState->parent->ybUncommittedStickyObjectCount;
 }
 
 /*
@@ -6223,4 +6282,22 @@ void YbClearCurrentTransactionId()
 {
 	CurrentTransactionState->transactionId = InvalidTransactionId;
 	MyPgXact->xid = InvalidTransactionId;
+}
+
+/*
+ * ```increment_sticky_object_count()``` is called when any database object which requires
+ * stickiness is created.
+ */
+void increment_sticky_object_count()
+{
+	CurrentTransactionState->ybUncommittedStickyObjectCount++;
+}
+
+/*
+ * ```decrement_sticky_object_count()``` is called when any database object which required
+ * stickiness is deleted.
+ */
+void decrement_sticky_object_count()
+{
+	CurrentTransactionState->ybUncommittedStickyObjectCount--;
 }

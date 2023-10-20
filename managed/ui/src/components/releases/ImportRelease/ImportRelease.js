@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Field } from 'formik';
 import { Row, Col } from 'react-bootstrap';
 import { useMutation } from 'react-query';

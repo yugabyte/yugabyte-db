@@ -2,8 +2,11 @@
 
 package com.yugabyte.yw.common.gflags;
 
+import static com.yugabyte.yw.common.Util.getDataDirectoryPath;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
@@ -16,18 +19,29 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.audit.YCQLAuditConfig;
+import com.yugabyte.yw.models.helpers.audit.YSQLAuditConfig;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -42,13 +56,17 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.csv.CSVRecord;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -100,6 +118,7 @@ public class GFlagsUtil {
   public static final String PSQL_PROXY_BIND_ADDRESS = "pgsql_proxy_bind_address";
   public static final String PSQL_PROXY_WEBSERVER_PORT = "pgsql_proxy_webserver_port";
   public static final String YSQL_HBA_CONF_CSV = "ysql_hba_conf_csv";
+  public static final String YSQL_PG_CONF_CSV = "ysql_pg_conf_csv";
   public static final String CSQL_PROXY_BIND_ADDRESS = "cql_proxy_bind_address";
   public static final String CSQL_PROXY_WEBSERVER_PORT = "cql_proxy_webserver_port";
   public static final String ALLOW_INSECURE_CONNECTIONS = "allow_insecure_connections";
@@ -139,6 +158,13 @@ public class GFlagsUtil {
   public static final String YBC_PER_UPLOAD_OBJECTS = "per_upload_num_objects";
   public static final String YBC_PER_DOWNLOAD_OBJECTS = "per_download_num_objects";
   public static final String TMP_DIRECTORY = "tmp_dir";
+  public static final String JWKS_FILE_CONTENT_KEY = "jwks=";
+  public static final String JWT_AUDIENCES = "jwt_audiences=";
+  public static final String JWT_ISSUERS = "jwt_issuers=";
+  public static final String JWT_MATCHING_CLAIM_KEY = "jwt_matching_claim_key=";
+  public static final String JWT_JWKS_FILE_PATH = "jwt_jwks_path";
+  public static final String JWT_AUTH = "jwt";
+  public static final String GFLAG_REMOTE_FILES_PATH = TSERVER_DIR + "/conf/gflag_files/";
 
   private static final Set<String> GFLAGS_FORBIDDEN_TO_OVERRIDE =
       ImmutableSet.<String>builder()
@@ -266,8 +292,10 @@ public class GFlagsUtil {
           getMasterDefaultGFlags(taskParam, universe, useHostname, useSecondaryIp, isDualNet));
     }
 
+    // Set on both master and tserver processes to allow db to validate inter-node RPCs.
+    extra_gflags.put(CLUSTER_UUID, String.valueOf(taskParam.getUniverseUUID()));
+
     if (taskParam.isMaster) {
-      extra_gflags.put(CLUSTER_UUID, String.valueOf(taskParam.getUniverseUUID()));
       extra_gflags.put(REPLICATION_FACTOR, String.valueOf(userIntent.replicationFactor));
     }
 
@@ -300,12 +328,15 @@ public class GFlagsUtil {
 
   /** Return the map of ybc flags which will be passed to the db nodes. */
   public static Map<String, String> getYbcFlags(
-      AnsibleConfigureServers.Params taskParam, Config config) {
-    Universe universe = Universe.getOrBadRequest(taskParam.getUniverseUUID());
+      Universe universe,
+      AnsibleConfigureServers.Params taskParam,
+      RuntimeConfGetter confGetter,
+      Config config) {
     NodeDetails node = universe.getNode(taskParam.nodeName);
     // Both for old clusters and new, binding to both IPs works.
     boolean isDualNet =
-        config.getBoolean("yb.cloud.enabled")
+        confGetter.getConfForScope(
+                Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled)
             && node.cloudInfo.secondary_private_ip != null
             && !node.cloudInfo.secondary_private_ip.equals("null");
     String serverAddresses =
@@ -346,17 +377,30 @@ public class GFlagsUtil {
       ybcFlags.putAll(userIntent.ybcFlags);
     }
     // Append the custom_tmp gflag to the YBC gflag.
-    ybcFlags.put(TMP_DIRECTORY, GFlagsUtil.getCustomTmpDirectory(node, universe));
+    String ybcTempDir = GFlagsUtil.getCustomTmpDirectory(node, universe);
+    // PLAT-10007 use ybc-data instead of /tmp
+    if (ybcTempDir.equals("/tmp")) {
+      ybcTempDir = getDataDirectoryPath(universe, node, config) + "/ybc-data";
+    }
+    ybcFlags.put(TMP_DIRECTORY, ybcTempDir);
     if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
       String ybHomeDir = getYbHomeDir(providerUUID);
       String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
       ybcFlags.put("certs_dir_name", certsNodeDir);
     }
+    boolean enableVerbose =
+        confGetter.getConfForScope(universe, UniverseConfKeys.ybcEnableVervbose);
+    if (enableVerbose) {
+      ybcFlags.put("v", "1");
+    }
+    String nfsDirs = confGetter.getConfForScope(universe, UniverseConfKeys.nfsDirs);
+    ybcFlags.put("nfs_dirs", nfsDirs);
     return ybcFlags;
   }
 
   /** Return the map of ybc flags which will be passed to the db nodes. */
-  public static Map<String, String> getYbcFlagsForK8s(UUID universeUUID, String nodeName) {
+  public static Map<String, String> getYbcFlagsForK8s(
+      UUID universeUUID, String nodeName, boolean listenOnAllInterfaces, int hardwareConcurrency) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     NodeDetails node = universe.getNode(nodeName);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -364,15 +408,14 @@ public class GFlagsUtil {
     String providerUUID = userIntent.provider;
     Provider provider = Provider.getOrBadRequest(UUID.fromString(providerUUID));
     String ybHomeDir = provider.getYbHome();
-    int hardwareConcurrency =
-        (int)
-            Math.ceil(
-                InstanceType.getOrBadRequest(provider.getUuid(), node.cloudInfo.instance_type)
-                    .getNumCores());
+    String serverAddress =
+        listenOnAllInterfaces
+            ? (userIntent.enableIPV6 ? "[::]" : "0.0.0.0")
+            : node.cloudInfo.private_ip;
     Map<String, String> ybcFlags = new TreeMap<>();
     ybcFlags.put("v", Integer.toString(1));
     ybcFlags.put("hardware_concurrency", Integer.toString(hardwareConcurrency));
-    ybcFlags.put("server_address", node.cloudInfo.private_ip);
+    ybcFlags.put("server_address", serverAddress);
     ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
     ybcFlags.put("log_dir", K8S_YBC_LOG_SUBDIR);
     ybcFlags.put("cores_dir", K8S_YBC_CORES_DIR);
@@ -392,11 +435,12 @@ public class GFlagsUtil {
     }
     if (EncryptionInTransitUtil.isRootCARequired(universeDetails)) {
       ybcFlags.put("certs_dir_name", "/opt/certs/yugabyte");
+      ybcFlags.put("cert_node_filename", node.cloudInfo.private_ip);
     }
     return ybcFlags;
   }
 
-  private static String getYbHomeDir(String providerUUID) {
+  public static String getYbHomeDir(String providerUUID) {
     if (providerUUID == null) {
       return CommonUtils.DEFAULT_YB_HOME_DIR;
     }
@@ -508,10 +552,61 @@ public class GFlagsUtil {
       } else {
         gflags.put(YSQL_ENABLE_AUTH, "false");
       }
+      String ysqlPgConfCsv = getYsqlPgConfCsv(universe);
+      if (StringUtils.isNotEmpty(ysqlPgConfCsv)) {
+        gflags.put(YSQL_PG_CONF_CSV, ysqlPgConfCsv);
+      }
     } else {
       gflags.put(ENABLE_YSQL, "false");
     }
     return gflags;
+  }
+
+  private static String getYsqlPgConfCsv(Universe universe) {
+    List<String> ysqlPgConfCsvEntries = new ArrayList<>();
+    AuditLogConfig auditLogConfig =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
+    if (auditLogConfig != null) {
+      if (auditLogConfig.getYsqlAuditConfig() != null
+          && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
+        YSQLAuditConfig ysqlAuditConfig = auditLogConfig.getYsqlAuditConfig();
+        if (CollectionUtils.isNotEmpty(ysqlAuditConfig.getClasses())) {
+          ysqlPgConfCsvEntries.add(
+              "\"pgaudit.log='"
+                  + ysqlAuditConfig.getClasses().stream()
+                      .map(YSQLAuditConfig.YSQLAuditStatementClass::name)
+                      .collect(Collectors.joining(","))
+                  + "'\"");
+        }
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("pgaudit.log_catalog", ysqlAuditConfig.isLogCatalog()));
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("pgaudit.log_client", ysqlAuditConfig.isLogClient()));
+        if (ysqlAuditConfig.getLogLevel() != null) {
+          ysqlPgConfCsvEntries.add("pgaudit.log_level=" + ysqlAuditConfig.getLogLevel().name());
+        }
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("pgaudit.log_parameter", ysqlAuditConfig.isLogParameter()));
+        if (ysqlAuditConfig.getLogParameterMaxSize() != null) {
+          ysqlPgConfCsvEntries.add(
+              "pgaudit.log_parameter_max_size=" + ysqlAuditConfig.getLogParameterMaxSize());
+        }
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("pgaudit.log_relation", ysqlAuditConfig.isLogRelation()));
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("pgaudit.log_row", ysqlAuditConfig.isLogRow()));
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("pgaudit.log_statement", ysqlAuditConfig.isLogStatement()));
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag(
+                "pgaudit.log_statement_once", ysqlAuditConfig.isLogStatementOnce()));
+      }
+    }
+    return String.join(",", ysqlPgConfCsvEntries);
+  }
+
+  private static String encodeBooleanPgAuditFlag(String flag, boolean value) {
+    return flag + "=" + (value ? "ON" : "OFF");
   }
 
   private static Map<String, String> getYCQLGFlags(
@@ -537,10 +632,59 @@ public class GFlagsUtil {
       } else {
         gflags.put(USE_CASSANDRA_AUTHENTICATION, "false");
       }
+      gflags.putAll(getYcqlAuditFlags(universe));
     } else {
       gflags.put(START_CQL_PROXY, "false");
     }
     return gflags;
+  }
+
+  private static Map<String, String> getYcqlAuditFlags(Universe universe) {
+    Map<String, String> result = new HashMap<>();
+    AuditLogConfig auditLogConfig =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.getAuditLogConfig();
+    if (auditLogConfig != null) {
+      if (auditLogConfig.getYcqlAuditConfig() != null
+          && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
+        YCQLAuditConfig ycqlAuditConfig = auditLogConfig.getYcqlAuditConfig();
+        if (CollectionUtils.isNotEmpty(ycqlAuditConfig.getIncludedCategories())) {
+          result.put(
+              "ycql_audit_included_categories",
+              ycqlAuditConfig.getIncludedCategories().stream()
+                  .map(YCQLAuditConfig.YCQLAuditCategory::name)
+                  .collect(Collectors.joining(",")));
+        }
+        if (CollectionUtils.isNotEmpty(ycqlAuditConfig.getExcludedCategories())) {
+          result.put(
+              "ycql_audit_excluded_categories",
+              ycqlAuditConfig.getExcludedCategories().stream()
+                  .map(YCQLAuditConfig.YCQLAuditCategory::name)
+                  .collect(Collectors.joining(",")));
+        }
+        if (CollectionUtils.isNotEmpty(ycqlAuditConfig.getIncludedUsers())) {
+          result.put(
+              "ycql_audit_included_users", String.join(",", ycqlAuditConfig.getIncludedUsers()));
+        }
+        if (CollectionUtils.isNotEmpty(ycqlAuditConfig.getExcludedUsers())) {
+          result.put(
+              "ycql_audit_excluded_users", String.join(",", ycqlAuditConfig.getExcludedUsers()));
+        }
+        if (CollectionUtils.isNotEmpty(ycqlAuditConfig.getIncludedKeyspaces())) {
+          result.put(
+              "ycql_audit_included_keyspaces",
+              String.join(",", ycqlAuditConfig.getIncludedKeyspaces()));
+        }
+        if (CollectionUtils.isNotEmpty(ycqlAuditConfig.getExcludedCategories())) {
+          result.put(
+              "ycql_audit_excluded_keyspaces",
+              String.join(",", ycqlAuditConfig.getExcludedKeyspaces()));
+        }
+        if (ycqlAuditConfig.getLogLevel() != null) {
+          result.put("ycql_audit_log_level", ycqlAuditConfig.getLogLevel().name());
+        }
+      }
+    }
+    return result;
   }
 
   public static Map<String, String> getCertsAndTlsGFlags(
@@ -644,18 +788,23 @@ public class GFlagsUtil {
     List<Map<String, String>> masterAndTserverGFlags =
         Arrays.asList(userIntent.masterGFlags, userIntent.tserverGFlags);
     if (userIntent.specificGFlags != null) {
-      masterAndTserverGFlags =
-          Arrays.asList(
-              userIntent
-                  .specificGFlags
-                  .getPerProcessFlags()
-                  .value
-                  .getOrDefault(UniverseTaskBase.ServerType.MASTER, new HashMap<>()),
-              userIntent
-                  .specificGFlags
-                  .getPerProcessFlags()
-                  .value
-                  .getOrDefault(UniverseTaskBase.ServerType.TSERVER, new HashMap<>()));
+      if (userIntent.specificGFlags.isInheritFromPrimary()) {
+        return;
+      }
+      if (userIntent.specificGFlags.getPerProcessFlags() != null) {
+        masterAndTserverGFlags =
+            Arrays.asList(
+                userIntent
+                    .specificGFlags
+                    .getPerProcessFlags()
+                    .value
+                    .getOrDefault(UniverseTaskBase.ServerType.MASTER, new HashMap<>()),
+                userIntent
+                    .specificGFlags
+                    .getPerProcessFlags()
+                    .value
+                    .getOrDefault(UniverseTaskBase.ServerType.TSERVER, new HashMap<>()));
+      }
     }
     for (Map<String, String> gflags : masterAndTserverGFlags) {
       GFLAG_TO_INTENT_ACCESSOR.forEach(
@@ -689,9 +838,10 @@ public class GFlagsUtil {
       NodeDetails node,
       Map<String, String> userGFlags,
       Map<String, String> platformGFlags,
-      boolean allowOverrideAll) {
+      boolean allowOverrideAll,
+      RuntimeConfGetter confGetter,
+      AnsibleConfigureServers.Params taskParams) {
     mergeCSVs(userGFlags, platformGFlags, UNDEFOK);
-    mergeCSVs(userGFlags, platformGFlags, YSQL_HBA_CONF_CSV);
     if (!allowOverrideAll) {
       GFLAGS_FORBIDDEN_TO_OVERRIDE.forEach(
           gflag -> {
@@ -717,6 +867,17 @@ public class GFlagsUtil {
     if (userGFlags.containsKey(REDIS_PROXY_BIND_ADDRESS)) {
       mergeHostAndPort(userGFlags, REDIS_PROXY_BIND_ADDRESS, node.redisServerRpcPort);
     }
+    if (userGFlags.containsKey(YSQL_HBA_CONF_CSV)
+        && confGetter.getGlobalConf(GlobalConfKeys.oidcFeatureEnhancements)) {
+      /*
+       * Preprocess the ysql_hba_conf_csv flag for IdP specific use case.
+       * Refer Design Doc:
+       * https://docs.google.com/document/d/1SJzZJrAqc0wkXTCuMS7UKi1-5xEuYQKCOOa3QWYpMeM/edit
+       */
+      processHbaConfFlagIfRequired(node, userGFlags, confGetter, taskParams.getUniverseUUID());
+    }
+    // Merge the `ysql_hba_conf_csv` post pre-processing the hba conf for jwt if required.
+    mergeCSVs(userGFlags, platformGFlags, YSQL_HBA_CONF_CSV);
   }
 
   /**
@@ -852,14 +1013,14 @@ public class GFlagsUtil {
     if (userGFlags.containsKey(key)) {
       String userValue = userGFlags.get(key).toString();
       try {
-        CSVParser userValueParser = new CSVParser(new StringReader(userValue), CSVFormat.DEFAULT);
+        CSVFormat csvFormat = CSVFormat.DEFAULT;
+        CSVParser userValueParser = new CSVParser(new StringReader(userValue), csvFormat);
         CSVParser platformValuesParser =
             new CSVParser(
-                new StringReader(platformGFlags.getOrDefault(key, "").toString()),
-                CSVFormat.DEFAULT);
+                new StringReader(platformGFlags.getOrDefault(key, "").toString()), csvFormat);
         Set<String> records = new LinkedHashSet<>();
         StringWriter writer = new StringWriter();
-        CSVPrinter csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT);
+        CSVPrinter csvPrinter = new CSVPrinter(writer, csvFormat);
         for (CSVRecord record : userValueParser) {
           records.addAll(record.toList());
         }
@@ -889,6 +1050,183 @@ public class GFlagsUtil {
     } catch (URISyntaxException ex) {
       LOG.warn("Not a uri {}", uriStr);
     }
+  }
+
+  public static String updateJwtJWKSPath(
+      String hbaConfValue, Path localGflagFilePath, String providerUUID) {
+    int jwksIndex = hbaConfValue.indexOf(JWKS_FILE_CONTENT_KEY);
+    if (jwksIndex == -1) {
+      return hbaConfValue;
+    }
+    int startIndex = jwksIndex + 5; // Move to the character after "jwks="
+
+    // Find the closing curly brace for the JSON object
+    int endIndex = findMatchingClosingBrace(hbaConfValue, startIndex);
+    if (endIndex != -1) {
+      String jsonNode = hbaConfValue.substring(startIndex, endIndex + 1);
+      String fileName = "";
+      try {
+        fileName = FileUtils.computeHashForAFile(jsonNode, 10);
+      } catch (NoSuchAlgorithmException e) {
+        LOG.warn("Error generating the hash for a file, {}", e.getMessage());
+        // Generate a random string in case of failure.
+        fileName = UUID.randomUUID().toString();
+      }
+      Path localJWKSFilePath = localGflagFilePath.resolve(fileName);
+      try {
+        Files.write(localJWKSFilePath, jsonNode.getBytes());
+      } catch (IOException e) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, String.format("JWKS file write failed %s", e.getMessage()));
+      }
+      String ybHomeDir = getYbHomeDir(providerUUID);
+      String remoteJWKSFilePath = ybHomeDir + GFLAG_REMOTE_FILES_PATH + fileName;
+      String jwtJWKSPath = JWT_JWKS_FILE_PATH + "=\"\"" + remoteJWKSFilePath + "\"\"";
+      StringBuilder sb = new StringBuilder(hbaConfValue);
+      sb.replace(jwksIndex, endIndex + 1, jwtJWKSPath);
+      return sb.toString();
+    }
+
+    return hbaConfValue;
+  }
+
+  public static int findMatchingClosingBrace(String input, int startIndex) {
+    // Utility function for forming the complete JSON from a given string.
+    // We match the { paranthesis counts to determine the valid Json Object.
+    int count = 0;
+    for (int i = startIndex; i < input.length(); i++) {
+      char c = input.charAt(i);
+      if (c == '{') {
+        count++;
+      } else if (c == '}') {
+        count--;
+        if (count == 0) {
+          return i;
+        }
+      }
+    }
+    return -1;
+  }
+
+  public static String updateHbaConfValueForJWT(
+      String hbaConfValue, Path localGflagFilePath, String providerUUID) {
+    List<String> doubleQuotedKeys =
+        ImmutableList.of(JWT_AUDIENCES, JWT_ISSUERS, JWT_MATCHING_CLAIM_KEY);
+    String updatedHbaConfValue = updateJwtJWKSPath(hbaConfValue, localGflagFilePath, providerUUID);
+    for (String key : doubleQuotedKeys) {
+      updatedHbaConfValue = processJWTValues(updatedHbaConfValue, key);
+    }
+    return updatedHbaConfValue;
+  }
+
+  public static String processJWTValues(String hbaConfValue, String key) {
+    // DB expects the key value to be double double quoted. This utility checks the
+    // same & in case they are single quoted wraps them inside double quotes else returns.
+    Pattern doubleDoubleQuotePattern = Pattern.compile(key + "\"\".*?\"\"");
+    Matcher doubleDoubleQuoteMatcher = doubleDoubleQuotePattern.matcher(hbaConfValue);
+    if (doubleDoubleQuoteMatcher.find()) {
+      // String contains a double-double-quoted value, return as it is
+      return hbaConfValue;
+    } else {
+      // Wrap the value in double double quotes while handling single quotes
+      Pattern pattern = Pattern.compile(key + "\"(.*?)\"");
+      Matcher matcher = pattern.matcher(hbaConfValue);
+      StringBuffer buffer = new StringBuffer();
+      if (matcher.find()) {
+        String oldValue = matcher.group(1);
+        String replacement =
+            Matcher.quoteReplacement(String.format("%s\"\"" + oldValue + "\"\"", key));
+        matcher.appendReplacement(buffer, replacement);
+      }
+      matcher.appendTail(buffer);
+      return buffer.toString();
+    }
+  }
+
+  public static void processHbaConfFlagIfRequired(
+      @Nullable NodeDetails node,
+      Map<String, String> userFlags,
+      RuntimeConfGetter confGetter,
+      UUID universeUUID) {
+    processHbaConfFlagIfRequired(node, userFlags, confGetter, universeUUID, null);
+  }
+
+  public static void processHbaConfFlagIfRequired(
+      @Nullable NodeDetails node,
+      Map<String, String> userFlags,
+      RuntimeConfGetter confGetter,
+      UUID universeUUID,
+      @Nullable UUID placementUUID) {
+    String hbaConfValue = userFlags.get(YSQL_HBA_CONF_CSV);
+    Path tmpDirectoryPath =
+        FileUtils.getOrCreateTmpDirectory(
+            confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
+    Path localGflagFilePath = tmpDirectoryPath;
+    if (node != null && node.getNodeUuid() != null) {
+      localGflagFilePath = tmpDirectoryPath.resolve(node.getNodeUuid().toString());
+    } else if (placementUUID != null) {
+      // For k8s universes we will copy the JWKS key to `/tmp/<clusterUUID>`
+      localGflagFilePath = tmpDirectoryPath.resolve(placementUUID.toString());
+    }
+    if (!Files.isDirectory(localGflagFilePath)) {
+      try {
+        Files.createDirectory(localGflagFilePath);
+      } catch (IOException e) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            String.format("Failed to create tmp gflag directory, {}", e.getMessage()));
+      }
+    }
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    if (placementUUID == null) {
+      if (node == null || (node != null && node.placementUuid == null)) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            String.format(
+                "Missing placement information for the node in universe {}. Can't Continue",
+                universeUUID.toString()));
+      } else {
+        placementUUID = node.placementUuid;
+      }
+    }
+    UserIntent userIntent = universeDetails.getClusterByUuid(placementUUID).userIntent;
+    String providerUUID = userIntent.provider;
+
+    String modifiedHbaConfEntries = "";
+    // Split the input string at positions where it starts with "host..." or "local"
+    String[] hbaConfEntries = hbaConfValue.split("(?i)(?<=\\s|,|\")\\s*(?=host\\w*|local\\b)");
+
+    for (int i = 0; i < hbaConfEntries.length; i++) {
+      String hbaConfEntry = hbaConfEntries[i];
+      if (hbaConfEntry.isEmpty()) {
+        continue;
+      }
+      hbaConfEntry.trim();
+      if (hbaConfEntry.contains(JWT_AUTH)) {
+        StringBuilder modifiedHbaConfEntry = new StringBuilder();
+        if (i != 0 && !hbaConfEntries[i - 1].endsWith("\"")) {
+          modifiedHbaConfEntry.append("\"");
+        }
+        modifiedHbaConfEntry.append(
+            updateHbaConfValueForJWT(hbaConfEntry, localGflagFilePath, providerUUID));
+        if (i != 0 && !hbaConfEntries[i - 1].endsWith("\"")) {
+          if (i != hbaConfEntries.length - 1) {
+            // Remove the trailing comma
+            modifiedHbaConfEntry.setLength(modifiedHbaConfEntry.length() - 1);
+          }
+          modifiedHbaConfEntry.append("\"");
+          if (i != hbaConfEntries.length - 1) {
+            // Add the trailing comma
+            modifiedHbaConfEntry.append(",");
+          }
+        }
+        modifiedHbaConfEntries += modifiedHbaConfEntry.toString();
+      } else {
+        modifiedHbaConfEntries += hbaConfEntry;
+      }
+    }
+    userFlags.put(YSQL_HBA_CONF_CSV, modifiedHbaConfEntries);
   }
 
   /**
@@ -974,5 +1312,16 @@ public class GFlagsUtil {
     return currentGFlags.keySet().stream()
         .filter(flag -> !updatedGFlags.containsKey(flag))
         .collect(Collectors.toSet());
+  }
+
+  public static boolean areGflagsInheritedFromPrimary(
+      UniverseDefinitionTaskParams.Cluster cluster) {
+    if (cluster.clusterType != UniverseDefinitionTaskParams.ClusterType.ASYNC) {
+      return false;
+    }
+    if (cluster.userIntent.specificGFlags == null) {
+      return true;
+    }
+    return cluster.userIntent.specificGFlags.isInheritFromPrimary();
   }
 }

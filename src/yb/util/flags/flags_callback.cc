@@ -18,10 +18,9 @@
 #include "yb/util/logging.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/result.h"
+#include "yb/util/thread.h"
 
-DEFINE_test_flag(
-    bool, allow_duplicate_flag_callbacks, false,
-    "Allow flag callbacks with same name to be registered multiple times");
+DECLARE_bool(TEST_running_test);
 
 using std::string;
 
@@ -69,6 +68,17 @@ class FlagsCallbackRegistry {
 
 Result<std::shared_ptr<FlagCallbackInfo>> FlagsCallbackRegistry::RegisterCallback(
     const void* flag_ptr, const string& descriptive_name, FlagCallback callback) {
+  auto* unique_descriptive_name = &descriptive_name;
+  string test_descriptive_name;
+  if (FLAGS_TEST_running_test) {
+    // Certain dynamically registered callbacks like ReloadPgConfig in pg_supervisor use constant
+    // string name as they are expected to be singleton per process. But in MiniClusterTests
+    // multiple YB masters and tservers will register for callbacks with same name in one test
+    // process. Prefix the names of these callbacks with the yb process names to make them unique.
+    test_descriptive_name = Format("$0$1", TEST_GetThreadLogPrefix(), descriptive_name);
+    unique_descriptive_name = &test_descriptive_name;
+  }
+
   std::shared_ptr<FlagCallbacks> flag_callbacks;
   {
     std::lock_guard lock(mutex_);
@@ -79,20 +89,18 @@ Result<std::shared_ptr<FlagCallbackInfo>> FlagsCallbackRegistry::RegisterCallbac
     flag_callbacks = callback_map_[flag_ptr];
   }
 
-  auto info = std::make_shared<FlagCallbackInfo>(flag_ptr, descriptive_name, callback);
+  auto info = std::make_shared<FlagCallbackInfo>(flag_ptr, *unique_descriptive_name, callback);
 
   std::lock_guard lock(flag_callbacks->mutex);
   auto it = std::find_if(
       flag_callbacks->callbacks.begin(), flag_callbacks->callbacks.end(),
-      [&descriptive_name](const std::shared_ptr<FlagCallbackInfo>& flag_info) {
-        return flag_info->descriptive_name_ == descriptive_name;
+      [&unique_descriptive_name](const std::shared_ptr<FlagCallbackInfo>& flag_info) {
+        return flag_info->descriptive_name_ == *unique_descriptive_name;
       });
 
-  if (!FLAGS_TEST_allow_duplicate_flag_callbacks) {
-    SCHECK(
-        it == flag_callbacks->callbacks.end(), AlreadyPresent,
-        Format("Callback '$0' already registered", descriptive_name));
-  }
+  SCHECK(
+      it == flag_callbacks->callbacks.end(), AlreadyPresent,
+      Format("Callback '$0' already registered", *unique_descriptive_name));
 
   flag_callbacks->callbacks.push_back(info);
   return info;

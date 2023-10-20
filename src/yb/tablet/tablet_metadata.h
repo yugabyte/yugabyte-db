@@ -193,7 +193,7 @@ struct KvStoreInfo {
       const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
       dockv::OverwriteSchemaPacking overwrite);
 
-  Status MergeTableSchemaPackings(
+  Status RestoreMissingValuesAndMergeTableSchemaPackings(
       const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
       dockv::OverwriteSchemaPacking overwrite);
 
@@ -226,10 +226,13 @@ struct KvStoreInfo {
   std::string upper_bound_key;
 
   // See KvStoreInfoPB field with the same name.
-  bool has_been_fully_compacted = false;
+  bool parent_data_compacted = false;
 
   // See KvStoreInfoPB field with the same name.
   uint64_t last_full_compaction_time = kNoLastFullCompactionTime;
+
+  // See KvStoreInfoPB field with the same name.
+  std::optional<uint64_t> post_split_compaction_file_number_upper_bound = 0;
 
   // Map of tables sharing this KV-store indexed by the table id.
   // If pieces of the same table live in the same Raft group they should be located in different
@@ -386,14 +389,24 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   bool IsUnderXClusterReplication() const;
 
-  bool has_been_fully_compacted() const {
+  bool parent_data_compacted() const {
     std::lock_guard lock(data_mutex_);
-    return kv_store_.has_been_fully_compacted;
+    return kv_store_.parent_data_compacted;
   }
 
-  void set_has_been_fully_compacted(const bool& value) {
+  void set_parent_data_compacted(const bool& value) {
     std::lock_guard lock(data_mutex_);
-    kv_store_.has_been_fully_compacted = value;
+    kv_store_.parent_data_compacted = value;
+  }
+
+  std::optional<uint64_t> post_split_compaction_file_number_upper_bound() const {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    return kv_store_.post_split_compaction_file_number_upper_bound;
+  }
+
+  void set_post_split_compaction_file_number_upper_bound(uint64_t value) {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    kv_store_.post_split_compaction_file_number_upper_bound = value;
   }
 
   uint64_t last_full_compaction_time() {
@@ -471,7 +484,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
                 const dockv::PartitionSchema& partition_schema,
                 const boost::optional<qlexpr::IndexInfo>& index_info,
                 const SchemaVersion schema_version,
-                const OpId& op_id);
+                const OpId& op_id) EXCLUDES(data_mutex_);
 
   void RemoveTable(const TableId& table_id, const OpId& op_id);
 
@@ -549,7 +562,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Returns a new WAL dir path to be used for new Raft group `raft_group_id` which will be created
   // as a result of this Raft group splitting.
   // Uses the same root dir as for `this` Raft group.
-  std::string GetSubRaftGroupWalDir(const RaftGroupId& raft_group_id) const;
+  std::string GetSubRaftGroupWalDir(const RaftGroupId& raft_group_id) const EXCLUDES(data_mutex_);
 
   // Returns a new Data dir path to be used for new Raft group `raft_group_id` which will be created
   // as a result of this Raft group splitting.
@@ -604,6 +617,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   // versions is a map from table id to min schema version that should be kept for this table.
   Status OldSchemaGC(const std::unordered_map<Uuid, SchemaVersion, UuidHash>& versions);
+  void DisableSchemaGC();
+  void EnableSchemaGC();
 
   Result<docdb::CompactionSchemaInfo> CotablePacking(
       const Uuid& cotable_id, uint32_t schema_version, HybridTime history_cutoff) override;
@@ -629,6 +644,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   void OnChangeMetadataOperationApplied(const OpId& applied_opid);
 
   OpId MinUnflushedChangeMetadataOpId() const;
+
+  // Updates related meta data when post split compction as a reaction for post split compaction
+  // completed. Returns true if any field has been updated and a flush may be required.
+  bool OnPostSplitCompactionDone();
 
  private:
   typedef simple_spinlock MutexType;
@@ -663,7 +682,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Requires 'data_mutex_'.
   void ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* superblock) const REQUIRES(data_mutex_);
 
-  const TableInfoPtr primary_table_info_unlocked() const {
+  const TableInfoPtr primary_table_info_unlocked() const REQUIRES(data_mutex_) {
     const auto& tables = kv_store_.tables;
     const auto itr = tables.find(primary_table_id_);
     CHECK(itr != tables.end());
@@ -691,7 +710,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // If taken together with 'data_mutex_', must be acquired first.
   mutable Mutex flush_lock_;
 
-  RaftGroupId raft_group_id_ GUARDED_BY(data_mutex_);
+  // No thread safety annotations on raft_group_id_ because it is a constant after the object is
+  // fully created. We cannot mark it as const since CreateSubtabletMetadata sets it to its parents
+  // id in order to call LoadFromSuperBlock and then updates it to the right value.
+  RaftGroupId raft_group_id_;
+
   std::shared_ptr<dockv::Partition> partition_ GUARDED_BY(data_mutex_);
 
   // The primary table id. Primary table is the first table this Raft group is created for.
@@ -740,7 +763,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   std::vector<TxnSnapshotRestorationId> active_restorations_;
 
-  const std::string log_prefix_;
+  // No thread safety annotations on log_prefix_ because it is a constant after the object is
+  // fully created. Check the comment on raft_group_id_ for more info.
+  std::string log_prefix_;
 
   std::unordered_set<StatefulServiceKind> hosted_services_;
 
@@ -756,7 +781,23 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // to prevent WAL GC of such operations.
   OpId min_unflushed_change_metadata_op_id_ GUARDED_BY(data_mutex_) = OpId::Max();
 
+  int disable_schema_gc_counter_ GUARDED_BY(data_mutex_) = 0;
+
   DISALLOW_COPY_AND_ASSIGN(RaftGroupMetadata);
+};
+
+class DisableSchemaGC {
+ public:
+  explicit DisableSchemaGC(RaftGroupMetadata* metadata) : metadata_(metadata) {
+    metadata->DisableSchemaGC();
+  }
+
+  ~DisableSchemaGC() {
+    metadata_->EnableSchemaGC();
+  }
+
+ private:
+  RaftGroupMetadata* metadata_;
 };
 
 Status MigrateSuperblock(RaftGroupReplicaSuperBlockPB* superblock);

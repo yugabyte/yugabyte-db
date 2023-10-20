@@ -10,15 +10,20 @@
 
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
@@ -43,6 +48,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunHooks;
 import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigGenerator;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
@@ -52,6 +58,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
@@ -75,6 +82,8 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import java.io.File;
 import java.io.IOException;
@@ -99,6 +108,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.InetAddressValidator;
 import org.bouncycastle.asn1.x509.GeneralName;
@@ -145,6 +155,10 @@ public class NodeManager extends DevopsBase {
   @Inject NodeAgentClient nodeAgentClient;
 
   @Inject NodeAgentPoller nodeAgentPoller;
+
+  @Inject OtelCollectorConfigGenerator otelCollectorConfigGenerator;
+
+  @Inject LocalNodeManager localNodeManager;
 
   @Override
   protected String getCommandType() {
@@ -327,8 +341,8 @@ public class NodeManager extends DevopsBase {
         subCommand.add(customSecurityGroupId);
       }
     }
-
-    ProviderDetails providerDetails = params.getProvider().getDetails();
+    Provider provider = params.getProvider();
+    ProviderDetails providerDetails = provider.getDetails();
     if (params instanceof AnsibleDestroyServer.Params
         && providerType.equals(Common.CloudType.onprem)) {
       subCommand.add("--install_node_exporter");
@@ -342,7 +356,6 @@ public class NodeManager extends DevopsBase {
     }
     subCommand.add("--custom_ssh_port");
     subCommand.add(sshPort.toString());
-
     // TODO make this global and remove this conditional check
     // to avoid bugs.
     if ((type == NodeCommandType.Provision
@@ -352,16 +365,29 @@ public class NodeManager extends DevopsBase {
             || type == NodeCommandType.Update_Mounted_Disks
             || type == NodeCommandType.Reboot
             || type == NodeCommandType.Change_Instance_Type
-            || type == NodeCommandType.Wait_For_Connection)
-        && providerDetails.sshUser != null) {
+            || type == NodeCommandType.Create_Root_Volumes)
+        && StringUtils.isNotBlank(providerDetails.sshUser)) {
       subCommand.add("--ssh_user");
       if (StringUtils.isNotBlank(sshUser)) {
         subCommand.add(sshUser);
       } else {
         subCommand.add(providerDetails.sshUser);
       }
-    }
-    if (type == NodeCommandType.Precheck) {
+    } else if (type == NodeCommandType.Wait_For_Connection) {
+      if (provider.getCloudCode() == CloudType.onprem
+          && providerDetails.skipProvisioning
+          && getNodeAgentClient().isClientEnabled(provider)) {
+        subCommand.add("--ssh_user");
+        subCommand.add("yugabyte");
+      } else if (StringUtils.isNotBlank(providerDetails.sshUser)) {
+        subCommand.add("--ssh_user");
+        if (StringUtils.isNotBlank(sshUser)) {
+          subCommand.add(sshUser);
+        } else {
+          subCommand.add(providerDetails.sshUser);
+        }
+      }
+    } else if (type == NodeCommandType.Precheck) {
       subCommand.add("--precheck_type");
       if (providerDetails.skipProvisioning) {
         subCommand.add("configure");
@@ -519,7 +545,6 @@ public class NodeManager extends DevopsBase {
     if (isRootCARequired) {
       subcommandStrings.add("--certs_node_dir");
       subcommandStrings.add(CertificateHelper.getCertsNodeDir(ybHomeDir));
-
       CertificateInfo rootCert = CertificateInfo.get(taskParam.rootCA);
       if (rootCert == null) {
         throw new RuntimeException("No valid rootCA found for " + taskParam.getUniverseUUID());
@@ -714,14 +739,51 @@ public class NodeManager extends DevopsBase {
     return subcommandStrings;
   }
 
+  private void processGFlags(
+      Config config,
+      Universe universe,
+      NodeDetails node,
+      AnsibleConfigureServers.Params taskParam,
+      Map<String, String> gflags,
+      boolean useHostname) {
+    processGFlags(config, universe, node, taskParam, gflags, useHostname, false);
+  }
+
+  private void processGFlags(
+      Config config,
+      Universe universe,
+      NodeDetails node,
+      AnsibleConfigureServers.Params taskParam,
+      Map<String, String> gflags,
+      boolean useHostname,
+      boolean allowOverrideAll) {
+    if (!config.getBoolean("yb.cloud.enabled")) {
+      allowOverrideAll |=
+          confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride);
+      GFlagsUtil.processUserGFlags(
+          node,
+          gflags,
+          GFlagsUtil.getAllDefaultGFlags(
+              taskParam, universe, getUserIntentFromParams(taskParam), useHostname, config),
+          allowOverrideAll,
+          confGetter,
+          taskParam);
+    }
+  }
+
   private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
     Universe universe = Universe.getOrBadRequest(taskParam.getUniverseUUID());
     Config config = runtimeConfigFactory.forUniverse(universe);
     UserIntent userIntent = getUserIntentFromParams(universe, taskParam);
+    Architecture arch = universe.getUniverseDetails().arch;
     List<String> subcommand = new ArrayList<>();
-    String masterAddresses = universe.getMasterAddresses(false);
+    String masterAddresses = universe.getMasterAddresses();
     subcommand.add("--master_addresses_for_tserver");
     subcommand.add(masterAddresses);
+    Integer num_cores_to_keep =
+        confGetter.getConfForScope(universe, UniverseConfKeys.numCoresToKeep);
+    subcommand.add("--num_cores_to_keep");
+    subcommand.add(String.valueOf(num_cores_to_keep));
 
     if (masterAddresses == null || masterAddresses.isEmpty()) {
       LOG.warn("No valid masters found during configure for {}.", taskParam.getUniverseUUID());
@@ -739,7 +801,12 @@ public class NodeManager extends DevopsBase {
       ReleaseManager.ReleaseMetadata releaseMetadata =
           releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
       if (releaseMetadata != null) {
-        ybServerPackage = releaseMetadata.getFilePath(taskParam.getRegion());
+        if (arch != null) {
+          ybServerPackage = releaseMetadata.getFilePath(arch);
+        } else {
+          // Fallback to region in case arch is not present
+          ybServerPackage = releaseMetadata.getFilePath(taskParam.getRegion());
+        }
         if (releaseMetadata.s3 != null && releaseMetadata.s3.paths.x86_64.equals(ybServerPackage)) {
           subcommand.add("--s3_remote_download");
         } else if (releaseMetadata.gcs != null
@@ -777,7 +844,12 @@ public class NodeManager extends DevopsBase {
                 taskParam.getYbcSoftwareVersion()));
       }
 
-      ybcPackage = releaseMetadata.getFilePath(taskParam.getRegion());
+      if (arch != null) {
+        ybcPackage = releaseMetadata.getFilePath(arch);
+      } else {
+        // Fallback to region in case arch is not present
+        ybcPackage = releaseMetadata.getFilePath(taskParam.getRegion());
+      }
       if (StringUtils.isBlank(ybcPackage)) {
         throw new RuntimeException("Ybc package cannot be empty with ybc enabled");
       }
@@ -790,7 +862,7 @@ public class NodeManager extends DevopsBase {
                 ybcPackage, YBC_PACKAGE_REGEX));
       }
       ybcDir = "ybc" + matcher.group(1);
-      ybcFlags = GFlagsUtil.getYbcFlags(taskParam, config);
+      ybcFlags = GFlagsUtil.getYbcFlags(universe, taskParam, confGetter, config);
       boolean enableVerbose =
           confGetter.getConfForScope(universe, UniverseConfKeys.ybcEnableVervbose);
       if (enableVerbose) {
@@ -925,6 +997,22 @@ public class NodeManager extends DevopsBase {
           } else if (taskSubType.equals(UpgradeTaskParams.UpgradeTaskSubType.Install.toString())) {
             subcommand.add("--tags");
             subcommand.add("install-software");
+            subcommand.add("--tags");
+            subcommand.add("override_gflags");
+            if (taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt) {
+              subcommand.addAll(
+                  getCertificatePaths(
+                      runtimeConfigFactory.forUniverse(universe),
+                      userIntent,
+                      taskParam,
+                      commonName,
+                      taskParam.getProvider().getYbHome(),
+                      alternateNames));
+            }
+            Map<String, String> gflags = new TreeMap<>(taskParam.gflags);
+            processGFlags(config, universe, node, taskParam, gflags, useHostname);
+            subcommand.add("--gflags");
+            subcommand.add(Json.stringify(Json.toJson(gflags)));
           } else if (taskSubType.equals(
               UpgradeTaskParams.UpgradeTaskSubType.YbcInstall.toString())) {
             subcommand.add("--tags");
@@ -977,13 +1065,25 @@ public class NodeManager extends DevopsBase {
           }
 
           Map<String, String> gflags = new TreeMap<>(taskParam.gflags);
+          processGFlags(config, universe, node, taskParam, gflags, useHostname);
           if (!config.getBoolean("yb.cloud.enabled")) {
-            GFlagsUtil.processUserGFlags(
-                node,
-                gflags,
-                GFlagsUtil.getAllDefaultGFlags(
-                    taskParam, universe, getUserIntentFromParams(taskParam), useHostname, config),
-                confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride));
+            if (gflags.containsKey(GFlagsUtil.YSQL_HBA_CONF_CSV)) {
+              String hbaConfValue = gflags.get(GFlagsUtil.YSQL_HBA_CONF_CSV);
+              if (hbaConfValue.contains(GFlagsUtil.JWT_AUTH)) {
+                Path tmpDirectoryPath =
+                    FileUtils.getOrCreateTmpDirectory(
+                        confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
+                Path localGflagFilePath = tmpDirectoryPath.resolve(node.getNodeUuid().toString());
+                String providerUUID = userIntent.provider;
+                String ybHomeDir = GFlagsUtil.getYbHomeDir(providerUUID);
+                String remoteGFlagPath = ybHomeDir + GFlagsUtil.GFLAG_REMOTE_FILES_PATH;
+                // Append the path to copy the gFlag file from local to remote host
+                subcommand.add("--local_gflag_files_path");
+                subcommand.add(localGflagFilePath.toString());
+                subcommand.add("--remote_gflag_files_path");
+                subcommand.add(remoteGFlagPath);
+              }
+            }
           }
           subcommand.add("--gflags");
           subcommand.add(Json.stringify(Json.toJson(gflags)));
@@ -1097,6 +1197,7 @@ public class NodeManager extends DevopsBase {
                         taskParam,
                         universe,
                         Arrays.asList(GFlagsUtil.CERTS_DIR, GFlagsUtil.CERTS_FOR_CLIENT_DIR)));
+                processGFlags(config, universe, node, taskParam, gflags, useHostname);
                 subcommand.add("--gflags");
                 subcommand.add(Json.stringify(Json.toJson(gflags)));
                 subcommand.add("--tags");
@@ -1164,7 +1265,7 @@ public class NodeManager extends DevopsBase {
             } else {
               gflags.putAll(filterCertsAndTlsGFlags(taskParam, universe, tlsGflagsToReplace));
             }
-
+            processGFlags(config, universe, node, taskParam, gflags, useHostname, true);
             subcommand.add("--gflags");
             subcommand.add(Json.stringify(Json.toJson(gflags)));
 
@@ -1185,6 +1286,7 @@ public class NodeManager extends DevopsBase {
             } else {
               LOG.warn("Round2 upgrade not required when there is no change in node-to-node");
             }
+            processGFlags(config, universe, node, taskParam, gflags, useHostname);
             subcommand.add("--gflags");
             subcommand.add(Json.stringify(Json.toJson(gflags)));
 
@@ -1305,6 +1407,16 @@ public class NodeManager extends DevopsBase {
     return envVars;
   }
 
+  private Map<String, String> getFaultInjectionEnvVars(Provider provider) {
+    Map<String, String> envVars = new HashMap<>();
+    String faultInjectedPaths =
+        confGetter.getConfForScope(provider, ProviderConfKeys.ybopsFaultInjectedPaths);
+    if (StringUtils.isNotBlank(faultInjectedPaths)) {
+      envVars.put("YBOPS_FAULT_INJECTED_PATHS", faultInjectedPaths);
+    }
+    return envVars;
+  }
+
   public ShellResponse detachedNodeCommand(
       NodeCommandType type, DetachedNodeTaskParams nodeTaskParam) {
     List<String> commandArgs = new ArrayList<>();
@@ -1407,7 +1519,11 @@ public class NodeManager extends DevopsBase {
       List<String> commandArgs) {
     if (Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType)) {
       addInstanceTags(
-          universe, userIntent.instanceTags, userIntent.providerType, nodeTaskParam, commandArgs);
+          universe,
+          nodeTaskParam.tags != null ? nodeTaskParam.tags : userIntent.instanceTags,
+          userIntent.providerType,
+          nodeTaskParam,
+          commandArgs);
     }
   }
 
@@ -1482,11 +1598,13 @@ public class NodeManager extends DevopsBase {
 
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
     Universe universe = Universe.getOrBadRequest(nodeTaskParam.getUniverseUUID());
+    Provider provider = nodeTaskParam.getProvider();
     populateNodeUuidFromUniverse(universe, nodeTaskParam);
+    Architecture arch = universe.getUniverseDetails().arch;
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
     if (nodeTaskParam.sshPortOverride == null) {
-      UUID imageBundleUUID = getImageBundleUUID(userIntent, nodeTaskParam);
+      UUID imageBundleUUID = getImageBundleUUID(arch, userIntent, nodeTaskParam);
       if (imageBundleUUID != null) {
         Region region = nodeTaskParam.getRegion();
         ImageBundle.NodeProperties toOverwriteNodeProperties =
@@ -1496,6 +1614,7 @@ public class NodeManager extends DevopsBase {
       }
     }
     Path bootScriptFile = null;
+    String bootScript = confGetter.getConfForScope(provider, ProviderConfKeys.universeBootScript);
     Map<String, String> redactedVals = new HashMap<>();
     Map<String, String> sensitiveData = new HashMap<>();
     switch (type) {
@@ -1508,6 +1627,17 @@ public class NodeManager extends DevopsBase {
         commandArgs.add("--replacement_disk");
         commandArgs.add(rrvParams.replacementDisk);
         commandArgs.addAll(getAccessKeySpecificCommand(rrvParams, type));
+        if (Common.CloudType.aws.equals(userIntent.providerType)) {
+          if (StringUtils.isNotBlank(rrvParams.rootDeviceName)) {
+            commandArgs.add("--root_device_name");
+            commandArgs.add(rrvParams.rootDeviceName);
+          } else {
+            throw new RuntimeException("ReplaceRootVolume for AWS requires root device name.");
+          }
+        }
+        if (!bootScript.isEmpty()) {
+          bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
+        }
         break;
       case Create_Root_Volumes:
         if (!(nodeTaskParam instanceof CreateRootVolumes.Params)) {
@@ -1533,12 +1663,11 @@ public class NodeManager extends DevopsBase {
           if (!(nodeTaskParam instanceof AnsibleCreateServer.Params)) {
             throw new RuntimeException("NodeTaskParams is not AnsibleCreateServer.Params");
           }
-          Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
+          Config config = this.runtimeConfigFactory.forProvider(provider);
           AnsibleCreateServer.Params taskParam = (AnsibleCreateServer.Params) nodeTaskParam;
           Common.CloudType cloudType = userIntent.providerType;
           if (!cloudType.equals(Common.CloudType.onprem)) {
-            commandArgs.add("--instance_type");
-            commandArgs.add(taskParam.instanceType);
+            addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, false);
             commandArgs.add("--cloud_subnet");
             commandArgs.add(taskParam.subnetId);
 
@@ -1547,7 +1676,6 @@ public class NodeManager extends DevopsBase {
               commandArgs.add("--cloud_subnet_secondary");
               commandArgs.add(taskParam.secondarySubnetId);
             }
-
             // Use case: cloud free tier instances.
             if (config.getBoolean("yb.cloud.enabled")) {
               // If low mem instance, configure small boot disk size.
@@ -1561,7 +1689,6 @@ public class NodeManager extends DevopsBase {
               }
             }
 
-            String bootScript = config.getString(BOOT_SCRIPT_PATH);
             if (!bootScript.isEmpty()) {
               bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
             }
@@ -1576,11 +1703,55 @@ public class NodeManager extends DevopsBase {
               }
             }
 
+            if (Common.CloudType.azu.equals(userIntent.providerType)) {
+              AzureRegionCloudInfo a = CloudInfoInterface.get(taskParam.getRegion());
+              String vnetName = a.getVnet();
+              if (StringUtils.isNotBlank(vnetName)) {
+                commandArgs.add("--vpcId");
+                commandArgs.add(vnetName);
+              }
+              ObjectMapper mapper = new ObjectMapper();
+              String vmParms =
+                  String.valueOf(
+                      confGetter.getConfForScope(provider, ProviderConfKeys.azureVmCustomParams));
+              if (StringUtils.isNotBlank(vmParms)) {
+                commandArgs.add("--custom_vm_params");
+                try {
+                  commandArgs.add(Json.stringify(mapper.readTree(vmParms)));
+                } catch (JsonProcessingException e) {
+                  throw new RuntimeException("Could not convert custom VM params to JSON");
+                }
+              }
+              String diskParams =
+                  String.valueOf(
+                      confGetter.getConfForScope(provider, ProviderConfKeys.azureDiskCustomParams));
+              if (StringUtils.isNotBlank(diskParams)) {
+                commandArgs.add("--custom_disk_params");
+                try {
+                  commandArgs.add(Json.stringify(mapper.readTree(diskParams)));
+                } catch (JsonProcessingException e) {
+                  throw new RuntimeException("Could not convert custom disk params to JSON");
+                }
+              }
+              String networkParams =
+                  String.valueOf(
+                      confGetter.getConfForScope(
+                          provider, ProviderConfKeys.azureNetworkCustomParams));
+              if (StringUtils.isNotBlank(networkParams)) {
+                commandArgs.add("--custom_network_params");
+                try {
+                  commandArgs.add(Json.stringify(mapper.readTree(networkParams)));
+                } catch (JsonProcessingException e) {
+                  throw new RuntimeException("Could not convert custom network params to JSON");
+                }
+              }
+            }
+
             // For now we wouldn't add machine image for aws and fallback on the default
             // one devops gives us, we need to transition to having this use versioning
             // like base_image_version [ENG-1859]
             String imageBundleDefaultImage = "";
-            UUID imageBundleUUID = getImageBundleUUID(userIntent, nodeTaskParam);
+            UUID imageBundleUUID = getImageBundleUUID(arch, userIntent, nodeTaskParam);
             if (imageBundleUUID != null && StringUtils.isBlank(taskParam.getMachineImage())) {
               Region region = taskParam.getRegion();
               ImageBundle.NodeProperties toOverwriteNodeProperties =
@@ -1638,15 +1809,6 @@ public class NodeManager extends DevopsBase {
             }
           }
 
-          if (cloudType.equals(Common.CloudType.azu)) {
-            Region r = taskParam.getRegion();
-            String vnetName = r.getVnetName();
-            if (vnetName != null && !vnetName.isEmpty()) {
-              commandArgs.add("--vpcId");
-              commandArgs.add(vnetName);
-            }
-          }
-
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam, true /* includeIopsAndThroughput */));
@@ -1671,12 +1833,12 @@ public class NodeManager extends DevopsBase {
 
           if (cloudType.equals(Common.CloudType.aws)) {
             // aws uses instance_type to determine device names for mounting
-            commandArgs.add("--instance_type");
-            commandArgs.add(taskParam.instanceType);
+            addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           }
+          addOtelColArgs(commandArgs, taskParam, userIntent, provider);
 
           String imageBundleDefaultImage = "";
-          UUID imageBundleUUID = getImageBundleUUID(userIntent, nodeTaskParam);
+          UUID imageBundleUUID = getImageBundleUUID(arch, userIntent, nodeTaskParam);
           if (imageBundleUUID != null && StringUtils.isBlank(taskParam.machineImage)) {
             Region region = taskParam.getRegion();
             ImageBundle.NodeProperties toOverwriteNodeProperties =
@@ -1695,6 +1857,10 @@ public class NodeManager extends DevopsBase {
               commandArgs.add("--machine_image");
               commandArgs.add(ybImage);
             }
+          }
+
+          if (confGetter.getGlobalConf(GlobalConfKeys.installLocalesDbNodes)) {
+            commandArgs.add("--install_locales");
           }
 
           maybeAddVMImageCommandArgs(
@@ -1729,9 +1895,6 @@ public class NodeManager extends DevopsBase {
             }
           }
 
-          String bootScript =
-              confGetter.getConfForScope(
-                  nodeTaskParam.getProvider(), ProviderConfKeys.universeBootScript);
           if (!bootScript.isEmpty()) {
             bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
           }
@@ -1753,21 +1916,8 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(localPackagePath);
           }
 
-          Integer postgres_max_mem_mb =
-              confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresMaxMemMb);
-
-          // For read replica clusters, use the read replica value if it is >= 0. -1 means to follow
-          // what the primary cluster has set.
-          Integer rr_max_mem_mb =
-              confGetter.getConfForScope(
-                  universe, UniverseConfKeys.dbMemPostgresReadReplicaMaxMemMb);
-          if (universe.getUniverseDetails().getClusterByUuid(taskParam.placementUuid).clusterType
-                  == UniverseDefinitionTaskParams.ClusterType.ASYNC
-              && rr_max_mem_mb >= 0) {
-            postgres_max_mem_mb = rr_max_mem_mb;
-          }
           commandArgs.add("--pg_max_mem_mb");
-          commandArgs.add(Integer.toString(postgres_max_mem_mb));
+          commandArgs.add(Integer.toString(getCGroupSize(confGetter, universe, nodeTaskParam)));
 
           if (cloudType.equals(Common.CloudType.azu)) {
             NodeDetails node = universe.getNode(taskParam.nodeName);
@@ -1829,7 +1979,15 @@ public class NodeManager extends DevopsBase {
           if (taskParam.nodeUuid == null && Strings.isNullOrEmpty(taskParam.nodeIP)) {
             throw new IllegalArgumentException("At least one of node UUID or IP must be specified");
           }
-          addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
+          // Instance may not yet be created.
+          addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, false);
+          if (!Strings.isNullOrEmpty(taskParam.nodeIP)) {
+            commandArgs.add("--node_ip");
+            commandArgs.add(taskParam.nodeIP);
+          }
+          if (taskParam.useSystemd) {
+            commandArgs.add("--systemd_services");
+          }
           if (taskParam.nodeUuid != null) {
             commandArgs.add("--node_uuid");
             commandArgs.add(taskParam.nodeUuid.toString());
@@ -1849,7 +2007,14 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not PauseServer.Params");
           }
           PauseServer.Params taskParam = (PauseServer.Params) nodeTaskParam;
-          addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
+          addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
+          if (!Strings.isNullOrEmpty(taskParam.nodeIP)) {
+            commandArgs.add("--node_ip");
+            commandArgs.add(taskParam.nodeIP);
+          }
+          if (taskParam.useSystemd) {
+            commandArgs.add("--systemd_services");
+          }
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
           }
@@ -1862,9 +2027,19 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not ResumeServer.Params");
           }
           ResumeServer.Params taskParam = (ResumeServer.Params) nodeTaskParam;
-          addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
+          addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
+          if (!Strings.isNullOrEmpty(taskParam.nodeIP)) {
+            commandArgs.add("--node_ip");
+            commandArgs.add(taskParam.nodeIP);
+          }
+          if (taskParam.useSystemd) {
+            commandArgs.add("--systemd_services");
+          }
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
+          }
+          if (!bootScript.isEmpty()) {
+            bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
           }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
@@ -1932,8 +2107,7 @@ public class NodeManager extends DevopsBase {
           }
           InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
-          commandArgs.add("--instance_type");
-          commandArgs.add(taskParam.instanceType);
+          addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam, true /* includeIopsAndThroughput */));
           }
@@ -1948,8 +2122,7 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not UpdateMountedDisksTask.Params");
           }
           UpdateMountedDisks.Params taskParam = (UpdateMountedDisks.Params) nodeTaskParam;
-          commandArgs.add("--instance_type");
-          commandArgs.add(taskParam.instanceType);
+          addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.add("--volume_type");
             commandArgs.add(nodeTaskParam.deviceInfo.storageType.toString().toLowerCase());
@@ -1964,24 +2137,9 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not ResizeNode.Params");
           }
           ChangeInstanceType.Params taskParam = (ChangeInstanceType.Params) nodeTaskParam;
-          commandArgs.add("--instance_type");
-          commandArgs.add(taskParam.instanceType);
-
-          Integer postgres_max_mem_mb =
-              confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresMaxMemMb);
-
-          // For read replica clusters, use the read replica value if it is >= 0. -1 means to follow
-          // what the primary cluster has set.
-          Integer rr_max_mem_mb =
-              confGetter.getConfForScope(
-                  universe, UniverseConfKeys.dbMemPostgresReadReplicaMaxMemMb);
-          if (universe.getUniverseDetails().getClusterByUuid(taskParam.placementUuid).clusterType
-                  == UniverseDefinitionTaskParams.ClusterType.ASYNC
-              && rr_max_mem_mb >= 0) {
-            postgres_max_mem_mb = rr_max_mem_mb;
-          }
+          addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, false);
           commandArgs.add("--pg_max_mem_mb");
-          commandArgs.add(Integer.toString(postgres_max_mem_mb));
+          commandArgs.add(Integer.toString(getCGroupSize(confGetter, universe, nodeTaskParam)));
 
           if (taskParam.force) {
             commandArgs.add("--force");
@@ -2135,6 +2293,9 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not RebootServer.Params");
           }
           RebootServer.Params taskParam = (RebootServer.Params) nodeTaskParam;
+          if (!bootScript.isEmpty()) {
+            bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
+          }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
 
           if (taskParam.useSSH) {
@@ -2169,6 +2330,9 @@ public class NodeManager extends DevopsBase {
       case Wait_For_Connection:
       case Hard_Reboot:
         {
+          if (!bootScript.isEmpty()) {
+            bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
+          }
           commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
           break;
         }
@@ -2177,15 +2341,23 @@ public class NodeManager extends DevopsBase {
     }
     addNodeAgentCommandArgs(universe, nodeTaskParam, commandArgs, redactedVals);
     addCustomTmpDirectoryCommandArgs(universe, nodeTaskParam, commandArgs);
+    if (userIntent.providerType == CloudType.local) {
+      return localNodeManager.nodeCommand(type, nodeTaskParam, commandArgs);
+    }
     commandArgs.add(nodeTaskParam.nodeName);
     try {
+      Map<String, String> envVars =
+          ImmutableMap.<String, String>builder()
+              .putAll(getAnsibleEnvVars(nodeTaskParam.getUniverseUUID()))
+              .putAll(getFaultInjectionEnvVars(provider))
+              .build();
       return execCommand(
           DevopsCommand.builder()
               .regionUUID(nodeTaskParam.getRegion().getUuid())
               .command(type.toString().toLowerCase())
               .commandArgs(commandArgs)
               .cloudArgs(getCloudArgs(nodeTaskParam))
-              .envVars(getAnsibleEnvVars(nodeTaskParam.getUniverseUUID()))
+              .envVars(envVars)
               .redactedVals(redactedVals)
               .sensitiveData(sensitiveData)
               .build());
@@ -2198,6 +2370,54 @@ public class NodeManager extends DevopsBase {
         }
       }
     }
+  }
+
+  @VisibleForTesting
+  static int getCGroupSize(
+      RuntimeConfGetter confGetter, Universe universe, NodeTaskParams taskParam) {
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getClusterByUuid(taskParam.placementUuid);
+
+    Integer primarySizeFromIntent =
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .getCGroupSize(taskParam.azUuid);
+    Integer sizeFromIntent = cluster.userIntent.getCGroupSize(taskParam.azUuid);
+
+    if (sizeFromIntent != null || primarySizeFromIntent != null) {
+      // Absence of value (or -1) for read replica means to use value from primary cluster.
+      if (cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC
+          && (sizeFromIntent == null || sizeFromIntent < 0)) {
+        if (primarySizeFromIntent == null) {
+          log.error(
+              "Incorrect state for cgroup: null for primary but {} for replica", sizeFromIntent);
+          return getCGroupSizeFromConfig(confGetter, universe, cluster.clusterType);
+        }
+        return primarySizeFromIntent;
+      }
+      return sizeFromIntent;
+    }
+    return getCGroupSizeFromConfig(confGetter, universe, cluster.clusterType);
+  }
+
+  private static int getCGroupSizeFromConfig(
+      RuntimeConfGetter confGetter,
+      Universe universe,
+      UniverseDefinitionTaskParams.ClusterType clusterType) {
+    log.debug("Falling back to runtime config for cgroup size");
+    Integer postgresMaxMemMb =
+        confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresMaxMemMb);
+
+    // For read replica clusters, use the read replica value if it is >= 0. -1 means to follow
+    // what the primary cluster has set.
+    Integer rrMaxMemMb =
+        confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresReadReplicaMaxMemMb);
+    if (clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC && rrMaxMemMb >= 0) {
+      postgresMaxMemMb = rrMaxMemMb;
+    }
+    return postgresMaxMemMb;
   }
 
   private void appendCertPathsToCheck(
@@ -2267,12 +2487,25 @@ public class NodeManager extends DevopsBase {
     return result;
   }
 
-  private void addArguments(List<String> commandArgs, String nodeIP, String instanceType) {
+  private void addInstanceTypeArgs(
+      List<String> commandArgs,
+      UUID providerUuid,
+      String instanceTypeCode,
+      boolean ensureCloudInstanceType) {
+    InstanceType instanceType = InstanceType.get(providerUuid, instanceTypeCode);
+    if (ensureCloudInstanceType && !instanceType.isCloudInstanceType()) {
+      throw new RuntimeException(
+          String.format("%s is not a cloud instance type", instanceTypeCode));
+    }
     commandArgs.add("--instance_type");
-    commandArgs.add(instanceType);
-    if (!Strings.isNullOrEmpty(nodeIP)) {
-      commandArgs.add("--node_ip");
-      commandArgs.add(nodeIP);
+    commandArgs.add(instanceTypeCode);
+    if (CollectionUtils.isNotEmpty(instanceType.getInstanceTypeDetails().cloudInstanceTypeCodes)) {
+      instanceType.getInstanceTypeDetails().cloudInstanceTypeCodes.stream()
+          .forEach(
+              t -> {
+                commandArgs.add("--cloud_instance_types");
+                commandArgs.add(t);
+              });
     }
   }
 
@@ -2356,7 +2589,9 @@ public class NodeManager extends DevopsBase {
       VmUpgradeTaskType vmUpgradeTaskType,
       boolean useCustomImageByDefault,
       List<String> commandArgs) {
-    if (!cloudType.equals(Common.CloudType.aws) && !cloudType.equals(Common.CloudType.gcp)) {
+    if (!cloudType.equals(Common.CloudType.aws)
+        && !cloudType.equals(Common.CloudType.gcp)
+        && !cloudType.equals(Common.CloudType.azu)) {
       return;
     }
     boolean skipTags = false;
@@ -2402,17 +2637,13 @@ public class NodeManager extends DevopsBase {
     return commandArgs;
   }
 
-  public String getYbServerPackageName(String ybSoftwareVersion, Region region) {
+  public String getYbServerPackageName(String ybSoftwareVersion, Region region, Architecture arch) {
     String ybServerPackage = null;
     ReleaseManager.ReleaseMetadata releaseMetadata =
         releaseManager.getReleaseByVersion(ybSoftwareVersion);
     if (releaseMetadata != null) {
-      if (releaseMetadata.s3 != null) {
-        ybServerPackage = releaseMetadata.s3.paths.x86_64;
-      } else if (releaseMetadata.gcs != null) {
-        ybServerPackage = releaseMetadata.gcs.paths.x86_64;
-      } else if (releaseMetadata.http != null) {
-        ybServerPackage = releaseMetadata.http.paths.x86_64;
+      if (arch != null) {
+        ybServerPackage = releaseMetadata.getFilePath(arch);
       } else {
         ybServerPackage = releaseMetadata.getFilePath(region);
       }
@@ -2420,17 +2651,46 @@ public class NodeManager extends DevopsBase {
     return ybServerPackage;
   }
 
-  public UUID getImageBundleUUID(UserIntent userIntent, NodeTaskParams nodeTaskParam) {
+  public UUID getImageBundleUUID(
+      Architecture arch, UserIntent userIntent, NodeTaskParams nodeTaskParam) {
     UUID imageBundleUUID = null;
     if (userIntent.imageBundleUUID != null) {
       imageBundleUUID = userIntent.imageBundleUUID;
     } else if (nodeTaskParam.getProvider().getUuid() != null) {
-      ImageBundle bundle = ImageBundle.getDefaultForProvider(nodeTaskParam.getProvider().getUuid());
-      if (bundle != null) {
+      List<ImageBundle> bundles =
+          ImageBundle.getDefaultForProvider(nodeTaskParam.getProvider().getUuid());
+      if (bundles.size() > 0) {
+        ImageBundle bundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
         imageBundleUUID = bundle.getUuid();
       }
     }
 
     return imageBundleUUID;
+  }
+
+  private void addOtelColArgs(
+      List<String> commandArgs,
+      AnsibleSetupServer.Params taskParams,
+      UserIntent intent,
+      Provider provider) {
+    if (taskParams.otelCollectorEnabled) {
+      commandArgs.add("--install_otel_collector");
+      AuditLogConfig config = intent.auditLogConfig;
+      if (config == null) {
+        return;
+      }
+      if ((config.getYsqlAuditConfig() == null || !config.getYsqlAuditConfig().isEnabled())
+          && (config.getYcqlAuditConfig() == null || !config.getYcqlAuditConfig().isEnabled())) {
+        return;
+      }
+      if (CollectionUtils.isNotEmpty(config.getUniverseLogsExporterConfig())) {
+        commandArgs.add("--otel_col_config_file");
+        commandArgs.add(
+            otelCollectorConfigGenerator
+                .generateConfigFile(taskParams, provider, config)
+                .toAbsolutePath()
+                .toString());
+      }
+    }
   }
 }

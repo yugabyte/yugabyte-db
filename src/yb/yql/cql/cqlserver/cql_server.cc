@@ -39,7 +39,6 @@
 
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
 #include "yb/yql/cql/cqlserver/cql_service.h"
-#include "yb/yql/cql/cqlserver/statement_metrics.h"
 #include "yb/yql/cql/cqlserver/statements-path-handler.h"
 
 DEFINE_UNKNOWN_int32(cql_service_queue_length, 10000,

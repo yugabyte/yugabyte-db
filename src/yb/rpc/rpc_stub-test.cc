@@ -49,6 +49,7 @@
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/metrics.h"
+#include "yb/util/range.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
@@ -1065,6 +1066,100 @@ TEST_F(RpcStubTest, Trivial) {
   ASSERT_OK(proxy.Trivial(req, &resp, &controller));
   ASSERT_TRUE(resp.has_error());
   ASSERT_EQ(resp.error().code(), Status::Code::kInvalidArgument);
+}
+
+TEST_F(RpcStubTest, OutboundSidecars) {
+  constexpr size_t kNumSidecars = 10;
+
+  CalculatorServiceProxy proxy(proxy_cache_.get(), server_hostport_);
+
+  RpcController controller;
+  controller.set_timeout(30s);
+
+  std::vector<std::string> values;
+  auto& sidecars = controller.outbound_sidecars();
+  for (auto i : Range(kNumSidecars)) {
+    auto data = RandomHumanReadableString(1_KB + 2_KB * i);
+    sidecars.Start().Append(Slice(data));
+    values.push_back(data);
+  }
+
+  rpc_test::SidecarRequestPB req;
+  req.set_num_sidecars(kNumSidecars);
+  rpc_test::SidecarResponsePB resp;
+  ASSERT_OK(proxy.Sidecar(req, &resp, &controller));
+
+  ASSERT_EQ(resp.num_sidecars(), kNumSidecars);
+  for (auto i : Range(kNumSidecars)) {
+    // Service reverses sidecar order.
+    auto received_sidecar = ASSERT_RESULT(controller.ExtractSidecar(kNumSidecars - i - 1));
+    ASSERT_EQ(values[i], received_sidecar.AsSlice());
+  }
+}
+
+TEST_F(RpcStubTest, StuckOutboundCallWithActiveConnection) {
+  SendSimpleCall();
+
+  rpc_test::ConcatRequestPB req;
+  req.set_lhs("yuga");
+  req.set_rhs("byte");
+  rpc_test::ConcatResponsePB resp;
+
+  RpcController controller;
+  controller.set_timeout(100ms);
+  controller.TEST_force_stuck_outbound_call();
+
+  rpc_test::AbacusServiceProxy proxy(proxy_cache_.get(), server_hostport_);
+  proxy.ConcatAsync(req, &resp, &controller, []() { LOG(INFO) << "Callback called"; });
+
+  std::this_thread::sleep_for(200ms);
+  ASSERT_FALSE(controller.finished());
+
+  // Dump the call state.
+  LOG(INFO) << controller.CallStateDebugString();
+
+  std::this_thread::sleep_for(2ms);
+
+  // Mark the call as failed.
+  controller.MarkCallAsFailed();
+
+  ASSERT_TRUE(controller.finished());
+  ASSERT_NOK(controller.status());
+}
+
+TEST_F(RpcStubTest, StuckOutboundCallWithClosedConnection) {
+  SendSimpleCall();
+
+  rpc_test::ConcatRequestPB req;
+  req.set_lhs("yuga");
+  req.set_rhs("byte");
+  rpc_test::ConcatResponsePB resp;
+
+  RpcController controller;
+  controller.set_timeout(100ms);
+  controller.TEST_force_stuck_outbound_call();
+
+  rpc_test::AbacusServiceProxy proxy(proxy_cache_.get(), server_hostport_);
+  proxy.ConcatAsync(req, &resp, &controller, []() { LOG(INFO) << "Callback called"; });
+
+  std::this_thread::sleep_for(100ms);
+
+  // Close the connection.
+  client_messenger_->BreakConnectivityTo(ASSERT_RESULT(HostToAddress(server_hostport_.host())));
+
+  ASSERT_FALSE(controller.finished());
+
+  // Dump the call state.
+  LOG(INFO) << controller.CallStateDebugString();
+
+  std::this_thread::sleep_for(2ms);
+
+  // Mark the call as failed.
+  controller.MarkCallAsFailed();
+
+  ASSERT_TRUE(controller.finished());
+  auto s = controller.status();
+  ASSERT_TRUE(s.IsTimedOut()) << s.ToString();
 }
 
 } // namespace rpc

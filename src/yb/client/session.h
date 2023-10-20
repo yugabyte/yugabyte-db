@@ -95,7 +95,10 @@ struct NODISCARD_CLASS FlushStatus {
 // This class is not thread-safe.
 class YBSession : public std::enable_shared_from_this<YBSession> {
  public:
-  explicit YBSession(YBClient* client, const scoped_refptr<ClockBase>& clock = nullptr);
+  explicit YBSession(
+      YBClient* client, MonoDelta delta, const scoped_refptr<ClockBase>& clock = nullptr);
+  explicit YBSession(
+      YBClient* client, CoarseTimePoint deadline, const scoped_refptr<ClockBase>& clock = nullptr);
 
   ~YBSession();
 
@@ -128,9 +131,9 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // Applied operations just added to the session and waits to be flushed.
   void Apply(YBOperationPtr yb_op);
 
-  bool IsInProgress(YBOperationPtr yb_op) const;
-
   void Apply(const std::vector<YBOperationPtr>& ops);
+
+  bool IsInProgress(YBOperationPtr yb_op) const;
 
   // Flush any pending writes.
   //
@@ -169,17 +172,12 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   void FlushAsync(FlushCallback callback);
   std::future<FlushStatus> FlushFuture();
 
+  // These block the thread until the operations complete or timeout/deadline has passed.
   // For production code use async variants of the following functions instead.
   FlushStatus TEST_FlushAndGetOpsErrors();
   Status TEST_Flush();
   Status TEST_ApplyAndFlush(YBOperationPtr yb_op);
   Status TEST_ApplyAndFlush(const std::vector<YBOperationPtr>& ops);
-  Status TEST_ReadSync(std::shared_ptr<YBOperation> yb_op);
-
-  // These block the thread until the operations complete or timeout/deadline has passed
-  Status ApplyAndFlushSync(const std::vector<YBOperationPtr>& ops);
-  Status ApplyAndFlushSync(YBOperationPtr ops);
-  Status ReadSync(std::shared_ptr<YBOperation> yb_op);
 
   // Abort the unflushed or in-flight operations in the session.
   void Abort();
@@ -251,6 +249,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
  private:
   friend class YBClient;
   friend class internal::Batcher;
+
+  YBSession(YBClient* client, const scoped_refptr<ClockBase>& clock);
 
   internal::Batcher& Batcher();
 

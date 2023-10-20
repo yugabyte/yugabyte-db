@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC, useState } from 'react';
+import { FC, useState } from 'react';
 import { Field as ReduxField } from 'redux-form';
 import { YBLabel } from '../../../common/descriptors';
 import { Field as FormikField } from 'formik';

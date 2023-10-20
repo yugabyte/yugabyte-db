@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -34,6 +35,7 @@ import org.mockito.Mock;
 import org.mockito.Spy;
 import play.libs.Json;
 
+@Slf4j
 @RunWith(JUnitParamsRunner.class)
 public class BackupUtilTest extends FakeDBApplication {
 

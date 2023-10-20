@@ -5,7 +5,6 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React from 'react';
 import clsx from 'clsx';
 import { FormHelperText, makeStyles } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
@@ -69,6 +68,7 @@ interface ConfigureK8sRegionFormValues {
 export interface K8sRegionField extends ConfigureK8sRegionFormValues {
   fieldId: string;
   code: string;
+  name: string;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -99,7 +99,7 @@ export const ConfigureK8sRegionModal = ({
 }: ConfigureK8sRegionModalProps) => {
   const classes = useStyles();
   const regionMetadataQuery = useQuery(
-    regionMetadataQueryKey.detail(ProviderCode.KUBERNETES),
+    regionMetadataQueryKey.detail(ProviderCode.KUBERNETES, kubernetesProvider),
     () => api.fetchRegionMetadata(ProviderCode.KUBERNETES, kubernetesProvider),
     { refetchOnMount: false, refetchOnWindowFocus: false }
   );
@@ -129,6 +129,7 @@ export const ConfigureK8sRegionModal = ({
     const newRegion = {
       ...formValues,
       code: formValues.regionData.value.code,
+      name: formValues.regionData.label,
       fieldId: formValues.fieldId ?? generateLowerCaseAlphanumericId(),
       zones: formValues.zones.map((zone) => {
         const { isNewZone, ...zoneValues } = zone;

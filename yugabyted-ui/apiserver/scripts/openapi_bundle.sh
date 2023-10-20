@@ -7,7 +7,11 @@ pushd ../conf/openapi
 echo "Processing paths component in openapi ..."
 pushd paths
 rm -rf _index.yaml
-yq eval-all '. as $item ireduce ({}; . * $item )' *.yaml > _index.yaml
+if [[ $OSTYPE == darwin* ]]; then
+    yq eval-all '. as $item ireduce ({}; . * $item )' $(ls *.yaml) > _index.yaml
+else
+    yq eval-all '. as $item ireduce ({}; . * $item )' $(ls -r *.yaml) > _index.yaml
+fi
 popd
 
 echo "Running bundle on openapi spec ..."

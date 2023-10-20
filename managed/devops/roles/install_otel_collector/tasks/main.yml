@@ -1,0 +1,19 @@
+- assert:
+    that:
+      - user_name is defined
+      - mount_points is defined
+
+- name: Install OpenTelemetry collector
+  include: install-otel-col.yml
+  become: yes
+  become_method: sudo
+  become_user: "{{ user_name }}"
+
+- name: Create OpenTelemetry collector service
+  include: otel-col-service.yml
+
+- name: Control OpenTelemetry collector service
+  include: otel-col-control.yml
+  become: yes
+  become_method: sudo
+  become_user: "{{ user_name }}"

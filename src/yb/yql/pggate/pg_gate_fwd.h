@@ -33,6 +33,7 @@ namespace yb {
 namespace pggate {
 
 class PgClient;
+class PgDml;
 class PgExpr;
 class PgFetchedTarget;
 class PgTable;

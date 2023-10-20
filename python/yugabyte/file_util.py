@@ -74,3 +74,15 @@ def compute_file_sha256(file_path: str) -> str:
                 break
             sha256.update(data)
     return sha256.hexdigest()
+
+
+def clean_path_join(base_path: str, rel_path: str) -> str:
+    """
+    >>> clean_path_join('foo', 'bar')
+    'foo/bar'
+    >>> clean_path_join('foo', '.')
+    'foo'
+    """
+    if rel_path == '.':
+        return base_path
+    return os.path.join(base_path, rel_path)

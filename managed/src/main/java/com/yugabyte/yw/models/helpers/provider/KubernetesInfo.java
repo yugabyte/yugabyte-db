@@ -5,7 +5,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.yugabyte.yw.common.CloudProviderHelper.EditableInUseProvider;
-import com.yugabyte.yw.models.common.YBADeprecated;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.ApiModelProperty;
@@ -24,10 +25,11 @@ public class KubernetesInfo implements CloudInfoInterface {
   @ApiModelProperty
   private String kubernetesProvider;
 
-  @YBADeprecated(sinceDate = "2023-03-8", sinceYBAVersion = "2.17.3.0")
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.3.0")
   @JsonAlias("KUBECONFIG_SERVICE_ACCOUNT")
   @EditableInUseProvider(name = "Kubernetes Service Account", allowed = false)
-  @ApiModelProperty(value = "DEPRECATED: kubernetes service account is not needed.")
+  @ApiModelProperty(
+      value = "Deprecated since YBA version 2.17.3.0. kubernetes service account is not needed.")
   private String kubernetesServiceAccount;
 
   @JsonAlias("KUBECONFIG_IMAGE_REGISTRY")
@@ -79,6 +81,18 @@ public class KubernetesInfo implements CloudInfoInterface {
   @ApiModelProperty(hidden = true)
   private boolean legacyK8sProvider = true;
 
+  // TODO(bhavin192): Should caFile, tokenFile, apiServerEndpoint, and
+  // kubeconfig be part of a subclass named kubeConfigInfo?
+
+  @ApiModelProperty(hidden = true)
+  private String kubeConfigCAFile;
+
+  @ApiModelProperty(hidden = true)
+  private String kubeConfigTokenFile;
+
+  @ApiModelProperty(hidden = true)
+  private String apiServerEndpoint;
+
   @JsonIgnore
   public Map<String, String> getEnvVars() {
     Map<String, String> envVars = new HashMap<>();
@@ -129,6 +143,10 @@ public class KubernetesInfo implements CloudInfoInterface {
     this.kubernetesImagePullSecretName = CommonUtils.getMaskedValue(kubernetesImagePullSecretName);
     this.kubernetesPullSecret = CommonUtils.getMaskedValue(kubernetesPullSecret);
     this.kubernetesPullSecretName = CommonUtils.getMaskedValue(kubernetesPullSecretName);
+    // Fields not accessible to the user
+    this.kubeConfigCAFile = null;
+    this.kubeConfigTokenFile = null;
+    this.apiServerEndpoint = null;
   }
 
   @JsonIgnore
@@ -147,5 +165,9 @@ public class KubernetesInfo implements CloudInfoInterface {
       this.kubernetesPullSecretName = kubernetesInfo.kubernetesPullSecretName;
     }
     this.legacyK8sProvider = kubernetesInfo.legacyK8sProvider;
+    // Restore fields not accessible to the user
+    this.kubeConfigCAFile = kubernetesInfo.kubeConfigCAFile;
+    this.kubeConfigTokenFile = kubernetesInfo.kubeConfigTokenFile;
+    this.apiServerEndpoint = kubernetesInfo.apiServerEndpoint;
   }
 }

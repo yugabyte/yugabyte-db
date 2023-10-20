@@ -56,7 +56,10 @@
     "highAvailability": "hidden"
   },
   "main": {
-    "stats": "hidden"
+    "stats": "hidden",
+    "logs": "hidden",
+    "releases": "hidden",
+    "landing_page": "/profile"
   },
   "profile": {
     "banner": "hidden",

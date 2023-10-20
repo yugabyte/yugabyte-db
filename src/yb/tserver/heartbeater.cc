@@ -399,6 +399,15 @@ Status Heartbeater::Thread::TryHeartbeat() {
     auto capabilities = Capabilities();
     *req.mutable_registration()->mutable_capabilities() =
         google::protobuf::RepeatedField<CapabilityId>(capabilities.begin(), capabilities.end());
+    auto* resources = req.mutable_registration()->mutable_resources();
+    resources->set_core_count(base::NumCPUs());
+    auto tracker =
+        server_->tablet_manager()->tablet_memory_manager()->tablets_overhead_mem_tracker();
+    // Only set the tablet overhead limit if the tablet overheads memory tracker exists and has a
+    // limit set.  The flag to set the memory tracker's limit is tablet_overhead_size_percentage.
+    if (tracker && tracker->has_limit()) {
+      resources->set_tablet_overhead_ram_in_bytes(tracker->limit());
+    }
   }
 
   if (last_hb_response_.needs_full_tablet_report()) {
@@ -414,10 +423,22 @@ Status Heartbeater::Thread::TryHeartbeat() {
     server_->tablet_manager()->GenerateTabletReport(req.mutable_tablet_report(),
                                                     !sending_full_report_ /* include_bootstrap */);
   }
+
+  auto universe_uuid = VERIFY_RESULT(
+      server_->fs_manager()->GetUniverseUuidFromTserverInstanceMetadata());
+  if (!universe_uuid.empty()) {
+    req.set_universe_uuid(universe_uuid);
+  }
+
   req.mutable_tablet_report()->set_is_incremental(!sending_full_report_);
   req.set_num_live_tablets(server_->tablet_manager()->GetNumLiveTablets());
   req.set_leader_count(server_->tablet_manager()->GetLeaderCount());
-
+  if (FLAGS_TEST_enable_db_catalog_version_mode) {
+    auto fingerprint = server_->GetCatalogVersionsFingerprint();
+    if (fingerprint.has_value()) {
+      req.set_ysql_db_catalog_versions_fingerprint(*fingerprint);
+    }
+  }
   for (auto& data_provider : data_providers_) {
     data_provider->AddData(last_hb_response_, &req);
   }
@@ -465,17 +486,26 @@ Status Heartbeater::Thread::TryHeartbeat() {
     RETURN_NOT_OK_PREPEND(proxy_->TSHeartbeat(req, &resp, &rpc),
                           "Failed to send heartbeat");
     MonoTime end_time = MonoTime::Now();
+    if (!resp.universe_uuid().empty()) {
+      auto universe_uuid = VERIFY_RESULT(UniverseUuid::FromString(resp.universe_uuid()));
+      RETURN_NOT_OK(server_->ValidateAndMaybeSetUniverseUuid(universe_uuid));
+    }
+
     if (resp.has_error()) {
-      if (resp.error().code() != master::MasterErrorPB::NOT_THE_LEADER) {
-        return StatusFromPB(resp.error().status());
-      } else {
-        DCHECK(!resp.leader_master());
-        // Treat a not-the-leader error code as leader_master=false.
-        if (resp.leader_master()) {
-          LOG_WITH_PREFIX(WARNING) << "Setting leader master to false for "
-                                   << resp.error().code() << " code.";
-          resp.set_leader_master(false);
+      switch (resp.error().code()) {
+        case master::MasterErrorPB::NOT_THE_LEADER: {
+          DCHECK(!resp.leader_master());
+          // Treat a not-the-leader error code as leader_master=false.
+          if (resp.leader_master()) {
+            LOG_WITH_PREFIX(WARNING) << "Setting leader master to false for "
+                                    << resp.error().code() << " code.";
+            resp.set_leader_master(false);
+          }
+          break;
         }
+        default:
+          return StatusFromPB(resp.error().status());
+
       }
     }
 
@@ -568,6 +598,18 @@ Status Heartbeater::Thread::TryHeartbeat() {
                           << last_hb_response_.db_catalog_version_data().ShortDebugString();
       }
       server_->SetYsqlDBCatalogVersions(last_hb_response_.db_catalog_version_data());
+    } else {
+      // The master does not pass back any catalog versions. This can happen in
+      // several cases:
+      // * The fingerprints matched at master side which we assume tserver and
+      //   master have identical catalog versions.
+      // * If catalog versions cache is used, the cache is empty, either becuase it
+      //   has never been populated yet, or because master reading of the table
+      //   pg_yb_catalog_version has failed so the cache is cleared.
+      // * If catalog versions cache is not used, master reading of the table
+      //   pg_yb_catalog_version has failed, this is an unexpected case that is
+      //   ignored by the heartbeat service at the master side.
+      VLOG_WITH_FUNC(2) << "got no master catalog version data";
     }
   } else {
     // We never expect rolling gflag change of --TEST_enable_db_catalog_version_mode. In

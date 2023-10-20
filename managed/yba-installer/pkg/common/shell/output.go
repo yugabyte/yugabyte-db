@@ -66,7 +66,7 @@ func (o *Output) SucceededOrLog() bool {
 
 // LogDebug will do a debug log directly to the logfile - no stdout.
 func (o *Output) LogDebug() {
-	logging.DebugLF(fmt.Sprintf("Ran '%s' with args '%s'", o.Command, strings.Join(o.Args, ", ")))
+	logging.DebugLF(fmt.Sprintf("Ran '%s' with args '%s'", o.Command, strings.Join(o.Args, " ")))
 	logging.DebugLF(fmt.Sprintf("Exit code: %d", o.ExitCode))
 	logging.DebugLF(fmt.Sprintf("Stdout: %s", o.stdout.String()))
 	logging.DebugLF(fmt.Sprintf("Stderr: %s", o.stderr.String()))

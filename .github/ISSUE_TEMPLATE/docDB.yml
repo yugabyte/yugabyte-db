@@ -13,6 +13,21 @@ body:
       **Include the steps to reproduce the issue.**
   validations:
     required: true
+- type: dropdown
+  id: issueType
+  attributes:
+    label: Issue Type
+    description: Please choose the issue type
+    multiple: false
+    options:
+      - 'kind/bug'
+      - 'kind/enhancement'
+      - 'kind/failing-test'
+      - 'kind/improve-ux'
+      - 'kind/new-feature'
+      - 'kind/question'
+  validations:
+    required: true
 - type: checkboxes
   id: warning
   attributes:

@@ -3,6 +3,7 @@ title: Create a read replica cluster in YugabyteDB Anywhere
 headerTitle: Create a read replica cluster
 linkTitle: Read replica cluster
 description: Use YugabyteDB Anywhere to create a read replica cluster.
+headcontent: Reduce read latencies in remote regions
 menu:
   stable_yugabyte-platform:
     identifier: create-read-replica-cluster
@@ -11,15 +12,25 @@ menu:
 type: docs
 ---
 
-You can create a universe that includes both a primary cluster and a [read replica](../../../architecture/docdb-replication/read-replicas/) cluster, as well as dynamically add, edit, and remove a read replica cluster.
+If your user base is geographically distributed, you can add a read replica cluster to the universe to improve read latency in regions that are far from your primary region.
 
-You can add up to 15 read replicas to a universe. The number of read replicas can't exceed the number of nodes in the read replica cluster.
+Read replicas are a read-only extension to the primary cluster. With read replicas, the primary data of the cluster is copied to one or more nodes in a different region. Read replicas do not add to write latencies because writes aren't synchronously replicated to replicas - the data is replicated to the replicas asynchronously. To read data from a read replica, you need to enable follower reads.
 
-{{< note title="Note" >}}
-YugabyteDB Anywhere does not support read replica configuration for Kubernetes and OpenShift cloud providers.
-{{< /note >}}
+For more information on read replicas and follower reads in YugabyteDB, see the following:
 
-## Create a universe with a read replica
+- [Read replicas](../../../architecture/docdb-replication/read-replicas/)
+- [Follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/)
+
+You can customize the number of read replicas in the read replica cluster. Multiple replicas ensure the availability of the replica in case of a node outage. Replicas do not participate in the primary cluster [RAFT](../../../architecture/docdb-replication/replication/#raft-replication) consensus, and do not affect the fault tolerance of the primary cluster or contribute to failover. The number of read replicas can't exceed the number of nodes in the read replica cluster.
+
+You can delete, modify, and scale read replica clusters. Adding or removing nodes incurs a load on the read replica cluster. Perform scaling operations when the cluster isn't experiencing heavy traffic. Scaling during times of heavy traffic can temporarily degrade performance and increase the length of time of the scaling operation.
+
+## Limitations
+
+- Currently, YugabyteDB Anywhere supports one only one read replica cluster per universe.
+- You can add up to 15 read replicas to the read replica cluster.
+
+## Create a universe with a read replica cluster
 
 To create a universe with a read replica cluster, do the following:
 
@@ -64,4 +75,4 @@ To edit a read replica, do the following:
 To delete a read replica cluster, do the following:
 
 1. Navigate to the universe and click **Actions > Edit Read Replica**.
-2. Click **Delete this configuration**.
+1. Click **Delete this configuration**.

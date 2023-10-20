@@ -11,7 +11,7 @@
 // under the License.
 
 #include <cmath>
-#include <memory>
+#include <optional>
 #include <string>
 
 #include "yb/util/metrics.h"
@@ -23,18 +23,18 @@
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Write);
 
-namespace yb {
-namespace pgwrapper {
+namespace yb::pgwrapper {
 namespace {
 
 class PgOpBufferingTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
     PgMiniTestBase::SetUp();
-    write_rpc_watcher_ = std::make_unique<MetricWatcher>(
+    write_rpc_watcher_.emplace(
         *cluster_->mini_tablet_server(0)->server(),
         METRIC_handler_latency_yb_tserver_TabletServerService_Write);
   }
@@ -43,7 +43,7 @@ class PgOpBufferingTest : public PgMiniTestBase {
     return 1;
   }
 
-  std::unique_ptr<MetricWatcher> write_rpc_watcher_;
+  std::optional<SingleMetricWatcher> write_rpc_watcher_;
 };
 
 const std::string kTable = "test";
@@ -68,10 +68,6 @@ Status EnsureDupKeyError(Status status, const std::string& constraint_name) {
           constraint_name)) != std::string::npos,
       IllegalState, Format("Unexpected error message: $0", msg));
   return Status::OK();
-}
-
-Status SetMaxBatchSize(PGConn* conn, size_t max_batch_size) {
-  return conn->ExecuteFormat("SET ysql_session_max_batch_size = $0", max_batch_size);
 }
 
 } // namespace
@@ -301,5 +297,4 @@ TEST_F(PgOpBufferingTest, TxnRollbackWithInFlightOperations) {
   ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
 }
 
-} // namespace pgwrapper
-} // namespace yb
+} // namespace yb::pgwrapper

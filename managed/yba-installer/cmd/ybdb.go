@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
 )
@@ -239,7 +238,7 @@ func (ybdb Ybdb) Upgrade() error {
 
 // Install ybdb and create the yugaware DB for YBA.
 func (ybdb Ybdb) Install() error {
-	config.GenerateTemplate(ybdb)
+	//config.GenerateTemplate(ybdb)
 
 	if err := ybdb.extractYbdbPackage(); err != nil {
 		return err
@@ -301,7 +300,7 @@ func (ybdb Ybdb) extractYbdbPackage() error {
 		}
 	}
 
-	common.MkdirAllOrFail(ybdb.ybdbInstallDir, os.ModePerm)
+	common.MkdirAllOrFail(ybdb.ybdbInstallDir, common.DirMode)
 	userName := viper.GetString("service_username")
 	shell.Run("tar", "-zxf", ybdbPackagePath, "-C", ybdb.ybdbInstallDir, "--strip-components", "1")
 	common.Chown(ybdb.ybdbInstallDir, userName, userName, true)

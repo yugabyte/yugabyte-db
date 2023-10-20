@@ -443,7 +443,7 @@ void CompactionJob::GenSubcompactionBoundaries() {
 }
 
 Result<FileNumbersHolder> CompactionJob::Run() {
-  TEST_SYNC_POINT("CompactionJob::Run():Start");
+  DEBUG_ONLY_TEST_SYNC_POINT("CompactionJob::Run():Start");
   log_buffer_->FlushBufferToLog();
   LogCompaction();
 
@@ -504,7 +504,7 @@ Result<FileNumbersHolder> CompactionJob::Run() {
   UpdateCompactionStats();
   RecordCompactionIOStats();
   LogFlush(db_options_.info_log);
-  TEST_SYNC_POINT("CompactionJob::Run():End");
+  DEBUG_ONLY_TEST_SYNC_POINT("CompactionJob::Run():End");
 
   compact_->status = status;
   return file_numbers_holder;
@@ -560,7 +560,8 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
          << "total_output_size" << compact_->total_bytes
          << "num_input_records" << compact_->num_input_records
          << "num_output_records" << compact_->num_output_records
-         << "num_subcompactions" << compact_->sub_compact_states.size();
+         << "num_subcompactions" << compact_->sub_compact_states.size()
+         << "is_full_compaction" << compact_->compaction->is_full_compaction();
 
   if (measure_io_stats_ && compaction_job_stats_ != nullptr) {
     stream << "file_write_nanos" << compaction_job_stats_->file_write_nanos;
@@ -621,7 +622,7 @@ void CompactionJob::ProcessKeyValueCompaction(
       existing_snapshots_.empty() ? 0 : existing_snapshots_.back(),
       compact_->compaction->level(), db_options_.statistics.get());
 
-  TEST_SYNC_POINT("CompactionJob::Run():Inprogress");
+  DEBUG_ONLY_TEST_SYNC_POINT("CompactionJob::Run():Inprogress");
 
   Slice* start = sub_compact->start;
   Slice* end = sub_compact->end;
@@ -903,7 +904,7 @@ Status CompactionJob::FinishCompactionOutputFile(
       if (db_bg_error_->ok()) {
         s = STATUS(IOError, "Max allowed space was reached");
         *db_bg_error_ = s;
-        TEST_SYNC_POINT(
+        DEBUG_ONLY_TEST_SYNC_POINT(
             "CompactionJob::FinishCompactionOutputFile:MaxAllowedSpaceReached");
       }
     }
@@ -949,6 +950,7 @@ Status CompactionJob::InstallCompactionResults(
     }
   }
   if (largest_user_frontier_) {
+    LOG(INFO) << "Updating flushed frontier to " << largest_user_frontier_->ToString();
     compaction->edit()->UpdateFlushedFrontier(largest_user_frontier_);
   }
   return versions_->LogAndApply(compaction->column_family_data(),
@@ -1005,7 +1007,7 @@ Status CompactionJob::OpenCompactionOutputFile(
     }
   }
   out.finished = false;
-  // Reset the filter post compaction.
+  // Newly created files after compaction should not have any HT filter.
   if (out.meta.largest.user_frontier) {
     out.meta.largest.user_frontier->ResetFilter();
   }
@@ -1212,8 +1214,9 @@ void CompactionJob::LogCompaction() {
       }
       stream.EndArray();
     }
-    stream << "score" << compaction->score() << "input_data_size"
-           << compaction->CalculateTotalInputSize();
+    stream << "score" << compaction->score()
+           << "input_data_size" << compaction->CalculateTotalInputSize()
+           << "is_full_compaction" << compaction->is_full_compaction();
   }
 }
 

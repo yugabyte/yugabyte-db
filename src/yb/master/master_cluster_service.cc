@@ -22,6 +22,7 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
+#include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/util/service_util.h"
 #include "yb/util/flags.h"
 
@@ -344,12 +345,6 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     HANDLE_ON_LEADER_WITH_LOCK(CatalogManager, GetClusterConfig);
   }
 
-  void GetMasterXClusterConfig(
-      const GetMasterXClusterConfigRequestPB* req, GetMasterXClusterConfigResponsePB* resp,
-      rpc::RpcContext rpc) override {
-    HANDLE_ON_LEADER_WITH_LOCK(CatalogManager, GetXClusterConfig);
-  }
-
   void GetLeaderBlacklistCompletion(
       const GetLeaderBlacklistPercentRequestPB* req, GetLoadMovePercentResponsePB* resp,
       rpc::RpcContext rpc) override {
@@ -382,7 +377,15 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     (IsLoadBalancerIdle)
     (SetPreferredZones)
     (PromoteAutoFlags)
+    (RollbackAutoFlags)
+    (PromoteSingleAutoFlag)
+    (DemoteSingleAutoFlag)
   )
+
+  MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(XClusterManager,
+    (GetMasterXClusterConfig)
+  )
+
 };
 
 } // namespace

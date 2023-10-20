@@ -57,34 +57,37 @@ Status SequentialFileReader::Read(size_t n, Slice* result, uint8_t* scratch) {
 Status SequentialFileReader::Skip(uint64_t n) { return file_->Skip(n); }
 
 Status RandomAccessFileReader::Read(uint64_t offset, size_t n, Slice* result,
-                                    char* scratch) const {
+                                    char* scratch, Statistics* statistics) const {
   Status s;
   uint64_t elapsed = 0;
+  auto* effective_statistics = statistics ? statistics : stats_;
   {
-    StopWatch sw(env_, stats_, hist_type_,
-                 (stats_ != nullptr) ? &elapsed : nullptr);
+    StopWatch sw(env_, effective_statistics, hist_type_,
+                 (effective_statistics != nullptr) ? &elapsed : nullptr);
     IOSTATS_TIMER_GUARD(read_nanos);
     s = file_->Read(offset, n, result, scratch);
     IOSTATS_ADD_IF_POSITIVE(bytes_read, result->size());
   }
-  if (stats_ != nullptr && file_read_hist_ != nullptr) {
+  if (effective_statistics == stats_ && stats_ != nullptr && file_read_hist_ != nullptr) {
     file_read_hist_->Add(elapsed);
   }
   return s;
 }
 
 Status RandomAccessFileReader::ReadAndValidate(
-    uint64_t offset, size_t n, Slice* result, char* scratch, const yb::ReadValidator& validator) {
-  uint64_t elapsed = 0;
+    uint64_t offset, size_t n, Slice* result, char* scratch, const yb::ReadValidator& validator,
+    Statistics* statistics) {
   Status s;
+  uint64_t elapsed = 0;
+  auto* effective_statistics = statistics ? statistics : stats_;
   {
-    StopWatch sw(env_, stats_, hist_type_,
-                 (stats_ != nullptr) ? &elapsed : nullptr);
+    StopWatch sw(env_, effective_statistics, hist_type_,
+                 (effective_statistics != nullptr) ? &elapsed : nullptr);
     IOSTATS_TIMER_GUARD(read_nanos);
     s = file_->ReadAndValidate(offset, n, result, scratch, validator);
     IOSTATS_ADD_IF_POSITIVE(bytes_read, result->size());
   }
-  if (stats_ != nullptr && file_read_hist_ != nullptr) {
+  if (effective_statistics == stats_ && stats_ != nullptr && file_read_hist_ != nullptr) {
     file_read_hist_->Add(elapsed);
   }
   return s;
@@ -106,7 +109,7 @@ Status WritableFileWriter::Append(const Slice& data) {
 
   {
     IOSTATS_TIMER_GUARD(prepare_write_nanos);
-    TEST_SYNC_POINT("WritableFileWriter::Append:BeforePrepareWrite");
+    DEBUG_ONLY_TEST_SYNC_POINT("WritableFileWriter::Append:BeforePrepareWrite");
     writable_file_->PrepareWrite(static_cast<size_t>(GetFileSize()), left);
   }
 
@@ -278,9 +281,9 @@ Status WritableFileWriter::SyncWithoutFlush(bool use_fsync) {
       "Can't WritableFileWriter::SyncWithoutFlush() because "
       "WritableFile::IsSyncThreadSafe() is false");
   }
-  TEST_SYNC_POINT("WritableFileWriter::SyncWithoutFlush:1");
+  DEBUG_ONLY_TEST_SYNC_POINT("WritableFileWriter::SyncWithoutFlush:1");
   Status s = SyncInternal(use_fsync);
-  TEST_SYNC_POINT("WritableFileWriter::SyncWithoutFlush:2");
+  DEBUG_ONLY_TEST_SYNC_POINT("WritableFileWriter::SyncWithoutFlush:2");
   return s;
 }
 
@@ -291,7 +294,7 @@ Status WritableFileWriter::InvalidateCache(size_t offset, size_t length) {
 Status WritableFileWriter::SyncInternal(bool use_fsync) {
   Status s;
   IOSTATS_TIMER_GUARD(fsync_nanos);
-  TEST_SYNC_POINT("WritableFileWriter::SyncInternal:0");
+  DEBUG_ONLY_TEST_SYNC_POINT("WritableFileWriter::SyncInternal:0");
   if (use_fsync) {
     s = writable_file_->Fsync();
   } else {
@@ -302,7 +305,7 @@ Status WritableFileWriter::SyncInternal(bool use_fsync) {
 
 Status WritableFileWriter::RangeSync(uint64_t offset, uint64_t nbytes) {
   IOSTATS_TIMER_GUARD(range_sync_nanos);
-  TEST_SYNC_POINT("WritableFileWriter::RangeSync:0");
+  DEBUG_ONLY_TEST_SYNC_POINT("WritableFileWriter::RangeSync:0");
   return writable_file_->RangeSync(offset, nbytes);
 }
 
@@ -340,7 +343,7 @@ Status WritableFileWriter::WriteBuffered(const char* data, size_t size) {
 
     {
       IOSTATS_TIMER_GUARD(write_nanos);
-      TEST_SYNC_POINT("WritableFileWriter::Flush:BeforeAppend");
+      DEBUG_ONLY_TEST_SYNC_POINT("WritableFileWriter::Flush:BeforeAppend");
       s = writable_file_->Append(Slice(src, allowed));
       if (!s.ok()) {
         return s;
@@ -396,7 +399,7 @@ Status WritableFileWriter::WriteUnbuffered() {
 
     {
       IOSTATS_TIMER_GUARD(write_nanos);
-      TEST_SYNC_POINT("WritableFileWriter::Flush:BeforeAppend");
+      DEBUG_ONLY_TEST_SYNC_POINT("WritableFileWriter::Flush:BeforeAppend");
       // Unbuffered writes must be positional
       s = writable_file_->PositionedAppend(Slice(src, size), write_offset);
       if (!s.ok()) {

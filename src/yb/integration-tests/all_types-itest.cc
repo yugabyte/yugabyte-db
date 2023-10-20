@@ -333,7 +333,7 @@ class AllTypesItest : public YBTest {
   // perfectly partitioned table, if the encoding of the keys was correct and the rows
   // ended up in the right place.
   Status InsertRows() {
-    shared_ptr<YBSession> session = client_->NewSession();
+    shared_ptr<YBSession> session = client_->NewSession(MonoDelta::FromSeconds(60));
     int max_rows_per_tablet = setup_.GetRowsPerTablet();
     for (int i = 0; i < kNumTablets; ++i) {
       for (int j = 0; j < max_rows_per_tablet; ++j) {

@@ -66,7 +66,7 @@ DECLARE_bool(enable_ysql);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(cdc_min_replicated_index_considered_stale_secs);
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
-DECLARE_int32(cdc_wal_retention_time_secs);
+DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(follower_unavailable_considered_failed_sec);
 DECLARE_int32(log_max_seconds_to_retain);
@@ -140,7 +140,7 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void DoTearDown() override {
-    if (!(stream_id_.empty())) {
+    if (stream_id_) {
       ASSERT_OK(client_->DeleteCDCStream(stream_id_,
                                          false /*force_delete*/,
                                          true /*ignore_errors*/));
@@ -167,15 +167,16 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster> {
   void GetTablets(std::vector<TabletId>* tablet_ids,
                   const client::YBTableName& table_name = kTableName);
   std::string GetTablet(const client::YBTableName& table_name = kTableName);
-  void GetChanges(const TabletId& tablet_id, const CDCStreamId& stream_id,
-                  int64_t term, int64_t index,
-                  bool* has_error = nullptr, ::yb::cdc::CDCErrorPB_Code* code = nullptr);
+  void GetChanges(
+      const TabletId& tablet_id, const xrepl::StreamId& stream_id, int64_t term, int64_t index,
+      bool* has_error = nullptr, ::yb::cdc::CDCErrorPB_Code* code = nullptr);
   void GetChangesWithResp(
-      const TabletId& tablet_id, const CDCStreamId& stream_id, int64_t term, int64_t index,
+      const TabletId& tablet_id, const xrepl::StreamId& stream_id, int64_t term, int64_t index,
       GetChangesResponsePB* change_resp, bool* has_error = nullptr,
       ::yb::cdc::CDCErrorPB_Code* code = nullptr);
   void GetAllChanges(
-      const TabletId& tablet_id, const CDCStreamId& stream_id, GetChangesResponsePB* change_resp);
+      const TabletId& tablet_id, const xrepl::StreamId& stream_id,
+      GetChangesResponsePB* change_resp);
   void WriteTestRow(
       int32_t key, int32_t int_val, const string& string_val, const TabletId& tablet_id,
       const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy);
@@ -193,7 +194,7 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster> {
 
   std::unique_ptr<CDCServiceProxy> cdc_proxy_;
   std::unique_ptr<client::YBClient> client_;
-  CDCStreamId stream_id_;
+  xrepl::StreamId stream_id_ = xrepl::StreamId::Nil();
   TableHandle table_;
 };
 
@@ -239,11 +240,11 @@ void VerifyCdcStateNotEmpty(client::YBClient* client) {
 
 Status VerifyCdcStateMatches(
     client::YBClient* client,
-    const CDCStreamId& stream_id,
+    const xrepl::StreamId& stream_id,
     const TabletId& tablet_id,
     uint64_t term,
     uint64_t index) {
-  LOG(INFO) << strings::Substitute("Verifying tablet: $0, stream: $1, op_id: $2",
+  LOG(INFO) << Format("Verifying tablet: $0, stream: $1, op_id: $2",
       tablet_id, stream_id, OpId(term, index).ToString());
 
   CDCStateTable cdc_state_table(client);
@@ -258,10 +259,11 @@ Status VerifyCdcStateMatches(
   return Status::OK();
 }
 
-void VerifyStreamDeletedFromCdcState(client::YBClient* client,
-                                     const CDCStreamId& stream_id,
-                                     const TabletId& tablet_id,
-                                     int timeout_secs = 10) {
+void VerifyStreamDeletedFromCdcState(
+    client::YBClient* client,
+    const xrepl::StreamId& stream_id,
+    const TabletId& tablet_id,
+    int timeout_secs = 10) {
   CDCStateTable cdc_state_table(client);
 
   // The deletion of cdc_state rows for the specified stream happen in an asynchronous thread,
@@ -291,12 +293,12 @@ std::string CDCServiceTest::GetTablet(const client::YBTableName& table_name) {
 }
 
 void CDCServiceTest::GetChangesWithResp(
-    const TabletId& tablet_id, const CDCStreamId& stream_id, int64_t term, int64_t index,
+    const TabletId& tablet_id, const xrepl::StreamId& stream_id, int64_t term, int64_t index,
     GetChangesResponsePB* change_resp, bool* has_error, ::yb::cdc::CDCErrorPB_Code* code) {
   GetChangesRequestPB change_req;
 
   change_req.set_tablet_id(tablet_id);
-  change_req.set_stream_id(stream_id);
+  change_req.set_stream_id(stream_id.ToString());
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(term);
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(index);
   change_req.set_serve_as_proxy(true);
@@ -320,7 +322,7 @@ void CDCServiceTest::GetChangesWithResp(
 }
 
 void CDCServiceTest::GetChanges(
-    const TabletId& tablet_id, const CDCStreamId& stream_id, int64_t term, int64_t index,
+    const TabletId& tablet_id, const xrepl::StreamId& stream_id, int64_t term, int64_t index,
     bool* has_error, ::yb::cdc::CDCErrorPB_Code* code) {
   GetChangesResponsePB change_resp;
   ASSERT_NO_FATALS(
@@ -328,7 +330,8 @@ void CDCServiceTest::GetChanges(
 }
 
 void CDCServiceTest::GetAllChanges(
-    const TabletId& tablet_id, const CDCStreamId& stream_id, GetChangesResponsePB* change_resp) {
+    const TabletId& tablet_id, const xrepl::StreamId& stream_id,
+    GetChangesResponsePB* change_resp) {
   int64_t term, index;
   // Keep running GetChanges until we've gotten all changes.
   do {
@@ -459,20 +462,20 @@ TEST_F(CDCServiceTest, TestCompoundKey) {
   ASSERT_OK(table.Create(kTableNameCompoundKey, tablet_count(), client_.get(), &builder));
 
   // Create a stream on the table
-  CreateCDCStream(cdc_proxy_, table.table()->id(), &stream_id_);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table.table()->id()));
 
   std::string tablet_id = GetTablet(table.name());
 
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp;
   change_req.set_tablet_id(tablet_id);
-  change_req.set_stream_id(stream_id_);
+  change_req.set_stream_id(stream_id_.ToString());
 
   // Consume the META_OP that has the initial table Schema.
   ASSERT_OK(GetChangesInitialSchema(change_req, change_req.mutable_from_checkpoint()));
 
   // Now apply two ops with same hash key but different range key in a batch.
-  auto session = client_->NewSession();
+  auto session = client_->NewSession(15s);
   for (int i = 0; i < 2; i++) {
     const auto op = table.NewUpdateOp();
     auto* const req = op->mutable_request();
@@ -507,7 +510,7 @@ TEST_F(CDCServiceTest, TestCompoundKey) {
 }
 
 TEST_F(CDCServiceTest, TestCreateCDCStream) {
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
 
   NamespaceId ns_id;
   std::vector<TableId> table_ids;
@@ -521,7 +524,7 @@ TEST_F(CDCServiceTest, TestCreateCDCStreamWithDefaultRententionTime) {
   // Set default WAL retention time to 10 hours.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 36000;
 
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
 
   NamespaceId ns_id;
   std::vector<TableId> table_ids;
@@ -535,7 +538,7 @@ TEST_F(CDCServiceTest, TestCreateCDCStreamWithDefaultRententionTime) {
 
 TEST_F(CDCServiceTest, TestDeleteCDCStream) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
 
   NamespaceId ns_id;
   std::vector<TableId> table_ids;
@@ -588,7 +591,7 @@ TEST_F(CDCServiceTest, TestDeleteCDCStream) {
 
 TEST_F(CDCServiceTest, TestSafeTime) {
   docdb::DisableYcqlPackedRow();
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = true;
 
   std::string tablet_id = GetTablet();
@@ -598,7 +601,7 @@ TEST_F(CDCServiceTest, TestSafeTime) {
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp;
   change_req.set_tablet_id(tablet_id);
-  change_req.set_stream_id(stream_id_);
+  change_req.set_stream_id(stream_id_.ToString());
 
   // Consume the META_OP that has the original Schema.
   ASSERT_OK(GetChangesInitialSchema(change_req, change_req.mutable_from_checkpoint()));
@@ -639,7 +642,7 @@ TEST_F(CDCServiceTest, TestSafeTime) {
 }
 
 TEST_F(CDCServiceTest, TestMetricsOnDeletedReplication) {
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = true;
 
   std::string tablet_id = GetTablet();
@@ -651,7 +654,7 @@ TEST_F(CDCServiceTest, TestMetricsOnDeletedReplication) {
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp;
   change_req.set_tablet_id(tablet_id);
-  change_req.set_stream_id(stream_id_);
+  change_req.set_stream_id(stream_id_.ToString());
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
   {
@@ -708,7 +711,7 @@ TEST_F(CDCServiceTest, TestMetricsOnDeletedReplication) {
 
 TEST_F(CDCServiceTest, TestGetChanges) {
   docdb::DisableYcqlPackedRow();
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = true;
 
   std::string tablet_id = GetTablet();
@@ -736,7 +739,7 @@ TEST_F(CDCServiceTest, TestGetChanges) {
   GetChangesResponsePB change_resp;
 
   change_req.set_tablet_id(tablet_id);
-  change_req.set_stream_id(stream_id_);
+  change_req.set_stream_id(stream_id_.ToString());
 
   // Consume the META_OP that has the initial table Schema.
   ASSERT_OK(GetChangesInitialSchema(change_req, change_req.mutable_from_checkpoint()));
@@ -843,7 +846,7 @@ TEST_F(CDCServiceTest, TestGetChanges) {
 TEST_F(CDCServiceTest, TestGetChangesWithDeadline) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_populate_end_markers_transactions) = false;
   docdb::DisableYcqlPackedRow();
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_get_changes_honor_deadline) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_safe_deadline_ratio) = 0.30;
@@ -857,7 +860,7 @@ TEST_F(CDCServiceTest, TestGetChangesWithDeadline) {
   GetChangesResponsePB change_resp;
 
   change_req.set_tablet_id(tablet_id);
-  change_req.set_stream_id(stream_id_);
+  change_req.set_stream_id(stream_id_.ToString());
 
   const auto& tserver = cluster_->mini_tablet_server(0)->server();
   // Use proxy for to most accurately simulate normal requests.
@@ -928,7 +931,7 @@ TEST_F(CDCServiceTest, TestGetChangesInvalidStream) {
 }
 
 TEST_F(CDCServiceTest, TestGetCheckpoint) {
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
 
   std::string tablet_id = GetTablet();
 
@@ -936,7 +939,7 @@ TEST_F(CDCServiceTest, TestGetCheckpoint) {
   GetCheckpointResponsePB resp;
 
   req.set_tablet_id(tablet_id);
-  req.set_stream_id(stream_id_);
+  req.set_stream_id(stream_id_.ToString());
 
   {
     RpcController rpc;
@@ -972,14 +975,14 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure) {
   // Test that the metric value is not time since epoch after a leadership change.
   docdb::DisableYcqlPackedRow();
   SetAtomicFlag(0, &FLAGS_cdc_state_checkpoint_update_interval_ms);
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = false;
 
   std::string tablet_id = GetTablet();
 
   GetChangesRequestPB change_req;
   change_req.set_tablet_id(tablet_id);
-  change_req.set_stream_id(stream_id_);
+  change_req.set_stream_id(stream_id_.ToString());
   ASSERT_OK(GetChangesInitialSchema(change_req, change_req.mutable_from_checkpoint()));
   auto term = change_req.from_checkpoint().op_id().term();
   auto index = change_req.from_checkpoint().op_id().index();
@@ -1015,76 +1018,50 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure) {
 
 TEST_F(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
   docdb::DisableYcqlPackedRow();
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = true;
+  // Always update cdc_state with checkpoint info.
+  SetAtomicFlag(0, &FLAGS_cdc_state_checkpoint_update_interval_ms);
+  // Enable BG thread to generate metrics.
+  SetAtomicFlag(true, &FLAGS_enable_collect_cdc_metrics);
 
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
   std::string tablet_id = GetTablet();
+  ProducerTabletInfo tablet_info = {{} /* empty universeid for producers */, stream_id_, tablet_id};
+  const auto& tservers = cluster_->mini_tablet_servers();
 
+  // Test with t0 as the leader, by blacklisting other tservers.
+  ASSERT_OK(MoveLeadersToTserver(tservers[0]));
   // Get the leader and a follower for the tablet.
-  tserver::MiniTabletServer* leader_mini_tserver = nullptr;
-  tserver::MiniTabletServer* follower_mini_tserver = nullptr;
-
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    leader_mini_tserver = nullptr;
-    follower_mini_tserver = nullptr;
-    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
-      auto tablet_peer_result =
-          cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetServingTablet(tablet_id);
-      if (!tablet_peer_result.ok()) {
-        continue;
-      }
-      if ((**tablet_peer_result).LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
-        leader_mini_tserver = cluster_->mini_tablet_server(i);
-      } else {
-        follower_mini_tserver = cluster_->mini_tablet_server(i);
-      }
-    }
-    return leader_mini_tserver != nullptr && follower_mini_tserver != nullptr;
-  }, MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait for tablet to have a leader."));
+  tserver::MiniTabletServer* leader_mini_tserver = tservers[0].get();
+  tserver::MiniTabletServer* follower_mini_tserver = tservers[1].get();
 
   auto leader_proxy = std::make_unique<CDCServiceProxy>(
-      &client_->proxy_cache(),
-      HostPort::FromBoundEndpoint(leader_mini_tserver->bound_rpc_addr()));
-
+      &client_->proxy_cache(), HostPort::FromBoundEndpoint(leader_mini_tserver->bound_rpc_addr()));
   auto follower_proxy = std::make_unique<CDCServiceProxy>(
       &client_->proxy_cache(),
       HostPort::FromBoundEndpoint(follower_mini_tserver->bound_rpc_addr()));
-
-  auto leader_tserver = leader_mini_tserver->server();
-  auto follower_tserver = follower_mini_tserver->server();
-  // Use proxy for to most accurately simulate normal requests.
-  const auto& proxy = leader_tserver->proxy();
-
-  auto cdc_service = CDCService(leader_tserver);
-  auto cdc_service_follower = CDCService(follower_tserver);
+  auto cdc_service = CDCService(leader_mini_tserver->server());
+  auto cdc_service_follower = CDCService(follower_mini_tserver->server());
 
   // At the start of time, assert both leader and follower at 0 lag.
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    {
-      // Leader metrics
-      auto metrics = std::static_pointer_cast<CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-          {{}, stream_id_, tablet_id}));
-      if (!(metrics->async_replication_sent_lag_micros->value() == 0 &&
-          metrics->async_replication_committed_lag_micros->value() == 0)) {
-        return false;
-      }
-    }
-    {
-      // Follower metrics
-      auto follower_metrics =
-          std::static_pointer_cast<CDCTabletMetrics>(cdc_service_follower->GetCDCTabletMetrics(
-              {{}, stream_id_, tablet_id}));
-      return follower_metrics->async_replication_sent_lag_micros->value() == 0 &&
-          follower_metrics->async_replication_committed_lag_micros->value() == 0;
-    }
-  }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "At start, wait for Lag = 0"));
-
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (const auto& service : {cdc_service, cdc_service_follower}) {
+          auto metrics = std::static_pointer_cast<CDCTabletMetrics>(
+              service->GetCDCTabletMetrics({{}, stream_id_, tablet_id}));
+          if (!(metrics->async_replication_sent_lag_micros->value() == 0 &&
+                metrics->async_replication_committed_lag_micros->value() == 0)) {
+            return false;
+          }
+        }
+        return true;
+      },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "At start, wait for Lag = 0"));
 
   // Create the in-memory structures for both follower and leader by polling for the tablet.
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp;
   change_req.set_tablet_id(tablet_id);
-  change_req.set_stream_id(stream_id_);
+  change_req.set_stream_id(stream_id_.ToString());
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
   {
@@ -1096,24 +1073,16 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
     ASSERT_OK(follower_proxy->GetChanges(change_req, &change_resp, &rpc));
   }
 
-  // Insert test rows, one at a time so they have different hybrid times.
-  tserver::WriteRequestPB write_req;
-  tserver::WriteResponsePB write_resp;
-  write_req.set_tablet_id(tablet_id);
-  {
+  // Insert 2 test rows, one at a time so they have different hybrid times.
+  const int kNumTestRows = 2;
+  for (int i = 1; i <= kNumTestRows; ++i) {
+    // Use proxy for to most accurately simulate normal requests.
+    const auto& proxy = leader_mini_tserver->server()->proxy();
     RpcController rpc;
-    AddTestRowInsert(1, 11, "key1", &write_req);
-    SCOPED_TRACE(write_req.DebugString());
-    ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
-    SCOPED_TRACE(write_resp.DebugString());
-    ASSERT_FALSE(write_resp.has_error());
-  }
-
-  {
-    write_req.Clear();
+    tserver::WriteRequestPB write_req;
+    tserver::WriteResponsePB write_resp;
     write_req.set_tablet_id(tablet_id);
-    RpcController rpc;
-    AddTestRowInsert(2, 22, "key2", &write_req);
+    AddTestRowInsert(i, 10 * i + i, "key" + std::to_string(i), &write_req);
     SCOPED_TRACE(write_req.DebugString());
     ASSERT_OK(WriteToProxyWithRetries(proxy, write_req, &write_resp, &rpc));
     SCOPED_TRACE(write_resp.DebugString());
@@ -1187,7 +1156,7 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsUponRegainingLeadershi
   SetAtomicFlag(1000, &FLAGS_min_leader_stepdown_retry_interval_ms);
   // Trigger metrics updates manually in the test, instead of relying on background thread.
   SetAtomicFlag(false, &FLAGS_enable_collect_cdc_metrics);
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
   std::string tablet_id = GetTablet();
   ProducerTabletInfo tablet_info = {{}, stream_id_, tablet_id};
   const auto& tservers = cluster_->mini_tablet_servers();
@@ -1318,14 +1287,14 @@ class CDCServiceTestMultipleServers : public CDCServiceTest {
 };
 
 TEST_F(CDCServiceTestMultipleServers, TestListTablets) {
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
 
   std::string tablet_id = GetTablet();
 
   ListTabletsRequestPB req;
   ListTabletsResponsePB resp;
 
-  req.set_stream_id(stream_id_);
+  req.set_stream_id(stream_id_.ToString());
 
   auto cdc_proxy_bcast_addr = cluster_->mini_tablet_server(0)->options()->broadcast_addresses[0];
   int cdc_proxy_count = 0;
@@ -1363,7 +1332,7 @@ TEST_F(CDCServiceTestMultipleServers, TestListTablets) {
 
 TEST_F(CDCServiceTestMultipleServers, TestGetChangesProxyRouting) {
   docdb::DisableYcqlPackedRow();
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
 
   // Figure out [1] all tablets and [2] which ones are local to the first server.
   std::vector<std::string> local_tablets, all_tablets;
@@ -1371,7 +1340,7 @@ TEST_F(CDCServiceTestMultipleServers, TestGetChangesProxyRouting) {
     RpcController rpc;
     ListTabletsRequestPB req;
     ListTabletsResponsePB resp;
-    req.set_stream_id(stream_id_);
+    req.set_stream_id(stream_id_.ToString());
     req.set_local_only(is_local);
     ASSERT_OK(cdc_proxy_->ListTablets(req, &resp, &rpc));
     ASSERT_FALSE(resp.has_error());
@@ -1437,7 +1406,7 @@ TEST_F(CDCServiceTestMultipleServers, TestGetChangesProxyRouting) {
         GetChangesRequestPB change_req;
         GetChangesResponsePB change_resp;
         change_req.set_tablet_id(tablet_id);
-        change_req.set_stream_id(stream_id_);
+        change_req.set_stream_id(stream_id_.ToString());
         change_req.set_serve_as_proxy(use_proxy);
         if (!should_error) {
           // Consume the META_OP that has the initial table Schema.
@@ -1464,7 +1433,7 @@ TEST_F(CDCServiceTestMultipleServers, TestGetChangesProxyRouting) {
 
 TEST_F(CDCServiceTest, TestOnlyGetLocalChanges) {
   docdb::DisableYcqlPackedRow();
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
 
   std::string tablet_id = GetTablet();
 
@@ -1509,7 +1478,7 @@ TEST_F(CDCServiceTest, TestOnlyGetLocalChanges) {
     GetChangesResponsePB change_resp;
 
     change_req.set_tablet_id(tablet_id);
-    change_req.set_stream_id(stream_id_);
+    change_req.set_stream_id(stream_id_.ToString());
 
     // Consume the META_OP that has the initial table Schema.
     ASSERT_OK(GetChangesInitialSchema(change_req, change_req.mutable_from_checkpoint()));
@@ -1574,13 +1543,13 @@ TEST_F(CDCServiceTest, TestOnlyGetLocalChanges) {
 }
 
 TEST_F(CDCServiceTest, TestCheckpointUpdatedForRemoteRows) {
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
 
   std::string tablet_id = GetTablet();
 
   GetChangesRequestPB change_req;
   change_req.set_tablet_id(tablet_id);
-  change_req.set_stream_id(stream_id_);
+  change_req.set_stream_id(stream_id_.ToString());
 
   // Consume the META_OP that has the initial table Schema.
   ASSERT_OK(GetChangesInitialSchema(change_req, change_req.mutable_from_checkpoint()));
@@ -1634,7 +1603,7 @@ TEST_F(CDCServiceTest, TestCheckpointUpdate) {
   docdb::DisableYcqlPackedRow();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
 
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
 
   std::string tablet_id = GetTablet();
 
@@ -1660,7 +1629,7 @@ TEST_F(CDCServiceTest, TestCheckpointUpdate) {
   GetChangesResponsePB change_resp;
 
   change_req.set_tablet_id(tablet_id);
-  change_req.set_stream_id(stream_id_);
+  change_req.set_stream_id(stream_id_.ToString());
 
   // Consume the META_OP that has the initial table Schema.
   ASSERT_OK(GetChangesInitialSchema(change_req, change_req.mutable_from_checkpoint()));
@@ -1693,7 +1662,7 @@ TEST_F(CDCServiceTest, TestCheckpointUpdate) {
   // Call GetChanges again but without any from checkpoint.
   change_req.Clear();
   change_req.set_tablet_id(tablet_id);
-  change_req.set_stream_id(stream_id_);
+  change_req.set_stream_id(stream_id_.ToString());
   change_resp.Clear();
   {
     RpcController rpc;
@@ -1755,7 +1724,7 @@ class CDCServiceTestMaxRentionTime : public CDCServiceTest {
 
 TEST_F(CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime) {
   docdb::DisableYcqlPackedRow();
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
 
   std::string tablet_id = GetTablet();
 
@@ -1785,16 +1754,16 @@ TEST_F(CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime) {
   // Since we haven't updated the minimum cdc index, and the elapsed time is less than
   // kMaxSecondsToRetain, no log files should be returned.
   log::SegmentSequence segment_sequence;
-  ASSERT_OK(tablet_peer->log()->GetSegmentsToGCUnlocked(std::numeric_limits<int64_t>::max(),
-                                                        &segment_sequence));
+  ASSERT_OK(
+      tablet_peer->log()->GetSegmentsToGC(std::numeric_limits<int64_t>::max(), &segment_sequence));
   ASSERT_EQ(segment_sequence.size(), 0);
   LOG(INFO) << "No segments to be GCed because less than " << kMaxSecondsToRetain
             << " seconds have elapsed";
 
   SleepFor(time_to_sleep);
 
-  ASSERT_OK(tablet_peer->log()->GetSegmentsToGCUnlocked(std::numeric_limits<int64_t>::max(),
-                                                              &segment_sequence));
+  ASSERT_OK(
+      tablet_peer->log()->GetSegmentsToGC(std::numeric_limits<int64_t>::max(), &segment_sequence));
   ASSERT_GT(segment_sequence.size(), 0);
   const auto& segments_violate =
       *(tablet_peer->log()->reader_->TEST_segments_violate_max_time_policy_);
@@ -1860,7 +1829,7 @@ TEST_F(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
 
   ASSERT_EQ(resp.cdc_bootstrap_ids().size(), 1);
 
-  string bootstrap_id = resp.cdc_bootstrap_ids(0);
+  auto bootstrap_id = ASSERT_RESULT(xrepl::StreamId::FromString(resp.cdc_bootstrap_ids(0)));
 
   // Verify that for each of the table's tablets, a new row in cdc_state table with the returned
   // id was inserted.
@@ -1894,7 +1863,7 @@ TEST_F(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
 }
 
 TEST_F(CDCServiceTestDurableMinReplicatedIndex, TestLogCDCMinReplicatedIndexIsDurable) {
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
 
   std::string tablet_id = GetTablet();
 
@@ -1953,7 +1922,7 @@ class CDCServiceTestMinSpace : public CDCServiceTest {
 
 TEST_F(CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace) {
   docdb::DisableYcqlPackedRow();
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
 
   std::string tablet_id = GetTablet();
 
@@ -1976,14 +1945,14 @@ TEST_F(CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace) {
   }
 
   log::SegmentSequence segment_sequence;
-  ASSERT_OK(tablet_peer->log()->GetSegmentsToGCUnlocked(std::numeric_limits<int64_t>::max(),
-                                                        &segment_sequence));
+  ASSERT_OK(
+      tablet_peer->log()->GetSegmentsToGC(std::numeric_limits<int64_t>::max(), &segment_sequence));
   ASSERT_EQ(segment_sequence.size(), 0);
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_free_space_bytes) = 128;
 
-  ASSERT_OK(tablet_peer->log()->GetSegmentsToGCUnlocked(std::numeric_limits<int64_t>::max(),
-                                                        &segment_sequence));
+  ASSERT_OK(
+      tablet_peer->log()->GetSegmentsToGC(std::numeric_limits<int64_t>::max(), &segment_sequence));
   ASSERT_GT(segment_sequence.size(), 0);
   const auto& segments_violate =
       *(tablet_peer->log()->reader_->TEST_segments_violate_min_space_policy_);
@@ -2021,10 +1990,10 @@ TEST_F(CDCLogAndMetaIndex, TestLogAndMetaCdcIndex) {
   // This will rollover log segments a lot faster.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
 
-  CDCStreamId stream_id[kNStreams];
+  std::vector<xrepl::StreamId> stream_ids;
 
   for (int i = 0; i < kNStreams; i++) {
-    CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id[i]);
+    stream_ids.push_back(ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id())));
   }
 
   std::string tablet_id = GetTablet();
@@ -2049,7 +2018,7 @@ TEST_F(CDCLogAndMetaIndex, TestLogAndMetaCdcIndex) {
 
   for (int i = 0; i < kNStreams; i++) {
     // Get CDC changes.
-    GetChanges(tablet_id, stream_id[i], /* term */ 0, /* index */ i);
+    GetChanges(tablet_id, stream_ids[i], /* term */ 0, /* index */ i);
   }
 
   // After the request succeeded, verify that the min cdc limit was set correctly. In this case
@@ -2057,16 +2026,15 @@ TEST_F(CDCLogAndMetaIndex, TestLogAndMetaCdcIndex) {
   WaitForCDCIndex(tablet_peer, 0, 4 * FLAGS_update_min_cdc_indices_interval_secs);
 
   // Changing the lowest index from all the streams should also be reflected in the log object.
-  GetChanges(tablet_id, stream_id[0], /* term */ 0, /* index */ 4);
+  GetChanges(tablet_id, stream_ids[0], /* term */ 0, /* index */ 4);
 
   // After the request succeeded, verify that the min cdc limit was set correctly. In this case
   // it belongs to stream_id[1] with index 1.
   WaitForCDCIndex(tablet_peer, 1, 4 * FLAGS_update_min_cdc_indices_interval_secs);
 
   for (int i = 0; i < kNStreams; i++) {
-    ASSERT_OK(client_->DeleteCDCStream(stream_id[i],
-                                       true /*force_delete*/,
-                                       true /*ignore_errors*/));
+    ASSERT_OK(
+        client_->DeleteCDCStream(stream_ids[i], true /*force_delete*/, true /*ignore_errors*/));
   }
 }
 
@@ -2088,12 +2056,10 @@ TEST_F(CDCLogAndMetaIndexReset, TestLogAndMetaCdcIndexAreReset) {
   // This will rollover log segments a lot faster.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
 
-  CDCStreamId stream_id[kNStreams];
-
+  std::vector<xrepl::StreamId> stream_ids;
   for (int i = 0; i < kNStreams; i++) {
-    CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id[i]);
+    stream_ids.push_back(ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id())));
   }
-
   std::string tablet_id = GetTablet();
 
   const auto &proxy = cluster_->mini_tablet_server(0)->server()->proxy();
@@ -2114,9 +2080,9 @@ TEST_F(CDCLogAndMetaIndexReset, TestLogAndMetaCdcIndexAreReset) {
            tablet_peer->tablet_metadata()->cdc_min_replicated_index() == 0;
   }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for the min index."));
 
-  for (int i = 0; i < kNStreams; i++) {
+  for (auto& stream_id : stream_ids) {
     // Get CDC changes.
-    GetChanges(tablet_id, stream_id[i], /* term */ 0, /* index */ 5);
+    GetChanges(tablet_id, stream_id, /* term */ 0, /* index */ 5);
   }
 
   // After the request succeeded, verify that the min cdc limit was set correctly. In this case
@@ -2126,8 +2092,8 @@ TEST_F(CDCLogAndMetaIndexReset, TestLogAndMetaCdcIndexAreReset) {
   CDCStateTable cdc_state_table(client_.get());
 
   std::vector<CDCStateTableKey> keys_to_delete;
-  for (int i = 0; i < kNStreams; i++) {
-    keys_to_delete.push_back({tablet_id, stream_id[i]});
+  for (auto& stream_id : stream_ids) {
+    keys_to_delete.push_back({tablet_id, stream_id});
   }
   ASSERT_OK(cdc_state_table.DeleteEntries(keys_to_delete));
   LOG(INFO) << "Successfully deleted all streams from cdc_state";
@@ -2144,10 +2110,8 @@ TEST_F(CDCLogAndMetaIndexReset, TestLogAndMetaCdcIndexAreReset) {
   ASSERT_EQ(tablet_peer->tablet_metadata()->cdc_min_replicated_index(),
       std::numeric_limits<int64_t>::max());
 
-  for (int i = 0; i < kNStreams; i++) {
-    ASSERT_OK(client_->DeleteCDCStream(stream_id[i],
-                                       true /*force_delete*/,
-                                       true /*ignore_errors*/));
+  for (auto& stream_id : stream_ids) {
+    ASSERT_OK(client_->DeleteCDCStream(stream_id, true /*force_delete*/, true /*ignore_errors*/));
   }
 }
 
@@ -2234,7 +2198,7 @@ TEST_F(CDCServiceTestThreeServers, TestNewLeaderUpdatesLogCDCAppliedIndex) {
   }
   LOG(INFO) << "Inserted " << kNRecords << " records";
 
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
   LOG(INFO) << "Created cdc stream " << stream_id_;
 
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
@@ -2310,7 +2274,7 @@ class CDCServiceLowRpc: public CDCServiceTest {
 TEST_F(CDCServiceLowRpc, TestGetChangesRpcMax) {
   docdb::DisableYcqlPackedRow();
 
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
+  stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
 
   std::string tablet_id = GetTablet();
 
@@ -2363,11 +2327,11 @@ TEST_F(CDCServiceLowRpc, TestGetChangesRpcMax) {
 
 TEST_F(CDCServiceTestThreeServers, TestCheckpointIsMinOverMultipleStreams) {
   docdb::DisableYcqlPackedRow();
-  CDCStreamId stream_id1 = "11111111111111111111111111111111";
-  CDCStreamId stream_id2 = "22222222222222222222222222222222";
-  std::vector<CDCStreamId*> stream_ids{&stream_id1, &stream_id2, &stream_id_};
-  for (auto& stream_id : stream_ids) {
-    CreateCDCStream(cdc_proxy_, table_.table()->id(), stream_id);
+  auto stream_id1 = xrepl::StreamId::GenerateRandom();
+  auto stream_id2 = xrepl::StreamId::GenerateRandom();
+  std::vector<xrepl::StreamId*> stream_ids{&stream_id1, &stream_id2, &stream_id_};
+  for (auto* stream_id : stream_ids) {
+    *stream_id = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
   }
   constexpr int kNRecords = 30;
   constexpr int kGettingLeaderTimeoutSecs = 20;
@@ -2384,7 +2348,7 @@ TEST_F(CDCServiceTestThreeServers, TestCheckpointIsMinOverMultipleStreams) {
     GetChangesRequestPB change_req;
     GetChangesResponsePB change_resp;
     change_req.set_tablet_id(tablet_id);
-    change_req.set_stream_id(*stream_ids[i]);
+    change_req.set_stream_id(stream_ids[i]->ToString());
     {
       RpcController rpc;
       ASSERT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));

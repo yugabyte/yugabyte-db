@@ -5,7 +5,7 @@ description: Use AtomicJar Testcontainers with YSQL API
 menu:
   preview_integrations:
     identifier: ysql-atomicjar
-    parent: integrations
+    parent: application-frameworks
     weight: 571
 type: docs
 ---
@@ -20,7 +20,7 @@ This document describes how to use Testcontainers to write integration tests for
 
 To use Testcontainers, ensure that you have the following:
 
-- Java Development Kit (JDK) 17 or later installed. You can use [SDKMAN](https://sdkman.io/install) to install the JDK runtime.
+- Java Development Kit (JDK) 8 or later installed. You can use [SDKMAN](https://sdkman.io/install) to install the JDK runtime.
 
 - Docker Engine. To download and install Docker, select one of the following environments:
 
@@ -32,13 +32,13 @@ To use Testcontainers, ensure that you have the following:
 
     <i class="icon-debian"></i> [Docker for Debian](https://store.docker.com/editions/community/docker-ce-server-debian)
 
-## Build the Testcontainer project
+## Build the Testcontainers project
 
 Refer to the [Spring Boot source](https://github.com/yugabyte/yb-ms-data/tree/main/springboot) from GitHub for your local setup. The source consists of a basic JPA-based web application with CRUD functionality.
 
-You need to build the Testcontainer project using the following steps:
+You need to build the Testcontainers project using the following steps:
 
-1. Define the library dependency in the build file. Refer to the `build.grade` file for complete details.
+1. Define the library dependency in the build file. Refer to the `build.gradle` file for complete details.
 
     ```properties
 
@@ -58,7 +58,7 @@ You need to build the Testcontainer project using the following steps:
     }
     ```
 
-1. Initialize the YugabyteDB Testcontainer using the `@Container` annotation.
+1. Initialize the YugabyteDB Testcontainers using the `@Container` annotation.
 
     ```properties
     @Container

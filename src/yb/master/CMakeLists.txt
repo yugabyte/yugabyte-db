@@ -71,6 +71,7 @@ set(MASTER_SRCS
   async_flush_tablets_task.cc
   async_rpc_tasks.cc
   async_snapshot_tasks.cc
+  async_snapshot_transfer_task.cc
   auto_flags_orchestrator.cc
   master_call_home.cc
   backfill_index.cc
@@ -80,8 +81,8 @@ set(MASTER_SRCS
   catalog_entity_info.cc
   catalog_manager_bg_tasks.cc
   catalog_loaders.cc
-  cdc_consumer_registry_service.cc
-  cdc_rpc_tasks.cc
+  xcluster_consumer_registry_service.cc
+  xcluster_rpc_tasks.cc
   scoped_leader_shared_lock.cc
   cluster_balance.cc
   cluster_balance_util.cc
@@ -110,12 +111,14 @@ set(MASTER_SRCS
   snapshot_coordinator_context.cc
   snapshot_schedule_state.cc
   snapshot_state.cc
+  snapshot_transfer_manager.cc
   state_with_tablets.cc
   sys_catalog.cc
   sys_catalog_initialization.cc
   sys_catalog_writer.cc
   system_tablet.cc
   table_index.cc
+  tablet_limits.cc
   tablet_split_manager.cc
   tasks_tracker.cc
   ts_descriptor.cc
@@ -123,8 +126,10 @@ set(MASTER_SRCS
   universe_key_registry_service.cc
   util/yql_vtable_helpers.cc
   xcluster/add_table_to_xcluster_task.cc
+  xcluster/xcluster_config.cc
   xcluster/xcluster_consumer_metrics.cc
   xcluster/xcluster_safe_time_service.cc
+  xcluster/xcluster_manager.cc
   xrepl_catalog_manager.cc
   yql_aggregates_vtable.cc
   yql_auth_resource_role_permissions_index.cc
@@ -219,6 +224,7 @@ set(YB_TEST_LINK_LIBS master
   ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(catalog_entity_info-test)
 ADD_YB_TEST(catalog_manager-test)
+ADD_YB_TEST(load_balancer_mocked-test)
 ADD_YB_TEST(flush_manager-test)
 ADD_YB_TEST(master-test)
 ADD_YB_TEST(sys_catalog-test)
@@ -229,6 +235,7 @@ ADD_YB_TEST(restore_sys_catalog_state_test)
 ADD_YB_TEST(cluster_balance_preferred_leader-test)
 ADD_YB_TEST(master_xrepl-test)
 ADD_YB_TEST(sys_catalog_xrepl-test)
+ADD_YB_TEST(tablet_limits_test)
 
 # Actual master executable. In LTO mode, can also act as the tablet server if executed through a
 # symlink named as the tablet server executable.

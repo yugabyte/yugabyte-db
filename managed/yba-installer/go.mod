@@ -22,6 +22,7 @@ require (
 require (
 	aead.dev/minisign v0.2.0 // indirect
 	github.com/Masterminds/semver v1.5.0 // indirect
+	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.0 // indirect
 	github.com/minio/selfupdate v0.6.0 // indirect

@@ -13,7 +13,8 @@ type Container struct {
         logger  logger.Logger
         Client  *gocql.ClusterConfig
         Session *gocql.Session
-        ConnMap map[string]*pgxpool.Pool
+        ConnMap map[helpers.PgClientConnectionParams]*pgxpool.Pool
+        helper  helpers.HelperContainer
 }
 
 // NewContainer returns an empty or an initialized container for your handlers.
@@ -21,9 +22,10 @@ func NewContainer(
     logger       logger.Logger,
     gocqlClient  *gocql.ClusterConfig,
     gocqlSession *gocql.Session,
-    pgxConnMap   map[string]*pgxpool.Pool,
+    pgxConnMap   map[helpers.PgClientConnectionParams]*pgxpool.Pool,
+    helper       helpers.HelperContainer,
     ) (Container, error) {
-        c := Container{logger, gocqlClient, gocqlSession, pgxConnMap}
+        c := Container{logger, gocqlClient, gocqlSession, pgxConnMap, helper}
         return c, nil
 }
 
@@ -31,7 +33,7 @@ func (c *Container) GetSession() (*gocql.Session, error) {
     if c.Session == nil {
         session, err := c.Client.CreateSession()
         if err != nil {
-            c.logger.Errorf("Error initializing the gocql session")
+            c.logger.Errorf("Error initializing the gocql session: %s", err.Error())
             return nil, err
         }
         c.Session = session
@@ -43,24 +45,39 @@ func (c *Container) GetConnection() (*pgxpool.Pool, error) {
     return c.GetConnectionFromMap(helpers.HOST)
 }
 
-func (c *Container) GetConnectionFromMap(host string) (*pgxpool.Pool, error) {
-    conn, exists := c.ConnMap[host]
-    if exists {
-        return conn, nil
+func (c *Container) GetConnectionFromMap(host string, database ...string) (*pgxpool.Pool, error) {
+    var dbName string
+    if len(database) == 0 {
+        dbName = helpers.DbName
+    } else {
+        dbName = database[0]
     }
     pgConnectionParams := helpers.PgClientConnectionParams {
         User:     helpers.DbYsqlUser,
         Password: helpers.DbPassword,
         Host:     host,
         Port:     helpers.PORT,
-        Database: helpers.DbName,
+        Database: dbName,
     }
-    conn, err := helpers.CreatePgClient(c.logger, pgConnectionParams)
+
+    conn, exists := c.ConnMap[pgConnectionParams]
+    if exists {
+        return conn, nil
+    }
+    // pgConnectionParams := helpers.PgClientConnectionParams {
+    //     User:     helpers.DbYsqlUser,
+    //     Password: helpers.DbPassword,
+    //     Host:     host,
+    //     Port:     helpers.PORT,
+    //     Database: dbName,
+    // }
+    conn, err := c.helper.CreatePgClient(c.logger, pgConnectionParams)
     if err != nil {
-        c.logger.Errorf("Error initializing the pgx client.")
+        c.logger.Errorf("Error initializing the pgx client for Host %s and Database %s: %s",
+                            host, dbName, err.Error())
         return conn, err
     }
-    c.ConnMap[host] = conn
+    c.ConnMap[pgConnectionParams] = conn
     return conn, nil
 }
 

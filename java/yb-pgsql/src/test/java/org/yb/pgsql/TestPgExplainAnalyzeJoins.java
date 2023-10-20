@@ -1,5 +1,6 @@
 package org.yb.pgsql;
 
+import static org.yb.AssertionWrappers.assertGreaterThan;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_HASH;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_HASH_JOIN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
@@ -154,7 +155,8 @@ public class TestPgExplainAnalyzeJoins extends BasePgExplainAnalyzeTest {
 
   @Test
   public void testNestedLoopJoin() throws Exception {
-    String simpleNLQuery = "/*+ NestLoop(%1$s %2$s) Leading((%1$s %2$s)) */ SELECT * FROM %1$s "
+    String simpleNLQuery = "/*+ Set(yb_bnl_batch_size 1) NestLoop(%1$s %2$s) "
+      + " Leading((%1$s %2$s)) */ SELECT * FROM %1$s "
       + " JOIN %2$s ON %1$s.%3$s = %2$s.%4$s %5$s";
 
     // 1. Simple Nested Loop
@@ -193,5 +195,24 @@ public class TestPgExplainAnalyzeJoins extends BasePgExplainAnalyzeTest {
 
     testExplain(String.format(simpleNLQuery, MAIN_TABLE, SIDE_TABLE, "k", "v1",
       "AND foo.k < 10"), checker);
+  }
+
+  // Test to make sure hash joins charge costs to qpquals. Made to address issue
+  // #19021.
+  @Test
+  public void testHashJoinWithQPQual() throws Exception {
+    String baselineHashJoinQuery = "/*+ HashJoin(%1$s %2$s) Leading((%1$s %2$s)) */ " +
+        "SELECT * FROM %1$s JOIN %2$s ON %1$s.%3$s = %2$s.%4$s " +
+        "AND %1$s.%3$s - 1 = %2$s.%5$s %6$s";
+    ExplainAnalyzeUtils.Cost baseCost =
+        getExplainTotalCost(String.format(baselineHashJoinQuery, MAIN_TABLE, SIDE_TABLE,
+            "k", "k1", "k2", "AND foo.k + bar.k1 = bar.k1 + bar.k2"));
+
+    // Making the qpqual logically equivalent but more computationally
+    // expensive should increase the cost.
+    ExplainAnalyzeUtils.Cost expensiveQualCost =
+        getExplainTotalCost(String.format(baselineHashJoinQuery, MAIN_TABLE, SIDE_TABLE,
+            "k", "k1", "k2", "AND sqrt(foo.k + bar.k1) = sqrt(bar.k1 + bar.k2)"));
+    assertGreaterThan(expensiveQualCost, baseCost);
   }
 }

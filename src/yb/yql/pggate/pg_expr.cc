@@ -571,6 +571,10 @@ int PgExpr::get_pg_collid() const {
   return 0;  /* InvalidOid */
 }
 
+std::string PgExpr::ToString() const {
+  return Format("{ opcode: $0 }", to_underlying(opcode_));
+}
+
 //--------------------------------------------------------------------------------------------------
 
 PgConstant::PgConstant(ThreadSafeArena* arena,
@@ -814,6 +818,10 @@ Result<LWQLValuePB*> PgConstant::Eval() {
   return &ql_value_;
 }
 
+std::string PgConstant::ToString() const {
+  return ql_value_.ShortDebugString();
+}
+
 //--------------------------------------------------------------------------------------------------
 
 PgColumnRef* PgColumnRef::Create(
@@ -836,6 +844,10 @@ PgColumnRef* PgColumnRef::Create(
 
 bool PgColumnRef::is_ybbasetid() const {
   return attr_num_ == static_cast<int>(PgSystemAttrNum::kYBIdxBaseTupleId);
+}
+
+bool PgColumnRef::is_system() const {
+  return attr_num_ < 0;
 }
 
 Status PgColumnRef::PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb) {

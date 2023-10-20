@@ -114,7 +114,7 @@ The following libraries are officially supported by YugabyteDB.
 | [YugabyteDB JDBC Smart Driver](java/yugabyte-jdbc/) [Recommended] | Full | [CRUD](java/yugabyte-jdbc/) |
 | [PostgreSQL JDBC Driver](java/postgres-jdbc/) | Full | [CRUD](java/postgres-jdbc/) |
 | [YugabyteDB Java Driver for YCQL (3.10)](java/ycql/) | Full | [CRUD](java/ycql) |
-| [YugabyteDB Java Driver for YCQL (4.6)](java/ycql-4.6/) | Full | [CRUD](java/ycql-4.6) |
+| [YugabyteDB Java Driver for YCQL (4.15)](java/ycql-4.x/) | Full | [CRUD](java/ycql-4.x) |
 | [Ebean](java/ebean/) | Full | [CRUD](java/ebean/) |
 | [Hibernate](java/hibernate/) | Full | [CRUD](java/hibernate/) |
 | [Spring Data YugabyteDB](../integrations/spring-framework/sdyb/) | Full | [CRUD](../integrations/spring-framework/sdyb/#examples) |

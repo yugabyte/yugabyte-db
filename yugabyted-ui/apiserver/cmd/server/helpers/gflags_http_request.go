@@ -2,6 +2,7 @@ package helpers
 
 import (
     "bytes"
+    "encoding/json"
     "fmt"
     "io/ioutil"
     "net/http"
@@ -9,17 +10,31 @@ import (
     "time"
 )
 
+type GFlag struct {
+    Name  string `json:"name"`
+    Value string `json:"value"`
+    Type  string `json:"type"`
+}
+
 type GFlagsFuture struct {
     GFlags map[string]string
     Error  error
 }
 
+type GFlagsResponse struct {
+    Flags []GFlag `json:"flags"`
+}
+
 type GFlagsJsonFuture struct {
-    GFlags []byte
+    GFlags []GFlag
     Error  error
 }
 
-func GetGFlagsFuture(hostName string, isMaster bool, future chan GFlagsFuture) {
+func (h *HelperContainer) GetGFlagsFuture(
+    hostName string,
+    isMaster bool,
+    future chan GFlagsFuture,
+) {
     port := TserverUIPort
     if isMaster {
         port = MasterUIPort
@@ -62,7 +77,11 @@ func GetGFlagsFuture(hostName string, isMaster bool, future chan GFlagsFuture) {
     future <- gFlags
 }
 
-func GetGFlagsJsonFuture(hostName string, isMaster bool, future chan GFlagsJsonFuture) {
+func (h *HelperContainer) GetGFlagsJsonFuture(
+    hostName string,
+    isMaster bool,
+    future chan GFlagsJsonFuture,
+) {
 
     port := TserverUIPort
     if isMaster {
@@ -70,7 +89,7 @@ func GetGFlagsJsonFuture(hostName string, isMaster bool, future chan GFlagsJsonF
     }
 
     gFlags := GFlagsJsonFuture{
-        GFlags: []byte{},
+        GFlags: []GFlag{},
         Error:  nil,
     }
     httpClient := &http.Client{
@@ -90,6 +109,9 @@ func GetGFlagsJsonFuture(hostName string, isMaster bool, future chan GFlagsJsonF
         future <- gFlags
         return
     }
-    gFlags.GFlags = body
+    flagsResponse := GFlagsResponse{}
+    err = json.Unmarshal(body, &flagsResponse)
+    gFlags.GFlags = flagsResponse.Flags
+    gFlags.Error = err
     future <- gFlags
 }

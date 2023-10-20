@@ -33,7 +33,13 @@ bool yb_pushdown_strict_inequality = true;
 
 bool yb_pushdown_is_not_null = true;
 
+bool yb_enable_pg_locks = true;
+
 bool yb_run_with_explain_analyze = false;
+
+bool yb_enable_add_column_missing_default = true;
+
+bool yb_enable_replication_commands = true;
 
 // If this is set in the user's session to a positive value, it will supersede the gflag
 // ysql_session_max_batch_size.
@@ -46,3 +52,7 @@ int yb_xcluster_consistency_level = XCLUSTER_CONSISTENCY_DATABASE;
 int yb_fetch_row_limit = 0;
 
 int yb_fetch_size_limit = 0;
+
+int yb_locks_min_txn_age = 1000;
+
+int yb_locks_max_transactions = 16;

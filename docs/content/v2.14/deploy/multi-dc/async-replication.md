@@ -391,7 +391,7 @@ Proceed as follows:
     table id: 000033e1000030008000000000004006, CDC bootstrap id: c967967523eb4e03bcc201bb464e0679
     ```
 
-2. Take the backup of the tables on the source universe and restore at the target universe by following instructions from [Backup and restore](../../../manage/backup-restore/).
+2. Take the backup of the tables on the source universe and restore at the target universe by following instructions from [Backup and restore](../../../manage/backup-restore/snapshot-ysql/).
 
 3. Execute the following command to set up the replication stream using the bootstrap IDs generated in step 1. Ensure that the bootstrap IDs are in the same order as their corresponding table IDs.
 
@@ -443,7 +443,7 @@ If you cannot stop incoming user traffic, then the safest approach would be to a
 
 - Stop replication before making any DDL changes.
 - Apply all your DDL changes to the source universe.
-- Backup the source universe and all the relevant tables for which you intend to replicate changes. Follow instructions provided in [Bootstrap a target universe](#bootstrap-a-target-universe).
+- Back up the source universe and all the relevant tables for which you intend to replicate changes. Follow instructions provided in [Bootstrap a target universe](#bootstrap-a-target-universe).
 - Restore this backup on the target universe.
 - [Set up replication](../../../admin/yb-admin/#setup-universe-replication) again for all of the relevant tables. Ensure that you pass in all the `bootstrap_id` values.
 

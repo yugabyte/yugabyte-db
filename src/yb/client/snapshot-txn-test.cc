@@ -705,7 +705,7 @@ bool IntermittentTxnFailure(const Status& status) {
   return false;
 }
 
-// Concurrently execute multiple transaction, each of them writes the same key multiple times.
+// Concurrently execute multiple transactions, each of them writes the same key multiple times.
 // And perform tserver restarts in parallel to it.
 // This test checks that transaction participant state correctly restored after restart.
 void SnapshotTxnTest::TestMultiWriteWithRestart() {
@@ -974,7 +974,7 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
     auto current_ht = clock_->Now();
     ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
     bool found = false;
-    auto files = tablet->TEST_db()->GetLiveFilesMetaData();
+    auto files = tablet->regular_db()->GetLiveFilesMetaData();
     for (const auto& meta : files) {
       auto min_ht = down_cast<docdb::ConsensusFrontier&>(
           *meta.smallest.user_frontier).hybrid_time();

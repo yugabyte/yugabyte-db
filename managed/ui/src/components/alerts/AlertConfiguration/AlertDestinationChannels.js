@@ -19,6 +19,8 @@ import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { useMount } from 'react-use';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { startCase, toLower } from 'lodash';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 import './AlertDestinationChannels.scss';
 
 const Composer = React.lazy(() => import('../../../redesign/features/alerts/TemplateComposer/Composer'));
@@ -155,24 +157,39 @@ export const AlertDestinationChannels = (props) => {
           id="bg-nested-dropdown"
           pullRight
         >
-          <MenuItem
-            onClick={() => {
-              setInitialValues(prepareInitialValues(row));
-              setType('edit');
-              setShowModal(true);
+          <RbacValidator
+            accessRequiredOn={{
+              ...UserPermissionMap.editAlertsConfig
             }}
+            isControl
           >
-            <i className="fa fa-pencil"></i> {editActionLabel}
-          </MenuItem>
-
-          {!isReadOnly && (
             <MenuItem
               onClick={() => {
-                deleteChannel(row);
+                setInitialValues(prepareInitialValues(row));
+                setType('edit');
+                setShowModal(true);
               }}
             >
-              <i className="fa fa-trash"></i> Delete Channel
+              <i className="fa fa-pencil"></i> {editActionLabel}
             </MenuItem>
+          </RbacValidator>
+
+          {!isReadOnly && (
+            <RbacValidator
+              accessRequiredOn={{
+                ...UserPermissionMap.deleteAlertsConfig
+              }}
+              isControl
+              overrideStyle={{ display: 'block' }}
+            >
+              <MenuItem
+                onClick={() => {
+                  deleteChannel(row);
+                }}
+              >
+                <i className="fa fa-trash"></i> Delete Channel
+              </MenuItem>
+            </RbacValidator>
           )}
 
           {
@@ -193,111 +210,130 @@ export const AlertDestinationChannels = (props) => {
     <div className={clsx('alert-destination-channels', { 'minPadding': showCustomTemplateEditor })}>
       {
         !showCustomTemplateEditor && (
-          <>
-            <div className="alert-destinations">
-              <div>
-                A notification channel defines the means by which an alert is sent (ex: Email) as well as
-                who should receive the notification.
-              </div>
-              {!isReadOnly && (
+          <RbacValidator
+            accessRequiredOn={{
+              ...UserPermissionMap.readAlertsConfig
+            }}
+          >
+            <>
+              <div className="alert-destinations">
                 <div>
-                  {enableCustomEmailTemplates && (
-                    <YBButton
-                      btnText="Customize Notification Templates"
-                      btnClass="btn btn-default cutomize_notification_but"
-                      onClick={() => {
-                        setShowModal(false);
-                        setShowCustomTemplateEditor(true);
-                      }}
-                      data-testid="customize_notification_template"
-                    />
-                  )}
-
-                  <YBButton
-                    btnText="Add Channel"
-                    btnClass="btn btn-orange"
-                    onClick={() => {
-                      setType('create');
-                      setShowModal(true);
-                    }}
-                  />
+                  A notification channel defines the means by which an alert is sent (ex: Email) as well as
+                  who should receive the notification.
                 </div>
-              )}
-            </div>
-            <Row>
-              <Col xs={12} lg={12} className="noLeftPadding">
-                <b>{alertChannels.length} Notification Channels</b>
-              </Col>
-            </Row>
-            <Row>
-              <YBPanelItem
-                body={
-                  <>
-                    <BootstrapTable
-                      className="backup-list-table middle-aligned-table"
-                      data={alertChannels}
-                      options={{
-                        noDataText: 'Loading...'
+                {!isReadOnly && (
+                  <div>
+                    {enableCustomEmailTemplates && (
+                      <RbacValidator
+                        accessRequiredOn={{
+                          ...UserPermissionMap.readAlertsConfig
+                        }}
+                        isControl
+                      >
+                        <YBButton
+                          btnText="Customize Notification Templates"
+                          btnClass="btn btn-default cutomize_notification_but"
+                          onClick={() => {
+                            setShowModal(false);
+                            setShowCustomTemplateEditor(true);
+                          }}
+                          data-testid="customize_notification_template"
+                        />
+                      </RbacValidator>
+                    )}
+                    <RbacValidator
+                      accessRequiredOn={{
+                        ...UserPermissionMap.createAlertsConfig
                       }}
-                      pagination
+                      isControl
                     >
-                      <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
-                      <TableHeaderColumn
-                        dataField="name"
-                        columnClassName="no-border name-column"
-                        className="no-border"
+                      <YBButton
+                        btnText="Add Channel"
+                        btnClass="btn btn-orange"
+                        onClick={() => {
+                          setType('create');
+                          setShowModal(true);
+                        }}
+                      />
+                    </RbacValidator>
+                  </div>
+                )}
+              </div>
+              <Row>
+                <Col xs={12} lg={12} className="noLeftPadding">
+                  <b>{alertChannels.length} Notification Channels</b>
+                </Col>
+              </Row>
+              <Row>
+                <YBPanelItem
+                  body={
+                    <>
+                      <BootstrapTable
+                        className="backup-list-table middle-aligned-table"
+                        data={alertChannels}
+                        options={{
+                          noDataText: 'Loading...'
+                        }}
+                        pagination
                       >
-                        Name
-                      </TableHeaderColumn>
-                      <TableHeaderColumn
-                        dataField="params"
-                        dataFormat={(params) => params.channelType}
-                        columnClassName="no-border name-column"
-                        className="no-border"
-                      >
-                        Notification Type
-                      </TableHeaderColumn>
-                      <TableHeaderColumn
-                        dataField="params"
-                        dataFormat={(params) => getDestination(params)}
-                        columnClassName="no-border name-column"
-                        className="no-border"
-                      >
-                        Destination
-                      </TableHeaderColumn>
-                      <TableHeaderColumn
-                        dataField="configActions"
-                        dataFormat={(cell, row) => formatConfigActions(cell, row)}
-                        columnClassName="yb-actions-cell"
-                        className="yb-actions-cell"
-                      >
-                        Actions
-                      </TableHeaderColumn>
-                    </BootstrapTable>
-                  </>
-                }
-                noBackground
-              />
-            </Row>
-            {showModal && !showCustomTemplateEditor && (
-              <AddDestinationChannelForm
-                visible={showModal}
-                onHide={() => {
-                  setShowModal(false);
-                  setInitialValues({});
-                }}
-                defaultChannel={initialValues.CHANNEL_TYPE ?? 'email'}
-                defaultRecipients={initialValues.defaultRecipients}
-                defaultSmtp={initialValues.defaultSmtp}
-                type={type}
-                editAlertChannel={editAlertChannel}
-                editValues={type === 'edit' ? initialValues : {}}
-                updateDestinationChannel={getAlertChannelsList}
-                enableNotificationTemplates={enableNotificationTemplates}
-                {...props}
-              />
-            )}
-          </>
+                        <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
+                        <TableHeaderColumn
+                          dataField="name"
+                          columnClassName="no-border name-column"
+                          className="no-border"
+                        >
+                          Name
+                        </TableHeaderColumn>
+                        <TableHeaderColumn
+                          dataField="params"
+                          dataFormat={(params) => params.channelType}
+                          columnClassName="no-border name-column"
+                          className="no-border"
+                        >
+                          Notification Type
+                        </TableHeaderColumn>
+                        <TableHeaderColumn
+                          dataField="params"
+                          dataFormat={(params) => getDestination(params)}
+                          columnClassName="no-border name-column"
+                          className="no-border"
+                        >
+                          Destination
+                        </TableHeaderColumn>
+                        <TableHeaderColumn
+                          dataField="configActions"
+                          dataFormat={(cell, row) => formatConfigActions(cell, row)}
+                          columnClassName="yb-actions-cell"
+                          className="yb-actions-cell"
+                        >
+                          Actions
+                        </TableHeaderColumn>
+                      </BootstrapTable>
+                    </>
+                  }
+                  noBackground
+                />
+              </Row>
+              {showModal && !showCustomTemplateEditor && (
+                <AddDestinationChannelForm
+                  visible={showModal}
+                  onHide={() => {
+                    setShowModal(false);
+                    setInitialValues({});
+                  }}
+                  defaultChannel={initialValues.CHANNEL_TYPE ?? 'email'}
+                  defaultRecipients={initialValues.defaultRecipients}
+                  defaultSmtp={initialValues.defaultSmtp}
+                  type={type}
+                  editAlertChannel={editAlertChannel}
+                  editValues={type === 'edit' ? initialValues : {}}
+                  updateDestinationChannel={getAlertChannelsList}
+                  enableNotificationTemplates={enableNotificationTemplates}
+                  {...props}
+                />
+              )}
+            </>
+          </RbacValidator>
         )
       }
 

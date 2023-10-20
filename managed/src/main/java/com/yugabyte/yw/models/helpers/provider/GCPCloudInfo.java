@@ -1,5 +1,7 @@
 package com.yugabyte.yw.models.helpers.provider;
 
+import static com.yugabyte.yw.common.RedactingService.SECRET_REPLACEMENT;
+
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -11,7 +13,6 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.common.CloudProviderHelper;
 import com.yugabyte.yw.common.CloudProviderHelper.EditableInUseProvider;
-import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.ApiModelProperty;
@@ -177,7 +178,7 @@ public class GCPCloudInfo implements CloudInfoInterface {
         this.gceApplicationCredentials = editCredNodeValue;
       } catch (Exception e) {
         // In case error occured parsing the credentials fall back to saved creds in provider.
-        if (this.gceApplicationCredentials.asText().equals(AuditService.SECRET_REPLACEMENT)) {
+        if (this.gceApplicationCredentials.asText().equals(SECRET_REPLACEMENT)) {
           // For handling the case of read-modify-write.
           this.gceApplicationCredentials = gcpCloudInfo.gceApplicationCredentials;
         } else {

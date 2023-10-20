@@ -4,7 +4,7 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import React, { useState } from 'react';
+import { useState } from 'react';
 import JsYaml from 'js-yaml';
 import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
@@ -299,7 +299,7 @@ export const K8sProviderEditForm = ({
               <FormField>
                 <FieldLabel>Current Pull Secret Filepath</FieldLabel>
                 <YBInput
-                  value={providerConfig.details.cloudInfo.kubernetes.kubernetesPullSecret}
+                  value={providerConfig.details.cloudInfo.kubernetes.kubernetesPullSecret ?? ''}
                   disabled={true}
                   fullWidth
                 />
@@ -333,7 +333,7 @@ export const K8sProviderEditForm = ({
               <FormField>
                 <FieldLabel>Current Kube Config Filepath</FieldLabel>
                 <YBInput
-                  value={providerConfig.details.cloudInfo.kubernetes.kubeConfig}
+                  value={providerConfig.details.cloudInfo.kubernetes.kubeConfig ?? ''}
                   disabled={true}
                   fullWidth
                 />
@@ -457,6 +457,7 @@ const constructDefaultFormValues = (
     regions: providerConfig.regions.map((region) => ({
       fieldId: generateLowerCaseAlphanumericId(),
       code: region.code,
+      name: region.name,
       regionData: {
         value: { code: region.code, zoneOptions: [] },
         label: region.name
@@ -604,6 +605,11 @@ const constructProviderPayload = async (
     );
   }
 
+  const {
+    kubernetesImagePullSecretName: existingKubernetesImagePullSecretName,
+    kubernetesPullSecret: existingKubernetesPullSecret,
+    kubernetesPullSecretName: existingKubernetesPullSecretName
+  } = providerConfig?.details.cloudInfo.kubernetes;
   return {
     code: ProviderCode.KUBERNETES,
     name: formValues.providerName,
@@ -625,16 +631,27 @@ const constructProviderPayload = async (
               }),
           kubernetesImageRegistry: formValues.kubernetesImageRegistry,
           kubernetesProvider: formValues.kubernetesProvider.value,
-          ...(formValues.editPullSecretContent &&
-            formValues.kubernetesPullSecretContent && {
-              kubernetesPullSecretContent: kubernetesPullSecretContent,
-              ...(formValues.kubernetesPullSecretContent.name && {
-                kubernetesPullSecretName: formValues.kubernetesPullSecretContent.name
-              }),
-              ...(kubernetesImagePullSecretName && {
-                kubernetesImagePullSecretName: kubernetesImagePullSecretName
+          ...(formValues.editPullSecretContent && formValues.kubernetesPullSecretContent
+            ? {
+                kubernetesPullSecretContent: kubernetesPullSecretContent,
+                ...(formValues.kubernetesPullSecretContent.name && {
+                  kubernetesPullSecretName: formValues.kubernetesPullSecretContent.name
+                }),
+                ...(kubernetesImagePullSecretName && {
+                  kubernetesImagePullSecretName: kubernetesImagePullSecretName
+                })
+              }
+            : {
+                ...(existingKubernetesPullSecret && {
+                  kubernetesPullSecret: existingKubernetesPullSecret
+                }),
+                ...(existingKubernetesPullSecretName && {
+                  kubernetesPullSecretName: existingKubernetesPullSecretName
+                }),
+                ...(existingKubernetesImagePullSecretName && {
+                  kubernetesImagePullSecretName: existingKubernetesImagePullSecretName
+                })
               })
-            })
         }
       }
     },

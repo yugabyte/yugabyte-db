@@ -55,9 +55,11 @@ class ProxyCache;
 class ProxyContext;
 class Reactor;
 class ReactorTask;
+class ReceivedSidecars;
 class RpcCallParams;
 class RemoteMethod;
 class RequestHeader;
+class ResponseHeader;
 class RpcConnectionPB;
 class RpcContext;
 class RpcController;
@@ -107,6 +109,7 @@ class Messenger;
 
 class OutboundCall;
 typedef std::shared_ptr<OutboundCall> OutboundCallPtr;
+typedef std::weak_ptr<OutboundCall> OutboundCallWeakPtr;
 
 class OutboundData;
 typedef std::shared_ptr<OutboundData> OutboundDataPtr;
@@ -136,7 +139,6 @@ YB_STRONGLY_TYPED_BOOL(Queue);
 
 typedef int64_t ScheduledTaskId;
 constexpr ScheduledTaskId kInvalidTaskId = -1;
-constexpr size_t kMinBufferForSidecarSlices = 16;
 
 using ProxyPtr = std::shared_ptr<Proxy>;
 using ResponseCallback = std::function<void()>;

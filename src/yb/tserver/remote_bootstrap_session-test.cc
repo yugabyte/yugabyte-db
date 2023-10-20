@@ -114,10 +114,9 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
   config.add_peers()->CopyFrom(config_peer);
   config.set_opid_index(consensus::kInvalidOpIdIndex);
 
-  std::unique_ptr<ConsensusMetadata> cmeta;
-  ASSERT_OK(ConsensusMetadata::Create(tablet()->metadata()->fs_manager(),
-                                     tablet_id, fs_manager()->uuid(),
-                                     config, consensus::kMinimumTerm, &cmeta));
+  std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
+      tablet()->metadata()->fs_manager(), tablet_id, fs_manager()->uuid(), config,
+      consensus::kMinimumTerm));
 
   MessengerBuilder mbuilder(CURRENT_TEST_NAME());
   messenger_ = ASSERT_RESULT(mbuilder.Build());
@@ -127,6 +126,13 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
                                                                       config_peer.cloud_info());
 
   log_anchor_registry_.reset(new LogAnchorRegistry());
+  consensus::RetryableRequestsManager retryable_requests_manager(
+      tablet_id,
+      fs_manager(),
+      fs_manager()->GetWalRootDirs()[0],
+      MemTracker::FindOrCreateTracker(tablet_id),
+      "");
+  Status s = retryable_requests_manager.Init(clock());
   ASSERT_OK(tablet_peer_->SetBootstrapping());
   ASSERT_OK(tablet_peer_->InitTabletPeer(
       tablet(),
@@ -138,7 +144,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
       tablet_metric_entity,
       raft_pool_.get(),
       tablet_prepare_pool_.get(),
-      nullptr /* retryable_requests_manager */,
+      &retryable_requests_manager,
       nullptr /* consensus_meta */,
       multi_raft_manager_.get(),
       nullptr /* flush_retryable_requests_pool */));
@@ -191,7 +197,7 @@ void RemoteBootstrapSessionTest::PopulateTablet() {
 void RemoteBootstrapSessionTest::InitSession() {
   session_.reset(new RemoteBootstrapSession(
       tablet_peer_, "TestSession", "FakeUUID", nullptr /* nsessions */));
-  ASSERT_OK(session_->Init());
+  ASSERT_OK(session_->InitBootstrapSession());
 }
 
 }  // namespace tserver

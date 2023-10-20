@@ -36,7 +36,8 @@
 /*  Database Functions -------------------------------------------------------------------------- */
 
 extern void YBCCreateDatabase(
-	Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated);
+	Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated,
+	bool *retry_on_oid_collision);
 
 extern void YBCDropDatabase(Oid dboid, const char *dbname);
 
@@ -95,6 +96,8 @@ extern void YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest);
 extern TupleDesc YbBackfillIndexResultDesc(BackfillIndexStmt *stmt);
 
 extern void YbDropAndRecreateIndex(Oid indexOid, Oid relId, Relation oldRel, AttrNumber *newToOldAttmap);
+
+extern void YBCDropSequence(Oid sequence_oid);
 
 /*  System Validation -------------------------------------------------------------------------- */
 extern void YBCValidatePlacement(const char *placement_info);

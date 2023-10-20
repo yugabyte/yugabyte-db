@@ -82,7 +82,10 @@ public class MetricConfigTest extends FakeDBApplication {
         allOf(
             notNullValue(),
             equalTo(
-                "(avg(irate(log_sync_latency_sum{export_type=\"tserver_export\"}[60s]))) / (avg(irate(log_sync_latency_count{export_type=\"tserver_export\"}[60s])))")));
+                "(avg(irate(log_sync_latency_sum"
+                    + "{export_type=\"tserver_export\"}[60s]))) /"
+                    + " (avg(irate(log_sync_latency_count"
+                    + "{export_type=\"tserver_export\"}[60s])))")));
   }
 
   @Test
@@ -119,8 +122,8 @@ public class MetricConfigTest extends FakeDBApplication {
   public void testMultiMetric() {
     JsonNode configJson =
         Json.parse(
-            "{\"metric\": \"log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg\","
-                + "\"function\": \"avg\", \"range\": true}");
+            "{\"metric\": \"log_sync_latency.avg|log_group_commit_latency.avg|"
+                + "log_append_latency.avg\",\"function\": \"avg\", \"range\": true}");
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
     Map<String, String> queries =
@@ -229,8 +232,9 @@ public class MetricConfigTest extends FakeDBApplication {
   public void testMultiMetricWithComplexFilters() {
     JsonNode configJson =
         Json.parse(
-            "{\"metric\": \"log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg\","
-                + "\"function\": \"avg\", \"filters\": {\"node_prefix\": \"foo|bar\"}}");
+            "{\"metric\": \"log_sync_latency.avg|log_group_commit_latency.avg"
+                + "|log_append_latency.avg\",\"function\": \"avg\","
+                + " \"filters\": {\"node_prefix\": \"foo|bar\"}}");
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
     Map<String, String> queries =
@@ -362,8 +366,8 @@ public class MetricConfigTest extends FakeDBApplication {
   public void testQueryWithOperator() {
     JsonNode configJson =
         Json.parse(
-            "{\"metric\": \"metric\", \"range\": true,"
-                + "\"function\": \"rate|avg\", \"filters\": {\"memory\": \"used\"}, \"operator\": \"/10\"}");
+            "{\"metric\": \"metric\", \"range\": true,\"function\": \"rate|avg\", \"filters\":"
+                + " {\"memory\": \"used\"}, \"operator\": \"/10\"}");
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
 

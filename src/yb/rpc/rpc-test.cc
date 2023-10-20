@@ -72,7 +72,7 @@
 #include "yb/util/flags.h"
 
 METRIC_DECLARE_histogram(handler_latency_yb_rpc_test_CalculatorService_Sleep);
-METRIC_DECLARE_histogram(rpc_incoming_queue_time);
+METRIC_DECLARE_event_stats(rpc_incoming_queue_time);
 METRIC_DECLARE_counter(tcp_bytes_sent);
 METRIC_DECLARE_counter(tcp_bytes_received);
 METRIC_DECLARE_counter(rpcs_timed_out_early_in_queue);
@@ -369,7 +369,7 @@ TEST_F(TestRpc, TestConnectionKeepalive) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_connection_timeout_ms) =
       MonoDelta(kGcTimeout).ToMilliseconds() / 2;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_rpc_keepalive) = true;
-  ASSERT_OK(EnableVerboseLoggingForModule("yb_rpc", 5));
+  google::SetVLOGLevel("yb_rpc", 5);
   // Set up server.
   HostPort server_addr;
   StartTestServer(&server_addr, options);
@@ -685,6 +685,11 @@ Result<HistogramPtr> GetHistogram(
   return down_cast<Histogram*>(VERIFY_RESULT(GetMetric(metric_entity, prototype)).get());
 }
 
+Result<EventStatsPtr> GetEventStats(
+    const MetricEntityPtr& metric_entity, const EventStatsPrototype& prototype) {
+  return down_cast<EventStats*>(VERIFY_RESULT(GetMetric(metric_entity, prototype)).get());
+}
+
 Result<CounterPtr> GetCounter(
     const MetricEntityPtr& metric_entity, const CounterPrototype& prototype) {
   return down_cast<Counter*>(VERIFY_RESULT(GetMetric(metric_entity, prototype)).get());
@@ -716,18 +721,18 @@ TEST_F(TestRpc, TestRpcHandlerLatencyMetric) {
   auto latency_histogram = ASSERT_RESULT(GetHistogram(
       metric_entity(), METRIC_handler_latency_yb_rpc_test_CalculatorService_Sleep));
 
-  LOG(INFO) << "Sleep() min lat: " << latency_histogram->MinValueForTests();
-  LOG(INFO) << "Sleep() mean lat: " << latency_histogram->MeanValueForTests();
-  LOG(INFO) << "Sleep() max lat: " << latency_histogram->MaxValueForTests();
+  LOG(INFO) << "Sleep() min lat: " << latency_histogram->MinValue();
+  LOG(INFO) << "Sleep() mean lat: " << latency_histogram->MeanValue();
+  LOG(INFO) << "Sleep() max lat: " << latency_histogram->MaxValue();
   LOG(INFO) << "Sleep() #calls: " << latency_histogram->TotalCount();
 
   ASSERT_EQ(1, latency_histogram->TotalCount());
-  ASSERT_GE(latency_histogram->MaxValueForTests(), sleep_micros);
-  ASSERT_TRUE(latency_histogram->MinValueForTests() == latency_histogram->MaxValueForTests());
+  ASSERT_GE(latency_histogram->MaxValue(), sleep_micros);
+  ASSERT_TRUE(latency_histogram->MinValue() == latency_histogram->MaxValue());
 
   // TODO: Implement an incoming queue latency test.
   // For now we just assert that the metric exists.
-  ASSERT_OK(GetHistogram(metric_entity(), METRIC_rpc_incoming_queue_time));
+  ASSERT_OK(GetEventStats(metric_entity(), METRIC_rpc_incoming_queue_time));
 }
 
 TEST_F(TestRpc, TestRpcCallbackDestroysMessenger) {
@@ -1186,6 +1191,32 @@ void TestSimple(CalculatorServiceProxy* proxy) {
 
 TEST_F(TestRpcSecure, TLS) {
   RunSecureTest(&TestSimple);
+}
+
+TEST_F(TestRpcSecure, Timeout) {
+  RunSecureTest([](auto* proxy) {
+    for (uint32_t delay_us = 20; delay_us < 100ul * 1000; delay_us *= 2) {
+      auto timeout = MonoDelta::FromMicroseconds(delay_us);
+      rpc_test::SleepRequestPB req;
+      rpc_test::SleepResponsePB resp;
+      req.set_sleep_micros(1000000ul);
+
+      Status s;
+      {
+        // dynamically allocate RpcController to it would NOT get recreated at the same address
+        // on the next iteration.
+        auto c = std::make_unique<RpcController>();
+
+        // Add some trash to instantiate sidecars.
+        c->outbound_sidecars().Start().Append(
+            pointer_cast<const char*>(&delay_us), sizeof(delay_us));
+
+        c->set_timeout(timeout);
+        s = proxy->Sleep(req, &resp, c.get());
+      }
+      ASSERT_NOK(s);
+    }
+  });
 }
 
 void TestBigOp(CalculatorServiceProxy* proxy) {

@@ -63,6 +63,7 @@
 #include "yb/util/result.h"
 #include "yb/util/semaphore.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/trace.h"
 
 namespace yb {
 class HostPort;
@@ -179,12 +180,14 @@ class Peer : public std::enable_shared_from_this<Peer> {
     return failed_attempts_;
   }
 
+  void DumpToHtml(std::ostream& out) const;
+
  private:
   void SendNextRequest(RequestTriggerMode trigger_mode);
 
   // Signals that a response was received from the peer. This method does response handling that
   // requires IO or may block.
-  void ProcessResponse();
+  void ProcessResponse(TracePtr trace);
 
   // Signals that a heartbeat response was received from the peer.
   void ProcessHeartbeatResponse(const Status& status);
@@ -256,6 +259,7 @@ class Peer : public std::enable_shared_from_this<Peer> {
   StartRemoteBootstrapResponsePB rb_response_;
 
   rpc::RpcController controller_;
+  std::atomic<CoarseTimePoint> last_rpc_start_time_{CoarseTimePoint::min()};
 
   // Held if there is an outstanding request.  This is used in order to ensure that we only have a
   // single request outstanding at a time, and to wait for the outstanding requests at Close().

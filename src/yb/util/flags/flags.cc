@@ -52,6 +52,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
+#include "yb/util/string_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
@@ -393,10 +394,7 @@ void ShowVersionAndExit() {
 void DumpAutoFlagsJSONAndExit() {
   // Promote all AutoFlags to ensure the target value passes any flag validation functions. Its ok
   // if the current values change as we don't print them out.
-  auto status = PromoteAllAutoFlags();
-  if (!status.ok()) {
-    LOG(FATAL) << "Failed to promote all AutoFlags: " << status.ToString();
-  }
+  PromoteAllAutoFlags();
 
   cout << AutoFlagsUtil::DumpAutoFlagsToJSON(GetStaticProgramName());
   exit(0);
@@ -478,7 +476,7 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
   }
 
   if (FLAGS_TEST_promote_all_auto_flags) {
-    CHECK_OK(PromoteAllAutoFlags());
+    PromoteAllAutoFlags();
   }
 
   if (FLAGS_helpxml) {
@@ -516,7 +514,7 @@ bool RefreshFlagsFile(const std::string& filename) {
   }
 
   if (FLAGS_TEST_promote_all_auto_flags) {
-    CHECK_OK(PromoteAllAutoFlags());
+    PromoteAllAutoFlags();
   }
 
   return true;
@@ -745,6 +743,11 @@ bool ValidatePercentageFlag(const char* flag_name, int value) {
   }
   LOG(WARNING) << flag_name << " must be a percentage (0 to 100), value " << value << " is invalid";
   return false;
+}
+
+bool IsUsageMessageSet() {
+  // If it's not initialized it returns: "Warning: SetUsageMessage() never called".
+  return !StringStartsWithOrEquals(google::ProgramUsage(), "Warning:");
 }
 
 } // namespace yb

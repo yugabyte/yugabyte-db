@@ -21,6 +21,7 @@
 #include <functional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <type_traits>
 
 #include <boost/mpl/and.hpp>
@@ -174,6 +175,7 @@ auto ToString(std::reference_wrapper<Value> value) {
   return ToString(value.get());
 }
 
+inline std::string_view ToString(std::string_view str) { return str; }
 inline const std::string& ToString(const std::string& str) { return str; }
 inline std::string ToString(const char* str) { return str; }
 
@@ -185,6 +187,8 @@ std::string CollectionToString(const Collection& collection);
 
 template <class Collection, class Transform>
 std::string CollectionToString(const Collection& collection, const Transform& transform);
+
+std::string CStringArrayToString(char** elements, size_t length);
 
 template <class T>
 typename std::enable_if<yb_tostring::HasFreeFunction_to_string<T>::value,
@@ -341,7 +345,7 @@ auto AsString(T&&... t) -> decltype(ToString(std::forward<T>(t)...)) {
 
 #define YB_FIELD_TO_STRING_VALUE(elem, data)     \
     BOOST_PP_IF(BOOST_PP_IS_BEGIN_PARENS(elem),  \
-                BOOST_PP_TUPLE_ELEM(2, 1, elem), \
+                (BOOST_PP_TUPLE_ELEM(2, 1, elem)), \
                 ::yb::AsString(BOOST_PP_CAT(elem, BOOST_PP_APPLY(data))))
 
 #define YB_FIELD_TO_STRING(r, data, elem) \

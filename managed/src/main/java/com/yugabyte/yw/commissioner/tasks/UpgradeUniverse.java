@@ -64,7 +64,9 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 
-/** @deprecated Use separate tasks based on UpgradeTaskBase */
+/**
+ * @deprecated Use separate tasks based on UpgradeTaskBase
+ */
 @Deprecated
 @Slf4j
 public class UpgradeUniverse extends UniverseDefinitionTaskBase {
@@ -84,6 +86,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
   public static class Params extends UpgradeParams {}
 
   private Map<UUID, List<String>> replacementRootVolumes = new ConcurrentHashMap<>();
+  private Map<UUID, String> replacementRootDevices = new ConcurrentHashMap<>();
   private Map<UUID, UUID> nodeToRegion = new HashMap<>();
 
   @Override
@@ -130,12 +133,13 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
         // Instance Type
         // Make sure the instance type exists.
-        String newInstanceTypeCode = taskParams().getPrimaryCluster().userIntent.instanceType;
+        String newInstanceTypeCode =
+            taskParams().getPrimaryCluster().userIntent.getBaseInstanceType();
         String provider = primIntent.provider;
 
         List<InstanceType> instanceTypes =
             InstanceType.findByProvider(
-                Provider.getOrBadRequest(UUID.fromString(provider)), config);
+                Provider.getOrBadRequest(UUID.fromString(provider)), confGetter);
         log.info(instanceTypes.toString());
         InstanceType newInstanceType =
             instanceTypes.stream()
@@ -233,7 +237,6 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         }
         break;
       case Certs:
-        System.out.println("CERT1 " + universe.getUniverseDetails().nodePrefix);
         if (taskParams().certUUID == null) {
           throw new IllegalArgumentException("CertUUID cannot be null");
         }
@@ -408,7 +411,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     params.nodeName = node.nodeName;
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.azUuid = node.azUuid;
-    params.instanceType = taskParams().getPrimaryCluster().userIntent.instanceType;
+    params.instanceType = taskParams().getPrimaryCluster().userIntent.getInstanceTypeForNode(node);
 
     ChangeInstanceType changeInstanceTypeTask = createTask(ChangeInstanceType.class);
     changeInstanceTypeTask.initialize(params);
@@ -424,6 +427,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     replaceParams.azUuid = node.azUuid;
     replaceParams.setUniverseUUID(taskParams().getUniverseUUID());
     replaceParams.bootDisksPerZone = this.replacementRootVolumes;
+    replaceParams.rootDevicePerZone = this.replacementRootDevices;
 
     ReplaceRootVolume replaceDiskTask = createTask(ReplaceRootVolume.class);
     replaceDiskTask.initialize(replaceParams);
@@ -464,6 +468,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
               params.numVolumes = numVolumes;
               params.setMachineImage(machineImage);
               params.bootDisksPerZone = replacementRootVolumes;
+              params.rootDevicePerZone = replacementRootDevices;
 
               log.info(
                   "Creating {} root volumes using {} in AZ {}",
@@ -547,7 +552,8 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         createUpdateDiskSizeTasks(nodes).setSubTaskGroupType(SubTaskGroupType.ResizingDisk);
 
         // Persist changes in the universe
-        createPersistResizeNodeTask(currInstanceType, newDiskSize)
+        createPersistResizeNodeTask(
+                taskParams().getPrimaryCluster().userIntent, taskParams().getPrimaryCluster().uuid)
             .setSubTaskGroupType(SubTaskGroupType.ResizingDisk);
       } else {
         log.info(
@@ -586,7 +592,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
           if (currUserIntent.replicationFactor != 1) {
             createWaitForMasterLeaderTask()
                 .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
-            createChangeConfigTask(node, false /* isAdd */, SubTaskGroupType.ChangeInstanceType);
+            createChangeConfigTasks(node, false /* isAdd */, SubTaskGroupType.ChangeInstanceType);
           }
         }
 
@@ -613,7 +619,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
           if (currUserIntent.replicationFactor != 1) {
             // Add stopped master to the quorum.
-            createChangeConfigTask(node, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+            createChangeConfigTasks(node, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
           }
           // If there are no universe keys on the universe, it will have no effect.
           if (EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
@@ -640,7 +646,8 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       }
 
       // Persist changes in the universe
-      createPersistResizeNodeTask(newInstanceType)
+      createPersistResizeNodeTask(
+              taskParams().getPrimaryCluster().userIntent, taskParams().getPrimaryCluster().uuid)
           .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
     }
   }
@@ -987,15 +994,14 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
               true,
               processType == ServerType.MASTER
                   ? taskParams().masterGFlags
-                  : taskParams().tserverGFlags,
-              false)
+                  : taskParams().tserverGFlags)
           .setSubTaskGroupType(subGroupType);
     } else if (taskParams().taskType == UpgradeTaskType.ToggleTls) {
       Map<String, String> gflags = new HashMap<>();
       gflags.put(
           "allow_insecure_connections",
           upgradeIteration == UpgradeIteration.Round1 ? "true" : "false");
-      createSetFlagInMemoryTasks(nodes, processType, true, gflags, false)
+      createSetFlagInMemoryTasks(nodes, processType, true, gflags)
           .setSubTaskGroupType(subGroupType);
     }
 

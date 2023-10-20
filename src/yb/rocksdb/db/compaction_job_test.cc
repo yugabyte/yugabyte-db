@@ -152,7 +152,7 @@ class CompactionJobTest : public RocksDBTest {
 
     uint64_t file_number = versions_->NewFileNumber();
     EXPECT_OK(mock_table_factory_->CreateMockTable(
-        env_, GenerateFileName(file_number), std::move(contents)));
+        env_, GenerateFileName(file_number), contents));
 
     VersionEdit edit;
     smallest_values.user_values.push_back(

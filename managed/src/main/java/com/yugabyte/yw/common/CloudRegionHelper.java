@@ -6,6 +6,8 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -24,17 +26,25 @@ import play.libs.Json;
 public class CloudRegionHelper {
 
   private final CloudQueryHelper queryHelper;
+  private final RuntimeConfGetter confGetter;
   private final ConfigHelper configHelper;
 
   @Inject
-  public CloudRegionHelper(CloudQueryHelper queryHelper, ConfigHelper configHelper) {
+  public CloudRegionHelper(
+      CloudQueryHelper queryHelper, ConfigHelper configHelper, RuntimeConfGetter confGetter) {
     this.queryHelper = queryHelper;
     this.configHelper = configHelper;
+    this.confGetter = confGetter;
   }
 
   public Region createRegion(
-      Provider provider, String regionCode, String destVpcId, PerRegionMetadata metadata) {
-    if (Region.getByCode(provider, regionCode) != null) {
+      Provider provider,
+      String regionCode,
+      String destVpcId,
+      PerRegionMetadata metadata,
+      boolean isFirstTry) {
+    Region existingRegion = Region.getByCode(provider, regionCode);
+    if (existingRegion != null && isFirstTry) {
       throw new RuntimeException("Region " + regionCode + " already setup");
     }
 
@@ -58,28 +68,60 @@ public class CloudRegionHelper {
               metadata.longitude);
     } else {
       JsonNode metaData = Json.toJson(regionMetadata.get(regionCode));
-      createdRegion = Region.createWithMetadata(provider, regionCode, metaData);
+      if (!isFirstTry && existingRegion != null) {
+        createdRegion = existingRegion;
+      } else {
+        createdRegion = Region.createWithMetadata(provider, regionCode, metaData);
+      }
     }
     final Region region = createdRegion;
     String customImageId = metadata.customImageId;
     String architecture = metadata.architecture != null ? metadata.architecture.name() : null;
-    if (customImageId != null && !customImageId.isEmpty()) {
-      region.setYbImage(customImageId);
-      region.update();
-    } else {
-      switch (CloudType.valueOf(provider.getCode())) {
-          // Intentional fallthrough for AWS, Azure & GCP should be covered the same way.
-        case aws:
-        case gcp:
-        case azu:
-          // Setup default image, if no custom one was specified.
-          String defaultImage = queryHelper.getDefaultImage(region, architecture);
-          if (defaultImage == null || defaultImage.isEmpty()) {
-            throw new RuntimeException("Could not get default image for region: " + regionCode);
+    if (!confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching)) {
+      if (customImageId != null && !customImageId.isEmpty()) {
+        region.setYbImage(customImageId);
+        region.update();
+      } else {
+        switch (CloudType.valueOf(provider.getCode())) {
+            // Intentional fallthrough for AWS, Azure & GCP should be covered the same way.
+          case aws:
+          case gcp:
+          case azu:
+            // Setup default image, if no custom one was specified.
+            String defaultImage = queryHelper.getDefaultImage(region, architecture);
+            if (defaultImage == null || defaultImage.isEmpty()) {
+              throw new RuntimeException("Could not get default image for region: " + regionCode);
+            }
+            region.setYbImage(defaultImage);
+            region.update();
+            break;
+        }
+      }
+
+      // Attempt to find architecture for AWS providers.
+      if (provider.getCode().equals(CloudType.aws.toString())
+          && (region.getArchitecture() == null
+              || (customImageId != null && !customImageId.isEmpty()))) {
+        String arch = queryHelper.getImageArchitecture(region);
+        if (arch == null || arch.isEmpty()) {
+          log.warn(
+              "Could not get architecture for image {} in region {}.",
+              region.getYbImage(),
+              region.getCode());
+
+        } else {
+          try {
+            // explicitly overriding arch name to maintain equivalent type of architecture.
+            if (arch.equals("arm64")) {
+              arch = Architecture.aarch64.name();
+            }
+            region.setArchitecture(Architecture.valueOf(arch));
+            region.update();
+          } catch (IllegalArgumentException e) {
+            log.warn(
+                "{} not a valid architecture. Skipping for region {}.", arch, region.getCode());
           }
-          region.setYbImage(defaultImage);
-          region.update();
-          break;
+        }
       }
     }
     String customSecurityGroupId = metadata.customSecurityGroupId;
@@ -94,31 +136,6 @@ public class CloudRegionHelper {
         g.setInstanceTemplate(instanceTemplate);
       }
       region.update();
-    }
-
-    // Attempt to find architecture for AWS providers.
-    if (provider.getCode().equals(CloudType.aws.toString())
-        && (region.getArchitecture() == null
-            || (customImageId != null && !customImageId.isEmpty()))) {
-      String arch = queryHelper.getImageArchitecture(region);
-      if (arch == null || arch.isEmpty()) {
-        log.warn(
-            "Could not get architecture for image {} in region {}.",
-            region.getYbImage(),
-            region.getCode());
-
-      } else {
-        try {
-          // explicitly overriding arch name to maintain equivalent type of architecture.
-          if (arch.equals("arm64")) {
-            arch = Architecture.aarch64.name();
-          }
-          region.setArchitecture(Architecture.valueOf(arch));
-          region.update();
-        } catch (IllegalArgumentException e) {
-          log.warn("{} not a valid architecture. Skipping for region {}.", arch, region.getCode());
-        }
-      }
     }
 
     JsonNode zoneInfo;
@@ -159,7 +176,7 @@ public class CloudRegionHelper {
                 region
                     .getZones()
                     .add(
-                        AvailabilityZone.createOrThrow(
+                        AvailabilityZone.getOrCreate(
                             region,
                             zone,
                             zone,
@@ -173,9 +190,7 @@ public class CloudRegionHelper {
         } else {
           zoneSubnets.forEach(
               (zone, subnet) ->
-                  region
-                      .getZones()
-                      .add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
+                  region.getZones().add(AvailabilityZone.getOrCreate(region, zone, zone, subnet)));
         }
         break;
       case azu:
@@ -198,7 +213,7 @@ public class CloudRegionHelper {
         region.setZones(new ArrayList<>());
         zoneNets.forEach(
             (zone, subnet) ->
-                region.getZones().add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
+                region.getZones().add(AvailabilityZone.getOrCreate(region, zone, zone, subnet)));
         break;
       case gcp:
         ObjectNode customPayload = Json.newObject();
@@ -232,8 +247,7 @@ public class CloudRegionHelper {
                 region
                     .getZones()
                     .add(
-                        AvailabilityZone.createOrThrow(
-                            region, zone, zone, subnet, secondarySubnet)));
+                        AvailabilityZone.getOrCreate(region, zone, zone, subnet, secondarySubnet)));
         break;
       case onprem:
         region.setZones(new ArrayList<>());
@@ -242,7 +256,7 @@ public class CloudRegionHelper {
                 region
                     .getZones()
                     .add(
-                        AvailabilityZone.createOrThrow(
+                        AvailabilityZone.getOrCreate(
                             region, zone.getCode(), zone.getName(), null, null)));
         break;
       default:

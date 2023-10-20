@@ -106,6 +106,9 @@ public class Backup extends Model {
     @EnumValue("QueuedForDeletion")
     QueuedForDeletion,
 
+    @EnumValue("QueuedForForcedDeletion")
+    QueuedForForcedDeletion,
+
     @EnumValue("DeleteInProgress")
     DeleteInProgress;
   }
@@ -141,6 +144,9 @@ public class Backup extends Model {
           .put(BackupState.FailedToDelete, BackupState.QueuedForDeletion)
           .put(BackupState.Deleted, BackupState.QueuedForDeletion)
           .put(BackupState.QueuedForDeletion, BackupState.DeleteInProgress)
+          .put(BackupState.QueuedForDeletion, BackupState.QueuedForForcedDeletion)
+          .put(BackupState.QueuedForForcedDeletion, BackupState.FailedToDelete)
+          .put(BackupState.QueuedForForcedDeletion, BackupState.DeleteInProgress)
           .build();
 
   public enum BackupCategory {
@@ -448,8 +454,7 @@ public class Backup extends Model {
       List<BackupTableParams> paramsCollection,
       BackupTableParams incrementalParam,
       TableType backupType) {
-    return paramsCollection
-        .parallelStream()
+    return paramsCollection.parallelStream()
         .filter(
             backupParams ->
                 incrementalParam.getKeyspace().equals(backupParams.getKeyspace())
@@ -483,8 +488,7 @@ public class Backup extends Model {
     List<BackupTableParams> params = getBackupParamsCollection();
     if (CollectionUtils.isNotEmpty(params)) {
       oParams =
-          params
-              .parallelStream()
+          params.parallelStream()
               .filter(bP -> bP.backupParamsIdentifier.equals(paramsIdentifier))
               .findAny();
     }
@@ -615,37 +619,32 @@ public class Backup extends Model {
   }
 
   public static Optional<Backup> fetchLatestByState(UUID customerUuid, BackupState state) {
-    return Backup.find.query().where().eq("customer_uuid", customerUuid).eq("state", state)
-        .orderBy("create_time DESC").findList().stream()
+    return Backup.find
+        .query()
+        .where()
+        .eq("customer_uuid", customerUuid)
+        .eq("state", state)
+        .orderBy("create_time DESC")
+        .findList()
+        .stream()
         .findFirst();
   }
 
-  public static Map<Customer, List<Backup>> getExpiredBackups() {
-    // Get current timestamp.
+  public static Map<UUID, List<Backup>> getCompletedExpiredBackups() {
     Date now = new Date();
     List<Backup> expiredBackups =
-        Backup.find.query().where().lt("expiry", now).notIn("state", IN_PROGRESS_STATES).findList();
-
+        Backup.find.query().where().lt("expiry", now).in("state", BackupState.Completed).findList();
     Map<UUID, List<Backup>> expiredBackupsByCustomerUUID = new HashMap<>();
     for (Backup backup : expiredBackups) {
-      expiredBackupsByCustomerUUID.putIfAbsent(backup.customerUUID, new ArrayList<>());
-      expiredBackupsByCustomerUUID.get(backup.customerUUID).add(backup);
+      if (!(Universe.isUniversePaused(backup.getBackupInfo().getUniverseUUID())
+          || backup.isIncrementalBackup())) {
+        List<Backup> backupList =
+            expiredBackupsByCustomerUUID.getOrDefault(backup.getCustomerUUID(), new ArrayList<>());
+        backupList.add(backup);
+        expiredBackupsByCustomerUUID.put(backup.getCustomerUUID(), backupList);
+      }
     }
-
-    Map<Customer, List<Backup>> ret = new HashMap<>();
-    expiredBackupsByCustomerUUID.forEach(
-        (customerUUID, backups) -> {
-          Customer customer = Customer.get(customerUUID);
-          List<Backup> backupList =
-              backups.stream()
-                  .filter(
-                      backup ->
-                          !Universe.isUniversePaused(backup.getBackupInfo().getUniverseUUID())
-                              && !backup.isIncrementalBackup())
-                  .collect(Collectors.toList());
-          ret.put(customer, backupList);
-        });
-    return ret;
+    return expiredBackupsByCustomerUUID;
   }
 
   public synchronized void transitionState(BackupState newState) {
@@ -705,7 +704,7 @@ public class Backup extends Model {
         find.query()
             .where()
             .eq("customer_uuid", customerUUID)
-            .eq("state", BackupState.QueuedForDeletion)
+            .in("state", BackupState.QueuedForDeletion, BackupState.QueuedForForcedDeletion)
             .findList();
     return backupList;
   }

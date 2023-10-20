@@ -10,11 +10,6 @@
 
 set -euo pipefail
 
-if which python > /dev/null 2>&1 && \
-         python -c 'import sys; sys.exit(1) if sys.version_info[0] != 2 else sys.exit(0)'; then
-    export YB_MANAGED_DEVOPS_USE_PYTHON3=0
-fi
-
 . "${BASH_SOURCE%/*}/common.sh"
 
 detect_os
@@ -27,7 +22,11 @@ if [ "$is_mac" == false ] && \
    [ -d "$yb_devops_home/pex/pexEnv" ]; then
 
   activate_pex
-  $PYTHON_EXECUTABLE $PEX_PATH "$PEX_ANSIBLE_PLAYBOOK_PATH/ansible-playbook" "$@"
+  set -x
+  pythonpath=$(head -n 1 "$pex_venv_dir/bin/ansible-playbook")
+  [[ "$pythonpath" =~ ^#\!\/.*python.* ]] || fatal "Could not find valid shebang in PEX environment"
+  # Remove the #! from beginning of python path
+  ${pythonpath:2} $pex_venv_dir/bin/ansible-playbook "$@"
 
 else
   activate_virtualenv

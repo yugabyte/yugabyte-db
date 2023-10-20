@@ -27,8 +27,8 @@ struct ProducerTabletInfo {
   // Needed on Consumer side for uniqueness. Empty on Producer.
   ReplicationGroupId replication_group_id;
   // Unique ID on Producer, but not on Consumer.
-  CDCStreamId stream_id;
-  std::string tablet_id;
+  xrepl::StreamId stream_id;
+  TabletId tablet_id;
 
   bool operator==(const ProducerTabletInfo& other) const {
     return replication_group_id == other.replication_group_id && stream_id == other.stream_id &&
@@ -55,7 +55,7 @@ struct XClusterTabletInfo {
 };
 
 struct CDCCreationState {
-  std::vector<CDCStreamId> created_cdc_streams;
+  std::vector<xrepl::StreamId> created_cdc_streams;
   std::vector<ProducerTabletInfo> producer_entries_modified;
 
   void Clear() {

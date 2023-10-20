@@ -114,6 +114,14 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Stopping)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
+      if (currentNode.isTserver) {
+        createNodePrecheckTasks(
+            currentNode,
+            EnumSet.of(ServerType.TSERVER),
+            SubTaskGroupType.StoppingNodeProcesses,
+            null);
+      }
+
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
       boolean instanceExists = instanceExists(taskParams());
@@ -157,7 +165,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       // Update the DNS entry for this universe.
       UniverseDefinitionTaskParams.UserIntent userIntent =
           universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid).userIntent;
-      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNode);
 
       // Mark universe task state to success

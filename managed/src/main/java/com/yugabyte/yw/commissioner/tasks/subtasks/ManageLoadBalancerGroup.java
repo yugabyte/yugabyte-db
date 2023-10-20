@@ -1,15 +1,21 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.CloudUtil.Protocol;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
+import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeID;
 import java.util.ArrayList;
@@ -78,8 +84,15 @@ public class ManageLoadBalancerGroup extends UniverseTaskBase {
     LoadBalancerConfig lbConfig = taskParams().lbConfig;
     try {
       Map<AvailabilityZone, Set<NodeID>> azToNodeIDs = getNodeIDs(lbConfig.getAzNodes());
+      NLBHealthCheckConfiguration healthCheckConfiguration =
+          getNlbHealthCheckConfiguration(universe, ports);
       cloudAPI.manageNodeGroup(
-          provider, taskParams().regionCode, lbConfig.getLbName(), azToNodeIDs, "TCP", ports);
+          provider,
+          taskParams().regionCode,
+          lbConfig.getLbName(),
+          azToNodeIDs,
+          ports,
+          healthCheckConfiguration);
     } catch (Exception e) {
       String msg =
           "Error "
@@ -90,6 +103,44 @@ public class ManageLoadBalancerGroup extends UniverseTaskBase {
       log.error(msg, e);
       Throwables.propagate(e);
     }
+  }
+
+  NLBHealthCheckConfiguration getNlbHealthCheckConfiguration(
+      Universe universe, List<Integer> ports) {
+    List<Integer> healthCheckPorts =
+        confGetter.getConfForScope(universe, UniverseConfKeys.customHealthCheckPorts);
+    List<String> healthCheckPaths =
+        confGetter.getConfForScope(universe, UniverseConfKeys.customHealthCheckPaths);
+    Protocol healthCheckProtocol =
+        confGetter.getConfForScope(universe, UniverseConfKeys.customHealthCheckProtocol);
+    if (healthCheckProtocol == Protocol.TCP) {
+      if (healthCheckPorts.isEmpty()) {
+        healthCheckPorts.addAll(ports);
+      } else {
+        healthCheckPorts =
+            healthCheckPorts.stream()
+                .distinct()
+                .filter(port -> (port > 0 && port <= 65535))
+                .collect(Collectors.toList());
+      }
+    } else {
+      if (healthCheckPorts.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "For HTTP health checks, custom health check ports and paths both must be specified.");
+      } else if (healthCheckPorts.size() != healthCheckPaths.size()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "For HTTP health checks, custom health check ports paths must be of the same size,"
+                + " with one to one corrospondence.");
+      }
+    }
+
+    log.debug(
+        "Heach check config = {}, {}, {}", healthCheckPorts, healthCheckProtocol, healthCheckPaths);
+    NLBHealthCheckConfiguration healthCheckConfiguration =
+        new NLBHealthCheckConfiguration(healthCheckPorts, healthCheckProtocol, healthCheckPaths);
+    return healthCheckConfiguration;
   }
 
   public Map<AvailabilityZone, Set<NodeID>> getNodeIDs(

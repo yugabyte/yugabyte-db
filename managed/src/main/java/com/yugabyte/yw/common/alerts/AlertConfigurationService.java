@@ -19,10 +19,13 @@ import static com.yugabyte.yw.models.helpers.EntityOperation.UPDATE;
 import static io.ebean.DB.beginTransaction;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.cronutils.utils.StringUtils;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDescription;
 import com.yugabyte.yw.common.concurrent.MultiKeyLock;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
@@ -74,6 +77,7 @@ import org.apache.commons.collections.CollectionUtils;
 public class AlertConfigurationService {
 
   private final BeanValidator beanValidator;
+  private final AlertTemplateService alertTemplateService;
   private final AlertDefinitionService alertDefinitionService;
   private final MaintenanceService maintenanceService;
   private final RuntimeConfigFactory runtimeConfigFactory;
@@ -83,10 +87,12 @@ public class AlertConfigurationService {
   @Inject
   public AlertConfigurationService(
       BeanValidator beanValidator,
+      AlertTemplateService alertTemplateService,
       AlertDefinitionService alertDefinitionService,
       MaintenanceService maintenanceService,
       RuntimeConfigFactory runtimeConfigFactory) {
     this.beanValidator = beanValidator;
+    this.alertTemplateService = alertTemplateService;
     this.alertDefinitionService = alertDefinitionService;
     this.maintenanceService = maintenanceService;
     this.runtimeConfigFactory = runtimeConfigFactory;
@@ -318,7 +324,9 @@ public class AlertConfigurationService {
               .throwError();
       }
     }
-    if (configuration.getTemplate().getTargetType() != configuration.getTargetType()) {
+    AlertTemplateDescription templateDescription =
+        alertTemplateService.getTemplateDescription(configuration.getTemplate());
+    if (templateDescription.getTargetType() != configuration.getTargetType()) {
       beanValidator.error().global("target type should be consistent with template").throwError();
     }
     if (configuration.getDestinationUUID() != null) {
@@ -338,7 +346,7 @@ public class AlertConfigurationService {
             .throwError();
       }
     }
-    if (configuration.getThresholdUnit() != configuration.getTemplate().getDefaultThresholdUnit()) {
+    if (configuration.getThresholdUnit() != templateDescription.getDefaultThresholdUnit()) {
       beanValidator
           .error()
           .forField("thresholdUnit", "incompatible with alert definition template")
@@ -348,22 +356,22 @@ public class AlertConfigurationService {
         .getThresholds()
         .forEach(
             (severity, threshold) -> {
-              if (threshold.getThreshold() < configuration.getTemplate().getThresholdMinValue()) {
+              if (threshold.getThreshold() < templateDescription.getThresholdMinValue()) {
                 beanValidator
                     .error()
                     .forField(
                         "thresholds[" + severity.name() + "].threshold",
                         "can't be less than "
-                            + doubleToString(configuration.getTemplate().getThresholdMinValue()))
+                            + doubleToString(templateDescription.getThresholdMinValue()))
                     .throwError();
               }
-              if (threshold.getThreshold() > configuration.getTemplate().getThresholdMaxValue()) {
+              if (threshold.getThreshold() > templateDescription.getThresholdMaxValue()) {
                 beanValidator
                     .error()
                     .forField(
                         "thresholds[" + severity.name() + "].threshold",
                         "can't be greater than "
-                            + doubleToString(configuration.getTemplate().getThresholdMaxValue()))
+                            + doubleToString(templateDescription.getThresholdMaxValue()))
                     .throwError();
               }
             });
@@ -512,6 +520,8 @@ public class AlertConfigurationService {
         // If configuration was deleted - remove all the associated definitions.
         toRemove.addAll(currentDefinitions);
       } else {
+        AlertTemplateDescription templateDescription =
+            alertTemplateService.getTemplateDescription(configuration.getTemplate());
         boolean configurationChanged = before != null && !before.equals(configuration);
         Customer customer = Customer.getOrBadRequest(configuration.getCustomerUUID());
         AlertConfigurationTarget target = configuration.getTarget();
@@ -532,8 +542,7 @@ public class AlertConfigurationService {
               definition = currentDefinitions.get(0);
             }
             definition.setConfigWritten(false);
-            definition.setQuery(configuration.getTemplate().buildTemplate(customer));
-            if (!configuration.getTemplate().isSkipTargetLabels()) {
+            if (!templateDescription.isSkipSourceLabels()) {
               definition.setLabels(
                   MetricLabelsBuilder.create()
                       .appendCustomer(customer)
@@ -610,9 +619,7 @@ public class AlertConfigurationService {
                   }
                 }
                 universeDefinition.setConfigWritten(false);
-                universeDefinition.setQuery(
-                    configuration.getTemplate().buildTemplate(customer, universe));
-                if (!configuration.getTemplate().isSkipTargetLabels()) {
+                if (!templateDescription.isSkipSourceLabels()) {
                   universeDefinition.setLabels(
                       MetricLabelsBuilder.create()
                           .appendCustomer(customer)
@@ -680,45 +687,50 @@ public class AlertConfigurationService {
 
   public AlertConfigurationTemplate createConfigurationTemplate(
       Customer customer, AlertTemplate template) {
+    AlertTemplateDescription templateDescription =
+        alertTemplateService.getTemplateDescription(template);
     AlertConfiguration configuration =
         new AlertConfiguration()
             .setCustomerUUID(customer.getUuid())
-            .setName(template.getName())
-            .setDescription(template.getDescription())
-            .setTargetType(template.getTargetType())
+            .setName(templateDescription.getName())
+            .setDescription(templateDescription.getDescription())
+            .setTargetType(templateDescription.getTargetType())
             .setTarget(new AlertConfigurationTarget().setAll(true))
             .setThresholds(
-                template.getDefaultThresholdMap().entrySet().stream()
+                templateDescription.getDefaultThresholdMap().entrySet().stream()
                     .collect(
                         Collectors.toMap(
                             Map.Entry::getKey,
                             e ->
                                 new AlertConfigurationThreshold()
-                                    .setCondition(template.getDefaultThresholdCondition())
+                                    .setCondition(
+                                        templateDescription.getDefaultThresholdCondition())
                                     .setThreshold(
-                                        e.getValue().isParamName()
+                                        !StringUtils.isEmpty(e.getValue().getParamName())
                                             ? runtimeConfigFactory
                                                 .globalRuntimeConf()
                                                 .getDouble(e.getValue().getParamName())
                                             : e.getValue().getThreshold()))))
-            .setThresholdUnit(template.getDefaultThresholdUnit())
+            .setThresholdUnit(templateDescription.getDefaultThresholdUnit())
             .setTemplate(template)
-            .setDurationSec(template.getDefaultDurationSec())
+            .setDurationSec(templateDescription.getDefaultDurationSec())
             .setDefaultDestination(true);
     return new AlertConfigurationTemplate()
         .setDefaultConfiguration(configuration)
-        .setThresholdMinValue(template.getThresholdMinValue())
-        .setThresholdMaxValue(template.getThresholdMaxValue())
-        .setThresholdInteger(template.getDefaultThresholdUnit().isInteger())
-        .setThresholdReadOnly(template.isThresholdReadOnly())
-        .setThresholdConditionReadOnly(template.isThresholdConditionReadOnly())
-        .setThresholdUnitName(template.getThresholdUnitName());
+        .setThresholdMinValue(templateDescription.getThresholdMinValue())
+        .setThresholdMaxValue(templateDescription.getThresholdMaxValue())
+        .setThresholdInteger(templateDescription.getDefaultThresholdUnit().isInteger())
+        .setThresholdReadOnly(templateDescription.isThresholdReadOnly())
+        .setThresholdConditionReadOnly(templateDescription.isThresholdConditionReadOnly())
+        .setThresholdUnitName(templateDescription.getThresholdUnitName());
   }
 
   public void createDefaultConfigs(Customer customer) {
     List<AlertConfiguration> alertConfigurations =
         Arrays.stream(AlertTemplate.values())
-            .filter(AlertTemplate::isCreateForNewCustomer)
+            .filter(
+                template ->
+                    alertTemplateService.getTemplateDescription(template).isCreateForNewCustomer())
             .map(template -> createConfigurationTemplate(customer, template))
             .map(AlertConfigurationTemplate::getDefaultConfiguration)
             .collect(Collectors.toList());

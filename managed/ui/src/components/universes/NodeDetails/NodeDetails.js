@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import _ from 'lodash';
 
 import { NodeDetailsTable } from '../../universes';
@@ -15,8 +15,9 @@ import { getPromiseState } from '../../../utils/PromiseUtils';
 import {
   getPrimaryCluster,
   getReadOnlyCluster,
-  nodeComparisonFunction
-, hasLiveNodes } from '../../../utils/UniverseUtils';
+  nodeComparisonFunction,
+  hasLiveNodes
+} from '../../../utils/UniverseUtils';
 
 import { YBLoading } from '../../common/indicators';
 
@@ -166,10 +167,12 @@ export default class NodeDetails extends Component {
         regionItem: `${nodeDetail.cloudInfo.region}`,
         azItem: `${nodeDetail.cloudInfo.az}`,
         isMaster: nodeDetail.isMaster ? 'Details' : '-',
+        isMasterProcess: nodeDetail.isMaster,
         isMasterLeader: isMasterLeader,
         masterPort: nodeDetail.masterHttpPort,
         tserverPort: nodeDetail.tserverHttpPort,
         isTServer: nodeDetail.isTserver ? 'Details' : '-',
+        isTServerProcess: nodeDetail.isTserver,
         privateIP: nodeDetail.cloudInfo.private_ip,
         publicIP: nodeDetail.cloudInfo.public_ip,
         nodeStatus,

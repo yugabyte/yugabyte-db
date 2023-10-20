@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-Using the Raft distributed consensus protocol, DocDB automatically replicates data synchronously in order to survive failures while maintaining data consistency and avoiding operator intervention.
+Using the Raft distributed consensus protocol, DocDB automatically replicates data synchronously across the primary cluster in order to survive failures while maintaining data consistency and avoiding operator intervention.
 
 ## Concepts
 
@@ -58,7 +58,7 @@ The set of DocDB updates depends on the user-issued write, and involves locking 
 
 After the Raft log is replicated to a majority of tablet-peers and successfully persisted on the majority, the write is applied into the DocDB document storage layer and is subsequently available for reads. After the write is persisted on disk by the document storage layer, the write entries can be purged from the Raft log. This is performed as a controlled background operation without any impact to the foreground operations.
 
-## Replication in a cluster
+## Replication in the primary cluster
 
 The replicas of data can be placed across multiple fault domains. The following examples of a multi-zone deployment with three zones and the replication factor assumed to be 3 demonstrate how replication across fault domains is performed in a cluster.
 
@@ -72,15 +72,19 @@ As a part of the Raft replication, each tablet peer first elects a tablet leader
 
 ![Tablet leader placement](/images/architecture/replication/optimal-tablet-leader-placement.png)
 
+{{<note>}}
+Tablet leaders are balanced across **zones** and the **nodes** within a zone.
+{{</note>}}
+
 ### Tolerating a zone outage
 
-As soon as a zone outage occurs, YugabyteDB assumes that all nodes in that zone become unavailable simultaneously. This results in one-third of the tablets (which have their tablet leaders in the zone that just failed) not being able to serve any requests. The other two-thirds of the tablets are not affected. The following illustration shows the tablet peers in the zone that failed:
-
-![Tablet peers in a failed zone](/images/architecture/replication/tablet-leaders-vs-followers-zone-outage.png)
-
-For the affected one-third, YugabyteDB automatically performs a failover to instances in the other two zones. Once again, the tablets being failed over are distributed across the two remaining zones evenly, as per the following diagram:
+As soon as a zone outage occurs, YugabyteDB assumes that all nodes in that zone become unavailable simultaneously. This results in one-third of the tablets (which have their tablet leaders in the zone that just failed) not being able to serve any requests. The other two-thirds of the tablets are not affected. For the affected one-third, YugabyteDB automatically performs a failover to instances in the other two zones. Once again, the tablets being failed over are distributed across the two remaining zones evenly, as per the following diagram:
 
 ![Automatic failover](/images/architecture/replication/automatic-failover-zone-outage.png)
+
+{{<note>}}
+Failure of **followers** has no impact on reads and writes. Only the tablet **leaders** serve reads and writes.
+{{</note>}}
 
 ### RPO and RTO on zone outage
 

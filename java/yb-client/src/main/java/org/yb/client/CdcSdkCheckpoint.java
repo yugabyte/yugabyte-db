@@ -1,17 +1,23 @@
 package org.yb.client;
 
-public class CdcSdkCheckpoint {
-  private final long term;
-  private final long index;
-  private final byte[] key;
-  private final int write_id;
-  private final long time;
+import java.util.Arrays;
 
-  public CdcSdkCheckpoint(long term, long index, byte[] key, int write_id, long time) {
+/**
+ * Class to represent the checkpoint for the CDCSDK service.
+ * Containes term, index, key, writeId and time as protected fields, with getters.
+ */
+public class CdcSdkCheckpoint {
+  protected final long term;
+  protected final long index;
+  protected final byte[] key;
+  protected final int writeId;
+  protected long time;
+
+  public CdcSdkCheckpoint(long term, long index, byte[] key, int writeId, long time) {
     this.term = term;
     this.index = index;
     this.key = key;
-    this.write_id = write_id;
+    this.writeId = writeId;
     this.time = time;
   }
 
@@ -28,10 +34,16 @@ public class CdcSdkCheckpoint {
   }
 
   public int getWriteId() {
-    return write_id;
+    return writeId;
   }
 
   public long getTime() {
     return time;
+  }
+
+  @Override
+  public String toString() {
+    return String.format("%d.%d.%s.%d.%d", this.term, this.index, Arrays.toString(key),
+                         this.writeId, this.time);
   }
 }

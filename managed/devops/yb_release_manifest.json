@@ -5,7 +5,6 @@
     "ansible_requirements_prod.yml",
     "configure-cluster-server.yml",
     "destroy-instance.yml",
-    "python_requirements_frozen.txt",
     "python3_requirements_frozen.txt",
     "python*_modules.tar.gz",
     "preprovision.yml",
@@ -18,7 +17,8 @@
     "setup-cgroup.yml",
     "edit_authorized_keys.yml",
     "configure_ssh2.yml",
-    "install-third-party.yml"
+    "install-third-party.yml",
+    "Dockerfile"
   ],
   "bin": [
     "bin/ansible-playbook.sh",

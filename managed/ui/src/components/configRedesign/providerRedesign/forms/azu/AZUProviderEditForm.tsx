@@ -41,7 +41,7 @@ import {
 import { RegionOperation } from '../configureRegion/constants';
 import {
   addItem,
-  constructAccessKeysPayload,
+  constructAccessKeysEditPayload,
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
@@ -61,6 +61,7 @@ import {
   AZUProvider,
   AZURegion,
   AZURegionMutation,
+  ImageBundle,
   YBProviderMutation
 } from '../../types';
 
@@ -84,6 +85,7 @@ export interface AZUProviderEditFormFieldValues {
   ntpServers: string[];
   ntpSetupType: NTPSetupType;
   providerName: string;
+  imageBundles: ImageBundle[];
   regions: CloudVendorRegionField[];
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
@@ -498,6 +500,7 @@ const constructDefaultFormValues = (
   ntpServers: providerConfig.details.ntpServers,
   ntpSetupType: getNtpSetupType(providerConfig),
   providerName: providerConfig.name,
+  imageBundles: providerConfig.imageBundles,
   regions: providerConfig.regions.map((region) => ({
     fieldId: generateLowerCaseAlphanumericId(),
     code: region.code,
@@ -526,7 +529,7 @@ const constructProviderPayload = async (
     throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
   }
 
-  const allAccessKeysPayload = constructAccessKeysPayload(
+  const allAccessKeysPayload = constructAccessKeysEditPayload(
     formValues.editSSHKeypair,
     formValues.sshKeypairManagement,
     { sshKeypairName: formValues.sshKeypairName, sshPrivateKeyContent: sshPrivateKeyContent },
@@ -558,6 +561,7 @@ const constructProviderPayload = async (
       ...(formValues.sshPort && { sshPort: formValues.sshPort }),
       ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
+    imageBundles: formValues.imageBundles,
     regions: [
       ...formValues.regions.map<AZURegionMutation>((regionFormValues) => {
         const existingRegion = findExistingRegion<AZUProvider, AZURegion>(

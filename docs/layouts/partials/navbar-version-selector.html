@@ -37,6 +37,6 @@
     {{- else if in .version "Unsupported" -}}
       {{ $path = "/" }}
     {{ end }}
-    <a class="dropdown-item" href="{{ .url }}{{ $path }}">{{ $versionName | safeHTML }}</a>
+    <a class="dropdown-item" href="{{ .url }}{{ $path }}"{{- if .newTab }} target="_blank" rel="noopener"{{- end }}>{{ $versionName | safeHTML }}</a>
   {{ end }}
 </div>

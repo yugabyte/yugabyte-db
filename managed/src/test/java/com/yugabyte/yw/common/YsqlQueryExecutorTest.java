@@ -4,6 +4,8 @@ import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
@@ -67,7 +69,9 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
   public void setUp() {
     mockRuntimeConfigFactory = mock(RuntimeConfigFactory.class);
     when(mockRuntimeConfigFactory.forUniverse(any())).thenReturn(mockRuntimeConfig);
+    when(mockRuntimeConfigFactory.forCustomer(any())).thenReturn(mockRuntimeConfig);
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+    when(mockRuntimeConfig.getLong("yb.ysql_timeout_secs")).thenReturn(180L);
 
     ysqlQueryExecutor =
         spy(new YsqlQueryExecutor(mockRuntimeConfigFactory, mockNodeUniverseManager));
@@ -82,7 +86,11 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
         new Cluster(
             UniverseDefinitionTaskParams.ClusterType.PRIMARY,
             new UniverseDefinitionTaskParams.UserIntent());
-    when(details.getPrimaryCluster()).thenReturn(new Cluster(null, null));
+    when(details.getPrimaryCluster())
+        .thenReturn(
+            new Cluster(
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                new UniverseDefinitionTaskParams.UserIntent()));
 
     node = new NodeDetails();
     node.isMaster = true;
@@ -106,7 +114,8 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
   @Parameters({"false, 200", "true, 500", "true, 400"})
   public void createUser(boolean failure, int errorCode) {
     when(universe.getMasterLeaderNode()).thenReturn(errorCode == 500 ? null : node);
-    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runYsqlCommand(
+            any(), any(), any(), any(), anyLong(), anyBoolean()))
         .thenReturn(errorCode == 400 ? failureResponse : new ShellResponse());
     if (failure) {
       PlatformServiceException exception =
@@ -122,7 +131,8 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
   @Parameters({"false, 200", "true, 500", "true, 400"})
   public void createRestrictedUser(boolean failure, int errorCode) {
     when(universe.getMasterLeaderNode()).thenReturn(errorCode == 500 ? null : node);
-    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runYsqlCommand(
+            any(), any(), any(), any(), anyLong(), anyBoolean()))
         .thenReturn(errorCode == 400 ? failureResponse : new ShellResponse());
     if (failure) {
       PlatformServiceException exception =
@@ -143,7 +153,8 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
     dropForm.dbName = "yugabyte";
 
     when(universe.getMasterLeaderNode()).thenReturn(errorCode == 500 ? null : node);
-    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runYsqlCommand(
+            any(), any(), any(), any(), anyLong(), anyBoolean()))
         .thenReturn(errorCode == 400 ? failureResponse : new ShellResponse());
     if (failure) {
       PlatformServiceException exception =

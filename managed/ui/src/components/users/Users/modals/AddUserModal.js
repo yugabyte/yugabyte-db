@@ -1,6 +1,5 @@
 // Copyright (c) YugaByte, Inc.
 
-import React from 'react';
 import * as Yup from 'yup';
 import { isSSOEnabled } from '../../../../config';
 import { Row, Col } from 'react-bootstrap';

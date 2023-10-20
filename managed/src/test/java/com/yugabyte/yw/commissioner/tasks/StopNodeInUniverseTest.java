@@ -34,6 +34,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -135,6 +136,8 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     } catch (Exception e) {
       fail();
     }
+
+    setUnderReplicatedTabletsMock();
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
@@ -153,6 +156,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
       ImmutableList.of(
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.AnsibleClusterServerCtl,
@@ -168,6 +172,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", false)),
@@ -179,6 +184,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
       ImmutableList.of(
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.AnsibleClusterServerCtl,
@@ -195,6 +201,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "controller", "command", "stop")),
@@ -207,6 +214,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
       ImmutableList.of(
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.AnsibleClusterServerCtl,
@@ -231,6 +239,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", false)),
@@ -251,6 +260,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
       ImmutableList.of(
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.AnsibleClusterServerCtl,
@@ -274,6 +284,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Stopping")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
@@ -420,6 +431,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     userIntent.numNodes = 3;
     userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.replicationFactor = 3;
+    userIntent.ybSoftwareVersion = "2.16.7.0-b1";
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
             ClusterType.PRIMARY,
@@ -465,6 +477,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     userIntent.numNodes = 5;
     userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.replicationFactor = 3;
+    userIntent.ybSoftwareVersion = "2.16.7.0-b1";
     universe =
         Universe.saveDetails(
             universe.getUniverseUUID(),
@@ -500,6 +513,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     userIntent.numNodes = 5;
     userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.replicationFactor = 3;
+    userIntent.ybSoftwareVersion = "2.16.7.0-b1";
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
             ClusterType.PRIMARY,
@@ -555,6 +569,8 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
             u -> {
+              u.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+                  "2.16.7.0-b1";
               NodeDetails node =
                   u.getUniverseDetails().nodeDetailsSet.stream()
                       .filter(n -> n.isMaster)
@@ -588,5 +604,54 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
         STOP_NODE_TASK_SEQUENCE_DEDICATED_MASTER,
         STOP_NODE_DEDICATED_MASTER_EXPECTED_RESULTS,
         subTasksByPosition);
+  }
+
+  @Test
+  public void testStopNodeInUniverseRetries() {
+    Customer customer = ModelFactory.testCustomer("tc3", "Test Customer 3");
+    Universe universe =
+        createUniverse(
+            "Test Universe 2",
+            UUID.randomUUID(),
+            customer.getId(),
+            CloudType.aws,
+            null,
+            null,
+            true);
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.numNodes = 3;
+    userIntent.provider = defaultProvider.getUuid().toString();
+    userIntent.replicationFactor = 3;
+    userIntent.ybSoftwareVersion = "2.16.7.0-b1";
+    PlacementInfo placementInfo =
+        PlacementInfoUtil.getPlacementInfo(
+            ClusterType.PRIMARY,
+            userIntent,
+            userIntent.replicationFactor,
+            null,
+            Collections.emptyList());
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater(
+                userIntent,
+                "host",
+                true /* setMasters */,
+                false /* updateInProgress */,
+                placementInfo,
+                true /* enableYbc */));
+    NodeTaskParams taskParams =
+        UniverseControllerRequestBinder.deepCopy(
+            universe.getUniverseDetails(), NodeTaskParams.class);
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.nodeName = "host-n1";
+    super.verifyTaskRetries(
+        customer,
+        CustomerTask.TaskType.Stop,
+        CustomerTask.TargetType.Universe,
+        universe.getUniverseUUID(),
+        TaskType.StopNodeInUniverse,
+        taskParams);
   }
 }

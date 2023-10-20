@@ -2,61 +2,11 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.common.AlertTemplate.ALERT_CONFIG_WRITING_FAILED;
-import static com.yugabyte.yw.common.AlertTemplate.ALERT_NOTIFICATION_CHANNEL_ERROR;
-import static com.yugabyte.yw.common.AlertTemplate.ALERT_NOTIFICATION_ERROR;
-import static com.yugabyte.yw.common.AlertTemplate.ALERT_QUERY_FAILED;
-import static com.yugabyte.yw.common.AlertTemplate.BACKUP_FAILURE;
-import static com.yugabyte.yw.common.AlertTemplate.BACKUP_SCHEDULE_FAILURE;
-import static com.yugabyte.yw.common.AlertTemplate.CLIENT_TO_NODE_CA_CERT_EXPIRY;
-import static com.yugabyte.yw.common.AlertTemplate.CLIENT_TO_NODE_CERT_EXPIRY;
-import static com.yugabyte.yw.common.AlertTemplate.CLOCK_SKEW;
-import static com.yugabyte.yw.common.AlertTemplate.DB_COMPACTION_OVERLOAD;
-import static com.yugabyte.yw.common.AlertTemplate.DB_CORE_FILES;
-import static com.yugabyte.yw.common.AlertTemplate.DB_ERROR_LOGS;
-import static com.yugabyte.yw.common.AlertTemplate.DB_FATAL_LOGS;
-import static com.yugabyte.yw.common.AlertTemplate.DB_INSTANCE_DOWN;
-import static com.yugabyte.yw.common.AlertTemplate.DB_INSTANCE_RESTART;
-import static com.yugabyte.yw.common.AlertTemplate.DB_MEMORY_OVERLOAD;
-import static com.yugabyte.yw.common.AlertTemplate.DB_QUEUES_OVERFLOW;
-import static com.yugabyte.yw.common.AlertTemplate.DB_REDIS_CONNECTION;
-import static com.yugabyte.yw.common.AlertTemplate.DB_VERSION_MISMATCH;
-import static com.yugabyte.yw.common.AlertTemplate.DB_YCQL_CONNECTION;
-import static com.yugabyte.yw.common.AlertTemplate.DB_YSQL_CONNECTION;
-import static com.yugabyte.yw.common.AlertTemplate.HEALTH_CHECK_ERROR;
-import static com.yugabyte.yw.common.AlertTemplate.HEALTH_CHECK_NOTIFICATION_ERROR;
-import static com.yugabyte.yw.common.AlertTemplate.HIGH_NUM_YCQL_CONNECTIONS;
-import static com.yugabyte.yw.common.AlertTemplate.HIGH_NUM_YEDIS_CONNECTIONS;
-import static com.yugabyte.yw.common.AlertTemplate.INACTIVE_CRON_NODES;
-import static com.yugabyte.yw.common.AlertTemplate.MEMORY_CONSUMPTION;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_CPU_USAGE;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_DISK_USAGE;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_DOWN;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_FILE_DESCRIPTORS_USAGE;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_OOM_KILLS;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_RESTART;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_TO_NODE_CA_CERT_EXPIRY;
-import static com.yugabyte.yw.common.AlertTemplate.NODE_TO_NODE_CERT_EXPIRY;
-import static com.yugabyte.yw.common.AlertTemplate.REPLICATION_LAG;
-import static com.yugabyte.yw.common.AlertTemplate.YCQL_OP_AVG_LATENCY;
-import static com.yugabyte.yw.common.AlertTemplate.YCQL_OP_P99_LATENCY;
-import static com.yugabyte.yw.common.AlertTemplate.YCQL_THROUGHPUT;
-import static com.yugabyte.yw.common.AlertTemplate.YSQL_OP_AVG_LATENCY;
-import static com.yugabyte.yw.common.AlertTemplate.YSQL_OP_P99_LATENCY;
-import static com.yugabyte.yw.common.AlertTemplate.YSQL_THROUGHPUT;
+import static com.yugabyte.yw.common.AlertTemplate.*;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.anyOf;
-import static org.hamcrest.Matchers.contains;
-import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.everyItem;
-import static org.hamcrest.Matchers.hasSize;
-import static org.hamcrest.Matchers.in;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
-import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.fail;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
@@ -68,55 +18,22 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.yugabyte.yw.common.AlertTemplate;
-import com.yugabyte.yw.common.AssertHelper;
-import com.yugabyte.yw.common.EmailFixtures;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
-import com.yugabyte.yw.common.alerts.AlertChannelParams;
-import com.yugabyte.yw.common.alerts.AlertChannelService;
-import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
-import com.yugabyte.yw.common.alerts.AlertChannelTemplateService;
-import com.yugabyte.yw.common.alerts.AlertChannelTemplateServiceTest;
-import com.yugabyte.yw.common.alerts.AlertConfigurationService;
-import com.yugabyte.yw.common.alerts.AlertDestinationService;
-import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
-import com.yugabyte.yw.common.alerts.AlertTemplateVariableServiceTest;
-import com.yugabyte.yw.common.alerts.SmtpData;
+import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.alerts.*;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDescription;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
-import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
-import com.yugabyte.yw.forms.AlertChannelTemplatesPreview;
-import com.yugabyte.yw.forms.AlertTemplateSettingsFormData;
-import com.yugabyte.yw.forms.AlertTemplateSystemVariable;
-import com.yugabyte.yw.forms.AlertTemplateVariablesFormData;
-import com.yugabyte.yw.forms.AlertTemplateVariablesList;
-import com.yugabyte.yw.forms.NotificationPreview;
-import com.yugabyte.yw.forms.NotificationPreviewFormData;
+import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.forms.filters.AlertTemplateApiFilter;
 import com.yugabyte.yw.forms.paging.AlertConfigurationPagedApiQuery;
 import com.yugabyte.yw.forms.paging.AlertPagedApiQuery;
-import com.yugabyte.yw.models.Alert;
-import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.AlertChannel.ChannelType;
-import com.yugabyte.yw.models.AlertChannelTemplates;
-import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertConfiguration.SortBy;
 import com.yugabyte.yw.models.AlertConfiguration.TargetType;
-import com.yugabyte.yw.models.AlertConfigurationTarget;
-import com.yugabyte.yw.models.AlertConfigurationThreshold;
-import com.yugabyte.yw.models.AlertDefinition;
-import com.yugabyte.yw.models.AlertDestination;
-import com.yugabyte.yw.models.AlertTemplateSettings;
-import com.yugabyte.yw.models.AlertTemplateVariable;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Metric;
-import com.yugabyte.yw.models.MetricKey;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.filters.AlertFilter;
@@ -127,12 +44,7 @@ import com.yugabyte.yw.models.paging.AlertPagedResponse;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import java.io.IOException;
 import java.nio.charset.Charset;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 import okhttp3.HttpUrl;
 import okhttp3.mockwebserver.MockResponse;
@@ -160,11 +72,11 @@ public class AlertControllerTest extends FakeDBApplication {
           .put(
               CLOCK_SKEW,
               "Max clock skew for universe 'Test Universe'"
-                  + " is above 500 ms. Current value is 501 ms")
+                  + " is above 500 ms. Current value is 501 ms.\nAffected nodes: node1 node2 node3")
           .put(
               MEMORY_CONSUMPTION,
-              "Average memory usage for universe 'Test Universe'"
-                  + " is above 90%. Current value is 91%")
+              "Average memory usage for universe 'Test Universe' nodes"
+                  + " is above 90%. Max value is 91%.\nAffected nodes: node1 node2 node3")
           .put(
               HEALTH_CHECK_ERROR,
               "Failed to perform health check for universe 'Test Universe'"
@@ -183,7 +95,10 @@ public class AlertControllerTest extends FakeDBApplication {
               "Last attempt to run scheduled backup for universe"
                   + " 'Test Universe' failed due to other backup or universe operation is"
                   + " in progress.")
-          .put(INACTIVE_CRON_NODES, "1 node(s) has inactive cronjob for universe 'Test Universe'.")
+          .put(
+              INACTIVE_CRON_NODES,
+              "1 node(s) has inactive cronjob for universe 'Test Universe'."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               ALERT_QUERY_FAILED,
               "Last alert query for customer 'test@customer.com' failed"
@@ -203,78 +118,117 @@ public class AlertControllerTest extends FakeDBApplication {
                   + " channel 'Some Channel' failed - try sending test alert to get more details")
           .put(
               NODE_DOWN,
-              "1 DB node(s) are down for more than 15 minutes" + " for universe 'Test Universe'.")
+              "1 DB node(s) are down for more than 15 minutes"
+                  + " for universe 'Test Universe'."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               NODE_RESTART,
-              "Universe 'Test Universe' DB node is restarted 3 times" + " during last 30 minutes")
+              "Universe 'Test Universe' DB node is restarted 3 times"
+                  + " during last 30 minutes."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               NODE_CPU_USAGE,
-              "Average node CPU usage for universe 'Test Universe' is above 95%" + " on 1 node(s).")
+              "Average node CPU usage for universe 'Test Universe' is above 95%"
+                  + " on 1 node(s)."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               NODE_DISK_USAGE,
-              "Node disk usage for universe 'Test Universe'" + " is above 70% on 1 node(s).")
+              "Node data disk usage for universe 'Test Universe'"
+                  + " is above 70% on 1 node(s)."
+                  + "\nAffected volumes:\nnode1:/\nnode2:/\n")
+          .put(
+              NODE_SYSTEM_DISK_USAGE,
+              "Node system disk usage for universe 'Test Universe'"
+                  + " is above 80% on 1 node(s)."
+                  + "\nAffected volumes:\nnode1:/\nnode2:/\n")
           .put(
               NODE_FILE_DESCRIPTORS_USAGE,
               "Node file descriptors usage for universe"
-                  + " 'Test Universe' is above 70% on 1 node(s).")
+                  + " 'Test Universe' is above 70% on 1 node(s)."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               NODE_OOM_KILLS,
-              "More than 3 OOM kills detected for universe 'Test Universe'" + " on 1 node(s).")
+              "More than 3 OOM kills detected for universe 'Test Universe'"
+                  + " on 1 node(s)."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               DB_VERSION_MISMATCH,
               "Version mismatch detected for universe 'Test Universe'"
-                  + " for 1 Master/TServer instance(s).")
+                  + " for 1 Master/TServer instance(s)."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               DB_INSTANCE_DOWN,
               "1 DB Master/TServer instance(s) are down for more than"
-                  + " 15 minutes for universe 'Test Universe'.")
+                  + " 15 minutes for universe 'Test Universe'."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               DB_INSTANCE_RESTART,
               "Universe 'Test Universe' Master or TServer is restarted"
-                  + " 3 times during last 30 minutes")
+                  + " 3 times during last 30 minutes."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               DB_FATAL_LOGS,
               "Fatal logs detected for universe 'Test Universe' on "
-                  + "1 Master/TServer instance(s).")
+                  + "1 Master/TServer instance(s)."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               DB_ERROR_LOGS,
               "Error logs detected for universe 'Test Universe' on "
-                  + "1 Master/TServer instance(s).")
+                  + "1 Master/TServer instance(s)."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               DB_CORE_FILES,
-              "Core files detected for universe 'Test Universe' on " + "1 TServer instance(s).")
+              "Core files detected for universe 'Test Universe' on "
+                  + "1 TServer instance(s)."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               DB_YSQL_CONNECTION,
               "YSQLSH connection failure detected for universe 'Test Universe'"
-                  + " on 1 TServer instance(s).")
+                  + " on 1 TServer instance(s)."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               DB_YCQL_CONNECTION,
               "CQLSH connection failure detected for universe 'Test Universe'"
-                  + " on 1 TServer instance(s).")
+                  + " on 1 TServer instance(s)."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               DB_REDIS_CONNECTION,
               "Redis connection failure detected for universe 'Test Universe'"
-                  + " on 1 TServer instance(s).")
-          .put(DB_MEMORY_OVERLOAD, "DB memory rejections detected for universe 'Test Universe'.")
+                  + " on 1 TServer instance(s)."
+                  + "\nAffected nodes: node1 node2 node3")
+          .put(
+              DB_MEMORY_OVERLOAD,
+              "DB memory rejections detected for universe 'Test Universe'."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               DB_COMPACTION_OVERLOAD,
-              "DB compaction rejections detected for universe" + " 'Test Universe'.")
-          .put(DB_QUEUES_OVERFLOW, "DB queues overflow detected for universe 'Test Universe'.")
+              "DB compaction rejections detected for universe"
+                  + " 'Test Universe'."
+                  + "\nAffected nodes: node1 node2 node3")
+          .put(
+              DB_QUEUES_OVERFLOW,
+              "DB queues overflow detected for universe 'Test Universe'."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               NODE_TO_NODE_CA_CERT_EXPIRY,
               "Node to node CA certificate for universe"
-                  + " 'Test Universe' will expire in 29 days.")
+                  + " 'Test Universe' will expire in 29 days."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               NODE_TO_NODE_CERT_EXPIRY,
-              "Node to node certificate for universe 'Test Universe'" + " will expire in 29 days.")
+              "Node to node certificate for universe 'Test Universe'"
+                  + " will expire in 29 days."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               CLIENT_TO_NODE_CA_CERT_EXPIRY,
               "Client to node CA certificate for universe"
-                  + " 'Test Universe' will expire in 29 days.")
+                  + " 'Test Universe' will expire in 29 days."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               CLIENT_TO_NODE_CERT_EXPIRY,
               "Client to node certificate for universe 'Test Universe'"
-                  + " will expire in 29 days.")
+                  + " will expire in 29 days."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               YSQL_OP_AVG_LATENCY,
               "Average YSQL operations latency for universe 'Test Universe'"
@@ -286,19 +240,23 @@ public class AlertControllerTest extends FakeDBApplication {
           .put(
               YSQL_OP_P99_LATENCY,
               "YSQL P99 latency for universe 'Test Universe'"
-                  + " is above 60000 ms. Current value is 60001 ms")
+                  + " is above 60000 ms. Current value is 60001 ms."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               YCQL_OP_P99_LATENCY,
               "YCQL P99 latency for universe 'Test Universe'"
-                  + " is above 60000 ms. Current value is 60001 ms")
+                  + " is above 60000 ms. Current value is 60001 ms."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               HIGH_NUM_YCQL_CONNECTIONS,
               "Number of YCQL connections for universe"
-                  + " 'Test Universe' is above 1000. Current value is 1001")
+                  + " 'Test Universe' is above 1000. Current value is 1001."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               HIGH_NUM_YEDIS_CONNECTIONS,
               "Number of YEDIS connections for universe"
-                  + " 'Test Universe' is above 1000. Current value is 1001")
+                  + " 'Test Universe' is above 1000. Current value is 1001."
+                  + "\nAffected nodes: node1 node2 node3")
           .put(
               YSQL_THROUGHPUT,
               "Maximum throughput for YSQL operations for universe"
@@ -325,6 +283,8 @@ public class AlertControllerTest extends FakeDBApplication {
 
   private int alertDestinationIndex;
 
+  private AlertTemplateService alertTemplateService;
+
   private AlertChannelService alertChannelService;
   private AlertChannelTemplateService alertChannelTemplateService;
   private AlertDestinationService alertDestinationService;
@@ -343,6 +303,7 @@ public class AlertControllerTest extends FakeDBApplication {
 
     universe = ModelFactory.createUniverse();
 
+    alertTemplateService = app.injector().instanceOf(AlertTemplateService.class);
     alertChannelService = app.injector().instanceOf(AlertChannelService.class);
     alertChannelTemplateService = app.injector().instanceOf(AlertChannelTemplateService.class);
     alertDestinationService = app.injector().instanceOf(AlertDestinationService.class);
@@ -1090,8 +1051,10 @@ public class AlertControllerTest extends FakeDBApplication {
 
   @Test
   public void testListTemplates() {
+    AlertTemplateDescription templateDescription =
+        alertTemplateService.getTemplateDescription(MEMORY_CONSUMPTION);
     AlertTemplateApiFilter apiFilter = new AlertTemplateApiFilter();
-    apiFilter.setName(AlertTemplate.MEMORY_CONSUMPTION.getName());
+    apiFilter.setName(templateDescription.getName());
 
     Result result =
         doRequestWithAuthTokenAndBody(
@@ -1106,15 +1069,12 @@ public class AlertControllerTest extends FakeDBApplication {
 
     assertThat(templates, hasSize(1));
     AlertConfiguration template = templates.get(0);
-    assertThat(template.getName(), equalTo(AlertTemplate.MEMORY_CONSUMPTION.getName()));
+    assertThat(template.getName(), equalTo(templateDescription.getName()));
     assertThat(template.getTemplate(), equalTo(AlertTemplate.MEMORY_CONSUMPTION));
-    assertThat(
-        template.getDescription(), equalTo(AlertTemplate.MEMORY_CONSUMPTION.getDescription()));
-    assertThat(template.getTargetType(), equalTo(AlertTemplate.MEMORY_CONSUMPTION.getTargetType()));
+    assertThat(template.getDescription(), equalTo(templateDescription.getDescription()));
+    assertThat(template.getTargetType(), equalTo(templateDescription.getTargetType()));
     assertThat(template.getTarget(), equalTo(new AlertConfigurationTarget().setAll(true)));
-    assertThat(
-        template.getThresholdUnit(),
-        equalTo(AlertTemplate.MEMORY_CONSUMPTION.getDefaultThresholdUnit()));
+    assertThat(template.getThresholdUnit(), equalTo(templateDescription.getDefaultThresholdUnit()));
     assertThat(
         template.getThresholds(),
         equalTo(
@@ -1123,9 +1083,7 @@ public class AlertControllerTest extends FakeDBApplication {
                 new AlertConfigurationThreshold()
                     .setCondition(Condition.GREATER_THAN)
                     .setThreshold(90D))));
-    assertThat(
-        template.getDurationSec(),
-        equalTo(AlertTemplate.MEMORY_CONSUMPTION.getDefaultDurationSec()));
+    assertThat(template.getDurationSec(), equalTo(templateDescription.getDefaultDurationSec()));
   }
 
   @Test
@@ -1398,7 +1356,8 @@ public class AlertControllerTest extends FakeDBApplication {
                   + "  \"text\" : \"alertConfiguration alert with severity level 'SEVERE' "
                   + "for universe 'Test Universe' is firing.\\n"
                   + "\\n[TEST ALERT!!!] Average memory usage for universe 'Test Universe' "
-                  + "is above 1%. Current value is 2%\"\n}"));
+                  + "nodes is above 1%. Max value is 2%."
+                  + "\\nAffected nodes: node1 node2 node3\"\n}"));
     }
   }
 
@@ -1793,15 +1752,34 @@ public class AlertControllerTest extends FakeDBApplication {
     assertThat(
         resultPreview.getHighlightedTitle(),
         equalTo("<p>Alert alertConfiguration firing: severity=SEVERE with test = 'value'</p>"));
+    String query =
+        "max by (universe_uuid) "
+            + "((avg_over_time(node_memory_MemTotal_bytes{"
+            + "universe_uuid=&quot;universeUUID&quot;}[10m]) - "
+            + "ignoring (saved_name) (avg_over_time(node_memory_Buffers_bytes{"
+            + "universe_uuid=&quot;universeUUID&quot;}[10m])) - "
+            + "ignoring (saved_name) (avg_over_time(node_memory_Cached_bytes{"
+            + "universe_uuid=&quot;universeUUID&quot;}[10m])) - "
+            + "ignoring (saved_name) (avg_over_time(node_memory_MemFree_bytes{"
+            + "universe_uuid=&quot;universeUUID&quot;}[10m])) - "
+            + "ignoring (saved_name) (avg_over_time(node_memory_Slab_bytes{"
+            + "universe_uuid=&quot;universeUUID&quot;}[10m]))) / "
+            + "ignoring (saved_name) (avg_over_time(node_memory_MemTotal_bytes{"
+            + "universe_uuid=&quot;universeUUID&quot;}[10m]))) * 100";
+    query = query.replaceAll("universeUUID", universe.getUniverseUUID().toString());
     assertThat(
         resultPreview.getText(),
         equalTo(
             "Channel 'Channel name' got alert alertConfiguration with "
-                + "test = 'value'. Expression: query &gt; 1"));
+                + "test = 'value'. Expression: "
+                + query
+                + " &gt; 1"));
     assertThat(
         resultPreview.getHighlightedText(),
         equalTo(
             "<p>Channel <b>'Channel name'</b> got alert alertConfiguration with "
-                + "test = 'value'. Expression: query &gt; 1</p>"));
+                + "test = 'value'. Expression: "
+                + query
+                + " &gt; 1</p>"));
   }
 }

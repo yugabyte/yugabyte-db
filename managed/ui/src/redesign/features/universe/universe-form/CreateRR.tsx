@@ -1,4 +1,4 @@
-import React, { FC, useContext } from 'react';
+import { FC, useContext } from 'react';
 import _ from 'lodash';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
@@ -125,6 +125,7 @@ export const CreateReadReplica: FC<CreateReadReplicaProps> = ({ uuid }) => {
       submitLabel={t('universeForm.actions.addRR')}
       onFormSubmit={(data: UniverseFormData) => onSubmit(data)}
       onCancel={onCancel}
+      universeUUID={uuid}
     />
   );
 };

@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { DropdownButton } from 'react-bootstrap';
 
@@ -11,10 +11,17 @@ import { YBLoadingCircleIcon } from '../../../components/common/indicators';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isAvailable, showOrRedirect } from '../../../utils/LayoutUtils';
 
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
 import './ReleaseList.scss';
 
 const versionReg = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-(\S*)$/;
-// Sort descending
+/**
+ * Sort YB software versions in decsending order for UI displays.
+ *
+ * This function sorts b{n} tags before custom build tags.
+ */
 export const sortVersion = (a, b) => {
   const matchA = versionReg.exec(a);
   const matchB = versionReg.exec(b);
@@ -143,6 +150,22 @@ export default class ReleaseList extends Component {
         return;
       }
 
+      const canToggleStatus = hasNecessaryPerm({
+        ...UserPermissionMap.disableRelease
+      });
+
+      const canDeleteRelease = hasNecessaryPerm({
+        ...UserPermissionMap.deleteRelease
+      });
+
+      const getDisabledStatus = (action) => {
+        if (!isRbacEnabled) {
+          return !isAvailable(currentCustomer.data.features, 'universes.actions');
+        }
+        if (action === 'DELETE') return !canDeleteRelease;
+        return !canToggleStatus;
+      };
+
       return (
         <DropdownButton
           className="btn btn-default"
@@ -158,7 +181,7 @@ export default class ReleaseList extends Component {
                 currentRow={row}
                 actionType={actionType}
                 onModalSubmit={self.onModalSubmit}
-                disabled={!isAvailable(currentCustomer.data.features, 'universes.actions')}
+                disabled={getDisabledStatus()}
               />
             );
           })}
@@ -186,14 +209,22 @@ export default class ReleaseList extends Component {
                   onClick={this.refreshRelease}
                   disabled={!isAvailable(currentCustomer.data.features, 'universes.actions')}
                 />
-                <TableAction
-                  className="table-action"
-                  btnClass={'btn-default'}
-                  actionType="import-release"
-                  isMenuItem={false}
-                  onSubmit={self.onModalSubmit}
-                  disabled={!isAvailable(currentCustomer.data.features, 'universes.actions')}
-                />
+                <RbacValidator
+                  accessRequiredOn={UserPermissionMap.importRelease}
+                  isControl
+                  overrideStyle={{
+                    float: 'right',
+                  }}
+                >
+                  <TableAction
+                    className="table-action"
+                    btnClass={'btn-default'}
+                    actionType="import-release"
+                    isMenuItem={false}
+                    onSubmit={self.onModalSubmit}
+                    disabled={!isAvailable(currentCustomer.data.features, 'universes.actions')}
+                  />
+                </RbacValidator>
               </div>
             </div>
             <h2 className="content-title">{title}</h2>

@@ -163,6 +163,8 @@ using master::CreateSnapshotRequestPB;
 using master::CreateSnapshotResponsePB;
 using master::DeleteSnapshotRequestPB;
 using master::DeleteSnapshotResponsePB;
+using master::AbortSnapshotRestoreRequestPB;
+using master::AbortSnapshotRestoreResponsePB;
 using master::IdPairPB;
 using master::ImportSnapshotMetaRequestPB;
 using master::ImportSnapshotMetaResponsePB;
@@ -783,26 +785,109 @@ Status ClusterAdminClient::PromoteAutoFlags(
   req.set_force(force);
   RETURN_NOT_OK(master_cluster_proxy_->PromoteAutoFlags(req, &resp, &rpc));
   if (resp.has_error()) {
-    const auto status = StatusFromPB(resp.error().status());
-    if (!status.IsAlreadyPresent()) {
-      return status;
-    }
+    return StatusFromPB(resp.error().status());
   }
 
-  std::cout << "PromoteAutoFlags status: " << std::endl;
-  if (!resp.has_new_config_version()) {
-    std::cout << "No new AutoFlags to promote";
-  } else {
-    std::cout << "New AutoFlags were promoted. Config version: " << resp.new_config_version();
-    if (resp.non_runtime_flags_promoted()) {
-      std::cout << std::endl;
-      std::cout << "All YbMaster and YbTserver processes need to be restarted to apply the "
-                   "promoted AutoFlags";
+  std::cout << "PromoteAutoFlags completed successfully" << std::endl;
+  if (!resp.flags_promoted()) {
+    std::cout << "No new AutoFlags eligible to promote" << std::endl;
+    if (resp.has_new_config_version()) {
+      std::cout << "Current config version: " << resp.new_config_version() << std::endl;
     }
+    return Status::OK();
   }
-  std::cout << std::endl;
+    std::cout << "New AutoFlags were promoted" << std::endl;
+    std::cout << "New config version: " << resp.new_config_version() << std::endl;
+    if (resp.non_runtime_flags_promoted()) {
+      std::cout << "All yb-master and yb-tserver processes need to be restarted in order to apply "
+                   "the promoted AutoFlags"
+                << std::endl;
+    }
 
   return Status::OK();
+}
+
+Status ClusterAdminClient::RollbackAutoFlags(uint32_t rollback_version) {
+  master::RollbackAutoFlagsRequestPB req;
+  master::RollbackAutoFlagsResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+  req.set_rollback_version(rollback_version);
+  RETURN_NOT_OK(master_cluster_proxy_->RollbackAutoFlags(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::cout << "RollbackAutoFlags completed successfully" << std::endl;
+  if (!resp.flags_rolledback()) {
+    std::cout << "No AutoFlags have been promoted since version " << rollback_version << std::endl;
+    std::cout << "Current config version: " << resp.new_config_version() << std::endl;
+    return Status::OK();
+  }
+
+    std::cout << "AutoFlags that were promoted after config version " << rollback_version
+              << " were successfully rolled back" << std::endl;
+    std::cout << "New config version: " << resp.new_config_version() << std::endl;
+
+    return Status::OK();
+}
+
+Status ClusterAdminClient::PromoteSingleAutoFlag(
+    const std::string& process_name, const std::string& flag_name) {
+    master::PromoteSingleAutoFlagRequestPB req;
+    master::PromoteSingleAutoFlagResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(timeout_);
+    req.set_process_name(process_name);
+    req.set_auto_flag_name(flag_name);
+    RETURN_NOT_OK(master_cluster_proxy_->PromoteSingleAutoFlag(req, &resp, &rpc));
+    if (resp.has_error()) {
+     return StatusFromPB(resp.error().status());
+    }
+    if (!resp.flag_promoted()) {
+     std::cout << "AutoFlag " << flag_name << " from process " << process_name
+               << " was not promoted. Check the logs for more information" << std::endl;
+     std::cout << "Current config version: " << resp.new_config_version() << std::endl;
+     return Status::OK();
+    }
+
+    std::cout << "AutoFlag " << flag_name << " from process " << process_name
+              << " was successfully promoted" << std::endl;
+    std::cout << "New config version: " << resp.new_config_version() << std::endl;
+    if (resp.non_runtime_flag_promoted()) {
+     std::cout << "All yb-master and yb-tserver processes need to be restarted in order to apply "
+                  "the promoted AutoFlag"
+               << std::endl;
+    }
+
+    return Status::OK();
+}
+
+Status ClusterAdminClient::DemoteSingleAutoFlag(
+    const std::string& process_name, const std::string& flag_name) {
+    master::DemoteSingleAutoFlagRequestPB req;
+    master::DemoteSingleAutoFlagResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(timeout_);
+    req.set_process_name(process_name);
+    req.set_auto_flag_name(flag_name);
+    RETURN_NOT_OK(master_cluster_proxy_->DemoteSingleAutoFlag(req, &resp, &rpc));
+    if (resp.has_error()) {
+     return StatusFromPB(resp.error().status());
+    }
+    if (!resp.flag_demoted()) {
+     std::cout << "AutoFlag " << flag_name << " from process " << process_name
+               << " was not demoted. Either the flag does not exist or it is not promoted"
+               << std::endl;
+     std::cout << "Current config version: " << resp.new_config_version() << std::endl;
+     return Status::OK();
+    }
+
+    std::cout << "AutoFlag " << flag_name << " from process " << process_name
+              << " was successfully demoted" << std::endl;
+    std::cout << "New config version: " << resp.new_config_version() << std::endl;
+
+    return Status::OK();
 }
 
 Status ClusterAdminClient::ParseChangeType(
@@ -1960,40 +2045,47 @@ Status ClusterAdminClient::DeleteReadReplicaPlacementInfo() {
 
 Status ClusterAdminClient::FillPlacementInfo(
     master::PlacementInfoPB* placement_info_pb, const string& placement_str) {
+  placement_info_pb->clear_placement_blocks();
 
-  std::vector<std::string> placement_info_split = strings::Split(
-      placement_str, ",", strings::SkipEmpty());
-  if (placement_info_split.size() < 1) {
-    return STATUS(InvalidCommand, "Cluster config must be a list of "
-                                  "placement infos seperated by commas. "
-                                  "Format: 'cloud1.region1.zone1:rf,cloud2.region2.zone2:rf, ..."
-        + std::to_string(placement_info_split.size()));
+  std::vector<std::string> placement_info_splits = strings::Split(
+      placement_str, ",", strings::AllowEmpty());
+
+  std::unordered_map<std::string, int> placement_to_min_replicas;
+  for (auto& placement_info_split : placement_info_splits) {
+    std::vector<std::string> placement_block_split =
+        strings::Split(placement_info_split, ":", strings::AllowEmpty());
+
+    if (placement_block_split.size() == 0 || placement_block_split.size() > 2) {
+      return STATUS(
+          InvalidCommand,
+          "Each placement block must be of the form 'cloud.region.zone:[min_replica_count]'. "
+          "Invalid placement block: " + placement_info_split);
+    }
+
+    int min_replicas = 1;
+    if (placement_block_split.size() == 2) {
+      min_replicas = VERIFY_RESULT(CheckedStoi(placement_block_split[1]));
+    }
+    placement_to_min_replicas[placement_block_split[0]] += min_replicas;
   }
 
-  for (size_t iter = 0; iter < placement_info_split.size(); iter++) {
-    std::vector<std::string> placement_block = strings::Split(placement_info_split[iter], ":",
-                                                              strings::SkipEmpty());
-
-    if (placement_block.size() != 2) {
-      return STATUS(InvalidCommand, "Each placement info must be in format placement:rf");
+  for (auto& [placement_block, min_replicas] : placement_to_min_replicas) {
+    std::vector<std::string> blocks = strings::Split(placement_block, ".",
+                                                    strings::AllowEmpty());
+    auto* pb = placement_info_pb->add_placement_blocks();
+    if (blocks.size() > 0 && !blocks[0].empty()) {
+      pb->mutable_cloud_info()->set_placement_cloud(blocks[0]);
     }
 
-    int min_num_replicas = VERIFY_RESULT(CheckedStoInt<int>(placement_block[1]));
-
-    std::vector<std::string> block = strings::Split(placement_block[0], ".",
-                                                    strings::SkipEmpty());
-    if (block.size() != 3) {
-      return STATUS(InvalidCommand,
-          "Each placement info must have exactly 3 values seperated"
-          "by dots that denote cloud, region and zone. Block: " + placement_info_split[iter]
-          + " is invalid");
+    if (blocks.size() > 1 && !blocks[1].empty()) {
+      pb->mutable_cloud_info()->set_placement_region(blocks[1]);
     }
-    auto pb = placement_info_pb->add_placement_blocks();
-    pb->mutable_cloud_info()->set_placement_cloud(block[0]);
-    pb->mutable_cloud_info()->set_placement_region(block[1]);
-    pb->mutable_cloud_info()->set_placement_zone(block[2]);
 
-    pb->set_min_num_replicas(min_num_replicas);
+    if (blocks.size() > 2 && !blocks[2].empty()) {
+      pb->mutable_cloud_info()->set_placement_zone(blocks[2]);
+    }
+
+    pb->set_min_num_replicas(min_replicas);
   }
 
   return Status::OK();
@@ -2009,40 +2101,16 @@ Status ClusterAdminClient::ModifyTablePlacementInfo(
     return STATUS(InvalidCommand, "Placement cannot be modified for the global transactions table");
   }
 
-  std::vector<std::string> placement_info_split = strings::Split(
-      placement_info, ",", strings::SkipEmpty());
-  if (placement_info_split.size() < 1) {
-    return STATUS(InvalidCommand, "Table placement config must be a list of "
-    "placement infos seperated by commas. "
-    "Format: 'cloud1.region1.zone1,cloud2.region2.zone2,cloud3.region3.zone3 ..."
-    + std::to_string(placement_info_split.size()));
-  }
-
-  master::PlacementInfoPB* live_replicas = new master::PlacementInfoPB;
-  live_replicas->set_num_replicas(replication_factor);
-  // Iterate over the placement blocks of the placementInfo structure.
-  for (size_t iter = 0; iter < placement_info_split.size(); iter++) {
-    std::vector<std::string> block = strings::Split(placement_info_split[iter], ".",
-                                                    strings::SkipEmpty());
-    if (block.size() != 3) {
-      return STATUS(InvalidCommand, "Each placement info must have exactly 3 values seperated"
-          "by dots that denote cloud, region and zone. Block: " + placement_info_split[iter]
-          + " is invalid");
-    }
-    auto pb = live_replicas->add_placement_blocks();
-    pb->mutable_cloud_info()->set_placement_cloud(block[0]);
-    pb->mutable_cloud_info()->set_placement_region(block[1]);
-    pb->mutable_cloud_info()->set_placement_zone(block[2]);
-    // TODO: Should this also be passed in as input?
-    pb->set_min_num_replicas(1);
-  }
+  master::PlacementInfoPB live_replicas;
+  live_replicas.set_num_replicas(replication_factor);
+  RETURN_NOT_OK(FillPlacementInfo(&live_replicas, placement_info));
 
   if (!optional_uuid.empty()) {
-    // If we have an optional uuid, set it.
-    live_replicas->set_placement_uuid(optional_uuid);
+    // If we have a placement uuid, set it.
+    live_replicas.set_placement_uuid(optional_uuid);
   }
 
-  return yb_client_->ModifyTablePlacementInfo(table_name, live_replicas);
+  return yb_client_->ModifyTablePlacementInfo(table_name, std::move(live_replicas));
 }
 
 Status ClusterAdminClient::ModifyPlacementInfo(
@@ -2055,74 +2123,13 @@ Status ClusterAdminClient::ModifyPlacementInfo(
   auto resp_cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
 
   // Create a new cluster config.
-  std::vector<std::string> placement_info_split = strings::Split(
-      placement_info, ",", strings::AllowEmpty());
-  if (placement_info_split.size() < 1) {
-    return STATUS(
-        InvalidCommand,
-        "Cluster config must be a list of placement infos seperated by commas. Format: "
-        "cloud1.region1.zone1:[min_replica_count1],cloud2.region2.zone2:[min_replica_count2] ..."
-        + std::to_string(placement_info_split.size()));
-  }
   master::ChangeMasterClusterConfigRequestPB req_new_cluster_config;
   master::SysClusterConfigEntryPB* sys_cluster_config_entry =
       resp_cluster_config.mutable_cluster_config();
-  master::PlacementInfoPB* live_replicas = new master::PlacementInfoPB;
+  master::PlacementInfoPB* live_replicas =
+      sys_cluster_config_entry->mutable_replication_info()->mutable_live_replicas();
   live_replicas->set_num_replicas(replication_factor);
-
-  int total_min_replica_count = 0;
-
-  // Iterate over the placement blocks of the placementInfo structure.
-  std::unordered_map<std::string, int> placement_to_min_replicas;
-  for (const auto& placement_block : placement_info_split) {
-    std::vector<std::string> placement_info_min_replica_split =
-        strings::Split(placement_block, ":", strings::AllowEmpty());
-
-    if (placement_info_min_replica_split.size() == 0 ||
-        placement_info_min_replica_split.size() > 2) {
-      return STATUS(
-          InvalidCommand,
-          "Each placement info must have at most 2 values separated by a colon. "
-          "Format: cloud.region.zone:[min_replica_count]. Invalid placement info: "
-          + placement_block);
-    }
-
-    std::string placement_target = placement_info_min_replica_split[0];
-    int placement_min_replica_count = 1;
-
-    if (placement_info_min_replica_split.size() == 2) {
-      placement_min_replica_count = VERIFY_RESULT(CheckedStoi(placement_info_min_replica_split[1]));
-    }
-
-    total_min_replica_count += placement_min_replica_count;
-    placement_to_min_replicas[placement_target] += placement_min_replica_count;
-  }
-
-  if (total_min_replica_count > replication_factor) {
-    return STATUS(
-        InvalidCommand,
-        "replication_factor should be greater than or equal to the total of replica counts "
-        "specified in placement_info.");
-  }
-
-  for (const auto& placement_block : placement_to_min_replicas) {
-    std::vector<std::string> block = strings::Split(placement_block.first, ".",
-                                                    strings::AllowEmpty());
-    auto pb = live_replicas->add_placement_blocks();
-    if (block.size() > 0 && block[0] != "") {
-      pb->mutable_cloud_info()->set_placement_cloud(block[0]);
-    }
-
-    if (block.size() > 1 && block[1] != "") {
-      pb->mutable_cloud_info()->set_placement_region(block[1]);
-    }
-
-    if (block.size() > 2 && block[2] != "") {
-      pb->mutable_cloud_info()->set_placement_zone(block[2]);
-    }
-
-    pb->set_min_num_replicas(placement_block.second);
-  }
+  RETURN_NOT_OK(FillPlacementInfo(live_replicas, placement_info));
 
   if (!optional_uuid.empty()) {
     // If we have an optional uuid, set it.
@@ -2133,7 +2140,6 @@ Status ClusterAdminClient::ModifyPlacementInfo(
         sys_cluster_config_entry->replication_info().live_replicas().placement_uuid());
   }
 
-  sys_cluster_config_entry->mutable_replication_info()->set_allocated_live_replicas(live_replicas);
   req_new_cluster_config.mutable_cluster_config()->CopyFrom(*sys_cluster_config_entry);
 
   RETURN_NOT_OK(InvokeRpc(
@@ -2184,8 +2190,8 @@ Status ClusterAdminClient::GetXClusterConfig() {
   MessageToJsonString(
       cluster_config.cluster_config().consumer_registry(), &consumer_registry_output);
   cout << Format(
-              "{\"version\":$0,\"xcluster_producer_registry\":$1,consumer_"
-              "registry:$2}",
+              "{\"version\":$0,\"xcluster_producer_registry\":$1,\"consumer_"
+              "registry\":$2}",
               xcluster_config.xcluster_config().version(), producer_registry_output,
               consumer_registry_output)
        << endl;
@@ -2470,7 +2476,8 @@ Result<ListSnapshotsResponsePB> ClusterAdminClient::ListSnapshots(const ListSnap
 }
 
 Status ClusterAdminClient::CreateSnapshot(
-    const vector<YBTableName>& tables, const bool add_indexes, const int flush_timeout_secs) {
+    const vector<YBTableName>& tables, std::optional<int32_t> retention_duration_hours,
+    const bool add_indexes, const int flush_timeout_secs) {
   if (flush_timeout_secs > 0) {
         const auto status = FlushTables(tables, add_indexes, flush_timeout_secs, false);
         if (status.IsTimedOut()) {
@@ -2490,6 +2497,11 @@ Status ClusterAdminClient::CreateSnapshot(
     req.set_add_indexes(add_indexes);
     req.set_add_ud_types(true);  // No-op for YSQL.
     req.set_transaction_aware(true);
+    if (retention_duration_hours && *retention_duration_hours <= 0) {
+      req.set_retention_duration_hours(-1);
+    } else if (retention_duration_hours) {
+      req.set_retention_duration_hours(*retention_duration_hours);
+    }
     return master_backup_proxy_->CreateSnapshot(req, &resp, rpc);
   }));
 
@@ -2497,7 +2509,9 @@ Status ClusterAdminClient::CreateSnapshot(
   return Status::OK();
 }
 
-Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns) {
+Status ClusterAdminClient::CreateNamespaceSnapshot(
+    const TypedNamespaceName& ns, std::optional<int32_t> retention_duration_hours,
+    bool add_indexes) {
   ListTablesResponsePB resp;
   RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
     ListTablesRequestPB req;
@@ -2506,7 +2520,9 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns)
     req.mutable_namespace_()->set_database_type(ns.db_type);
     req.set_exclude_system_tables(true);
     req.add_relation_type_filter(master::USER_TABLE_RELATION);
-    req.add_relation_type_filter(master::INDEX_TABLE_RELATION);
+    if (add_indexes) {
+      req.add_relation_type_filter(master::INDEX_TABLE_RELATION);
+    }
     req.add_relation_type_filter(master::MATVIEW_TABLE_RELATION);
     return master_ddl_proxy_->ListTables(req, &resp, rpc);
   }));
@@ -2537,7 +2553,7 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns)
                 YQLDatabase_Name(table.namespace_().database_type())));
   }
 
-  return CreateSnapshot(tables, /* add_indexes */ false);
+  return CreateSnapshot(tables, retention_duration_hours, /* add_indexes */ false);
 }
 
 Result<ListSnapshotRestorationsResponsePB> ClusterAdminClient::ListSnapshotRestorations(
@@ -2880,6 +2896,18 @@ Status ClusterAdminClient::DeleteSnapshot(const std::string& snapshot_id) {
   }));
 
   cout << "Deleted snapshot: " << snapshot_id << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::AbortSnapshotRestore(const TxnSnapshotRestorationId& restoration_id) {
+  AbortSnapshotRestoreResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    AbortSnapshotRestoreRequestPB req;
+    req.set_restoration_id(restoration_id.data(), restoration_id.size());
+    return master_backup_proxy_->AbortSnapshotRestore(req, &resp, rpc);
+  }));
+
+  cout << "Aborted snapshot restore: " << restoration_id.ToString() << endl;
   return Status::OK();
 }
 
@@ -3708,6 +3736,10 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
   req.set_db_type(ns.db_type);
   if (record_type == yb::ToString("ALL")) {
     req.set_record_type(cdc::CDCRecordType::ALL);
+  } else if (record_type == yb::ToString("FULL_ROW_NEW_IMAGE")) {
+    req.set_record_type(cdc::CDCRecordType::FULL_ROW_NEW_IMAGE);
+  } else if (record_type == yb::ToString("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES")) {
+    req.set_record_type(cdc::CDCRecordType::MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES);
   } else {
     req.set_record_type(cdc::CDCRecordType::CHANGE);
   }
@@ -3888,6 +3920,113 @@ Status ClusterAdminClient::WaitForSetupUniverseReplicationToFinish(
         // Still processing, wait and then loop again.
         std::this_thread::sleep_for(100ms);
   }
+}
+
+using ReplicationBootstrapState = master::SysUniverseReplicationBootstrapEntryPB::State;
+Status ClusterAdminClient::WaitForReplicationBootstrapToFinish(const std::string& replication_id) {
+  const auto initial_delay = MonoDelta::FromMilliseconds(100);
+  const auto delay_increment = MonoDelta::FromMilliseconds(250);
+  const auto max_delay_time = MonoDelta::FromSeconds(5);
+  auto delay_time = initial_delay;
+
+  master::IsSetupNamespaceReplicationWithBootstrapDoneRequestPB req;
+  ReplicationBootstrapState state =
+      ReplicationBootstrapState::SysUniverseReplicationBootstrapEntryPB_State_INITIALIZING;
+  req.set_replication_group_id(replication_id);
+  for (;;) {
+        master::IsSetupNamespaceReplicationWithBootstrapDoneResponsePB resp;
+        RpcController rpc;
+        rpc.set_timeout(timeout_);
+        Status s = master_replication_proxy_->IsSetupNamespaceReplicationWithBootstrapDone(
+            req, &resp, &rpc);
+
+        if (!s.ok() || resp.has_error()) {
+      LOG(WARNING) << Format(
+          "Encountered error while waiting for setup_namespace_replication_with_bootstrap to "
+          "complete : $0",
+          !s.ok() ? s.ToString() : resp.error().status().message());
+        }
+        if (resp.has_done() && resp.done()) {
+      return StatusFromPB(resp.bootstrap_error());
+        }
+        if (resp.state() != state) {
+      state = resp.state();
+      delay_time = initial_delay;
+      cout << Format(
+          "Replication bootstrap in state $0",
+          master::SysUniverseReplicationBootstrapEntryPB_State_Name(state)) << endl;
+        } else {
+      delay_time = std::min(max_delay_time, delay_time + delay_increment);
+        }
+        // Still processing, wait and then loop again.
+        SleepFor(delay_time);
+  }
+}
+
+Status ClusterAdminClient::SetupNamespaceReplicationWithBootstrap(
+    const std::string& replication_id, const std::vector<std::string>& producer_addresses,
+    const TypedNamespaceName& ns, bool transactional) {
+  if (ns.db_type == YQL_DATABASE_CQL && transactional) {
+        return STATUS(
+            InvalidArgument, "Transactional replication is not supported for non-YSQL namespace");
+  }
+
+  master::SetupNamespaceReplicationWithBootstrapRequestPB req;
+  master::SetupNamespaceReplicationWithBootstrapResponsePB resp;
+  req.set_replication_id(replication_id);
+  req.set_transactional(transactional);
+  req.mutable_producer_namespace()->set_name(ns.name);
+  req.mutable_producer_namespace()->set_database_type(ns.db_type);
+
+  req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_addresses.size()));
+  for (const auto& addr : producer_addresses) {
+        // HostPort::FromString() expects a default port.
+        auto hp = VERIFY_RESULT(HostPort::FromString(addr, master::kMasterDefaultPort));
+        HostPortToPB(hp, req.add_producer_master_addresses());
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  auto setup_result_status =
+      master_replication_proxy_->SetupNamespaceReplicationWithBootstrap(req, &resp, &rpc);
+
+  setup_result_status = WaitForReplicationBootstrapToFinish(replication_id);
+
+  if (resp.has_error()) {
+        cout << "Error bootstrapping replication: " << resp.error().status().message() << endl;
+        Status status_from_error = StatusFromPB(resp.error().status());
+
+        return status_from_error;
+  }
+
+  if (!setup_result_status.ok()) {
+        cout << "Error waiting for bootstrap replication to complete: "
+             << setup_result_status.message().ToBuffer() << endl;
+        return setup_result_status;
+  }
+
+  cout << "Replication bootstrap completed successfully, waiting for setup universe replication"
+       << endl;
+
+  setup_result_status = WaitForSetupUniverseReplicationToFinish(replication_id);
+
+  if (resp.has_error()) {
+        cout << "Error setting up universe replication: " << resp.error().status().message()
+             << endl;
+        Status status_from_error = StatusFromPB(resp.error().status());
+
+        return status_from_error;
+  }
+
+  if (!setup_result_status.ok()) {
+        cout << "Error waiting for universe replication setup to complete: "
+             << setup_result_status.message().ToBuffer() << endl;
+        return setup_result_status;
+  }
+
+  cout << "Replication setup successfully" << endl;
+
+  return Status::OK();
 }
 
 Status ClusterAdminClient::SetupUniverseReplication(
@@ -4153,11 +4292,11 @@ Status ClusterAdminClient::BootstrapProducer(const vector<TableId>& table_ids) {
 }
 
 Status ClusterAdminClient::WaitForReplicationDrain(
-    const std::vector<CDCStreamId>& stream_ids, const string& target_time) {
+    const std::vector<xrepl::StreamId>& stream_ids, const string& target_time) {
   master::WaitForReplicationDrainRequestPB req;
   master::WaitForReplicationDrainResponsePB resp;
   for (const auto& stream_id : stream_ids) {
-        req.add_stream_ids(stream_id);
+        req.add_stream_ids(stream_id.ToString());
   }
   // If target_time is not provided, it will be set to current time in the master API.
   if (!target_time.empty()) {
@@ -4176,9 +4315,10 @@ Status ClusterAdminClient::WaitForReplicationDrain(
         return StatusFromPB(resp.error().status());
   }
 
-  std::unordered_map<CDCStreamId, std::vector<TabletId>> undrained_streams;
+  std::unordered_map<xrepl::StreamId, std::vector<TabletId>> undrained_streams;
   for (const auto& stream_info : resp.undrained_stream_info()) {
-        undrained_streams[stream_info.stream_id()].push_back(stream_info.tablet_id());
+        undrained_streams[VERIFY_RESULT(xrepl::StreamId::FromString(stream_info.stream_id()))]
+            .push_back(stream_info.tablet_id());
   }
   if (!undrained_streams.empty()) {
         cout << "Found undrained replications:" << endl;

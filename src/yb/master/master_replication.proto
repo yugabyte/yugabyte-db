@@ -32,6 +32,7 @@ message CDCStreamInfoPB {
   repeated CDCStreamOptionsPB options = 3;
   optional bytes namespace_id = 4;
   optional bool transactional = 5; // [default = false]
+  optional string cdcsdk_ysql_replication_slot_name = 6;
 }
 
 message ValidateReplicationInfoRequestPB {
@@ -52,6 +53,8 @@ message CreateCDCStreamRequestPB {
   optional SysCDCStreamEntryPB.State initial_state = 4;
   optional string db_stream_id = 5;
   optional bool transactional = 6; // [default = false]
+  optional string namespace_id = 7;
+  optional string cdcsdk_ysql_replication_slot_name = 8;
 }
 
 message CreateCDCStreamResponsePB {
@@ -64,12 +67,14 @@ message DeleteCDCStreamRequestPB {
   repeated bytes stream_id = 1;
   optional bool ignore_errors = 2 [default = false];
   optional bool force_delete = 3 [default = false];
+  repeated string cdcsdk_ysql_replication_slot_name = 4;
 }
 
 message DeleteCDCStreamResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
   repeated bytes not_found_stream_ids = 2;
+  repeated string not_found_cdcsdk_ysql_replication_slot_names = 3;
 }
 
 enum IdTypePB {
@@ -89,8 +94,19 @@ message ListCDCStreamsResponsePB {
   repeated CDCStreamInfoPB streams = 2;
 }
 
+message IsObjectPartOfXReplRequestPB {
+  required string table_id = 1;
+}
+
+message IsObjectPartOfXReplResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+  required bool is_object_part_of_xrepl = 2;
+}
+
 message GetCDCStreamRequestPB {
   optional bytes stream_id = 1;
+  optional string cdcsdk_ysql_replication_slot_name = 2;
 }
 
 message GetCDCStreamResponsePB {
@@ -213,6 +229,29 @@ message GetUDTypeMetadataResponsePB {
  repeated PgCompositeInfoPB composites = 3;
 }
 
+enum SetupReplicationWithBootstrapStatePB {
+ BOOTSTRAP_PRODUCER = 1;
+ CREATE_PRODUCER_SNAPSHOT = 2;
+ IMPORT_SNAPSHOT = 3;
+ CREATE_CONSUMER_SNAPSHOT = 4;
+ TRANSFER_SNAPSHOT = 5;
+ RESTORE_SNAPSHOT = 6;
+ SETUP_REPLICATION = 7;
+}
+
+message SetupNamespaceReplicationWithBootstrapRequestPB {
+ required string replication_id = 1;
+ repeated HostPortPB producer_master_addresses = 2;
+ required NamespaceIdentifierPB producer_namespace = 3;
+
+ // Is the created replication group transactionally consistent.
+ optional bool transactional = 4; // [default = false]
+}
+
+message SetupNamespaceReplicationWithBootstrapResponsePB {
+ optional MasterErrorPB error = 1;
+}
+
 message SetupUniverseReplicationRequestPB {
   optional string producer_id = 1;
   repeated HostPortPB producer_master_addresses = 2;
@@ -302,6 +341,23 @@ message IsSetupUniverseReplicationDoneResponsePB {
   optional bool done = 2;
   // The more specific error that occurred during replication, or OK if we succeeded.
   optional AppStatusPB replication_error = 3;
+}
+
+message IsSetupNamespaceReplicationWithBootstrapDoneRequestPB {
+  optional string replication_group_id = 1;
+}
+
+message IsSetupNamespaceReplicationWithBootstrapDoneResponsePB {
+  optional MasterErrorPB error = 1;
+  // True if the bootstrapping is complete, false otherwise.
+  optional bool done = 2;
+
+  // The current state of the bootstrap.
+  optional SysUniverseReplicationBootstrapEntryPB.State state = 3;
+
+  // The more specific error that occurred during replication, or OK if we
+  // succeeded.
+  optional AppStatusPB bootstrap_error = 4;
 }
 
 message ProducerSplitTabletInfoPB {
@@ -439,6 +495,8 @@ service MasterReplication {
   rpc CreateCDCStream(CreateCDCStreamRequestPB) returns (CreateCDCStreamResponsePB);
   rpc DeleteCDCStream(DeleteCDCStreamRequestPB) returns (DeleteCDCStreamResponsePB);
   rpc ListCDCStreams(ListCDCStreamsRequestPB) returns (ListCDCStreamsResponsePB);
+  rpc IsObjectPartOfXRepl(IsObjectPartOfXReplRequestPB)
+      returns (IsObjectPartOfXReplResponsePB);
   rpc GetCDCStream(GetCDCStreamRequestPB) returns (GetCDCStreamResponsePB);
   rpc GetCDCDBStreamInfo(GetCDCDBStreamInfoRequestPB) returns (GetCDCDBStreamInfoResponsePB);
   rpc UpdateCDCStream (UpdateCDCStreamRequestPB) returns (UpdateCDCStreamResponsePB);
@@ -449,7 +507,9 @@ service MasterReplication {
   rpc GetTableSchemaFromSysCatalog(GetTableSchemaFromSysCatalogRequestPB)
       returns(GetTableSchemaFromSysCatalogResponsePB);
 
-  // Cluster-level Replication.
+  rpc SetupNamespaceReplicationWithBootstrap(
+      SetupNamespaceReplicationWithBootstrapRequestPB)
+      returns (SetupNamespaceReplicationWithBootstrapResponsePB);
   rpc SetupUniverseReplication(SetupUniverseReplicationRequestPB)
       returns (SetupUniverseReplicationResponsePB);
   rpc DeleteUniverseReplication(DeleteUniverseReplicationRequestPB)
@@ -462,6 +522,9 @@ service MasterReplication {
       returns (PauseResumeXClusterProducerStreamsResponsePB);
   rpc GetUniverseReplication(GetUniverseReplicationRequestPB)
       returns (GetUniverseReplicationResponsePB);
+  rpc IsSetupNamespaceReplicationWithBootstrapDone(
+      IsSetupNamespaceReplicationWithBootstrapDoneRequestPB)
+      returns (IsSetupNamespaceReplicationWithBootstrapDoneResponsePB);
   rpc IsSetupUniverseReplicationDone(IsSetupUniverseReplicationDoneRequestPB)
       returns (IsSetupUniverseReplicationDoneResponsePB);
   rpc SetupNSUniverseReplication(SetupNSUniverseReplicationRequestPB)

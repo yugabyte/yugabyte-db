@@ -2,12 +2,14 @@
 
 package com.yugabyte.yw.controllers;
 
-import static play.mvc.Http.Status.UNAUTHORIZED;
+import static play.mvc.Http.Status.FORBIDDEN;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfigCache;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.models.Customer;
@@ -80,6 +82,8 @@ public class TokenAuthenticator extends Action.Simple {
 
   private final RuntimeConfigFactory runtimeConfigFactory;
 
+  private final RuntimeConfigCache runtimeConfigCache;
+
   private final JWTVerifier jwtVerifier;
 
   @Inject
@@ -88,11 +92,13 @@ public class TokenAuthenticator extends Action.Simple {
       PlaySessionStore sessionStore,
       UserService userService,
       RuntimeConfigFactory runtimeConfigFactory,
+      RuntimeConfigCache runtimeConfigCache,
       JWTVerifier jwtVerifier) {
     this.config = config;
     this.sessionStore = sessionStore;
     this.userService = userService;
     this.runtimeConfigFactory = runtimeConfigFactory;
+    this.runtimeConfigCache = runtimeConfigCache;
     this.jwtVerifier = jwtVerifier;
   }
 
@@ -143,6 +149,10 @@ public class TokenAuthenticator extends Action.Simple {
 
   @Override
   public CompletionStage<Result> call(Http.Request request) {
+    boolean useNewAuthz = runtimeConfigCache.getBoolean(GlobalConfKeys.useNewRbacAuthz.getKey());
+    if (useNewAuthz) {
+      return delegate.call(request);
+    }
     try {
       String endPoint = "";
       String path = request.path();
@@ -173,7 +183,8 @@ public class TokenAuthenticator extends Action.Simple {
       if (user != null) {
         cust = Customer.get(user.getCustomerUUID());
       } else {
-        return CompletableFuture.completedFuture(Results.forbidden("Unable To Authenticate User"));
+        return CompletableFuture.completedFuture(
+            Results.unauthorized("Unable To Authenticate User"));
       }
 
       // Some authenticated calls don't actually need to be authenticated
@@ -185,8 +196,9 @@ public class TokenAuthenticator extends Action.Simple {
         RequestContext.put(CUSTOMER, cust);
         RequestContext.put(USER, userService.getUserWithFeatures(cust, user));
       } else {
-        // Send Forbidden Response if Authentication Fails.
-        return CompletableFuture.completedFuture(Results.forbidden("Unable To Authenticate User"));
+        // Send Unauthorized Response if Authentication Fails.
+        return CompletableFuture.completedFuture(
+            Results.unauthorized("Unable To Authenticate User"));
       }
       return delegate.call(request);
     } finally {
@@ -229,7 +241,7 @@ public class TokenAuthenticator extends Action.Simple {
 
   public void adminOrThrow(Http.Request request) {
     if (!adminAuthentication(request)) {
-      throw new PlatformServiceException(UNAUTHORIZED, "Only Admins can perform this operation.");
+      throw new PlatformServiceException(FORBIDDEN, "Only Admins can perform this operation.");
     }
   }
 
@@ -237,7 +249,7 @@ public class TokenAuthenticator extends Action.Simple {
   public void superAdminOrThrow(Http.Request request) {
     if (!superAdminAuthentication(request)) {
       throw new PlatformServiceException(
-          UNAUTHORIZED, "Only Super Admins can perform this operation.");
+          FORBIDDEN, "Only Super Admins can perform this operation.");
     }
   }
 

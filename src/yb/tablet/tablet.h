@@ -42,6 +42,7 @@
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_types.pb.h"
 
+#include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_types.h"
@@ -95,7 +96,7 @@ namespace tablet {
 YB_STRONGLY_TYPED_BOOL(BlockingRocksDbShutdownStart);
 YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);
-
+YB_STRONGLY_TYPED_BOOL(IsForward)
 
 inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
   return static_cast<FlushFlags>(to_underlying(lhs) | to_underlying(rhs));
@@ -133,7 +134,9 @@ struct TabletScopedRWOperationPauses {
   }
 };
 
-class Tablet : public AbstractTablet, public TransactionIntentApplier {
+class Tablet : public AbstractTablet,
+               public TransactionIntentApplier,
+               public docdb::TableInfoProvider {
  public:
   class CompactionFaultHooks;
   class FlushCompactCommonHooks;
@@ -333,9 +336,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
   Status ApplyKeyValueRowOperations(
       int64_t batch_idx,  // index of this batch in its transaction
-      const docdb::LWKeyValueWriteBatchPB& put_batch,
-      docdb::ConsensusFrontiers* frontiers,
-      HybridTime hybrid_time,
+      const docdb::LWKeyValueWriteBatchPB& put_batch, docdb::ConsensusFrontiers* frontiers,
+      HybridTime write_hybrid_time, HybridTime local_hybrid_time,
       AlreadyAppliedToRegularDB already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse);
 
   void WriteToRocksDB(
@@ -385,6 +387,17 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const TransactionMetadataPB& transaction_metadata,
       const SubTransactionMetadataPB& subtransaction_metadata,
       PgsqlReadRequestResult* result) override;
+
+  Status DoHandlePgsqlReadRequest(
+      ScopedRWOperation* scoped_read_operation,
+      docdb::DocDBStatistics* statistics,
+      TabletMetrics* metrics,
+      const docdb::ReadOperationData& read_operation_data,
+      bool is_explicit_request_read_time,
+      const PgsqlReadRequestPB& pgsql_read_request,
+      const TransactionMetadataPB& transaction_metadata,
+      const SubTransactionMetadataPB& subtransaction_metadata,
+      PgsqlReadRequestResult* result);
 
   Status CreatePagingStateForRead(
       const PgsqlReadRequestPB& pgsql_read_request, const size_t row_count,
@@ -552,9 +565,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   Schema GetKeySchema(const std::string& table_id = "") const;
 
-  const docdb::YQLStorageIf& QLStorage() const override {
-    return *ql_storage_;
-  }
 
   // Provide a way for write operations to wait when tablet schema is
   // being changed.
@@ -590,18 +600,33 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // disabled. We do so, for example, when StillHasOrphanedPostSplitData() returns true.
   bool ShouldDisableLbMove();
 
-  void TEST_ForceRocksDBCompact(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
+  Status ForceManualRocksDBCompact(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
 
-  Status ForceFullRocksDBCompact(rocksdb::CompactionReason compaction_reason,
+  Status ForceRocksDBCompact(
+      rocksdb::CompactionReason compaction_reason,
       docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
 
-  docdb::DocDB doc_db() const {
+  rocksdb::DB* regular_db() const {
+    return regular_db_.get();
+  }
+
+  rocksdb::DB* intents_db() const {
+    return intents_db_.get();
+  }
+
+  // The only way to make any conclusion that a tablet is a product of a split is to check its key
+  // bounds are initialized as it is supposed that these key bounds are setup during tablet split.
+  const docdb::KeyBounds& key_bounds() const {
+    return key_bounds_;
+  }
+
+  docdb::DocDB doc_db(TabletMetrics* metrics = nullptr) const {
     return {
         regular_db_.get(),
         intents_db_.get(),
         &key_bounds_,
         retention_policy_.get(),
-        metrics_.get() };
+        metrics ? metrics : metrics_.get() };
   }
 
   // Returns approximate middle key for tablet split:
@@ -623,6 +648,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Result<size_t> TEST_CountRegularDBRecords();
 
   Status CreateReadIntents(
+      IsolationLevel level,
       const TransactionMetadataPB& transaction_metadata,
       const SubTransactionMetadataPB& subtransaction_metadata,
       const google::protobuf::RepeatedPtrField<QLReadRequestPB>& ql_batch,
@@ -658,14 +684,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   bool ShouldApplyWrite();
 
-  rocksdb::DB* TEST_db() const {
-    return regular_db_.get();
-  }
-
-  rocksdb::DB* TEST_intents_db() const {
-    return intents_db_.get();
-  }
-
   Status TEST_SwitchMemtable();
 
   // Initialize RocksDB's max persistent op id and hybrid time to that of the operation state.
@@ -685,6 +703,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Also updates flushed frontier for regular and intents DBs to match split_op_id and
   // split_op_hybrid_time.
   // In case of error sub-tablet could be partially persisted on disk.
+  // NB! As of now the method is supposed to be used only for creation child tablets during
+  // splitting operation. For any other type of usage, the method must be verified and possibly
+  // updated to correctly handle split_op_id, split_op_hybrid_time, parent_data_compacted
+  // and post_split_compaction_file_number_upper_bound.
   Result<RaftGroupMetadataPtr> CreateSubtablet(
       const TabletId& tablet_id, const dockv::Partition& partition,
       const docdb::KeyBounds& key_bounds, const OpId& split_op_id,
@@ -747,10 +769,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // previously by this tablet.
   void TriggerPostSplitCompactionIfNeeded();
 
-  // Triggers a full compaction on this tablet (e.g. post tablet split, scheduled).
+  // Triggers a manual compaction on this tablet (e.g. post tablet split, scheduled).
   // It is an error to call this function if it was called previously
   // and that compaction has not yet finished.
-  Status TriggerFullCompactionIfNeeded(rocksdb::CompactionReason reason);
+  Status TriggerManualCompactionIfNeeded(rocksdb::CompactionReason reason);
 
   // Triggers an admin full compaction on this tablet.
   Status TriggerAdminFullCompactionIfNeeded();
@@ -837,16 +859,81 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::string LogPrefix() const;
 
   // Populate tablet_locks_info with lock information pertaining to locks persisted in intents_db of
-  // this tablet. If transaction_ids is not empty, restrict returned information to locks which are
-  // held or requested by the given set of transaction_ids.
+  // this tablet. If transactions is not empty, restrict returned information to locks which are
+  // held or requested by the given set of transactions and restrict locks to those which are not
+  // present in the associated aborted subtxns.
   Status GetLockStatus(
-      const std::set<TransactionId>& transaction_ids, TabletLockInfoPB* tablet_lock_info) const;
+      const std::map<TransactionId, SubtxnSet>& transactions,
+      TabletLockInfoPB* tablet_lock_info) const;
 
-  docdb::ExternalTxnIntentsState* GetExternalTxnIntentsState() const {
-    return external_txn_intents_state_.get();
+  // The returned SchemaPackingProvider lives only as long as this.
+  docdb::SchemaPackingProvider& GetSchemaPackingProvider();
+
+  // 1. Pauses new read/write operations that block RocksDB shutdown and wait for all of those that
+  // are pending to complete.
+  // 2. Starts RocksDB shutdown (that might abort some of the rest of read/write operations).
+  // 3. If abort_ops is specified, aborts pending RocksDB operations that are abortable.
+  // 4. Pauses new read/write operations and wait for all of those that are pending to complete.
+  // Returns TabletScopedRWOperationPauses that are preventing new read/write operations from being
+  // started.
+  TabletScopedRWOperationPauses StartShutdownRocksDBs(
+      DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops,
+      Stop stop = Stop::kFalse);
+
+  // Returns DB paths for destructed in-memory RocksDBs objects, so caller can delete on-disk
+  // directories if needed.
+  std::vector<std::string> CompleteShutdownRocksDBs(
+      const TabletScopedRWOperationPauses& ops_pauses);
+
+  Status OpenKeyValueTablet();
+
+  // Returns a pointer to the TableInfo corresponding to the colocated table. When called with
+  // 'kColocationIdNotSet', returns the TableInfo of the parent/primary table.
+  Result<TableInfoPtr> GetTableInfo(ColocationId colocation_id) const override;
+
+  // Breaks tablet data into ranges of approximately range_size_bytes each, at most into
+  // `max_num_ranges` and adds to `keys_buffer` a list of these ranges end keys.
+  //
+  // It is guaranteed that returned keys are at most max_key_length bytes.
+  // lower_bound_key is inclusive, upper_bound_key is exclusive. They are adjusted by this function
+  // to be within tablet boundaries (key_bounds_ if set or based on metadata()->partition() if
+  // key_bounds_ is not set) and to be no longer than max_key_length. Due to truncation the last
+  // returned key can be outside tablet partition boundaries.
+  //
+  // If `is_forward` is set, list will consist of:
+  // - 1st_range_end_key \in (adjusted_lower_bound_key, adjusted_upper_bound_key)
+  // - 2nd_range_end_key \in (1st_range_end_key, adjusted_upper_bound_key)
+  // ...
+  // - nth_range_end_key \in ((n-1)th_range_end_key, adjusted_upper_bound_key]
+  //   or empty key iff next tablet can't have more keys (meaning we've already reached
+  //   specified upper_bound_key or the end of the last tablet).
+  //
+  // If `is_forward` is not set, list will consist of:
+  // - 1st_range_end_key \in (adjusted_lower_bound_key, adjusted_upper_bound_key)
+  // - 2nd_range_end_key \in (adjusted_lower_bound_key, 1st_range_end_key)
+  // ...
+  // - nth_range_end_key \in [adjusted_lower_bound_key, (n-1)_th_range_key)
+  //   or empty key iff next tablet can't have more keys (meaning we've already reached
+  //   specified lower_bound_key or the beginning of the first tablet).
+  //
+  // where n <= max_num_ranges.
+  // If max_num_ranges is 0, nothing will be written to the `keys_buffer`.
+  Status GetTabletKeyRanges(
+      Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
+      uint64_t range_size_bytes, IsForward is_forward, uint32_t max_key_length,
+      WriteBuffer* keys_buffer, const TableId& colocated_table_id = "") const;
+
+  Status TEST_GetTabletKeyRanges(
+      Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
+      uint64_t range_size_bytes, IsForward is_forward, uint32_t max_key_length,
+      std::function<void(Slice key)> callback, const TableId& colocated_table_id = "") const {
+    return GetTabletKeyRanges(
+        lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
+        max_key_length, std::move(callback), colocated_table_id);
   }
 
-  docdb::SchemaPackingProvider& GetSchemaPackingProvider();
+  // Lock used to serialize the creation of RocksDB checkpoints.
+  mutable std::mutex create_checkpoint_lock_;
 
  private:
   friend class Iterator;
@@ -858,7 +945,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   FRIEND_TEST(TestTablet, TestGetLogRetentionSizeForIndex);
 
-  Status OpenKeyValueTablet();
   virtual Status CreateTabletDirectories(const std::string& db_dir, FsManager* fs);
 
   std::vector<ColumnId> GetColumnSchemasForIndex(
@@ -886,22 +972,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   ScopedRWOperationPause PauseReadWriteOperations(
       BlockingRocksDbShutdownStart blocking_rocksdb_shutdown_start, Stop stop = Stop::kFalse);
 
-  // 1. Pauses new read/write operations that block RocksDB shutdown and wait for all of those that
-  // are pending to complete.
-  // 2. Starts RocksDB shutdown (that might abort some of the rest of read/write operations).
-  // 3. If abort_ops is specified, aborts pending RocksDB operations that are abortable.
-  // 4. Pauses new read/write operations and wait for all of those that are pending to complete.
-  // Returns TabletScopedRWOperationPauses that are preventing new read/write operations from being
-  // started.
-  TabletScopedRWOperationPauses StartShutdownRocksDBs(
-      DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops,
-      Stop stop = Stop::kFalse);
-
-  // Returns DB paths for destructed in-memory RocksDBs objects, so caller can delete on-disk
-  // directories if needed.
-  std::vector<std::string> CompleteShutdownRocksDBs(
-      const TabletScopedRWOperationPauses& ops_pauses);
-
   // Attempt to delete on-disk RocksDBs from all provided db_paths, even if errors are encountered.
   // Return the first error encountered.
   Status DeleteRocksDBs(const std::vector<std::string>& db_paths);
@@ -918,7 +988,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const std::string& partition_key,
       size_t row_count) const;
 
-  void TriggerFullCompactionSync(rocksdb::CompactionReason reason);
+  void TriggerManualCompactionSync(rocksdb::CompactionReason reason);
+
+  Status ForceRocksDBCompact(
+      const rocksdb::CompactRangeOptions& regular_options,
+      const rocksdb::CompactRangeOptions& intents_options);
 
   // Opens read-only rocksdb at the specified directory and checks for any file corruption.
   Status OpenDbAndCheckIntegrity(const std::string& db_dir);
@@ -928,8 +1002,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void SyncRestoringOperationFilter(ResetSplit reset_split) EXCLUDES(operation_filters_mutex_);
   void UnregisterOperationFilterUnlocked(OperationFilter* filter)
     REQUIRES(operation_filters_mutex_);
-
-  std::shared_ptr<dockv::SchemaPackingStorage> PrimarySchemaPackingStorage();
 
   Status AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id);
 
@@ -942,6 +1014,25 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   Status TriggerAdminFullCompactionIfNeededHelper(
       std::function<void()> on_compaction_completion = []() {});
+
+  Status GetTabletKeyRanges(
+      Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
+      uint64_t range_size_bytes, IsForward is_forward, uint32_t max_key_length,
+      std::function<void(Slice key)> callback, const TableId& colocated_table_id) const;
+
+  Status GetTabletKeyRangesForward(
+      rocksdb::Iterator* index_iter, rocksdb::Iterator* data_iter, Slice lower_bound_key,
+      Slice upper_bound_key, uint64_t max_num_ranges, uint64_t num_blocks_to_skip,
+      uint32_t max_key_length, std::function<void(Slice key)> callback,
+      bool use_empty_as_end_key) const;
+
+  Status GetTabletKeyRangesBackward(
+      rocksdb::Iterator* index_iter, Slice lower_bound_key, Slice upper_bound_key,
+      uint64_t max_num_ranges, uint64_t num_blocks_to_skip, uint32_t max_key_length,
+      std::function<void(Slice key)> callback) const;
+
+  Status ProcessPgsqlGetTableKeyRangesRequest(
+      const PgsqlReadRequestPB& req, PgsqlReadRequestResult* result) const;
 
   std::unique_ptr<const Schema> key_schema_;
 
@@ -974,6 +1065,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   MetricEntityPtr tablet_metrics_entity_;
   MetricEntityPtr table_metrics_entity_;
+  MemTrackerPtr metric_mem_tracker_;
   std::unique_ptr<TabletMetrics> metrics_;
   std::shared_ptr<void> metric_detacher_;
 
@@ -981,9 +1073,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   scoped_refptr<server::Clock> clock_;
 
   MvccManager mvcc_;
-
-  // Lock used to serialize the creation of RocksDB checkpoints.
-  mutable std::mutex create_checkpoint_lock_;
 
   enum State {
     kInitialized,
@@ -1069,12 +1158,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   HybridTimeLeaseProvider ht_lease_provider_;
 
-  std::unique_ptr<docdb::ExternalTxnIntentsState> external_txn_intents_state_;
-
   Result<HybridTime> DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;
 
-  Result<bool> IntentsDbFlushFilter(const rocksdb::MemTable& memtable);
+  Result<bool> IntentsDbFlushFilter(const rocksdb::MemTable& memtable, bool write_blocked);
 
   template <class Ids>
   Status RemoveIntentsImpl(const RemoveIntentsData& data, RemoveReason reason, const Ids& ids);

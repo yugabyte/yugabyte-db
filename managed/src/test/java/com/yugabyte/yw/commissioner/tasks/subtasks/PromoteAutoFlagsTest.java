@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
@@ -66,6 +67,7 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
   public void testPromoteAutoFlagException() throws Exception {
     PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
     params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.maxClass = AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME;
     when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
         .thenThrow(new Exception("Error promoting auto flags"));
     PromoteAutoFlags task = AbstractTaskBase.createTask(PromoteAutoFlags.class);
@@ -80,6 +82,7 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
   public void voidTestPromoteAutoFlagFail() throws Exception {
     PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
     params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.maxClass = AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME;
     when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
         .thenReturn(
             new PromoteAutoFlagsResponse(
@@ -122,6 +125,7 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
   @Test
   public void testPromoteAutoFlagSuccess() throws Exception {
     PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
+    params.maxClass = AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME;
     params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
         .thenReturn(

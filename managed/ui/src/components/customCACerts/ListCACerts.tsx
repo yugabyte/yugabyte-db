@@ -25,6 +25,8 @@ import { YBLoadingCircleIcon } from '../common/indicators';
 import { YBTable } from '../common/YBTable';
 import { ybFormatDate } from '../../redesign/helpers/DateUtils';
 import { MoreHoriz } from '@material-ui/icons';
+import { RbacValidator, hasNecessaryPerm } from '../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../redesign/features/rbac/UserPermPathMapping';
 
 type ListCACertsProps = {};
 
@@ -78,22 +80,34 @@ const ListCACerts: FC<ListCACertsProps> = () => {
           {
             text: t('customCACerts.listing.table.moreActions.updateCert'),
             callback: () => {
+              if (!hasNecessaryPerm({ ...UserPermissionMap.createCACerts })) {
+                return;
+              }
               setSelectedCADetails(cert);
               setShowUploadCACertModal(true);
-            }
+            },
+            menuItemWrapper(elem) {
+              return <RbacValidator accessRequiredOn={{ ...UserPermissionMap.createCACerts }} isControl>{elem}</RbacValidator>;
+            },
           },
           {
             text: '',
             isDivider: true,
-            callback: () => {}
+            callback: () => { }
           },
           {
             text: t('common.delete'),
             className: classes.deleteMenu,
             callback: () => {
+              if (!hasNecessaryPerm({ ...UserPermissionMap.deleteCACerts })) {
+                return;
+              }
               setSelectedCADetails(cert);
               setShowDeleteCACertModal(true);
-            }
+            },
+            menuItemWrapper(elem) {
+              return <RbacValidator accessRequiredOn={{ ...UserPermissionMap.deleteCACerts }} isControl>{elem}</RbacValidator>;
+            },
           }
         ]}
       >
@@ -104,80 +118,96 @@ const ListCACerts: FC<ListCACertsProps> = () => {
 
   return (
     <Box className={classes.root}>
-      {caCerts?.data.length === 0 ? (
-        <CACertsEmpty onUpload={() => setShowUploadCACertModal(true)} />
-      ) : (
-        <>
-          <Grid container>
-            <Grid item xs={12}>
-              <Typography variant="h3">{t('customCACerts.listing.header')}</Typography>
+      <RbacValidator
+        accessRequiredOn={{
+          ...UserPermissionMap.listCACerts
+        }}
+      >
+        {caCerts?.data.length === 0 ? (
+          <CACertsEmpty onUpload={() => setShowUploadCACertModal(true)} />
+        ) : (
+          <>
+            <Grid container>
+              <Grid item xs={12}>
+                <Typography variant="h3">{t('customCACerts.listing.header')}</Typography>
+              </Grid>
+              <Grid item xs={12} alignItems="flex-end">
+                <RbacValidator
+                  accessRequiredOn={{
+                    ...UserPermissionMap.createCACerts
+                  }}
+                  isControl
+                  overrideStyle={{
+                    float: 'right'
+                  }}
+                >
+                  <YBButton
+                    className={classes.createCertButton}
+                    variant="primary"
+                    onClick={() => setShowUploadCACertModal(true)}
+                    data-testid="uploadCACertBut"
+                  >
+                    {t('customCACerts.listing.addCertButton')}
+                  </YBButton>
+                </RbacValidator>
+              </Grid>
+              <YBTable data={caCerts?.data ?? []}>
+                <TableHeaderColumn dataField="id" isKey={true} hidden={true} />
+                <TableHeaderColumn dataField="name" width="25%" dataSort>
+                  {t('customCACerts.listing.table.name')}
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  dataField="createdTime"
+                  dataFormat={(time) => ybFormatDate(time)}
+                  width="25%"
+                  dataSort
+                >
+                  {t('customCACerts.listing.table.created')}
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  dataField="startDate"
+                  dataFormat={(time) => ybFormatDate(time)}
+                  width="25%"
+                  dataSort
+                >
+                  {t('customCACerts.listing.table.validFrom')}
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  dataField="expiryDate"
+                  dataFormat={(time) => ybFormatDate(time)}
+                  width="25%"
+                  dataSort
+                >
+                  {t('customCACerts.listing.table.validUntil')}
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  dataField="actions"
+                  dataAlign="left"
+                  dataFormat={(_, row) => getActions(row)}
+                  width="2%"
+                />
+              </YBTable>
             </Grid>
-            <Grid item xs={12} alignItems="flex-end">
-              <YBButton
-                className={classes.createCertButton}
-                variant="primary"
-                onClick={() => setShowUploadCACertModal(true)}
-                data-testid="uploadCACertBut"
-              >
-                {t('customCACerts.listing.addCertButton')}
-              </YBButton>
-            </Grid>
-            <YBTable data={caCerts?.data ?? []}>
-              <TableHeaderColumn dataField="id" isKey={true} hidden={true} />
-              <TableHeaderColumn dataField="name" width="25%" dataSort>
-                {t('customCACerts.listing.table.name')}
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                dataField="createdTime"
-                dataFormat={(time) => ybFormatDate(time)}
-                width="25%"
-                dataSort
-              >
-                {t('customCACerts.listing.table.created')}
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                dataField="startDate"
-                dataFormat={(time) => ybFormatDate(time)}
-                width="25%"
-                dataSort
-              >
-                {t('customCACerts.listing.table.validFrom')}
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                dataField="expiryDate"
-                dataFormat={(time) => ybFormatDate(time)}
-                width="25%"
-                dataSort
-              >
-                {t('customCACerts.listing.table.validUntil')}
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                dataField="actions"
-                dataAlign="left"
-                dataFormat={(_, row) => getActions(row)}
-                width="2%"
-              />
-            </YBTable>
-          </Grid>
-        </>
-      )}
+          </>
+        )}
 
-      <UploadCACertModal
-        visible={showUploadCACertModal}
-        onHide={() => {
-          setSelectedCADetails(null);
-          setShowUploadCACertModal(false);
-        }}
-        editCADetails={selectedCADetails}
-      />
-      <DeleteCACertModal
-        deleteCADetails={selectedCADetails}
-        visible={showDeleteCACertModal}
-        onHide={() => {
-          setSelectedCADetails(null);
-          setShowDeleteCACertModal(false);
-        }}
-      />
+        <UploadCACertModal
+          visible={showUploadCACertModal}
+          onHide={() => {
+            setSelectedCADetails(null);
+            setShowUploadCACertModal(false);
+          }}
+          editCADetails={selectedCADetails}
+        />
+        <DeleteCACertModal
+          deleteCADetails={selectedCADetails}
+          visible={showDeleteCACertModal}
+          onHide={() => {
+            setSelectedCADetails(null);
+            setShowDeleteCACertModal(false);
+          }}
+        />
+      </RbacValidator>
     </Box>
   );
 };

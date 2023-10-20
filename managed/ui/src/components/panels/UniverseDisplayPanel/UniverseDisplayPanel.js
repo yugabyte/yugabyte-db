@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Link } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
 import { isFinite } from 'lodash';
@@ -15,12 +15,15 @@ import {
   getPrimaryCluster,
   getClusterProviderUUIDs,
   getProviderMetadata,
-  getUniverseNodeCount
+  getUniverseNodeCount,
+  optimizeVersion
 } from '../../../utils/UniverseUtils';
 import { isNotHidden, isDisabled } from '../../../utils/LayoutUtils';
 import { ybFormatDate, YBTimeFormats } from '../../../redesign/helpers/DateUtils';
 
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
 import './UniverseDisplayPanel.scss';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 
 class CTAButton extends Component {
   render() {
@@ -73,41 +76,54 @@ class UniverseDisplayItem extends Component {
         />
       );
     }
-    const universeCreationDate = universe.creationDate ? (
-      ybFormatDate(universe.creationDate, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP)
-    ) : (
-      ''
-    );
+    const universeCreationDate = universe.creationDate
+      ? ybFormatDate(universe.creationDate, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP)
+      : '';
 
     return (
       <Col sm={4} md={3} lg={2}>
-        <Link to={'/universes/' + universe.universeUUID}>
-          <div className="universe-display-item-container">
-            <div className="status-icon">
-              <UniverseStatusContainer
-                currentUniverse={universe}
-                refreshUniverseData={refreshUniverseData}
-                shouldDisplayTaskButton={false}
-              />
+        <RbacValidator
+          accessRequiredOn={{
+            onResource: universe.universeUUID,
+            ...UserPermissionMap.readUniverse
+          }}
+          minimal
+        >
+          <Link to={'/universes/' + universe.universeUUID}>
+            <div className="universe-display-item-container">
+              <div className="status-icon">
+                <UniverseStatusContainer
+                  currentUniverse={universe}
+                  refreshUniverseData={refreshUniverseData}
+                  shouldDisplayTaskButton={false}
+                />
+              </div>
+              <div className="display-name">{universe.name}</div>
+              <div className="provider-name">{universeProviderText}</div>
+              <div className="description-item-list">
+                <DescriptionItem title="Nodes">
+                  <span>{numNodes}</span>
+                </DescriptionItem>
+                <DescriptionItem title="Replication Factor">
+                  <span>{replicationFactor}</span>
+                </DescriptionItem>
+                <DescriptionItem title="Monthly Cost">
+                  <span>{costPerMonth}</span>
+                </DescriptionItem>
+                <DescriptionItem title="Created">
+                  <span>{universeCreationDate}</span>
+                </DescriptionItem>
+                <DescriptionItem title="Version">
+                  <span>
+                    {optimizeVersion(
+                      primaryCluster?.userIntent.ybSoftwareVersion.split('-')[0].split('.')
+                    )}
+                  </span>
+                </DescriptionItem>
+              </div>
             </div>
-            <div className="display-name">{universe.name}</div>
-            <div className="provider-name">{universeProviderText}</div>
-            <div className="description-item-list">
-              <DescriptionItem title="Nodes">
-                <span>{numNodes}</span>
-              </DescriptionItem>
-              <DescriptionItem title="Replication Factor">
-                <span>{replicationFactor}</span>
-              </DescriptionItem>
-              <DescriptionItem title="Monthly Cost">
-                <span>{costPerMonth}</span>
-              </DescriptionItem>
-              <DescriptionItem title="Created">
-                <span>{universeCreationDate}</span>
-              </DescriptionItem>
-            </div>
-          </div>
-        </Link>
+          </Link>
+        </RbacValidator>
       </Col>
     );
   }
@@ -155,25 +171,22 @@ export default class UniverseDisplayPanel extends Component {
               <h2>Universes</h2>
             </Col>
             <Col className="universe-table-header-action dashboard-universe-actions">
-              {isNotHidden(currentCustomer.data.features, 'universe.import') && (
-                <Link to="/universes/import">
-                  <YBButton
-                    btnClass="universe-button btn btn-lg btn-default"
-                    disabled={isDisabled(currentCustomer.data.features, 'universe.import')}
-                    btnText="Import Universe"
-                    btnIcon="fa fa-mail-forward"
-                  />
-                </Link>
-              )}
               {isNotHidden(currentCustomer.data.features, 'universe.create') && (
-                <Link to="/universes/create">
-                  <YBButton
-                    btnClass="universe-button btn btn-lg btn-orange"
-                    disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
-                    btnText="Create Universe"
-                    btnIcon="fa fa-plus"
-                  />
-                </Link>
+                <RbacValidator
+                  accessRequiredOn={{
+                    onResource: undefined,
+                    ...UserPermissionMap.createUniverse
+                  }}
+                  isControl>
+                  <Link to="/universes/create">
+                    <YBButton
+                      btnClass="universe-button btn btn-lg btn-orange"
+                      disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
+                      btnText="Create Universe"
+                      btnIcon="fa fa-plus"
+                    />
+                  </Link>
+                </RbacValidator>
               )}
             </Col>
           </Row>

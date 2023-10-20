@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Fragment, Component } from 'react';
+import { Fragment, Component } from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
 import {
   YBInputField,

@@ -102,7 +102,7 @@ namespace consensus {
 
 namespace {
 
-const std::string kParentMemTrackerId = "log_cache"s;
+const std::string kParentMemTrackerId = "LogCache"s;
 
 }
 
@@ -130,9 +130,10 @@ LogCache::LogCache(const scoped_refptr<MetricEntity>& metric_entity,
 
   // And create a child tracker with the per-tablet limit.
   tracker_ = MemTracker::CreateTracker(
-      max_ops_size_bytes, Format("$0-$1", kParentMemTrackerId, tablet_id), parent_tracker_,
-      AddToParent::kTrue, CreateMetrics::kFalse);
-  tracker_->SetMetricEntity(metric_entity, kParentMemTrackerId);
+      max_ops_size_bytes, Format("$0-$1", kParentMemTrackerId, tablet_id),
+          /* metric_name */ "PerLogCache", parent_tracker_, AddToParent::kTrue,
+              CreateMetrics::kFalse);
+  tracker_->SetMetricEntity(metric_entity);
 
   // Put a fake message at index 0, since this simplifies a lot of our code paths elsewhere.
   auto zero_op = rpc::MakeSharedMessage<LWReplicateMsg>();
@@ -241,12 +242,14 @@ Status LogCache::AppendOperations(const ReplicateMsgs& msgs, const OpId& committ
     prepare_result = PrepareAppendOperations(msgs);
   }
 
+  TracePtr current_trace(Trace::CurrentTrace());
   Status log_status = log_->AsyncAppendReplicates(
     msgs, committed_op_id, batch_mono_time,
     Bind(&LogCache::LogCallback,
          Unretained(this),
          prepare_result.overwritten_cache,
          prepare_result.last_idx_in_batch,
+         current_trace,
          callback));
 
   if (!log_status.ok()) {
@@ -262,8 +265,11 @@ Status LogCache::AppendOperations(const ReplicateMsgs& msgs, const OpId& committ
 
 void LogCache::LogCallback(bool overwritten_cache,
                            int64_t last_idx_in_batch,
+                           TracePtr trace,
                            const StatusCallback& user_callback,
                            const Status& log_status) {
+  ADOPT_TRACE(trace.get());
+  TRACE("Appended till idx $0 to the local log", last_idx_in_batch);
   if (overwritten_cache || log_status.ok()) {
     std::lock_guard l(lock_);
     if (overwritten_cache) {

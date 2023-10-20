@@ -1,9 +1,13 @@
 // Copyright (c) YugaByte, Inc.
-
-import React, { Component } from 'react';
+import { Component, Suspense } from 'react';
+import { YBLoadingCircleIcon } from '../../components/common/indicators';
 
 export default class Tasks extends Component {
   render() {
-    return <div className="dashboard-container">{this.props.children}</div>;
+    return (
+      <Suspense fallback={YBLoadingCircleIcon}>
+        <div className="dashboard-container">{this.props.children}</div>
+      </Suspense>
+    );
   }
 }

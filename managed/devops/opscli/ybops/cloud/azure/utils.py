@@ -7,14 +7,18 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 import time
 
+from azure.core.exceptions import HttpResponseError
 from azure.identity import ClientSecretCredential
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.compute.models import DiskCreateOption
 from azure.mgmt.privatedns import PrivateDnsManagementClient
+from collections import OrderedDict
 from msrestazure.azure_exceptions import CloudError
-from ybops.common.exceptions import YBOpsRuntimeError
+from ybops.cloud.common.utils import maybe_fault_injected
+from ybops.common.exceptions import YBOpsRuntimeError, YBOpsFaultInjectionError, \
+    YBOpsRecoverableError
 from ybops.utils import DNS_RECORD_SET_TTL, MIN_MEM_SIZE_GB, \
     MIN_NUM_CORES
 from ybops.utils.ssh import format_rsa_key, validated_key_file
@@ -161,6 +165,24 @@ def cloud_init_encoded(**kwargs):
     ]
     cloud_file = '\n'.join(lines)
     return base64.b64encode(cloud_file.encode('utf-8')).decode('utf-8')
+
+
+def merge(params, update):
+    """
+    Updates the params with any keys found in update that are not present in params.
+    """
+    for key in update.keys():
+        if key not in params:
+            params[key] = update[key]
+        elif isinstance(params[key], type(update[key])):
+            if isinstance(params[key], dict):
+                params[key] = merge(params[key], update[key])
+            elif isinstance(params[key], list):
+                params[key][0] = merge(params[key][0], update[key][0])
+        else:
+            raise YBOpsRuntimeError(
+                "Merge error! Key {} present in both but type does not match.".format(key))
+    return params
 
 
 class AzureBootstrapClient():
@@ -384,7 +406,7 @@ class AzureCloudAdmin():
         return AzureBootstrapClient(per_region_meta, self.network_client, self.metadata)
 
     def append_disk(self, vm, vm_name, disk_name, size, lun, zone, vol_type, region, tags,
-                    disk_iops, disk_throughput):
+                    disk_iops, disk_throughput, disk_custom):
         disk_params = {
             "location": region,
             "disk_size_gb": size,
@@ -406,6 +428,8 @@ class AzureCloudAdmin():
             if disk_throughput is not None:
                 disk_params['disk_mbps_read_write'] = disk_throughput
 
+        if disk_custom and len(disk_custom) > 0:
+            merge(disk_params, disk_custom)
         data_disk = self.compute_client.disks.begin_create_or_update(
             RESOURCE_GROUP,
             disk_name,
@@ -447,6 +471,73 @@ class AzureCloudAdmin():
             )
             res.wait()
             logging.info("[app] Successfully changed disk size for {}".format(disk.name))
+
+    def clone_disk(self, vm_name, location, zone, source_disk, num_disks):
+        snapshot = self.compute_client.snapshots.begin_create_or_update(
+            RESOURCE_GROUP,
+            "{}-Snapshot".format(vm_name),
+            {
+                'location': location,
+                'creation_data': {
+                    'create_option': 'Copy',
+                    'source_resource_id': source_disk
+                }
+            }).result().id
+        res = []
+        for x in range(num_disks):
+            diskName = "{}-Disk-{}".format(vm_name, x)
+            try:
+                logging.info("[app] Creating Azure disk {} from snapshot {}".format(diskName,
+                                                                                    snapshot))
+                disk = self.compute_client.disks.begin_create_or_update(RESOURCE_GROUP, diskName, {
+                    'location': location,
+                    'creation_data': {
+                        'create_option': 'Copy',
+                        'source_resource_id': snapshot
+                    },
+                    'zones': [zone]
+
+                })
+                disk.wait()
+                res.append(disk.result().id)
+            except Exception as e:
+                logging.error("Error cloning Azure root volume {}. Failed with error {}.".
+                              format(diskName, e))
+                while x >= 0:
+                    diskdel = "{}-Disk-{}".format(vm_name, x)
+                    self.delete_disk(diskdel)
+                    x -= 1
+                self.delete_disk(source_disk)
+        self.compute_client.snapshots.begin_delete(RESOURCE_GROUP, os.path.basename(snapshot))
+        return res
+
+    def update_os_disk(self, vm_name, os_disk):
+        logging.info("[app] Updating OS disk for {} to {}.".format(vm_name, os_disk))
+        vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name).as_dict()
+        vm["storage_profile"]["os_disk"] = {
+            "create_option": vm["storage_profile"]["os_disk"]["create_option"],
+            "managed_disk": {
+                "id": os_disk,
+                "storage_account_type": "Standard_LRS"
+            }}
+        disk = self.compute_client.disks.get(RESOURCE_GROUP, os.path.basename(os_disk)).as_dict()
+        if disk.get("purchase_plan"):
+            vm["plan"] = disk.get("purchase_plan")
+        else:
+            vm.pop("plan", None)
+        try:
+            res = self.compute_client.virtual_machines.begin_create_or_update(RESOURCE_GROUP,
+                                                                              vm_name, vm)
+            res.wait()
+            logging.info("[app] Successfully updated OS disk for {}.".format(vm_name))
+        except Exception as e:
+            logging.error("Error updating {} to OS disk {}. Failed with error {}"
+                          .format(vm_name, os_disk, e))
+            self.delete_disk(os_disk)
+
+    # Deletes a disk. Accepts both disk name and full resource id.
+    def delete_disk(self, disk_name):
+        return self.compute_client.disks.begin_delete(RESOURCE_GROUP, os.path.basename(disk_name))
 
     def tag_disks(self, vm, tags):
         # Updating requires Disk as input rather than OSDisk. Retrieve Disk class with OSDisk name.
@@ -500,13 +591,15 @@ class AzureCloudAdmin():
         )
         return creation_result.result()
 
-    def create_or_update_nic(self, vm_name, vnet, subnet, zone, nsg, region, public_ip, tags):
+    def create_or_update_nic(self, vm_name, vnet, subnet, zone, nsg, region, public_ip, tags,
+                             custom_params):
         """
         Creates network interface and returns the id of the resource for use in
         vm creation.
             vm_name, vnet, subnet - String representing name of resource
             public_ip - bool if public_ip should be assigned
         """
+        logging.info("[app] Creating network interface card for {}.".format(vm_name))
         nic_params = {
             "location": region,
             "ip_configurations": [{
@@ -523,13 +616,17 @@ class AzureCloudAdmin():
             nic_params['networkSecurityGroup'] = {'id': self.get_nsg_id(nsg)}
         if tags:
             nic_params['tags'] = tags
+        if custom_params and len(custom_params) > 0:
+            merge(nic_params, custom_params)
         creation_result = self.network_client.network_interfaces.begin_create_or_update(
             NETWORK_RESOURCE_GROUP,
             self.get_nic_name(vm_name),
             nic_params
         )
-
-        return creation_result.result().id
+        nic_id = creation_result.result().id
+        logging.info("[app] Successfully created network interface card {}.".
+                     format(creation_result.result().name))
+        return nic_id
 
     # The method is idempotent. Any failure raises exception such that it can be retried.
     def destroy_orphaned_resources(self, vm_name, node_uuid):
@@ -545,7 +642,7 @@ class AzureCloudAdmin():
                 if (disk.name.startswith(vm_name) and disk.tags
                         and disk.tags.get('node-uuid') == node_uuid):
                     logging.info("[app] Deleting disk {}".format(disk.name))
-                    disk_del = self.compute_client.disks.begin_delete(RESOURCE_GROUP, disk.name)
+                    disk_del = self.delete_disk(disk.name)
                     disk_dels[disk.name] = disk_del
 
         nic_name = self.get_nic_name(vm_name)
@@ -564,11 +661,13 @@ class AzureCloudAdmin():
                     nic_del.wait()
                     logging.info("[app] Deleted nic {}".format(nic_name))
                     break
-            except CloudError as e:
+            except (CloudError, HttpResponseError) as e:
                 if e.error and e.error.error in ['ResourceNotFound', 'NotFound']:
                     logging.info("[app] Resource nic {} is not found".format(nic_name))
                     break
-                elif e.error and e.error.error == 'NicReservedForAnotherVm':
+                elif e.error and (
+                  (hasattr(e.error, 'error') and e.error.error == 'NicReservedForAnotherVm') or
+                  (hasattr(e.error, 'code') and e.error.code == 'NicReservedForAnotherVm')):
                     # In case VM wasn't created, Azure reserves the NICs for the VMs
                     # for 180 seconds and throws NicReservedForAnotherVm error code,
                     # and suggests to retry after 180 seconds.
@@ -586,8 +685,8 @@ class AzureCloudAdmin():
             if ip_addr and ip_addr.tags and ip_addr.tags.get('node-uuid') == node_uuid:
                 logging.info("[app] Deleting ip {}".format(ip_name))
                 ip_del = self.network_client.public_ip_addresses.begin_delete(
-                                                                        NETWORK_RESOURCE_GROUP,
-                                                                        ip_name)
+                    NETWORK_RESOURCE_GROUP,
+                    ip_name)
                 ip_del.wait()
                 logging.info("[app] Deleted ip {}".format(ip_name))
         except CloudError as e:
@@ -602,25 +701,28 @@ class AzureCloudAdmin():
 
         logging.info("[app] Sucessfully destroyed orphaned resources for {}".format(vm_name))
 
-    def change_instance_type(self, vm_name, instance_type):
+    def change_instance_type(self, vm_name, instance_type, cloud_instance_types=[]):
         vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
         if not vm:
             raise YBOpsRuntimeError("VM {} is not found".format(vm_name))
-        update = {
-            "hardware_profile": {
-                "vm_size": instance_type
+
+        def change_func(instance_type):
+            vm_parameters = {
+                "hardware_profile": {
+                    "vm_size": instance_type
+                }
             }
-        }
-        update_result = self.compute_client.virtual_machines.begin_update(
-            RESOURCE_GROUP,
-            vm_name,
-            update
-        )
+            return self.compute_client.virtual_machines.begin_update(
+                RESOURCE_GROUP,
+                vm_name,
+                vm_parameters
+            )
+        update_result = self._create_instance(change_func, instance_type, cloud_instance_types)
         update_result.wait()
         logging.info("[app] Successfully changed instance type for {}".format(vm_name))
 
     # The method is idempotent. Any failure raises exception such that it can be retried.
-    def destroy_instance(self, vm_name, node_uuid):
+    def destroy_instance(self, vm_name, node_uuid, skip_os_delete=False):
         vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
         if not vm:
             logging.info("[app] VM {} is not found".format(vm_name))
@@ -634,16 +736,18 @@ class AzureCloudAdmin():
         logging.info("[app] Deleted vm {}".format(vm_name))
 
         disk_dels = {}
-        os_disk_name = vm.storage_profile.os_disk.name
         data_disks = vm.storage_profile.data_disks
         for disk in data_disks:
             logging.info("[app] Deleting disk {}".format(disk.name))
-            disk_del = self.compute_client.disks.begin_delete(RESOURCE_GROUP, disk.name)
+            disk_del = self.delete_disk(disk.name)
             disk_dels[disk.name] = disk_del
 
-        logging.info("[app] Deleting os disk {}".format(os_disk_name))
-        disk_del = self.compute_client.disks.begin_delete(RESOURCE_GROUP, os_disk_name)
-        disk_dels[os_disk_name] = disk_del
+        # Skip OS delete during VM image upgrade so disk can be cloned and remounted.
+        if not skip_os_delete:
+            os_disk_name = vm.storage_profile.os_disk.name
+            logging.info("[app] Deleting os disk {}".format(os_disk_name))
+            disk_del = self.delete_disk(os_disk_name)
+            disk_dels[os_disk_name] = disk_del
 
         nic_name = self.get_nic_name(vm_name)
         ip_name = self.get_public_ip_name(vm_name)
@@ -685,11 +789,38 @@ class AzureCloudAdmin():
         params["storage_profile"]["osDisk"]["tags"] = result
         return params
 
+    def _create_instance(self, create_func, instance_type, cloud_instance_types=[]):
+        # Allocation failure codes.
+        retryable_error_codes = {'AllocationFailed', 'OverconstrainedZonalAllocationRequest',
+                                 'SkuNotAvailable', 'ZonalAllocationFailed'}
+        instance_types = []
+        if cloud_instance_types:
+            instance_types.extend(cloud_instance_types)
+        else:
+            instance_types.append(instance_type)
+        # Remove duplicates preserving the priority order.
+        instance_type_ordered_dict = OrderedDict.fromkeys(instance_types)
+        for idx, instance_type in enumerate(instance_type_ordered_dict):
+            logging.info("[app] Selecting instance type {}".format(instance_type))
+            try:
+                maybe_fault_injected()
+                return create_func(instance_type)
+            except YBOpsFaultInjectionError as e:
+                if idx == len(instance_type_ordered_dict) - 1:
+                    raise e
+            except HttpResponseError as e:
+                if idx == len(instance_type_ordered_dict) - 1:
+                    raise e
+                if e.error and (not hasattr(e.error, 'code') or
+                                e.error.code not in retryable_error_codes):
+                    raise e
+            logging.info("Retrying with the next instance type")
+
     def create_or_update_vm(self, vm_name, zone, num_vols, private_key_file, volume_size,
-                            instance_type, ssh_user, nsg, image, vol_type, server_type,
+                            instance_type, ssh_user, image, vol_type, server_type,
                             region, nic_id, tags, disk_iops, disk_throughput, spot_price,
-                            use_spot_instance, is_edit=False,
-                            json_output=True):
+                            use_spot_instance, vm_custom, disk_custom, is_edit=False,
+                            json_output=True, cloud_instance_types=[]):
         disk_names = [vm_name + "-Disk-" + str(i) for i in range(1, num_vols + 1)]
         private_key = validated_key_file(private_key_file)
 
@@ -699,6 +830,42 @@ class AzureCloudAdmin():
             image_reference = {
                 "id": image
             }
+            fields = shared_gallery_image_match.groupdict()
+            logging.info("Parsing Shared Image Gallery fields: {}".format(fields))
+
+            # We need to handle the case where the Gallery Image is in a different
+            # subscription than the one we are currently using.
+            local_compute_client = None
+            if fields['subscription_id'] == SUBSCRIPTION_ID:
+                local_compute_client = self.compute_client
+            else:
+                local_compute_client = ComputeManagementClient(
+                    self.credentials, fields['subscription_id'])
+
+            image_identifier = local_compute_client.gallery_images.get(
+                fields['resource_group'],
+                fields['gallery_name'],
+                fields['image_definition_name']).as_dict().get('identifier')
+
+            # When creating VMs with images that are NOT from the marketplace,
+            # the creator of the VM needs to provide the plan information.
+            # We try to extract this info from the publisher, offer, sku fields
+            # of the image definition.
+            logging.info("Image parameters: {}, publisher = {}, offer={}, sku={}".format(
+                image_identifier,
+                image_identifier['publisher'],
+                image_identifier['offer'],
+                image_identifier['sku']))
+
+            if (image_identifier is not None
+                    and image_identifier['publisher'] is not None
+                    and image_identifier['offer'] is not None
+                    and image_identifier['sku'] is not None):
+                plan = {
+                    "publisher": image_identifier['publisher'],
+                    "product": image_identifier['offer'],
+                    "name": image_identifier['sku'],
+                }
         else:
             # machine image URN - "OpenLogic:CentOS:7_8:7.8.2020051900"
             pub, offer, sku, version = image.split(':')
@@ -770,13 +937,20 @@ class AzureCloudAdmin():
         self.add_tag_resource(vm_parameters, "yb-server-type", server_type)
         for k in tags:
             self.add_tag_resource(vm_parameters, k, tags[k])
-        creation_result = self.compute_client.virtual_machines.begin_create_or_update(
-            RESOURCE_GROUP,
-            vm_name,
-            vm_parameters
-        )
+        if vm_custom and len(vm_custom) > 0:
+            merge(vm_parameters, vm_custom)
 
-        vm_result = creation_result.result()
+        def create_fnc(instance_type):
+            vm_parameters["hardware_profile"] = {
+                "vm_size": instance_type
+            }
+            return self.compute_client.virtual_machines.begin_create_or_update(
+                RESOURCE_GROUP,
+                vm_name,
+                vm_parameters
+            )
+        creation_result = self._create_instance(create_fnc, instance_type, cloud_instance_types)
+        creation_result.result()
         vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
 
         # Attach disks
@@ -791,7 +965,7 @@ class AzureCloudAdmin():
                 lun = num_disks_attached + idx
                 self.append_disk(
                     vm, vm_name, disk_name, volume_size, lun, zone, vol_type, region, tags,
-                    disk_iops, disk_throughput)
+                    disk_iops, disk_throughput, disk_custom)
                 lun_indexes.append(lun)
 
             if json_output:
@@ -927,6 +1101,7 @@ class AzureCloudAdmin():
         try:
             vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name, 'instanceView')
         except Exception as e:
+            logging.error("Failed to get VM info for {} with error {}".format(vm_name, e))
             return None
         nic_name = id_to_name(vm.network_profile.network_interfaces[0].id)
         nic = self.network_client.network_interfaces.get(NETWORK_RESOURCE_GROUP, nic_name)
@@ -935,6 +1110,7 @@ class AzureCloudAdmin():
         private_ip = nic.ip_configurations[0].private_ip_address
         public_ip = None
         ip_name = None
+        root_volume = vm.storage_profile.os_disk.managed_disk.id
         if (nic.ip_configurations[0].public_ip_address):
             ip_name = id_to_name(nic.ip_configurations[0].public_ip_address.id)
             public_ip = (self.network_client.public_ip_addresses
@@ -944,28 +1120,30 @@ class AzureCloudAdmin():
         node_uuid = vm.tags.get("node-uuid", None) if vm.tags else None
         universe_uuid = vm.tags.get("universe-uuid", None) if vm.tags else None
         zone_full = "{}-{}".format(region, zone) if zone is not None else region
-        instance_state = None
-        if vm.instance_view is not None and vm.instance_view.statuses is not None:
-            for status in vm.instance_view.statuses:
-                logging.info("VM state {}".format(status.code))
-                parts = status.code.split("/")
-                if len(parts) != 2 or parts[0] != "PowerState":
-                    continue
-                instance_state = parts[1]
-                break
+        instance_state = self.extract_vm_instance_state(vm.instance_view)
         is_running = True if instance_state == "running" else False
         return {"private_ip": private_ip, "public_ip": public_ip, "region": region,
                 "zone": zone_full, "name": vm.name, "ip_name": ip_name,
                 "instance_type": vm.hardware_profile.vm_size, "server_type": server_type,
                 "subnet": subnet, "nic": nic_name, "id": vm.name, "node_uuid": node_uuid,
                 "universe_uuid": universe_uuid, "instance_state": instance_state,
-                "is_running": is_running}
+                "is_running": is_running, "root_volume": root_volume}
 
     def get_dns_client(self, subscription_id):
         if self.dns_client is None:
             self.dns_client = PrivateDnsManagementClient(self.credentials,
                                                          subscription_id)
         return self.dns_client
+
+    def extract_vm_instance_state(self, instance_view):
+        if instance_view is not None and instance_view.statuses is not None:
+            for status in instance_view.statuses:
+                logging.info("VM state {}".format(status.code))
+                parts = status.code.split("/")
+                if len(parts) != 2 or parts[0] != "PowerState":
+                    continue
+                return parts[1]
+        return None
 
     def list_dns_record_set(self, dns_zone_id):
         # Passing None as domain_name_prefix is not dangerous here as we are using subscription ID
@@ -1027,12 +1205,13 @@ class AzureCloudAdmin():
         return self._get_dns_zone_info_long(dns_zone_id)[:2]
 
     def get_vm_status(self, vm_name):
-        return (
-            self.compute_client.virtual_machines.get(RESOURCE_GROUP,
-                                                     vm_name,
-                                                     expand='instanceView')
-            .instance_view.statuses[1].display_status
-        )
+        instance_view = self.compute_client.virtual_machines.get(RESOURCE_GROUP,
+                                                                 vm_name, expand='instanceView') \
+                          .instance_view
+        instance_state = self.extract_vm_instance_state(instance_view)
+        if instance_state is not None:
+            return instance_state
+        raise YBOpsRecoverableError("Could not find last PowerState for VM {}.".format(vm_name))
 
     def deallocate_instance(self, vm_name):
         async_vm_deallocate = self.compute_client.virtual_machines.begin_deallocate(RESOURCE_GROUP,

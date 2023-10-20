@@ -14,7 +14,6 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
-import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
@@ -605,15 +604,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       KubernetesPlacement placement, ServerType serverType) {
     Map<UUID, ServerType> serversToUpdate = new HashMap<>();
     if (serverType.equals(ServerType.EITHER)) {
-      placement
-          .masters
-          .keySet()
-          .parallelStream()
+      placement.masters.keySet().parallelStream()
           .forEach(azUUID -> serversToUpdate.put(azUUID, ServerType.MASTER));
-      placement
-          .tservers
-          .keySet()
-          .parallelStream()
+      placement.tservers.keySet().parallelStream()
           .forEach(
               azUUID -> {
                 if (serversToUpdate.containsKey(azUUID)) {
@@ -624,16 +617,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               });
     } else {
       if (serverType.equals(ServerType.MASTER)) {
-        placement
-            .masters
-            .keySet()
-            .parallelStream()
+        placement.masters.keySet().parallelStream()
             .forEach(azUUID -> serversToUpdate.put(azUUID, ServerType.MASTER));
       } else {
-        placement
-            .tservers
-            .keySet()
-            .parallelStream()
+        placement.tservers.keySet().parallelStream()
             .forEach(azUUID -> serversToUpdate.put(azUUID, ServerType.TSERVER));
       }
     }
@@ -1691,26 +1678,5 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     KubernetesCheckNumPod task = createTask(KubernetesCheckNumPod.class);
     task.initialize(params);
     return task;
-  }
-
-  protected void updateYBUniverseStatusAfterUnlock() {
-    if (getUniverse().getUniverseDetails().isKubernetesOperatorControlled) {
-      KubernetesOperatorStatusUpdater.updateStatus(
-          getUniverse(), "Last Completed YBA task " + getUserTaskUUID().toString());
-    }
-  }
-
-  protected void updateYBUniverseStatus(Universe universe, Throwable t) {
-    if (getUniverse().getUniverseDetails().isKubernetesOperatorControlled) {
-      try {
-        String name = getClass().getSimpleName();
-        // Updating Kubernetes Custom Resource (if done through operator).
-        String status = (t != null ? "Failed" : "Success");
-        log.info("ybUniverseStatus info: {}: {}", name, status);
-        KubernetesOperatorStatusUpdater.updateStatus(universe, name.concat(" ").concat(status));
-      } catch (Exception e) {
-        log.warn("Error in creating Kubernetes Operator Universe", e);
-      }
-    }
   }
 }

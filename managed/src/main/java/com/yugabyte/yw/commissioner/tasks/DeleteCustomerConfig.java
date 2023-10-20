@@ -18,6 +18,8 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Schedule;
@@ -40,15 +42,18 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
 
   private final BackupHelper backupHelper;
   private final CloudUtilFactory cloudUtilFactory;
+  private final RuntimeConfGetter runtimeConfGetter;
 
   @Inject
   public DeleteCustomerConfig(
       BaseTaskDependencies baseTaskDependencies,
       BackupHelper backupHelper,
-      CloudUtilFactory cloudUtilFactory) {
+      CloudUtilFactory cloudUtilFactory,
+      RuntimeConfGetter runtimeConfGetter) {
     super(baseTaskDependencies);
     this.backupHelper = backupHelper;
     this.cloudUtilFactory = cloudUtilFactory;
+    this.runtimeConfGetter = runtimeConfGetter;
   }
 
   public static class Params extends UniverseTaskParams {
@@ -69,11 +74,9 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
   @Override
   public void run() {
     try {
-      // Disable cert checking while connecting with s3
-      // Enabling it can potentially fail when s3 compatible storages like
-      // Dell ECS are provided and custom certs are needed to connect
-      // Reference: https://yugabyte.atlassian.net/browse/PLAT-2497
-      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
+      if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enforceCertVerificationBackupRestore)) {
+        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
+      }
       List<Schedule> scheduleList = Schedule.findAllScheduleWithCustomerConfig(params().configUUID);
       for (Schedule schedule : scheduleList) {
         schedule.stopSchedule();
@@ -109,12 +112,10 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
               break;
             case NFS:
               List<Backup> nfsBackupList =
-                  backupList
-                      .parallelStream()
+                  backupList.parallelStream()
                       .filter(backup -> isUniversePresent(backup))
                       .collect(Collectors.toList());
-              backupList
-                  .parallelStream()
+              backupList.parallelStream()
                   .filter(backup -> !isUniversePresent(backup))
                   .forEach(backup -> backup.transitionState(Backup.BackupState.FailedToDelete));
               if (!nfsBackupList.isEmpty()) {
@@ -125,8 +126,7 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
               log.error("Invalid Config type {} provided", customerConfig.getName());
           }
         } else {
-          backupList
-              .parallelStream()
+          backupList.parallelStream()
               .forEach(backup -> backup.transitionState(Backup.BackupState.FailedToDelete));
         }
       }
@@ -140,7 +140,9 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
           CustomerConfig.get(params().customerUUID, params().configUUID);
       customerConfig.delete();
       // Re-enable cert checking as it applies globally
-      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
+      if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enforceCertVerificationBackupRestore)) {
+        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
+      }
     }
     log.info("Finished {} task.", getName());
   }

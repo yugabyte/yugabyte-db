@@ -13,6 +13,9 @@ import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -186,7 +189,10 @@ public class PlacementInfoUtil {
       zones =
           zones.stream()
               .filter(
-                  az -> NodeInstance.listByZone(az.getUuid(), userIntent.instanceType).size() > 0)
+                  az -> {
+                    String instanceType = userIntent.getInstanceType(az.getUuid());
+                    return NodeInstance.listByZone(az.getUuid(), instanceType).size() > 0;
+                  })
               .collect(Collectors.toList());
     }
     return zones;
@@ -449,6 +455,17 @@ public class PlacementInfoUtil {
     // Modifying placementInfo if needed.
     if (cluster.placementInfo == null || recalculatePlacement) {
       if (clusterOpType == ClusterOperationType.CREATE) {
+        int intentZones = cluster.userIntent.replicationFactor;
+        int intentRegionsCount = (int) cluster.userIntent.regionList.stream().distinct().count();
+        RuntimeConfGetter confGetter =
+            StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+        CloudType cloudType = cluster.userIntent.providerType;
+
+        if (confGetter.getGlobalConf(GlobalConfKeys.useSingleZone)
+            && intentRegionsCount == 1
+            && !(cloudType == CloudType.onprem || cloudType == CloudType.kubernetes)) {
+          intentZones = 1;
+        }
         List<NodeDetails> otherClustersNodes =
             taskParams.nodeDetailsSet.stream()
                 .filter(n -> !Objects.equals(n.placementUuid, cluster.uuid))
@@ -457,7 +474,7 @@ public class PlacementInfoUtil {
             getPlacementInfo(
                 cluster.clusterType,
                 cluster.userIntent,
-                cluster.userIntent.replicationFactor,
+                intentZones,
                 defaultRegionUUID,
                 removedZones,
                 new AvailableNodeTracker(cluster.uuid, taskParams.clusters, otherClustersNodes));
@@ -594,7 +611,7 @@ public class PlacementInfoUtil {
                           "Couldn't find %d nodes of type %s in %s zone "
                               + "(%d is free and %d currently occupied)",
                           az.numNodesInAZ,
-                          cluster.userIntent.instanceType,
+                          cluster.userIntent.getInstanceType(az.uuid),
                           availabilityZone.getName(),
                           available,
                           occupied + willBeFreed));
@@ -666,7 +683,7 @@ public class PlacementInfoUtil {
                   });
         } else {
           throw new IllegalStateException(
-              "Couldn't find " + deltaNodes + " nodes of type " + userIntent.instanceType);
+              "Couldn't find " + deltaNodes + " nodes of type " + userIntent.getBaseInstanceType());
         }
       }
       changed = false;
@@ -1051,6 +1068,7 @@ public class PlacementInfoUtil {
     ADD, // A node has to be added at this placement indices combination.
     REMOVE // Remove the node at this placement indices combination.
   }
+
   // Structure for tracking the calculated placement indexes on cloud/region/az.
   static class PlacementIndexes {
     public final int cloudIdx;
@@ -1312,7 +1330,8 @@ public class PlacementInfoUtil {
                       node.state == NodeState.ToBeRemoved
                           && node.isTserver
                           && Objects.equals(
-                              node.cloudInfo.instance_type, cluster.userIntent.instanceType),
+                              node.cloudInfo.instance_type,
+                              cluster.userIntent.getInstanceType(node.getAzUuid())),
                   nodesInCluster,
                   placementAZ.uuid,
                   true);
@@ -1587,7 +1606,7 @@ public class PlacementInfoUtil {
     nodeDetails.cloudInfo.az = placementAZ.name;
     nodeDetails.cloudInfo.subnet_id = placementAZ.subnet;
     nodeDetails.cloudInfo.secondary_subnet_id = placementAZ.secondarySubnet;
-    nodeDetails.cloudInfo.instance_type = cluster.userIntent.instanceType;
+    nodeDetails.cloudInfo.instance_type = cluster.userIntent.getInstanceTypeForNode(nodeDetails);
     nodeDetails.cloudInfo.assignPublicIP = cluster.userIntent.assignPublicIP;
     nodeDetails.cloudInfo.useTimeSync = cluster.userIntent.useTimeSync;
     // Set the tablet server role to true.
@@ -1610,10 +1629,7 @@ public class PlacementInfoUtil {
 
   public static NodeDetails createDedicatedMasterNode(
       NodeDetails exampleNode, UserIntent userIntent) {
-    String instanceType =
-        userIntent.masterInstanceType == null
-            ? userIntent.instanceType
-            : userIntent.masterInstanceType;
+    String instanceType = userIntent.getInstanceType(ServerType.MASTER, exampleNode.getAzUuid());
     NodeDetails result = exampleNode.clone();
     result.cloudInfo.private_ip = null;
     result.cloudInfo.secondary_private_ip = null;

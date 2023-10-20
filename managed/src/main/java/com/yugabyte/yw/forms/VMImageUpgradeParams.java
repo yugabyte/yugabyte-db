@@ -9,12 +9,14 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.common.YBADeprecated;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModelProperty;
@@ -33,11 +35,11 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
     None
   }
 
-  @YBADeprecated(sinceDate = "2023-03-30", sinceYBAVersion = "2.18.0")
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.0.0")
   @ApiModelProperty(
       value =
-          "Map  of region UUID to AMI name. Deprecated: sinceDate=2023-03-30,"
-              + "sinceYBAVersion=2.18.0, Use imageBundle instead.",
+          "Map of region UUID to AMI name. Deprecated since "
+              + "YBA version 2.18.0.0, Use imageBundle instead.",
       required = false,
       example =
           "{\n"
@@ -50,13 +52,14 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
               + "rhel-8-v20221102'\n"
               + "  }")
   public Map<UUID, String> machineImages = new HashMap<>();
+
   // Use whenwe want to use a different SSH_USER instead of what is defined in the default
   // accessKey.
-  @YBADeprecated(sinceDate = "2023-03-30", sinceYBAVersion = "2.18.0")
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.0.0")
   @ApiModelProperty(
       value =
-          "Map of region UUID to SSH User override. Deprecated: sinceDate=2023-03-30,"
-              + "sinceYBAVersion=2.18.0, Use imageBundle instead.",
+          "Map of region UUID to SSH User override. Deprecated since "
+              + "YBA version 2.18.0.0, Use imageBundle instead.",
       required = false,
       example = "{\n" + "    'b28e0813-4866-4a2d-89f3-52265766d666':" + " 'ec2-user',\n" + "  }")
   public Map<UUID, String> sshUserOverrideMap = new HashMap<>();
@@ -101,12 +104,12 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
         (StringUtils.isNotBlank(ybSoftwareVersion)
             && !ybSoftwareVersion.equals(userIntent.ybSoftwareVersion));
     CloudType provider = userIntent.providerType;
-    if (!(provider == CloudType.gcp || provider == CloudType.aws)) {
+    if (!(provider == CloudType.gcp || provider == CloudType.aws || provider == CloudType.azu)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
-          "VM image upgrade is only supported for AWS / GCP, got: " + provider.toString());
+          "VM image upgrade is only supported for cloud providers, got: " + provider.toString());
     }
-    if (UniverseDefinitionTaskParams.hasEphemeralStorage(userIntent)) {
+    if (UniverseDefinitionTaskParams.hasEphemeralStorage(universe.getUniverseDetails())) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "Cannot upgrade a universe with ephemeral storage.");
     }
@@ -138,7 +141,10 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
                 Status.BAD_REQUEST,
                 String.format("Image bundle with UUID %s does not exist", imageBundleUUID));
           }
-          if (bundle.getProvider().getCloudCode().equals(CloudType.aws)) {
+          if (bundle.getProvider().getCloudCode().equals(CloudType.aws)
+              && !super.runtimeConfGetter.getStaticConf().getBoolean("yb.cloud.enabled")
+              && !super.runtimeConfGetter.getGlobalConf(
+                  GlobalConfKeys.disableImageBundleValidation)) {
             Map<String, ImageBundleDetails.BundleInfo> regionsBundleInfo =
                 bundle.getDetails().getRegions();
             // Validate that the provided image bundle contains all the regions

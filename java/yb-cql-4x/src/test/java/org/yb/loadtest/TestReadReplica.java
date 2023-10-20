@@ -125,10 +125,12 @@ public class TestReadReplica extends BaseMiniClusterTest {
 
     PlacementInfoPB livePlacementInfo =
       PlacementInfoPB.newBuilder().addAllPlacementBlocks(placementBlocksLive).
+        setNumReplicas(3).
         setPlacementUuid(ByteString.copyFromUtf8(liveTsPlacement)).build();
 
     PlacementInfoPB readOnlyPlacementInfo =
       PlacementInfoPB.newBuilder().addAllPlacementBlocks(placementBlocksReadOnly).
+        setNumReplicas(3).
         setPlacementUuid(ByteString.copyFromUtf8(readOnlyTsPlacement)).build();
 
     List<PlacementInfoPB> readOnlyPlacements = Arrays.asList(readOnlyPlacementInfo);

@@ -16,7 +16,7 @@ type: docs
 
 Single-region dedicated clusters support multi-node and highly available deployments and are suitable for production deployments.
 
-{{< youtube id="qYMcNzWotkI" title="Deploy a fault tolerant cluster in YugabyteDB Managed" >}}
+{{< youtube id="1eo7YXs3uTw" title="Deploy a fault tolerant cluster in YugabyteDB Managed" >}}
 
 ## Features
 
@@ -32,8 +32,8 @@ Single-region dedicated clusters include the following features:
 
 ## Prerequisites
 
-- If you want to use dedicated VPCs for network isolation and security, create the VPC before you create your cluster. YugabyteDB Managed supports AWC and GCP for peering, and AWC and Azure for private linking. Clusters on Azure must be deployed in a VPC. Refer to [VPC network](../../cloud-vpcs/).
-- Create a billing profile and add a payment method before you can create a Dedicated cluster. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
+- If you want to use dedicated VPCs for network isolation and security, create the VPC before you create your cluster. YugabyteDB Managed supports AWC and GCP for peering, and AWC and Azure for private linking. Single-region clusters on Azure must be deployed in a VPC. Refer to [VPC network](../../cloud-vpcs/).
+- A billing profile and a payment method. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
 
 ## Create a single-region cluster
 
@@ -77,7 +77,9 @@ You can't change the Fault tolerance of a cluster after it's created.
 
 **Disk size/Node**: Enter the disk size per node in GB.
 
-Dedicated clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
+**Disk IOPS/Node** (AWS only): Enter the disk input output (I/O) operations per second (IOPS) per node. The node throughput will be scaled according to this IOPS value. For large datasets or clusters with high concurrent transactions, higher IOPS is recommended. As disk IOPS is capped by vCPU, your vCPU and IOPS should be scaled together. Reference your current read and write IOPS performance for an estimation.
+
+Dedicated clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
 
 Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
 

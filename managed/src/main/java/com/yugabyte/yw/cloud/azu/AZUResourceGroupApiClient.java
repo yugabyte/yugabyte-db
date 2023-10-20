@@ -1,0 +1,147 @@
+package com.yugabyte.yw.cloud.azu;
+
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
+import com.azure.core.management.AzureEnvironment;
+import com.azure.core.management.SubResource;
+import com.azure.core.management.profile.AzureProfile;
+import com.azure.core.util.Context;
+import com.azure.identity.ClientSecretCredential;
+import com.azure.identity.ClientSecretCredentialBuilder;
+import com.azure.identity.EnvironmentCredential;
+import com.azure.identity.EnvironmentCredentialBuilder;
+import com.azure.resourcemanager.AzureResourceManager;
+import com.azure.resourcemanager.compute.fluent.models.VirtualMachineInner;
+import com.azure.resourcemanager.network.fluent.models.BackendAddressPoolInner;
+import com.azure.resourcemanager.network.fluent.models.LoadBalancerInner;
+import com.azure.resourcemanager.network.fluent.models.NetworkInterfaceInner;
+import com.azure.resourcemanager.network.models.LoadBalancerBackendAddress;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+public class AZUResourceGroupApiClient {
+
+  private AzureResourceManager azureResourceManager;
+  private String resourceGroup;
+
+  public AZUResourceGroupApiClient(AzureCloudInfo azureCloudInfo) {
+    this.resourceGroup = azureCloudInfo.getAzuRG();
+    this.azureResourceManager = getResourceManager(azureCloudInfo);
+  }
+
+  public BackendAddressPoolInner createNewBackendPoolForIPs(
+      String lbName, Map<String, String> ipToVmName, SubResource virtualNetwork) {
+    String backendPoolName = "bp-" + UUID.randomUUID().toString();
+    BackendAddressPoolInner backendPool = new BackendAddressPoolInner().withName(backendPoolName);
+    return updateIPsInBackendPool(lbName, ipToVmName, backendPool, virtualNetwork);
+  }
+
+  public BackendAddressPoolInner updateIPsInBackendPool(
+      String lbName,
+      Map<String, String> ipToVmName,
+      BackendAddressPoolInner backendAddressPool,
+      SubResource virtualNetwork) {
+    List<LoadBalancerBackendAddress> loadBalancerAddresses =
+        ipToVmName.entrySet().stream()
+            .map(
+                ipToName ->
+                    (new LoadBalancerBackendAddress())
+                        .withName(ipToName.getValue())
+                        .withIpAddress(ipToName.getKey())
+                        .withVirtualNetwork(virtualNetwork))
+            .collect(Collectors.toList());
+    backendAddressPool = backendAddressPool.withLoadBalancerBackendAddresses(loadBalancerAddresses);
+    return azureResourceManager
+        .networks()
+        .manager()
+        .serviceClient()
+        .getLoadBalancerBackendAddressPools()
+        .createOrUpdate(
+            resourceGroup, lbName, backendAddressPool.name(), backendAddressPool, Context.NONE);
+  }
+
+  public LoadBalancerInner updateLoadBalancer(String lbName, LoadBalancerInner loadBalancer) {
+    return azureResourceManager
+        .networks()
+        .manager()
+        .serviceClient()
+        .getLoadBalancers()
+        .createOrUpdate(resourceGroup, lbName, loadBalancer);
+  }
+
+  public LoadBalancerInner getLoadBalancerByName(String lbName) {
+    LoadBalancerInner loadBalancer =
+        azureResourceManager
+            .networks()
+            .manager()
+            .serviceClient()
+            .getLoadBalancers()
+            .getByResourceGroup(resourceGroup, lbName);
+    if (loadBalancer == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot find Load Balancer with given name: " + lbName);
+    }
+    return loadBalancer;
+  }
+
+  public VirtualMachineInner getVirtulMachineDetailsByName(String vmName) {
+    VirtualMachineInner vm =
+        azureResourceManager
+            .virtualMachines()
+            .manager()
+            .serviceClient()
+            .getVirtualMachines()
+            .getByResourceGroup(resourceGroup, vmName);
+    if (vm == null) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Cannot find VM with name: " + vmName);
+    }
+    return vm;
+  }
+
+  public NetworkInterfaceInner getNetworkInterfaceByName(String networkInterfaceName) {
+    NetworkInterfaceInner networkInterface =
+        azureResourceManager
+            .networks()
+            .manager()
+            .serviceClient()
+            .getNetworkInterfaces()
+            .getByResourceGroup(resourceGroup, networkInterfaceName);
+    if (networkInterface == null) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          "Cannot find network interface with name: " + networkInterfaceName);
+    }
+    return networkInterface;
+  }
+
+  private AzureResourceManager getResourceManager(AzureCloudInfo azCloudInfo) {
+    ClientSecretCredential clientSecretCredential =
+        new ClientSecretCredentialBuilder()
+            .clientId(azCloudInfo.getAzuClientId())
+            .clientSecret(azCloudInfo.getAzuClientSecret())
+            .tenantId(azCloudInfo.getAzuTenantId())
+            .build();
+    AzureProfile azureProfile =
+        new AzureProfile(
+            azCloudInfo.getAzuTenantId(),
+            azCloudInfo.getAzuSubscriptionId(),
+            AzureEnvironment.AZURE);
+    EnvironmentCredential credential =
+        new EnvironmentCredentialBuilder()
+            .authorityHost(azureProfile.getEnvironment().getActiveDirectoryEndpoint())
+            .build();
+    AzureResourceManager.Authenticated authenticated =
+        AzureResourceManager.authenticate(credential, azureProfile);
+    String subscriptionId = authenticated.subscriptions().list().iterator().next().subscriptionId();
+    AzureResourceManager azure = authenticated.withSubscription(subscriptionId);
+    return azure;
+  }
+}

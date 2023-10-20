@@ -35,7 +35,7 @@
 #
 # Environment variables may be used to customize operation:
 #   BUILD_TYPE: Default: debug
-#     Maybe be one of asan|tsan|debug|release|coverage|lint
+#     May be one of asan|tsan|debug|fastdebug|release|coverage|lint
 #
 #   YB_BUILD_CPP
 #   Default: 1
@@ -49,6 +49,10 @@
 #   YB_BUILD_JAVA
 #   Default: 1
 #     Build and test java code if this is set to 1.
+#
+#   YB_BUILD_OPTS
+#   Default:
+#     YB_* environment settings
 #
 #   DONT_DELETE_BUILD_ROOT
 #   Default: 0 (meaning build root will be deleted) on Jenkins, 1 (don't delete) locally.
@@ -127,6 +131,8 @@ build_cpp_code() {
     )
   fi
 
+  log "Building cpp code with options: ${yb_build_args[*]}"
+
   time "$YB_SRC_ROOT/yb_build.sh" ${remote_opt} "${yb_build_args[@]}"
 
   log "Finished building C++ code (see timing information above)"
@@ -158,15 +164,16 @@ log "Removing old JSON-based test report files"
 activate_virtualenv
 set_pythonpath
 
-# shellcheck source=build-support/jenkins/common-lto.sh
-. "${BASH_SOURCE%/*}/common-lto.sh"
-
 # -------------------------------------------------------------------------------------------------
 # Build root setup and build directory cleanup
 # -------------------------------------------------------------------------------------------------
-
+# shellcheck source=build-support/jenkins/common-lto.sh
+. "${BASH_SOURCE%/*}/common-lto.sh"
+log "Setting build_root"
 # shellcheck disable=SC2119
 set_build_root
+
+log "BUILD_ROOT: ${BUILD_ROOT}"
 
 set_common_test_paths
 
@@ -310,28 +317,6 @@ if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then
     # Remove the compilation command file, even if we have not deleted the build root.
     rm -f "$BUILD_ROOT/compile_commands.json"
   )
-fi
-
-if [[ ${YB_ENABLE_STATIC_ANALYZER:-auto} == "auto" ]]; then
-  if is_clang &&
-     is_linux &&
-     [[ $build_type =~ ^(debug|release)$ ]] &&
-     is_jenkins_master_build
-  then
-    if true; then
-      log "Not enabling Clang static analyzer. Will enable in clang/Linux builds in the future."
-    else
-      # TODO: re-enable this when we have time to sift through analyzer warnings.
-      export YB_ENABLE_STATIC_ANALYZER=1
-      log "Enabling Clang static analyzer (this is a clang Linux $build_type build)"
-    fi
-  else
-    log "Not enabling Clang static analyzer (this is not a clang Linux debug/release build):" \
-        "OSTYPE=$OSTYPE, YB_COMPILER_TYPE=$YB_COMPILER_TYPE, build_type=$build_type"
-  fi
-else
-  log "YB_ENABLE_STATIC_ANALYZER is already set to $YB_ENABLE_STATIC_ANALYZER," \
-      "not setting automatically"
 fi
 
 # We have a retry loop around CMake because it sometimes fails due to NFS unavailability.
@@ -573,49 +558,7 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
       using_linuxbrew &&
       [[ $YB_COMPILER_TYPE == clang* ]]
     ); then
-    log "Doing a quick sanity-check of the release package using Docker."
-
-    # Have to export this for the script inside Docker to see it.
-    export YB_PACKAGE_PATH
-
-    if grep -q "CentOS Linux 7" /etc/os-release; then
-      docker_image=centos:7
-    else
-      docker_image=almalinux:8
-    fi
-
-    # Do a quick sanity test on the release package. This verifies that we can at least start the
-    # cluster, which requires all RPATHs to be set correctly, either at the time the package is
-    # built (new approach), or by post_install.sh (legacy Linuxbrew based approach).
-    docker run -i \
-      -e YB_PACKAGE_PATH \
-      --mount "type=bind,source=${YB_SRC_ROOT}/build,target=/mnt/dir_with_package" "$docker_image" \
-      bash -c '
-        set -euo pipefail -x
-        yum install -y libatomic
-        package_name=${YB_PACKAGE_PATH##*/}
-        package_path=/mnt/dir_with_package/$package_name
-        set +e
-        # This will be "yugabyte-a.b.c.d/" (with a trailing slash).
-        dir_name_inside_archive=$(tar tf "$package_path" | head -1)
-        set -e
-        # Remove the trailing slash.
-        dir_name_inside_archive=${dir_name_inside_archive%/}
-        cd /tmp
-        tar xzf "${package_path}"
-        cd "${dir_name_inside_archive}"
-        bin/post_install.sh
-        if grep -q "CentOS Linux 7" /etc/os-release; then
-          python_executable=python
-        else
-          dnf install -y python38 procps-ng
-          python_executable=python3
-        fi
-        $python_executable bin/yb-ctl create
-        bin/ysqlsh -c "create table t (k int primary key, v int);
-                       insert into t values (1, 2);
-                       select * from t;"
-      '
+    "$YB_SRC_ROOT/bin/release_package_docker_test.sh" --package-path "${YB_PACKAGE_PATH}"
   else
     log "Not doing a quick sanity-check of the release package. Details:"
     log "  OS type: ${OSTYPE}"
@@ -628,7 +571,7 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
     if [[ -f /etc/os-release ]]; then
       log "  Contents of /etc/os-release:"
       cat /etc/os-release >&2
-    fi  
+    fi
   fi
 else
   log "Skipping creating distribution package. Build type: $build_type, OSTYPE: ${OSTYPE}," \

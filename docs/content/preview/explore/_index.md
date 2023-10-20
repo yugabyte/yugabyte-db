@@ -36,6 +36,7 @@ The following table describes the YugabyteDB features you can explore, along wit
 | [Change data capture](change-data-capture/) | Learn about YugabyteDB support for streaming data to Kafka. | N/A |
 | [Security](security/security/) | Learn how to secure data in YugabyteDB, using authentication, authorization (RBAC), encryption, and more. | Single-node<br/>local/cloud |
 | [Observability](observability/) | Export metrics into Prometheus and create dashboards using Grafana. | Multi-node<br/>local |
+| [YCQL features](ycql-language/) | Learn about YugabyteDB's Apache Cassandra compatible YCQL language features. | Single-node<br/>local/cloud |
 
 ## Set up YugabyteDB universe
 
@@ -238,7 +239,9 @@ Note that if your Cloud Shell session is idle for more than 5 minutes, your brow
 
   <div id="anywhere" class="tab-pane fade" role="tabpanel" aria-labelledby="anywhere-tab">
 
-To run the examples in YugabyteDB Anywhere, [create a universe](../yugabyte-platform/create-deployments/create-universe-multi-zone/).
+To run the examples, you need to create a single- or multi-node universe.
+
+For instructions on creating a universe in YugabyteDB Anywhere, refer to [Create a multi-zone universe](../yugabyte-platform/create-deployments/create-universe-multi-zone/).
 
   </div>
 </div>

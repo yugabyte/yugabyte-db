@@ -516,7 +516,18 @@ ybginDoFirstExec(IndexScanDesc scan, ScanDirection dir)
 	ybginSetupBinds(scan);
 
 	/* targets */
-	ybginSetupTargets(scan);
+	if (scan->yb_aggrefs != NIL)
+		/*
+		 * As of 2023-06-28, aggregate pushdown is only implemented for
+		 * IndexOnlyScan, not IndexScan.
+		 */
+		YbDmlAppendTargetsAggregate(scan->yb_aggrefs,
+									RelationGetDescr(scan->indexRelation),
+									scan->indexRelation,
+									scan->xs_want_itup,
+									ybso->handle);
+	else
+		ybginSetupTargets(scan);
 
 	YbSetCatalogCacheVersion(ybso->handle, YbGetCatalogCacheVersion());
 
@@ -588,6 +599,19 @@ ybgingettuple(IndexScanDesc scan, ScanDirection dir)
 
 	/* fetch */
 	scan->xs_ctup.t_ybctid = 0;
+	if (scan->yb_aggrefs)
+	{
+		/*
+		 * TODO(jason): don't assume that recheck is needed.
+		 */
+		scan->xs_recheck = true;
+
+		/*
+		 * Aggregate pushdown directly modifies the scan slot rather than
+		 * passing it through xs_hitup or xs_itup.
+		 */
+		return ybc_getnext_aggslot(scan, ybso->handle, scan->xs_want_itup);
+	}
 	while (HeapTupleIsValid(tup = ybginFetchNextHeapTuple(scan)))
 	{
 		if (true)				/* TODO(jason): don't assume a match. */
@@ -605,4 +629,14 @@ ybgingettuple(IndexScanDesc scan, ScanDirection dir)
 	}
 
 	return scan->xs_ctup.t_ybctid != 0;
+}
+
+/*
+ * TODO(jason): don't assume that recheck is needed.
+ */
+bool
+ybginmightrecheck(Relation heapRelation, Relation indexRelation,
+				  bool xs_want_itup, ScanKey keys, int nkeys)
+{
+	return true;
 }

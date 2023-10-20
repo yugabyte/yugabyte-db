@@ -18,7 +18,8 @@ import com.google.common.base.Strings;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.models.common.YBADeprecated;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.ProviderAndRegion;
 import com.yugabyte.yw.models.helpers.provider.region.AWSRegionCloudInfo;
@@ -89,10 +90,10 @@ public class Region extends Model {
       accessMode = READ_ONLY)
   private String name;
 
-  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
   @ApiModelProperty(
       value =
-          "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
+          "Deprecated since YBA version 2.17.2.0, "
               + "Moved to details.cloudInfo aws/gcp/azure ybImage property",
       example = "TODO",
       accessMode = READ_WRITE)
@@ -102,13 +103,13 @@ public class Region extends Model {
   @ApiModelProperty(value = "The region's longitude", example = "-120.01", accessMode = READ_ONLY)
   @Constraints.Min(-180)
   @Constraints.Max(180)
-  private double longitude = -90;
+  private double longitude = 0.0;
 
   @Column(columnDefinition = "float")
   @ApiModelProperty(value = "The region's latitude", example = "37.22", accessMode = READ_ONLY)
   @Constraints.Min(-90)
   @Constraints.Max(90)
-  private double latitude = -90;
+  private double latitude = 0.0;
 
   @Column(nullable = false)
   @ManyToOne
@@ -142,7 +143,8 @@ public class Region extends Model {
   public long getNodeCount() {
     Set<UUID> azUUIDs = getZones().stream().map(az -> az.getUuid()).collect(Collectors.toSet());
     return Customer.get(getProvider().getCustomerUUID())
-        .getUniversesForProvider(getProvider().getUuid()).stream()
+        .getUniversesForProvider(getProvider().getUuid())
+        .stream()
         .flatMap(u -> u.getUniverseDetails().nodeDetailsSet.stream())
         .filter(nd -> azUUIDs.contains(nd.azUuid))
         .count();
@@ -160,11 +162,11 @@ public class Region extends Model {
     }
   }
 
-  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
   @ApiModelProperty(
       required = false,
       value =
-          "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
+          "Deprecated since YBA version 2.17.2.0, "
               + "Moved to regionDetails.cloudInfo aws/azure securityGroupId property")
   public String getSecurityGroupId() {
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(this);
@@ -187,11 +189,11 @@ public class Region extends Model {
     }
   }
 
-  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
   @ApiModelProperty(
       required = false,
       value =
-          "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
+          "Deprecated since YBA version 2.17.2.0, "
               + "Moved to regionDetails.cloudInfo aws/azure vnet property")
   public String getVnetName() {
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(this);
@@ -275,10 +277,17 @@ public class Region extends Model {
 
   @JsonIgnore
   public boolean isUpdateNeeded(Region region) {
-    return !Objects.equals(this.getSecurityGroupId(), region.getSecurityGroupId())
-        || !Objects.equals(this.getVnetName(), region.getVnetName())
-        || !Objects.equals(this.getYbImage(), region.getYbImage())
-        || !Objects.equals(this.getDetails(), region.getDetails());
+    boolean isUpdatedNeeded =
+        !Objects.equals(this.getSecurityGroupId(), region.getSecurityGroupId())
+            || !Objects.equals(this.getVnetName(), region.getVnetName())
+            || !Objects.equals(this.getYbImage(), region.getYbImage())
+            || !Objects.equals(this.getDetails(), region.getDetails());
+    if (region.getProviderCloudCode() == CloudType.onprem) {
+      isUpdatedNeeded |=
+          !Objects.equals(this.getLatitude(), region.getLatitude())
+              || !Objects.equals(this.getLongitude(), region.getLongitude());
+    }
+    return isUpdatedNeeded;
   }
 
   /** Query Helper for PlacementRegion with region code */

@@ -37,6 +37,7 @@
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/db/writebuffer.h"
 #include "yb/rocksdb/memtablerep.h"
+#include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/table.h"
@@ -264,6 +265,7 @@ rocksdb::ReadOptions PrepareReadOptions(
     rocksdb::Statistics* statistics) {
   rocksdb::ReadOptions read_opts;
   read_opts.query_id = query_id;
+  read_opts.statistics = statistics;
   if (FLAGS_use_docdb_aware_bloom_filter &&
     bloom_filter_mode == BloomFilterMode::USE_BLOOM_FILTER) {
     DCHECK(user_key_for_filter);
@@ -272,7 +274,6 @@ rocksdb::ReadOptions PrepareReadOptions(
   }
   read_opts.file_filter = std::move(file_filter);
   read_opts.iterate_upper_bound = iterate_upper_bound;
-  read_opts.statistics = statistics;
   return read_opts;
 }
 
@@ -429,10 +430,31 @@ void AutoInitFromBlockBasedTableOptions(rocksdb::BlockBasedTableOptions* table_o
 class HybridTimeFilteringIterator : public rocksdb::FilteringIterator {
  public:
   HybridTimeFilteringIterator(
-      rocksdb::InternalIterator* iterator, bool arena_mode, HybridTime hybrid_time_filter)
-      : rocksdb::FilteringIterator(iterator, arena_mode), hybrid_time_filter_(hybrid_time_filter) {}
+      rocksdb::InternalIterator* iterator, bool arena_mode, Slice hybrid_time_filter)
+      : rocksdb::FilteringIterator(iterator, arena_mode) {
+    uint64_t ht = ExtractGlobalFilter(hybrid_time_filter);
+    if (HybridTime::FromPB(ht).is_valid()) {
+      global_ht_filter_ = HybridTime::FromPB(ht);
+    }
+    Slice cotables_filter = hybrid_time_filter.WithoutPrefix(sizeof(ht));
+    if (!cotables_filter.empty()) {
+      num_filters_ = cotables_filter.size() / kSizePerDbFilter;
+      db_oid_ptr_ = pointer_cast<const uint32_t*>(cotables_filter.data());
+      cotables_ht_ptr_ = pointer_cast<const uint64_t*>(
+          cotables_filter.data() + (num_filters_ * kSizeDbOid));
+    }
+  }
 
  private:
+  std::string CoTablesFilterToString() {
+    std::string res = "[ ";
+    for (size_t i = 0; i < num_filters_; i++) {
+      res += Format("$0:$1, ", db_oid_ptr_[i], HybridTime(cotables_ht_ptr_[i]));
+    }
+    res += " ]";
+    return res;
+  }
+
   bool Satisfied(Slice user_key) override {
     auto doc_ht = DocHybridTime::DecodeFromEnd(&user_key);
     if (!doc_ht.ok()) {
@@ -440,10 +462,44 @@ class HybridTimeFilteringIterator : public rocksdb::FilteringIterator {
                   << doc_ht.status();
       return true;
     }
-    return doc_ht->hybrid_time() <= hybrid_time_filter_;
+    VLOG(5) << "Key: " << user_key.ToDebugHexString() << ", filter details: "
+            << "{ Cotables filter: " << CoTablesFilterToString() << " }"
+            << "{ All keys filter: " << global_ht_filter_.ToDebugString() << " }";
+    // Logical AND of both the filters.
+    if (global_ht_filter_.is_valid() && doc_ht->hybrid_time() > global_ht_filter_) {
+      return false;
+    }
+    if (num_filters_ == 0) {
+      return true;
+    }
+    // Should only reach here in case of ysql catalog tables on the master.
+    bool cotable_uuid_present = user_key.TryConsumeByte(dockv::KeyEntryTypeAsChar::kTableId);
+    if (!cotable_uuid_present) {
+      return true;
+    }
+    Slice cotable_slice(user_key.cdata(), kUuidSize);
+    auto decoded_cotable_uuid_res = Uuid::FromComparable(cotable_slice);
+    if (!decoded_cotable_uuid_res.ok()) {
+      return true;
+    }
+    uint32_t key_db_oid = LittleEndian::Load32(decoded_cotable_uuid_res->data() + 12);
+
+    VLOG(5) << "DB Oid of key " << key_db_oid;
+    auto it = std::lower_bound(db_oid_ptr_, db_oid_ptr_ + num_filters_, key_db_oid);
+    if (it != db_oid_ptr_ + num_filters_ && *it == key_db_oid) {
+      auto idx = it - db_oid_ptr_;
+      HybridTime ht(cotables_ht_ptr_[idx]);
+      VLOG(5) << "Found db oid " << key_db_oid << " at index " << idx
+              << " with hybrid time " << ht;
+      return doc_ht->hybrid_time() <= ht;
+    }
+    return true;
   }
 
-  HybridTime hybrid_time_filter_;
+  HybridTime global_ht_filter_;
+  const uint32_t* db_oid_ptr_ = nullptr; // owned externally.
+  const uint64_t* cotables_ht_ptr_ = nullptr; // owned externally.
+  size_t num_filters_ = 0;
 };
 
 template <class T, class... Args>
@@ -457,13 +513,11 @@ T* CreateOnArena(rocksdb::Arena* arena, Args&&... args) {
 
 rocksdb::InternalIterator* WrapIterator(
     rocksdb::InternalIterator* iterator, rocksdb::Arena* arena, Slice filter) {
-  if (!filter.empty()) {
-    HybridTime hybrid_time_filter;
-    memcpy(&hybrid_time_filter, filter.data(), sizeof(hybrid_time_filter));
-    return CreateOnArena<HybridTimeFilteringIterator>(
-        arena, iterator, arena != nullptr, hybrid_time_filter);
+  if (filter.empty()) {
+    return iterator;
   }
-  return iterator;
+  return CreateOnArena<HybridTimeFilteringIterator>(
+      arena, iterator, arena != nullptr, filter);
 }
 
 void AddSupportedFilterPolicy(
@@ -559,6 +613,7 @@ void InitRocksDBOptions(
   } else {
     options->write_buffer_size = FLAGS_memstore_size_mb * 1_MB;
   }
+  LOG(INFO) << log_prefix << "Write buffer size: " << options->write_buffer_size;
   options->env = tablet_options.rocksdb_env;
   options->checkpoint_env = rocksdb::Env::Default();
   options->priority_thread_pool_for_compactions_and_flushes = GetGlobalPriorityThreadPool();
@@ -783,20 +838,54 @@ class RocksDBPatcher::Impl {
     return version_set_.Recover(column_families);
   }
 
-  Status SetHybridTimeFilter(HybridTime value) {
+  Status SetHybridTimeFilter(std::optional<uint32_t> db_oid, HybridTime value) {
     RocksDBPatcherHelper helper(&version_set_);
 
-    helper.IterateFiles([&helper, value](int level, const rocksdb::FileMetaData& file) {
+    helper.IterateFiles([&helper, db_oid, value](
+        int level, const rocksdb::FileMetaData& file) {
       if (!file.largest.user_frontier) {
         return;
       }
       auto& consensus_frontier = down_cast<ConsensusFrontier&>(*file.largest.user_frontier);
-      if (consensus_frontier.hybrid_time() <= value ||
-          consensus_frontier.hybrid_time_filter() <= value) {
+      // If all the data in the file is already as of old time, no need to set any filter.
+      if (consensus_frontier.hybrid_time() <= value) {
+        LOG(INFO) << "No need to set hybrid time filter since the largest frontier is already"
+                  << " older. Largest frontier HT " << consensus_frontier.hybrid_time()
+                  << ", filter HT " << value;
+        return;
+      }
+      if (db_oid) {
+        std::vector<std::pair<uint32_t, HybridTime>> new_filter;
+        consensus_frontier.CotablesFilter(&new_filter);
+        // Since existing filter is sorted, we can perform binary search to find the db oid.
+        auto it = std::lower_bound(new_filter.begin(), new_filter.end(), *db_oid,
+            [](const std::pair<uint32_t, HybridTime>& a, const uint32_t& b) {
+              return a.first < b;
+            });
+        // Simply append if not found.
+        if (it == new_filter.end() || it->first != *db_oid) {
+          new_filter.insert(it, { *db_oid, value });
+        } else {
+          // Update if found.
+          it->second = std::min(it->second, value);
+        }
+        rocksdb::FileMetaData fmd = file;
+        down_cast<ConsensusFrontier&>(*fmd.largest.user_frontier).SetCoTablesFilter(
+            std::move(new_filter));
+        LOG(INFO) << "Largest frontier post restore " << fmd.FrontiersToString();
+        helper.ModifyFile(level, fmd);
+        return;
+      } /* if (db_oid) */
+      if (HybridTime(consensus_frontier.GlobalFilter()) <= value) {
+        LOG(INFO) << "No need to set hybrid time filter since the largest frontier already"
+                  << " has an older filter. Largest frontier HT "
+                  << consensus_frontier.GlobalFilter()
+                  << ", filter " << value;
         return;
       }
       rocksdb::FileMetaData fmd = file;
-      down_cast<ConsensusFrontier&>(*fmd.largest.user_frontier).set_hybrid_time_filter(value);
+      down_cast<ConsensusFrontier&>(*fmd.largest.user_frontier).SetGlobalFilter(value);
+      LOG(INFO) << "Largest frontier post restore " << fmd.FrontiersToString();
       helper.ModifyFile(level, fmd);
     });
 
@@ -810,8 +899,9 @@ class RocksDBPatcher::Impl {
 
     auto* existing_frontier = down_cast<docdb::ConsensusFrontier*>(version_set_.FlushedFrontier());
     if (existing_frontier) {
-      if (!frontier.history_cutoff()) {
-        final_frontier.set_history_cutoff(existing_frontier->history_cutoff());
+      if (!frontier.history_cutoff_valid()) {
+        final_frontier.set_history_cutoff_information(
+            existing_frontier->history_cutoff());
       }
       if (!frontier.op_id()) {
         // Update op id only if it was specified in frontier.
@@ -833,8 +923,8 @@ class RocksDBPatcher::Impl {
           consensus_frontier.set_op_id(OpId());
           modified = true;
         }
-        if (frontier.history_cutoff()) {
-          consensus_frontier.set_history_cutoff(frontier.history_cutoff());
+        if (frontier.history_cutoff_valid()) {
+          consensus_frontier.set_history_cutoff_information(frontier.history_cutoff());
           modified = true;
         }
       }
@@ -879,7 +969,7 @@ class RocksDBPatcher::Impl {
         return;
       }
       auto& consensus_frontier = down_cast<ConsensusFrontier&>(*file.largest.user_frontier);
-      if (consensus_frontier.hybrid_time_filter().is_valid()) {
+      if (consensus_frontier.HasFilter()) {
         contains_filter = true;
       }
     });
@@ -909,8 +999,8 @@ Status RocksDBPatcher::Load() {
   return impl_->Load();
 }
 
-Status RocksDBPatcher::SetHybridTimeFilter(HybridTime value) {
-  return impl_->SetHybridTimeFilter(value);
+Status RocksDBPatcher::SetHybridTimeFilter(std::optional<uint32_t> db_oid, HybridTime value) {
+  return impl_->SetHybridTimeFilter(db_oid, value);
 }
 
 Status RocksDBPatcher::ModifyFlushedFrontier(const ConsensusFrontier& frontier) {

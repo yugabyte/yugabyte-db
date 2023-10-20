@@ -306,9 +306,17 @@ class PartitionSchema {
   static void ProcessHashKeyEntry(const LWPgsqlExpressionPB& expr, std::string* out);
   static void ProcessHashKeyEntry(const PgsqlExpressionPB& expr, std::string* out);
 
-  // Encoded (sub)doc keys that belong to partition with partition_key lower bound
-  // are starting with this prefix or greater than it.
-  static Result<std::string> GetEncodedKeyPrefix(
+  // For range-based sharded tables, encoded partition key is the same as partition_key.
+  // For hash-based sharded tables, encoded partition key consists of KeyEntryType::kUInt16Hash
+  // prefix followed by partition_key.
+  //
+  // Encoded (sub)doc keys that belong to partition are starting with encoded partition_key_start
+  // or greater than it and lower than encoded partition_key_end.
+  //
+  // If partition_key is empty, encoded partition key is also empty and that means corresponding
+  // partition boundary is absent (tablet is the first/last in table key range).
+  Result<std::string> GetEncodedPartitionKey(const std::string& partition_key);
+  static Result<std::string> GetEncodedPartitionKey(
     const std::string& partition_key, const PartitionSchemaPB& partition_schema);
 
   // Returns inclusive min and max hash code for the partition.

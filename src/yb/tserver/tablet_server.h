@@ -38,6 +38,8 @@
 #include <vector>
 #include <atomic>
 
+#include "yb/common/common_util.h"
+#include "yb/common/pg_catversions.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/cdc/cdc_fwd.h"
 #include "yb/cdc/cdc_consumer.fwd.h"
@@ -265,9 +267,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
 
-  Result<bool> XClusterSafeTimeCaughtUpToCommitHt(
-      const NamespaceId& namespace_id, HybridTime commit_ht) const;
-
   Result<cdc::XClusterRole> TEST_GetXClusterRole() const;
 
   Status ListMasterServers(const ListMasterServersRequestPB* req,
@@ -277,6 +276,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status SetConfigVersionAndConsumerRegistry(
       int32_t cluster_config_version, const cdc::ConsumerRegistryPB* consumer_registry);
+
+  Status ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid);
 
   XClusterConsumer* GetXClusterConsumer() const;
 
@@ -292,6 +293,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode);
 
+  std::optional<uint64_t> GetCatalogVersionsFingerprint() const {
+    return catalog_versions_fingerprint_.load(std::memory_order_acquire);
+  }
+
+  std::shared_ptr<cdc::CDCServiceImpl> GetCDCService() const { return cdc_service_; }
+
  protected:
   virtual Status RegisterServices();
 
@@ -305,6 +312,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) override;
 
   Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
+
+  Result<std::unordered_set<std::string>> GetAvailableAutoFlagsForServer() const override;
 
   std::atomic<bool> initted_{false};
 
@@ -359,6 +368,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   uint64_t ysql_last_breaking_catalog_version_ = 0;
   tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_;
 
+  // Fingerprint of the catalog versions map.
+  std::atomic<std::optional<uint64_t>> catalog_versions_fingerprint_;
+
   // If shared memory array db_catalog_versions_ slot is used by a database OID, the
   // corresponding slot in this boolean array is set to true.
   std::unique_ptr<std::array<bool, TServerSharedData::kMaxNumDbCatalogVersions>>
@@ -395,14 +407,14 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   PgConfigReloader pg_config_reloader_;
 
-  Status CreateCDCConsumer() REQUIRES(cdc_consumer_mutex_);
+  Status CreateXClusterConsumer() REQUIRES(xcluster_consumer_mutex_);
 
   std::unique_ptr<rpc::SecureContext> secure_context_;
   std::vector<CertificateReloader> certificate_reloaders_;
 
-  // CDC consumer.
-  mutable std::mutex cdc_consumer_mutex_;
-  std::unique_ptr<XClusterConsumer> xcluster_consumer_ GUARDED_BY(cdc_consumer_mutex_);
+  // xCluster consumer.
+  mutable std::mutex xcluster_consumer_mutex_;
+  std::unique_ptr<XClusterConsumer> xcluster_consumer_ GUARDED_BY(xcluster_consumer_mutex_);
 
   // CDC service.
   std::shared_ptr<cdc::CDCServiceImpl> cdc_service_;

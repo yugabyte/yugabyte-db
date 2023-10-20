@@ -89,7 +89,8 @@ public class PublicCloudConstants {
     Persistent(Common.CloudType.gcp),
     StandardSSD_LRS(Common.CloudType.azu),
     Premium_LRS(Common.CloudType.azu),
-    UltraSSD_LRS(Common.CloudType.azu, new Pair<>(100, 160_000), new Pair<>(1, 3814));
+    UltraSSD_LRS(Common.CloudType.azu, new Pair<>(100, 160_000), new Pair<>(1, 3814)),
+    Local(Common.CloudType.local);
 
     @Getter private final Common.CloudType cloudType;
     @Getter private final Pair<Integer, Integer> iopsRange;
@@ -110,6 +111,38 @@ public class PublicCloudConstants {
       this.cloudType = cloudType;
       this.iopsRange = iopsRange;
       this.throughputRange = throughputRange;
+    }
+
+    public static StorageType fromString(String value) {
+      StorageType retValue;
+      switch (value) {
+        case "IO1":
+          retValue = IO1;
+          break;
+        case "GP2":
+          retValue = GP2;
+          break;
+        case "GP3":
+          retValue = GP3;
+          break;
+        case "Scratch":
+          retValue = Scratch;
+          break;
+        case "Persistent":
+          retValue = Persistent;
+        case "StandardSSD_LRS":
+          retValue = StandardSSD_LRS;
+          break;
+        case "Premium_LRS":
+          retValue = Premium_LRS;
+          break;
+        case "UltraSSD_LRS":
+          retValue = UltraSSD_LRS;
+          break;
+        default:
+          throw new RuntimeException("invalid storagetype " + value);
+      }
+      return retValue;
     }
 
     public boolean isIopsProvisioning() {

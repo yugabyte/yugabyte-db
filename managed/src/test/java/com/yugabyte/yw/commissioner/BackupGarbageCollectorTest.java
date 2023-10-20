@@ -6,6 +6,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -22,7 +23,8 @@ import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -49,7 +51,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
 
   @Mock PlatformScheduler mockPlatformScheduler;
 
-  @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
+  @Mock private RuntimeConfGetter mockConfGetter;
 
   private Customer defaultCustomer;
   private Universe defaultUniverse;
@@ -59,7 +61,6 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
   private BackupHelper mockBackupHelper;
   private YbcManager mockYbcManager;
   private CustomerConfig s3StorageConfig;
-
   private Users defaultUser;
 
   @Before
@@ -75,13 +76,15 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
         new BackupGarbageCollector(
             mockPlatformScheduler,
             customerConfigService,
-            mockRuntimeConfigFactory,
+            mockConfGetter,
             tableManagerYb,
             mockBackupHelper,
             mockYbcManager,
             mockTaskManager,
             mockCommissioner,
             mockStorageUtilFactory);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.deleteExpiredBackupMaxGCSize)))
+        .thenReturn(10);
   }
 
   @Test
@@ -311,7 +314,11 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     // Test that we do not delete backups of paused universe
     setUniversePaused(true, defaultUniverse);
     backupGC.scheduleRunner();
-    assertEquals(0, Backup.getExpiredBackups().get(defaultCustomer).size());
+    assertEquals(
+        0,
+        Backup.getCompletedExpiredBackups()
+            .getOrDefault(defaultCustomer.getUuid(), new ArrayList<>())
+            .size());
     assertEquals(null, CustomerTask.get(defaultCustomer.getUuid(), fakeTaskUUID));
     verify(mockCommissioner, times(0)).submit(any(), any());
 
@@ -319,7 +326,11 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     setUniversePaused(false, defaultUniverse);
     backupGC.scheduleRunner();
     CustomerTask task = CustomerTask.get(defaultCustomer.getUuid(), fakeTaskUUID);
-    assertEquals(1, Backup.getExpiredBackups().get(defaultCustomer).size());
+    assertEquals(
+        1,
+        Backup.getCompletedExpiredBackups()
+            .getOrDefault(defaultCustomer.getUuid(), new ArrayList<>())
+            .size());
     assertEquals(CustomerTask.TaskType.Delete, task.getType());
     verify(mockCommissioner, times(1)).submit(any(), any());
   }
@@ -347,13 +358,13 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
 
     backupGC.scheduleRunner();
     CustomerTask task = CustomerTask.get(defaultCustomer.getUuid(), fakeTaskUUID);
-    assertEquals(1, Backup.getExpiredBackups().get(defaultCustomer).size());
+    assertEquals(1, Backup.getCompletedExpiredBackups().get(defaultCustomer.getUuid()).size());
     assertEquals(CustomerTask.TaskType.Delete, task.getType());
     verify(mockCommissioner, times(1)).submit(any(), any());
 
     backup2.setBaseBackupUUID(backup2.getBackupUUID());
     backup2.save();
-    assertEquals(2, Backup.getExpiredBackups().get(defaultCustomer).size());
+    assertEquals(2, Backup.getCompletedExpiredBackups().get(defaultCustomer.getUuid()).size());
     backupGC.scheduleRunner();
     verify(mockCommissioner, times(3)).submit(any(), any());
   }
@@ -373,10 +384,10 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     backupGC.scheduleRunner();
 
     CustomerTask task = CustomerTask.get(defaultCustomer.getUuid(), fakeTaskUUID);
-    assertEquals(1, Backup.getExpiredBackups().get(defaultCustomer).size());
+    assertEquals(1, Backup.getCompletedExpiredBackups().get(defaultCustomer.getUuid()).size());
     assertEquals(CustomerTask.TaskType.Delete, task.getType());
     verify(mockCommissioner, times(1)).submit(any(), any());
-    assertEquals(1, Backup.getExpiredBackups().get(defaultCustomer).size());
+    assertEquals(1, Backup.getCompletedExpiredBackups().get(defaultCustomer.getUuid()).size());
   }
 
   @Test
@@ -407,7 +418,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
       backup.transitionState(Backup.BackupState.Completed);
     }
     backupGC.scheduleRunner();
-    assertEquals(7, Backup.getExpiredBackups().get(defaultCustomer).size());
+    assertEquals(7, Backup.getCompletedExpiredBackups().get(defaultCustomer.getUuid()).size());
 
     // 4 times for deleting expired backups
     verify(mockCommissioner, times(4)).submit(any(), any());
@@ -436,7 +447,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
       backup.transitionState(Backup.BackupState.Completed);
     }
     backupGC.scheduleRunner();
-    assertEquals(7, Backup.getExpiredBackups().get(defaultCustomer).size());
+    assertEquals(7, Backup.getCompletedExpiredBackups().get(defaultCustomer.getUuid()).size());
 
     // 2 time for independent and 2 times from deleted scheduled expired backups.
     verify(mockCommissioner, times(4)).submit(any(), any());
@@ -456,7 +467,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
             defaultCustomer.getUuid(), backup.getBackupUUID()))
         .thenReturn(true);
     backupGC.scheduleRunner();
-    assertEquals(1, Backup.getExpiredBackups().get(defaultCustomer).size());
+    assertEquals(1, Backup.getCompletedExpiredBackups().get(defaultCustomer.getUuid()).size());
     assertEquals(null, CustomerTask.get(defaultCustomer.getUuid(), fakeTaskUUID));
     verify(mockCommissioner, times(0)).submit(any(), any());
 
@@ -466,7 +477,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     backupGC.scheduleRunner();
     CustomerTask task = CustomerTask.get(defaultCustomer.getUuid(), fakeTaskUUID);
-    assertEquals(1, Backup.getExpiredBackups().get(defaultCustomer).size());
+    assertEquals(1, Backup.getCompletedExpiredBackups().get(defaultCustomer.getUuid()).size());
     assertEquals(CustomerTask.TaskType.Delete, task.getType());
     verify(mockCommissioner, times(1)).submit(any(), any());
   }

@@ -24,7 +24,7 @@ else
 fi
 
 if [[ $( uname -m ) == "x86_64" ]]; then
-  build_root_basename="$build_type-clang15-linuxbrew-full-lto-ninja"
+  build_root_basename="$build_type-clang16-linuxbrew-full-lto-ninja"
 fi
 
 dep_graph_cmd=(

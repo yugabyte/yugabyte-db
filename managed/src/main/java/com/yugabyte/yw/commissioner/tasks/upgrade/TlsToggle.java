@@ -49,13 +49,16 @@ public class TlsToggle extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams() {
+    verifyParams();
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
           Set<NodeDetails> allNodes = toOrderedSet(nodes);
-          // Verify the request params and fail if invalid
-          verifyParams();
           // Copy any new certs to all nodes
           createCopyCertTasks(allNodes);
           updateUniverseHttpsEnabledUI();
@@ -89,7 +92,7 @@ public class TlsToggle extends UpgradeTaskBase {
             createGFlagUpdateTasks(1, nodeList, getSingle(processTypes));
             Map<String, String> gflags = new HashMap<>();
             gflags.put("allow_insecure_connections", "true");
-            createSetFlagInMemoryTasks(nodeList, getSingle(processTypes), true, gflags, false)
+            createSetFlagInMemoryTasks(nodeList, getSingle(processTypes), true, gflags)
                 .setSubTaskGroupType(getTaskSubGroupType());
           },
           nodes,
@@ -123,7 +126,7 @@ public class TlsToggle extends UpgradeTaskBase {
             createGFlagUpdateTasks(2, nodeList, processType);
             Map<String, String> gflags = new HashMap<>();
             gflags.put("allow_insecure_connections", String.valueOf(taskParams().allowInsecure));
-            createSetFlagInMemoryTasks(nodeList, processType, true, gflags, false)
+            createSetFlagInMemoryTasks(nodeList, processType, true, gflags)
                 .setSubTaskGroupType(getTaskSubGroupType());
           },
           nodes,

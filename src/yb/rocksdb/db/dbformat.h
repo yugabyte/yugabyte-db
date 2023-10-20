@@ -156,7 +156,7 @@ class InternalKeyComparator : public Comparator {
   virtual ~InternalKeyComparator() {}
 
   virtual const char* Name() const override;
-  virtual int Compare(const Slice& a, const Slice& b) const override;
+  virtual int Compare(Slice a, Slice b) const override;
   virtual void FindShortestSeparator(std::string* start,
                                      const Slice& limit) const override;
   virtual void FindShortSuccessor(std::string* key) const override;
