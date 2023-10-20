@@ -9,7 +9,10 @@ import { YBPanelItem } from '../../panels';
 import { timeFormatter, successStringFormatter } from '../../../utils/TableFormatters';
 import { YBConfirmModal } from '../../modals';
 
-import { hasNecessaryPerm, RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
+import {
+  hasNecessaryPerm,
+  RbacValidator
+} from '../../../redesign/features/rbac/common/RbacValidator';
 import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 import './TasksList.scss';
 
@@ -30,9 +33,10 @@ export default class TaskListTable extends Component {
     }
 
     function typeFormatter(cell, row) {
-      return row.correlationId && hasNecessaryPerm({
-        ...UserPermissionMap.abortTask
-      }) ? (
+      return row.correlationId &&
+        hasNecessaryPerm({
+          ...UserPermissionMap.abortTask
+        }) ? (
         <Link to={`/logs/?queryRegex=${row.correlationId}&startDate=${row.createTime}`}>
           {row.typeName} {row.target}
         </Link>
@@ -42,7 +46,7 @@ export default class TaskListTable extends Component {
     }
 
     const abortTaskClicked = (taskUUID) => {
-      this.props.abortCurrentTask(taskUUID).then((response) => {
+      this.props.abortTask(taskUUID).then((response) => {
         const taskResponse = response?.payload?.response;
         // eslint-disable-next-line no-empty
         if (taskResponse && (taskResponse.status === 200 || taskResponse.status === 201)) {

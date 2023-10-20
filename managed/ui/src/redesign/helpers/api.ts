@@ -70,6 +70,14 @@ export enum QUERY_KEY {
 // TODO: Upgrade React Query to 3.17+ to get the change for supporting
 //       annotating these as readonly query keys. (PLAT-4896)
 
+export const taskQueryKey = {
+  ALL: ['task'],
+  customer: (customerUuid: string) => [...taskQueryKey.ALL, 'customer', customerUuid],
+  universe: (universeUuid: string) => [...taskQueryKey.ALL, 'universe', universeUuid],
+  provider: (providerUuid: string) => [...taskQueryKey.ALL, 'provider', providerUuid],
+  xCluster: (xClusterUuid: string) => [...taskQueryKey.ALL, 'xCluster', xClusterUuid]
+};
+
 export const providerQueryKey = {
   ALL: ['provider'],
   detail: (providerUuid: string) => [...providerQueryKey.ALL, providerUuid]
@@ -536,6 +544,13 @@ class ApiService {
   deleteCertificate = (certUUID: string, customerUUID: string): Promise<any> => {
     const requestUrl = `${ROOT_URL}/customers/${customerUUID}/certificates/${certUUID}`;
     return axios.delete<any>(requestUrl).then((res) => res.data);
+  };
+
+  fetchUniverseTasks = (universeUuid: string): Promise<any> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks_list`;
+    return axios
+      .get<any>(requestUrl, { params: { uUUID: universeUuid } })
+      .then((response) => response.data);
   };
 
   getAlerts = (

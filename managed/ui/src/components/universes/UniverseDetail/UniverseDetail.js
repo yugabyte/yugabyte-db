@@ -472,14 +472,11 @@ class UniverseDetail extends Component {
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.tasks')}
           >
             <UniverseTaskList
-              universe={universe}
-              tasks={tasks}
-              isCommunityEdition={!!customer.INSECURE_apiToken}
-              fetchCustomerTasks={this.props.fetchCustomerTasks}
-              refreshUniverseData={this.getUniverseInfo}
-              abortCurrentTask={this.props.abortCurrentTask}
+              universeUuid={currentUniverse.data.universeUUID}
+              abortTask={this.props.abortCurrentTask}
               hideTaskAbortModal={this.props.hideTaskAbortModal}
               showTaskAbortModal={this.props.showTaskAbortModal}
+              refreshUniverseData={this.getUniverseInfo}
               visibleModal={visibleModal}
             />
           </Tab.Pane>
