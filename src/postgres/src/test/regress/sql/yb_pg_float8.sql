@@ -97,6 +97,9 @@ select floor(f1) as floor_f1 from float8_tbl f ORDER BY f1;
 -- sign
 select sign(f1) as sign_f1 from float8_tbl f ORDER BY f1;
 
+-- avoid bit-exact output here because operations may not be bit-exact.
+SET extra_float_digits = 0;
+
 -- square root
 SELECT sqrt(float8 '64') AS eight;
 
@@ -147,6 +150,8 @@ SELECT '' AS bad, f.f1 / '0.0' from FLOAT8_TBL f ORDER BY f1;
 
 SELECT '' AS five, * FROM FLOAT8_TBL ORDER BY f1;
 
+RESET extra_float_digits;
+
 -- test for over- and underflow
 INSERT INTO FLOAT8_TBL(f1) VALUES ('10e400');
 
@@ -176,7 +181,6 @@ INSERT INTO FLOAT8_TBL(f1) VALUES ('-1.2345678901234e-200');
 SELECT '' AS five, * FROM FLOAT8_TBL ORDER BY f1;
 
 -- test exact cases for trigonometric functions in degrees
-SET extra_float_digits = 3;
 
 SELECT x,
        sind(x),
@@ -218,5 +222,3 @@ SELECT x, y,
        atan2d(y, x) IN (-90,0,90,180) AS atan2d_exact
 FROM (SELECT 10*cosd(a), 10*sind(a)
       FROM generate_series(0, 360, 90) AS t(a)) AS t(x,y);
-
-RESET extra_float_digits;
