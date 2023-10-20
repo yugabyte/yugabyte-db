@@ -235,7 +235,7 @@ You need to perform the following steps:
   ...
   ```
 
-- Pull images to your machine, as follows:
+- Pull images to your machine.
 
   These image tags will vary based on the version.
 
@@ -247,7 +247,7 @@ You need to perform the following steps:
   docker pull nginxinc/nginx-unprivileged:1.23.3
   ```
 
-- Log in to your target container registry, as per the following example that uses Google Artifact Registry:
+- Log in to your target container registry, as per the following example that uses Google Artifact Registry.
 
   Replace the Service Account and Location in the example as applicable.
 
@@ -269,7 +269,7 @@ You need to perform the following steps:
   docker tag prom/prometheus:v2.41.0 us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/prom/prometheus:v2.41.0
   ```
 
-- Push images to the private container registry, as follows:
+- Push images to the private container registry.
 
   Replace the Location, Project ID, Repository, and Image in the example as applicable.
 
