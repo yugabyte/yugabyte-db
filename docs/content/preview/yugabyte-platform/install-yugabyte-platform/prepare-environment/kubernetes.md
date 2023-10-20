@@ -168,7 +168,7 @@ You need to perform the following steps:
 - Log in to [quay.io](https://quay.io/) to access the YugabyteDB private registry using the user name and password provided in the secret YAML file. To find the `auth` field, use `base64 -d` to decode the data inside the `yaml` file twice. In this field, the user name and password are separated by a colon. For example, `yugabyte+<user-name>:ZQ66Z9C1K6AHD5A9VU28B06Q7N0AXZAQSR`.
 
   ```sh
-  docker login -u "your_yugabyte_username" -p "yugabyte_provided_password" quay.
+  docker login -u "your_yugabyte_username" -p "yugabyte_provided_password" quay.io
   docker search quay.io/yugabyte
   ```
 
