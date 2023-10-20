@@ -855,6 +855,14 @@
             "taskSuccess": "Reconciled xCluster config with DB."
           }
         }
+      },
+      "taskList": {
+        "taskHistory": {
+          "title": "Task History"
+        },
+        "error": {
+          "failedToFetchUniverseTaskList": "Unable to fetch universe task list."
+        }
       }
     },
     "admin": {
