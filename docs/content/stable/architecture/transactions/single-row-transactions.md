@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: architecture-single-row-transactions
     parent: architecture-acid-transactions
-    weight: 1154
+    weight: 60
 type: docs
 ---
 

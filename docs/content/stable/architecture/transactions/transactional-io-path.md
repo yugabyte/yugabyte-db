@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: architecture-transactional-io-path
     parent: architecture-acid-transactions
-    weight: 1156
+    weight: 80
 type: docs
 ---
 

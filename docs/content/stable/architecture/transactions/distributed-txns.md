@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: architecture-distributed-acid-transactions
     parent: architecture-acid-transactions
-    weight: 1155
+    weight: 70
 type: docs
 ---
 

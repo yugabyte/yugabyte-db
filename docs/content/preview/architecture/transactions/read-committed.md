@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: architecture-read-committed
     parent: architecture-acid-transactions
-    weight: 1153
+    weight: 50
 type: docs
 rightNav:
   hideH4: true

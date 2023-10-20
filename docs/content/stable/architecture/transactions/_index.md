@@ -53,6 +53,30 @@ YugabyteDB's distributed transaction architecture is based on principles of atom
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="transaction-priorities/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
+        <div class="title">Transaction priorities</div>
+      </div>
+      <div class="body">
+        Learn how YugabyteDB decides which transactions should be aborted in case of conflict.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="read-committed/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
+        <div class="title">Read committed</div>
+      </div>
+      <div class="body">
+        Read committed isolation level in YugabyteDB.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="single-row-transactions/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />

@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: architecture-concurrency-control
     parent: architecture-acid-transactions
-    weight: 1153
+    weight: 30
 type: docs
 ---
 
