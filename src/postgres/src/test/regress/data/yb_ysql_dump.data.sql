@@ -492,10 +492,6 @@ ALTER TABLE public.tbl13 OWNER TO yugabyte_test;
 -- Name: tbl1_a_seq; Type: SEQUENCE; Schema: public; Owner: yugabyte_test
 --
 
-
--- For binary upgrade, must preserve pg_type oid
-SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16387'::pg_catalog.oid);
-
 CREATE SEQUENCE public.tbl1_a_seq
     AS integer
     START WITH 1
@@ -537,10 +533,6 @@ ALTER TABLE public.tbl2 OWNER TO yugabyte_test;
 --
 -- Name: tbl2_a_seq; Type: SEQUENCE; Schema: public; Owner: yugabyte_test
 --
-
-
--- For binary upgrade, must preserve pg_type oid
-SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16393'::pg_catalog.oid);
 
 CREATE SEQUENCE public.tbl2_a_seq
     AS integer
@@ -1036,7 +1028,7 @@ CREATE TABLE public.tr2 (
     c double precision NOT NULL,
     CONSTRAINT tr2_pkey PRIMARY KEY(a DESC, b ASC, c DESC)
 )
-SPLIT AT VALUES ((100, 'a', 2.5), (50, 'n', MINVALUE), (1, 'z', -5.12000000000000011));
+SPLIT AT VALUES ((100, 'a', 2.5), (50, 'n', MINVALUE), (1, 'z', -5.12));
 
 
 ALTER TABLE public.tr2 OWNER TO yugabyte_test;
@@ -1513,7 +1505,7 @@ CREATE INDEX th3_c_b_idx ON public.th3 USING lsm ((c, b) HASH) SPLIT INTO 3 TABL
 -- Name: tr2_c_b_a_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
-CREATE INDEX tr2_c_b_a_idx ON public.tr2 USING lsm (c ASC, b DESC, a ASC) SPLIT AT VALUES ((-5.12000000000000011, 'z', 1), (-0.75, 'l', MINVALUE), (2.5, 'a', 100));
+CREATE INDEX tr2_c_b_a_idx ON public.tr2 USING lsm (c ASC, b DESC, a ASC) SPLIT AT VALUES ((-5.12, 'z', 1), (-0.75, 'l', MINVALUE), (2.5, 'a', 100));
 
 
 --
@@ -1575,6 +1567,13 @@ ALTER TABLE public.rls_public ENABLE ROW LEVEL SECURITY;
 --
 
 ALTER TABLE public.uaccount ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: SCHEMA public; Type: ACL; Schema: -; Owner: pg_database_owner
+--
+
+GRANT CREATE ON SCHEMA public TO regress_rls_alice;
+
 
 --
 -- Name: pg_hint_plan; Type: EXTENSION; Schema: -; Owner:

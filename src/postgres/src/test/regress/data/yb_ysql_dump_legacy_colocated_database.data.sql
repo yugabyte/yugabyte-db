@@ -19,8 +19,6 @@ SET row_security = off;
 
 SET default_tablespace = '';
 
-SET default_with_oids = false;
-
 --
 -- Name: htest; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
