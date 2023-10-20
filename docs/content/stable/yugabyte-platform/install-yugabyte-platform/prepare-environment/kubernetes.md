@@ -237,7 +237,7 @@ You need to perform the following steps:
 
 - Pull images to your machine, as follows:
 
-  **Note**: These image tags will vary based on the version.
+  These image tags will vary based on the version.
 
   ```sh
   docker pull quay.io/yugabyte/yugaware:{{<yb-version version="stable" format="build">}}
@@ -249,7 +249,7 @@ You need to perform the following steps:
 
 - Log in to your target container registry, as per the following example that uses Google Artifact Registry:
 
-   **Note**: Replace the Service Account and Location in the example as applicable.
+  Replace the Service Account and Location in the example as applicable.
 
   ```sh
   gcloud auth activate-service-account yugabytedb-test@yugabytedb-test-384308.iam.gserviceaccount.com --key-file=key.json
@@ -259,7 +259,7 @@ You need to perform the following steps:
 
 - Tag the local images to your target registry. The following example uses Google Artifact Registry.
 
-  **Note**: Replace the Location, Project ID, Repository, and Image in the example as applicable.
+  Replace the Location, Project ID, Repository, and Image in the example as applicable.
 
   ```sh
   docker tag quay.io/yugabyte/yugaware:{{<yb-version version="stable" format="build">}} us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/yugabyte/yugaware:{{<yb-version version="stable" format="build">}}
@@ -271,7 +271,7 @@ You need to perform the following steps:
 
 - Push images to the private container registry, as follows:
 
-  **Note**: Replace the Location, Project ID, Repository, and Image in the example as applicable.
+  Replace the Location, Project ID, Repository, and Image in the example as applicable.
 
   ```sh
   docker push us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/yugabyte/yugaware:{{<yb-version version="stable" format="build">}}
