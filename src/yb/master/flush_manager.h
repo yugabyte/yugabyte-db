@@ -67,6 +67,7 @@ class FlushManager {
                                const std::vector<TabletId>& tablet_ids,
                                const FlushRequestId& flush_id,
                                bool is_compaction,
+                               bool regular_only,
                                const LeaderEpoch& epoch);
 
   void DeleteCompleteFlushRequests();

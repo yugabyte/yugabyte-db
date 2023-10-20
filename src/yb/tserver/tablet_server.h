@@ -407,14 +407,14 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   PgConfigReloader pg_config_reloader_;
 
-  Status CreateCDCConsumer() REQUIRES(cdc_consumer_mutex_);
+  Status CreateXClusterConsumer() REQUIRES(xcluster_consumer_mutex_);
 
   std::unique_ptr<rpc::SecureContext> secure_context_;
   std::vector<CertificateReloader> certificate_reloaders_;
 
-  // CDC consumer.
-  mutable std::mutex cdc_consumer_mutex_;
-  std::unique_ptr<XClusterConsumer> xcluster_consumer_ GUARDED_BY(cdc_consumer_mutex_);
+  // xCluster consumer.
+  mutable std::mutex xcluster_consumer_mutex_;
+  std::unique_ptr<XClusterConsumer> xcluster_consumer_ GUARDED_BY(xcluster_consumer_mutex_);
 
   // CDC service.
   std::shared_ptr<cdc::CDCServiceImpl> cdc_service_;

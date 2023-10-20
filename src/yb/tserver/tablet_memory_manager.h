@@ -58,6 +58,10 @@ class TabletMemoryManager {
   // The MemTracker associated with the block cache.
   std::shared_ptr<MemTracker> block_based_table_mem_tracker();
 
+  std::shared_ptr<MemTracker> tablets_overhead_mem_tracker();
+
+  std::shared_ptr<MemTracker> FindOrCreateOverheadMemTrackerForTablet(const TabletId& id);
+
   // Flushing function for the memstore.
   void FlushTabletIfLimitExceeded();
 
@@ -93,11 +97,10 @@ class TabletMemoryManager {
   std::function<std::vector<tablet::TabletPeerPtr>()> peers_fn_;
 
   std::shared_ptr<MemTracker> server_mem_tracker_;
-
   std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
+  std::shared_ptr<MemTracker> tablets_overhead_mem_tracker_;
 
   std::shared_ptr<GarbageCollector> block_based_table_gc_;
-
   std::shared_ptr<GarbageCollector> log_cache_gc_;
 
   std::unique_ptr<BackgroundTask> background_task_;

@@ -182,7 +182,6 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         "{\"boot_disks_per_zone\":[\"root-volume-4\", \"root-volume-5\"], "
             + "\"root_device_name\":\"/dev/sda1\"}");
 
-    ObjectMapper om = new ObjectMapper();
     for (Map.Entry<UUID, String> e : createVolumeOutputResponse.entrySet()) {
       when(mockNodeManager.nodeCommand(
               eq(NodeCommandType.Create_Root_Volumes),
@@ -197,6 +196,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     List<TaskInfo> createRootVolumeTasks = subTasksByPosition.get(position++);
     assertTaskType(createRootVolumeTasks, TaskType.CreateRootVolumes);
     assertEquals(expectedRootVolumeCreationTasks, createRootVolumeTasks.size());
@@ -384,6 +384,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     List<TaskInfo> createRootVolumeTasks = subTasksByPosition.get(position++);
     assertTaskType(createRootVolumeTasks, TaskType.CreateRootVolumes);
     assertEquals(expectedRootVolumeCreationTasks, createRootVolumeTasks.size());

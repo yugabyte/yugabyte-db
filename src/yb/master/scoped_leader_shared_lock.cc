@@ -79,7 +79,6 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
     : catalog_(DCHECK_NOTNULL(catalog)),
       leader_shared_lock_(catalog->leader_lock_, std::try_to_lock),
       start_(std::chrono::steady_clock::now()),
-      epoch_(LeaderEpoch(-1)),
       file_name_(file_name),
       line_number_(line_number),
       function_name_(function_name) {

@@ -272,7 +272,8 @@ export const addIncrementalBackup = (backup: IBackup) => {
     universeUUID: backup.universeUUID,
     baseBackupUUID: backup.commonBackupInfo.baseBackupUUID,
     keyspaceTableList: backup.commonBackupInfo.responseList,
-    tableByTableBackup: backup.commonBackupInfo.tableByTableBackup
+    tableByTableBackup: backup.commonBackupInfo.tableByTableBackup,
+    useTablespaces: backup.useTablespaces
   };
 
   return axios.post(requestUrl, payload);

@@ -126,6 +126,11 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
     }
   };
 
+  const canCreateBackup = hasNecessaryPerm({
+    onResource: universeUUID,
+    ...UserPermissionMap.createBackup
+  });
+
   if (schedules?.length === 0) {
     return (
       <>
@@ -137,11 +142,9 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
             tablesInUniverse?.data.length === 0 ||
             currentUniverse.data?.universeConfig?.takeBackups === 'false' ||
             currentUniverse?.data?.universeDetails?.universePaused ||
-            !hasNecessaryPerm({
-              onResource: universeUUID,
-              ...UserPermissionMap.createBackup
-            })
+            !canCreateBackup
           }
+          hasPerm={canCreateBackup}
         />
         <BackupCreateModal
           visible={showCreateModal}
@@ -190,6 +193,7 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
             }}
             storageConfig={storageConfigsMap[schedule.backupInfo.storageConfigUUID]}
             tablesInUniverse={tablesInUniverse?.data ?? []}
+            universeUUID={universeUUID}
           />
         ))}
         {isFetchingNextPage && <YBLoading />}
@@ -216,6 +220,7 @@ interface ScheduledBackupCardProps {
   doEditPolicy: (schedule: IBackupSchedule) => void;
   storageConfig: Record<string, string> | undefined;
   tablesInUniverse: ITable[];
+  universeUUID: string;
 }
 
 type toogleScheduleProps = Partial<IBackupSchedule> & Pick<IBackupSchedule, 'scheduleUUID'>;
@@ -224,7 +229,8 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
   schedule,
   doEditPolicy,
   storageConfig,
-  tablesInUniverse
+  tablesInUniverse,
+  universeUUID
 }) => {
   const queryClient = useQueryClient();
   const [showDeleteModal, setShowDeleteModal] = useState('');
@@ -290,8 +296,8 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
           />
           <RbacValidator
             accessRequiredOn={{
-              onResource: "CUSTOMER_ID",
-              ...UserPermissionMap.editBackup
+              ...UserPermissionMap.editBackup,
+              onResource: universeUUID
             }}
             isControl
             overrideStyle={{
@@ -344,8 +350,8 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
           >
             <RbacValidator
               accessRequiredOn={{
-                onResource: "CUSTOMER_ID",
-                ...UserPermissionMap.editBackup
+                ...UserPermissionMap.editBackup,
+                onResource: universeUUID
               }}
               isControl
               overrideStyle={{
@@ -364,8 +370,8 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
             </RbacValidator>
             <RbacValidator
               accessRequiredOn={{
-                onResource: "CUSTOMER_ID",
-                ...UserPermissionMap.deleteBackup
+                ...UserPermissionMap.deleteBackup,
+                onResource: 'CUSTOMER_ID'
               }}
               isControl
               overrideStyle={{

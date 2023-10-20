@@ -383,6 +383,12 @@ func fixConfigValues() {
 		InitViper()
 	}
 
+	if viper.GetBool("postgres.install.enabled") &&
+		len(viper.GetString("postgres.install.password")) == 0 {
+			log.Info("Generating default password for postgres")
+			SetYamlValue(InputFile(), "postgres.install.password", GenerateRandomStringURLSafe(32))
+			InitViper()
+	}
 }
 
 func generateSelfSignedCerts() (string, string) {

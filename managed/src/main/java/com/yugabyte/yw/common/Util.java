@@ -864,7 +864,7 @@ public class Util {
   }
 
   public static String getYbcNodeIp(Universe universe) {
-    List<NodeDetails> nodeList = universe.getLiveTServersInPrimaryCluster();
+    List<NodeDetails> nodeList = universe.getRunningTserversInPrimaryCluster();
     return nodeList.get(0).cloudInfo.private_ip;
   }
 
@@ -995,5 +995,14 @@ public class Util {
       }
     }
     return dataDirPath;
+  }
+
+  public static String extractRegexValue(String input, String patternStr) {
+    Pattern pattern = Pattern.compile(patternStr);
+    Matcher matcher = pattern.matcher(input);
+    if (matcher.find()) {
+      return matcher.group(1);
+    }
+    return null;
   }
 }

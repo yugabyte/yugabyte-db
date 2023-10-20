@@ -1335,6 +1335,13 @@ class YBBackup:
             help="Use server_broadcast_address if available, otherwise use rpc_bind_address. Note "
                  "that broadcast address is overwritten by 'ts_secondary_ip_map' if available."
         )
+        # Do not include indexes when creating snapshots.
+        parser.add_argument(
+            '--skip_indexes', required=False, action='store_true',
+            default=False,
+            help="Don't snapshot or backup Indexes. This gives the user an option to "
+            "avoid the overheads of snapshotting and uploading indexes. Instead, pay the cost "
+            "of index backfills at the time of restore. Applicable only for YCQL.")
 
         """
         Test arguments
@@ -1408,6 +1415,9 @@ class YBBackup:
 
                 host_base_cfg = 'host_base = ' + host_base + '\n' \
                                 'host_bucket = ' + bucket + '\n'
+
+                if host_base.startswith("http://"):
+                    host_base_cfg += 'use_https = false \n'
             else:
                 host_base_cfg = ''
             if not os.getenv('AWS_SECRET_ACCESS_KEY') and not os.getenv('AWS_ACCESS_KEY_ID'):
@@ -1885,6 +1895,8 @@ class YBBackup:
             yb_admin_args = ['create_database_snapshot', self.args.keyspace[0]]
         else:
             yb_admin_args = ['create_keyspace_snapshot', self.args.keyspace[0]]
+            if self.args.skip_indexes:
+                yb_admin_args.append("skip_indexes")
 
         output = self.run_yb_admin(yb_admin_args)
         # Ignores any string before and after the creation string + uuid.
@@ -3177,7 +3189,9 @@ class YBBackup:
                 raise BackupException(
                     "Only one keyspace supported. Found {} --keyspace keys.".
                     format(len(self.args.keyspace)))
-
+            if self.is_ysql_keyspace() and self.args.skip_indexes:
+                raise BackupException(
+                    "skip_indexes is only supported for YCQL keyspaces.")
             logging.info('[app] Backing up keyspace: {} to {}'.format(
                          self.args.keyspace[0], self.args.backup_location))
 

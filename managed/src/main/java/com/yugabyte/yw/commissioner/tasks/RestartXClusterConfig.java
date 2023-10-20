@@ -79,7 +79,8 @@ public class RestartXClusterConfig extends EditXClusterConfig {
                     xClusterConfig,
                     State.Initializing,
                     SourceUniverseState.Unconfigured,
-                    TargetUniverseState.Unconfigured)
+                    TargetUniverseState.Unconfigured,
+                    null /* keyspacePending */)
                 .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
           }
 

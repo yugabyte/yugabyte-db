@@ -1300,6 +1300,11 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
   return Status::OK();
 }
 
+Status Log::GetSegmentsToGC(int64_t min_op_idx, SegmentSequence* segments_to_gc) const {
+  PerCpuRwSharedLock read_lock(state_lock_);
+  return GetSegmentsToGCUnlocked(min_op_idx, segments_to_gc);
+}
+
 void Log::ApplyTimeRetentionPolicy(SegmentSequence* segments_to_gc) const {
   // Don't GC segments that are newer than the configured time-based retention.
   int64_t now = GetCurrentTimeMicros() + FLAGS_time_based_wal_gc_clock_delta_usec;

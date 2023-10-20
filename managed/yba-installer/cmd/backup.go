@@ -115,6 +115,8 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 	}
 	if migration {
 		args = append(args, "--migration")
+		// Disable version checking in case of version upgrades during migration.
+		args = append(args, "--disable_version_check")
 	}
 	if useSystemPostgres {
 		args = append(args, "--use_system_pg")

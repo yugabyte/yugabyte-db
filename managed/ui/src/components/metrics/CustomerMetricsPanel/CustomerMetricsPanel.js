@@ -106,7 +106,7 @@ const PanelBody = ({
                 <Tab
                   eventKey={type}
                   title={tabTitle}
-                  key={`${type}-tab`}
+                  key={`${type}-${metricMeasure}-tab`}
                   mountOnEnter={true}
                   unmountOnExit={true}
                 >
@@ -150,6 +150,7 @@ const PanelBody = ({
             title={MetricTypesWithOperations[MetricTypes.OUTLIER_TABLES].title}
             width={width}
             tableName={tableName}
+            isGranularMetricsEnabled={isGranularMetricsEnabled}
           />
         </Tab>
       </YBTabsPanel>

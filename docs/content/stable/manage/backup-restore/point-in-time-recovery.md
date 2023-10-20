@@ -212,16 +212,14 @@ Tracking issue: [12773](https://github.com/yugabyte/yugabyte-db/issues/12773)
 
 ### xCluster replication
 
-The combination of PITR and [xCluster replication](../../../explore/multi-region-deployments/asynchronous-replication-ysql/) is not fully tested, and is considered beta.
-
-xCluster does not replicate any commands related to PITR. If you have two clusters with replication between them, enable PITR on both ends separately. To restore, the following is the recommended procedure:
+xCluster does not replicate any commands related to PITR. If you have two clusters with replication between them, enable PITR on both ends independently. You can perform a restore using the following recommended procedure:
 
 1. Stop application workloads and make sure there are no active transactions.
 1. Wait for replication to complete.
-1. Restore to the same time on both clusters.
+1. Delete xCluster replication from both clusters.
+1. Restore both clusters to the exact same time.
+1. Re-establish xCluster replication.
 1. Resume the application workloads.
-
-Tracking issue: [10820](https://github.com/yugabyte/yugabyte-db/issues/10820)
 
 ### Global objects
 

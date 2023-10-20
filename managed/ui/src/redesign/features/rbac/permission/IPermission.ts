@@ -34,5 +34,6 @@ export interface Permission {
   description: string;
   action: ActionType;
   resourceType: ResourceType;
+  permissionValidOnResource: boolean;
   prerequisitePermissions: Pick<Permission, 'action' | 'resourceType'>[];
 }

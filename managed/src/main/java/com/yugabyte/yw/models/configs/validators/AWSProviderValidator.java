@@ -264,6 +264,10 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
             for (IpPermission ipPermission : securityGroup.getIpPermissions()) {
               Integer fromPort = ipPermission.getFromPort();
               Integer toPort = ipPermission.getToPort();
+              if (fromPort == null && toPort == null) {
+                portOpen = true;
+                break;
+              }
               if (fromPort == null || toPort == null) {
                 continue;
               }

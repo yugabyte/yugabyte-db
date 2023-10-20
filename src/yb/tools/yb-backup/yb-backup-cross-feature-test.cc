@@ -1664,5 +1664,62 @@ TEST_F(YBDdlAtomicityBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(DdlRollbackAtomic
   ASSERT_OK(RunDdlAtomicityTest(pgwrapper::DdlErrorInjection::kTrue));
 }
 
+// 1. Create table
+// 2. Create index on table
+// 3. Insert 123 -> 456
+// 4. Backup
+// 5. Drop table and index.
+// 5. Restore, validate 123 -> 456, index isn't restored
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLKeyspaceBackupWithoutIndexes)) {
+  // Create table and index.
+  auto session = client_->NewSession(120s);
+  client::kv_table_test::CreateTable(
+      client::Transactional::kFalse, CalcNumTablets(cluster_->num_tablet_servers()), client_.get(),
+      &table_);
+
+  client::TableHandle index_table;
+  client::kv_table_test::CreateIndex(
+      yb::client::Transactional::kFalse, 1, false, table_, client_.get(), &index_table);
+
+  // Refresh table_ variable.
+  ASSERT_OK(table_.Reopen());
+
+  // Insert into table.
+  const int32_t key = 123;
+  const int32_t old_val = 456;
+  ASSERT_OK(client::kv_table_test::WriteRow(&table_, session, key, old_val));
+
+  // Backup.
+  const string& keyspace = table_.name().namespace_name();
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", keyspace, "create", "--skip_indexes"}));
+
+  // Drop table and index.
+  ASSERT_OK(client_->DeleteTable(table_.name()));
+  ASSERT_FALSE(ASSERT_RESULT(client_->TableExists(table_.name())));
+  ASSERT_FALSE(ASSERT_RESULT(client_->TableExists(index_table.name())));
+
+  // Restore.
+  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+
+  // Create new YBTableNames since the old ones' id are outdated.
+  const client::YBTableName table_name(YQL_DATABASE_CQL, keyspace, table_.name().table_name());
+  const client::YBTableName index_table_name(
+      YQL_DATABASE_CQL, keyspace, index_table.name().table_name());
+
+  // Refresh table variable to the one newly created by restore.
+  ASSERT_OK(table_.Open(table_name, client_.get()));
+
+  // Verify nothing changed.
+  auto rows = ASSERT_RESULT(client::kv_table_test::SelectAllRows(&table_, session));
+  ASSERT_EQ(rows.size(), 1);
+  ASSERT_EQ(rows[key], old_val);
+  // Verify index table is not restored.
+  ASSERT_FALSE(ASSERT_RESULT(client_->TableExists(index_table_name)));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 }  // namespace tools
 }  // namespace yb

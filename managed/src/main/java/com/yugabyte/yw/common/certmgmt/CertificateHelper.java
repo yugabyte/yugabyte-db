@@ -767,11 +767,16 @@ public class CertificateHelper {
 
   public static void writeCertBundleToCertPath(
       List<X509Certificate> certs, String certPath, boolean syncToDB) {
+    writeCertBundleToCertPath(certs, certPath, syncToDB, false);
+  }
+
+  public static void writeCertBundleToCertPath(
+      List<X509Certificate> certs, String certPath, boolean syncToDB, boolean append) {
     File certFile = new File(certPath);
     // Create directory to store the certFile.
     certFile.getParentFile().mkdirs();
     log.info("Dumping certs at path: {}", certPath);
-    try (JcaPEMWriter certWriter = new JcaPEMWriter(new FileWriter(certFile))) {
+    try (JcaPEMWriter certWriter = new JcaPEMWriter(new FileWriter(certFile, append))) {
       for (X509Certificate cert : certs) {
         log.info(getCertificateProperties(cert));
         certWriter.writeObject(cert);

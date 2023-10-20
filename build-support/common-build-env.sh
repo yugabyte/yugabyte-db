@@ -384,11 +384,7 @@ normalize_build_type() {
 decide_whether_to_use_linuxbrew() {
   expect_vars_to_be_set YB_COMPILER_TYPE build_type
   if [[ -z ${YB_USE_LINUXBREW:-} ]]; then
-    if [[ ${YB_BUILD_OPTS:-} =~ .*--linuxbrew.* ]]; then
-        YB_USE_LINUXBREW=1
-    elif [[ ${YB_BUILD_OPTS:-} =~ .*--no-linuxbrew.* ]]; then
-        YB_USE_LINUXBREW=0
-    elif [[ -n ${predefined_build_root:-} ]]; then
+    if [[ -n ${predefined_build_root:-} ]]; then
       if [[ ${predefined_build_root##*/} == *-linuxbrew-* ]]; then
         YB_USE_LINUXBREW=1
       fi
@@ -1636,7 +1632,9 @@ get_build_worker_list() {
     if [[ -n ${YB_BUILD_WORKERS_FILE:-} ]]; then
       build_workers=( $( cat "$YB_BUILD_WORKERS_FILE" ))
     else
-      build_workers=( $( curl -s "$YB_BUILD_WORKERS_LIST_URL" ) )
+      build_workers=( $( curl -s "$YB_BUILD_WORKERS_LIST_URL" ) ) \
+        || fatal "Failed to curl $YB_BUILD_WORKERS_LIST_URL: check your network connection or use" \
+                 "--no-remote"
     fi
     if [[ ${#build_workers[@]} -eq 0 ]]; then
       log "Got an empty list of build workers from $YB_BUILD_WORKERS_LIST_URL," \
@@ -2380,7 +2378,7 @@ activate_virtualenv() {
   if [[ ${yb_readonly_virtualenv} == "false" ]]; then
     local requirements_file_path="$YB_SRC_ROOT/requirements_frozen.txt"
     local installed_requirements_file_path=$virtualenv_dir/${requirements_file_path##*/}
-    pip3 install --upgrade pip
+    "$pip_executable" --retries 0 install --upgrade pip
     if ! cmp --silent "$requirements_file_path" "$installed_requirements_file_path"; then
       run_with_retries 10 0.5 "$pip_executable" install -r "$requirements_file_path" \
         $pip_no_cache
@@ -2591,7 +2589,7 @@ set_prebuilt_thirdparty_url() {
       local thirdparty_tool_cmd_line=(
         "$YB_BUILD_SUPPORT_DIR/thirdparty_tool"
         --save-thirdparty-url-to-file "$thirdparty_url_file_path"
-        --compiler-type "$YB_COMPILER_TYPE"
+        --compiler-type "${YB_COMPILER_TYPE_FOR_THIRDPARTY:-$YB_COMPILER_TYPE}"
       )
       if [[ -n ${YB_USE_LINUXBREW:-} ]]; then
         # See arg_str_to_bool in Python code for how the boolean parameter is interpreted.

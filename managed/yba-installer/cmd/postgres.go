@@ -137,6 +137,12 @@ func (pg Postgres) Install() error {
 			return err
 		}
 	}
+
+	// Set the password if we are doing the install
+	if viper.GetBool("postgres.install.enabled") {
+		pg.alterPassword()
+	}
+
 	if viper.GetBool("postgres.install.enabled") {
 		pg.createYugawareDatabase()
 	}
@@ -554,6 +560,26 @@ func (pg Postgres) runInitDB() error {
 	return nil
 }
 
+func (pg Postgres) alterPassword() error {
+	// Reload hba conf
+	passwordCmd := fmt.Sprintf("ALTER USER %s PASSWORD '%s';",
+															viper.GetString("postgres.install.username"),
+															viper.GetString("postgres.install.password"))
+	psql := filepath.Join(pg.PgBin, "psql")
+	args := []string{
+		"-d", "postgres",
+		"-h", "localhost",
+		"-p", viper.GetString("postgres.install.port"),
+		"-U", pg.getPgUserName(),
+		"-c", passwordCmd,
+	}
+	out := shell.Run(psql, args...)
+	if !out.SucceededOrLog() {
+		return out.Error
+	}
+	return nil
+}
+
 // Set the data directory in postgresql.conf
 // Also sets up LDAP if necessary
 func (pg Postgres) modifyPostgresConf() error {
@@ -648,7 +674,7 @@ func (pg Postgres) copyConfFiles() error {
 
 	// Add trailing slash to handle dataDir being a symlink
 	findArgs := []string{pg.dataDir + "/", "-iname", "*.conf", "-exec", "cp", "{}",
-		pg.ConfFileLocation, ";"}
+		pg.ConfFileLocation, "\\;"}
 	if common.HasSudoAccess() {
 		common.MkdirAllOrFail(pg.ConfFileLocation, 0700)
 		if err := common.Chown(pg.ConfFileLocation, userName, userName, false); err != nil {

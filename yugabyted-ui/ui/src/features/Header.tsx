@@ -22,6 +22,7 @@ import SlackIcon from "@app/assets/slack.svg";
 import HeartCheckIcon from "@app/assets/heart-check.svg";
 import AlertGreenIcon from "@app/assets/alert-green.svg";
 import { useGetClusterNodesQuery, useGetClusterQuery } from "@app/api/src";
+import { YBTextBadge } from "@app/components/YBTextBadge/YBTextBadge";
 
 const useStyles = makeStyles((theme) => ({
   divider: {
@@ -61,17 +62,6 @@ const useStyles = makeStyles((theme) => ({
       backgroundColor: "unset",
       cursor: "default",
     },
-  },
-  badge: {
-    backgroundColor: theme.palette.grey[200],
-    color: theme.palette.grey[700],
-    borderRadius: theme.shape.borderRadius,
-    fontSize: "10px",
-    fontWeight: 500,
-    letterSpacing: "0.2px",
-    textTransform: "uppercase",
-    padding: theme.spacing(0.5, 1),
-    marginLeft: theme.spacing(1),
   },
   noDecoLink: {
     "&:hover": {
@@ -184,7 +174,7 @@ export const Header: FC = () => {
             to="/?tab=tabNodes&node=readreplica"
             className={classes.noDecoLink}
           >
-            <Box className={classes.badge}>{t("clusterDetail.nodes.readReplicaEnabled")}</Box>
+            <YBTextBadge ml={1.5}>{t("clusterDetail.nodes.readReplicaEnabled")}</YBTextBadge>
           </Link>
         )}
         <div className={classes.toRight}>

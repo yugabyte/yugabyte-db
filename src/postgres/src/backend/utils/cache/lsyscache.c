@@ -1800,6 +1800,30 @@ get_rel_type_id(Oid relid)
 }
 
 /*
+ * yb_get_rel_reltuples
+ *
+ *		Returns the reltuples associated with a given relation.
+ */
+float4
+yb_get_rel_reltuples(Oid relid)
+{
+	HeapTuple	tp;
+
+	tp = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
+	if (HeapTupleIsValid(tp))
+	{
+		Form_pg_class reltup = (Form_pg_class) GETSTRUCT(tp);
+		float4		result;
+
+		result = reltup->reltuples;
+		ReleaseSysCache(tp);
+		return result;
+	}
+	else
+		return 0;
+}
+
+/*
  * get_rel_relkind
  *
  *		Returns the relkind associated with a given relation.
@@ -2857,7 +2881,7 @@ type_is_collatable(Oid typid)
 /*				---------- STATISTICS CACHE ----------					 */
 
 /*
- * get_attdistinctcount
+ * yb_get_attdistinctcount
  *
  *	  Given the table and attribute number of a column, get the estimate
  *    distinct count of entries in the column. Return 0 if no data available.
@@ -2866,7 +2890,7 @@ type_is_collatable(Oid typid)
  * trees, so we don't need an "inh" parameter.
  */
 float4
-get_attdistinctcount(Oid relid, AttrNumber attnum)
+yb_get_attdistinctcount(Oid relid, AttrNumber attnum)
 {
 	HeapTuple	tp;
 	float4		stadistinct;
@@ -2879,6 +2903,11 @@ get_attdistinctcount(Oid relid, AttrNumber attnum)
 	{
 		stadistinct = ((Form_pg_statistic) GETSTRUCT(tp))->stadistinct;
 		ReleaseSysCache(tp);
+		if (stadistinct < 0)
+		{
+			float4 reltuples = yb_get_rel_reltuples(relid);
+			stadistinct *= -1 * reltuples;
+		}
 		return stadistinct;
 	}
 	return 0;

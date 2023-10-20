@@ -7,6 +7,7 @@ import com.yugabyte.yw.models.rbac.ResourceGroup;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.UUID;
+import javax.annotation.Nullable;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -25,7 +26,10 @@ public class RoleResourceDefinition {
   @JsonProperty("roleUUID")
   private UUID roleUUID;
 
-  @ApiModelProperty(value = "Resource group definition for the role.", required = true)
+  @ApiModelProperty(
+      value = "Resource group definition for the role. Only applicable for custom roles.",
+      required = false)
   @JsonProperty("resourceGroup")
+  @Nullable
   private ResourceGroup resourceGroup;
 }

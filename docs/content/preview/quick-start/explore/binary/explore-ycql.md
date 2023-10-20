@@ -1,3 +1,8 @@
+<!--
++++
+private = true
++++
+-->
 
 Run `ycqlsh` to connect to the service as follows:
 

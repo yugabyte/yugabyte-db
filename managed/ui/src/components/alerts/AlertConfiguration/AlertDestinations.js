@@ -199,15 +199,24 @@ export const AlertDestinations = (props) => {
           >
             <i className="fa fa-info-circle"></i> Channels Details
           </MenuItem>
-
-          <MenuItem disabled={!canEditDestination} onClick={() => canEditDestination && onEditDestination(row)}>
-            <i className="fa fa-pencil"></i> {editActionLabel}
-          </MenuItem>
-
+          <RbacValidator
+            accessRequiredOn={UserPermissionMap.editAlertsConfig}
+            isControl
+          >
+            <MenuItem disabled={!canEditDestination} onClick={() => canEditDestination && onEditDestination(row)}>
+              <i className="fa fa-pencil"></i> {editActionLabel}
+            </MenuItem>
+          </RbacValidator>
           {!isReadOnly && (
-          <MenuItem onClick={() => canDeleteDestination && showDeleteModal(row.name)} disabled={!canDeleteDestination} >
-            <i className="fa fa-trash"></i> Delete Destination
-          </MenuItem>
+            <RbacValidator
+              accessRequiredOn={UserPermissionMap.deleteAlertsConfig}
+              isControl
+              overrideStyle={{ display: 'block' }}
+            >
+              <MenuItem onClick={() => canDeleteDestination && showDeleteModal(row.name)} disabled={!canDeleteDestination} >
+                <i className="fa fa-trash"></i> Delete Destination
+              </MenuItem>
+            </RbacValidator>
           )}
           {
             <YBConfirmModal

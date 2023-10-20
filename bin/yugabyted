@@ -2505,41 +2505,6 @@ class ControlScript(object):
                     'masters from tserver: {}', err)
             return ''
 
-    # Get the current master leader known to a tserver using api/v1/masters endpoint
-    # of the tserver. Use the node address given with the --join flag or use the
-    # advertise address if join flag is not provided.
-    def get_current_master_leader_from_api(self):
-
-        join_ip = self.configs.saved_data.get("join")
-        advertise_ip = self.advertise_ip()
-        tserver_addr = "{}:{}".format(join_ip if join_ip else advertise_ip,
-                                        self.configs.saved_data.get("tserver_webserver_port"))
-
-        try:
-            tserverMastersAPI = "http://{}/api/v1/masters".format(tserver_addr)
-            response = urlopen(Request(tserverMastersAPI))
-            jsonResponseFromTserver = json.load(response)
-            dictOfAllNodes = jsonResponseFromTserver.get("master_server_and_type")
-
-            masterLeader = ""
-            for node in dictOfAllNodes:
-                if node["is_leader"]:
-                    masterLeader = node["master_server"]
-                    break
-
-            Output.log("Tserver {} returned the following".format(tserver_addr) +
-                        "master leader {}.".format(masterLeader),
-                            logging.DEBUG)
-
-            return masterLeader
-
-        except HTTPError as http_err:
-            print('HTTP error occurred while fetching cloud location: {}', http_err)
-            return ''
-        except Exception as err:
-            print('Other error occurred while fetching cloud location: {}', err)
-            return ''
-
     # Waits till the newly removed master doesn't comes in the list of masters of cluster
     def wait_remove_master(self, master, timeout=180):
         Output.log("Waiting for master with address {} to be removed".format(master))
@@ -3627,9 +3592,9 @@ class ControlScript(object):
                                                                             ysql_username)
         if self.configs.saved_data.get("secure"):
             jdbc_string += Output.make_cyan("<DB_PASSWORD>")
+            status_display_info[jdbc_string] = Output.make_cyan
         else:
             jdbc_string += "yugabyte"
-        status_display_info[jdbc_string] = Output.make_cyan
 
         status_info += [
             (Output.make_yellow("JDBC"), jdbc_string),
@@ -3639,10 +3604,22 @@ class ControlScript(object):
             (Output.make_yellow("Log Dir"), self.configs.saved_data.get("log_dir")),
             (Output.make_yellow("Universe UUID"), self.configs.saved_data.get("universe_uuid"))
         ]
-        div_line = "+" + "-" * 106 + "+" + "\n"
+        max_key_len = 0
+        max_value_len = 0
+        for k, v in status_info:
+            if status_display_info is not None and v in status_display_info.keys():
+                func = status_display_info.get(v)
+                value_len = len(str(v)) - len(func(""))
+            else:
+                value_len = len(str(v))
+
+            max_key_len = max(max_key_len, len(str(k)))
+            max_value_len = max(max_value_len, value_len)
+
+        div_line = "+" + "-" * (max_key_len + max_value_len + 4) + "+" + "\n"
         status = "\n" + div_line
-        status += ("| {:^" + str(104
-         + extra_len) + "} |\n").format(title)
+        status += ("| {:^" + str(max_key_len + max_value_len + 2
+            + extra_len) + "} |\n").format(title)
         status += div_line
         for k, v in status_info:
             func = None
@@ -3650,11 +3627,12 @@ class ControlScript(object):
                 func = status_display_info.get(v)
 
             extra_len = len(Output.make_yellow(""))
-            status += ("| {:" + str(20 + extra_len) + "}: ").format(k)
+            status += ("| {:" + str(max_key_len + extra_len - 7) + "}: ").format(k)
             if func is not None:
-                status += ("{:<" + str(82 + len(func(""))) + "} |\n").format(v)
+                status += ("{:<" + str(max_value_len + 7 + len(func(""))) + "} |\n").format(v)
             else:
-                status += ("{:<" + str(82) + "} |\n").format(v if v is not None else "None")
+                status += ("{:<" + str(max_value_len + 7) + "} |\n"). \
+                    format(v if v is not None else "None")
 
         status += div_line
         return status
@@ -3664,24 +3642,28 @@ class ControlScript(object):
         title = Output.make_bold(Output.make_green(SCRIPT_NAME))
         extra_len = len(Output.make_bold(Output.make_green("")))
 
-        max_len = 0
+        max_key_len = 0
+        max_value_len = 0
         for k, v in status_info:
-            max_len = max(max_len, len(v))
+            max_key_len = max(max_key_len, len(str(k)))
+            max_value_len = max(max_value_len, len(str(v)))
 
-        div_line = "+" + "-" * (max_len + 33) + "+" + "\n"
+        div_line = "+" + "-" * (max_value_len + max_key_len + 5) + "+" + "\n"
         status = "\n" + div_line
-        status += ("| {:^" + str(max_len + 31 + extra_len) + "} |\n").format(title)
+        status += ("| {:^" + str(max_value_len + max_key_len + 3
+                                 + extra_len) + "} |\n").format(title)
         status += div_line
         for k, v in status_info:
             func = None
             if status_display_info is not None and v in status_display_info.keys():
                 func = status_display_info.get(v)
             extra_len = len(Output.make_yellow(""))
-            status += ("| {:" + str(27 + extra_len) + "}: ").format(k)
+            status += ("| {:" + str(max_key_len + extra_len - 1) + "}: ").format(k)
             if func is not None:
-                status += ("{:<" + str(max_len + 2 + len(func(""))) + "} |\n").format(func(v))
+                status += ("{:<" + str(max_value_len + 2 + len(func(""))) + "} |\n").format(func(v))
             else:
-                status += ("{:<" + str(max_len + 2) + "} |\n").format(v)
+                status += ("{:<" + str(max_value_len + 2) + "} |\n").format(v)
+
         status += div_line
         return status
 
@@ -3783,22 +3765,37 @@ class ControlScript(object):
         ipv6_regex = "((([0-9a-fA-F]){1,4})\\:){7}([0-9a-fA-F]){1,4}"
 
         # Regex expression for validating DNS names
-        dns_regex = "^((?!-)[A-Za-z0-9-]" + "{1,63}(?<!-)\\.)" +"+[A-Za-z]{2,6}"
+        dns_regex = "^(?=.{1,255}$)(?:(?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.?)+[a-zA-Z]{2,}$"
+
+        # Regex expression for validating hostname
+        hostname_regex = "^[a-zA-Z0-9.-]+$"
+
+        # Regex expression for validating following pattern - 127.0.0.1.
+        ip_address_edge_case_regex = "^[0-9.-]+$"
 
         ipv4_pattern = re.compile(ipv4_regex)
         ipv6_pattern = re.compile(ipv6_regex)
         dns_pattern = re.compile(dns_regex)
+        hostname_pattern = re.compile(hostname_regex)
+        may_be_ipaddress = re.compile(ip_address_edge_case_regex)
 
-        # Checking if it is not a valid IPv4 or IPv6 addresses
-        if not (re.search(ipv4_pattern, ip) or
-                re.search(ipv6_pattern, ip) or
-                re.search(dns_pattern, ip)):
+        # Checking if it is a valid IPv4
+        if re.search(ipv4_pattern, ip):
+            return True
+        elif re.search(may_be_ipaddress, ip):
             return False
 
-        if re.search(dns_pattern, ip):
-            self.configs.saved_data["dns_enabled"] = True
+        # Checking if it is a valid IPv6
+        if re.search(ipv6_pattern, ip):
+            return True
 
-        return True
+        # Checking if it is a valid FQDN or hostname
+        if (re.search(dns_pattern, ip) or
+                re.search(hostname_pattern, ip)):
+            self.configs.saved_data["dns_enabled"] = True
+            return True
+
+        return False
 
     # Returns a list of invalid IPs from the list of IPs provided.
     def get_invalid_ips(self, ips):
@@ -4090,6 +4087,39 @@ class ControlScript(object):
             ": config file {} has both secure and ".format(self.conf_file) +
             "insecure set to True. Please change one of them to False")
 
+    # Get the current master leader known to a tserver using api/v1/masters endpoint
+    # of the tserver.
+    def get_current_master_leader_from_api(self, tserverIP):
+        try:
+            tserverMastersAPI = "http://{}:9000/api/v1/masters".format(tserverIP)
+            response = urlopen(Request(tserverMastersAPI))
+            jsonResponseFromTserver = json.load(response)
+            dictOfAllNodes = jsonResponseFromTserver.get("master_server_and_type")
+
+            masterLeader = ""
+            for node in dictOfAllNodes:
+                if node["is_leader"]:
+                    masterLeader = node["master_server"].split(':')[0]
+                    break
+
+            Output.log("Tserver {} returned the following".format(tserverIP) +
+                        "master leader {}.".format(masterLeader),
+                            logging.DEBUG)
+
+            return masterLeader
+
+        except HTTPError as http_err:
+            Output.log("HTTP Error occured while hitting the api endpoint " +
+                "http://{}:9000/api/v1/masters: {}".format(tserverIP, http_err))
+            Output.log_error_and_exit(Output.make_red("ERROR:") + " Node at the join ip " +
+                "provided is not reachable.")
+        except Exception as err:
+            Output.log("Error occured while hitting the api endpoint " +
+                "http://{}:9000/api/v1/masters: {}".format(tserverIP, err))
+            Output.log_error_and_exit(Output.make_red("ERROR:") + " Node at the join ip " +
+                "provided is not reachable.")
+
+
     # Parse config file and input args. Validate them and save any new configs.
     def validate_and_set_configs(self, args):
 
@@ -4168,12 +4198,12 @@ class ControlScript(object):
                 invalid_hostnames = self.get_invalid_ips(hostnames)
                 if invalid_hostnames:
                     if len(invalid_hostnames) > 1:
-                        msg = Output.make_red("ERROR") + ": Hostnames {} are not valid IPv4 or "\
-                            "IPv6 addresses. Please try again with valid "\
+                        msg = Output.make_red("ERROR") + ": Hostnames {} are not valid "\
+                            "addresses. Please try again with a valid IPV4, IPV6 or DNS. "\
                             "hostnames.".format(",".join(invalid_hostnames))
                     else:
-                        msg = Output.make_red("ERROR") + ": Hostname {} is not a valid IPv4 or "\
-                            "IPv6 address. Please try again with valid "\
+                        msg = Output.make_red("ERROR") + ": Hostname {} are not valid "\
+                            "address. Please try again with a valid IPV4, IPV6 or DNS. "\
                             "hostnames.".format(",".join(invalid_hostnames))
 
                     has_errors = True
@@ -4318,8 +4348,8 @@ class ControlScript(object):
                 if not self.validate_hostname_ip(args.advertise_address):
                     has_errors = True
                     Output.print_and_log(Output.make_red("ERROR") + ": --advertise_address " +
-                        "provided is not a valid IPv4 or IPv6 address. " +
-                        "Please try again with a valid IP.")
+                        "provided is not a valid address. Please try again with a valid IPV4, " +
+                        "IPV6 or DNS.")
 
             if args.daemon is not None:
                 if args.background is not None and \
@@ -4334,34 +4364,69 @@ class ControlScript(object):
                 args.background = "True"
 
             if args.join is not None:
+                if not self.validate_hostname_ip(args.join):
+                    Output.log_error_and_exit(Output.make_red("ERROR") + ": --join" +
+                        " provided is not a valid address. Please try again with a valid IPV4, " +
+                        "IPV6 or DNS.")
+
+                master_leader = self.get_current_master_leader_from_api(args.join)
+                args.join = master_leader
+
                 try:
-                    leaderMasterURL = "http://{}:7000/api/v1/tablet-servers".format(args.join)
+                    leaderMasterURL = "http://{}:7000/api/v1/tablet-servers".format(master_leader)
                     response = urlopen(Request(leaderMasterURL))
                     jsonResponseFromMaster = dict(json.load(response))
+                    is_placement_uuid_set = False
                     if args.read_replica:
-                        for uuid, nodes in jsonResponseFromMaster.items():
-                            nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
-                            if args.join in nodes_list:
-                                continue
-                            if len(nodes) != 0:
-                                self.configs.saved_data["placement_uuid"] = uuid
+                        # When the 1st read replica node is started use a new uuid
+                        if len(jsonResponseFromMaster) == 1:
+                            is_placement_uuid_set = True
+                            Output.log("Starting first read replica node. " +
+                                       "Using {} as placement_uuid".format(
+                                           self.configs.saved_data.get("placement_uuid")))
+                        # When a read replica cluster exists use the existing placement UUID
+                        else:
+                            for uuid, nodes in jsonResponseFromMaster.items():
+                                nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
+                                if master_leader not in nodes_list and len(nodes) != 0:
+                                    self.configs.saved_data["placement_uuid"] = uuid
+                                    Output.log("Using placement_uuid {} from ".format(uuid) +
+                                               "existing read replica cluster.")
+                                    is_placement_uuid_set = True
                     else:
+                        # Use placement uuid set for the primary cluster when 1st node was started.
                         for uuid, nodes in jsonResponseFromMaster.items():
                             nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
-                            if args.join in nodes_list:
+                            if master_leader in nodes_list:
                                 self.configs.saved_data["placement_uuid"] = uuid
+                                Output.log("Using placement_uuid {} from ".format(uuid) +
+                                               "existing primary cluster.")
+                                is_placement_uuid_set = True
+
+                    # If placement UUID could not be set for some reason, throw an error
+                    if not is_placement_uuid_set:
+                        Output.log("Cannot find placement UUID for the node. " +
+                                "Leader Master node: {}. ".format(master_leader) +
+                                "Response from tablet-servers API: {}".format(
+                                    str(jsonResponseFromMaster)))
+                        Output.log_error_and_exit(Output.make_red("ERROR:") +
+                                " Unable to start the node.")
 
                 except HTTPError as http_err:
                     Output.log("HTTP Error occured while hitting the api endpoint " +
-                        "http://{}:7000/api/v1/tablet-servers: {}".format(args.join, http_err))
-                    Output.log_error_and_exit(Output.make_red("ERROR:") + "master at the join ip " +
-                        "provided is not reachable.")
+                        "http://{}:7000/api/v1/tablet-servers: {}".format(master_leader, http_err))
+                    Output.log_error_and_exit(Output.make_red("ERROR:") + " Leader master " +
+                        "present at {} is not reachable.".format(master_leader))
                 except Exception as err:
                     Output.log("Error occured while hitting the api endpoint " +
-                        "http://{}:7000/api/v1/tablet-servers: {}".format(args.join, err))
-                    Output.log_error_and_exit(Output.make_red("ERROR:") + "master at the join ip " +
-                        "provided is not reachable.")
+                        "http://{}:7000/api/v1/tablet-servers: {}".format(master_leader, err))
+                    Output.log_error_and_exit(Output.make_red("ERROR:") + " Leader master " +
+                        "present at {} is not reachable.".format(master_leader))
 
+            # If no --join is passed then start a new cluster with a new placement_uuid
+            else:
+                Output.log("Starting first primary node. Using {} as placement_uuid".format(
+                                           self.configs.saved_data.get("placement_uuid")))
 
             self.find_security_nature_of_deployment(args)
 

@@ -676,6 +676,20 @@ export interface AccessKey {
   };
 }
 
+export interface YBSoftwareMetadata {
+    state: string;
+    notes: string[];
+    filePath: string[];
+    chartPath: string;
+    imageTag: string;
+    packages: YBSoftwareMetadataPackages[];
+}
+
+export interface YBSoftwareMetadataPackages {
+    path: string;
+    arch: string;
+}
+
 export interface Provider {
   uuid: string;
   code: CloudType;

@@ -145,6 +145,7 @@
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/xcluster/add_table_to_xcluster_task.h"
+#include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/master/yql_aggregates_vtable.h"
 #include "yb/master/yql_auth_resource_role_permissions_index.h"
@@ -555,6 +556,10 @@ DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExt
 DEFINE_RUNTIME_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
     "When set, it enables automatic tablet splitting for tables that are part of an "
     "xCluster replication setup and are currently being bootstrapped for xCluster.");
+
+DEFINE_RUNTIME_bool(enable_tablet_split_of_cdcsdk_streamed_tables, false,
+    "When set, it enables automatic tablet splitting for tables that are part of a "
+    "CDCSDK stream");
 
 METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_live,
                            "Number of live tservers in the cluster", yb::MetricUnit::kUnits,
@@ -975,8 +980,6 @@ CatalogManager::CatalogManager(Master* master)
       tasks_tracker_(new TasksTracker(IsUserInitiated::kFalse)),
       jobs_tracker_(new TasksTracker(IsUserInitiated::kTrue)),
       encryption_manager_(new EncryptionManager()),
-      xcluster_safe_time_service_(
-          std::make_unique<XClusterSafeTimeService>(master, this, master_->metric_registry())),
       tablespace_manager_(std::make_shared<YsqlTablespaceManager>(nullptr, nullptr)),
       tablespace_bg_task_running_(false),
       tablet_split_manager_(this, this, this, master_->metric_entity()),
@@ -991,6 +994,8 @@ CatalogManager::CatalogManager(Master* master)
   sys_catalog_.reset(new SysCatalogTable(
       master_, master_->metric_registry(),
       Bind(&CatalogManager::ElectedAsLeaderCb, Unretained(this))));
+
+  xcluster_manager_ = std::make_unique<XClusterManager>(master_, this, sys_catalog_.get());
 }
 
 CatalogManager::~CatalogManager() {
@@ -1021,7 +1026,7 @@ Status CatalogManager::Init() {
 
   cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(&master_->cdc_state_client_initializer());
 
-  RETURN_NOT_OK(xcluster_safe_time_service_->Init());
+  RETURN_NOT_OK(xcluster_manager_->Init());
 
   RETURN_NOT_OK_PREPEND(InitSysCatalogAsync(),
                         "Failed to initialize sys tables async");
@@ -1306,8 +1311,8 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
             RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
 
             LOG_WITH_PREFIX(INFO) << "Re-initializing xcluster config";
-            xcluster_config_.reset();
-            RETURN_NOT_OK(PrepareDefaultXClusterConfig(term));
+            RETURN_NOT_OK(
+                xcluster_manager_->PrepareDefaultXClusterConfig(term, /* recreate = */ true));
 
             LOG_WITH_PREFIX(INFO) << "Restoring snapshot completed, considering initdb finished";
             RETURN_NOT_OK(InitDbFinished(Status::OK(), term));
@@ -1338,7 +1343,7 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
     // empty version 0.
     RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
 
-    RETURN_NOT_OK(PrepareDefaultXClusterConfig(term));
+    RETURN_NOT_OK(xcluster_manager_->PrepareDefaultXClusterConfig(term, /* recreate = */ false));
 
     permissions_manager_->BuildRecursiveRoles();
 
@@ -1358,7 +1363,7 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
             // calculate the number of primary (non-read-replica) tablet servers until that happens.
             while (true) {
               const auto s =
-                  CreateGlobalTransactionStatusTableIfNeeded(/* rpc */ nullptr, local_epoch);
+                  CreateGlobalTransactionStatusTableIfNotPresent(/* rpc */ nullptr, local_epoch);
               if (s.ok()) {
                 break;
               }
@@ -1421,9 +1426,6 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   // Clear the current cluster config.
   cluster_config_.reset();
 
-  // Clear the current xcluster config.
-  xcluster_config_.reset();
-
   // Clear redis config mapping.
   redis_config_map_.clear();
 
@@ -1438,6 +1440,8 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
 
   // Clear recent jobs/tasks.
   ResetTasksTrackers();
+
+  ClearXReplState();
 
   xcluster_safe_time_info_.Clear();
 
@@ -1473,8 +1477,6 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
 
   // Clear the snapshots.
   non_txn_snapshot_ids_map_.clear();
-
-  ClearXReplState();
 
   LOG_WITH_FUNC(INFO) << "Loading snapshots into memory.";
   unique_ptr<SnapshotLoader> snapshot_loader(new SnapshotLoader(this));
@@ -1590,31 +1592,6 @@ Status CatalogManager::SetUniverseUuidIfNeeded(const LeaderEpoch& epoch) {
   l.mutable_data()->pb.set_universe_uuid(universe_uuid);
   RETURN_NOT_OK(sys_catalog_->Upsert(epoch, cluster_config_.get()));
   l.Commit();
-  return Status::OK();
-}
-
-Status CatalogManager::PrepareDefaultXClusterConfig(int64_t term) {
-  if (xcluster_config_) {
-    LOG_WITH_PREFIX(INFO)
-        << "Cluster configuration has already been set up, skipping re-initialization.";
-    return Status::OK();
-  }
-
-  // Create default.
-  SysXClusterConfigEntryPB config;
-  config.set_version(0);
-
-  // Create in memory object.
-  xcluster_config_ = std::make_shared<XClusterConfigInfo>();
-
-  // Prepare write.
-  auto l = xcluster_config_->LockForWrite();
-  l.mutable_data()->pb = std::move(config);
-
-  // Write to sys_catalog and in memory.
-  RETURN_NOT_OK(sys_catalog_->Upsert(term, xcluster_config_.get()));
-  l.Commit();
-
   return Status::OK();
 }
 
@@ -2189,7 +2166,7 @@ void CatalogManager::CompleteShutdown() {
   refresh_ysql_tablespace_info_task_.CompleteShutdown();
   cdc_parent_tablet_deletion_task_.CompleteShutdown();
   refresh_ysql_pg_catalog_versions_task_.CompleteShutdown();
-  xcluster_safe_time_service_->Shutdown();
+  xcluster_manager_->Shutdown();
 
   if (background_tasks_) {
     background_tasks_->Shutdown();
@@ -2616,7 +2593,8 @@ Status CatalogManager::CreateTransactionStatusTablesForTablespaces(
 
 void CatalogManager::StartTablespaceBgTaskIfStopped() {
   if (GetAtomicFlag(&FLAGS_ysql_tablespace_info_refresh_secs) <= 0 ||
-      !GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement)) {
+      !GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement) ||
+      GetAtomicFlag(&FLAGS_create_initial_sys_catalog_snapshot)) {
     // The tablespace bg task is disabled. Nothing to do.
     return;
   }
@@ -2660,7 +2638,7 @@ void CatalogManager::RefreshTablespaceInfoPeriodically() {
     return;
   }
 
-  LeaderEpoch epoch(-1);
+  LeaderEpoch epoch;
   {
     SCOPED_LEADER_SHARED_LOCK(l, this);
     if (!l.IsInitializedAndIsLeader()) {
@@ -3165,12 +3143,12 @@ Status CatalogManager::SplitTablet(
   return SplitTablet(tablet, is_manual_split, epoch);
 }
 
-Status CatalogManager::ValidateSplitCandidateTableCdc(const TableInfo& table) const {
+Status CatalogManager::XreplValidateSplitCandidateTable(const TableInfo& table) const {
   SharedLock lock(mutex_);
-  return ValidateSplitCandidateTableCdcUnlocked(table);
+  return XreplValidateSplitCandidateTableUnlocked(table);
 }
 
-Status CatalogManager::ValidateSplitCandidateTableCdcUnlocked(const TableInfo& table) const {
+Status CatalogManager::XreplValidateSplitCandidateTableUnlocked(const TableInfo& table) const {
   // Check if this table is part of a cdc stream.
   if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_replicated_tables) &&
       IsXClusterEnabledUnlocked(table)) {
@@ -3187,6 +3165,14 @@ Status CatalogManager::ValidateSplitCandidateTableCdcUnlocked(const TableInfo& t
         "Tablet splitting is not supported for tables that are a part of"
         " a bootstrapping CDC stream, table_id: $0", table.id());
   }
+  // Check if this table is part of a cdcsdk stream.
+  if (!FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables &&
+      IsTablePartOfCDCSDK(table)) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for tables that are a part of"
+        " a CDCSDK stream, table_id: $0", table.id());
+  }
   return Status::OK();
 }
 
@@ -3201,7 +3187,7 @@ Status CatalogManager::ValidateSplitCandidateUnlocked(
   const IgnoreDisabledList ignore_disabled_list { is_manual_split.get() };
   RETURN_NOT_OK(tablet_split_manager_.ValidateSplitCandidateTable(
       tablet->table(), ignore_disabled_list));
-  RETURN_NOT_OK(ValidateSplitCandidateTableCdcUnlocked(*tablet->table()));
+  RETURN_NOT_OK(XreplValidateSplitCandidateTableUnlocked(*tablet->table()));
 
   const IgnoreTtlValidation ignore_ttl_validation { is_manual_split.get() };
 
@@ -3220,7 +3206,7 @@ Status CatalogManager::DeleteNotServingTablet(
   const auto tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
 
   if (PREDICT_FALSE(FLAGS_TEST_reject_delete_not_serving_tablet_rpc)) {
-    TEST_SYNC_POINT("CatalogManager::DeleteNotServingTablet:Reject");
+    DEBUG_ONLY_TEST_SYNC_POINT("CatalogManager::DeleteNotServingTablet:Reject");
     return STATUS(
         InvalidArgument, "Rejecting due to FLAGS_TEST_reject_delete_not_serving_tablet_rpc");
   }
@@ -3655,11 +3641,6 @@ TSDescriptorVector CatalogManager::GetAllLiveNotBlacklistedTServers() const {
 
 namespace {
 
-size_t GetNumReplicasFromPlacementInfo(const PlacementInfoPB& placement_info) {
-  return placement_info.num_replicas() > 0 ?
-      placement_info.num_replicas() : FLAGS_replication_factor;
-}
-
 std::string GetStatefulServiceTableName(const StatefulServiceKind& service_kind) {
   return ToLowerCase(StatefulServiceKind_Name(service_kind)) + "_table";
 }
@@ -3670,8 +3651,8 @@ Status CatalogManager::CanAddPartitionsToTable(
   TSDescriptorVector ts_descs;
   master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
   auto max_tablets = FLAGS_max_create_tablets_per_ts * ts_descs.size();
-  auto num_replicas = GetNumReplicasFromPlacementInfo(placement_info);
-  if (num_replicas > 1 && max_tablets > 0 && desired_partitions > max_tablets) {
+  auto replicas_per_tablet = GetNumReplicasOrGlobalReplicationFactor(placement_info);
+  if (replicas_per_tablet > 1 && max_tablets > 0 && desired_partitions > max_tablets) {
     std::string msg = Substitute("The requested number of tablets ($0) is over the permitted "
                                  "maximum ($1)", desired_partitions, max_tablets);
     return STATUS(InvalidArgument, msg);
@@ -3695,34 +3676,13 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   } else {
     LOG(INFO) << "CreateTable from " << RequestorString(rpc) << ": " << orig_req->name();
   }
-
-  const bool is_transactional = orig_req->schema().table_properties().is_transactional();
-  // If this is a transactional table, we need to create the transaction status table (if it does
-  // not exist already).
-  if (is_transactional && (!is_pg_catalog_table || !FLAGS_create_initial_sys_catalog_snapshot)) {
-    Status s = CreateGlobalTransactionStatusTableIfNeeded(rpc, epoch);
-    if (!s.ok()) {
-      return s.CloneAndPrepend("Error while creating transaction status table");
-    }
-  } else {
-    VLOG(1)
-        << "Not attempting to create a transaction status table:\n"
-        << "  " << EXPR_VALUE_FOR_LOG(is_transactional) << "\n "
-        << "  " << EXPR_VALUE_FOR_LOG(is_pg_catalog_table) << "\n "
-        << "  " << EXPR_VALUE_FOR_LOG(FLAGS_create_initial_sys_catalog_snapshot);
-  }
-
-  // If this is a transactional table and there is a associated tablespace, try to create a
-  // local transaction status table for the tablespace if there is a placement attached to it
-  // (and if it does not exist already).
+  RETURN_NOT_OK(CreateGlobalTransactionStatusTableIfNeededForNewTable(*orig_req, rpc, epoch));
   RETURN_NOT_OK(MaybeCreateLocalTransactionTable(*orig_req, rpc, epoch));
 
   if (is_pg_catalog_table) {
     // No batching for migration.
     return CreateYsqlSysTable(orig_req, resp, epoch);
   }
-
-  const char* const object_type = PROTO_PTR_IS_TABLE(orig_req) ? "table" : "index";
 
   // Copy the request, so we can fill in some defaults.
   CreateTableRequestPB req = *orig_req;
@@ -3839,8 +3799,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
-  const bool is_replication_info_set = IsReplicationInfoSet(req.replication_info());
-  if (is_replication_info_set && req.table_type() == PGSQL_TABLE_TYPE) {
+  if (IsReplicationInfoSet(req.replication_info()) && req.table_type() == PGSQL_TABLE_TYPE) {
     const Status s = STATUS(InvalidArgument, "Cannot set placement policy for YSQL tables "
         "use Tablespaces instead");
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
@@ -3853,6 +3812,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   int num_tablets = VERIFY_RESULT(CalculateNumTabletsForTableCreation(req, schema, placement_info));
   Status s = CanAddPartitionsToTable(num_tablets, placement_info);
+  if (s.ok()) {
+    s = CanCreateTabletReplicas(num_tablets, replication_info, GetAllLiveNotBlacklistedTServers());
+  }
   if (!s.ok()) {
     LOG(WARNING) << s;
     return SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s);
@@ -3871,8 +3833,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // For index table, populate the index info.
   IndexInfoPB index_info;
 
-  const bool index_backfill_enabled =
-      IsIndexBackfillEnabled(orig_req->table_type(), is_transactional);
+  const bool index_backfill_enabled = IsIndexBackfillEnabled(
+      orig_req->table_type(), orig_req->schema().table_properties().is_transactional());
   if (req.has_index_info()) {
     // Current message format.
     index_info.CopyFrom(req.index_info());
@@ -4273,8 +4235,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
-  LOG(INFO) << "Successfully created " << object_type << " " << table->ToString() << " in "
-            << ns->ToString() << " per request from " << RequestorString(rpc);
+  LOG(INFO) << Format("Successfully created $0 $1 in $2 per request from $3",
+                      PROTO_PTR_IS_TABLE(orig_req) ? "table" : "index",
+                      table->ToString(),
+                      ns->ToString(),
+                      RequestorString(rpc));
   // Kick the background task to start asynchronously creating tablets and assigning tablet leaders.
   // If the table is joining an existing colocated group there's no work to do.
   if (!joining_colocation_group) {
@@ -4431,7 +4396,7 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
                                                const TSDescriptorVector& ts_descs,
                                                ValidateReplicationInfoResponsePB* resp) {
   size_t num_live_tservers = ts_descs.size();
-  size_t num_replicas = GetNumReplicasFromPlacementInfo(placement_info);
+  size_t num_replicas = GetNumReplicasOrGlobalReplicationFactor(placement_info);
   Status s;
   string msg;
 
@@ -4741,7 +4706,27 @@ Status CatalogManager::CreateLocalTransactionStatusTableIfNeeded(
       rpc, table_name, &tablespace_id, epoch, nullptr /* replication_info */);
 }
 
-Status CatalogManager::CreateGlobalTransactionStatusTableIfNeeded(
+Status CatalogManager::CreateGlobalTransactionStatusTableIfNeededForNewTable(
+  const CreateTableRequestPB& req, rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  const bool is_pg_catalog_table =
+      req.table_type() == PGSQL_TABLE_TYPE && req.is_pg_catalog_table();
+  const bool is_transactional = req.schema().table_properties().is_transactional();
+  // If this is a transactional table, we need to create the transaction status table (if it does
+  // not exist already).
+  if (is_transactional && (!is_pg_catalog_table || !FLAGS_create_initial_sys_catalog_snapshot)) {
+    RETURN_NOT_OK_PREPEND(
+                          CreateGlobalTransactionStatusTableIfNotPresent(rpc, epoch),
+        "Error while creating transaction status table");
+  } else {
+    VLOG(1) << "Not attempting to create a transaction status table:\n"
+            << "  " << EXPR_VALUE_FOR_LOG(is_transactional) << "\n "
+            << "  " << EXPR_VALUE_FOR_LOG(is_pg_catalog_table) << "\n "
+            << "  " << EXPR_VALUE_FOR_LOG(FLAGS_create_initial_sys_catalog_snapshot);
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::CreateGlobalTransactionStatusTableIfNotPresent(
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
   Status s = CreateTransactionStatusTableInternal(
       rpc, kGlobalTransactionsTableName, nullptr /* tablespace_id */, epoch,
@@ -5424,8 +5409,11 @@ Result<scoped_refptr<NamespaceInfo>> CatalogManager::FindNamespaceUnlocked(
     auto db = GetDatabaseType(ns_identifier);
     auto it = namespace_names_mapper_[db].find(ns_identifier.name());
     if (it == namespace_names_mapper_[db].end()) {
-      return STATUS(NotFound, "Keyspace name not found", ns_identifier.name(),
-                    MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
+      return STATUS(
+          NotFound,
+          Format("$0 keyspace name not found", ShortDatabaseType(db)),
+          ns_identifier.name(),
+          MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
     }
     return it->second;
   }
@@ -9830,12 +9818,13 @@ Status CatalogManager::GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
   }
 
   if (req->type().has_type_id()) {
+    SharedLock lock(mutex_);
     tp = FindPtrOrNull(udtype_ids_map_, req->type().type_id());
   } else if (req->type().has_type_name() && req->type().has_namespace_()) {
     // Lookup the type and verify if it exists.
     TRACE("Looking up namespace");
     ns = VERIFY_NAMESPACE_FOUND(FindNamespace(req->type().namespace_()), resp);
-
+    SharedLock lock(mutex_);
     tp = FindPtrOrNull(udtype_names_map_, std::make_pair(ns->id(), req->type().type_name()));
   }
 
@@ -11072,7 +11061,7 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
   if (IsTableXClusterConsumer(*table)) {
     // If we're waiting for a Schema because we saw the a replication source with a change,
     // resume replication now that the alter is complete.
-    RETURN_NOT_OK(ResumeCdcAfterNewSchema(*table, version));
+    RETURN_NOT_OK(ResumeXClusterConsumerAfterNewSchema(*table, version));
   }
 
   return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(this, table, version, epoch);
@@ -11343,7 +11332,7 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
                                                          consensus::RaftConfigPB* config,
                                                          CMPerTableLoadState* per_table_state,
                                                          CMGlobalLoadState* global_state) {
-  size_t nreplicas = GetNumReplicasFromPlacementInfo(placement_info);
+  size_t nreplicas = GetNumReplicasOrGlobalReplicationFactor(placement_info);
   size_t ntservers = ts_descs.size();
   // Keep track of servers we've already selected, so that we don't attempt to
   // put two replicas on the same host.
@@ -11666,6 +11655,9 @@ Status CatalogManager::BuildLocationsForSystemTablet(
 
 Status CatalogManager::MaybeCreateLocalTransactionTable(
     const CreateTableRequestPB& request, rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  // If this is a transactional table and there is a associated tablespace, try to create a
+  // local transaction status table for the tablespace if there is a placement attached to it
+  // (and if it does not exist already).
   const bool is_transactional = request.schema().table_properties().is_transactional();
   if (GetAtomicFlag(&FLAGS_auto_create_local_transaction_tables)) {
     if (is_transactional && request.has_tablespace_id()) {
@@ -12259,24 +12251,6 @@ Status CatalogManager::SetClusterConfig(
   return Status::OK();
 }
 
-Status CatalogManager::GetXClusterConfig(GetMasterXClusterConfigResponsePB* resp) {
-  return GetXClusterConfig(resp->mutable_xcluster_config());
-}
-
-Status CatalogManager::GetXClusterConfig(SysXClusterConfigEntryPB* config) {
-  auto xcluster_config = XClusterConfig();
-  DCHECK(xcluster_config) << "Missing xcluster config for master!";
-  *config = xcluster_config->LockForRead()->pb;
-  return Status::OK();
-}
-
-Result<uint32_t> CatalogManager::GetXClusterConfigVersion() const {
-  auto xcluster_config = XClusterConfig();
-  SCHECK(xcluster_config, IllegalState, "XCluster config is not initialized");
-  auto l = xcluster_config->LockForRead();
-  return l->pb.version();
-}
-
 Status CatalogManager::ValidateReplicationInfo(
     const ValidateReplicationInfoRequestPB* req, ValidateReplicationInfoResponsePB* resp) {
   TSDescriptorVector all_ts_descs;
@@ -12331,7 +12305,7 @@ Result<size_t> CatalogManager::GetReplicationFactor() {
   DCHECK(cluster_config) << "Missing cluster config for master!";
   auto l = cluster_config->LockForRead();
   const ReplicationInfoPB& replication_info = l->pb.replication_info();
-  return GetNumReplicasFromPlacementInfo(replication_info.live_replicas());
+  return GetNumReplicasOrGlobalReplicationFactor(replication_info.live_replicas());
 }
 
 
@@ -12339,7 +12313,7 @@ Result<size_t> CatalogManager::GetTableReplicationFactor(const TableInfoPtr& tab
   auto replication_info = CatalogManagerUtil::GetTableReplicationInfo(
       table, GetTablespaceManager(), ClusterConfig()->LockForRead()->pb.replication_info());
   if (replication_info.has_live_replicas()) {
-    return GetNumReplicasFromPlacementInfo(replication_info.live_replicas());
+    return GetNumReplicasOrGlobalReplicationFactor(replication_info.live_replicas());
   }
   return FLAGS_replication_factor;
 }
@@ -12374,11 +12348,8 @@ void CatalogManager::GetExpectedNumberOfReplicasForTable(
     const scoped_refptr<TableInfo>& table, int* num_live_replicas, int* num_read_replicas) {
   auto l = ClusterConfig()->LockForRead();
   auto replication_info = CatalogManagerUtil::GetTableReplicationInfo(
-      table,
-      GetTablespaceManager(),
-      ClusterConfig()->LockForRead()->pb.replication_info());
-  *num_live_replicas =
-      narrow_cast<int>(GetNumReplicasFromPlacementInfo(replication_info.live_replicas()));
+      table, GetTablespaceManager(), l->pb.replication_info());
+  *num_live_replicas = GetNumReplicasOrGlobalReplicationFactor(replication_info.live_replicas());
   for (const auto& read_replica_placement_info : replication_info.read_replicas()) {
     *num_read_replicas += read_replica_placement_info.num_replicas();
   }
@@ -12683,6 +12654,9 @@ Result<vector<TableDescription>> CatalogManager::CollectTables(
           table_id_pb.has_namespace_()) {
         auto namespace_info = FindNamespaceUnlocked(table_id_pb.namespace_());
         if (!namespace_info.ok()) {
+          VLOG_WITH_PREFIX_AND_FUNC(1)
+              << "Namespace not found: " << table_id_pb.namespace_().ShortDebugString()
+              << ", status: "<< namespace_info.status().ToString();
           if (namespace_info.status().IsNotFound()) {
             continue;
           }
@@ -13039,10 +13013,6 @@ std::shared_ptr<ClusterConfigInfo> CatalogManager::ClusterConfig() const {
   return cluster_config_;
 }
 
-std::shared_ptr<XClusterConfigInfo> CatalogManager::XClusterConfig() const {
-  return xcluster_config_;
-}
-
 Status CatalogManager::TryRemoveFromTablegroup(const TableId& table_id) {
   LockGuard lock(mutex_);
   auto tablegroup = tablegroup_manager_->FindByTable(table_id);
@@ -13149,41 +13119,6 @@ Status CatalogManager::SetXClusterNamespaceToSafeTimeMap(
   return Status::OK();
 }
 
-void CatalogManager::CreateXClusterSafeTimeTableAndStartService() {
-  auto status = xcluster_safe_time_service_->CreateXClusterSafeTimeTableIfNotFound();
-  if (!status.ok()) {
-    LOG(WARNING) << "Creation of XClusterSafeTime table failed :" << status;
-  }
-
-  StartXClusterSafeTimeServiceIfStopped();
-}
-
-void CatalogManager::StartXClusterSafeTimeServiceIfStopped() {
-  xcluster_safe_time_service_->ScheduleTaskIfNeeded();
-}
-
-Status CatalogManager::GetXClusterSafeTime(
-    const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp) {
-  const auto status = xcluster_safe_time_service_->GetXClusterSafeTimeInfoFromMap(resp);
-  if (!status.ok()) {
-    return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, status);
-  }
-
-  // Also fill out the namespace_name for each entry.
-  if (resp->namespace_safe_times_size()) {
-    SharedLock lock(mutex_);
-    for (auto& safe_time_info : *resp->mutable_namespace_safe_times()) {
-      const auto result = FindNamespaceByIdUnlocked(safe_time_info.namespace_id());
-      if (!result) {
-        return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, result.status());
-      }
-      safe_time_info.set_namespace_name(result.get()->name());
-    }
-  }
-
-  return Status::OK();
-}
-
 AsyncTaskThrottlerBase* CatalogManager::GetDeleteReplicaTaskThrottler(
     const string& ts_uuid) {
 
@@ -13219,9 +13154,6 @@ Status CatalogManager::SubmitToSysCatalog(std::unique_ptr<tablet::Operation> ope
 
 Status CatalogManager::PromoteAutoFlags(
     const PromoteAutoFlagsRequestPB* req, PromoteAutoFlagsResponsePB* resp) {
-  bool non_runtime_flags_promoted = false;
-  uint32_t new_config_version = 0;
-
   const auto max_class = VERIFY_RESULT_PREPEND(
       ParseEnumInsensitive<AutoFlagClass>(req->max_flag_class()),
       "Invalid value provided for flag class");
@@ -13230,15 +13162,49 @@ Status CatalogManager::PromoteAutoFlags(
   // to avoid promotion of flags with AutoFlagClass::kNewInstallsOnly class.
   SCHECK_LT(
       max_class, AutoFlagClass::kNewInstallsOnly, InvalidArgument,
-      Format("It is not allowed to promote with max_class set to $0.",
-      ToString(AutoFlagClass::kNewInstallsOnly)));
+      Format(
+          "max_class cannot be set to $0.",
+          ToString(AutoFlagClass::kNewInstallsOnly)));
 
-  RETURN_NOT_OK(master::PromoteAutoFlags(
+  auto [new_config_version, outcome] = VERIFY_RESULT(master::PromoteAutoFlags(
       max_class, PromoteNonRuntimeAutoFlags(req->promote_non_runtime_flags()), req->force(),
-      *master_->auto_flags_manager(), this, &new_config_version, &non_runtime_flags_promoted));
+      *master_->auto_flags_manager(), this));
 
   resp->set_new_config_version(new_config_version);
-  resp->set_non_runtime_flags_promoted(non_runtime_flags_promoted);
+  resp->set_flags_promoted(outcome != PromoteAutoFlagsOutcome::kNoFlagsPromoted);
+  resp->set_non_runtime_flags_promoted(
+      outcome == PromoteAutoFlagsOutcome::kNonRuntimeFlagsPromoted);
+  return Status::OK();
+}
+
+Status CatalogManager::RollbackAutoFlags(
+    const RollbackAutoFlagsRequestPB* req, RollbackAutoFlagsResponsePB* resp) {
+  auto [new_config_version, outcome] = VERIFY_RESULT(
+      master::RollbackAutoFlags(req->rollback_version(), *master_->auto_flags_manager(), this));
+
+  resp->set_new_config_version(new_config_version);
+  resp->set_flags_rolledback(outcome);
+  return Status::OK();
+}
+
+Status CatalogManager::PromoteSingleAutoFlag(
+    const PromoteSingleAutoFlagRequestPB* req, PromoteSingleAutoFlagResponsePB* resp) {
+  auto [new_config_version, outcome] = VERIFY_RESULT(master::PromoteSingleAutoFlag(
+      req->process_name(), req->auto_flag_name(), *master_->auto_flags_manager(), this));
+
+  resp->set_new_config_version(new_config_version);
+  resp->set_flag_promoted(outcome != PromoteAutoFlagsOutcome::kNoFlagsPromoted);
+  resp->set_non_runtime_flag_promoted(outcome == PromoteAutoFlagsOutcome::kNonRuntimeFlagsPromoted);
+  return Status::OK();
+}
+
+Status CatalogManager::DemoteSingleAutoFlag(
+    const DemoteSingleAutoFlagRequestPB* req, DemoteSingleAutoFlagResponsePB* resp) {
+  auto [new_config_version, outcome] = VERIFY_RESULT(master::DemoteSingleAutoFlag(
+      req->process_name(), req->auto_flag_name(), *master_->auto_flags_manager(), this));
+
+  resp->set_new_config_version(new_config_version);
+  resp->set_flag_demoted(outcome);
   return Status::OK();
 }
 
@@ -13299,9 +13265,9 @@ void CatalogManager::Started() {
 }
 
 void CatalogManager::SysCatalogLoaded(const SysCatalogLoadingState& state) {
-  StartXClusterSafeTimeServiceIfStopped();
   StartPostLoadTasks(state);
   snapshot_coordinator_.SysCatalogLoaded(state.epoch.leader_term);
+  xcluster_manager_->SysCatalogLoaded(state);
   ScheduleAddTableToXClusterTaskForAllTables(state.epoch);
 }
 

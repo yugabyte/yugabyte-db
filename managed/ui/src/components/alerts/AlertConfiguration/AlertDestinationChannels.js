@@ -180,6 +180,7 @@ export const AlertDestinationChannels = (props) => {
                 ...UserPermissionMap.deleteAlertsConfig
               }}
               isControl
+              overrideStyle={{ display: 'block' }}
             >
               <MenuItem
                 onClick={() => {

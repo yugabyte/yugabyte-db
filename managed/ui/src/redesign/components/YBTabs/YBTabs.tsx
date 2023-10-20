@@ -7,15 +7,16 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { Box, Tab, TabProps, Tabs, Typography, withStyles } from "@material-ui/core";
+import { Tab, TabProps, Tabs, withStyles } from "@material-ui/core";
 import { TabPanelProps } from "@material-ui/lab";
 
 export const YBTabs = withStyles((theme) => ({
   root: {
-    borderBottom: '1px solid #e8e8e8',
+    borderBottom: '1px solid #e8e8e8'
   },
   indicator: {
     backgroundColor: `${theme.palette.grey[900]} !important`,
+    maxWidth: '75px'
   },
 }))(Tabs);
 
@@ -23,7 +24,8 @@ export const YBTab = withStyles((theme) => ({
   root: {
     textTransform: 'none',
     minWidth: 72,
-    marginRight: theme.spacing(4),
+    marginRight: theme.spacing(2),
+    fontWeight: 400
   }
 }))((props: TabProps) => <Tab disableRipple {...props} />);
 

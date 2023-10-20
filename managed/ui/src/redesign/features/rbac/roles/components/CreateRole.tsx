@@ -19,6 +19,7 @@ import {
   AccordionDetails,
   AccordionSummary,
   Box,
+  FormHelperText,
   Typography,
   makeStyles
 } from '@material-ui/core';
@@ -27,20 +28,22 @@ import ListPermissionsModal from '../../permission/ListPermissionsModal';
 import { YBButton, YBInputField } from '../../../../components';
 import { YBLoadingCircleIcon } from '../../../../../components/common/indicators';
 import { resourceOrderByRelevance } from '../../common/RbacUtils';
-import { Role } from '../IRoles';
+import { Role, RoleType } from '../IRoles';
 import { Permission, Resource } from '../../permission';
 import { createRole, editRole, getAllAvailablePermissions } from '../../api';
-import { RoleContextMethods, RoleViewContext } from '../RoleContext';
+import { Pages, RoleContextMethods, RoleViewContext } from '../RoleContext';
 import { createErrorMessage } from '../../../universe/universe-form/utils/helpers';
 import { isDefinedNotNull, isNonEmptyString } from '../../../../../utils/ObjectUtils';
 import { ArrowDropDown, Create } from '@material-ui/icons';
+import { yupResolver } from '@hookform/resolvers/yup';
+import { getRoleValidationSchema } from '../RoleValidationSchema';
 
 const PERMISSION_MODAL_TRANSLATION_PREFIX = 'rbac.permissions.selectPermissionModal';
 
 const useStyles = makeStyles((theme) => ({
   root: {
     padding: theme.spacing(4),
-    width: '700px',
+    width: '764px',
     minHeight: '350px'
   },
   title: {
@@ -58,6 +61,9 @@ const useStyles = makeStyles((theme) => ({
       fontWeight: 400,
       color: '#333'
     }
+  },
+  permissionTitle: {
+    marginTop: '18px'
   }
 }));
 
@@ -88,17 +94,25 @@ export const CreateRole = forwardRef((_, forwardRef) => {
     RoleViewContext
   ) as unknown) as RoleContextMethods;
 
-  const { control, setValue, handleSubmit, watch } = useForm<Role>({
+  const {
+    control,
+    setValue,
+    handleSubmit,
+    watch,
+    formState: { errors }
+  } = useForm<Role>({
     defaultValues: currentRole
       ? {
           ...currentRole,
           permissionDetails: currentRole.permissionDetails
         }
       : {
+          description: '',
           permissionDetails: {
             permissionList: []
           }
-        }
+        },
+    resolver: yupResolver(getRoleValidationSchema(t))
   });
 
   const doCreateRole = useMutation(
@@ -108,7 +122,7 @@ export const CreateRole = forwardRef((_, forwardRef) => {
     {
       onSuccess: (_resp, role) => {
         toast.success(t('successMsg', { role_name: role.name }));
-        setCurrentPage('LIST_ROLE');
+        setCurrentPage(Pages.LIST_ROLE);
       },
       onError: (err) => {
         toast.error(createErrorMessage(err));
@@ -123,7 +137,7 @@ export const CreateRole = forwardRef((_, forwardRef) => {
     {
       onSuccess: (_resp, role) => {
         toast.success(t('editSuccessMsg', { role_name: role.name }));
-        setCurrentPage('LIST_ROLE');
+        setCurrentPage(Pages.LIST_ROLE);
       },
       onError: (err) => {
         toast.error(createErrorMessage(err));
@@ -133,7 +147,7 @@ export const CreateRole = forwardRef((_, forwardRef) => {
 
   const onSave = () => {
     handleSubmit((val) => {
-      if (!isDefinedNotNull(currentRole?.roleUUID)) {
+      if (!currentRole?.roleUUID) {
         doCreateRole.mutate(val);
       } else {
         doEditRole.mutate(val);
@@ -142,7 +156,7 @@ export const CreateRole = forwardRef((_, forwardRef) => {
   };
 
   const onCancel = () => {
-    setCurrentPage('LIST_ROLE');
+    setCurrentPage(Pages.LIST_ROLE);
   };
 
   useImperativeHandle(
@@ -154,6 +168,10 @@ export const CreateRole = forwardRef((_, forwardRef) => {
     [onSave, onCancel]
   );
 
+  const permissionListVal = watch('permissionDetails.permissionList');
+
+  const isSystemRole = currentRole?.roleType === RoleType.SYSTEM;
+
   return (
     <Box className={classes.root}>
       <div className={classes.title}>{t(currentRole?.roleUUID ? 'edit' : 'title')}</div>
@@ -164,21 +182,33 @@ export const CreateRole = forwardRef((_, forwardRef) => {
           label={t('form.name')}
           placeholder={t('form.namePlaceholder')}
           fullWidth
-          disabled={isNonEmptyString(currentRole?.roleUUID)}
+          disabled={isNonEmptyString(currentRole?.roleUUID) || isSystemRole}
         />
         <YBInputField
           name="description"
           control={control}
           label={t('form.description')}
           placeholder={t('form.descriptionPlaceholder')}
+          disabled={isSystemRole}
           fullWidth
         />
+        {permissionListVal.length === 0 && (
+          <Typography variant="body1" className={classes.permissionTitle} component={'div'}>
+            {t('form.permissions')}
+          </Typography>
+        )}
         <SelectPermissions
-          selectedPermissions={watch('permissionDetails.permissionList')}
+          selectedPermissions={permissionListVal}
           setSelectedPermissions={(perm: Permission[]) => {
             setValue('permissionDetails.permissionList', perm);
           }}
+          disabled={isSystemRole}
         />
+        {errors.permissionDetails?.message && (
+          <FormHelperText required error>
+            {errors.permissionDetails.message}
+          </FormHelperText>
+        )}
       </form>
     </Box>
   );
@@ -186,11 +216,11 @@ export const CreateRole = forwardRef((_, forwardRef) => {
 
 const permissionsStyles = makeStyles((theme) => ({
   root: {
-    width: '100%',
+    width: '700px',
     borderRadius: theme.spacing(1),
     border: `1px dashed ${theme.palette.primary[300]}`,
     background: theme.palette.primary[100],
-    height: '126px',
+    height: '120px',
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(2),
@@ -201,6 +231,7 @@ const permissionsStyles = makeStyles((theme) => ({
     fontFamily: 'Inter',
     fontWeight: 400,
     lineHeight: `${theme.spacing(2)}px`,
+    fontSize: '11.5px',
     color: '#67666C'
   },
   permList: {
@@ -236,10 +267,17 @@ const permissionsStyles = makeStyles((theme) => ({
     }
   },
   permCollection: {
+    '&:last-child': {
+      borderRadius: '0px 0px 8px 8px'
+    },
+    '&:first-child': {
+      borderRadius: '8px 8px 0px 0px'
+    },
     '& .MuiAccordionSummary-root': {
       background: theme.palette.ybacolors.backgroundGrayLightest,
-      padding: '14px 24px',
-      height: '45px',
+      padding: '24px 24px 24px 24px',
+      height: '35px',
+      borderRadius: theme.spacing(1),
       '&.Mui-expanded': {
         borderBottom: `1px solid ${theme.palette.ybacolors.backgroundGrayDark}`
       }
@@ -247,11 +285,11 @@ const permissionsStyles = makeStyles((theme) => ({
     '& .MuiAccordionDetails-root': {
       display: 'flex',
       flexDirection: 'column',
-      padding: `16px`,
+      padding: `24px`,
       gap: '8px'
     },
     '& .MuiAccordion-root.Mui-expanded,& .MuiAccordionSummary-root.Mui-expanded': {
-      minHeight: 'unset',
+      minHeight: '40px',
       margin: 0
     }
   },
@@ -278,17 +316,24 @@ const permissionsStyles = makeStyles((theme) => ({
     borderRadius: '4px',
     background: theme.palette.primary[200],
     color: theme.palette.primary[700]
+  },
+  universeInfoText: {
+    textTransform: 'uppercase',
+    color: theme.palette.ybacolors.textDarkGray,
+    marginBottom: '10px'
   }
 }));
 
 type SelectPermissionsProps = {
   selectedPermissions: Permission[];
   setSelectedPermissions: (permissions: Permission[]) => void;
+  disabled: boolean;
 };
 
 const SelectPermissions = ({
   selectedPermissions,
-  setSelectedPermissions
+  setSelectedPermissions,
+  disabled
 }: SelectPermissionsProps) => {
   const classes = permissionsStyles();
   const { t } = useTranslation('translation', {
@@ -309,7 +354,7 @@ const SelectPermissions = ({
 
   const getEmptyList = () => (
     <Box className={classes.root}>
-      <YBButton variant="secondary" onClick={() => togglePermissionModal(true)}>
+      <YBButton variant="secondary" onClick={() => togglePermissionModal(true)} disabled={disabled}>
         {t('selectPermissions')}
       </YBButton>
       <div className={classes.helpText}>{t('selectPermissionSubText')}</div>
@@ -333,6 +378,7 @@ const SelectPermissions = ({
             startIcon={<Create />}
             onClick={() => togglePermissionModal(true)}
             data-testid={`rbac-edit-universe-selection`}
+            disabled={disabled}
           >
             {t('editSelection')}
           </YBButton>
@@ -348,10 +394,14 @@ const SelectPermissions = ({
                 >
                   <div className={classes.resourceTitle}>
                     <Typography variant="body1" className={classes.permissionGroupTitle}>
-                      {t('resourceManagement', {
-                        resource: resourceType.toLowerCase(),
-                        keyPrefix: PERMISSION_MODAL_TRANSLATION_PREFIX
-                      })}
+                      {resourceType === Resource.DEFAULT
+                        ? t('otherResource', {
+                            keyPrefix: PERMISSION_MODAL_TRANSLATION_PREFIX
+                          })
+                        : t('resourceManagement', {
+                            resource: resourceType.toLowerCase(),
+                            keyPrefix: PERMISSION_MODAL_TRANSLATION_PREFIX
+                          })}
                       {resourceType === Resource.UNIVERSE && (
                         <Typography
                           variant="subtitle1"
@@ -373,6 +423,13 @@ const SelectPermissions = ({
                   </div>
                 </AccordionSummary>
                 <AccordionDetails>
+                  {resourceType === Resource.UNIVERSE && (
+                    <Typography variant="subtitle1" className={classes.universeInfoText}>
+                      {t('universePrimaryAndReplica2', {
+                        keyPrefix: PERMISSION_MODAL_TRANSLATION_PREFIX
+                      })}
+                    </Typography>
+                  )}
                   {permissionGroups[resourceType].map((permission, i) => {
                     return (
                       <div

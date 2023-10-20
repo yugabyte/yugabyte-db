@@ -54,6 +54,16 @@ readonly build_type
 BUILD_TYPE=$build_type
 readonly BUILD_TYPE
 export BUILD_TYPE
+log "BUILD_TYPE: ${BUILD_TYPE}"
+
+log "YB_BUILD_OPTS: ${YB_BUILD_OPTS:-}"
+for yb_opt in ${YB_BUILD_OPTS:-}; do
+  if [[ $yb_opt =~ YB_.*=.* ]]; then
+    log "  Setting from YB_BUILD_OPTS: $yb_opt"
+    export "${yb_opt?}"
+  fi
+done
+
 export YB_USE_NINJA=1
 set_cmake_build_type_and_compiler_type
 if [[ ${YB_DOWNLOAD_THIRDPARTY:-auto} == "auto" ]]; then
@@ -65,9 +75,7 @@ log "YB_DOWNLOAD_THIRDPARTY=$YB_DOWNLOAD_THIRDPARTY"
 # into the decision of whether to use LTO.
 decide_whether_to_use_linuxbrew
 if [[ -z ${YB_LINKING_TYPE:-} ]]; then
-  if [[ "${YB_BUILD_OPTS:-}" =~ .*--(thin|full)-lto|--lto[[:blank:]]+(full|thin).* ]]; then
-    export YB_LINKING_TYPE="${BASH_REMATCH[1]}-lto"
-  elif ! is_mac && [[
+  if ! is_mac && [[
         ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ &&
         ${BUILD_TYPE} == "release"
       ]]; then
@@ -78,7 +86,6 @@ if [[ -z ${YB_LINKING_TYPE:-} ]]; then
   log "Automatically decided to set YB_LINKING_TYPE to ${YB_LINKING_TYPE} based on:" \
       "YB_COMPILER_TYPE=${YB_COMPILER_TYPE}," \
       "BUILD_TYPE=${BUILD_TYPE}," \
-      "YB_BUILD_OPTS=${YB_BUILD_OPTS:-}," \
       "YB_USE_LINUXBREW=${YB_USE_LINUXBREW}," \
       "YB_LINUXBREW_DIR=${YB_LINUXBREW_DIR:-undefined}."
 else

@@ -66,6 +66,8 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -109,6 +111,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
+import org.mockito.MockitoAnnotations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -122,12 +125,14 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
       ImmutableList.of("region1", "region2");
 
   @Mock Config mockConfig;
+  @Mock RuntimeConfGetter mockConfGetter;
 
   Customer customer;
   Users user;
 
   @Before
   public void setUp() {
+    MockitoAnnotations.initMocks(this);
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     try {
@@ -140,6 +145,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     }
     String gcpCredentialFile = createTempFile("gcpCreds.json", "test5678");
     when(mockAccessManager.createGCPCredentialsFile(any(), any())).thenReturn(gcpCredentialFile);
+    when(mockConfGetter.getConfForScope(customer, CustomerConfKeys.cloudEnabled)).thenReturn(false);
+    when(mockConfGetter.getStaticConf()).thenReturn(mockConfig);
   }
 
   private Result listProviders() {
@@ -643,7 +650,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     Result result = deleteProvider(p.getUuid());
     assertYBPSuccess(result, "Deleted provider: " + p.getUuid());
 
-    assertEquals(0, InstanceType.findByProvider(p, mockConfig).size());
+    assertEquals(0, InstanceType.findByProvider(p, mockConfGetter).size());
     assertNull(Provider.get(p.getUuid()));
   }
 

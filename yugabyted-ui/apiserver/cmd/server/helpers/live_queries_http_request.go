@@ -97,8 +97,7 @@ func (h *HelperContainer) GetLiveQueriesYsqlFuture(
     var ysqlResponse LiveQueryHttpYsqlResponse
     json.Unmarshal([]byte(body), &ysqlResponse)
     for _, connection := range ysqlResponse.Connections {
-        if connection.BackendType != "" && connection.SessionStatus != "" &&
-            connection.BackendType == "client backend" && connection.SessionStatus == "idle" {
+        if connection.Query != "" {
             // uuid is just a random number, it is used in the frontend as a table row key.
             uuid, err := h.Random128BitString()
             if err != nil {

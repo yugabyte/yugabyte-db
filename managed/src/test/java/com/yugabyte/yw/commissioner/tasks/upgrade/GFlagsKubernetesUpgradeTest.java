@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.List;
@@ -197,6 +198,24 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(subTasksByPosition, UPGRADE_TASK_SEQUENCE, createUpgradeResult(true));
     assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testGflagsUpgradeRetries() {
+    setupUniverseMultiAZ(false, false);
+    gFlagsKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+    KubernetesGFlagsUpgradeParams taskParams = new KubernetesGFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
+    taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = 2;
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.GFlagsUpgrade,
+        CustomerTask.TargetType.Universe,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.GFlagsKubernetesUpgrade,
+        taskParams);
   }
 
   @Test

@@ -36,9 +36,18 @@ type props = {
   onSave: () => void;
   onCancel: () => void;
   saveLabel?: string;
+  hideSave?: boolean;
+  disableSave?: boolean;
 };
 
-const Container: FC<props> = ({ children, onSave, onCancel, saveLabel }) => {
+const Container: FC<props> = ({
+  children,
+  onSave,
+  onCancel,
+  saveLabel,
+  hideSave = false,
+  disableSave = false
+}) => {
   const classes = useStyles();
   const { t } = useTranslation('translation', {
     keyPrefix: 'common'
@@ -53,9 +62,11 @@ const Container: FC<props> = ({ children, onSave, onCancel, saveLabel }) => {
         <YBButton variant="secondary" onClick={onCancel}>
           {t('cancel')}
         </YBButton>
-        <YBButton variant="primary" onClick={onSave}>
-          {saveLabel ?? t('save')}
-        </YBButton>
+        {!hideSave && (
+          <YBButton variant="primary" onClick={onSave} disabled={disableSave}>
+            {saveLabel ?? t('save')}
+          </YBButton>
+        )}
       </Box>
     </Box>
   );

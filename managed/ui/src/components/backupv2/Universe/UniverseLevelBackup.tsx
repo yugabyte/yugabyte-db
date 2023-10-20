@@ -112,12 +112,10 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
               >
                 <RbacValidator
                   isControl
-                  accessRequiredOn={
-                    {
-                      onResource: "CUSTOMER_ID",
-                      ...UserPermissionMap.restoreBackup
-                    }
-                  }
+                  accessRequiredOn={{
+                    onResource: uuid,
+                    ...UserPermissionMap.restoreBackup
+                  }}
                 >
                   <MenuItem
                     onClick={(e) => {
@@ -133,12 +131,10 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
                 {YBCInstalled && (
                   <RbacValidator
                     isControl
-                    accessRequiredOn={
-                      {
-                        onResource: uuid,
-                        ...UserPermissionMap.createBackup
-                      }
-                    }
+                    accessRequiredOn={{
+                      onResource: uuid,
+                      ...UserPermissionMap.createBackup
+                    }}
                   >
                     <MenuItem
                       onClick={(e) => {

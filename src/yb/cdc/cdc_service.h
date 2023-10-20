@@ -279,7 +279,8 @@ class CDCServiceImpl : public CDCServiceIf {
       const TableId& colocated_table_id, const CDCSDKCheckpointPB& cdc_sdk_checkpoint);
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> GetTablets(
-      const xrepl::StreamId& stream_id);
+      const xrepl::StreamId& stream_id,
+      bool ignore_errors = false);
 
   Status CreateCDCStreamForTable(
       const TableId& table_id,

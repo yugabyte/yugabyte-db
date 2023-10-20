@@ -204,7 +204,7 @@ void BatcherFlushDone(
     retry_batcher->Add(op);
   }
 
-  TEST_SYNC_POINT("BatcherFlushDone:Retry:1");
+  DEBUG_ONLY_TEST_SYNC_POINT("BatcherFlushDone:Retry:1");
 
   FlushBatcherAsync(retry_batcher, std::move(callback), batcher_config,
       internal::IsWithinTransactionRetry::kTrue);

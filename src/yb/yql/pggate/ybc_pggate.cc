@@ -1092,11 +1092,11 @@ YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, dou
 // INSERT Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
-                         bool is_single_row_txn,
                          bool is_region_local,
-                         YBCPgStatement *handle) {
+                         YBCPgStatement *handle,
+                         YBCPgTransactionSetting transaction_setting) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewInsert(table_id, is_single_row_txn, is_region_local, handle));
+  return ToYBCStatus(pgapi->NewInsert(table_id, is_region_local, handle, transaction_setting));
 }
 
 YBCStatus YBCPgExecInsert(YBCPgStatement handle) {
@@ -1124,11 +1124,11 @@ YBCStatus YBCPgInsertStmtSetIsBackfill(YBCPgStatement handle, const bool is_back
 // UPDATE Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewUpdate(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
-                         bool is_single_row_txn,
                          bool is_region_local,
-                         YBCPgStatement *handle) {
+                         YBCPgStatement *handle,
+                         YBCPgTransactionSetting transaction_setting) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewUpdate(table_id, is_single_row_txn, is_region_local, handle));
+  return ToYBCStatus(pgapi->NewUpdate(table_id, is_region_local, handle, transaction_setting));
 }
 
 YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
@@ -1138,11 +1138,11 @@ YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
 // DELETE Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewDelete(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
-                         bool is_single_row_txn,
                          bool is_region_local,
-                         YBCPgStatement *handle) {
+                         YBCPgStatement *handle,
+                         YBCPgTransactionSetting transaction_setting) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewDelete(table_id, is_single_row_txn, is_region_local, handle));
+  return ToYBCStatus(pgapi->NewDelete(table_id, is_region_local, handle, transaction_setting));
 }
 
 YBCStatus YBCPgExecDelete(YBCPgStatement handle) {
@@ -1156,12 +1156,12 @@ YBCStatus YBCPgDeleteStmtSetIsPersistNeeded(YBCPgStatement handle, const bool is
 // Colocated TRUNCATE Operations -------------------------------------------------------------------
 YBCStatus YBCPgNewTruncateColocated(const YBCPgOid database_oid,
                                     const YBCPgOid table_oid,
-                                    bool is_single_row_txn,
                                     bool is_region_local,
-                                    YBCPgStatement *handle) {
+                                    YBCPgStatement *handle,
+                                    YBCPgTransactionSetting transaction_setting) {
   const PgObjectId table_id(database_oid, table_oid);
   return ToYBCStatus(pgapi->NewTruncateColocated(
-      table_id, is_single_row_txn, is_region_local, handle));
+      table_id, is_region_local, handle, transaction_setting));
 }
 
 YBCStatus YBCPgExecTruncateColocated(YBCPgStatement handle) {
@@ -1351,8 +1351,8 @@ uint16_t YBCCompoundHash(const char *key, size_t length) {
 // Transaction operation.
 //------------------------------------------------------------------------------------------------
 
-YBCStatus YBCPgBeginTransaction() {
-  return ToYBCStatus(pgapi->BeginTransaction());
+YBCStatus YBCPgBeginTransaction(int64_t start_time) {
+  return ToYBCStatus(pgapi->BeginTransaction(start_time));
 }
 
 YBCStatus YBCPgRecreateTransaction() {
@@ -1561,6 +1561,7 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_enable_create_database_oid_collision_retry,
       .ysql_catalog_preload_additional_table_list =
           FLAGS_ysql_catalog_preload_additional_table_list.c_str(),
+      .ysql_use_relcache_file                   = &FLAGS_ysql_use_relcache_file
   };
   // clang-format on
   return &accessor;
@@ -1683,10 +1684,12 @@ void YBCStartSysTablePrefetchingNoCache() {
 }
 
 void YBCStartSysTablePrefetching(
+    YBCPgOid database_oid,
     YBCPgLastKnownCatalogVersionInfo version_info,
     YBCPgSysTablePrefetcherCacheMode cache_mode) {
   YBCStartSysTablePrefetchingImpl(PrefetcherOptions::CachingInfo{
       {version_info.version, version_info.is_db_catalog_version_mode},
+      database_oid,
       YBCMapPrefetcherCacheMode(cache_mode)});
 }
 

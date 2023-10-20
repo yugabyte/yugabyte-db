@@ -31,6 +31,7 @@
 //
 // Some portions Copyright 2013 The Chromium Authors. All rights reserved.
 
+#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_util.h"
@@ -207,6 +208,27 @@ TEST_F(StringUtilTest, TestSplitAndFlatten) {
       {"foo,bar", "baz"})));
   ASSERT_EQ("[foo, bar, baz, foo]", VectorToString(SplitAndFlatten(
       {"foo", "bar:baz", "foo"}, ":")));
+}
+
+TEST_F(StringUtilTest, JoinStringsLimitCount) {
+  // Test empty vector and string.
+  ASSERT_EQ("", JoinStringsLimitCount(std::vector<std::string>{}, ",", 10));
+  ASSERT_EQ("", JoinStringsLimitCount(std::vector<std::string>{""}, ",", 10));
+
+  // Test different limit counts and delimiters.
+  ASSERT_EQ("foo,bar", JoinStringsLimitCount(std::vector<std::string>{"foo", "bar"}, ",", 10));
+
+  std::vector<std::string> strings = {"foo",  "bar",  "baz",  "foo2", "bar2",
+                                      "baz2", "foo3", "bar3", "baz3"};
+  ASSERT_EQ("foo and 8 others", JoinStringsLimitCount(strings, ",", 1));
+  ASSERT_EQ("foo;bar;baz;foo2 and 5 others", JoinStringsLimitCount(strings, ";", 4));
+  ASSERT_EQ("foobarbazfoo2 and 5 others", JoinStringsLimitCount(strings, "", 4));
+  ASSERT_EQ("foo,bar,baz,foo2,bar2,baz2,foo3,bar3,baz3", JoinStringsLimitCount(strings, ",", 20));
+
+  // Make sure intput result is cleared.
+  std::string result = "test";
+  JoinStringsLimitCount(std::vector<std::string>{"foo"}, ",", 1, &result);
+  ASSERT_EQ(result, "foo");
 }
 
 } // namespace yb

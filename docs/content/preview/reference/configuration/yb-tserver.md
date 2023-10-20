@@ -682,7 +682,7 @@ Default: `100`
 
 Specifies the types of YSQL statements that should be logged.
 
-Valid values: `none` (off), `ddl` (only data definition queries, such as create/alter/drop), `mod` (all modifying/write statements, includes DDLs plus insert/update/delete/trunctate, etc), and `all` (all statements).
+Valid values: `none` (off), `ddl` (only data definition queries, such as create/alter/drop), `mod` (all modifying/write statements, includes DDLs plus insert/update/delete/truncate, etc), and `all` (all statements).
 
 Default: `none`
 
@@ -853,7 +853,7 @@ Default: `256MB` (256 MB/second)
 
 ##### --remote_bootstrap_from_leader_only
 
-Based on the value (`true`/`false`) of the flag, the leader decides whether to instruct the new peer to attempt bootstrap from a closest caught-up peer. The leader too could be the closest peer depending on the new peer's geographic placement. Setting the flag to false will enable the feature of remote bootstrapping from a closest caught-up peer. The number of bootstrap attempts from a non-leader peer is limited by the flag [max_remote_bootstrap_attempts_from_non_leader](#max_remote_bootstrap_attempts_from_non_leader).
+Based on the value (`true`/`false`) of the flag, the leader decides whether to instruct the new peer to attempt bootstrap from a closest caught-up peer. The leader too could be the closest peer depending on the new peer's geographic placement. Setting the flag to false will enable the feature of remote bootstrapping from a closest caught-up peer. The number of bootstrap attempts from a non-leader peer is limited by the flag [max_remote_bootstrap_attempts_from_non_leader](#max-remote-bootstrap-attempts-from-non-leader).
 
 Default: `false`
 
@@ -865,7 +865,7 @@ The code for the feature is present from version 2.16 and later, and can be enab
 
 ##### --max_remote_bootstrap_attempts_from_non_leader
 
-When the flag [remote_bootstrap_from_leader_only](#remote_bootstrap_from_leader_only) is set to `false` (enabling the feature of bootstrapping from a closest peer), the number of attempts where the new peer tries to bootstrap from a non-leader peer is limited by the flag. After these failed bootstrap attempts for the new peer, the leader peer sets itself as the bootstrap source.
+When the flag [remote_bootstrap_from_leader_only](#remote-bootstrap-from-leader-only) is set to `false` (enabling the feature of bootstrapping from a closest peer), the number of attempts where the new peer tries to bootstrap from a non-leader peer is limited by the flag. After these failed bootstrap attempts for the new peer, the leader peer sets itself as the bootstrap source.
 
 Default: `5`
 
@@ -1003,15 +1003,19 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 --ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
 ```
 
-## Packed row flags (Beta)
+## Packed row flags
 
-To learn about the packed row feature, see [Packed row format](../../../architecture/docdb/persistence/#packed-row-format-beta) in the architecture section.
+Packed row format support is currently in [Early Access](/preview/releases/versioning/#feature-availability).
+
+To learn about the packed row feature, see [Packed row format](../../../architecture/docdb/persistence/#packed-row-format) in the architecture section.
 
 ##### --ysql_enable_packed_row
 
 Whether packed row is enabled for YSQL.
 
 Default: `false`
+
+Packed Row for YSQL can be used from version 2.16.4 in production environments if the cluster is not used in xCluster settings. For xCluster scenarios, use version 2.18.1 and later. Starting from version 2.19 and later, the flag default is true for new clusters.
 
 ##### --ysql_packed_row_size_limit
 
@@ -1020,6 +1024,8 @@ Packed row size limit for YSQL. The default value is 0 (use block size as limit)
 Default: `0`
 
 ##### --ycql_enable_packed_row
+
+YCQL packed row support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
 
 Whether packed row is enabled for YCQL.
 

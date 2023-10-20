@@ -53,6 +53,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -119,9 +120,12 @@ public class ImportController extends AuthenticatedController {
     this.taskExecutor = taskExecutor;
   }
 
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.19.3.0")
   @Deprecated
   @ApiOperation(
-      value = "Deprecated: Do not use, this will be removed soon. Import a universe",
+      value =
+          "Deprecated since YBA version 2.19.3.0. "
+              + "Do not use, this will be removed soon. Import a universe",
       response = ImportUniverseFormData.class)
   @AuthzPath({
     @RequiredPermissionOnResource(

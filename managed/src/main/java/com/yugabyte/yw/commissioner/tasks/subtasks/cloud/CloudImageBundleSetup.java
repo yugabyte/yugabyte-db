@@ -60,6 +60,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
   public static class Params extends CloudTaskParams {
     public List<ImageBundle> imageBundles;
     public boolean updateBundleRequest = false;
+    public boolean isFirstTry = true;
   }
 
   @Override
@@ -196,6 +197,13 @@ public class CloudImageBundleSetup extends CloudTaskBase {
       Map<UUID, ImageBundle> existingImageBundles =
           provider.getImageBundles().stream()
               .collect(Collectors.toMap(iB -> iB.getUuid(), iB -> iB));
+      if (!taskParams().isFirstTry
+          && existingImageBundles != null
+          && existingImageBundles.size() > 0) {
+        // In case the provider creation task is retried & imageBundle
+        // creation failed in first try mid-way, we will delete up existing Bundles
+        existingImageBundles.forEach((bundleUUID, bundle) -> bundle.delete());
+      }
       boolean enableVMOSPatching = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
       for (ImageBundle bundle : imageBundles) {
         if (taskParams().updateBundleRequest && bundle.getUuid() != null) {
@@ -226,6 +234,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
       ImageBundle bundle,
       ImageBundle existingBundle,
       boolean enableVMOSPatching) {
+    bundle.setProvider(provider);
     if (bundle.isUpdateNeeded(existingBundle)) {
       imageBundleHandler.doEdit(provider, bundle.getUuid(), bundle, true);
     }

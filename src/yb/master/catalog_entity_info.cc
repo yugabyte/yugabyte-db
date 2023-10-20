@@ -1264,6 +1264,11 @@ const NamespaceId CDCStreamInfo::namespace_id() const {
   return LockForRead()->pb.namespace_id();
 }
 
+const ReplicationSlotName CDCStreamInfo::GetCdcsdkYsqlReplicationSlotName() const {
+  auto l = LockForRead();
+  return ReplicationSlotName(l->pb.cdcsdk_ysql_replication_slot_name());
+}
+
 std::string CDCStreamInfo::ToString() const {
   auto l = LockForRead();
   if (l->pb.has_namespace_id()) {

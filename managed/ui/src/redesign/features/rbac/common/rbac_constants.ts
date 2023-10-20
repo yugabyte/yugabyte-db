@@ -17,7 +17,8 @@ export const RbacResourceTypes = {
   CERTIFICATE: Resource.DEFAULT,
   CA_CERT: Resource.DEFAULT,
   RUN_TIME_CONFIG: Resource.DEFAULT,
-  LDAP: Resource.DEFAULT
+  LDAP: Resource.DEFAULT,
+  RELEASES: Resource.DEFAULT
 } as const;
 
 export type UserPermission = {
@@ -25,3 +26,5 @@ export type UserPermission = {
   resourceUUID?: string;
   actions: ActionType[];
 };
+
+export const UsersTab = `/admin/rbac?tab=users`;

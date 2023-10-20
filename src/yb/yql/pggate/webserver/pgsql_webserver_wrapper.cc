@@ -41,6 +41,7 @@ static ybpgmEntry *ybpgm_table;
 static int ybpgm_num_entries;
 static int *num_backends;
 MetricEntity::AttributeMap prometheus_attr;
+MetricEntity::AttributeMap ysql_conn_mgr_prometheus_attr;
 static void (*pullYsqlStatementStats)(void *);
 static void (*resetYsqlStatementStats)();
 static rpczEntry **rpczResultPointer;
@@ -61,6 +62,9 @@ static const char *PSQL_SERVER_ACTIVE_CONNECTION_TOTAL = "yb_ysqlserver_active_c
 static const char *PSQL_SERVER_CONNECTION_OVER_LIMIT = "yb_ysqlserver_connection_over_limit_total";
 static const char *PSQL_SERVER_MAX_CONNECTION_TOTAL = "yb_ysqlserver_max_connection_total";
 static const char *PSQL_SERVER_NEW_CONNECTION_TOTAL = "yb_ysqlserver_new_connection_total";
+
+// YSQL Connection Manager-specific metric labels
+static const char *DATABASE = "database";
 
 namespace {
 
@@ -120,6 +124,9 @@ void initSqlServerDefaultLabels(const char *metric_node_name) {
   prometheus_attr[EXPORTED_INSTANCE] = metric_node_name;
   prometheus_attr[METRIC_TYPE] = METRIC_TYPE_SERVER;
   prometheus_attr[METRIC_ID] = METRIC_ID_YB_YSQLSERVER;
+
+  // Database-related attribute will have to be added dynamically.
+  ysql_conn_mgr_prometheus_attr = prometheus_attr;
 }
 
 static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats) {
@@ -152,34 +159,34 @@ static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats) {
   shmdt(shmp);
 }
 
-
-static void GetYsqlConnMgrMetrics(std::vector<std::pair<std::string, uint64_t>> *metrics) {
+void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
+  std::vector <std::pair<std::string, uint64_t>> ysql_conn_mgr_metrics;
   std::vector<ConnectionStats> stats_list;
   GetYsqlConnMgrStats(&stats_list);
 
+  // Iterate over stats collected for each DB (pool), publish them iteratively.
   for (ConnectionStats stats : stats_list) {
-    std::string pool_name = stats.pool_name;
-    metrics->push_back({pool_name + "_active_clients", stats.active_clients});
-    metrics->push_back({pool_name + "_queued_clients", stats.queued_clients});
-    metrics->push_back({pool_name + "_idle_or_pending_clients", stats.idle_or_pending_clients});
-    metrics->push_back({pool_name + "_active_servers", stats.active_servers});
-    metrics->push_back({pool_name + "_idle_servers", stats.idle_servers});
-    metrics->push_back({pool_name + "_query_rate", stats.query_rate});
-    metrics->push_back({pool_name + "_transaction_rate", stats.transaction_rate});
-    metrics->push_back({pool_name + "_avg_wait_time_ns", stats.avg_wait_time_ns});
-  }
-}
+    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_active_clients", stats.active_clients});
+    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_queued_clients", stats.queued_clients});
+    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_idle_or_pending_clients",
+            stats.idle_or_pending_clients});
+    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_active_servers", stats.active_servers});
+    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_idle_servers", stats.idle_servers});
+    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_query_rate", stats.query_rate});
+    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_transaction_rate", stats.transaction_rate});
+    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_avg_wait_time_ns", stats.avg_wait_time_ns});
+    ysql_conn_mgr_prometheus_attr[DATABASE] = stats.pool_name;
 
-void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
-  std::vector <std::pair<std::string, uint64_t>> ysql_conn_mgr_metrics;
-  GetYsqlConnMgrMetrics(&ysql_conn_mgr_metrics);
-
-  for (auto entry : ysql_conn_mgr_metrics) {
-    WARN_NOT_OK(
+    // Publish collected metrics for the current pool.
+    for (auto entry : ysql_conn_mgr_metrics) {
+      WARN_NOT_OK(
         pwriter->WriteSingleEntry(
-            prometheus_attr, "ysql_conn_mgr_" + entry.first, entry.second,
+            ysql_conn_mgr_prometheus_attr, entry.first, entry.second,
             AggregationFunction::kSum),
-        "Cannot publish Ysql Connection Manager metric to Promethesu-metrics endpoint");
+        "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
+    }
+    // Clear the collected metrics for the metrics collected for the next pool.
+    ysql_conn_mgr_metrics.clear();
   }
 }
 }  // namespace

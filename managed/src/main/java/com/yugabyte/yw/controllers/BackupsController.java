@@ -44,6 +44,8 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
@@ -108,8 +110,12 @@ public class BackupsController extends AuthenticatedController {
 
   @Inject TaskInfoManager taskManager;
 
+  @Deprecated
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value = "List a customer's backups",
+      value =
+          "Deprecated since YBA version 2.20.0.0."
+              + " Use 'List Backups (paginated) V2' instead. List a customer's backups",
       response = Backup.class,
       responseContainer = "List",
       nickname = "ListOfBackups")
@@ -243,7 +249,7 @@ public class BackupsController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List a task's backups",
+      value = "List backups associated with a task",
       response = Backup.class,
       responseContainer = "List")
   @ApiResponses(
@@ -266,7 +272,7 @@ public class BackupsController extends AuthenticatedController {
   }
 
   // Rename this to createBackup on completion
-  @ApiOperation(value = "Create a backup", nickname = "createbackup", response = YBPTask.class)
+  @ApiOperation(value = "Create a backup V2", nickname = "createbackup", response = YBPTask.class)
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Backup",
@@ -333,8 +339,12 @@ public class BackupsController extends AuthenticatedController {
     return new YBPTask(taskUUID).asResult();
   }
 
+  @Deprecated
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value = "Create Backup Schedule",
+      value =
+          "Deprecated since YBA version 2.20.0.0."
+              + " Use 'Create Backup Schedule Async' instead. Create Backup Schedule",
       response = Schedule.class,
       nickname = "createBackupSchedule")
   @ApiImplicitParams(
@@ -344,7 +354,6 @@ public class BackupsController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.BackupRequestParams",
           required = true))
-  @Deprecated
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -504,8 +513,12 @@ public class BackupsController extends AuthenticatedController {
     return new YBPTask(taskUuid).asResult();
   }
 
+  @Deprecated
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value = "Restore from a backup",
+      value =
+          "Deprecated since YBA version 2.20.0.0."
+              + " Use 'Restore from a backup V2' instead. Restore from a backup",
       response = YBPTask.class,
       responseContainer = "Restore")
   @ApiImplicitParams(
@@ -627,7 +640,14 @@ public class BackupsController extends AuthenticatedController {
     return new YBPTask(taskUUID).asResult();
   }
 
-  @ApiOperation(value = "Delete backups", response = YBPTasks.class, nickname = "deleteBackups")
+  @Deprecated
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
+  @ApiOperation(
+      value =
+          "Deprecated since YBA version 2.20.0.0."
+              + " Use 'Delete backups V2' instead. Delete backups",
+      response = YBPTasks.class,
+      nickname = "deleteBackups")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =

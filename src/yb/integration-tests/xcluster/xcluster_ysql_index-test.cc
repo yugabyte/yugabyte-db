@@ -284,7 +284,6 @@ TEST_F(XClusterYsqlIndexTest, FailedCreateIndex) {
   ASSERT_OK(ValidateRows());
 }
 
-#ifndef NDEBUG
 TEST_F(XClusterYsqlIndexTest, MasterFailoverRetryAddTableToXcluster) {
   ASSERT_OK(producer_conn_->Execute(kCreateIndexStmt));
 
@@ -320,7 +319,6 @@ TEST_F(XClusterYsqlIndexTest, MasterFailoverRetryAddTableToXcluster) {
 
   ASSERT_OK(ValidateRows());
 }
-#endif
 
 // TODO(Hari): #16758 Test collocated table
 
