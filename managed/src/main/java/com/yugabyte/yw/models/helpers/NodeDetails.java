@@ -101,6 +101,8 @@ public class NodeDetails {
     SoftwareInstalled(START, DELETE, ADD),
     // Set after the YB software is upgraded via Rolling Restart.
     UpgradeSoftware(),
+    // set when software version is rollback.
+    RollbackUpgrade(),
     // set when software version is finalized after upgrade.
     FinalizeUpgrade(),
     // Set after the YB specific GFlags are updated via Rolling Restart.
@@ -384,6 +386,7 @@ public class NodeDetails {
   public boolean isQueryable() {
     return (state == NodeState.UpgradeSoftware
         || state == NodeState.FinalizeUpgrade
+        || state == NodeState.RollbackUpgrade
         || state == NodeState.UpdateGFlags
         || state == NodeState.Live
         || state == NodeState.ToBeRemoved

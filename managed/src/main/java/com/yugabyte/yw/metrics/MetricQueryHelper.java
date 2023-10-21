@@ -347,16 +347,15 @@ public class MetricQueryHelper {
       timeDifference = endTime - Long.parseLong(startTime);
     }
 
-    long range = Math.max(scrapeInterval * 2, timeDifference);
+    long range = Math.max(scrapeInterval * 3, timeDifference);
     params.put("range", Long.toString(range));
 
     String step = params.get("step");
     if (step == null) {
-      if (timeDifference <= STEP_SIZE) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Should be at least " + STEP_SIZE + " seconds between start and end time");
+      if (timeDifference <= 0) {
+        throw new PlatformServiceException(BAD_REQUEST, "Queried time interval should be positive");
       }
-      long resolution = Math.max(scrapeInterval * 2, Math.round(timeDifference / STEP_SIZE));
+      long resolution = Math.max(scrapeInterval * 3, Math.round(timeDifference / STEP_SIZE));
       params.put("step", String.valueOf(resolution));
     } else {
       try {

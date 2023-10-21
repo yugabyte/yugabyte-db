@@ -1,3 +1,8 @@
+<!--
++++
+private = true
++++
+-->
 
 To open the YSQL shell (`ysqlsh`), run the following.
 

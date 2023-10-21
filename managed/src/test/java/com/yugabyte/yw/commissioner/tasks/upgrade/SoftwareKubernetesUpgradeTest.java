@@ -22,6 +22,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -342,5 +343,23 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     expectedResultLists.add(Json.toJson(ImmutableMap.of()));
     assertTaskSequence(subTasksByPosition, expectedTasks, expectedResultLists);
     assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testSoftwareKubernetesUpgradeRetries() {
+    softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+    setupUniverseSingleAZ(false, true);
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "new-version";
+
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = 2;
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.SoftwareUpgrade,
+        CustomerTask.TargetType.Universe,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.SoftwareKubernetesUpgrade,
+        taskParams);
   }
 }

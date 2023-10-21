@@ -42,6 +42,8 @@ The [PGX driver](https://github.com/jackc/pgx/) is one of the most popular and a
 
 The driver allows Go programmers to connect to YugabyteDB to execute DMLs and DDLs using the PGX APIs. It also supports the standard `database/sql` package.
 
+For a tutorial on building a sample Go application with PGX, see [Connect an application](../../../../drivers-orms/go/pgx/).
+
 ## Fundamentals
 
 Learn how to perform common tasks required for Go application development using the PGX driver.

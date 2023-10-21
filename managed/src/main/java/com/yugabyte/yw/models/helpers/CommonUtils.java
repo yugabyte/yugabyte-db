@@ -674,6 +674,10 @@ public class CommonUtils {
         && isReleaseBefore(maxRelease, actualRelease);
   }
 
+  public static boolean isReleaseEqual(String thresholdRelease, String actualRelease) {
+    return compareReleases(thresholdRelease, actualRelease, false, false, true);
+  }
+
   private static boolean compareReleases(
       String thresholdRelease,
       String actualRelease,

@@ -105,6 +105,7 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid }) => {
         onFormSubmit={(data: UniverseFormData) => onSubmit(data)}
         onCancel={onCancel}
         onDeleteRR={() => setShowDeleteRRModal(true)} //Deleting existing RR (API)
+        universeUUID={uuid}
       />
     </>
   );

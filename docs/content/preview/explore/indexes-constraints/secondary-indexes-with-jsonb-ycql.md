@@ -13,20 +13,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../secondary-indexes-with-jsonb-ysql/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-  <li >
-    <a href="../secondary-indexes-with-jsonb-ycql/" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
+{{<api-tabs list="ycql">}}
 
 Secondary indexes can be created with a JSONB datatype column in YCQL. Secondary Indexes in YCQL are global and distributed and similar to tables.  So the use of indexes can enhance database performance by enabling the database server to find rows faster.  You can create covering indexes as well as partial indexes with JSONB columns.
 

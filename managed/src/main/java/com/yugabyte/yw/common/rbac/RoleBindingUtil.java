@@ -7,9 +7,12 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.rbac.ResourcePermissionData;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
@@ -32,10 +35,12 @@ import lombok.extern.slf4j.Slf4j;
 @Singleton
 public class RoleBindingUtil {
   PermissionUtil permissionUtil;
+  RuntimeConfGetter confGetter;
 
   @Inject
-  public RoleBindingUtil(PermissionUtil permissionUtil) {
+  public RoleBindingUtil(PermissionUtil permissionUtil, RuntimeConfGetter confGetter) {
     this.permissionUtil = permissionUtil;
+    this.confGetter = confGetter;
   }
 
   public RoleBinding createRoleBinding(
@@ -276,6 +281,19 @@ public class RoleBindingUtil {
    */
   public void populateSystemRoleResourceGroups(
       UUID customerUUID, UUID userUUID, List<RoleResourceDefinition> roleResourceDefinitions) {
+    // If there are no system roles assigned to the role bindings of a user, add ConnectOnly Role to
+    // the role bindings.
+    if (!roleResourceDefinitions.stream()
+        .anyMatch(
+            rrd ->
+                RoleType.System.equals(
+                    Role.getOrBadRequest(customerUUID, rrd.getRoleUUID()).getRoleType()))) {
+      Role connectOnlyRole = Role.getOrBadRequest(customerUUID, Users.Role.ConnectOnly.name());
+      roleResourceDefinitions.add(new RoleResourceDefinition(connectOnlyRole.getRoleUUID(), null));
+    }
+
+    // All the system roles should not have any resource group. They will be populated with default
+    // values as they cannot be scoped.
     for (RoleResourceDefinition roleResourceDefinition : roleResourceDefinitions) {
       Role role = Role.getOrBadRequest(customerUUID, roleResourceDefinition.getRoleUUID());
       if (RoleType.System.equals(role.getRoleType())) {
@@ -461,5 +479,37 @@ public class RoleBindingUtil {
       roleBinding.setResourceGroup(resourceGroup);
       roleBinding.update();
     }
+  }
+
+  public Set<UUID> getResourceUuids(UUID userUUID, ResourceType resourceType, Action action) {
+    Users user = Users.getOrBadRequest(userUUID);
+    Customer customer = Customer.get(user.getCustomerUUID());
+    boolean useNewRbacAuthz = confGetter.getGlobalConf(GlobalConfKeys.useNewRbacAuthz);
+    Set<UUID> resourceUuids = resourceType.getAllResourcesUUID(customer.getUuid());
+    if (resourceUuids.isEmpty() || !useNewRbacAuthz) {
+      return resourceUuids;
+    }
+
+    Set<UUID> roleBindingUUIDs = new HashSet<>();
+    List<RoleBinding> userRoleBindings = RoleBinding.fetchRoleBindingsForUser(userUUID);
+    for (RoleBinding roleBinding : userRoleBindings) {
+      Role role = roleBinding.getRole();
+      if (role.getPermissionDetails()
+          .getPermissionList()
+          .contains(new Permission(resourceType, action))) {
+        Set<ResourceDefinition> rDSet =
+            roleBinding.getResourceGroup().getResourceDefinitionSet().stream()
+                .filter(rD -> resourceType.equals(rD.getResourceType()))
+                .collect(Collectors.toSet());
+        for (ResourceDefinition rD : rDSet) {
+          if (rD.isAllowAll()) {
+            return resourceUuids;
+          } else {
+            roleBindingUUIDs.addAll(rD.getResourceUUIDSet());
+          }
+        }
+      }
+    }
+    return roleBindingUUIDs;
   }
 }

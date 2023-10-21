@@ -26,10 +26,10 @@ namespace pggate {
 
 PgDmlWrite::PgDmlWrite(PgSession::ScopedRefPtr pg_session,
                        const PgObjectId& table_id,
-                       bool is_single_row_txn,
-                       bool is_region_local)
+                       bool is_region_local,
+                       YBCPgTransactionSetting transaction_setting)
     : PgDml(std::move(pg_session), table_id, is_region_local),
-      is_single_row_txn_(is_single_row_txn) {
+      transaction_setting_(transaction_setting) {
 }
 
 PgDmlWrite::~PgDmlWrite() {
@@ -138,8 +138,11 @@ Status PgDmlWrite::SetWriteTime(const HybridTime& write_time) {
 }
 
 void PgDmlWrite::AllocWriteRequest() {
-  auto write_op = ArenaMakeShared<PgsqlWriteOp>(arena_ptr(), &arena(), !is_single_row_txn_,
-                                                is_region_local_);
+  auto write_op = ArenaMakeShared<PgsqlWriteOp>(
+      arena_ptr(), &arena(),
+      /* need_transaction */
+      (transaction_setting_ == YBCPgTransactionSetting::YB_TRANSACTIONAL),
+      is_region_local_);
 
   write_req_ = std::shared_ptr<LWPgsqlWriteRequestPB>(write_op, &write_op->write_request());
   write_req_->set_stmt_type(stmt_type());

@@ -57,12 +57,15 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams() {
+    taskParams().verifyParams(getUniverse());
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
           Universe universe = getUniverse();
-          // Verify the request params and fail if invalid
-          taskParams().verifyParams(universe);
           String softwareVersion =
               universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
           if (CommonUtils.isAutoFlagSupported(softwareVersion)) {

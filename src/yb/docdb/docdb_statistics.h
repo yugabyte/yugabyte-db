@@ -36,12 +36,6 @@ class DocDBStatistics {
   rocksdb::Statistics* RegularDBStatistics() const;
   rocksdb::Statistics* IntentsDBStatistics() const;
 
-  // TODO(hdr_histogram): used to forward histogram changes until histogram support is added to
-  // this class.
-  void SetHistogramContext(
-      std::shared_ptr<rocksdb::Statistics> regulardb_statistics,
-      std::shared_ptr<rocksdb::Statistics> intentsdb_statistics);
-
   void MergeAndClear(
       rocksdb::Statistics* regulardb_statistics,
       rocksdb::Statistics* intentsdb_statistics);

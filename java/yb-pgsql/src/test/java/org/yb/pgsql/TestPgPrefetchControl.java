@@ -158,7 +158,7 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
     String tableName1 = "tb1";
     String tableName2 = "tb2";
     String query = String.format(
-        "/*+ Set(yb_bnl_batch_size 1024) NestLoop(t1 t2) */ " +
+        "/*+ Set(yb_bnl_batch_size 1024) YbBatchedNL(t1 t2) */ " +
         "SELECT t1.a, t2.b FROM %s AS t1 JOIN %s AS t2 ON t1.a = t2.a LIMIT %d",
         tableName1, tableName2, limitCount);
     int innerTableRequests = 1;

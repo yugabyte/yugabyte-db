@@ -271,6 +271,7 @@ SELECT 'fixed', NULL FROM ft1 t1 WHERE c1 = 1;
 -- Test forcing the remote server to produce sorted data for a merge join.
 SET enable_hashjoin TO false;
 SET enable_nestloop TO false;
+SET yb_enable_batchednl TO false;
 -- inner join; expressions in the clauses appear in the equivalence class list
 EXPLAIN (VERBOSE, COSTS OFF)
 	SELECT t1.c1, t2."C 1" FROM ft2 t1 JOIN "S 1"."T 1" t2 ON (t1.c1 = t2."C 1") OFFSET 100 LIMIT 10;
@@ -581,6 +582,7 @@ SELECT ft5, ft5.c1, ft5.c2, ft5.c3, ft4.c1, ft4.c2 FROM ft5 left join ft4 on ft5
 -- multi-way join involving multiple merge joins
 -- (this case used to have EPQ-related planning problems)
 SET enable_nestloop TO false;
+SET yb_enable_batchednl TO false;
 SET enable_hashjoin TO false;
 --EXPLAIN (VERBOSE, COSTS OFF)
 --SELECT * FROM ft1, ft2, ft4, ft5 WHERE ft1.c1 = ft2.c1 AND ft1.c2 = ft4.c1

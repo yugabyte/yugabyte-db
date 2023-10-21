@@ -85,6 +85,15 @@ public class PermissionUtil {
 
   public void validatePermissionList(Set<Permission> permissionList)
       throws PlatformServiceException {
+    // Validate if all the permissions are valid.
+    for (Permission permission : permissionList) {
+      if (getPermissionInfo(permission) == null) {
+        String errorMsg = String.format("Permission '%s' is not valid.", permission);
+        log.error(errorMsg);
+        throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+      }
+    }
+
     // Ensure that the given permission list does not contain super admin actions.
     if (permissionList.contains(new Permission(ResourceType.OTHER, Action.SUPER_ADMIN_ACTIONS))) {
       String errorMsg = "Super admin actions not allowed in custom role.";

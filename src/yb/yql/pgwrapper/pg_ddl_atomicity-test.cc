@@ -253,6 +253,89 @@ TEST_F(PgDdlAtomicitySanityTest, BasicTest) {
   ASSERT_OK(VerifyRowsAfterDdlSuccess(&conn, num_rows));
 }
 
+TEST_F(PgDdlAtomicitySanityTest, CreateFailureRollback) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "TEST_fail_table_creation_at_preparing_state", "true"));
+  ASSERT_NOK(conn.Execute(CreateTableStmt(kCreateTable)));
+  VerifyTableNotExists(client.get(), kDatabase, kCreateTable, 20);
+}
+
+TEST_F(PgDdlAtomicitySanityTest, TestMultiRewriteAlterTable) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  // First create a table with some data.
+  const string table_name = "test_table";
+  ASSERT_OK(conn.Execute(CreateTableStmt(table_name)));
+  const int num_rows = 5;
+  for (int i = 0; i < num_rows; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES ($1, 'value$1', 1.1)", table_name, i));
+  }
+
+  // Test failure of alter statement with multiple subcommands.
+  ASSERT_OK(conn.TestFailDdl("ALTER TABLE test_table ALTER COLUMN key TYPE text USING key::text,"
+      " ALTER COLUMN num TYPE text USING num::text"));
+  VerifyTableNotExists(client.get(), "yugabyte", table_name + "_temp_old", 10);
+  VerifyTableExists(client.get(), "yugabyte", table_name, 20);
+  ASSERT_OK(VerifySchema(client.get(), "yugabyte", table_name, {"key", "value", "num"}));
+
+  // Verify that the data and schema is intact.
+  PGResultPtr res = ASSERT_RESULT(conn.FetchFormat("SELECT * FROM $0", table_name));
+  ASSERT_EQ(PQntuples(res.get()), num_rows);
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES (11, 'value11', 11.11)", table_name));
+
+  // Verify successful execution of the above alter commands.
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ALTER COLUMN key TYPE text USING key::text,"
+      " ALTER COLUMN num TYPE text USING num::text"));
+  ASSERT_OK(VerifySchema(client.get(), "yugabyte", table_name, {"key", "value", "num"}));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES ('keytext', 'value$1', '2.231')", table_name));
+
+  PGResultPtr res_after_ddl = ASSERT_RESULT(conn.FetchFormat("SELECT * FROM $0", table_name));
+  // We added two new rows.
+  ASSERT_EQ(PQntuples(res_after_ddl.get()), num_rows + 2);
+}
+
+TEST_F(PgDdlAtomicitySanityTest, TestChangedPkColOrder) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(cluster_->SetFlagOnTServers("report_ysql_ddl_txn_status_to_master", "false"));
+
+  // First create a table with some data.
+  const string table_name = "test_table";
+  ASSERT_OK(conn.TestFailDdl(Format("CREATE TABLE $0 (key int, value text, value2 float, "
+      "PRIMARY KEY(value2, key))", table_name)));
+  VerifyTableNotExists(client.get(), "yugabyte", table_name, 10);
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key int, value text, value2 float, "
+      "PRIMARY KEY(value2, key))", table_name));
+  VerifyTableExists(client.get(), "yugabyte", table_name, 10);
+
+  // Verify Alter Table with switched PK order.
+  const string alter_test = "alter_test";
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT, value TEXT, value2 float)", alter_test));
+
+  // Verify failure case.
+  ASSERT_OK(conn.TestFailDdl(Format("ALTER TABLE $0 ADD PRIMARY KEY(value, key)", alter_test)));
+  VerifyTableNotExists(client.get(), "yugabyte", alter_test + "_temp_old", 20);
+  VerifyTableExists(client.get(), "yugabyte", alter_test, 10);
+  // Insert duplicate rows.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'value1', 1.1), (1, 'value1', 1.1)",
+                               alter_test));
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE key = 1", alter_test));
+
+  // Verify success case.
+  ASSERT_OK(conn.Execute(Format("ALTER TABLE $0 ADD PRIMARY KEY(value, key)", alter_test)));
+  VerifyTableNotExists(client.get(), "yugabyte", alter_test + "_temp_old", 20);
+  VerifyTableExists(client.get(), "yugabyte", alter_test, 10);
+  ASSERT_NOK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 'value1', 1.1), (1, 'value1', 1.1)",
+                                alter_test));
+}
+
 TEST_F(PgDdlAtomicitySanityTest, IndexRollback) {
   auto conn = ASSERT_RESULT(Connect());
   auto client = ASSERT_RESULT(cluster_->CreateClient());
@@ -1208,28 +1291,82 @@ TEST_F(PgDdlAtomicitySnapshotTest, DdlRollbackListSnapshotTest) {
   ASSERT_OK(ListSnapshotTest(DdlErrorInjection::kTrue));
 }
 
-TEST_F(PgDdlAtomicitySanityTest, MatviewTest) {
+class PgLibPqMatviewTest: public PgDdlAtomicitySanityTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+      "--allowed_preview_flags_csv=ysql_ddl_rollback_enabled");
+    options->extra_tserver_flags.push_back("--ysql_ddl_rollback_enabled=true");
+  }
+ protected:
+  void MatviewTest();
+};
+
+void PgLibPqMatviewTest::MatviewTest() {
   auto conn = ASSERT_RESULT(Connect());
+
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t(id int)"));
 
   // Test matview creation failure.
   auto client = ASSERT_RESULT(cluster_->CreateClient());
-  ASSERT_OK(conn.TestFailDdl(Format("CREATE MATERIALIZED VIEW mv AS SELECT * FROM t")));
-
+  ASSERT_OK(conn.TestFailDdl("CREATE MATERIALIZED VIEW mv AS SELECT * FROM t"));
   // Verify matview creation is rolled back.
   VerifyTableNotExists(client.get(), kDatabase, "mv", 10);
 
-  // Insert some values into the table.
-  conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.ExecuteFormat("CREATE MATERIALIZED VIEW mv AS SELECT * FROM t"));
-  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1), (2)"));
+  // Verify successful materialized view creation.
+  const string rename_test = "rename_mv";
+  const string renamed_name = "foobar";
+  const string rename_col_test = "rename_col_mv";
 
-  // Test failed refresh matview.
+  // Verify alter materialized view fails.
+  ASSERT_OK(conn.ExecuteFormat("CREATE MATERIALIZED VIEW $0 AS SELECT * FROM t", rename_test));
+  ASSERT_OK(conn.ExecuteFormat("CREATE MATERIALIZED VIEW $0 AS SELECT * FROM t", rename_col_test));
+  ASSERT_OK(conn.TestFailDdl(Format("ALTER MATERIALIZED VIEW $0 RENAME TO $1",
+      rename_test, renamed_name)));
+  ASSERT_OK(conn.TestFailDdl(Format("ALTER MATERIALIZED VIEW $0 RENAME $1 TO $2", rename_col_test,
+      "id", "foobar")));
+  VerifyTableNotExists(client.get(), kDatabase, renamed_name, 10);
+  VerifyTableExists(client.get(), kDatabase, rename_test, 10);
+  ASSERT_OK(VerifySchema(client.get(), kDatabase, rename_col_test, {"ybrowid", "id"}));
+
+  // Verify alter materialized view success.
+  ASSERT_OK(conn.ExecuteFormat("ALTER MATERIALIZED VIEW $0 RENAME TO $1",
+      rename_test, renamed_name));
+  ASSERT_OK(conn.ExecuteFormat("ALTER MATERIALIZED VIEW $0 RENAME $1 TO $2", rename_col_test,
+      "id", renamed_name));
+  VerifyTableNotExists(client.get(), kDatabase, rename_test, 10);
+  VerifyTableExists(client.get(), kDatabase, renamed_name, 10);
+  ASSERT_OK(VerifySchema(client.get(), kDatabase, rename_col_test, {"ybrowid", renamed_name}));
+
+  // Verify refresh failure.
+  ASSERT_OK(conn.Execute("CREATE MATERIALIZED VIEW mv AS SELECT * FROM t"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1), (2)"));
   ASSERT_OK(conn.TestFailDdl(Format("REFRESH MATERIALIZED VIEW mv")));
   // Wait for rollback to complete.
   SleepFor(2s);
   auto curr_rows = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM mv"));
   ASSERT_EQ(curr_rows, 0);
+
+  // Verify refresh success.
+  ASSERT_OK(conn.Execute("REFRESH MATERIALIZED VIEW mv"));
+  curr_rows = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM mv"));
+  ASSERT_EQ(curr_rows, 2);
+
+  // Perform another refresh to verify the case where relfilenode of both old and new table no
+  // longer matches the oid.
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (3), (4)"));
+  ASSERT_OK(conn.Execute("REFRESH MATERIALIZED VIEW mv"));
+  curr_rows = ASSERT_RESULT(conn.FetchValue<int64_t>("SELECT COUNT(*) FROM mv"));
+  ASSERT_EQ(curr_rows, 4);
+}
+
+TEST_F(PgLibPqMatviewTest, MatviewTestWithoutPgOptimization) {
+  ASSERT_OK(cluster_->SetFlagOnTServers("report_ysql_ddl_txn_status_to_master", "false"));
+  MatviewTest();
+}
+
+TEST_F(PgLibPqMatviewTest, MatviewTest) {
+  MatviewTest();
 }
 
 class PgLibPqMatviewFailure: public PgDdlAtomicitySanityTest {

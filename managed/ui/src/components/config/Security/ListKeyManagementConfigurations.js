@@ -10,6 +10,7 @@ import { AssociatedUniverse } from '../../common/associatedUniverse/AssociatedUn
 import { DeleteKMSConfig } from './DeleteKMSConfig.tsx';
 import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
 import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
 
 export class ListKeyManagementConfigurations extends Component {
   state = {
@@ -31,44 +32,41 @@ export class ListKeyManagementConfigurations extends Component {
         >
           <i className="fa fa-info-circle"></i> Details
         </MenuItem>
-        {isAdmin && (
-          <MenuItem
-            disabled={!hasNecessaryPerm({
+        {(isAdmin || isRbacEnabled()) && (
+          <RbacValidator
+            accessRequiredOn={{
               onResource: "CUSTOMER_ID",
-              ...UserPermissionMap.createEncryptionAtRest
-            })}
-            onClick={() => {
-              if (!hasNecessaryPerm({
-                onResource: "CUSTOMER_ID",
-                ...UserPermissionMap.createEncryptionAtRest
-              })) {
-                return;
-              }
-              onEdit(row);
-            }}>
-            <i className="fa fa-pencil"></i> Edit Configuration
-          </MenuItem>
+              ...UserPermissionMap.editEncryptionAtRest
+            }}
+            isControl
+            overrideStyle={{ display: 'block' }}
+          >
+            <MenuItem
+              onClick={() => {
+                onEdit(row);
+              }}>
+              <i className="fa fa-pencil"></i> Edit Configuration
+            </MenuItem>
+          </RbacValidator>
         )}
-        <MenuItem
-          title={'Delete provider'}
-          disabled={inUse || !hasNecessaryPerm({
+        <RbacValidator
+          accessRequiredOn={{
             onResource: "CUSTOMER_ID",
             ...UserPermissionMap.deleteEncryptionAtRest
-          })}
-          onClick={() => {
-            
-            if (!hasNecessaryPerm({
-              onResource: "CUSTOMER_ID",
-              ...UserPermissionMap.deleteEncryptionAtRest
-            })) {
-              return;
-            }
-
-            !inUse && this.setState({ deleteConfig: row });
           }}
+          isControl
+          overrideStyle={{ display: 'block' }}
         >
-          <i className="fa fa-trash"></i> Delete Configuration
-        </MenuItem>
+          <MenuItem
+            title={'Delete provider'}
+            disabled={inUse}
+            onClick={() => {
+              !inUse && this.setState({ deleteConfig: row });
+            }}
+          >
+            <i className="fa fa-trash"></i> Delete Configuration
+          </MenuItem>
+        </RbacValidator>
         <MenuItem
           onClick={() => {
             this.setState({ associatedUniverses: [...universeDetails], isVisibleModal: true });

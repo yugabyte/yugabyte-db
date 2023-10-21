@@ -16,7 +16,7 @@ export const getRoleValidationSchema = (t: TFunction) => {
       .string()
       .required(t('form.validationMsg.nameRequired'))
       .matches(/^\S+(?: \S+)*$/, t('form.validationMsg.invalidRoleName')),
-    description: yup.string().required(t('form.validationMsg.descRequired')),
+    description: yup.string(),
     permissionDetails: yup.mixed().test({
       message: t('form.validationMsg.permRequired'),
       test: function (val) {

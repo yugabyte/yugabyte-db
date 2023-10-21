@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC } from 'react';
+import React, { Component, FC, ReactComponentElement } from 'react';
 import { Divider, Menu, MenuItem, makeStyles } from '@material-ui/core';
 
 type MoreOptionsProps = {
@@ -18,7 +18,9 @@ type MoreOptionsProps = {
     callback: Function;
     className?: string;
     isDivider?: boolean;
-    disabled?: boolean
+    disabled?: boolean;
+    menuItemWrapper?: (elem: JSX.Element) => JSX.Element;
+    "data-testid"?: string;
   }[];
 };
 
@@ -72,13 +74,11 @@ export const MoreActionsMenu: FC<MoreOptionsProps> = ({ children, menuOptions })
           horizontal: 'right'
         }}
       >
-        {menuOptions.map((m) =>
-          m.isDivider ? (
-            <Divider key={m.text} />
-          ) : (
+        {menuOptions.map((m) => {
+          const menuItem = (
             <MenuItem
               key={m.text}
-              data-testid={`ca-cert-${m.text}`}
+              data-testid={m['data-testid'] ?? `ca-cert-${m.text}`}
               className={m.className}
               onClick={() => {
                 handleClose();
@@ -89,7 +89,9 @@ export const MoreActionsMenu: FC<MoreOptionsProps> = ({ children, menuOptions })
               {m.icon && m.icon}
               {m.text}
             </MenuItem>
-          )
+          );
+          return m.isDivider ? (<Divider key={m.text} />) : m.menuItemWrapper ? m.menuItemWrapper(menuItem) : menuItem;
+        }
         )}
       </Menu>
     </>

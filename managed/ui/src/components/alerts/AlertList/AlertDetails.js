@@ -5,7 +5,7 @@ import { getSeverityLabel } from './AlertUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 
 import prometheusIcon from '../../metrics/images/prometheus-icon.svg';
-import {  hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
 import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 import './AlertDetails.scss';
 
@@ -138,17 +138,21 @@ export default class AlertDetails extends Component {
                 </Col>
                 {alertDetails.state === 'ACTIVE' && !isReadOnly && (
                   <Col lg={6} className="no-padding">
-                      <ButtonGroup>
-                        <DropdownButton id="alert-mark-as-button" title="Mark as">
+                    <ButtonGroup>
+                      <DropdownButton id="alert-mark-as-button" title="Mark as">
+                        <RbacValidator
+                          accessRequiredOn={UserPermissionMap.acknowledgeAlert}
+                          isControl
+                        >
                           <MenuItem
                             eventKey="1"
                             disabled={!hasNecessaryPerm({
                               ...UserPermissionMap.acknowledgeAlert
                             })}
                             onClick={(e) => {
-                              if(!hasNecessaryPerm({
+                              if (!hasNecessaryPerm({
                                 ...UserPermissionMap.acknowledgeAlert
-                              })){
+                              })) {
                                 return;
                               }
                               e.stopPropagation();
@@ -157,8 +161,9 @@ export default class AlertDetails extends Component {
                           >
                             Acknowledged
                           </MenuItem>
-                        </DropdownButton>
-                      </ButtonGroup>
+                        </RbacValidator>
+                      </DropdownButton>
+                    </ButtonGroup>
                   </Col>
                 )}
               </Row>

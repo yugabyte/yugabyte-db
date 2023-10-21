@@ -569,6 +569,35 @@ TEST_F(MasterPathHandlersItest, TestTablesJsonEndpoint) {
   EXPECT_TRUE(disk_size_obj.HasMember("has_missing_size"));
 }
 
+void verifyMemTrackerObject(const rapidjson::Value* json_obj) {
+  EXPECT_TRUE(json_obj->HasMember("id"));
+  EXPECT_TRUE(json_obj->HasMember("limit_bytes"));
+  EXPECT_TRUE(json_obj->HasMember("current_consumption_bytes"));
+  EXPECT_TRUE(json_obj->HasMember("peak_consumption_bytes"));
+  EXPECT_TRUE(json_obj->HasMember("children"));
+  EXPECT_EQ(rapidjson::kArrayType, (*json_obj)["children"].GetType());
+}
+
+TEST_F(MasterPathHandlersItest, TestMemTrackersJsonEndpoint) {
+  auto table = CreateTestTable();
+
+  faststring result;
+  ASSERT_OK(TestUrlWaitForOK("/api/v1/mem-trackers", &result, 30s /* timeout */));
+
+  JsonReader r(result.ToString());
+  ASSERT_OK(r.Init());
+  const rapidjson::Value* json_obj = nullptr;
+  EXPECT_OK(r.ExtractObject(r.root(), NULL, &json_obj));
+  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
+
+  // Verify that fields are correct
+  verifyMemTrackerObject(json_obj);
+  EXPECT_GE((*json_obj)["children"].Size(), 1);
+
+  // Check that the first child also has the correct fields
+  verifyMemTrackerObject(&(*json_obj)["children"][0]);
+}
+
 class MultiMasterPathHandlersItest : public MasterPathHandlersItest {
  public:
   int num_masters() const override {
@@ -784,6 +813,30 @@ TEST_F_EX(MasterPathHandlersItest, TestTabletUnderReplicationEndpoint,
   ASSERT_OK(WaitFor([&]() {
     return CheckUnderReplicatedInPlacements(tablet_ids, {kLivePlacementUuid}).ok();
   }, 10s, "Wait for underreplicated"));
+
+  // YBMiniClusterTestBase test-end verification will fail if the cluster is up with stopped nodes.
+  cluster_->Shutdown();
+}
+
+TEST_F_EX(MasterPathHandlersItest, TestTabletUnderReplicationEndpointDeadTserver,
+    MasterPathHandlersUnderReplicationItest) {
+  ASSERT_OK(cluster_->SetFlagOnMasters("tserver_unresponsive_timeout_ms", "3000"));
+
+  auto tablet_ids = ASSERT_RESULT(CreateTestTableAndGetTabletIds());
+  ASSERT_OK(WaitFor([&]() {
+    return CheckNotUnderReplicated(tablet_ids).ok();
+  }, 10s, "Wait for not underreplicated"));
+
+  // The tablet endpoint should count replicas on the dead tserver as valid replicas (so the tablet
+  // is not under-replicated).
+  cluster_->tablet_server(0)->Shutdown();
+  ASSERT_OK(cluster_->WaitForMasterToMarkTSDead(0));
+  ASSERT_OK(CheckNotUnderReplicated(tablet_ids));
+
+  // The tablet IS under-replicated once the replica on the dead tserver is kicked out of quorum.
+  ASSERT_OK(WaitFor([&]() {
+    return CheckUnderReplicatedInPlacements(tablet_ids, {kLivePlacementUuid}).ok();
+  }, 3s * FLAGS_follower_unavailable_considered_failed_sec, "Wait for underreplicated"));
 
   // YBMiniClusterTestBase test-end verification will fail if the cluster is up with stopped nodes.
   cluster_->Shutdown();

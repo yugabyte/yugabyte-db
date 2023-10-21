@@ -62,6 +62,7 @@ public class NodeUniverseManager extends DevopsBase {
   @Inject NodeAgentClient nodeAgentClient;
   @Inject NodeAgentPoller nodeAgentPoller;
   @Inject RuntimeConfGetter confGetter;
+  @Inject LocalNodeManager localNodeManager;
 
   @Override
   protected String getCommandType() {
@@ -354,6 +355,10 @@ public class NodeUniverseManager extends DevopsBase {
       String ysqlCommand,
       long timeoutSec,
       boolean authEnabled) {
+    Cluster curCluster = universe.getCluster(node.placementUuid);
+    if (curCluster.userIntent.providerType == CloudType.local) {
+      return localNodeManager.runYsqlCommand(node, universe, dbName, ysqlCommand, timeoutSec);
+    }
     List<String> command = new ArrayList<>();
     command.add("bash");
     command.add("-c");
@@ -376,8 +381,10 @@ public class NodeUniverseManager extends DevopsBase {
     bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
     bashCommand.add("-U");
     bashCommand.add("yugabyte");
-    bashCommand.add("-d");
-    bashCommand.add(dbName);
+    if (StringUtils.isNotEmpty(dbName)) {
+      bashCommand.add("-d");
+      bashCommand.add(dbName);
+    }
     bashCommand.add("-c");
     // Escaping double quotes and $ at first.
     String escapedYsqlCommand = ysqlCommand.replace("\"", "\\\"");

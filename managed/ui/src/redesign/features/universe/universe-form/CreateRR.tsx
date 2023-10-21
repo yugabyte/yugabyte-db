@@ -125,6 +125,7 @@ export const CreateReadReplica: FC<CreateReadReplicaProps> = ({ uuid }) => {
       submitLabel={t('universeForm.actions.addRR')}
       onFormSubmit={(data: UniverseFormData) => onSubmit(data)}
       onCancel={onCancel}
+      universeUUID={uuid}
     />
   );
 };
