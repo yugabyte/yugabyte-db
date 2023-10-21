@@ -12,16 +12,16 @@ menu:
 type: docs
 ---
 
-Connect to your YugabyteDB database from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.
+Connect to your YugabyteDB database from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh) client shells. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.
 
 You can connect to the database on a universe in the following ways:
 
-- Using SSH to tunnel to one of the universe nodes, and running the ysqlsh or ycqlsh shell on the node.
-- Downloading and running the client shells from your desktop.
+- Use SSH to tunnel to one of the universe nodes, and run ysqlsh or ycqlsh on the node.
+- Download and run the client shells from your desktop.
 
 ## Download the universe certificate
 
-If the universe uses encryption in transit, to connect you need to first download the TLS certificate. Do the following:
+If the universe uses encryption in transit, to connect you need to first download the universe TLS root certificate. Do the following:
 
 1. Navigate to **Configs > Security > Encryption in Transit**.
 
@@ -379,7 +379,7 @@ You should stop the sample application.
 
 -->
 
-## Examine data
+### Examine data
 
 You can connect to the YCQL service by executing the following command:
 
@@ -414,7 +414,7 @@ ycqlsh> SELECT * FROM ybdemo_keyspace.cassandrakeyvalue LIMIT 5;
 (5 rows)
 ```
 
-You can connect to the YEDIS service by executing the following command:
+<!--You can connect to the YEDIS service by executing the following command:
 
 ```sh
 /home/yugabyte/tserver/bin/redis-cli -h <ip_address_of_the_node>
@@ -429,8 +429,9 @@ You can view the data by running the following commands:
 "Bval:1\t\x1e\xa0=\xb66\x8b\x8eV\x82...,c"
 10.138.0.4:6379>
 ```
+-->
 
-## Related information
+## Learn more
 
 - [ysqlsh](../../../admin/ysqlsh/) — Overview of the command line interface (CLI), syntax, and commands.
 - [YSQL API](../../../api/ysql/) — Reference for supported YSQL statements, data types, functions, and operators.
