@@ -39,6 +39,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
@@ -49,6 +50,7 @@ DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
 DECLARE_int64(rpc_throttle_threshold_bytes);
 DECLARE_bool(parallelize_bootstrap_producer);
 DECLARE_bool(check_bootstrap_required);
+DECLARE_bool(TEST_create_table_with_empty_namespace_name);
 
 namespace yb {
 namespace tools {
@@ -1501,6 +1503,63 @@ TEST_F(XClusterAdminCliTest_Large, TestBootstrapProducerPerformance) {
     },
     MonoDelta::FromSeconds(expected_runtime_seconds),
     "Waiting for bootstrap_cdc_producer to complete"));
+}
+
+TEST_F(AdminCliTest, TestListSnapshotWithNamespaceNameMigration) {
+  // Start with a table missing its namespace_name (as if created before 2.3).
+  FLAGS_TEST_create_table_with_empty_namespace_name = true;
+  CreateTable(Transactional::kFalse);
+  FLAGS_TEST_create_table_with_empty_namespace_name = false;
+  const string& table_name = table_.name().table_name();
+  const string& keyspace = table_.name().namespace_name();
+
+  // Create snapshot of default table that gets created.
+  LOG(INFO) << ASSERT_RESULT(RunAdminToolCommand("create_snapshot", keyspace, table_name));
+
+  ListSnapshotsRequestPB req;
+  ListSnapshotsResponsePB resp;
+  RpcController rpc;
+  ASSERT_OK(ASSERT_RESULT(BackupServiceProxy())->ListSnapshots(req, &resp, &rpc));
+  ASSERT_EQ(resp.snapshots_size(), 1);
+  auto snapshot_id = resp.snapshots(0).id();
+  LOG(INFO) << "Created snapshot " << snapshot_id;
+  auto get_table_entry = [&]() -> Result<master::SysTablesEntryPB> {
+    for (auto& entry : resp.snapshots(0).entry().entries()) {
+      if (entry.type() == master::SysRowEntryType::TABLE) {
+        return pb_util::ParseFromSlice<master::SysTablesEntryPB>(entry.data());
+      }
+    }
+    return STATUS(NotFound, "Could not find TABLE entry");
+  };
+
+  // Old behaviour, snapshot doesn't have namespace_name.
+  master::SysTablesEntryPB table_meta = ASSERT_RESULT(get_table_entry());
+  ASSERT_FALSE(table_meta.has_namespace_name());
+
+  // Delete snapshot.
+  LOG(INFO) << ASSERT_RESULT(RunAdminToolCommand("delete_snapshot", snapshot_id));
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    ListSnapshotsRequestPB req;
+    ListSnapshotsResponsePB resp;
+    RpcController rpc;
+    RETURN_NOT_OK(VERIFY_RESULT(BackupServiceProxy())->ListSnapshots(req, &resp, &rpc));
+    return resp.snapshots_size() == 0;
+  }, 30s, "Complete delete snapshot"));
+
+  // Restart cluster, run namespace_name migration to populate the namespace_name field.
+  ASSERT_OK(cluster_->RestartSync());
+
+  // Create a new snapshot.
+  LOG(INFO) << ASSERT_RESULT(RunAdminToolCommand("create_snapshot", keyspace, table_name));
+
+  rpc.Reset();
+  ASSERT_OK(ASSERT_RESULT(BackupServiceProxy())->ListSnapshots(req, &resp, &rpc));
+  ASSERT_EQ(resp.snapshots_size(), 1);
+
+  // Ensure that the namespace_name field is now populated.
+  table_meta = ASSERT_RESULT(get_table_entry());
+  ASSERT_TRUE(table_meta.has_namespace_name());
+  ASSERT_EQ(table_meta.namespace_name(), keyspace);
 }
 
 }  // namespace tools
