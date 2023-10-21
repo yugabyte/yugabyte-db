@@ -7,7 +7,7 @@ menu:
   preview_yugabyte-platform:
     identifier: install-upgrade-kubernetes-issues
     parent: troubleshoot-yp
-    weight: 13
+    weight: 10
 type: docs
 ---
 
@@ -17,18 +17,18 @@ type: docs
     <a href="../vm/" class="nav-link">
       <i class="fa-solid fa-building"></i>
       Virtual machine </a>
-  </li>  
+  </li>
 
 <li>
     <a href="../kubernetes/" class="nav-link active">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
-  </li> 
+  </li>
 
 </ul>
 
-Occasionally, you might encounter issues during installation and upgrade of YugabyteDB Anywhere on Kubernetes. You can troubleshoot most of these issues. 
+Occasionally, you might encounter issues during installation and upgrade of YugabyteDB Anywhere on Kubernetes. You can troubleshoot most of these issues.
 
 If you experience difficulties while troubleshooting, contact {{% support-platform %}}.
 
@@ -52,6 +52,7 @@ To start diagnostics, execute the following command to obtain the pod:
 ```sh
 kubectl get pod -n <NAMESPACE>
 ```
+
 If the issue you are experiencing is due to the pod scheduling failure, expect to see `STATUS` as `Pending`, as per the following output:
 
 ```output
@@ -64,6 +65,7 @@ Execute the following command to obtain detailed information about the pod and f
 ```sh
 kubectl describe pod <POD_NAME> -n <NAMESPACE>
 ```
+
 Expect to see a Message similar to the following:
 
 ```output
@@ -87,6 +89,7 @@ To start diagnostics, execute the following command to obtain detailed informati
 ```sh
 kubectl describe pod <POD_NAME> -n <NAMESPACE>
 ```
+
 If the issue you are experiencing is due to the mismatched node selector or affinity, expect to see a Message similar to the following:
 
 ```output
@@ -106,11 +109,12 @@ Ensure that there is no mismatch between labels or taints when you schedule Yuga
 
 ### Storage class VolumeBindingMode is not set to WaitForFirstConsumer
 
-During multi-zone deployment of YugabyteDB, start diagnostsics by executing the following command to obtain detailed information about the failure:
+During multi-zone deployment of YugabyteDB, start diagnostics by executing the following command to obtain detailed information about the failure:
 
 ```sh
 kubectl describe pod <POD_NAME> -n <NAMESPACE>
 ```
+
 If the issue you are experiencing is due to the incorrect setting for the storage class `VolumeBindingMode`, expect to see a Message similar to the following:
 
 ```output
@@ -127,6 +131,7 @@ You can obtain information related to storage classes, as follows:
   ```sh
   kubectl get storageclass
   ```
+
   Expect an output similar to the following:
 
   ```output
@@ -141,8 +146,9 @@ You can obtain information related to storage classes, as follows:
   ```sh
   kubectl describe storageclass standard
   ```
+
   Expect an output similar to the following:
-  
+
   ```output
     Name:                  standard
     IsDefaultClass:        Yes
@@ -158,7 +164,7 @@ You can obtain information related to storage classes, as follows:
 
 **Resolution**
 
-Since not setting `VolumeBindingMode` to `WaitForFirstConsumer` might result in the universe creating the volume in a different zone than the selected zone, ensure that the `StorageClass` used during YugabyteDB Anywhere deployment has its `WaitForFirstConsumer` set to `VolumeBindingMode`. You can use the following command:
+Because not setting `VolumeBindingMode` to `WaitForFirstConsumer` might result in the universe creating the volume in a different zone than the selected zone, ensure that the `StorageClass` used during YugabyteDB Anywhere deployment has its `WaitForFirstConsumer` set to `VolumeBindingMode`. You can use the following command:
 
   ```sh
 kubectl get storageclass standard -ojson \
@@ -173,6 +179,7 @@ Execute the following command to check events for the persistent volume claim (P
 ```sh
 kubectl describe pvc <PVC_NAME> -n <NAMESPACE>
 ```
+
 If the issue you are experiencing is due to the missing EBS controller, expect an output similar to the following:
 
 ```output
@@ -192,6 +199,7 @@ In some cases, a scheduled pod fails to run and errors are thrown.
 A Kubernetes pod may encounter these errors when it fails to pull the container images from a private container registry and the pod enters the [ImagePullBackOff](https://kubernetes.io/docs/concepts/containers/images/#imagepullbackoff) state.
 
 The following are some of the specific reasons for the errors:
+
 - Incorrect image path.
 - Network failure or limitation.
 - The `kubelet` node agent cannot authenticate with the container registry.
@@ -201,6 +209,7 @@ To start diagnostics, execute the following command to obtain the pod:
 ```sh
 kubectl get pod -n <NAMESPACE>
 ```
+
 If the issue you are experiencing is due to the image pull error, expect to initially see the `ErrImagePull` error, and on subsequent attempts the `ImagePullBackOff` error listed under `STATUS`, as per the following output:
 
 ```output
@@ -216,6 +225,7 @@ Execute the following command to obtain detailed information about the pod and f
 ```sh
 kubectl describe pod <POD_NAME> -n <NAMESPACE>
 ```
+
 Expect an output similar to the following:
 
 ```output
@@ -231,9 +241,8 @@ Events:
 
 **Resolution**
 
-- To resolve the Bad pull secret, No pull secret, Bad pull secret name errors, enable the pull secret to fetch the images from the YugabyteDB Quay.io registry and ensure that you have applied the same in the namespace that will be used to install YugabyteDB Anywhere. By default, search for a secret with name `yugabyte-k8s-pull-secret` is performed. For more information, see [values.yaml](https://github.com/yugabyte/charts/blob/24a8dcf3a4c33153477e3e3ba82f9f4b6e2967a5/stable/yugaware/values.yaml#L16).
-- To resolve the Unable to pull image error, ensure that the Kubernetes nodes can connect to Quay.io or you have images in the local registry. For more information, see [Pull and push yugabytedb docker images to private container registry](../../../install-yugabyte-platform/prepare-environment/kubernetes/#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
-
+- To resolve the Bad pull secret, No pull secret, Bad pull secret name errors, enable the pull secret to fetch the images from the YugabyteDB Quay.io registry and ensure that you have applied the same in the namespace that will be used to install YugabyteDB Anywhere. By default, search for a secret with name `yugabyte-k8s-pull-secret` is performed. For more information, see the [`values.yaml` file`](https://github.com/yugabyte/charts/blob/24a8dcf3a4c33153477e3e3ba82f9f4b6e2967a5/stable/yugaware/values.yaml#L16).
+- To resolve the Unable to pull image error, ensure that the Kubernetes nodes can connect to Quay.io or you have images in the local registry. For more information, see [Pull and push YugabyteDB docker images to private container registry](../../../install-yugabyte-platform/prepare-environment/kubernetes/#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
 
 ### CrashLoopBackOff error
 
@@ -244,6 +253,7 @@ To start diagnostics, execute the following command to obtain the pod:
 ```sh
 kubectl get pod -n <NAMESPACE>
 ```
+
 If the issue you are experiencing is due to the `CrashLoopBackOff` error, expect to see this error listed under `STATUS`, as per the following output:
 
 ```output
@@ -281,8 +291,8 @@ The internet-facing load balancer may not perform as expected because the defaul
 
 Use the following settings to customize the [AWS load balancer controller](https://kubernetes-sigs.github.io/aws-load-balancer-controller/v2.2/guide/service/annotations/) behavior:
 
-  - Set `aws-load-balancer-scheme` to the `internal` or `internet-facing` string value.
-  - Set `aws-load-balancer-backend-protocol` and `aws-load-balancer-healthcheck-protocol` to the `http` string value.
+- Set `aws-load-balancer-scheme` to the `internal` or `internet-facing` string value.
+- Set `aws-load-balancer-backend-protocol` and `aws-load-balancer-healthcheck-protocol` to the `http` string value.
 
 The following is a sample configuration:
 
@@ -295,13 +305,14 @@ The following is a sample configuration:
 
 ### Pending state of load balancer IP assignment
 
-Due to a variety of reasons, such as the absence of the load balancer controller or exceeded public IP quota, the load balancer IP assignment might enter a continuous pending state. 
+Due to a variety of reasons, such as the absence of the load balancer controller or exceeded public IP quota, the load balancer IP assignment might enter a continuous pending state.
 
 To start diagnostics, execute the following command to obtain the switched virtual circuit (SVC) information:
 
 ```sh
 kubectl get svc -n <NAMESPACE>
 ```
+
 If the issue you are experiencing is due to IP assignment for the load balancer, expect to see an output similar to the following:
 
 ```output
@@ -315,7 +326,7 @@ Typically, cloud providers supply a load balancer controller that serves the loa
 
 - If a load balancer controller is absent in Google Kubernetes Engine (GKE), follow instructions provided in [GKE ingress overview](https://cloud.google.com/kubernetes-engine/docs/concepts/ingress#overview).
 - If the public IP is not associated with the load balancer, you might have exceeded the public IP quota limit.
-- If you are using Minikube, run the [minikube tunnel](https://minikube.sigs.k8s.io/docs/commands/tunnel/).
+- If you are using Minikube, run the [MiniKube tunnel](https://minikube.sigs.k8s.io/docs/commands/tunnel/).
 
 ## Other issues
 
@@ -326,9 +337,11 @@ A number of other issue can occur while installing and upgrading YugabyteDB Anyw
 You might encounter a CORS error while accessing YugabyteDB Anywhere through a load balancer. The condition can manifest itself by the initial setup or any login attempts not working or resulting in a blank screen.
 
 To start diagnostics, check the developer tools of your browser for any errors. In addition, check the logs of the YugabyteDB Anywhere pod by executing the following command:
+
 ```sh
 kubectl logs <POD_NAME> -n <NAMESPACE> -c yugaware
 ```
+
 If the issue you are experiencing is due to the load balancer access-related CORS error, expect to see an error message similar to the following:
 
 ```output
@@ -356,10 +369,13 @@ To start diagnostics, execute the following command to obtain information about 
 ```sh
 kubectl describe sc <STORAGE_CLASS>
 ```
+
 For example:
+
 ```sh
 kubectl describe sc test-sc
 ```
+
 The following output shows that the `AllowVolumeExpansion` parameter of the storage class is set to `false`:
 
 ```sh
@@ -395,6 +411,7 @@ Events:                <none>
   ```sh
   kubectl describe pvc <PVC_NAME> -n <NAMESPACE>
   ```
+
   Expect to see events for the PVC listed via an output similar to following:
 
   ```output

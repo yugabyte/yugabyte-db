@@ -18,6 +18,16 @@ You can connect to the database on a universe in the following ways:
 - Using SSH to tunnel to one of the universe nodes, and running the ysqlsh or ycqlsh shell on the node.
 - Downloading and running the client shells from your desktop.
 
+## Download the universe certificate
+
+If the universe uses encryption in transit, to connect you need to first download the TLS certificate. Do the following:
+
+1. Navigate to **Configs > Security > Encryption in Transit**.
+
+1. Find the certificate for your universe in the list and click **Actions** and download the certificate.
+
+For more information on encryption in transit, refer to [Encryption in transit](../../security/enable-encryption-in-transit/).
+
 ## Connect to a universe node
 
 The YugabyteDB shells are installed in the tserver/bin directory on each YB-TServer of a YugabyteDB universe.
@@ -34,50 +44,66 @@ To run a shell from a universe node, do the following:
 
 1. In YugabyteDB Anywhere, navigate to your universe and select the **Nodes** tab.
 
-  ![Multi-zone universe nodes](/images/yp/multi-zone-universe-nodes-1.png)
+    ![Multi-zone universe nodes](/images/yp/multi-zone-universe-nodes-1.png)
 
 1. Determine the node to which you wish to connect and click **Actions > Connect**.
 
 1. Copy the SSH command displayed in the **Access your node** dialog shown in the following illustration:
 
-  ![Multi-zone universe connect](/images/yp/multi-zone-universe-connect-2.png)
+    ![Multi-zone universe connect](/images/yp/multi-zone-universe-connect-2.png)
 
 1. From the machine where YugabyteDB Anywhere is installed, run the command you copied. For example:
 
-  ```sh.output
-  sudo ssh -i /opt/yugabyte/yugaware/data/keys/f000ad00-aafe-4a67-bd1f-34bdaf3bee00/yb-dev-yugabyte-google-provider_f033ad00-aafe-4a00-bd1f-34bdaf3bee00-key.pem -ostricthostkeychecking=no -p 22 yugabyte@<node_ip_address>
+    ```sh.output
+    sudo ssh -i /opt/yugabyte/yugaware/data/keys/f000ad00-aafe-4a67-bd1f-34bdaf3bee00/yb-dev-yugabyte-google-provider_f033ad00-aafe-4a00-bd1f-34bdaf3bee00-key.pem -ostricthostkeychecking=no -p 22 yugabyte@<node_ip_address>
 
-  Are you sure you want to continue connecting (yes/no)? yes
-  [centos@yb-dev-helloworld1-n1 ~]$
-  ```
+    Are you sure you want to continue connecting (yes/no)? yes
+    [centos@yb-dev-helloworld1-n1 ~]$
+    ```
 
-1. Navigate to the tserver/bin directory:
+1. On the node, navigate to the tserver/bin directory:
 
-  ```sh
-  cd /home/yugabyte/tserver/bin
-  ```
+    ```sh
+    cd /home/yugabyte/tserver/bin
+    ```
 
 1. Run ysqlsh or ycqlsh as follows:
 
-  ```sh
-  ./ysqlsh -h <node_ip_address>
-  ```
+    ```sh
+    ./ysqlsh -h <node_ip_address>
+    ```
 
-  ```sh
-  ./ycqlsh <node_ip_address>
-  ```
+    ```sh
+    ./ycqlsh <node_ip_address>
+    ```
 
 ## Connect from your desktop
 
 ### Prerequisites
 
-When connecting via a Yugabyte client shell, ensure you are running the latest versions of the shells (Yugabyte Client 2.6 or later). See [How do I connect to my cluster?](../../../faq/yugabytedb-managed-faq/#how-do-i-connect-to-my-cluster) in the FAQ for details.
+- If you are using a Yugabyte client shell, ensure you are running the latest versions of the shells (Yugabyte Client 2.6 or later).
 
-YugabyteDB Anywhere universes have TLS/SSL (encryption in-transit) enabled. You need to download the certificate to your computer.
+    You can download using the following command on Linux or macOS:
+
+    ```sh
+    $ curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
+    ```
+
+    Windows client shells require Docker. For example:
+
+    ```sh
+    docker run -it yugabytedb/yugabyte-client ysqlsh -h <hostname> -p <port>
+    ```
+
+- If your universe has TLS/SSL (encryption in-transit) enabled, you need to [download the certificate](#download-the-universe-certificate) to your computer.
+
+- The host address of an endpoint on your universe.
+
+    To view your universe endpoints, navigate to your universe and click **Connect**.
 
 ### Connect using a client shell
 
-Use the ysqlsh and ycqlsh shells to connect to and interact with YuagbyteDB using the YSQL and YCQL APIs respectively. You can download and install the YugabyteDB client shells and connect to your database using the following steps for either YSQL or YCQL.
+Use the ysqlsh, psql, and ycqlsh shells to connect to and interact with YuagbyteDB using the YSQL and YCQL APIs.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -92,23 +118,62 @@ Use the ysqlsh and ycqlsh shells to connect to and interact with YuagbyteDB usin
       ycqlsh
     </a>
   </li>
+  <li>
+    <a href="#psql" class="nav-link" id="psql-tab" data-toggle="tab" role="tab" aria-controls="psql" aria-selected="false">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      psql
+    </a>
+  </li>
 </ul>
 
 <div class="tab-content">
   <div id="ysqlsh" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ysqlsh-tab">
-  {{% includeMarkdown "connect/ysql.md" %}}
-  </div>
-  <div id="ycqlsh" class="tab-pane fade" role="tabpanel" aria-labelledby="ycqlsh-tab">
-  {{% includeMarkdown "connect/ycql.md" %}}
-  </div>
-</div>
 
-### Connect using psql
-
-To connect using [psql](https://www.postgresql.org/docs/current/app-psql.html), first download the CA certificate for your cluster by clicking **Connect**, selecting **YugabyteDB Client Shell**, and clicking **Download CA Cert**. Then use the following connection string:
+To connect using ysqlsh, use the following connection string:
 
 ```sh
-psql --host=<HOST_ADDRESS> --port=5433 \
+./ysqlsh "host=<HOST_ADDRESS> \
+user=<DB USER> \
+dbname=yugabyte \
+sslmode=verify-full \
+sslrootcert=<ROOT_CERT_PATH>"
+```
+
+Replace the following:
+
+- `<HOST_ADDRESS>` with the IP address of an endpoint on your universe.
+- `<DB USER>` with your database username.
+- `yugabyte` with the database name, if you're connecting to a database other than the default (yugabyte).
+- `<ROOT_CERT_PATH>` with the path to the root certificate on your computer.
+
+  </div>
+
+  <div id="ycqlsh" class="tab-pane fade" role="tabpanel" aria-labelledby="ycqlsh-tab">
+
+To connect using ycqlsh, use the following connection string:
+
+```sh
+SSL_CERTFILE=<ROOT_CERT_PATH> \
+./ycqlsh \
+<HOST_ADDRESS> 9042 \
+-u <DB USER> \
+--ssl
+```
+
+Replace the following:
+
+- `<HOST_ADDRESS>` with the IP address of an endpoint on your universe.
+- `<DB USER>` with your database username.
+- `<ROOT_CERT_PATH>` with the path to the root certificate on your computer.
+
+  </div>
+
+  <div id="psql" class="tab-pane fade" role="tabpanel" aria-labelledby="psql-tab">
+
+To connect using [psql](https://www.postgresql.org/docs/current/app-psql.html), use the following connection string:
+
+```sh
+./psql --host=<HOST_ADDRESS> --port=5433 \
 --username=<DB USER> \
 --dbname=yugabyte \
 --set=sslmode=verify-full \
@@ -117,12 +182,14 @@ psql --host=<HOST_ADDRESS> --port=5433 \
 
 Replace the following:
 
-- `<HOST_ADDRESS>` with the value for host as shown under **Connection Parameters** on the **Settings > Infrastructure** tab for your cluster.
+- `<HOST_ADDRESS>` with the IP address of an endpoint on your universe.
 - `<DB USER>` with your database username.
 - `yugabyte` with the database name, if you're connecting to a database other than the default (yugabyte).
 - `<ROOT_CERT_PATH>` with the path to the root certificate on your computer.
 
-For information on using other SSL modes, refer to [SSL modes in YSQL](../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
+  </div>
+
+</div>
 
 ### Connect using third party clients
 
@@ -130,22 +197,28 @@ Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use thir
 
 To connect, follow the client's configuration steps for PostgreSQL or Cassandra, and use the following values:
 
-- **host** as shown under **Connection Parameters** on the **Settings > Infrastructure** tab for your cluster.
+- **host** address of an endpoint on your universe.
 - **port** 5433 for YSQL, 9042 for YCQL.
 - **database** name; the default YSQL database is yugabyte.
 - **username** and **password** of a user with permissions for the database; the default user is admin.
 
-Your client may also require the use of the cluster's certificate. Refer to [Download the cluster certificate](../../cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+Your client may also require the use of the [universe certificate](#download-the-universe-certificate).
 
-For detailed steps for configuring popular third party tools, see [Third party tools](../../../tools/).
+For information on using popular third party tools with YugabyteDB, see [Third party tools](../../../tools/).
 
 ## Run workloads
 
-YugabyteDB Anywhere includes a number of sample applications enclosed in Docker containers.
+YugabyteDB Anywhere includes a number of sample applications provided in Docker containers.
 
-To access instructions on how to run sample applications, select your universe's **Overview** and then click **Actions > Run Sample Apps** to open the **Run Sample Apps** dialog shown in the following illustration:
+To run sample applications on your universe, do the following:
 
-![Multi-zone universe sample apps](/images/yp/multi-zone-universe-sample-apps-1.png)
+1. [Connect to a universe node](#connect-to-a-universe-node).
+
+1. Navigate to your universe and click **Actions > Run Sample Apps** to open the **Run Sample Apps** dialog shown in the following illustration:
+
+    ![Run sample apps](/images/yp/multi-zone-universe-sample-apps-1.png)
+
+1. Run the command in your SSH session on the node.
 
 <!--
 

@@ -30,7 +30,7 @@ When you promote a standby instance to active, YugabyteDB Anywhere restores your
 Before configuring a HA cluster for your YugabyteDB Anywhere instances, ensure that you have the following:
 
 - [Multiple YugabyteDB Anywhere instances](../../install-yugabyte-platform/) to be used in the HA cluster.
-- YugabyteDB Anywhere VMs can connect to each other over the port that YugabyteDB Anywhere UI is typically reachable (port 80 and 443, for example).
+- YugabyteDB Anywhere VMs can connect to each other over the port where the YugabyteDB Anywhere UI is typically reachable (port 80 and 443, for example).
 - All YugabyteDB Anywhere instances are running the same version of YugabyteDB Anywhere software. You should upgrade all YugabyteDB Anywhere instances in the HA cluster at approximately the same time.
 
 ## Configure active and standby instances

@@ -7,11 +7,11 @@ menu:
   preview_yugabyte-platform:
     parent: alerts-monitoring
     identifier: latency-histogram
-    weight: 50
+    weight: 60
 type: docs
 ---
 
-Percentile metrics form the core set of metrics that enable users to measure query performance against SLOs (Service Level Objectives). Surfacing percentile metrics per normalized query and by Ops (Operations/second) type enables you to measure query performance against SLOs. Additionally, these metrics can help identify performance issues efficiently and quickly.
+Percentile metrics form the core set of metrics that enable users to measure query performance against Service Level Objectives (SLO). Surfacing percentile metrics per normalized query and by Ops (Operations/second) type enables you to measure query performance against SLOs. Additionally, these metrics can help identify performance issues efficiently and quickly.
 
 You can view P99, P95, P90, and P50 metrics for every query displayed on the [Slow Queries](../../../yugabyte-platform/alerts-monitoring/slow-queries-dashboard/) dashboard.
 

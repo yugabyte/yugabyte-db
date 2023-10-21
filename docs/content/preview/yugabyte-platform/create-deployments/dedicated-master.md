@@ -108,6 +108,6 @@ To see a list of nodes that belong to this universe, select **Nodes**. You can a
 
 ![Dedicated universe nodes](/images/yp/create-deployments/dedicated-universe-nodes.png)
 
-You can verify the overall performance of the dedicated nodes universe by navigating to [Metrics](../../../yugabyte-platform/troubleshoot/universe-issues/#use-metrics).
+You can verify the overall performance of the dedicated nodes universe by navigating to [Metrics](../../alerts-monitoring/anywhere-metrics/).
 
 ![Dedicated universe metrics](/images/yp/create-deployments/dedicated-universe-metrics.png)

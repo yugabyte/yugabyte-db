@@ -19,8 +19,6 @@ Use the Live Queries and Slow Queries dashboards to monitor and display current 
 
 For information on creating and customizing alerts, both for universe and YugabyteDB Anywhere metrics, refer to [Create and configure alerts](../configure-yugabyte-platform/set-up-alerts-health-check/).
 
-To view performance metrics, refer to [Use metrics](../troubleshoot/universe-issues/#use-metrics/).
-
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -67,6 +65,18 @@ To view performance metrics, refer to [Use metrics](../troubleshoot/universe-iss
       </div>
       <div class="body">
         Scan your database for potential optimizations.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="anywhere-metrics/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/introduction/benefits.png" aria-hidden="true" />
+        <div class="title">Universe metrics</div>
+      </div>
+      <div class="body">
+        View universe performance metrics.
       </div>
     </a>
   </div>

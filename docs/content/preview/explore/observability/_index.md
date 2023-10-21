@@ -52,12 +52,12 @@ YugabytedB provides dashboards that include charts, graphs, and other visual rep
 You can also export the metrics provided by YugabyteDB onto third-party visualization tools like [Prometheus](./prometheus-integration/) and [Grafana](./grafana-dashboard/grafana/) as per the needs of your organization.
 
 {{<note>}}
-Both [YugabyteDB Anywhere](../../yugabyte-platform/troubleshoot/universe-issues/#use-metrics) and [Yugabytedb Managed](../../yugabyte-cloud/cloud-monitor/overview/) come with a full suite of visualizations to help you monitor your cluster and troubleshoot issues.
+Both [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/anywhere-metrics/) and [YugabyteDB Managed](../../yugabyte-cloud/cloud-monitor/overview/) come with a full suite of visualizations to help you monitor your cluster and troubleshoot issues.
 {{</note>}}
 
 ## Logging
 
-Logs from different services, such as the [YB-TServer](../../troubleshoot/nodes/check-logs/#yb-tserver-logs) and [YB-Master](../../troubleshoot/nodes/check-logs/#yb-master-logs) provide a historical record of what has happened and can be very useful in debugging and troubleshooting. These logs are rotated regularly, based on their size as configured. See [Logs management](../../troubleshoot/nodes/check-logs#logs-management).
+Logs from different services, such as the [YB-TServer](../../troubleshoot/nodes/check-logs/#yb-tserver-logs) and [YB-Master](../../troubleshoot/nodes/check-logs/#yb-master-logs) provide a historical record of what has happened and can be very helpful in debugging and troubleshooting. These logs are rotated regularly, based on their size as configured. See [Logs management](../../troubleshoot/nodes/check-logs#logs-management).
 
 ## Query-level metrics
 
