@@ -1020,6 +1020,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   virtual docdb::HistoryCutoff AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) {
     return { HybridTime(), HybridTime() };
   }
+
+  void WriteTableToSysCatalog(const TableId& table_id);
+
   void WriteTabletToSysCatalog(const TabletId& tablet_id);
 
   Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
