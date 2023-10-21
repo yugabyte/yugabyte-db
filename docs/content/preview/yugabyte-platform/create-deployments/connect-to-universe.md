@@ -1,5 +1,6 @@
 ---
-title: Connect via client shells
+title: Connect to a YugabyteDB Anywhere universe
+headerTitle: Connect to a universe
 linkTitle: Connect to a universe
 description: Connect to YugabyteDB Anywhere universes from your desktop using a client shell
 headcontent: Connect to database nodes from your desktop
