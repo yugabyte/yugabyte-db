@@ -8,7 +8,7 @@ menu:
   preview_yugabyte-platform:
     parent: alerts-monitoring
     identifier: anywhere-metrics
-    weight: 50
+    weight: 15
 type: docs
 ---
 

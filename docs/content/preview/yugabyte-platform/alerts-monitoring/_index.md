@@ -3,7 +3,7 @@ title: Alerts and monitoring in YugabyteDB Anywhere
 headerTitle: Alerts and monitoring
 linkTitle: Alerts and monitoring
 description: Use YugabyteDB Anywhere for alerts and monitoring of YugabyteDB universe data.
-image: /images/section_icons/manage/backup.png
+image: /images/section_icons/explore/monitoring.png
 headcontent: Review universe alerts and metrics
 menu:
   preview_yugabyte-platform:
@@ -24,7 +24,7 @@ For information on creating and customizing alerts, both for universe and Yugaby
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="alert/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <div class="icon"><i class="fa-regular fa-bell"></i></div>
         <div class="title">Alerts</div>
       </div>
       <div class="body">
@@ -34,9 +34,21 @@ For information on creating and customizing alerts, both for universe and Yugaby
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="anywhere-metrics/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
+        <div class="title">Performance metrics</div>
+      </div>
+      <div class="body">
+        View universe performance metrics.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="live-queries-dashboard/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
         <div class="title">Live queries dashboard</div>
       </div>
       <div class="body">
@@ -48,7 +60,7 @@ For information on creating and customizing alerts, both for universe and Yugaby
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="slow-queries-dashboard/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
         <div class="title">Slow queries dashboard</div>
       </div>
       <div class="body">
@@ -65,18 +77,6 @@ For information on creating and customizing alerts, both for universe and Yugaby
       </div>
       <div class="body">
         Scan your database for potential optimizations.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="anywhere-metrics/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Performance metrics</div>
-      </div>
-      <div class="body">
-        View universe performance metrics.
       </div>
     </a>
   </div>

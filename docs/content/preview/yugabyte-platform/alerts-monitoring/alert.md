@@ -3,6 +3,7 @@ title: Alerts in YugabyteDB Anywhere
 headerTitle: Alerts
 linkTitle: Alerts
 description: Use alerts
+headcontent: Set alerts for activity in your account
 menu:
   preview_yugabyte-platform:
     identifier: alert
