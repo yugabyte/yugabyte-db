@@ -72,8 +72,8 @@ For information on creating and customizing alerts, both for universe and Yugaby
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="anywhere-metrics/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/introduction/benefits.png" aria-hidden="true" />
-        <div class="title">Universe metrics</div>
+        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
+        <div class="title">Performance metrics</div>
       </div>
       <div class="body">
         View universe performance metrics.

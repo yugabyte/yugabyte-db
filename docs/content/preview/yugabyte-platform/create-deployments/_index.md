@@ -92,7 +92,7 @@ A universe includes one primary cluster and, optionally, one read replica cluste
     </a>
   </div>
 
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="dedicated-master">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
@@ -103,4 +103,17 @@ A universe includes one primary cluster and, optionally, one read replica cluste
       </div>
     </a>
   </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="connect-to-universe">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/index/develop.png" aria-hidden="true" />
+        <div class="title">Connect to a universe</div>
+      </div>
+      <div class="body">
+        Connect to your universe using a client shell.
+      </div>
+    </a>
+  </div>
+
 </div>

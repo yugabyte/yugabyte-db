@@ -1,5 +1,6 @@
 ---
 title: YBA Performance metrics
+headerTitle: Performance metrics
 linkTitle: Performance metrics
 description: View time series charts of universe metrics.
 headcontent: Evaluate universe performance with time series charts

@@ -49,7 +49,7 @@ Use YugabyteDB Managed alerts and monitoring to monitor cluster performance and 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="overview/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
         <div class="title">View performance metrics</div>
       </div>
       <div class="body">
