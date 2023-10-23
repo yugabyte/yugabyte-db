@@ -25,6 +25,8 @@ using yb::util::WaitStateCode;
 
 DEFINE_RUNTIME_bool(freeze_wait_states, true, "Fetches the frozen wait state, as of the time when "
                     "GetAUHMetadata was called, instead of getting a jagged-edge across different rpcs.");
+DEFINE_RUNTIME_bool(export_wait_state_names, yb::IsDebug(), "Exports wait-state name as a human "
+                    "understandable string.");
 namespace yb::util {
 
 thread_local WaitStateInfoPtr WaitStateInfo::threadlocal_wait_state_;
