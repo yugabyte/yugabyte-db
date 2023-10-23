@@ -227,7 +227,7 @@ HINT:  You might need to specify "USING a::bigint".
 ALTER TABLE test ALTER COLUMN a SET DATA TYPE BIGINT USING a::BIGINT;
 ```
 
-Another option is to use a custom function:
+Another option is to use a custom function as follows:
 
 ```sql
 CREATE OR REPLACE FUNCTION myfunc(text) RETURNS BIGINT
