@@ -210,7 +210,7 @@ If the change requires data on disk to change, a full table rewrite will be done
 - If the operation fails, it is possible that the existing table is renamed in DocDB. This may lead to issues like yb-admin commands that take table name.
 - If the operation fails, a new dangling table may exist in DocDB. Use `yb-admin delete_table` to drop it.
 - Altering the data type of a foreign key column is not supported.
-- If there might be concurrent DMLs, the user can first rename the table to fail the DMLs, alter the column data type, and then rename the table again.
+- If there are concurrent DMLs, you can first rename the table to fail the DMLs, alter the column data type, and then rename the table again.
 - The operation preserves split properties for hash-partitioned tables and hash-partitioned secondary indexes. For range-partitioned tables (and secondary indexes), split properties are only preserved if the altered column is not part of the table's (or secondary index's) range key.
 
 Following is an example of alter type with table rewrite:
