@@ -69,7 +69,7 @@ Version refers to the latest tested version of the integration.
 | Metabase        |         | Full    | [Metabase](../tools/metabase/) |
 | pgAdmin         |         | Full    | [pgAdmin](../tools/pgadmin/) |
 | SQL Workbench/J |         | Full    | [SQL Workbench/J](../tools/sql-workbench/) |
-| TablePlus       |         | Full    | [TablePlus](../tools/tableplus/) |
+| TablePlus       | 2.18    | Full    | [TablePlus](../tools/tableplus/) |
 
 ### Application frameworks
 
