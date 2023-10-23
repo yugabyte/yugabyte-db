@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.google.api.client.util.Strings;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.logging.LogUtil;
@@ -26,6 +27,7 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -633,6 +635,12 @@ public class CustomerTask extends Model {
     }
   }
 
+  private static final Set<TaskType> upgradeCustomerTasksSet =
+      ImmutableSet.of(
+          CustomerTask.TaskType.FinalizeUpgrade,
+          CustomerTask.TaskType.RollbackUpgrade,
+          CustomerTask.TaskType.SoftwareUpgrade);
+
   public static final Finder<Long, CustomerTask> find =
       new Finder<Long, CustomerTask>(CustomerTask.class) {};
 
@@ -820,6 +828,10 @@ public class CustomerTask extends Model {
       Optional<Universe> optional = Universe.maybeGet(targetUUID);
       if (!optional.isPresent()) {
         return true;
+      }
+      if (upgradeCustomerTasksSet.contains(type)) {
+        LOG.debug("Universe task {} is not deletable as it is an upgrade task.", targetUUID);
+        return false;
       }
       UniverseDefinitionTaskParams taskParams = optional.get().getUniverseDetails();
       if (taskUUID.equals(taskParams.updatingTaskUUID)) {
