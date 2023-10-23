@@ -73,15 +73,15 @@ private = true
 
   {{% tab header="C" lang="c" %}}
 
-| Driver | Support Level | Example apps |
-| :--------- | :------------ | :----------- |
-| libpq C Driver| Full | [CRUD](/preview/drivers-orms/c/ysql/) |
+| Driver        | Version | Support Level | Example apps |
+| :------------ | :------ | :------------ | :----------- |
+| libpq C Driver| 5.11    | Full          | [CRUD](/preview/drivers-orms/c/ysql/) |
 
   {{% /tab %}}
 
   {{% tab header="C++" lang="cpp" %}}
 
-| Driver | Version | Support Level | Example apps |
+| Driver     | Version | Support Level | Example apps |
 | :--------- | :------ | :------------ | :----------- |
 | libpqxx C++ Driver             | | Full | [CRUD](/preview/drivers-orms/cpp/ysql/) |
 | YugabyteDB C++ Driver for YCQL | [2.9.0-yb-10](https://github.com/yugabyte/cassandra-cpp-driver/releases) | Full | [CRUD](/preview/drivers-orms/cpp/ycql/) |
@@ -117,7 +117,7 @@ private = true
 
 | ORM        | Version | Support Level | Example apps |
 | :--------- | :------ | :------------ | :----------- |
-| Diesel     | 1.42    | Full | [CRUD](/preview/drivers-orms/rust/diesel/) |
+| Diesel     | 1.42    | Full          | [CRUD](/preview/drivers-orms/rust/diesel/) |
 
   {{% /tab %}}
 
