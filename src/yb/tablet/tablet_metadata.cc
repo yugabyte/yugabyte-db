@@ -84,10 +84,6 @@ TAG_FLAG(enable_tablet_orphaned_block_deletion, advanced);
 TAG_FLAG(enable_tablet_orphaned_block_deletion, hidden);
 TAG_FLAG(enable_tablet_orphaned_block_deletion, runtime);
 
-DEFINE_test_flag(bool, invalidate_last_change_metadata_op, false,
-                 "Used in tests to update last_change_metadata_op_id to -1.-1 to simulate "
-                 "behavior of old code");
-
 using std::shared_ptr;
 using std::string;
 

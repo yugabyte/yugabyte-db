@@ -51,8 +51,6 @@
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 
-DECLARE_bool(TEST_invalidate_last_change_metadata_op);
-
 namespace yb {
 namespace tablet {
 

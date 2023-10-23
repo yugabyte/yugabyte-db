@@ -171,6 +171,8 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
     sources_[Source::id_type()] = std::make_unique<Source>(tablet_peer_, &tablet_superblock_);
   }
 
+  Status ReadSuperblockFromDisk(tablet::RaftGroupReplicaSuperBlockPB* out = nullptr);
+
   // Snapshot the log segment's length and put it into segment map.
   Status OpenLogSegment(uint64_t segment_seqno, RemoteBootstrapErrorPB::Code* error_code)
       REQUIRES(mutex_);
@@ -197,6 +199,8 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   Env* env() const;
 
   RemoteBootstrapSource* Source(DataIdPB::IdType id_type) const;
+
+  Result<OpId> CreateSnapshot(int retry);
 
   std::shared_ptr<tablet::TabletPeer> tablet_peer_;
   const std::string session_id_;
