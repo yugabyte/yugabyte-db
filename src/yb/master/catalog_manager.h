@@ -59,7 +59,6 @@
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/cdc_split_driver.h"
-#include "yb/master/leader_epoch.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_dcl.fwd.h"
 #include "yb/master/master_defaults.h"

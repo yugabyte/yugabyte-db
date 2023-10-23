@@ -113,7 +113,6 @@
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
 
-#include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/auto_flags_orchestrator.h"
 #include "yb/master/async_rpc_tasks.h"
