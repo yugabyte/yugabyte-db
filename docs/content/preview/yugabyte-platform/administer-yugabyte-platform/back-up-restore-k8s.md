@@ -1,21 +1,27 @@
 ---
-title: Back up and restore YugabyteDB Anywhere on Kubernetes
-headerTitle: Back up and restore YugabyteDB Anywhere on Kubernetes
+title: Back up and restore YugabyteDB Anywhere
+headerTitle: Back up and restore YugabyteDB Anywhere
 description: Use a script to back up and restore YugabyteDB Anywhere on Kubernetes.
 linkTitle: Back up YugabyteDB Anywhere
 menu:
   preview_yugabyte-platform:
     identifier: back-up-restore-k8s
     parent: administer-yugabyte-platform
-    weight: 20
+    weight: 30
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../back-up-restore-installer/" class="nav-link">
+      <i class="fa-solid fa-building"></i>
+      YBA Installer</a>
+  </li>
+
   <li >
     <a href="../back-up-restore-yp/" class="nav-link">
       <i class="fa-solid fa-cloud"></i>
-      Default
+      Replicated
     </a>
   </li>
 
