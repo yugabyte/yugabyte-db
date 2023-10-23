@@ -327,7 +327,7 @@ You can set the following YBA Installer configuration options.
 
 | Option | Description |
 | :--- | :--- |
-| `installRoot` | Location where YBA is installed. Default is `/opt/yugabyte`. Note: on CentOS 7, this parameter cannot exceed 16 characters due to CentOS 7 python script shebang limits. |
+| `installRoot` | Location where YBA is installed. Default is `/opt/yugabyte`. <br> Note: on CentOS 7, this parameter cannot exceed 16 characters due to CentOS 7 python script shebang limits. |
 | `host` | Hostname or IP Address used for CORS and certificate creation. Optional. |
 | `server_cert_path`<br />`server_key_path` | If providing custom certificates, give the path with these values. If not provided, the installation process generates self-signed certificates. Optional. |
 | `service_username` | The Linux user that will run the YBA processes. Default is `yugabyte`. The install process will create the `yugabyte` user. If you wish to use a different user, create that user beforehand and specify it in `service_username`. YBA Installer only creates the `yugabyte` user, not custom usernames. |
