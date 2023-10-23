@@ -58,6 +58,10 @@ var replicatedToYbaCtl = map[string]string{
 	"prometheus_query_max_samples": "prometheus.maxSamples",
 	"prometheus_query_concurrency": "prometheus.maxConcurrency",
 	"prometheus_external_port":     "prometheus.port",
+	"prometheus_enable_https":			"prometheus.enableHttps",
+	"prometheus_enable_auth":				"prometheus.enableAuth",
+	"prometheus_username":					"prometheus.authUsername",
+	"prometheus_password":					"prometheus.authPassword",
 	"support_origin_url":           "platform.support_origin_url",
 }
 
