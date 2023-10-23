@@ -2013,6 +2013,95 @@ TEST_F(XClusterYsqlTest, ReplicationWithDefaultProducerSchemaVersion) {
   ASSERT_OK(VerifyWrittenRecords(producer_table_, consumer_table_));
 }
 
+TEST_F(XClusterYsqlTest, ValidateSchemaPackingGCDuringNetworkPartition) {
+  // During network partition, the following can happen:
+  // 1. Source and Target are in-sync.
+  // 2. Source performs a schema modification generating a new schema version : X.
+  // 3. A compatible schema change is made on the target resulting in xcluster schema mapping - X:Y
+  // 4. No data has been written to source with schema 'X' or due to a network partition rows
+  //    written with schema version 'X' never made it to the target.
+  // 5. If schema packing GC runs at this time on target, it will Garbage collect 'Y' as there is
+  //    no data written to target Y. However this is not correct, rows will make it to the target
+  //    once replication resumes or rows are written on the target
+  // The test validates that GC of schema packings on target does not GC any schema versions that
+  // XCluster target is aware of (which happens as a result of the ChangeMetadataOp).
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+
+  const auto namespace_name = "demo";
+  const auto table_name = "test_table";
+  ASSERT_OK(Initialize(3 /* replication_factor */, 1 /* num_masters */));
+
+  ASSERT_OK(
+      RunOnBothClusters([&](Cluster* cluster) { return CreateDatabase(cluster, namespace_name); }));
+
+  // Create producer/consumer clusters with different schemas and then
+  // modify schema on consumer to match producer schema.
+  {
+    auto p_conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+    ASSERT_OK(p_conn.ExecuteFormat("create table $0(key int)", table_name));
+
+    auto c_conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+    ASSERT_OK(c_conn.ExecuteFormat("create table $0(key int)", table_name));
+  }
+
+  // Producer schema version will be 0 and consumer schema version will be 0.
+  auto producer_table_name_with_id_list = ASSERT_RESULT(producer_client()->ListTables(table_name));
+  ASSERT_EQ(producer_table_name_with_id_list.size(), 1);
+  auto producer_table_name_with_id = producer_table_name_with_id_list[0];
+  ASSERT_TRUE(producer_table_name_with_id.has_table_id());
+  producer_table_ =
+      ASSERT_RESULT(producer_client()->OpenTable(producer_table_name_with_id.table_id()));
+  producer_tables_.push_back(producer_table_);
+
+  auto consumer_table_name_with_id_list = ASSERT_RESULT(consumer_client()->ListTables(table_name));
+  ASSERT_EQ(consumer_table_name_with_id_list.size(), 1);
+  auto consumer_table_name_with_id = consumer_table_name_with_id_list[0];
+  ASSERT_TRUE(consumer_table_name_with_id.has_table_id());
+  consumer_table_ =
+      ASSERT_RESULT(consumer_client()->OpenTable(consumer_table_name_with_id.table_id()));
+  consumer_tables_.push_back(consumer_table_);
+
+  // Bump up the schema versions.
+  // Producer schema version will be 4 and consumer schema version will be 2.
+  BumpUpSchemaVersionsWithAlters({producer_table_});
+
+  ASSERT_OK(SetupUniverseReplication(producer_tables_));
+
+  // Verify that universe was setup on consumer.
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(&resp));
+  ASSERT_EQ(resp.entry().producer_id(), kReplicationGroupId);
+  ASSERT_EQ(resp.entry().tables_size(), 1);
+  ASSERT_EQ(resp.entry().tables(0), producer_table_->id());
+
+  // Modify the schema on source and target so that they are in sync, but don't insert rows.
+  // Producer schema version will be 5. Consumer schema version will be 4.
+  // Test is verifying that we can read rows written Schema version 3 as well
+  // and they do not get GC'ed.
+  {
+    auto p_conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+    ASSERT_OK(p_conn.ExecuteFormat("alter table $0 add column n1 text", table_name));
+
+    auto c_conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+    ASSERT_OK(c_conn.ExecuteFormat("alter table $0 add column n1 text", table_name));
+    ASSERT_OK(c_conn.ExecuteFormat("alter table $0 add column n2 text", table_name));
+  }
+
+  // Force a schema packings GC on the target by performing a compaction.
+  ASSERT_OK(consumer_cluster()->FlushTablets());
+  ASSERT_OK(consumer_cluster()->CompactTablets());
+
+  // Verify data gets replicated correctly.
+  {
+    auto p_conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+    for(int i = 51; i < 60; ++i) {
+      ASSERT_OK(p_conn.ExecuteFormat("INSERT INTO $0(key, n1) VALUES (51,'foo')", table_name));
+    }
+  }
+
+  ASSERT_OK(VerifyWrittenRecords(producer_table_, consumer_table_));
+}
+
 void PrepareChangeRequest(
     cdc::GetChangesRequestPB* change_req, const xrepl::StreamId& stream_id,
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets) {

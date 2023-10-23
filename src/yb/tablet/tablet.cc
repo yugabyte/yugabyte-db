@@ -451,7 +451,44 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
       FillMinSchemaVersion(tablet_.regular_db_.get(), &table_id_to_min_schema_version);
       FillMinSchemaVersion(tablet_.intents_db_.get(), &table_id_to_min_schema_version);
     }
+
+    FillMinXClusterSchemaVersion(&table_id_to_min_schema_version);
     ERROR_NOT_OK(tablet_.metadata()->OldSchemaGC(table_id_to_min_schema_version), log_prefix_);
+  }
+
+  // Checks XCluster config to determine the min schema version at which to expect rows.
+  void FillMinXClusterSchemaVersion(MinSchemaVersionMap* table_id_to_min_schema_version) {
+    if (nullptr == tablet_.get_min_xcluster_schema_version_) {
+      return;
+    }
+
+    auto& min_schema_versions = *table_id_to_min_schema_version;
+    auto primary_table_id = tablet_.metadata()->table_id();
+    if(!tablet_.metadata()->colocated()) {
+      auto schema_version = tablet_.get_min_xcluster_schema_version_(primary_table_id,
+          kColocationIdNotSet);
+      VLOG_WITH_FUNC(4) <<
+          Format("MinNonXClusterSchemaVersion, MinXClusterSchemaVersion for $0:$1,$2",
+              primary_table_id, min_schema_versions[Uuid::Nil()], schema_version);
+      if (schema_version < min_schema_versions[Uuid::Nil()]) {
+        min_schema_versions[Uuid::Nil()] = schema_version;
+      }
+      return;
+    }
+
+    auto colocated_tables = tablet_.metadata()->GetAllColocatedTablesWithColocationId();
+    for(auto& [table_id, schema_version] : min_schema_versions) {
+      ColocationId colocation_id = colocated_tables[table_id.ToHexString()];
+      auto xcluster_min_schema_version = tablet_.get_min_xcluster_schema_version_(primary_table_id,
+          colocation_id);
+      VLOG_WITH_FUNC(4) <<
+          Format("MinNonXClusterSchemaVersion, MinXClusterSchemaVersion for $0,$1:$2,$3",
+              primary_table_id, colocation_id, min_schema_versions[table_id],
+              xcluster_min_schema_version);
+      if (xcluster_min_schema_version < min_schema_versions[table_id]) {
+        min_schema_versions[table_id] = xcluster_min_schema_version;
+      }
+    }
   }
 
   void FillMinSchemaVersion(rocksdb::DB* db, MinSchemaVersionMap* table_id_to_min_schema_version) {
@@ -509,7 +546,8 @@ Tablet::Tablet(const TabletInitData& data)
           clock_, data.allowed_history_cutoff_provider, metadata_.get())),
       full_compaction_pool_(data.full_compaction_pool),
       admin_triggered_compaction_pool_(data.admin_triggered_compaction_pool),
-      ts_post_split_compaction_added_(std::move(data.post_split_compaction_added)) {
+      ts_post_split_compaction_added_(std::move(data.post_split_compaction_added)),
+      get_min_xcluster_schema_version_(std::move(data.get_min_xcluster_schema_version)) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << "Schema version for " << metadata_->table_name() << " is "
                         << metadata_->schema_version();
