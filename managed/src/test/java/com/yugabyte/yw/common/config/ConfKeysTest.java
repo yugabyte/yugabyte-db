@@ -14,9 +14,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -198,6 +200,44 @@ public class ConfKeysTest extends FakeDBApplication {
             }
           } catch (IllegalAccessException e) {
             fail(e.getMessage());
+          }
+        }
+      }
+    }
+  }
+
+  @Test
+  public void testFeatureFlagRuntimeConfigEntries() throws Exception {
+    for (Class<? extends RuntimeConfigKeysModule> keysClass :
+        Arrays.asList(
+            GlobalConfKeys.class,
+            CustomerConfKeys.class,
+            UniverseConfKeys.class,
+            ProviderConfKeys.class)) {
+      // Go through each key info field declared in the ConfKey class.
+      for (Field field : keysClass.getDeclaredFields()) {
+        if (Modifier.isStatic(field.getModifiers()) && field.getType().equals(ConfKeyInfo.class)) {
+          ConfKeyInfo<?> keyInfo = (ConfKeyInfo<?>) field.get(null);
+          if (ScopeType.GLOBAL.equals(keyInfo.scope)) {
+            // Check that all global ConfKeyInfo which have the tag FEATURE_FLAG are of type
+            // boolean.
+            if (keyInfo.getTags().contains(ConfKeyTags.FEATURE_FLAG)
+                && !ConfDataType.BooleanType.equals(keyInfo.getDataType())) {
+              throw new RuntimeException(
+                  String.format(
+                      "ConfKeyInfo '%s' can only be boolean as it is marked with tag"
+                          + " 'FEATURE_FLAG'.",
+                      keyInfo.toString()));
+            }
+          } else {
+            // Check that for all other scopes, FEATURE_FLAG is not present as a tag.
+            if (keyInfo.getTags().contains(ConfKeyTags.FEATURE_FLAG)) {
+              throw new RuntimeException(
+                  String.format(
+                      "ConfKeyInfo '%s' cannot have tag 'FEATURE_FLAG' as it is not in global"
+                          + " scope.",
+                      keyInfo.toString()));
+            }
           }
         }
       }
