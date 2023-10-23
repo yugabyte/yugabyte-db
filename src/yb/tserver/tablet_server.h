@@ -238,6 +238,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   uint64_t GetSharedMemoryPostgresAuthKey();
 
+  SchemaVersion GetMinXClusterSchemaVersion(const TableId& table_id,
+      const ColocationId& colocation_id) const;
+
   // Currently only used by cdc.
   virtual int32_t cluster_config_version() const;
 
