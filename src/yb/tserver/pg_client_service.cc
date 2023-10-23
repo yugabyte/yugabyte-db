@@ -845,12 +845,19 @@ class PgClientServiceImpl::Impl {
 
     WARN_NOT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
     
+    size_t ignored_calls = 0;
+    size_t ignored_calls_no_wait_state = 0;
     for (auto conns : dump_resp.inbound_connections()) {
       for (auto call : conns.calls_in_flight()) {
         if (!call.has_wait_state() || (call.wait_state().has_aux_info()
             && call.wait_state().aux_info().has_method()
-            && call.wait_state().aux_info().method() == "ActiveUniverseHistory"))
+            && call.wait_state().aux_info().method() == "ActiveUniverseHistory")) {
+          ignored_calls++;
+          if (!call.has_wait_state()) {
+            ignored_calls_no_wait_state++;
+          }
           continue;
+        }
         if (messenger_type == util::MessengerType::kTserver) {
           resp->add_tserver_wait_states()->CopyFrom(call.wait_state());
         } else {
@@ -858,6 +865,9 @@ class PgClientServiceImpl::Impl {
         }
       }
     }
+    LOG_IF(INFO, VLOG_IS_ON(1) || ignored_calls > 1)
+            << "Ignored " << ignored_calls << " calls. " << ignored_calls_no_wait_state
+            << " without wait state";
     VLOG(2) << __PRETTY_FUNCTION__ << " TServer wait-states " << yb::ToString(resp->tserver_wait_states());
     VLOG(2) << __PRETTY_FUNCTION__ << " CQL wait-states " << yb::ToString(resp->cql_wait_states());
   }
