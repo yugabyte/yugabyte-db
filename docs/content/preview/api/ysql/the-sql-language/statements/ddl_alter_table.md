@@ -190,7 +190,7 @@ Change the type of an existing column. The following semantics apply:
 - If the optional `USING` clause is not provided, the default conversion for the new column value will be the same as an assignment cast from the old type to the new type.
 - A `USING` clause must be included when there is no implicit assignment cast available from the old type to the new type.
 - Alter type is not supported for partitioned tables. See [#16980](https://github.com/yugabyte/yugabyte-db/issues/16980).
-- Alter type is not supported on tables with rules (limitation inherited from PostgreSQL).
+- Alter type is not supported for tables with rules (limitation inherited from PostgreSQL).
 - Alter type is not supported on tables with CDC streams or xCluster replication when it requires data on disk to change [#16625](https://github.com/yugabyte/yugabyte-db/issues/16625).
 
 ##### Alter type without table-rewrite
