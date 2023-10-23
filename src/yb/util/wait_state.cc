@@ -148,7 +148,8 @@ void WaitStateInfo::set_state_if(WaitStateCode prev, WaitStateCode c) {
 }
 
 void WaitStateInfo::set_state(WaitStateCode c) {
-  TRACE(util::ToString(c));
+  // TRACE(util::ToString(c));
+  TRACE("$0 -> $1", util::ToString(code_.load()), util::ToString(c));
   check_and_update_thread_id(code_.load(), c);
   VLOG(3) << this << " " << ToString() << " setting state to " << util::ToString(c);
   if (freeze_) {
