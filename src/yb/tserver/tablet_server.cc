@@ -1208,6 +1208,16 @@ Status TabletServer::ValidateAndMaybeSetUniverseUuid(const UniverseUuid& univers
   return fs_manager_->SetUniverseUuidOnTserverInstanceMetadata(universe_uuid);
 }
 
+SchemaVersion TabletServer::GetMinXClusterSchemaVersion(const TableId& table_id,
+      const ColocationId& colocation_id) const {
+  std::lock_guard l(xcluster_consumer_mutex_);
+  if (!xcluster_consumer_) {
+    return cdc::kInvalidSchemaVersion;
+  }
+
+  return xcluster_consumer_->GetMinXClusterSchemaVersion(table_id, colocation_id);
+}
+
 int32_t TabletServer::cluster_config_version() const {
   std::lock_guard l(xcluster_consumer_mutex_);
   // If no CDC consumer, we will return -1, which will force the master to send the consumer
