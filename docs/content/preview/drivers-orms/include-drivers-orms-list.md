@@ -11,17 +11,17 @@ private = true
 |            | Version | Support Level | Example apps |
 | :--------- | :------ | :------------ | :----------- |
 | **Drivers** | | | |
-| YugabyteDB JDBC Smart Driver<br/>[Recommended] | [42.3.5-yb-1](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb/42.3.5-yb-1) | Full | [CRUD](/preview/drivers-orms/java/yugabyte-jdbc/) |
+| YugabyteDB JDBC Smart Driver<br/>[Recommended] | [42.3.5-yb-3](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb/42.3.5-yb-3) | Full | [CRUD](/preview/drivers-orms/java/yugabyte-jdbc/) |
 | PostgreSQL JDBC Driver  | [42.3.4](https://mvnrepository.com/artifact/org.postgresql/postgresql/42.3.4) | Full | [CRUD](/preview/drivers-orms/java/postgres-jdbc/) |
 | Vert.x Pg Client       | [4.3.2](https://mvnrepository.com/artifact/io.vertx/vertx-core/4.3.2) | Full | [CRUD](/preview/drivers-orms/java/ysql-vertx-pg-client/) |
 | YugabyteDB Java Driver for YCQL | [3.10.3-yb-2](https://mvnrepository.com/artifact/com.yugabyte/cassandra-driver-core/3.10.3-yb-2) | Full | [CRUD](/preview/drivers-orms/java/ycql) |
 | YugabyteDB Java Driver for YCQL | [4.15.0-yb-1](https://mvnrepository.com/artifact/com.yugabyte/java-driver-core/4.15.0-yb-1) | Full | [CRUD](/preview/drivers-orms/java/ycql-4.x) |
 | **ORMs** | | | |
-| Ebean                   | | Full | [CRUD](/preview/drivers-orms/java/ebean/) |
-| Hibernate               | | Full | [CRUD](/preview/drivers-orms/java/hibernate/) |
-| Spring Data YugabyteDB  | | Full | [CRUD](/preview/integrations/spring-framework/sdyb/#examples) |
-| Spring Data JPA         | | Full | [CRUD](/preview/integrations/spring-framework/sd-jpa/#fundamentals) |
-| MyBatis                 | | Full | [CRUD](/preview/drivers-orms/java/mybatis/) |
+| Ebean                   | 13.23.0 | Full | [CRUD](/preview/drivers-orms/java/ebean/) |
+| Hibernate               | 5.4.19  | Full | [CRUD](/preview/drivers-orms/java/hibernate/) |
+| Spring Data YugabyteDB  | 2.3.0   | Full | [CRUD](/preview/integrations/spring-framework/sdyb/#examples) |
+| Spring Data JPA         | 2.6.3   | Full | [CRUD](/preview/integrations/spring-framework/sd-jpa/#fundamentals) |
+| MyBatis                 | 3.5.9   | Full | [CRUD](/preview/drivers-orms/java/mybatis/) |
 <!-- | Micronaut | Beta |  | -->
 <!-- | Quarkus | Beta |  | -->
 
@@ -37,8 +37,8 @@ private = true
 | PQ Driver  | [v1.10.2](https://github.com/lib/pq/releases/tag/v1.10.2/) | Full | [CRUD](/preview/drivers-orms/go/pq/) |
 | YugabyteDB Go Driver for YCQL | [3.16.3](https://github.com/yugabyte/gocql) | Full | [CRUD](/preview/drivers-orms/go/ycql) |
 | **ORMs** | | | |
-| GORM       | | Full | [CRUD](/preview/drivers-orms/go/gorm/) |
-| PG         | | Full | [CRUD](/preview/drivers-orms/go/pg/) |
+| GORM       |    | Full | [CRUD](/preview/drivers-orms/go/gorm/) |
+| PG         | [10](https://github.com/go-pg/pg) | Full | [CRUD](/preview/drivers-orms/go/pg/) |
 
   {{% /tab %}}
 
@@ -49,11 +49,11 @@ private = true
 | **Drivers** | | | |
 | YugabyteDB Psycopg2 Smart Driver<br/>[Recommended] | [2.9.3](https://github.com/yugabyte/psycopg2) |Full | [CRUD](/preview/drivers-orms/python/yugabyte-psycopg2/) |
 | PostgreSQL Psycopg2 Driver | [2.9.3](https://github.com/psycopg/psycopg2) | Full | [CRUD](/preview/drivers-orms/python/postgres-psycopg2/) |
-| aiopg      | 1.4 | Full | [Hello World](/preview/drivers-orms/python/aiopg/) |
+| aiopg      | 1.4          | Full | [Hello World](/preview/drivers-orms/python/aiopg/) |
 | YugabyteDB Python Driver for YCQL | [3.25.0](https://github.com/yugabyte/cassandra-python-driver/tree/master) | Full | [CRUD](/preview/drivers-orms/python/ycql/) |
 | **ORMs** | | | |
 | Django     | 2.2 or later | Full | [CRUD](/preview/drivers-orms/python/django/) |
-| SQLAlchemy | | Full | [CRUD](/preview/drivers-orms/python/sqlalchemy/) |
+| SQLAlchemy | 2.0          | Full | [CRUD](/preview/drivers-orms/python/sqlalchemy/) |
 
   {{% /tab %}}
 
@@ -67,7 +67,7 @@ private = true
 | YugabyteDB Node.js Driver for YCQL | [4.0.0](https://github.com/yugabyte/cassandra-nodejs-driver) | Full | [CRUD](/preview/drivers-orms/nodejs/ycql/) |
 | **ORMs** | | | |
 | Sequelize | | Full | [CRUD](/preview/drivers-orms/nodejs/sequelize/) |
-| Prisma    | | Full | [CRUD](/preview/drivers-orms/nodejs/prisma/) |
+| Prisma    | 3.14 | Full | [CRUD](/preview/drivers-orms/nodejs/prisma/) |
 
   {{% /tab %}}
 
@@ -109,7 +109,7 @@ private = true
 | Pg Gem Driver                   | [1.5.4](https://github.com/ged/ruby-pg) | Full | [CRUD](/preview/drivers-orms/ruby/ysql-pg/) |
 | YugabyteDB Ruby Driver for YCQL | [3.2.3.2](https://github.com/yugabyte/cassandra-ruby-driver) | Full | [CRUD](/preview/drivers-orms/ruby/ycql/) |
 | **ORM**     | | | |
-| ActiveRecord                    | | Full | [CRUD](/preview/drivers-orms/ruby/activerecord/) |
+| Active Record                   | | Full | [CRUD](/preview/drivers-orms/ruby/activerecord/) |
 
   {{% /tab %}}
 

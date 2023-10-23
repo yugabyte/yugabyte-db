@@ -27,7 +27,7 @@ The following table describes the components.
 | YugabyteDB Anywhere | Yugabyte self-managed DBaaS for deploying YugabyteDB at scale that includes YugabyteDB's self-managed, stateless CDC functionality with support for Confluent Kafka Connect. A pull-based model is used to report changes from the database Write-Ahead-Log (WAL). For more information on CDC, refer to [Change Data Capture](../../../change-data-capture/). |
 | [Debezium connector](../../debezium-connector-yugabytedb/) | Pulls data from YugabyteDB, publishes it to Kafka, and runs in a Microsoft Azure Virtual Machine. |
 | [Azure Event Hubs](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-about) | Azure big data streaming platform and event ingestion service.
-| [Azure Synapse Pipelines](https://learn.microsoft.com/en-us/azure/data-factory/concepts-pipelines-activities?) |context=%2Fazure%2Fsynapse-analytics%2Fcontext%2Fcontext&tabs=synapse-analytics |
+| [Azure Synapse Pipelines](https://learn.microsoft.com/en-us/azure/data-factory/concepts-pipelines-activities?) | |
 | [ADLS Gen2](https://learn.microsoft.com/en-us/azure/storage/blobs/data-lake-storage-introduction) | Storage account |
 | [Azure Synapse workspace](https://learn.microsoft.com/en-us/azure/synapse-analytics/overview-what-is) | Azure integrated platform service that merges the capabilities of data lakes, data integrations for ETL/ELT pipelines, analytics tools, and services. |
 
@@ -36,8 +36,8 @@ The following table describes how the data flows through each of these component
 | Step | Component | Operation |
 | --- | --- | --- |
 | 1 | Debezium YugabyteDB Kafka Connect | Stream the changed data sets requested from the source YugabyteDB Anywhere YSQL Tables. |
-| 2 | Azure Event Hubs |Stream messages from Kafka to different targets.
-| 3 | Azure Synapse Analytics Pipeline|Used to schedule data-driven workflows that can ingest data from Azure Event Hubs to an Azure Data Lake Storage (ADLS) Gen 2 account. |
+| 2 | Azure Event Hubs | Stream messages from Kafka to different targets.
+| 3 | Azure Synapse Analytics Pipeline| Used to schedule data-driven workflows that can ingest data from Azure Event Hubs to an Azure Data Lake Storage (ADLS) Gen 2 account. |
 | 4 | ADLS (Azure Data Lake Services) Gen2 | CDC data from the Azure Event Hub is saved to ADLS Gen2 in Parquet format. |
 | 5 | Azure Synapse workspace | Azure SQL Pools and Spark Pools can be used to analyze the CDC data from Yugabyte in near real time. |
 

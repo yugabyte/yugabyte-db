@@ -349,6 +349,17 @@ TEST_F(EncryptionTest, AutoFlags) {
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 
+TEST_F(EncryptionTest, ShellModeMaster) {
+  // Start a shell mode master and ensure that it eventually receives the universe key after RBS.
+  ExternalMaster* new_master = nullptr;
+  external_mini_cluster()->StartShellMaster(&new_master);
+  ASSERT_OK(external_mini_cluster()->ChangeConfig(new_master, consensus::ADD_SERVER));
+
+  yb_admin_client_.reset();
+  CreateAdminClient();
+  ASSERT_OK(WaitForAllMastersHaveLatestKeyInMemory());
+}
+
 class WALReuseEncryptionTest : public EncryptionTest {
  public:
   size_t num_tablet_servers() override {
