@@ -13,7 +13,7 @@ private=true
     ARCHIVELOG
     ```
 
-    If log_mode is not enabled,
+    If log_mode is NOARCHIVELOG (that is, not enabled), run the following command:
 
     ```sql
     sqlplus /nolog

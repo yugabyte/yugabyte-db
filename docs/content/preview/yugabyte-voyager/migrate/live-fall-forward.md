@@ -151,16 +151,15 @@ Perform the following steps to prepare your fall-forward database:
     GRANT CONNECT, RESOURCE TO ybvoyager_metadata;
     ALTER USER ybvoyager_metadata QUOTA UNLIMITED ON USERS;
 
-    CREATE TABLE ybvoyager_metadata.ybvoyager_import_data_batches_metainfo_v2 (
+    CREATE TABLE ybvoyager_metadata.ybvoyager_import_data_batches_metainfo_v3 (
+                migration_uuid VARCHAR2(36),
                 data_file_name VARCHAR2(250),
                 batch_number NUMBER(10),
                 schema_name VARCHAR2(250),
                 table_name VARCHAR2(250),
                 rows_imported NUMBER(19),
-                PRIMARY KEY (data_file_name, batch_number, schema_name, table_name)
+                PRIMARY KEY (migration_uuid, data_file_name, batch_number, schema_name, table_name)
             );
-    ALTER TABLE ybvoyager_metadata.ybvoyager_import_data_batches_metainfo_v2
-       ADD migration_uuid VARCHAR2(36);
 
     CREATE TABLE ybvoyager_metadata.ybvoyager_import_data_event_channels_metainfo (
                 migration_uuid VARCHAR2(36),
@@ -511,8 +510,6 @@ In this scenario, the [import data status](#import-data-status) command reports 
 For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/yb-voyager/issues/360).
 
     {{< /warning >}}
-
-1. Stop [archive changes](#archive-changes-optional).
 
 ### Switch over to the fall forward (Optional)
 
