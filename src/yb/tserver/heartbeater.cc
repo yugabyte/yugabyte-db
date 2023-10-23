@@ -399,6 +399,15 @@ Status Heartbeater::Thread::TryHeartbeat() {
     auto capabilities = Capabilities();
     *req.mutable_registration()->mutable_capabilities() =
         google::protobuf::RepeatedField<CapabilityId>(capabilities.begin(), capabilities.end());
+    auto* resources = req.mutable_registration()->mutable_resources();
+    resources->set_core_count(base::NumCPUs());
+    auto tracker =
+        server_->tablet_manager()->tablet_memory_manager()->tablets_overhead_mem_tracker();
+    // Only set the tablet overhead limit if the tablet overheads memory tracker exists and has a
+    // limit set.  The flag to set the memory tracker's limit is tablet_overhead_size_percentage.
+    if (tracker && tracker->has_limit()) {
+      resources->set_tablet_overhead_ram_in_bytes(tracker->limit());
+    }
   }
 
   if (last_hb_response_.needs_full_tablet_report()) {

@@ -1367,7 +1367,7 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
             // calculate the number of primary (non-read-replica) tablet servers until that happens.
             while (true) {
               const auto s =
-                  CreateGlobalTransactionStatusTableIfNeeded(/* rpc */ nullptr, local_epoch);
+                  CreateGlobalTransactionStatusTableIfNotPresent(/* rpc */ nullptr, local_epoch);
               if (s.ok()) {
                 break;
               }
@@ -3645,11 +3645,6 @@ TSDescriptorVector CatalogManager::GetAllLiveNotBlacklistedTServers() const {
 
 namespace {
 
-size_t GetNumReplicasFromPlacementInfo(const PlacementInfoPB& placement_info) {
-  return placement_info.num_replicas() > 0 ?
-      placement_info.num_replicas() : FLAGS_replication_factor;
-}
-
 std::string GetStatefulServiceTableName(const StatefulServiceKind& service_kind) {
   return ToLowerCase(StatefulServiceKind_Name(service_kind)) + "_table";
 }
@@ -3660,8 +3655,8 @@ Status CatalogManager::CanAddPartitionsToTable(
   TSDescriptorVector ts_descs;
   master_->ts_manager()->GetAllLiveDescriptors(&ts_descs);
   auto max_tablets = FLAGS_max_create_tablets_per_ts * ts_descs.size();
-  auto num_replicas = GetNumReplicasFromPlacementInfo(placement_info);
-  if (num_replicas > 1 && max_tablets > 0 && desired_partitions > max_tablets) {
+  auto replicas_per_tablet = GetNumReplicasOrGlobalReplicationFactor(placement_info);
+  if (replicas_per_tablet > 1 && max_tablets > 0 && desired_partitions > max_tablets) {
     std::string msg = Substitute("The requested number of tablets ($0) is over the permitted "
                                  "maximum ($1)", desired_partitions, max_tablets);
     return STATUS(InvalidArgument, msg);
@@ -3685,34 +3680,13 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   } else {
     LOG(INFO) << "CreateTable from " << RequestorString(rpc) << ": " << orig_req->name();
   }
-
-  const bool is_transactional = orig_req->schema().table_properties().is_transactional();
-  // If this is a transactional table, we need to create the transaction status table (if it does
-  // not exist already).
-  if (is_transactional && (!is_pg_catalog_table || !FLAGS_create_initial_sys_catalog_snapshot)) {
-    Status s = CreateGlobalTransactionStatusTableIfNeeded(rpc, epoch);
-    if (!s.ok()) {
-      return s.CloneAndPrepend("Error while creating transaction status table");
-    }
-  } else {
-    VLOG(1)
-        << "Not attempting to create a transaction status table:\n"
-        << "  " << EXPR_VALUE_FOR_LOG(is_transactional) << "\n "
-        << "  " << EXPR_VALUE_FOR_LOG(is_pg_catalog_table) << "\n "
-        << "  " << EXPR_VALUE_FOR_LOG(FLAGS_create_initial_sys_catalog_snapshot);
-  }
-
-  // If this is a transactional table and there is a associated tablespace, try to create a
-  // local transaction status table for the tablespace if there is a placement attached to it
-  // (and if it does not exist already).
+  RETURN_NOT_OK(CreateGlobalTransactionStatusTableIfNeededForNewTable(*orig_req, rpc, epoch));
   RETURN_NOT_OK(MaybeCreateLocalTransactionTable(*orig_req, rpc, epoch));
 
   if (is_pg_catalog_table) {
     // No batching for migration.
     return CreateYsqlSysTable(orig_req, resp, epoch);
   }
-
-  const char* const object_type = PROTO_PTR_IS_TABLE(orig_req) ? "table" : "index";
 
   // Copy the request, so we can fill in some defaults.
   CreateTableRequestPB req = *orig_req;
@@ -3829,8 +3803,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
-  const bool is_replication_info_set = IsReplicationInfoSet(req.replication_info());
-  if (is_replication_info_set && req.table_type() == PGSQL_TABLE_TYPE) {
+  if (IsReplicationInfoSet(req.replication_info()) && req.table_type() == PGSQL_TABLE_TYPE) {
     const Status s = STATUS(InvalidArgument, "Cannot set placement policy for YSQL tables "
         "use Tablespaces instead");
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
@@ -3843,6 +3816,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   int num_tablets = VERIFY_RESULT(CalculateNumTabletsForTableCreation(req, schema, placement_info));
   Status s = CanAddPartitionsToTable(num_tablets, placement_info);
+  if (s.ok()) {
+    s = CanCreateTabletReplicas(num_tablets, replication_info, GetAllLiveNotBlacklistedTServers());
+  }
   if (!s.ok()) {
     LOG(WARNING) << s;
     return SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s);
@@ -3861,8 +3837,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // For index table, populate the index info.
   IndexInfoPB index_info;
 
-  const bool index_backfill_enabled =
-      IsIndexBackfillEnabled(orig_req->table_type(), is_transactional);
+  const bool index_backfill_enabled = IsIndexBackfillEnabled(
+      orig_req->table_type(), orig_req->schema().table_properties().is_transactional());
   if (req.has_index_info()) {
     // Current message format.
     index_info.CopyFrom(req.index_info());
@@ -4263,8 +4239,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
-  LOG(INFO) << "Successfully created " << object_type << " " << table->ToString() << " in "
-            << ns->ToString() << " per request from " << RequestorString(rpc);
+  LOG(INFO) << Format("Successfully created $0 $1 in $2 per request from $3",
+                      PROTO_PTR_IS_TABLE(orig_req) ? "table" : "index",
+                      table->ToString(),
+                      ns->ToString(),
+                      RequestorString(rpc));
   // Kick the background task to start asynchronously creating tablets and assigning tablet leaders.
   // If the table is joining an existing colocated group there's no work to do.
   if (!joining_colocation_group) {
@@ -4426,7 +4405,7 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
                                                const TSDescriptorVector& ts_descs,
                                                ValidateReplicationInfoResponsePB* resp) {
   size_t num_live_tservers = ts_descs.size();
-  size_t num_replicas = GetNumReplicasFromPlacementInfo(placement_info);
+  size_t num_replicas = GetNumReplicasOrGlobalReplicationFactor(placement_info);
   Status s;
   string msg;
 
@@ -4736,7 +4715,27 @@ Status CatalogManager::CreateLocalTransactionStatusTableIfNeeded(
       rpc, table_name, &tablespace_id, epoch, nullptr /* replication_info */);
 }
 
-Status CatalogManager::CreateGlobalTransactionStatusTableIfNeeded(
+Status CatalogManager::CreateGlobalTransactionStatusTableIfNeededForNewTable(
+  const CreateTableRequestPB& req, rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  const bool is_pg_catalog_table =
+      req.table_type() == PGSQL_TABLE_TYPE && req.is_pg_catalog_table();
+  const bool is_transactional = req.schema().table_properties().is_transactional();
+  // If this is a transactional table, we need to create the transaction status table (if it does
+  // not exist already).
+  if (is_transactional && (!is_pg_catalog_table || !FLAGS_create_initial_sys_catalog_snapshot)) {
+    RETURN_NOT_OK_PREPEND(
+                          CreateGlobalTransactionStatusTableIfNotPresent(rpc, epoch),
+        "Error while creating transaction status table");
+  } else {
+    VLOG(1) << "Not attempting to create a transaction status table:\n"
+            << "  " << EXPR_VALUE_FOR_LOG(is_transactional) << "\n "
+            << "  " << EXPR_VALUE_FOR_LOG(is_pg_catalog_table) << "\n "
+            << "  " << EXPR_VALUE_FOR_LOG(FLAGS_create_initial_sys_catalog_snapshot);
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::CreateGlobalTransactionStatusTableIfNotPresent(
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
   Status s = CreateTransactionStatusTableInternal(
       rpc, kGlobalTransactionsTableName, nullptr /* tablespace_id */, epoch,
@@ -11308,7 +11307,7 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
                                                          consensus::RaftConfigPB* config,
                                                          CMPerTableLoadState* per_table_state,
                                                          CMGlobalLoadState* global_state) {
-  size_t nreplicas = GetNumReplicasFromPlacementInfo(placement_info);
+  size_t nreplicas = GetNumReplicasOrGlobalReplicationFactor(placement_info);
   size_t ntservers = ts_descs.size();
   // Keep track of servers we've already selected, so that we don't attempt to
   // put two replicas on the same host.
@@ -11631,6 +11630,9 @@ Status CatalogManager::BuildLocationsForSystemTablet(
 
 Status CatalogManager::MaybeCreateLocalTransactionTable(
     const CreateTableRequestPB& request, rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  // If this is a transactional table and there is a associated tablespace, try to create a
+  // local transaction status table for the tablespace if there is a placement attached to it
+  // (and if it does not exist already).
   const bool is_transactional = request.schema().table_properties().is_transactional();
   if (GetAtomicFlag(&FLAGS_auto_create_local_transaction_tables)) {
     if (is_transactional && request.has_tablespace_id()) {
@@ -12278,7 +12280,7 @@ Result<size_t> CatalogManager::GetReplicationFactor() {
   DCHECK(cluster_config) << "Missing cluster config for master!";
   auto l = cluster_config->LockForRead();
   const ReplicationInfoPB& replication_info = l->pb.replication_info();
-  return GetNumReplicasFromPlacementInfo(replication_info.live_replicas());
+  return GetNumReplicasOrGlobalReplicationFactor(replication_info.live_replicas());
 }
 
 
@@ -12286,7 +12288,7 @@ Result<size_t> CatalogManager::GetTableReplicationFactor(const TableInfoPtr& tab
   auto replication_info = CatalogManagerUtil::GetTableReplicationInfo(
       table, GetTablespaceManager(), ClusterConfig()->LockForRead()->pb.replication_info());
   if (replication_info.has_live_replicas()) {
-    return GetNumReplicasFromPlacementInfo(replication_info.live_replicas());
+    return GetNumReplicasOrGlobalReplicationFactor(replication_info.live_replicas());
   }
   return FLAGS_replication_factor;
 }
@@ -12321,11 +12323,8 @@ void CatalogManager::GetExpectedNumberOfReplicasForTable(
     const scoped_refptr<TableInfo>& table, int* num_live_replicas, int* num_read_replicas) {
   auto l = ClusterConfig()->LockForRead();
   auto replication_info = CatalogManagerUtil::GetTableReplicationInfo(
-      table,
-      GetTablespaceManager(),
-      ClusterConfig()->LockForRead()->pb.replication_info());
-  *num_live_replicas =
-      narrow_cast<int>(GetNumReplicasFromPlacementInfo(replication_info.live_replicas()));
+      table, GetTablespaceManager(), l->pb.replication_info());
+  *num_live_replicas = GetNumReplicasOrGlobalReplicationFactor(replication_info.live_replicas());
   for (const auto& read_replica_placement_info : replication_info.read_replicas()) {
     *num_read_replicas += read_replica_placement_info.num_replicas();
   }

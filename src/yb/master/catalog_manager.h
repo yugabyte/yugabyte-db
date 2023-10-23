@@ -73,6 +73,7 @@
 #include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/system_tablet.h"
 #include "yb/master/table_index.h"
+#include "yb/master/tablet_limits.h"
 #include "yb/master/tablet_split_candidate_filter.h"
 #include "yb/master/tablet_split_driver.h"
 #include "yb/master/tablet_split_manager.h"
@@ -266,18 +267,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TablespaceId& tablespace_id) EXCLUDES(mutex_);
 
   // Create a local transaction status table for a tablespace if needed
-  // (i.e. if it does not exist already).
+  // (i.e., if it does not exist already).
   //
   // This is called during CreateTable if the table has transactions enabled and is part
   // of a tablespace with a placement set.
   Status CreateLocalTransactionStatusTableIfNeeded(
       rpc::RpcContext* rpc, const TablespaceId& tablespace_id, const LeaderEpoch& epoch)
       EXCLUDES(mutex_);
-
-  // Create the global transaction status table if needed (i.e. if it does not exist already).
-  //
-  // This is called at the end of CreateTable if the table has transactions enabled.
-  Status CreateGlobalTransactionStatusTableIfNeeded(rpc::RpcContext *rpc, const LeaderEpoch& epoch);
 
   // Get tablet ids of the global transaction status table.
   Status GetGlobalTransactionStatusTablets(
@@ -2977,6 +2973,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   void ResetCachedCatalogVersions()
       EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
   Status GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap* versions);
+
+  // Create the global transaction status table if needed (i.e. if it does not exist already).
+  Status CreateGlobalTransactionStatusTableIfNeededForNewTable(
+      const CreateTableRequestPB& req, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+  Status CreateGlobalTransactionStatusTableIfNotPresent(
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};

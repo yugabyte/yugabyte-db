@@ -215,7 +215,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     auto inserted = tablet_map_checkout->emplace(tablet->tablet_id(), tablet).second;
     if (!inserted) {
       return STATUS_FORMAT(
-          IllegalState, "Loaded tablet that already in map: $0", tablet->tablet_id());
+          IllegalState, "Loaded tablet already in tablet map: $0", tablet->tablet_id());
     }
 
     if (metadata.hosted_tables_mapped_by_parent_id()) {

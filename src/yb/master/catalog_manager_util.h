@@ -239,5 +239,10 @@ inline bool IsTable(const SysTablesEntryPB& pb) {
   return !IsIndex(pb);
 }
 
+// Gets the number of tablet replicas for the placement specified in the PlacementInfoPB.  If the
+// PlacementInfoPB does not set the number of tablet replicas to create for the placement, default
+// to the replication_factor flag.
+int32_t GetNumReplicasOrGlobalReplicationFactor(const PlacementInfoPB& placement_info);
+
 } // namespace master
 } // namespace yb

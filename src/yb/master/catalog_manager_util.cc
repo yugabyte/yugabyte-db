@@ -33,6 +33,8 @@ TAG_FLAG(balancer_load_max_standard_deviation, advanced);
 
 DECLARE_bool(transaction_tables_use_preferred_zones);
 
+DECLARE_int32(replication_factor);
+
 namespace yb {
 namespace master {
 
@@ -555,6 +557,11 @@ Result<bool> CMPerTableLoadState::CompareReplicaLoads(
 void CMPerTableLoadState::SortLoad() {
   Comparator comp(this);
   std::sort(sorted_replica_load_.begin(), sorted_replica_load_.end(), comp);
+}
+
+int32_t GetNumReplicasOrGlobalReplicationFactor(const PlacementInfoPB& placement_info) {
+  return placement_info.num_replicas() > 0 ? placement_info.num_replicas()
+                                           : FLAGS_replication_factor;
 }
 
 } // namespace master

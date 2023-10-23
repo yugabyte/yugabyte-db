@@ -118,6 +118,7 @@ set(MASTER_SRCS
   sys_catalog_writer.cc
   system_tablet.cc
   table_index.cc
+  tablet_limits.cc
   tablet_split_manager.cc
   tasks_tracker.cc
   ts_descriptor.cc
@@ -234,6 +235,7 @@ ADD_YB_TEST(restore_sys_catalog_state_test)
 ADD_YB_TEST(cluster_balance_preferred_leader-test)
 ADD_YB_TEST(master_xrepl-test)
 ADD_YB_TEST(sys_catalog_xrepl-test)
+ADD_YB_TEST(tablet_limits_test)
 
 # Actual master executable. In LTO mode, can also act as the tablet server if executed through a
 # symlink named as the tablet server executable.
