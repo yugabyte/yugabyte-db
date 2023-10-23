@@ -36,7 +36,6 @@
 #include <rapidjson/error/en.h>
 #include <google/protobuf/message.h>
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/escaping.h"
 
 #include "yb/util/logging.h"
@@ -54,7 +53,6 @@ using rapidjson::Value;
 using std::string;
 using std::vector;
 using std::unordered_set;
-using strings::Substitute;
 
 namespace yb {
 
@@ -78,7 +76,7 @@ Status JsonReader::ExtractBool(const Value* object,
   const Value* val;
   RETURN_NOT_OK(ExtractField(object, field, &val));
   if (PREDICT_FALSE(!val->IsBool())) {
-    return STATUS(InvalidArgument, Substitute(
+    return STATUS(InvalidArgument, Format(
         "Wrong type during field extraction: expected bool but got $0",
         val->GetType()));
   }
@@ -92,7 +90,7 @@ Status JsonReader::ExtractInt32(const Value* object,
   const Value* val;
   RETURN_NOT_OK(ExtractField(object, field, &val));
   if (PREDICT_FALSE(!val->IsInt())) {
-    return STATUS(InvalidArgument, Substitute(
+    return STATUS(InvalidArgument, Format(
         "Wrong type during field extraction: expected int32 but got $0",
         val->GetType()));
   }
@@ -106,11 +104,25 @@ Status JsonReader::ExtractInt64(const Value* object,
   const Value* val;
   RETURN_NOT_OK(ExtractField(object, field, &val));
   if (PREDICT_FALSE(!val->IsInt64())) {
-    return STATUS(InvalidArgument, Substitute(
+    return STATUS(InvalidArgument, Format(
         "Wrong type during field extraction: expected int64 but got $0",
         val->GetType()));
   }
   *result = val->GetInt64();
+  return Status::OK();
+}
+
+Status JsonReader::ExtractUInt32(const Value* object,
+                                 const char* field,
+                                 uint32_t* result) const {
+  const Value* val;
+  RETURN_NOT_OK(ExtractField(object, field, &val));
+  if (PREDICT_FALSE(!val->IsUint())) {
+    return STATUS(InvalidArgument, Format(
+        "Wrong type during field extraction: expected uint32 but got $0",
+        val->GetType()));
+  }
+  *result = val->GetUint();
   return Status::OK();
 }
 
@@ -120,7 +132,7 @@ Status JsonReader::ExtractUInt64(const Value* object,
   const Value* val;
   RETURN_NOT_OK(ExtractField(object, field, &val));
   if (PREDICT_FALSE(!val->IsUint64())) {
-    return STATUS(InvalidArgument, Substitute(
+    return STATUS(InvalidArgument, Format(
         "Wrong type during field extraction: expected uint64 but got $0",
         val->GetType()));
   }
@@ -138,7 +150,7 @@ Status JsonReader::ExtractString(const Value* object,
       *result = "";
       return Status::OK();
     }
-    return STATUS(InvalidArgument, Substitute(
+    return STATUS(InvalidArgument, Format(
         "Wrong type during field extraction: expected string but got $0",
         val->GetType()));  }
   result->assign(val->GetString());
@@ -151,7 +163,7 @@ Status JsonReader::ExtractObject(const Value* object,
   const Value* val = nullptr;
   RETURN_NOT_OK(ExtractField(object, field, &val));
   if (PREDICT_FALSE(!val->IsObject())) {
-    return STATUS(InvalidArgument, Substitute(
+    return STATUS(InvalidArgument, Format(
         "Wrong type during field extraction: expected object but got $0",
         val->GetType()));  }
   *result = val;
@@ -164,7 +176,7 @@ Status JsonReader::ExtractObjectArray(const Value* object,
   const Value* val;
   RETURN_NOT_OK(ExtractField(object, field, &val));
   if (PREDICT_FALSE(!val->IsArray())) {
-    return STATUS(InvalidArgument, Substitute(
+    return STATUS(InvalidArgument, Format(
         "Wrong type during field extraction: expected object array but got $0",
         val->GetType()));  }
   for (Value::ConstValueIterator iter = val->Begin(); iter != val->End(); ++iter) {
@@ -213,14 +225,14 @@ Status JsonReader::ExtractProtobufField(const Value& value,
         const EnumValueDescriptor* const val =
             DCHECK_NOTNULL(field->enum_type())->FindValueByName(value.GetString());
         SCHECK(val, InvalidArgument,
-            Substitute("Cannot parse enum value $0", value.GetString()));
+            Format("Cannot parse enum value $0", value.GetString()));
         reflection->SetEnum(pb, field, val);
       }
       break;
     case FieldDescriptor::CPPTYPE_STRING: {
         string unescaped, error;
         SCHECK(strings::CUnescape(value.GetString(), &unescaped, &error), InvalidArgument,
-            Substitute("Cannot unescape string '$0' error: '$1'", value.GetString(), error));
+            Format("Cannot unescape string '$0' error: '$1'", value.GetString(), error));
         reflection->SetString(pb, field, unescaped);
       }
       break;
@@ -228,7 +240,7 @@ Status JsonReader::ExtractProtobufField(const Value& value,
       RETURN_NOT_OK(ExtractProtobufMessage(value, reflection->MutableMessage(pb, field)));
       break;
     default:
-      return STATUS(NotSupported, Substitute("Unknown cpp_type $0", field->cpp_type()));
+      return STATUS(NotSupported, Format("Unknown cpp_type $0", field->cpp_type()));
   }
   return Status::OK();
 }
@@ -263,14 +275,14 @@ Status JsonReader::ExtractProtobufRepeatedField(const Value& value,
         const EnumValueDescriptor* const val =
             DCHECK_NOTNULL(field->enum_type())->FindValueByName(value.GetString());
         SCHECK(val, InvalidArgument,
-            Substitute("Cannot parse enum value $0", value.GetString()));
+            Format("Cannot parse enum value $0", value.GetString()));
         reflection->AddEnum(pb, field, val);
       }
       break;
     case FieldDescriptor::CPPTYPE_STRING: {
         string unescaped, error;
         SCHECK(strings::CUnescape(value.GetString(), &unescaped, &error), InvalidArgument,
-            Substitute("Cannot unescape string '$0' error: '$1'", value.GetString(), error));
+            Format("Cannot unescape string '$0' error: '$1'", value.GetString(), error));
         reflection->AddString(pb, field, unescaped);
       }
       break;
@@ -278,7 +290,7 @@ Status JsonReader::ExtractProtobufRepeatedField(const Value& value,
       RETURN_NOT_OK(ExtractProtobufMessage(value, reflection->AddMessage(pb, field)));
       break;
     default:
-      return STATUS(NotSupported, Substitute("Unknown cpp_type $0", field->cpp_type()));
+      return STATUS(NotSupported, Format("Unknown cpp_type $0", field->cpp_type()));
   }
   return Status::OK();
 }
