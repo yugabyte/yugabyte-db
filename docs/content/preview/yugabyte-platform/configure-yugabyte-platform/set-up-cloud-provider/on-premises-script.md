@@ -1,5 +1,5 @@
 ---
-title: Manually provision on-premises nodes
+title: Manually provision on-premises nodes using a script
 headerTitle: Manually provision on-premises nodes
 linkTitle: Manually provision on-prem nodes
 description: Provision the on-premises nodes manually.
