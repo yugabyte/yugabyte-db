@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-Use the YugabyteDB Managed Terraform Provider to deploy and manage universes programmatically. Some examples of what you can accomplish using this provider include:
+Use the YugabyteDB Managed Terraform Provider to deploy and manage clusters programmatically. Some examples of what you can accomplish using this provider include:
 
 - Deploy and manage clusters
 - Pause and resume clusters automatically, based on a schedule or external events

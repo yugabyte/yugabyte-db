@@ -15,7 +15,7 @@ type: docs
 
 The YugabyteDB Anywhere REST API allows you to deploy and manage universes programmatically. Some examples of what you can accomplish using this API include:
 
-- Create and manage providers
+- Create and manage YBA provider configurations
 - Deploy and manage universes
 - Pause and resume universes
 - Perform software upgrades
