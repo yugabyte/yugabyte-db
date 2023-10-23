@@ -129,10 +129,10 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     os = IS_LINUX ? "linux" : "darwin";
     String systemArch = System.getProperty("os.arch");
 
-    if (systemArch.equalsIgnoreCase("x86") || systemArch.equalsIgnoreCase("amd64")) {
-      arch = "x86_64";
+    if (systemArch.equalsIgnoreCase("aarch64")) {
+      arch = "arm64";
     } else {
-      arch = "aarch64";
+      arch = "x86_64";
     }
 
     String downloadURL = String.format(DOWNLOAD_URL, os, arch);
