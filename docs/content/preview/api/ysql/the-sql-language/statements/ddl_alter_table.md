@@ -213,7 +213,7 @@ If the change requires data on disk to change, a full table rewrite will be done
 - If there might be concurrent DMLs, the user can first rename the table to fail the DMLs, alter the column data type, and then rename the table again.
 - The operation preserves split properties for hash-partitioned tables and hash-partitioned secondary indexes. For range-partitioned tables (and secondary indexes), split properties are only preserved if the altered column is not part of the table's (or secondary index's) range key.
 
-Example:
+Following is an example of alter type with table rewrite:
 
 ```sql
 CREATE TABLE test (id BIGSERIAL PRIMARY KEY, a VARCHAR(50));
