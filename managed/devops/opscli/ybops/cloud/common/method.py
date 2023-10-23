@@ -461,7 +461,7 @@ class AddAuthorizedKey(AbstractInstancesMethod):
         if args.public_key_content == "":
             # public key is taken by parsing private key file in cases when
             # a customer uploads only private key file
-            public_key_content = get_public_key_content(args.private_key_file)
+            public_key_content = get_public_key_content(args.new_private_key_file)
         updated_vars = {
             "command": "add-authorized-key",
             "public_key_content": public_key_content
