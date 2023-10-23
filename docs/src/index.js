@@ -293,7 +293,7 @@ $(document).ready(() => {
    */
   (() => {
     const imgPopupData = document.createElement('div');
-    const imageClick = document.querySelectorAll('.td-content > img:not(.icon), .td-content p > img');
+    const imageClick = document.querySelectorAll('.td-content > img:not(.icon), .td-content p > img, .td-content table img');
     imgPopupData.className = 'img-popup-data';
 
     let popupCounter = 1;
