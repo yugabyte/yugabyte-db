@@ -3760,7 +3760,7 @@
         },
         "tags" : {
           "items" : {
-            "enum" : [ "PUBLIC", "INTERNAL", "YBM", "BETA", "UIDriven" ],
+            "enum" : [ "PUBLIC", "INTERNAL", "YBM", "BETA", "UIDriven", "FEATURE_FLAG" ],
             "type" : "string"
           },
           "type" : "array"

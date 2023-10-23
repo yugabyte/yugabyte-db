@@ -1041,7 +1041,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "New RBAC Authz feature",
           "New RBAC Authz feature with custom role creation",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.INTERNAL, ConfKeyTags.FEATURE_FLAG));
   public static final ConfKeyInfo<Boolean> enableVMOSPatching =
       new ConfKeyInfo<>(
           "yb.provider.vm_os_patching",
