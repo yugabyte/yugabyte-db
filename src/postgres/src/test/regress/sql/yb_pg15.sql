@@ -192,3 +192,13 @@ CREATE TABLE serial_test (k int, v SERIAL);
 INSERT INTO serial_test VALUES (1), (1), (1);
 SELECT * FROM serial_test ORDER BY v;
 SELECT last_value, is_called FROM public.serial_test_v_seq;
+
+-- lateral join
+CREATE TABLE tlateral1 (a int, b int, c varchar);
+INSERT INTO tlateral1 SELECT i, i % 25, to_char(i % 4, 'FM0000') FROM generate_series(0, 599, 2) i;
+CREATE TABLE tlateral2 (a int, b int, c varchar);
+INSERT INTO tlateral2 SELECT i % 25, i, to_char(i % 4, 'FM0000') FROM generate_series(0, 599, 3) i;
+ANALYZE tlateral1, tlateral2;
+-- YB_TODO: pg15 used merge join, whereas hash join is expected.
+-- EXPLAIN (COSTS FALSE) SELECT * FROM tlateral1 t1 LEFT JOIN LATERAL (SELECT t2.a AS t2a, t2.c AS t2c, t2.b AS t2b, t3.b AS t3b, least(t1.a,t2.a,t3.b) FROM tlateral1 t2 JOIN tlateral2 t3 ON (t2.a = t3.b AND t2.c = t3.c)) ss ON t1.a = ss.t2a WHERE t1.b = 0 ORDER BY t1.a;
+SELECT * FROM tlateral1 t1 LEFT JOIN LATERAL (SELECT t2.a AS t2a, t2.c AS t2c, t2.b AS t2b, t3.b AS t3b, least(t1.a,t2.a,t3.b) FROM tlateral1 t2 JOIN tlateral2 t3 ON (t2.a = t3.b AND t2.c = t3.c)) ss ON t1.a = ss.t2a WHERE t1.b = 0 ORDER BY t1.a;
