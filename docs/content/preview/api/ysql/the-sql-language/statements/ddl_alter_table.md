@@ -197,7 +197,6 @@ Change the type of an existing column. The following semantics apply:
 
 If the change doesn't require data on disk to change, concurrent DMLs to the table can be safely performed as shown in the following example:
 
-Example:
 
 ```sql
 CREATE TABLE test (id BIGSERIAL PRIMARY KEY, a VARCHAR(50));
