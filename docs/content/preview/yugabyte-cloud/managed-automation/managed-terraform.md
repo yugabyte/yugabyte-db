@@ -21,8 +21,6 @@ Use the YugabyteDB Managed Terraform Provider to deploy and manage universes pro
 - Change backup and maintenance schedules
 - Configure monitoring and alerts
 
-The provider documentation includes guides to help you get started.
-
 {{< youtube id="cHPMDLeVkFU?si=GcZBrV27HDqPpezs" title="YugabyteDB Managed Terraform Provider" >}}
 
 {{< sections/2-boxes >}}
@@ -30,7 +28,7 @@ The provider documentation includes guides to help you get started.
     title="Get Started"
     description="Manage YugabyteDB Managed using the Terraform Provider."
     buttonText="Provider Documentation"
-    buttonUrl="https://registry.terraform.io/providers/yugabyte/yba/latest/docs/"
+    buttonUrl="https://registry.terraform.io/providers/yugabyte/ybm/latest/docs/"
   >}}
 
 {{< /sections/2-boxes >}}
