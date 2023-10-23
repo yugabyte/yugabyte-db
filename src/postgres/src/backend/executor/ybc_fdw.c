@@ -148,7 +148,7 @@ ybcGetForeignPaths(PlannerInfo *root,
 											  startup_cost,
 											  total_cost,
 											  NIL,  /* no pathkeys */
-											  NULL, /* no outer rel either */
+											  baserel->lateral_relids,
 											  NULL, /* no extra plan */
 											  NULL  /* no options yet */ ));
 
