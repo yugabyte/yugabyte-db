@@ -144,7 +144,7 @@ libraryDependencies ++= Seq(
   "org.flywaydb" %% "flyway-play" % "7.37.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
-  "org.yaml" % "snakeyaml" % "2.0",
+  "org.yaml" % "snakeyaml" % "2.1",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
   "org.springframework.security" % "spring-security-core" % "5.8.3",
   "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.129",
@@ -459,7 +459,7 @@ dependencyOverrides += "org.reflections" % "reflections" % "0.9.12"
 dependencyOverrides += "org.scala-lang.modules" %% "scala-java8-compat" % "1.0.2"
 dependencyOverrides += "org.scala-lang.modules" %% "scala-xml" % "2.1.0"
 
-val jacksonVersion         = "2.14.2"
+val jacksonVersion         = "2.15.3"
 
 val jacksonLibs = Seq(
   "com.fasterxml.jackson.core"       % "jackson-core",

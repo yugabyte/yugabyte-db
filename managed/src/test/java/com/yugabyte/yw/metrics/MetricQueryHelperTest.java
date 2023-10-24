@@ -29,7 +29,7 @@ import com.yugabyte.yw.metrics.data.AlertState;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.MetricConfigDefinition;
 import java.io.IOException;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -392,7 +392,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
         AlertData.builder()
             .activeAt(
                 ZonedDateTime.parse("2018-07-04T20:27:12.60602144+02:00")
-                    .withZoneSameInstant(ZoneId.of("UTC")))
+                    .withZoneSameInstant(ZoneOffset.UTC))
             .annotations(ImmutableMap.of("summary", "Clock Skew Alert for universe Test is firing"))
             .labels(
                 ImmutableMap.of(
