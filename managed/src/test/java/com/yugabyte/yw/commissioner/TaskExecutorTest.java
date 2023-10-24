@@ -35,6 +35,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
@@ -105,7 +106,12 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.RollbackKubernetesUpgrade,
           TaskType.SoftwareUpgrade,
           TaskType.SoftwareUpgradeYB,
-          TaskType.VMImageUpgrade);
+          TaskType.VMImageUpgrade,
+          TaskType.GFlagsUpgrade,
+          TaskType.RebootUniverse,
+          TaskType.RestartUniverse,
+          TaskType.ThirdpartySoftwareUpgrade,
+          TaskType.FinalizeUpgrade);
 
   @Override
   protected Application provideApplication() {
@@ -637,7 +643,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   @Test
   public void testTaskValidationFailure() {
     ITask task = mockTaskCommon(false);
-    doThrow(new IllegalArgumentException("Validation failed")).when(task).validateParams();
-    assertThrows(IllegalArgumentException.class, () -> taskExecutor.createRunnableTask(task));
+    doThrow(new RuntimeException("Validation failed")).when(task).validateParams(true);
+    assertThrows(PlatformServiceException.class, () -> taskExecutor.createRunnableTask(task));
   }
 }

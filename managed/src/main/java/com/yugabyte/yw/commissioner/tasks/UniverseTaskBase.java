@@ -244,8 +244,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   // Tasks that modify cluster placement.
   // If one of such tasks is failed, we should not allow starting most of other tasks,
   // until failed task is retried.
-  private static final Set<TaskType> PLACEMENT_MODIFICATION_TASKS =
+  protected static final Set<TaskType> PLACEMENT_MODIFICATION_TASKS =
       ImmutableSet.of(
+          TaskType.CreateUniverse,
+          TaskType.ReadOnlyClusterCreate,
+          TaskType.EditUniverse,
           TaskType.AddNodeToUniverse,
           TaskType.RemoveNodeFromUniverse,
           TaskType.DeleteNodeFromUniverse,
@@ -254,17 +257,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.StartNodeInUniverse,
           TaskType.StopNodeInUniverse,
           TaskType.ResizeNode,
-          // Kubernetes Upgrade Tasks, found all subclasses of KubernetesUpgradeTaskBase
           TaskType.KubernetesOverridesUpgrade,
           TaskType.GFlagsKubernetesUpgrade,
           TaskType.SoftwareKubernetesUpgrade,
           TaskType.EditKubernetesUniverse,
           TaskType.RestartUniverseKubernetesUpgrade,
           TaskType.CertsRotateKubernetesUpgrade,
-          TaskType.ConfigureDBApisKubernetes);
+          TaskType.ConfigureDBApisKubernetes,
+          TaskType.GFlagsUpgrade,
+          TaskType.SoftwareUpgrade,
+          TaskType.SoftwareUpgradeYB,
+          TaskType.FinalizeUpgrade,
+          TaskType.RestartUniverse,
+          TaskType.RebootNodeInUniverse,
+          TaskType.VMImageUpgrade,
+          TaskType.ThirdpartySoftwareUpgrade);
 
   // Tasks that are allowed to run if cluster placement modification task failed.
-  private static final Set<TaskType> SAFE_TO_RUN_IF_UNIVERSE_BROKEN =
+  protected static final Set<TaskType> SAFE_TO_RUN_IF_UNIVERSE_BROKEN =
       ImmutableSet.of(
           TaskType.CreateBackup,
           TaskType.BackupUniverse,
@@ -370,6 +380,34 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   @Override
   protected UniverseTaskParams taskParams() {
     return (UniverseTaskParams) taskParams;
+  }
+
+  @Override
+  public void validateParams(boolean isFirstTry) {
+    if (isFirstTry && taskParams().getUniverseUUID() != null) {
+      Universe.maybeGet(taskParams().getUniverseUUID())
+          .ifPresent(
+              universe -> {
+                TaskType taskType = getTaskExecutor().getTaskType(getClass());
+                if (taskType == null) {
+                  String msg = "TaskType not found for class " + this.getClass().getCanonicalName();
+                  log.error(msg);
+                  throw new IllegalStateException(msg);
+                }
+                UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+                if (universeDetails.placementModificationTaskUuid != null
+                    && !SAFE_TO_RUN_IF_UNIVERSE_BROKEN.contains(taskType)) {
+                  System.out.println("------>>>> " + universeDetails.placementModificationTaskUuid);
+                  String msg =
+                      String.format(
+                          "Universe %s placement update failed - can't run %s task until placement"
+                              + " update succeeds",
+                          taskParams().getUniverseUUID(), taskType.name());
+                  log.error(msg);
+                  throw new RuntimeException(msg);
+                }
+              });
+    }
   }
 
   /**

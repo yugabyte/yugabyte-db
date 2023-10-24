@@ -63,13 +63,13 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
   }
 
   @Override
-  public void verifyParams(Universe universe) {
-    verifyParams(universe, null);
+  public void verifyParams(Universe universe, boolean isFirstTry) {
+    verifyParams(universe, null, isFirstTry);
   }
 
   @Override
-  public void verifyParams(Universe universe, NodeDetails.NodeState nodeState) {
-    super.verifyParams(universe, nodeState); // we call verifyParams which will fail
+  public void verifyParams(Universe universe, NodeDetails.NodeState nodeState, boolean isFirstTry) {
+    super.verifyParams(universe, nodeState, isFirstTry); // we call verifyParams which will fail
 
     RuntimeConfGetter runtimeConfGetter =
         StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
@@ -121,7 +121,7 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
       throw new PlatformServiceException(Status.BAD_REQUEST, "No changes!");
     }
     if (flagsProvided(universe)) {
-      verifyGFlags(universe);
+      verifyGFlags(universe, isFirstTry);
     }
   }
 

@@ -41,7 +41,7 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           UserIntent userIntent = cluster.userIntent;
 
           // Verify the request params and fail if invalid
-          taskParams().verifyParams(getUniverse());
+          taskParams().verifyParams(getUniverse(), isFirstTry());
 
           // Update the rootCA in platform to have both old cert and new cert
           // Here in the temporary multi-cert we will have old cert first and new cert later

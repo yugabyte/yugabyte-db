@@ -22,14 +22,18 @@ import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
+import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
+import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
@@ -398,6 +402,18 @@ public class CustomerTaskManager {
         break;
       case VMImageUpgrade:
         taskParams = Json.fromJson(oldTaskParams, VMImageUpgradeParams.class);
+        break;
+      case RestartUniverse:
+        taskParams = Json.fromJson(oldTaskParams, RestartTaskParams.class);
+        break;
+      case RebootUniverse:
+        taskParams = Json.fromJson(oldTaskParams, UpgradeTaskParams.class);
+        break;
+      case ThirdpartySoftwareUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, ThirdpartySoftwareUpgradeParams.class);
+        break;
+      case GFlagsUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, GFlagsUpgradeParams.class);
         break;
       case AddNodeToUniverse:
       case RemoveNodeFromUniverse:
