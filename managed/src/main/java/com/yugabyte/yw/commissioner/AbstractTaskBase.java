@@ -162,11 +162,11 @@ public abstract class AbstractTaskBase implements ITask {
 
   @Override
   public boolean isFirstTry() {
-    return taskParams().getPreviousTaskUUID() == null;
+    return taskParams() == null || taskParams().getPreviousTaskUUID() == null;
   }
 
   @Override
-  public void validateParams() {}
+  public void validateParams(boolean isFirstTry) {}
 
   /**
    * We would try to parse the shell response message as JSON and return JsonNode

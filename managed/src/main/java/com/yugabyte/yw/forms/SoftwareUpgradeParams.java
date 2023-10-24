@@ -34,7 +34,7 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
   }
 
   public void verifyParams(Universe universe, boolean isFirstTry) {
-    super.verifyParams(universe);
+    super.verifyParams(universe, isFirstTry);
 
     if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
       throw new PlatformServiceException(

@@ -712,45 +712,29 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @Override
     public String toString() {
-      return "UserIntent "
-          + "for universe="
-          + universeName
-          + " type="
-          + instanceType
-          + ", spotInstance="
-          + useSpotInstance
-          + ", spotPrice="
-          + spotPrice
-          + ", numNodes="
-          + numNodes
-          + ", prov="
-          + provider
-          + ", provType="
-          + providerType
-          + ", RF="
-          + replicationFactor
-          + ", regions="
-          + regionList
-          + ", pref="
-          + preferredRegion
-          + ", ybVersion="
-          + ybSoftwareVersion
-          + ", accessKey="
-          + accessKeyCode
-          + ", deviceInfo='"
-          + deviceInfo
-          + "', timeSync="
-          + useTimeSync
-          + ", publicIP="
-          + assignPublicIP
-          + ", staticPublicIP="
-          + assignStaticPublicIP
-          + ", tags="
-          + instanceTags
-          + ", masterInstanceType="
-          + masterInstanceType
-          + ", kubernetesOperatorVersion="
-          + kubernetesOperatorVersion;
+      StringBuilder sb = new StringBuilder();
+      sb.append("UserIntent for universe=").append(universeName);
+      sb.append(", type=").append(instanceType);
+      sb.append(", spotInstance=").append(useSpotInstance);
+      sb.append(", useSpotInstance=").append(useSpotInstance);
+      sb.append(", spotPrice=").append(spotPrice);
+      sb.append(", useSpotInstance=").append(useSpotInstance);
+      sb.append(", numNodes=").append(numNodes);
+      sb.append(", prov=").append(provider);
+      sb.append(", provType=").append(providerType);
+      sb.append(", RF=").append(replicationFactor);
+      sb.append(", regions=").append(regionList);
+      sb.append(", pref=").append(preferredRegion);
+      sb.append(", ybVersion=").append(ybSoftwareVersion);
+      sb.append(", accessKey=").append(accessKeyCode);
+      sb.append(", deviceInfo=").append(deviceInfo);
+      sb.append(", timeSync=").append(useTimeSync);
+      sb.append(", publicIP=").append(assignPublicIP);
+      sb.append(", staticPublicIP=").append(assignStaticPublicIP);
+      sb.append(", tags=").append(instanceTags);
+      sb.append(", masterInstanceType=").append(masterInstanceType);
+      sb.append(", kubernetesOperatorVersion=").append(kubernetesOperatorVersion);
+      return sb.toString();
     }
 
     @Override

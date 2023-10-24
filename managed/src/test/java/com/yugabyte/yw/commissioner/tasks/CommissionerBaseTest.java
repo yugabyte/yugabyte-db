@@ -431,10 +431,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         // Abort starts from the first sub-task until there is no more sub-task left.
         int abortPosition = totalSubTaskCount - pendingSubTaskCount;
         if (pendingSubTaskCount > 1) {
-          int originalAbortPosition = expectedSubTaskTypes.size() - pendingSubTaskCount;
           log.info(
-              "Abort position at {} relative to the original subtasks {}",
-              originalAbortPosition,
+              "Abort position at {} in the original subtasks {}",
+              expectedSubTaskTypes.size() - pendingSubTaskCount,
               expectedSubTaskMap);
           setAbortPosition(abortPosition);
         } else {
@@ -458,6 +457,10 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
           // New task UUID for the retry.
           taskUuid = customerTask.getTaskUUID();
           waitForTaskPaused(taskUuid);
+          log.info(
+              "Validating subtasks for next abort position at {} in the original subtasks {}",
+              expectedSubTaskTypes.size() - pendingSubTaskCount + 1,
+              expectedSubTaskMap);
           // Get the task and sub-tasks that are to be executed on retry.
           taskInfo = TaskInfo.getOrBadRequest(taskUuid);
           Map<Integer, List<TaskInfo>> retrySubTaskMap =

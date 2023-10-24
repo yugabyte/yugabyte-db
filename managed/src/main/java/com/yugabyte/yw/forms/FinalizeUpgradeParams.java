@@ -20,8 +20,8 @@ public class FinalizeUpgradeParams extends UpgradeTaskParams {
   }
 
   @Override
-  public void verifyParams(Universe universe) {
-    super.verifyParams(universe);
+  public void verifyParams(Universe universe, boolean isFirstTry) {
+    super.verifyParams(universe, isFirstTry);
   }
 
   public static class Converter extends BaseConverter<FinalizeUpgradeParams> {}
