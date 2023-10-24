@@ -31,6 +31,8 @@ struct DocReadContext {
 
   DocReadContext(const DocReadContext& rhs, const Schema& schema_, SchemaVersion schema_version);
 
+  DocReadContext(const DocReadContext& rhs, const Schema& schema);
+
   DocReadContext(const DocReadContext& rhs, SchemaVersion min_schema_version);
 
   template <class PB>
