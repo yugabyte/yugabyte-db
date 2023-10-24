@@ -6462,6 +6462,8 @@ bool CatalogManager::ShouldAddTableToXClusterReplication(
   }
 
   // Only user created YSQL Indexes should be automatically added to xCluster replication.
+  // For Colocated tables, this function will return false since it is only called on the parent
+  // colocated table which cannot be an index.
   if (pb.colocated() || pb.table_type() != PGSQL_TABLE_TYPE || !IsIndex(pb) ||
       !IsUserCreatedTable(table)) {
     return false;
