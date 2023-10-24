@@ -69,7 +69,7 @@ Version refers to the latest tested version of the integration.
 | Metabase        |         | Full    | [Metabase](../tools/metabase/) |
 | pgAdmin         |         | Full    | [pgAdmin](../tools/pgadmin/) |
 | SQL Workbench/J |         | Full    | [SQL Workbench/J](../tools/sql-workbench/) |
-| TablePlus       |         | Full    | [TablePlus](../tools/tableplus/) |
+| TablePlus       | 2.18    | Full    | [TablePlus](../tools/tableplus/) |
 
 ### Application frameworks
 
@@ -117,8 +117,8 @@ Version refers to the latest tested version of the integration.
 
 | Tool         | Version | Support | Tutorial |
 | :----------- | :------ | :------ | :------- |
-| Apache Atlas | 2.30    | Partial | [Apache Atlas](atlas-ycql/) |
-| Apache Spark | 3.30    | Full    | [Apache Spark](apache-spark/) |
+| Apache Atlas | 2.3.0   | Partial | [Apache Atlas](atlas-ycql/) |
+| Apache Spark | 3.3.0   | Full    | [Apache Spark](apache-spark/) |
 | Jaeger       | 1.43.0  | Full    | [Jaeger](jaeger/) |
 | JanusGraph   | 0.6.2   | Full    | [JanusGraph](janusgraph/) |
 | KairosDB     | 1.3.0   | Full    | [KairosDB](kairosdb/) |

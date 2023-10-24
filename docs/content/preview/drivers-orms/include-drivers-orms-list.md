@@ -37,7 +37,7 @@ private = true
 | PQ Driver  | [v1.10.2](https://github.com/lib/pq/releases/tag/v1.10.2/) | Full | [CRUD](/preview/drivers-orms/go/pq/) |
 | YugabyteDB Go Driver for YCQL | [3.16.3](https://github.com/yugabyte/gocql) | Full | [CRUD](/preview/drivers-orms/go/ycql) |
 | **ORMs** | | | |
-| GORM       |    | Full | [CRUD](/preview/drivers-orms/go/gorm/) |
+| GORM       | [1.9.16](https://github.com/go-gorm/gorm) | Full | [CRUD](/preview/drivers-orms/go/gorm/) |
 | PG         | [10](https://github.com/go-pg/pg) | Full | [CRUD](/preview/drivers-orms/go/pg/) |
 
   {{% /tab %}}
@@ -66,22 +66,22 @@ private = true
 | PostgreSQL node-postgres Driver | [8.7.3](https://www.npmjs.com/package/pg) | Full | [CRUD](/preview/drivers-orms/nodejs/postgres-node-driver/) |
 | YugabyteDB Node.js Driver for YCQL | [4.0.0](https://github.com/yugabyte/cassandra-nodejs-driver) | Full | [CRUD](/preview/drivers-orms/nodejs/ycql/) |
 | **ORMs** | | | |
-| Sequelize | | Full | [CRUD](/preview/drivers-orms/nodejs/sequelize/) |
-| Prisma    | 3.14 | Full | [CRUD](/preview/drivers-orms/nodejs/prisma/) |
+| Sequelize | 6.6.5 | Full | [CRUD](/preview/drivers-orms/nodejs/sequelize/) |
+| Prisma    | 3.14  | Full | [CRUD](/preview/drivers-orms/nodejs/prisma/) |
 
   {{% /tab %}}
 
   {{% tab header="C" lang="c" %}}
 
-| Driver | Support Level | Example apps |
-| :--------- | :------------ | :----------- |
-| libpq C Driver| Full | [CRUD](/preview/drivers-orms/c/ysql/) |
+| Driver        | Version | Support Level | Example apps |
+| :------------ | :------ | :------------ | :----------- |
+| libpq C Driver| 5.11    | Full          | [CRUD](/preview/drivers-orms/c/ysql/) |
 
   {{% /tab %}}
 
   {{% tab header="C++" lang="cpp" %}}
 
-| Driver | Version | Support Level | Example apps |
+| Driver     | Version | Support Level | Example apps |
 | :--------- | :------ | :------------ | :----------- |
 | libpqxx C++ Driver             | | Full | [CRUD](/preview/drivers-orms/cpp/ysql/) |
 | YugabyteDB C++ Driver for YCQL | [2.9.0-yb-10](https://github.com/yugabyte/cassandra-cpp-driver/releases) | Full | [CRUD](/preview/drivers-orms/cpp/ycql/) |
@@ -109,7 +109,7 @@ private = true
 | Pg Gem Driver                   | [1.5.4](https://github.com/ged/ruby-pg) | Full | [CRUD](/preview/drivers-orms/ruby/ysql-pg/) |
 | YugabyteDB Ruby Driver for YCQL | [3.2.3.2](https://github.com/yugabyte/cassandra-ruby-driver) | Full | [CRUD](/preview/drivers-orms/ruby/ycql/) |
 | **ORM**     | | | |
-| Active Record                   | | Full | [CRUD](/preview/drivers-orms/ruby/activerecord/) |
+| Active Record                   | 7.0.4 | Full | [CRUD](/preview/drivers-orms/ruby/activerecord/) |
 
   {{% /tab %}}
 
@@ -117,18 +117,18 @@ private = true
 
 | ORM        | Version | Support Level | Example apps |
 | :--------- | :------ | :------------ | :----------- |
-| Diesel     | 1.42    | Full | [CRUD](/preview/drivers-orms/rust/diesel/) |
+| Diesel     | 1.42    | Full          | [CRUD](/preview/drivers-orms/rust/diesel/) |
 
   {{% /tab %}}
 
   {{% tab header="PHP" lang="php" %}}
 
-|            | Support Level | Example apps |
-| :--------- | :------------ | :----------- |
-| **Driver** | | |
-| php-pgsql Driver | Full | [CRUD](/preview/drivers-orms/php/ysql/) |
-| **ORM**    | | |
-| Laravel          | Full | [CRUD](/preview/drivers-orms/php/laravel/) |
+|                  | Version | Support Level | Example apps |
+| :--------------- | :------ | :------------ | :----------- |
+| **Driver** | | | |
+| php-pgsql Driver |         | Full | [CRUD](/preview/drivers-orms/php/ysql/) |
+| **ORM**    | | | |
+| Laravel          | 8.40    | Full | [CRUD](/preview/drivers-orms/php/laravel/) |
 
   {{% /tab %}}
 
