@@ -278,7 +278,7 @@ METRICS_SNAPSHOT_LIST = [
     "handler_latency_yb_tserver_TabletServerService_Write_count",
     "handler_latency_yb_tserver_TabletServerService_Read_sum",
     "handler_latency_yb_tserver_TabletServerService_Write_sum",
-    "disk_usage", "cpu_usage", "node_up"
+    "disk_usage", "cpu_usage", "node_up", "ysql_conn_mgr"
 ]
 
 # YugaWare configs. These have their own separate subdirectory to preserve our itest flow.
