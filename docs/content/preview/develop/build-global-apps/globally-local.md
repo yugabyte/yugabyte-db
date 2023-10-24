@@ -8,20 +8,20 @@ menu:
   preview:
     identifier: global-apps-federated-tables
     parent: build-global-apps
-    weight: 900
+    weight: 1000
 rightNav:
   hideH3: true
   hideH4: true
 type: docs
 ---
 
-Depending your business needs, you might want to have some data available across multiple geographies and some data just within each geography. Here we discuss a pattern that uses multiple other patterns, [Global Database](./global-database), [Locality-optimized Geo-partition](./locality-optimized-geo-partition), and [Follower Reads](./follower-reads).
+Depending your business needs, you might want to have some data available across multiple geographies and some data just within each geography. Here we discuss a pattern that uses multiple other patterns, [Global Database](../global-database), [Locality-optimized Geo-partition](../locality-optimized-geo-partition), and [Follower Reads](../follower-reads).
 
 {{<tip>}}
-Application instances are active in all regions, does consistent reads on local data, but stale reads on global data that does not change much.
+Application instances are active in all regions, do consistent reads and writes on local data, but stale reads on global data that does not change much.
 {{</tip>}}
 
-Let us say that your business sells products in multiple geographies, say the USA, Europe and the Indian subcontinent. You need to have your product catalog available of the geographies but have to keep your customer's order information local to the geo for GDPR. At the same time, you still would have to serve all data with low latency.
+Let us say that your business sells products in multiple geographies, say the USA, Europe and the Indian subcontinent. You need to have your product catalog available of the geographies but have to keep your customer's order information local to the geo for [GDPR](https://en.wikipedia.org/wiki/General_Data_Protection_Regulation). At the same time, you still would have to serve all data with low latency.
 
 ![Global catalog with Local orders data](/images/develop/global-apps/federated-tables-goal.png)
 
@@ -155,6 +155,6 @@ Now you have your `catalog` table across all the 3 geos and the `orders` table p
 
 ![Complete setup](/images/develop/global-apps/federated-tables-complete-setup.png)
 
-Applications in each region only access the data locally. Their orders are stored and replicated locally in their geo as the `orders` table is partitioned by geo. This enables fast reads and writes locally. The `catalog` table is globally distributed across 3 regions and does not change much and is not directly updated by the user facing applications. So applications can read the catalog data quickly from the followers using [Follower reads](./follower-reads).
+Applications in each region only access the data locally. Their orders are stored and replicated locally in their geo as the `orders` table is partitioned by geo. This enables fast reads and writes locally. The `catalog` table is globally distributed across 3 regions and does not change much and is not directly updated by the user facing applications. So applications can read the catalog data quickly from the followers using [Follower reads](../follower-reads).
 
 This pattern helps applications running in different regions to have low read and write latency, as they are reading and writing data to nearby partitions. At the same time, you are complying with local data protection laws by keeping the citizen data inside the country boundaries.
