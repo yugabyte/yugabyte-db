@@ -3,9 +3,9 @@ package com.yugabyte.yw.common; // Copyright (c) YugaByte, Inc.
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import java.io.InputStream;
+import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.CustomClassLoaderConstructor;
-import org.yaml.snakeyaml.LoaderOptions;
 
 @Singleton
 public class YamlWrapper {
@@ -30,6 +30,7 @@ public class YamlWrapper {
    */
   public <T> T load(InputStream is, ClassLoader classloader) {
     LoaderOptions loaderOptions = new LoaderOptions();
+    loaderOptions.setTagInspector(globalTagAllowed -> true);
     Yaml yaml = new Yaml(new CustomClassLoaderConstructor(classloader, loaderOptions));
     return yaml.load(is);
   }
