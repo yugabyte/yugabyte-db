@@ -4079,7 +4079,7 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
                                     node->name),
                             parser_errposition(pstate, node->location)));
                 }
-                
+
                 /*
                  * Checks the previous clauses to see if the variable already
                  * exists.
@@ -4096,6 +4096,22 @@ static List *transform_match_entities(cypher_parsestate *cpstate, Query *query,
             output_node = (special_VLE_case && !node->name && !node->props) ?
                           false :
                           INCLUDE_NODE_IN_JOIN_TREE(path, node);
+            /*
+             * TODO
+             *
+             * We need to re-evaluate if we want to use output_node or not.
+             * If output_node is set to false, then it basically short circuits
+             * the match for instances where a variable isn't specified. While,
+             * on the surface, this appears to be a good way to improve
+             * execution time of commands that won't do anything, it also
+             * causes chained commands to not work correctly. This is because
+             * a match without a variable will still feed its tuples to the next
+             * stage(s). With this set to false, it won't. So we likely need to
+             * remove all of the output_node logic. This needs to be reviewed,
+             * though. For now, we just set it to true and update the output of
+             * the regression tests.
+             */
+            output_node = true;
 
             /* transform vertex */
             expr = transform_cypher_node(cpstate, node, &query->targetList,

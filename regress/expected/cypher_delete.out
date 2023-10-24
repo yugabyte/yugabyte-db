@@ -707,8 +707,8 @@ SELECT * FROM cypher('detach_delete', $$ MATCH ()-[e]->() RETURN e.name $$) as (
 -------
  "ab"
  "cd"
- "nm"
  "am"
+ "nm"
  "pq"
 (5 rows)
 

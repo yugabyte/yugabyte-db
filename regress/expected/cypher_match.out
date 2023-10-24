@@ -144,8 +144,8 @@ $$) AS (a agtype);
                                                              a                                                             
 ---------------------------------------------------------------------------------------------------------------------------
  {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
- {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
  {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
  {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
 (4 rows)
 
@@ -154,10 +154,10 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (a agtype);
                                                              a                                                             
 ---------------------------------------------------------------------------------------------------------------------------
- {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
  {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
  {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
- {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
 (4 rows)
 
 SELECT * FROM cypher('cypher_match', $$
@@ -174,8 +174,8 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (a agtype);
                                         a                                         
 ----------------------------------------------------------------------------------
- {"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex
  {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex
+ {"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex
 (2 rows)
 
 -- Right Path Test
@@ -232,8 +232,8 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (a agtype);
                                                              a                                                             
 ---------------------------------------------------------------------------------------------------------------------------
- {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
  {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
 (2 rows)
 
 SELECT * FROM cypher('cypher_match', $$
@@ -241,8 +241,8 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (a agtype);
                                                              a                                                             
 ---------------------------------------------------------------------------------------------------------------------------
- {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
  {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
 (2 rows)
 
 SELECT * FROM cypher('cypher_match', $$
@@ -250,8 +250,8 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (a agtype);
                                                              a                                                             
 ---------------------------------------------------------------------------------------------------------------------------
- {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
  {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
 (2 rows)
 
 --Left Path Test
@@ -308,8 +308,8 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (a agtype);
                                                              a                                                             
 ---------------------------------------------------------------------------------------------------------------------------
- {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
  {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
 (2 rows)
 
 --Divergent Path Tests
@@ -348,10 +348,10 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (i agtype);
                                         i                                         
 ----------------------------------------------------------------------------------
- {"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex
  {"id": 1688849860263939, "label": "v2", "properties": {"id": "end"}}::vertex
- {"id": 1688849860263937, "label": "v2", "properties": {"id": "initial"}}::vertex
  {"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex
+ {"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex
+ {"id": 1688849860263937, "label": "v2", "properties": {"id": "initial"}}::vertex
 (4 rows)
 
 SELECT * FROM cypher('cypher_match', $$
@@ -379,12 +379,12 @@ $$) AS (i agtype);
                                                                                                                                                   i                                                                                                                                                   
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  [{"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex, {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge, {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex]::path
- [{"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex, {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge, {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex]::path
  [{"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex, {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge, {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex]::path
- [{"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex, {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge, {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex]::path
- [{"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex, {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge, {"id": 1688849860263937, "label": "v2", "properties": {"id": "initial"}}::vertex]::path
  [{"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex, {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge, {"id": 1688849860263937, "label": "v2", "properties": {"id": "initial"}}::vertex]::path
  [{"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex, {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge, {"id": 1688849860263939, "label": "v2", "properties": {"id": "end"}}::vertex]::path
+ [{"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex, {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge, {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex]::path
+ [{"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex, {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge, {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex]::path
+ [{"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex, {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge, {"id": 1688849860263937, "label": "v2", "properties": {"id": "initial"}}::vertex]::path
  [{"id": 1688849860263938, "label": "v2", "properties": {"id": "middle"}}::vertex, {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge, {"id": 1688849860263939, "label": "v2", "properties": {"id": "end"}}::vertex]::path
 (8 rows)
 
@@ -402,8 +402,8 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (i agtype);
                                                              i                                                             
 ---------------------------------------------------------------------------------------------------------------------------
- {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
  {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
 (2 rows)
 
 SELECT * FROM cypher('cypher_match', $$
@@ -412,8 +412,8 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (i agtype);
                                                              i                                                             
 ---------------------------------------------------------------------------------------------------------------------------
- {"id": 2533274790395905, "label": "e3", "end_id": 2251799813685250, "start_id": 2251799813685251, "properties": {}}::edge
  {"id": 2533274790395906, "label": "e3", "end_id": 2251799813685250, "start_id": 2251799813685249, "properties": {}}::edge
+ {"id": 2533274790395905, "label": "e3", "end_id": 2251799813685250, "start_id": 2251799813685251, "properties": {}}::edge
 (2 rows)
 
 SELECT * FROM cypher('cypher_match', $$
@@ -558,18 +558,18 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (i agtype,  c agtype);
  i |     c     
 ---+-----------
-   | "initial"
- 0 | "initial"
- 1 | "initial"
-   | "middle"
- 0 | "middle"
- 1 | "middle"
    | "middle"
  0 | "middle"
  1 | "middle"
    | "end"
  0 | "end"
  1 | "end"
+   | "initial"
+ 0 | "initial"
+ 1 | "initial"
+   | "middle"
+ 0 | "middle"
+ 1 | "middle"
 (12 rows)
 
 --
@@ -708,12 +708,12 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (r0 agtype);
                                                             r0                                                             
 ---------------------------------------------------------------------------------------------------------------------------
- {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
  {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
- {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
  {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge
- {"id": 2533274790395905, "label": "e3", "end_id": 2251799813685250, "start_id": 2251799813685251, "properties": {}}::edge
+ {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
  {"id": 2533274790395906, "label": "e3", "end_id": 2251799813685250, "start_id": 2251799813685249, "properties": {}}::edge
+ {"id": 2533274790395905, "label": "e3", "end_id": 2251799813685250, "start_id": 2251799813685251, "properties": {}}::edge
 (6 rows)
 
 SELECT * FROM cypher('cypher_match', $$
@@ -721,8 +721,8 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (r0 agtype);
                                                             r0                                                             
 ---------------------------------------------------------------------------------------------------------------------------
- {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
  {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
 (2 rows)
 
 SELECT * FROM cypher('cypher_match', $$
@@ -730,8 +730,8 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (r0 agtype);
                                                             r0                                                             
 ---------------------------------------------------------------------------------------------------------------------------
- {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
  {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
 (2 rows)
 
 SELECT * FROM cypher('cypher_match', $$
@@ -766,7 +766,6 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (r1 agtype);
                                                             r1                                                             
 ---------------------------------------------------------------------------------------------------------------------------
- {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
  {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge
  {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
  {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge
@@ -776,8 +775,9 @@ $$) AS (r1 agtype);
  {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge
  {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
  {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge
- {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
  {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
 (12 rows)
 
 SELECT * FROM cypher('cypher_match', $$
@@ -785,10 +785,10 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (r0 agtype, r1 agtype);
                                                             r0                                                             |                                                            r1                                                             
 ---------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------
- {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge | {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
- {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge | {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge
- {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge | {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
  {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge | {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge | {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge | {"id": 1970324836974594, "label": "e2", "end_id": 1688849860263937, "start_id": 1688849860263938, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge | {"id": 1970324836974593, "label": "e2", "end_id": 1688849860263939, "start_id": 1688849860263938, "properties": {}}::edge
 (4 rows)
 
 -- valid variable reuse for vertex labels across clauses
@@ -860,8 +860,8 @@ SELECT * FROM cypher('cypher_match', $$
 $$) AS (r0 agtype);
                                                             r0                                                             
 ---------------------------------------------------------------------------------------------------------------------------
- {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
  {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
 (2 rows)
 
 -- invalid variable reuse for vertex
@@ -2310,13 +2310,31 @@ SELECT * FROM cypher('cypher_match', $$ MATCH () MATCH (_{name: "Dave"}) RETURN 
  a 
 ---
  0
-(1 row)
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+(10 rows)
 
 SELECT * FROM cypher('cypher_match', $$ MATCH () MATCH (_{name: "Dave"}) RETURN _ $$) as (a agtype);
                                       a                                       
 ------------------------------------------------------------------------------
  {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
-(1 row)
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+(10 rows)
 
 SELECT * FROM cypher('cypher_match', $$ MATCH (my_age_default_{name: "Dave"}) RETURN my_age_default_$$) as (a agtype);
                                       a                                       
@@ -2328,7 +2346,16 @@ SELECT * FROM cypher('cypher_match', $$ MATCH () MATCH (my_age_default_{name: "D
                                       a                                       
 ------------------------------------------------------------------------------
  {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
-(1 row)
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+ {"id": 281474976710667, "label": "", "properties": {"name": "Dave"}}::vertex
+(10 rows)
 
 -- these should fail as they are prefixed with _age_default_ which is only for internal use
 SELECT * FROM cypher('cypher_match', $$ MATCH (_age_default_) RETURN _age_default_ $$) as (a agtype);
@@ -2584,6 +2611,180 @@ SELECT * FROM cypher('test_enable_containment', $$ EXPLAIN (COSTS OFF) MATCH (x:
 (2 rows)
 
 --
+-- Issue 945
+--
+SELECT create_graph('issue_945');
+NOTICE:  graph "issue_945" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('issue_945', $$
+    CREATE (a:Part {part_num: '123'}),
+           (b:Part {part_num: '345'}),
+           (c:Part {part_num: '456'}),
+           (d:Part {part_num: '789'})
+    $$) as (result agtype);
+ result 
+--------
+(0 rows)
+
+-- should match 4
+SELECT * FROM cypher('issue_945', $$
+    MATCH (a:Part) RETURN a
+    $$) as (result agtype);
+                                       result                                        
+-------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "Part", "properties": {"part_num": "123"}}::vertex
+ {"id": 844424930131970, "label": "Part", "properties": {"part_num": "345"}}::vertex
+ {"id": 844424930131971, "label": "Part", "properties": {"part_num": "456"}}::vertex
+ {"id": 844424930131972, "label": "Part", "properties": {"part_num": "789"}}::vertex
+(4 rows)
+
+-- each should return 4
+SELECT * FROM cypher('issue_945', $$ MATCH (:Part) RETURN count(*) $$) as (result agtype);
+ result 
+--------
+ 4
+(1 row)
+
+SELECT * FROM cypher('issue_945', $$ MATCH (a:Part) RETURN count(*) $$) as (result agtype);
+ result 
+--------
+ 4
+(1 row)
+
+-- each should return 4 rows of 0
+SELECT * FROM cypher('issue_945', $$ MATCH (:Part) RETURN 0 $$) as (result agtype);
+ result 
+--------
+ 0
+ 0
+ 0
+ 0
+(4 rows)
+
+SELECT * FROM cypher('issue_945', $$ MATCH (a:Part) RETURN 0 $$) as (result agtype);
+ result 
+--------
+ 0
+ 0
+ 0
+ 0
+(4 rows)
+
+-- each should return 16 rows of 0
+SELECT * FROM cypher('issue_945', $$ MATCH (:Part) MATCH (:Part) RETURN 0 $$) as (result agtype);
+ result 
+--------
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+(16 rows)
+
+SELECT * FROM cypher('issue_945', $$ MATCH (a:Part) MATCH (:Part) RETURN 0 $$) as (result agtype);
+ result 
+--------
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+(16 rows)
+
+SELECT * FROM cypher('issue_945', $$ MATCH (:Part) MATCH (b:Part) RETURN 0 $$) as (result agtype);
+ result 
+--------
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+(16 rows)
+
+SELECT * FROM cypher('issue_945', $$ MATCH (a:Part) MATCH (b:Part) RETURN 0 $$) as (result agtype);
+ result 
+--------
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+ 0
+(16 rows)
+
+-- each should return a count of 16
+SELECT * FROM cypher('issue_945', $$ MATCH (:Part) MATCH (:Part) RETURN count(*) $$) as (result agtype);
+ result 
+--------
+ 16
+(1 row)
+
+SELECT * FROM cypher('issue_945', $$ MATCH (a:Part) MATCH (:Part) RETURN count(*) $$) as (result agtype);
+ result 
+--------
+ 16
+(1 row)
+
+SELECT * FROM cypher('issue_945', $$ MATCH (:Part) MATCH (b:Part) RETURN count(*) $$) as (result agtype);
+ result 
+--------
+ 16
+(1 row)
+
+SELECT * FROM cypher('issue_945', $$ MATCH (a:Part) MATCH (b:Part) RETURN count(*) $$) as (result agtype);
+ result 
+--------
+ 16
+(1 row)
+
+--
 -- Clean up
 --
 SELECT drop_graph('cypher_match', true);
@@ -2630,6 +2831,17 @@ DETAIL:  drop cascades to table test_enable_containment._ag_label_vertex
 drop cascades to table test_enable_containment._ag_label_edge
 drop cascades to table test_enable_containment."Customer"
 NOTICE:  graph "test_enable_containment" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT drop_graph('issue_945', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table issue_945._ag_label_vertex
+drop cascades to table issue_945._ag_label_edge
+drop cascades to table issue_945."Part"
+NOTICE:  graph "issue_945" has been dropped
  drop_graph 
 ------------
  

@@ -2337,10 +2337,10 @@ SELECT * FROM cypher('expr', $$ MATCH (v) RETURN v $$) AS (expression agtype);
 SELECT * FROM cypher('expr', $$ MATCH ()-[e]-() RETURN e $$) AS (expression agtype);
                                                         expression                                                         
 ---------------------------------------------------------------------------------------------------------------------------
- {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
  {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
  {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
- {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
 (4 rows)
 
 -- id()
@@ -2349,10 +2349,10 @@ SELECT * FROM cypher('expr', $$
 $$) AS (id agtype);
         id        
 ------------------
- 1407374883553282
+ 1407374883553281
  1407374883553281
  1407374883553282
- 1407374883553281
+ 1407374883553282
 (4 rows)
 
 SELECT * FROM cypher('expr', $$
@@ -2391,10 +2391,10 @@ SELECT * FROM cypher('expr', $$
 $$) AS (start_id agtype);
      start_id     
 ------------------
- 1125899906842625
+ 1125899906842626
  1125899906842626
  1125899906842625
- 1125899906842626
+ 1125899906842625
 (4 rows)
 
 -- should return null
@@ -2424,10 +2424,10 @@ SELECT * FROM cypher('expr', $$
 $$) AS (end_id agtype);
       end_id      
 ------------------
- 1125899906842626
+ 1125899906842627
  1125899906842627
  1125899906842626
- 1125899906842627
+ 1125899906842626
 (4 rows)
 
 -- should return null

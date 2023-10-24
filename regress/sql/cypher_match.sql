@@ -1133,11 +1133,49 @@ SELECT count(*) FROM cypher('test_enable_containment', $$ MATCH (x:Customer {pho
 SELECT * FROM cypher('test_enable_containment', $$ EXPLAIN (COSTS OFF) MATCH (x:Customer {school:{name:'XYZ',program:{degree:'BSc'}},phone:[987654321],parents:{}}) RETURN x $$) as (a agtype);
 
 --
+-- Issue 945
+--
+SELECT create_graph('issue_945');
+SELECT * FROM cypher('issue_945', $$
+    CREATE (a:Part {part_num: '123'}),
+           (b:Part {part_num: '345'}),
+           (c:Part {part_num: '456'}),
+           (d:Part {part_num: '789'})
+    $$) as (result agtype);
+
+-- should match 4
+SELECT * FROM cypher('issue_945', $$
+    MATCH (a:Part) RETURN a
+    $$) as (result agtype);
+
+-- each should return 4
+SELECT * FROM cypher('issue_945', $$ MATCH (:Part) RETURN count(*) $$) as (result agtype);
+SELECT * FROM cypher('issue_945', $$ MATCH (a:Part) RETURN count(*) $$) as (result agtype);
+
+-- each should return 4 rows of 0
+SELECT * FROM cypher('issue_945', $$ MATCH (:Part) RETURN 0 $$) as (result agtype);
+SELECT * FROM cypher('issue_945', $$ MATCH (a:Part) RETURN 0 $$) as (result agtype);
+
+-- each should return 16 rows of 0
+SELECT * FROM cypher('issue_945', $$ MATCH (:Part) MATCH (:Part) RETURN 0 $$) as (result agtype);
+SELECT * FROM cypher('issue_945', $$ MATCH (a:Part) MATCH (:Part) RETURN 0 $$) as (result agtype);
+SELECT * FROM cypher('issue_945', $$ MATCH (:Part) MATCH (b:Part) RETURN 0 $$) as (result agtype);
+SELECT * FROM cypher('issue_945', $$ MATCH (a:Part) MATCH (b:Part) RETURN 0 $$) as (result agtype);
+
+-- each should return a count of 16
+SELECT * FROM cypher('issue_945', $$ MATCH (:Part) MATCH (:Part) RETURN count(*) $$) as (result agtype);
+SELECT * FROM cypher('issue_945', $$ MATCH (a:Part) MATCH (:Part) RETURN count(*) $$) as (result agtype);
+SELECT * FROM cypher('issue_945', $$ MATCH (:Part) MATCH (b:Part) RETURN count(*) $$) as (result agtype);
+SELECT * FROM cypher('issue_945', $$ MATCH (a:Part) MATCH (b:Part) RETURN count(*) $$) as (result agtype);
+
+
+--
 -- Clean up
 --
 SELECT drop_graph('cypher_match', true);
 SELECT drop_graph('test_retrieve_var', true);
 SELECT drop_graph('test_enable_containment', true);
+SELECT drop_graph('issue_945', true);
 
 --
 -- End
