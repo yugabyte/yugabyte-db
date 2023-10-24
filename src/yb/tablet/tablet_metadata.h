@@ -128,6 +128,8 @@ struct TableInfo {
             const IndexMap& index_map,
             const std::vector<DeletedColumn>& deleted_cols,
             SchemaVersion schema_version);
+  TableInfo(const TableInfo& other,
+            const Schema& schema);
   TableInfo(const TableInfo& other, SchemaVersion min_schema_version);
   ~TableInfo();
 
@@ -583,6 +585,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   const KvStoreInfo& TEST_kv_store() const {
     return kv_store_;
   }
+
+  // Updates related meta data as a reaction to index table backfilling is done.
+  void OnBackfillDone(const TableId& table_id);
 
  private:
   typedef simple_spinlock MutexType;
