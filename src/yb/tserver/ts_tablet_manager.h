@@ -706,6 +706,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Gauge to monitor post-split compactions that have been started.
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_post_split_compaction_added_;
 
+  // Gauge for the count of live tablet peers running on this tserver.
+  scoped_refptr<yb::AtomicGauge<uint32_t>> ts_live_tablet_peers_metric_;
+
   mutable simple_spinlock snapshot_schedule_allowed_history_cutoff_mutex_;
   std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>
       snapshot_schedule_allowed_history_cutoff_

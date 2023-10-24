@@ -82,6 +82,10 @@ class JsonReader {
                       const char* field,
                       int64_t* result) const;
 
+  Status ExtractUInt32(const rapidjson::Value* object,
+                       const char* field,
+                       uint32_t* result) const;
+
   Status ExtractUInt64(const rapidjson::Value* object,
                        const char* field,
                        uint64_t* result) const;
