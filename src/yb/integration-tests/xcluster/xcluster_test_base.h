@@ -217,8 +217,7 @@ class XClusterTestBase : public YBTest {
       const cdc::ReplicationGroupId& replication_group_id,
       master::IsSetupUniverseReplicationDoneResponsePB* resp);
 
-  Status GetCDCStreamForTable(
-      const std::string& table_id, master::ListCDCStreamsResponsePB* resp);
+  Status GetCDCStreamForTable(const TableId& table_id, master::ListCDCStreamsResponsePB* resp);
 
   uint32_t GetSuccessfulWriteOps(MiniCluster* cluster);
 
@@ -257,15 +256,9 @@ class XClusterTestBase : public YBTest {
 
   // Wait for replication drain on a list of tables.
   Status WaitForReplicationDrain(
-      const std::shared_ptr<master::MasterReplicationProxy>& master_proxy,
-      const master::WaitForReplicationDrainRequestPB& req,
-      int expected_num_nondrained,
-      int timeout_secs = kRpcTimeout);
-
-  // Populate a WaitForReplicationDrainRequestPB request from a list of tables.
-  void PopulateWaitForReplicationDrainRequest(
-      const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
-      master::WaitForReplicationDrainRequestPB* req);
+      int expected_num_nondrained = 0, int timeout_secs = kRpcTimeout,
+      std::optional<uint64> target_time = std::nullopt,
+      std::vector<TableId> producer_table_ids = {});
 
   YBClient* producer_client() {
     return producer_cluster_.client_.get();
@@ -326,6 +319,8 @@ class XClusterTestBase : public YBTest {
   Status PauseResumeXClusterProducerStreams(
       const std::vector<xrepl::StreamId>& stream_ids, bool is_paused);
 
+  Result<TableId> GetColocatedDatabaseParentTableId();
+
  protected:
   CoarseTimePoint PropagationDeadline() const {
     return CoarseMonoClock::Now() + propagation_timeout_;
@@ -337,14 +332,6 @@ class XClusterTestBase : public YBTest {
   YBTables &producer_tables_, &consumer_tables_;
   // The first table in producer_tables_ and consumer_tables_ is the default table.
   std::shared_ptr<client::YBTable> producer_table_, consumer_table_;
-
- private:
-  // Function that translates the api response from a WaitForReplicationDrainResponsePB call into
-  // a status.
-  Status SetupWaitForReplicationDrainStatus(
-      Status api_status,
-      const master::WaitForReplicationDrainResponsePB& api_resp,
-      int expected_num_nondrained);
 };
 
 } // namespace yb

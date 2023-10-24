@@ -567,12 +567,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionWithSavepointsNoOp
   // intents in the same CDC changes batch.  See PrepareExternalWriteBatch.
   //
   // Wait for the previous changes to be replicated to make sure that optimization doesn't kick in.
-  master::WaitForReplicationDrainRequestPB req;
-  PopulateWaitForReplicationDrainRequest({producer_table_}, &req);
-  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
-      &producer_client()->proxy_cache(),
-      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
-  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0 /* expected_num_nondrained */));
+  ASSERT_OK(WaitForReplicationDrain());
 
   ASSERT_OK(conn.Execute("COMMIT"));
 
@@ -961,16 +956,12 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, GarbageCollectExpiredTransact
   // Write 2 transactions that are both not committed.
   ASSERT_OK(
       InsertTransactionalBatchOnProducer(0, 49, producer_table_, false /* commit_tranasction */));
-  master::WaitForReplicationDrainRequestPB req;
-  PopulateWaitForReplicationDrainRequest({producer_table_}, &req);
-  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
-      &producer_client()->proxy_cache(),
-      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
-  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0 /* expected_num_nondrained */));
+
+  ASSERT_OK(WaitForReplicationDrain());
   ASSERT_OK(consumer_cluster()->FlushTablets());
   ASSERT_OK(
       InsertTransactionalBatchOnProducer(50, 99, producer_table_, false /* commit_tranasction */));
-  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0 /* expected_num_nondrained */));
+  ASSERT_OK(WaitForReplicationDrain());
   ASSERT_OK(consumer_cluster()->FlushTablets());
   // Delete universe replication now so that new external transactions from the transaction pool
   // do not come in.
