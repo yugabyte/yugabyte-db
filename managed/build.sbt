@@ -136,7 +136,7 @@ libraryDependencies ++= Seq(
   "org.flywaydb" %% "flyway-play" % "4.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
-  "org.yaml" % "snakeyaml" % "2.0",
+  "org.yaml" % "snakeyaml" % "2.1",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
   "org.springframework.security" % "spring-security-core" % "5.8.1",
   "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.129",
@@ -159,7 +159,6 @@ libraryDependencies ++= Seq(
   "org.asynchttpclient" % "async-http-client" % "2.2.1",
   "commons-validator" % "commons-validator" % "1.7",
   "org.apache.velocity" % "velocity-engine-core" % "2.3",
-  "com.fasterxml.jackson.core" % "jackson-core" % "2.10.5",
   "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
   "com.jayway.jsonpath" % "json-path" % "2.6.0",
   "commons-io" % "commons-io" % "2.8.0",
@@ -390,7 +389,6 @@ libraryDependencies += "org.yb" % "yb-client" % "0.8.17.3-SNAPSHOT"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
-  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.9.10",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
   // TODO(Shashank): Remove this in Step 3:
   // Overrides to address vulnerability in swagger-play2
@@ -402,7 +400,25 @@ libraryDependencies ++= Seq(
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "latest.integration"
 dependencyOverrides += "com.google.guava" % "guava" % "32.1.1-jre"
 // TODO(Shashank): Remove these in Step 3:
-dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.13.4.2"
+
+val jacksonVersion         = "2.15.3"
+
+val jacksonLibs = Seq(
+  "com.fasterxml.jackson.core"       % "jackson-core",
+  "com.fasterxml.jackson.core"       % "jackson-annotations",
+  "com.fasterxml.jackson.core"       % "jackson-databind",
+  "com.fasterxml.jackson.datatype"   % "jackson-datatype-jdk8",
+  "com.fasterxml.jackson.datatype"   % "jackson-datatype-jsr310",
+  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor",
+  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml",
+  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml",
+  "com.fasterxml.jackson.module"     % "jackson-module-parameter-names",
+  "com.fasterxml.jackson.module"     %% "jackson-module-scala",
+)
+
+val jacksonOverrides = jacksonLibs.map(_ % jacksonVersion)
+
+dependencyOverrides ++= jacksonOverrides
 
 excludeDependencies += "org.eclipse.jetty" % "jetty-io"
 excludeDependencies += "org.eclipse.jetty" % "jetty-server"
