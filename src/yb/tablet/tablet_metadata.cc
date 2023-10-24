@@ -161,6 +161,23 @@ TableInfo::TableInfo(const TableInfo& other,
   this->deleted_cols.insert(this->deleted_cols.end(), deleted_cols.begin(), deleted_cols.end());
 }
 
+// Specific case, use for schema update when schema version change does not required.
+// Example: MarkBackfillDone, refer to https://github.com/yugabyte/yugabyte-db/issues/19544.
+TableInfo::TableInfo(const TableInfo& other,
+                     const Schema& schema)
+    : table_id(other.table_id),
+      namespace_name(other.namespace_name),
+      table_name(other.table_name),
+      table_type(other.table_type),
+      cotable_id(other.cotable_id),
+      doc_read_context(std::make_shared<docdb::DocReadContext>(*other.doc_read_context, schema)),
+      index_map(std::make_shared<IndexMap>(*other.index_map)),
+      index_info(other.index_info ? new IndexInfo(*other.index_info) : nullptr),
+      schema_version(other.schema_version),
+      partition_schema(other.partition_schema),
+      deleted_cols(other.deleted_cols) {
+}
+
 TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
     : table_id(other.table_id),
       namespace_name(other.namespace_name),
@@ -1531,6 +1548,24 @@ std::vector<TableId> RaftGroupMetadata::GetAllColocatedTables() {
     table_ids.emplace_back(id_and_info.first);
   }
   return table_ids;
+}
+
+void RaftGroupMetadata::OnBackfillDone(const TableId& table_id) {
+  std::lock_guard lock(data_mutex_);
+
+  TableId target_table_id = table_id.empty() ? primary_table_id_ : table_id;
+  auto it = kv_store_.tables.find(target_table_id);
+  CHECK(it != kv_store_.tables.end());
+
+  Schema new_schema = it->second->schema();
+  new_schema.SetRetainDeleteMarkers(false);
+
+  TableInfoPtr new_table_info = std::make_shared<TableInfo>(*it->second, new_schema);
+  VLOG_WITH_PREFIX(1) << raft_group_id_ << " Updating table " << target_table_id
+                      << " to Schema version " << new_table_info->schema_version
+                      << " from \n" << AsString(it->second)
+                      << " to \n" << AsString(new_table_info);
+  it->second.swap(new_table_info);
 }
 
 } // namespace tablet

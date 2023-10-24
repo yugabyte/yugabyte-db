@@ -20,9 +20,11 @@
 #include "yb/common/schema.h"
 
 #include "yb/integration-tests/backfill-test-util.h"
+#include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_admin.pb.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_error.h"
 
 #include "yb/tserver/tserver_service.pb.h"
@@ -31,6 +33,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
@@ -184,6 +187,49 @@ void PgIndexBackfillTest::TestRetainDeleteMarkers(const std::string& db_name) {
 
   ASSERT_EQ(table_info->schema.version(), 0);
   ASSERT_FALSE(table_info->schema.table_properties().retain_delete_markers());
+
+  // Validate the value if retain_delete_markers is persisted correctly in a tablet meta-data:
+  // let's get all tablets for an index table and validate it's superblock on a disk.
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_GT(tablets.size(), 0);
+
+  itest::ExternalMiniClusterFsInspector inspector { cluster_.get() };
+
+  // The backfilling is considered done when the majority has replicated applied corresponding
+  // metadata change operation, which mean there's a chance that not all tservers have applied
+  // the operation. Let's wait for some time until the change is seen in the tablet metadata files.
+  ASSERT_OK(LoggedWaitFor(
+      [cluster = cluster_.get(), &index_name, &tablets, &inspector]() -> Result<bool> {
+        size_t num_tablets_verified = 0;
+        for (const auto& tablet : tablets) {
+          for (size_t n = 0; n < cluster->num_tablet_servers(); ++n) {
+            tablet::RaftGroupReplicaSuperBlockPB superblock;
+            RETURN_NOT_OK(inspector.ReadTabletSuperBlockOnTS(n, tablet.tablet_id(), &superblock));
+            SCHECK(superblock.has_kv_store(), IllegalState, "");
+            SCHECK_GT(superblock.kv_store().tables_size(), 0, IllegalState, "");
+            for (const auto& table_pb : superblock.kv_store().tables()) {
+              // Take into accound only index table (required in case of colocation).
+              if (table_pb.has_table_name() && table_pb.table_name() != index_name) {
+                continue;
+              }
+              ++num_tablets_verified;
+              SCHECK(table_pb.has_schema(), IllegalState, "");
+              SCHECK(table_pb.schema().has_table_properties(), IllegalState, "");
+              LOG(INFO)
+                  << "P " << cluster->tablet_server(n)->id() << " T " << tablet.tablet_id()
+                  << (table_pb.has_table_name() ? " Table " + table_pb.table_name() : "")
+                  << " properties: " << table_pb.schema().table_properties().ShortDebugString();
+              if (table_pb.schema().table_properties().retain_delete_markers()) {
+                return false;
+              }
+            }
+          }
+        }
+        SCHECK_GT(num_tablets_verified, 0U, IllegalState, "");
+        return true;
+      },
+      10s * kTimeMultiplier, "Wait for tablet metadata updated"));
 }
 
 void PgIndexBackfillTest::TestLargeBackfill(const int num_rows) {
