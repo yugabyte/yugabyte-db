@@ -21,6 +21,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/integration-tests/backfill-test-util.h"
+#include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_admin.pb.h"
@@ -33,6 +34,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
@@ -266,6 +268,35 @@ void PgIndexBackfillTest::TestRetainDeleteMarkers(const std::string& db_name) {
 
   ASSERT_EQ(table_info->schema.version(), 0);
   ASSERT_FALSE(table_info->schema.table_properties().retain_delete_markers());
+
+  // Validate the value if retain_delete_markers is persisted correctly in a tablet meta-data:
+  // let's get all tablets for an index table and validate it's superblock on a disk.
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_GT(tablets.size(), 0);
+
+  itest::ExternalMiniClusterFsInspector inspector { cluster_.get() };
+  for (const auto& tablet : tablets) {
+    for (size_t n = 0; n < cluster_->num_tablet_servers(); ++n) {
+      tablet::RaftGroupReplicaSuperBlockPB superblock;
+      ASSERT_OK(inspector.ReadTabletSuperBlockOnTS(n, tablet.tablet_id(), &superblock));
+      ASSERT_TRUE(superblock.has_kv_store());
+      ASSERT_GT(superblock.kv_store().tables_size(), 0);
+      for (const auto& table_pb : superblock.kv_store().tables()) {
+        // Take into accound only index table (required in case of colocation).
+        if (table_pb.has_table_name() && table_pb.table_name() != index_name) {
+          continue;
+        }
+
+        ASSERT_TRUE(table_pb.has_schema());
+        ASSERT_TRUE(table_pb.schema().has_table_properties());
+        LOG(INFO) << "P " << cluster_->tablet_server(n)->id() << " T " << tablet.tablet_id()
+                  << (table_pb.has_table_name() ? " Table " + table_pb.table_name() : "")
+                  << " properties: " << table_pb.schema().table_properties().ShortDebugString();
+        ASSERT_FALSE(table_pb.schema().table_properties().retain_delete_markers());
+      }
+    }
+  }
 }
 
 void PgIndexBackfillTest::TestLargeBackfill(const int num_rows) {
