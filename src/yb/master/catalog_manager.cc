@@ -583,6 +583,9 @@ DEFINE_RUNTIME_bool(enable_tablet_split_of_cdcsdk_streamed_tables, false,
 DEFINE_test_flag(bool, create_table_with_empty_pgschema_name, false,
     "Create YSQL tables with an empty pgschema_name field in their schema.");
 
+DEFINE_test_flag(bool, create_table_with_empty_namespace_name, false,
+    "Create YSQL tables with an empty namespace_name field in their schema.");
+
 DEFINE_test_flag(int32, delay_split_registration_secs, 0,
                  "Delay creating child tablets and upserting them to sys catalog");
 
@@ -1445,9 +1448,9 @@ Status CatalogManager::RunLoaders(int64_t term, SysCatalogLoadingState* state) {
   // Clear the hidden tablets vector.
   hidden_tablets_.clear();
 
+  RETURN_NOT_OK(Load<NamespaceLoader>("namespaces", state, term));
   RETURN_NOT_OK(Load<TableLoader>("tables", state, term));
   RETURN_NOT_OK(Load<TabletLoader>("tablets", state, term));
-  RETURN_NOT_OK(Load<NamespaceLoader>("namespaces", state, term));
   RETURN_NOT_OK(Load<UDTypeLoader>("user-defined types", state, term));
   RETURN_NOT_OK(Load<ClusterConfigLoader>("cluster configuration", state, term));
   RETURN_NOT_OK(Load<RedisConfigLoader>("Redis config", state, term));
@@ -1797,6 +1800,7 @@ Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
     SysTablesEntryPB& metadata = table->mutable_metadata()->mutable_dirty()->pb;
     metadata.set_state(SysTablesEntryPB::RUNNING);
     metadata.set_namespace_id(kSystemSchemaNamespaceId);
+    metadata.set_namespace_name(kSystemSchemaNamespaceName);
     metadata.set_name(kSysCatalogTableName);
     metadata.set_table_type(TableType::YQL_TABLE_TYPE);
     SchemaToPB(sys_catalog_->schema(), metadata.mutable_schema());
@@ -5178,7 +5182,9 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   metadata->set_name(req.name());
   metadata->set_table_type(req.table_type());
   metadata->set_namespace_id(namespace_id);
-  metadata->set_namespace_name(namespace_name);
+  if (!FLAGS_TEST_create_table_with_empty_namespace_name) {
+    metadata->set_namespace_name(namespace_name);
+  }
   metadata->set_version(0);
   metadata->set_next_column_id(ColumnId(schema.max_col_id() + 1));
   *metadata->mutable_hosted_stateful_services() = req.hosted_stateful_services();
@@ -13300,14 +13306,29 @@ void CatalogManager::StartPostLoadTasks(const SysCatalogLoadingState& state) {
   }
 }
 
-void CatalogManager::WriteTabletToSysCatalog(const TabletId& tablet_id) {
-  auto tablet_res = GetTabletInfo(tablet_id);
-  if (!tablet_res.ok()) {
-    LOG(WARNING) << Format("$0 could not find tablet $1 in tablet map.", __func__, tablet_id);
+void CatalogManager::WriteTableToSysCatalog(const TableId& table_id) {
+  auto table_ptr = GetTableInfo(table_id);
+  if (!table_ptr) {
+    LOG_WITH_FUNC(WARNING) << Format("Could not find table $0 in table map.", table_id);
     return;
   }
 
-  LOG(INFO) << Format("Writing tablet $0 to sys catalog as part of a migration.", tablet_id);
+  LOG_WITH_FUNC(INFO) << Format(
+      "Writing table $0 to sys catalog as part of a migration.", table_id);
+  auto l = table_ptr->LockForWrite();
+  WARN_NOT_OK(sys_catalog_->ForceUpsert(leader_ready_term(), table_ptr),
+      "Failed to upsert migrated table into sys catalog.");
+}
+
+void CatalogManager::WriteTabletToSysCatalog(const TabletId& tablet_id) {
+  auto tablet_res = GetTabletInfo(tablet_id);
+  if (!tablet_res.ok()) {
+    LOG_WITH_FUNC(WARNING) << Format("Could not find tablet $1 in tablet map.", tablet_id);
+    return;
+  }
+
+  LOG_WITH_FUNC(INFO) << Format(
+      "Writing tablet $0 to sys catalog as part of a migration.", tablet_id);
   auto l = (*tablet_res)->LockForWrite();
   WARN_NOT_OK(sys_catalog_->ForceUpsert(leader_ready_term(), *tablet_res),
       "Failed to upsert migrated colocated tablet into sys catalog.");

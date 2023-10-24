@@ -1355,6 +1355,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     std::lock_guard<MutexType> lock(backfill_mutex_);
     pending_backfill_tables_.emplace(id);
   }
+
+  void WriteTableToSysCatalog(const TableId& table_id);
+
   void WriteTabletToSysCatalog(const TabletId& tablet_id);
 
   Status UpdateLastFullCompactionRequestTime(const TableId& table_id) override;
