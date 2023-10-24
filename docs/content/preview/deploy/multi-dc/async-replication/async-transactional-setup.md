@@ -117,7 +117,7 @@ Set up unidirectional transactional replication as follows:
 
 On Primary (with and without data):
 
-1. Create a fresh DB on Primary cluster. Do Not create these objects in the default ‘yugabyte’ db.
+1. Create a fresh database on the Primary cluster. Do Not create these objects in the default `yugabyte` database.
 
 1. Create the following tables/indexes on Primary DB
 
@@ -147,8 +147,7 @@ Backups > point-in-time-recovery.
 
     If there is data in the databases then YBA will walk you through the backup & restore process.
 
-    ** NOTE:
-    If there are any connections open against the target (standby) databases and replication is being setup for a Primary database that already has some data, then setup replication with bootstrap flow will fail with an expected error. This is because setting up replication requires backing up the primary database and restoring the backup to the target database after cleaning up any pre-existing data on the target side. Please close any connections to the target(standby) database and retry the setup replication operation.
+    **Note**: If there are any connections open against the target (standby) databases and replication is being set up for a Primary database that already has some data, then the set up replication with bootstrap flow will fail with an expected error. This is because setting up replication requires backing up the primary database and restoring the backup to the target database after cleaning up any pre-existing data on the target side. Please close any connections to the target(standby) database and retry the setup replication operation.
 
     ```output
     Error ERROR:  database "database_name" is being accessed by other users

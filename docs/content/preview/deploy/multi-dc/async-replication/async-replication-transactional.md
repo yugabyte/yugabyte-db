@@ -32,3 +32,31 @@ The xCluster role is a property with values ACTIVE or STANDBY that determines an
 xCluster safe time is the transactionally consistent time across all tables in a given database at which Reads are served. In the following illustration, T1 is a transactionally consistent time across all tables.
 
 ![Transactional xCluster](/images/deploy/xcluster/xcluster-transactional.png)
+
+## Limitations
+
+Tablet splitting is not supported with Transactional Atomicity and Global Ordering.
+
+Supports only Active-Standby setups with transactional atomicity and global ordering.
+
+Transactional consistency is currently not supported for YCQL, only for YSQL.
+
+## Recommended guardrails
+
+CPU utilisation: keep it below 65%.
+Disk space utilisation: under 65%.
+
+## Prerequisites
+
+Create Primary and Standby Universes with TLS enabled.
+
+Set the following g-flags are to be set on both universes - Primary and Standby:
+
+- Only TSERVER side flags
+
+    log_min_seconds_to_retain = 86400 (The value for this depends on how long of a network partition or standby cluster outage can be tolerated and amount of WAL expected to be generated during that period)
+
+- Only MASTER side flags
+
+    enable_automatic_tablet_splitting = false
+    enable_tablet_split_of_xcluster_replicated_tables = false
