@@ -1,10 +1,11 @@
 import clsx from 'clsx';
 
 import { XClusterConfigStatus } from './constants';
-import { XClusterConfig } from './XClusterTypes';
+import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
+
+import { XClusterConfig } from './dtos';
 
 import styles from './XClusterConfigStatusLabel.module.scss';
-import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 
 interface XClusterConfigStatusProps {
   xClusterConfig: XClusterConfig;

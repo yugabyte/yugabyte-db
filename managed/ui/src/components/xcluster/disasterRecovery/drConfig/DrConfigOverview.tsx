@@ -3,26 +3,41 @@ import { useTranslation } from 'react-i18next';
 
 import { DrParticipantCard } from './DrParticipantCard';
 import { ReactComponent as InfoIcon } from '../../../../redesign/assets/info-message.svg';
-import { ReactComponent as RightArrow } from '../../../../redesign/assets/arrow-right.svg';
-import { XClusterConfigStatusLabel } from '../../XClusterConfigStatusLabel';
 import { YBTooltip } from '../../../../redesign/components';
+import { DrConfigStateLabel } from '../DrConfigStateLabel';
+import { UniverseXClusterRole } from '../../constants';
+import { ReplicationIcon } from '../../icons/ReplicationIcon';
 
-import { DrConfig } from '../types';
+import { DrConfig } from '../dtos';
 
 interface DrConfigOverviewProps {
   drConfig: DrConfig;
 }
 
 const useStyles = makeStyles((theme) => ({
+  overviewContainer: {
+    padding: `${theme.spacing(3)}px ${theme.spacing(4)}px`,
+
+    background: theme.palette.background.paper,
+    border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`,
+    borderRadius: '8px'
+  },
+  drParticipantContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1)
+  },
   propertyLabel: {
     display: 'flex',
     gap: theme.spacing(1),
     alignItems: 'center',
 
-    width: '200px',
-    minWidth: '200px'
+    width: '220px',
+    minWidth: '100px'
   },
   infoIcon: {
+    minWidth: '14px',
+
     '&:hover': {
       cursor: 'pointer'
     }
@@ -36,12 +51,8 @@ export const DrConfigOverview = ({ drConfig }: DrConfigOverviewProps) => {
   const classes = useStyles();
   const theme = useTheme();
 
-  const {
-    sourceUniverseUUID: sourceUniverseUuid,
-    targetUniverseUUID: targetUniverseUuid
-  } = drConfig.xClusterConfig;
   return (
-    <div>
+    <div className={classes.overviewContainer}>
       <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)}>
         <Box display="flex">
           <div className={classes.propertyLabel}>
@@ -52,7 +63,7 @@ export const DrConfigOverview = ({ drConfig }: DrConfigOverviewProps) => {
               <InfoIcon className={classes.infoIcon} />
             </YBTooltip>
           </div>
-          <XClusterConfigStatusLabel xClusterConfig={drConfig.xClusterConfig} />
+          <DrConfigStateLabel drConfig={drConfig} />
         </Box>
         <Box display="flex">
           <div className={classes.propertyLabel}>
@@ -75,14 +86,20 @@ export const DrConfigOverview = ({ drConfig }: DrConfigOverviewProps) => {
         gridGap={theme.spacing(5)}
         marginTop={3}
       >
-        <div>
+        <div className={classes.drParticipantContainer}>
           <Typography variant="subtitle1">{t('participant.drPrimary')}</Typography>
-          <DrParticipantCard universeUuid={sourceUniverseUuid} />
+          <DrParticipantCard
+            xClusterConfig={drConfig.xClusterConfig}
+            universeXClusterRole={UniverseXClusterRole.SOURCE}
+          />
         </div>
-        <RightArrow />
-        <div>
+        <ReplicationIcon drConfig={drConfig} />
+        <div className={classes.drParticipantContainer}>
           <Typography variant="subtitle1">{t('participant.drReplica')}</Typography>
-          <DrParticipantCard universeUuid={targetUniverseUuid} />
+          <DrParticipantCard
+            xClusterConfig={drConfig.xClusterConfig}
+            universeXClusterRole={UniverseXClusterRole.TARGET}
+          />
         </div>
       </Box>
     </div>
