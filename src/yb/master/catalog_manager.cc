@@ -69,7 +69,7 @@
 #include <vector>
 
 #include <boost/optional.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/cdc/cdc_state_table.h"
 

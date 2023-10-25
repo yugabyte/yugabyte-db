@@ -52,7 +52,7 @@
 
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"

@@ -15,7 +15,7 @@
 
 #include "yb/common/ql_value.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_protocol_util.h"

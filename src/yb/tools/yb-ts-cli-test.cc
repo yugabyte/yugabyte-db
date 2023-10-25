@@ -33,7 +33,7 @@
 
 #include <boost/assign/list_of.hpp>
 #include <gtest/gtest.h>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/consensus/consensus.pb.h"
 

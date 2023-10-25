@@ -33,7 +33,7 @@
 #include "yb/tserver/remote_bootstrap_session.h"
 
 #include <boost/optional.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"

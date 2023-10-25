@@ -32,7 +32,7 @@
 
 #include "yb/master/master_options.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/master/master.h"
 #include "yb/server/server_base_options.h"

@@ -45,7 +45,7 @@
 #include "yb/rocksdb/util/statistics.h"
 
 #include "yb/util/logging.h"
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include "yb/util/flags.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"

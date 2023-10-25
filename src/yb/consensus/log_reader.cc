@@ -35,8 +35,6 @@
 #include <algorithm>
 #include <mutex>
 
-#include <glog/logging.h>
-
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.messages.h"

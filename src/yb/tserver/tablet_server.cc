@@ -39,7 +39,7 @@
 #include <utility>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/client/auto_flags_manager.h"
 #include "yb/client/client.h"
