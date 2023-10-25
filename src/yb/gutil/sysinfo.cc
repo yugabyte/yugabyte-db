@@ -79,7 +79,6 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
-#include "yb/util/logging.h"
 
 DEFINE_UNKNOWN_int32(num_cpus, 0, "Number of CPU cores used in calculations");
 

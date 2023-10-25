@@ -25,8 +25,6 @@
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 
-#include "yb/util/logging.h"
-
 #include "yb/util/errno.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"

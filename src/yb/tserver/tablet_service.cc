@@ -37,8 +37,6 @@
 #include <string>
 #include <vector>
 
-#include "yb/util/logging.h"
-
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
