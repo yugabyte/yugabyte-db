@@ -209,9 +209,13 @@ DEFINE_int32(master_ts_rpc_timeout_ms, 30 * 1000,  // 30 sec
              "Timeout used for the Master->TS async rpc calls.");
 TAG_FLAG(master_ts_rpc_timeout_ms, advanced);
 
-DEFINE_int32(tablet_creation_timeout_ms, 30 * 1000,  // 30 sec
-             "Timeout used by the master when attempting to create tablet "
-             "replicas during table creation.");
+
+// The time is temporarly set to 600 sec to avoid hitting the tablet replacement code inherited from
+// Kudu. Removing tablet replacement code will be fixed in GH-6006
+DEFINE_int32(
+    tablet_creation_timeout_ms, 600 * 1000,  // 600 sec
+    "Timeout used by the master when attempting to create tablet "
+    "replicas during table creation.");
 TAG_FLAG(tablet_creation_timeout_ms, advanced);
 
 DEFINE_test_flag(bool, disable_tablet_deletion, false,
