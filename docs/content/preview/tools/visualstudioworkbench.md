@@ -10,6 +10,11 @@ menu:
     weight: 40
 type: docs
 --->
+<!--
++++
+private = true
++++
+-->
 
 [Cassandra Workbench](https://marketplace.visualstudio.com/items?itemName=kdcro101.vscode-cassandra) is a free Visual Studio Code extension for browsing and querying Cassandra databases. It also features autocomplete and syntax highlighting.
 

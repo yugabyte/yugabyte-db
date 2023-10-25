@@ -1,5 +1,5 @@
 ---
-title: Diagnostics reporting
+title: YB Voyager Diagnostics reporting
 linkTitle: Diagnostics reporting
 description: Sending diagnostics information to Yugabyte.
 menu:
