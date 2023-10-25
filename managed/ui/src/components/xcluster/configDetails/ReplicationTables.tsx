@@ -31,7 +31,8 @@ import { handleServerError } from '../../../utils/errorHandlingUtils';
 import { AddTableModal } from './addTable/AddTableModal';
 
 import { TableType, TableTypeLabel, YBTable } from '../../../redesign/helpers/dtos';
-import { XClusterConfig, XClusterTable } from '../XClusterTypes';
+import { XClusterTable } from '../XClusterTypes';
+import { XClusterConfig } from '../dtos';
 
 import styles from './ReplicationTables.module.scss';
 

@@ -11,7 +11,7 @@ import {
   YBReactSelectField,
   YBReactSelectFieldProps
 } from '../../configRedesign/providerRedesign/components/YBReactSelect/YBReactSelectField';
-import { usePillStyles } from '../../configRedesign/providerRedesign/utils';
+import { usePillStyles } from '../../../redesign/styles/styles';
 import { IStorageConfig as BackupStorageConfig } from '../../backupv2';
 
 import { Optional } from '../../../redesign/helpers/types';

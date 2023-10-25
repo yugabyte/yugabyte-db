@@ -5,7 +5,7 @@ import { AxiosError } from 'axios';
 
 import { editXclusterName } from '../../../actions/xClusterReplication';
 import { YBModalForm } from '../../common/forms';
-import { XClusterConfig } from '../XClusterTypes';
+import { XClusterConfig } from '../dtos';
 import { YBFormInput } from '../../common/forms/fields';
 import { XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN } from '../constants';
 import { handleServerError } from '../../../utils/errorHandlingUtils';

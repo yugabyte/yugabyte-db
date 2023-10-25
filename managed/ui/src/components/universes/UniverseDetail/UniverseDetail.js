@@ -56,7 +56,7 @@ import { EditGflagsModal } from '../../../redesign/features/universe/universe-ac
 import { UniverseState, getUniverseStatus } from '../helpers/universeHelpers';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
 import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
-import { DisasterRecovery } from '../../xcluster/disasterRecovery/DisasterRecoveryPanel';
+import { DrPanel } from '../../xcluster/disasterRecovery/DrPanel';
 import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 
 import './UniverseDetail.scss';
@@ -455,7 +455,7 @@ class UniverseDetail extends Component {
             mountOnEnter={true}
             unmountOnExit={true}
           >
-            <DisasterRecovery currentUniverseUuid={currentUniverse.data.universeUUID} />
+            <DrPanel currentUniverseUuid={currentUniverse.data.universeUUID} />
           </Tab.Pane>
         ),
         isNotHidden(currentCustomer.data.features, 'universes.details.tasks') && (

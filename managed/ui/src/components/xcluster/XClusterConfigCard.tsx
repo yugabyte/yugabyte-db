@@ -5,13 +5,14 @@ import clsx from 'clsx';
 
 import RightArrow from './ArrowIcon';
 import { ReplicationParticipantCard } from './ReplicationParticipantCard';
-import { XClusterConfig } from './XClusterTypes';
 import { XClusterConfigStatus, XClusterConfigTypeLabel } from './constants';
 import { XClusterConfigStatusLabel } from './XClusterConfigStatusLabel';
 import { MaxAcceptableLag, CurrentReplicationLag } from './ReplicationUtils';
-import { usePillStyles } from '../configRedesign/providerRedesign/utils';
+import { usePillStyles } from '../../redesign/styles/styles';
 import { ybFormatDate } from '../../redesign/helpers/DateUtils';
 import { api, universeQueryKey } from '../../redesign/helpers/api';
+
+import { XClusterConfig } from './dtos';
 
 import styles from './XClusterConfigCard.module.scss';
 

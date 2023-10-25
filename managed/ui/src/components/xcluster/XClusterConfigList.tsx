@@ -19,7 +19,7 @@ import {
 } from '../../redesign/helpers/api';
 import { RuntimeConfigKey } from '../../redesign/helpers/constants';
 
-import { XClusterConfig } from './XClusterTypes';
+import { XClusterConfig } from './dtos';
 
 import styles from './XClusterConfigList.module.scss';
 

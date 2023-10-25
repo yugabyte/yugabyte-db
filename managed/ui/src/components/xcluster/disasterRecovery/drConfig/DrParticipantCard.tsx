@@ -3,9 +3,14 @@ import { useQuery } from 'react-query';
 
 import { api, universeQueryKey } from '../../../../redesign/helpers/api';
 import { YBLoadingCircleIcon } from '../../../common/indicators';
+import { UniverseXClusterRole } from '../../constants';
+import { UniverseDrStateLabel } from '../UniverseDrStateLabel';
+
+import { XClusterConfig } from '../../dtos';
 
 interface DrParticipantCardProps {
-  universeUuid: string | undefined;
+  xClusterConfig: XClusterConfig;
+  universeXClusterRole: UniverseXClusterRole;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -23,9 +28,16 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const DrParticipantCard = ({ universeUuid }: DrParticipantCardProps) => {
+export const DrParticipantCard = ({
+  xClusterConfig,
+  universeXClusterRole
+}: DrParticipantCardProps) => {
   const classes = useStyles();
 
+  const universeUuid =
+    universeXClusterRole === UniverseXClusterRole.SOURCE
+      ? xClusterConfig.sourceUniverseUUID
+      : xClusterConfig.targetUniverseUUID;
   const universeQuery = useQuery(
     universeQueryKey.detail(universeUuid),
     () => api.fetchUniverse(universeUuid),
@@ -46,7 +58,12 @@ export const DrParticipantCard = ({ universeUuid }: DrParticipantCardProps) => {
           <Typography variant="h5">{universeName}</Typography>
         </>
       )}
-      <Box marginLeft="auto">Dr Participant Status Pill Container</Box>
+      <Box marginLeft="auto">
+        <UniverseDrStateLabel
+          xClusterConfig={xClusterConfig}
+          universeXClusterRole={universeXClusterRole}
+        />
+      </Box>
     </div>
   );
 };

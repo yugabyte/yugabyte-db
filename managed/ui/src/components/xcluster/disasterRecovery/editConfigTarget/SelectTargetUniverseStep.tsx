@@ -19,15 +19,7 @@ interface SelectTargetUniverseStepProps {
 
 const useStyles = makeStyles((theme) => ({
   fieldLabel: {
-    display: 'flex',
-    alignItems: 'center',
-
     marginBottom: theme.spacing(1)
-  },
-  infoIcon: {
-    '&:hover': {
-      cursor: 'pointer'
-    }
   }
 }));
 
@@ -54,7 +46,11 @@ export const SelectTargetUniverseStep = ({
   }
 
   if (universeListQuery.isError) {
-    return <YBErrorIndicator />;
+    return (
+      <YBErrorIndicator
+        customErrorMessage={t('failedToFetchUniverseList', { keyPrefix: 'queryError' })}
+      />
+    );
   }
 
   const universeOptions = universeListQuery.data
@@ -71,9 +67,9 @@ export const SelectTargetUniverseStep = ({
     });
   return (
     <>
-      <div className={classes.fieldLabel}>
-        <Typography variant="body2">{t('drReplica')}</Typography>
-      </div>
+      <Typography variant="body2" className={classes.fieldLabel}>
+        {t('drReplica')}
+      </Typography>
       <YBReactSelectField
         control={control}
         name="targetUniverse"
