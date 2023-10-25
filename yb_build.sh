@@ -314,7 +314,8 @@ set_cxx_test_name() {
     fatal "Only one C++ test name can be specified (found '$cxx_test_name' and '$1')."
   fi
   if [[ $1 == TEST* ]]; then
-    local test_source_path=$(
+    local test_source_path
+    test_source_path=$(
       ( cd "$YB_SRC_ROOT/src" && git grep "$1" ) | cut -d: -f1 | sort | uniq
     )
     if [[ ! -f "$YB_SRC_ROOT/src/$test_source_path" ]]; then
