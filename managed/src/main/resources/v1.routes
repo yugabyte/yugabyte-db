@@ -599,6 +599,7 @@ GET /customers/:cUUID/rbac/role_binding                                        c
 POST /customers/:cUUID/rbac/role_binding/:userUUID                             com.yugabyte.yw.controllers.RBACController.setRoleBindings(cUUID: java.util.UUID, userUUID: java.util.UUID, request: Request)
 # UI Only API
 GET /customers/:cUUID/rbac/user/:userUUID                                      com.yugabyte.yw.controllers.RBACController.getUserResourcePermissions(cUUID: java.util.UUID, userUUID: java.util.UUID, resourceType: String ?= null)
+GET /rbac/routes                                                               com.yugabyte.yw.controllers.RBACController.fetchRoutesPermissionDetails()
 
 # Telemetry Provider APIs
 GET /customers/:cUUID/telemetry_provider/:intUUID                              com.yugabyte.yw.controllers.TelemetryProviderController.getTelemetryProvider(cUUID: java.util.UUID, intUUID: java.util.UUID)
