@@ -33,7 +33,7 @@
 #include <unordered_map>
 #include <utility>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/macros.h"
 

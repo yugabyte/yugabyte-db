@@ -194,6 +194,8 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
 
   void Remove(const MetricPrototype* proto);
 
+  bool TEST_ContainMetricName(const std::string& metric_name) const;
+
  private:
   friend class MetricRegistry;
   friend class RefCountedThreadSafe<MetricEntity>;

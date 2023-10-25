@@ -8,7 +8,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.67-SNAPSHOT</version>
+    <version>0.8.68-SNAPSHOT</version>
   </parent>
   <artifactId>yb-sample</artifactId>
   <name>YB Manual Support</name>
@@ -17,13 +17,13 @@
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.67-SNAPSHOT</version>
+      <version>0.8.68-SNAPSHOT</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.67-SNAPSHOT</version>
+      <version>0.8.68-SNAPSHOT</version>
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>

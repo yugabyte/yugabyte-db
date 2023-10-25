@@ -5,7 +5,7 @@ linkTitle: Overview
 headcontent: Migrate your database using YugabyteDB Voyager
 cascade:
   unversioned: true
-description: YugabyteDB Voyager is a powerful open-source data migration engine that helps you migrate your database to YugabyteDB quickly and securely.
+description: Migrate your database to YugabyteDB using YugabyteDB Voyager.
 type: docs
 showRightNav: true
 menu:
@@ -27,7 +27,7 @@ YugabyteDB Voyager has the following features:
 
 - Free and completely open source.
 - Supports widely-used databases for migration and, in most cases, doesn't require changes to the [source databases](#source-databases).
-- Supports all YugabyteDB products as the [target database](#target-database). The target needs to be running YugabyteDB stable versions 2.14.5.0 and later, and preview versions 2.17.0.0 and later.
+- Supports all YugabyteDB products as the [target database](#target-database).
 - [Unified CLI](../reference/yb-voyager-cli/) experience for all different source databases.
 - [Auto-tuneable](../performance/) based on workloads, by analyzing the target cluster capacity; runs parallel jobs by default.
 - Progress monitoring, including the expected time for data export and import to complete, using progress bars.

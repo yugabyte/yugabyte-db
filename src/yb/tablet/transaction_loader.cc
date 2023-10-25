@@ -246,13 +246,10 @@ class TransactionLoader::Executor {
     }
     status_resolver_->Add(metadata->status_tablet, id);
 
-    {
-      std::lock_guard pending_applies_lock(loader_.pending_applies_mtx_);
-      auto pending_apply_it = loader_.pending_applies_.find(id);
-      context().LoadTransaction(
-          std::move(*metadata), std::move(last_batch_data), std::move(replicated_batches),
-          pending_apply_it != loader_.pending_applies_.end() ? &pending_apply_it->second : nullptr);
-    }
+    auto pending_apply = loader_.GetPendingApply(id);
+    context().LoadTransaction(
+        std::move(*metadata), std::move(last_batch_data), std::move(replicated_batches),
+        pending_apply ? &*pending_apply : nullptr);
     {
       std::lock_guard lock(loader_.mutex_);
       loader_.last_loaded_ = id;

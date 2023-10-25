@@ -1104,6 +1104,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<std::vector<BlacklistSet>> GetAffinitizedZoneSet();
   Result<BlacklistSet> BlacklistSetFromPB(bool leader_blacklist = false) const override;
 
+  Status GetUniverseKeyRegistryFromOtherMastersAsync();
+
   std::vector<std::string> GetMasterAddresses();
 
   // Returns true if there is at-least one snapshot schedule on any database/keyspace

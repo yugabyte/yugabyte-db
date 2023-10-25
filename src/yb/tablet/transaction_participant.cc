@@ -1051,7 +1051,7 @@ class TransactionParticipant::Impl
           &participant_context_, &rpcs_, FLAGS_max_transactions_in_status_request,
           [this, resolve_at, &recheck_ids, &committed_ids](
               const std::vector <TransactionStatusInfo>& status_infos) {
-            std::vector<std::pair<TransactionId, Status>> aborted;
+            std::vector<TransactionStatusInfo> aborted;
             for (const auto& info : status_infos) {
               VLOG_WITH_PREFIX(4) << "Transaction status: " << info.ToString();
               if (info.status == TransactionStatus::COMMITTED) {
@@ -1061,7 +1061,7 @@ class TransactionParticipant::Impl
                   committed_ids.push_back(info.transaction_id);
                 }
               } else if (info.status == TransactionStatus::ABORTED) {
-                aborted.push_back({info.transaction_id, info.expected_deadlock_status});
+                aborted.push_back(info);
               } else {
                 LOG_IF_WITH_PREFIX(DFATAL, info.status != TransactionStatus::PENDING)
                     << "Transaction is in unexpected state: " << info.ToString();
@@ -1073,10 +1073,20 @@ class TransactionParticipant::Impl
             if (!aborted.empty()) {
               MinRunningNotifier min_running_notifier(&applier_);
               std::lock_guard lock(mutex_);
-              for (const auto& [id, expected_deadlock_status] : aborted) {
+              for (const auto& info : aborted) {
+                // TODO: Refactor so that the clean up code can use the established iterator
+                // instead of executing find again.
+                auto it = transactions_.find(info.transaction_id);
+                if (it != transactions_.end() && (*it)->status_tablet() != info.status_tablet) {
+                  VLOG_WITH_PREFIX(2) << "Dropping Aborted status for txn "
+                                      << info.transaction_id.ToString()
+                                      << " from old status tablet " << info.status_tablet
+                                      << ". New status tablet " << (*it)->status_tablet();
+                  continue;
+                }
                 EnqueueRemoveUnlocked(
-                    id, RemoveReason::kStatusReceived, &min_running_notifier,
-                    expected_deadlock_status);
+                    info.transaction_id, RemoveReason::kStatusReceived, &min_running_notifier,
+                    info.expected_deadlock_status);
               }
             }
           });
@@ -1248,6 +1258,8 @@ class TransactionParticipant::Impl
       }
 
       auto& transaction = *it;
+      RETURN_NOT_OK_SET_CODE(transaction->CheckPromotionAllowed(),
+                             PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
       metadata = transaction->metadata();
       VLOG_WITH_PREFIX(2) << "Update transaction status location for transaction: "
                           << metadata.transaction_id << " from tablet " << metadata.status_tablet
@@ -1679,8 +1691,8 @@ class TransactionParticipant::Impl
         continue;
       }
       if ((**it).UpdateStatus(
-          info.status, info.status_ht, info.coordinator_safe_time, info.aborted_subtxn_set,
-          info.expected_deadlock_status)) {
+          info.status_tablet, info.status, info.status_ht, info.coordinator_safe_time,
+          info.aborted_subtxn_set, info.expected_deadlock_status)) {
         NotifyAbortedTransactionIncrement(info.transaction_id);
         EnqueueRemoveUnlocked(
             info.transaction_id, RemoveReason::kStatusReceived, &min_running_notifier,

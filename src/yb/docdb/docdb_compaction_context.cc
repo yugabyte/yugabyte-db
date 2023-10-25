@@ -15,8 +15,6 @@
 
 #include <memory>
 
-#include <glog/logging.h>
-
 #include "yb/common/schema.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/dockv/doc_key.h"

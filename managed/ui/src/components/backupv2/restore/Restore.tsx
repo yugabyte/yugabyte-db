@@ -88,12 +88,9 @@ export const Restore: FC<RestoreProps> = ({ universeUUID, type }) => {
     initialRestoreDetailsContextState
   );
 
-  const { data: universesList } = useQuery(['universes'], () => api.fetchUniverseList(),
-    {
-      refetchOnMount: false
-    }
-
-  );
+  const { data: universesList } = useQuery(['universes'], () => api.fetchUniverseList(), {
+    refetchOnMount: false
+  });
 
   const [, { setSelectedRestore }] = restoreDetailsContextData;
 

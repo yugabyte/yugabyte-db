@@ -35,8 +35,6 @@
 #include <functional>
 #include <mutex>
 
-#include <glog/logging.h>
-
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_peers.h"

@@ -32,7 +32,7 @@
 
 #include <boost/range/iterator_range.hpp>
 #include <boost/version.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <rapidjson/document.h>
 
 #include "yb/common/entity_ids.h"

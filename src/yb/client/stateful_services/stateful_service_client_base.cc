@@ -105,11 +105,11 @@ bool IsRetryableStatus(const Status& status) {
 }
 
 const HostPortPB* GetHostPort(master::StatefulServiceInfoPB* info) {
-  if (!info->broadcast_addresses().empty()) {
-    return info->mutable_broadcast_addresses(0);
-  }
   if (!info->private_rpc_addresses().empty()) {
     return info->mutable_private_rpc_addresses(0);
+  }
+  if (!info->broadcast_addresses().empty()) {
+    return info->mutable_broadcast_addresses(0);
   }
   return nullptr;
 }
@@ -200,6 +200,8 @@ Result<std::shared_ptr<rpc::ProxyBase>> StatefulServiceClientBase::GetProxy(
         location.DebugString());
     service_hp_ = std::make_shared<HostPort>(HostPort::FromPB(*host_port));
   }
+
+  VLOG(3) << "Connecting to " << service_name_ << " at " << *service_hp_;
 
   proxy_.reset(make_proxy(proxy_cache_.get(), *service_hp_));
   return proxy_;

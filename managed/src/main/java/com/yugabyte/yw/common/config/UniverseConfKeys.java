@@ -160,15 +160,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
-  public static final ConfKeyInfo<Boolean> granularMetrics =
-      new ConfKeyInfo<>(
-          "yb.ui.feature_flags.granular_metrics",
-          ScopeType.UNIVERSE,
-          "Granular level metrics",
-          "View granular level metrics when user selects specific time period in a chart",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
-
   public static final ConfKeyInfo<Boolean> pgBasedBackup =
       new ConfKeyInfo<>(
           "yb.backup.pg_based",
@@ -943,5 +934,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Parallelism for Node Agent Reinstallation",
           "Number of parallel node agent reinstallations at a time",
           ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ldapUniverseSync =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_universe_sync",
+          ScopeType.UNIVERSE,
+          "To perform sync of user-groups between the Universe DB nodes and LDAP Server",
+          "If configured, this feature allows users to synchronise user groups configured"
+              + " on the upstream LDAP Server with user roles in YBDB nodes associated"
+              + " with the universe.",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

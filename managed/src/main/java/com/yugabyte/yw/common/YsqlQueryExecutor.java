@@ -423,7 +423,7 @@ public class YsqlQueryExecutor {
     LOG.info("Assigned permissions to the user");
   }
 
-  public void runUserDbCommands(String query, String dbName, Universe universe) {
+  public JsonNode runUserDbCommands(String query, String dbName, Universe universe) {
     NodeDetails nodeToUse;
     try {
       nodeToUse = CommonUtils.getServerToRunYsqlQuery(universe);
@@ -434,11 +434,14 @@ public class YsqlQueryExecutor {
     RunQueryFormData ysqlQuery = new RunQueryFormData();
     ysqlQuery.query = query;
     ysqlQuery.db_name = dbName;
+
     JsonNode ysqlResponse = executeQueryInNodeShell(universe, ysqlQuery, nodeToUse);
     if (ysqlResponse.has("error")) {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
     }
+
+    return ysqlResponse;
   }
 
   public void validateAdminPassword(Universe universe, DatabaseSecurityFormData data) {

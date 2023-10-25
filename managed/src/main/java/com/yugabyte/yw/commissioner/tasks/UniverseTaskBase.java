@@ -72,6 +72,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYbc;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RollbackAutoFlags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlUpgrade;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetActiveUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
@@ -357,6 +358,44 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   @Override
   protected UniverseTaskParams taskParams() {
     return (UniverseTaskParams) taskParams;
+  }
+
+  /**
+   * This is first invoked with the universe to create long running async validation subtasks after
+   * the universe is locked.
+   *
+   * @param universe the locked universe.
+   */
+  protected void createPrecheckTasks(Universe universe) {}
+
+  /**
+   * Once the {@link #createPrecheckTasks(Universe)} is invoked, this method to make any DB changes
+   * in transaction with freezing the universe.
+   *
+   * @param universe the universe which is read in serializable transaction.
+   */
+  protected void freezeUniverseInTxn(Universe universe) {}
+
+  /**
+   * This method is invoked directly from run() method of the task. All the update tasks should move
+   * to this method to follow this pattern.
+   *
+   * @param updateLambda the actual update subtasks to be run.
+   */
+  protected void runUpdateTasks(Runnable updateLambda) {
+    checkUniverseVersion();
+    Universe universe = lockUniverseForFreezeAndUpdate(taskParams().expectedUniverseVersion);
+    try {
+      createPrecheckTasks(universe);
+      createFreezeUniverseTask(this::freezeUniverseInTxn)
+          .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
+      updateLambda.run();
+    } catch (RuntimeException e) {
+      log.error("Error occurred in running task", e);
+      throw e;
+    } finally {
+      unlockUniverseForUpdate();
+    }
   }
 
   protected Universe getUniverse() {
@@ -1081,6 +1120,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
     params.ignoreErrors = ignoreErrors;
     params.maxClass = maxClass;
+    params.setUniverseUUID(universeUUID);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Create a task to promote auto flags to the rollback version on a universe.
+   *
+   * @param universeUUID
+   * @param rollbackVersion
+   * @return
+   */
+  public SubTaskGroup createRollbackAutoFlagTask(UUID universeUUID, int rollbackVersion) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("RollbackAutoFlag");
+    RollbackAutoFlags task = createTask(RollbackAutoFlags.class);
+    RollbackAutoFlags.Params params = new RollbackAutoFlags.Params();
+    params.rollbackVersion = rollbackVersion;
     params.setUniverseUUID(universeUUID);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
@@ -4411,13 +4469,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       XClusterConfig xClusterConfig,
       @Nullable DrConfigStates.State drConfigState,
       @Nullable SourceUniverseState sourceUniverseState,
-      @Nullable TargetUniverseState targetUniverseState) {
+      @Nullable TargetUniverseState targetUniverseState,
+      @Nullable String keyspacePending) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("SetDrStates");
     SetDrStates.Params params = new SetDrStates.Params();
     params.xClusterConfig = xClusterConfig;
     params.drConfigState = drConfigState;
     params.sourceUniverseState = sourceUniverseState;
     params.targetUniverseState = targetUniverseState;
+    params.keyspacePending = keyspacePending;
 
     SetDrStates task = createTask(SetDrStates.class);
     task.initialize(params);

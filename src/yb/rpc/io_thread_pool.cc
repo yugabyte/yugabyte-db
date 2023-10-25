@@ -19,7 +19,7 @@
 
 #include <boost/asio/io_service.hpp>
 #include <boost/optional.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
