@@ -51,7 +51,6 @@
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
-DECLARE_string(certs_dir);
 DECLARE_bool(check_bootstrap_required);
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 DECLARE_bool(TEST_create_table_with_empty_namespace_name);
@@ -172,13 +171,6 @@ class AdminCliTest : public AdminCliTestBase {
  private:
   std::unique_ptr<MasterBackupProxy> backup_service_proxy_;
 };
-
-TEST_F(AdminCliTest, TestNonTLS) { ASSERT_OK(RunAdminToolCommand("list_all_masters")); }
-
-// TODO: Enabled once ENG-4900 is resolved.
-TEST_F(AdminCliTest, DISABLED_TestTLS) {
-  ASSERT_OK(RunAdminToolCommand("--certs_dir_name", GetCertsDir(), "list_all_masters"));
-}
 
 TEST_F(AdminCliTest, TestCreateSnapshot) {
   CreateTable(Transactional::kFalse);
