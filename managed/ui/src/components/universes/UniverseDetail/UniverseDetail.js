@@ -303,6 +303,10 @@ class UniverseDetail extends Component {
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.IS_UNIVERSE_AUTH_ENFORCED
       )?.value === 'true';
+    const isGFlagMultilineConfEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (config) => config.key === RuntimeConfigKey.IS_GFLAG_MULTILINE_ENABLED
+      )?.value === 'true';
 
     const isConfigureYSQLEnabled =
       runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.configure_db_api.ysql')
@@ -1079,6 +1083,7 @@ class UniverseDetail extends Component {
             this.props.fetchCustomerTasks();
             this.props.getUniverseInfo(currentUniverse.data.universeUUID);
           }}
+          isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
           universeData={currentUniverse.data}
         />
 
