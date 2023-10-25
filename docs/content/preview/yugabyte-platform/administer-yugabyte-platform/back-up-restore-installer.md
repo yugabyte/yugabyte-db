@@ -43,34 +43,34 @@ You cannot back up and restore Prometheus metrics data.
 
 {{< /note >}}
 
-## Back up YBA if installed using YBA Installer
+## Back up YBA
 
-If you installed YugabyteDB Anywhere using [YBA installer](../../install-yugabyte-platform/install-software/installer/), perform the following steps:
+To back up your YugabyteDB Anywhere installation, perform the following steps:
 
-1. Run the `yba-ctl` script using the `createbackup` command, as follows:
+1. Run the `createbackup` command, as follows:
 
     ```sh
-    ./yba-ctl.sh createBackup <output_path> [flags]
+    yba-ctl createBackup <output_path> [flags]
     ```
 
-    The `createBackup` command executes the `yb_platform_backup.sh` script to create a backup of your YugabyteDB Anywhere instance. Executing this command requires that you specify the `output_path` where you want the backup `.tar.gz` file to be stored as the first argument to `createBackup`.
+    The `createBackup` command executes the `yb_platform_backup.sh` script to create a backup of your YugabyteDB Anywhere instance. Specify the `output_path` where you want the backup `.tar.gz` file to be stored.
 
 1. Verify that the backup `.tar.gz` file, with the correct timestamp, is in the specified output directory.
 
 1. Upload the backup file to your preferred storage location and delete it from the local disk.
 
-## Restore YBA if installed using YBA Installer
+## Restore YBA
 
 To restore the YugabyteDB Anywhere content from your saved backup, perform the following:
 
 1. Copy the backup `.tar` file from your storage location.
 
-1. Run the `yba-ctl` script using the `restoreBackup` command:
+1. Run the `restoreBackup` command as follows:
 
     ```sh
     yba-ctl restoreBackup <input_path> [flags]
     ```
 
-    The `restoreBackup` command executes the `yb_platform_backup.sh` to restore from a previously taken backup of your YugabyteDB Anywhere instance. Executing this command requires that you specify the `input_path` to the backup `.tar.gz` file as the only argument to `restoreBackup`.
+    The `restoreBackup` command executes the `yb_platform_backup.sh` script to restore from a previously taken backup of your YugabyteDB Anywhere instance. Specify the `input_path` to the backup `.tar.gz` file as the only argument.
 
-Upon completion of the preceding steps, the restored YugabyteDB Anywhere is ready to continue managing your universes and clusters.
+When finished, the restored YugabyteDB Anywhere is ready to continue managing your universes and clusters.
