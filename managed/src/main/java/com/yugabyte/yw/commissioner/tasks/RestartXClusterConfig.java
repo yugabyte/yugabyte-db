@@ -3,7 +3,6 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
 import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
@@ -102,10 +101,8 @@ public class RestartXClusterConfig extends EditXClusterConfig {
           createXClusterConfigSetStatusForTablesTask(
               xClusterConfig, tableIds, XClusterTableConfig.Status.Updating);
 
-          createXClusterConfigModifyTablesTask(
-              xClusterConfig,
-              tableIds,
-              XClusterConfigModifyTables.Params.Action.REMOVE_FROM_REPLICATION_ONLY);
+          createRemoveTableFromXClusterConfigSubtasks(
+              xClusterConfig, tableIds, true /* keepEntry */);
 
           createXClusterConfigSetStatusForTablesTask(
               xClusterConfig, tableIds, XClusterTableConfig.Status.Updating);
