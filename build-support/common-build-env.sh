@@ -2248,7 +2248,8 @@ activate_virtualenv() {
   local virtualenv_dir=$virtualenv_parent_dir/$YB_VIRTUALENV_BASENAME
 
   # On Apple Silicon, use separate virtualenv directories per architecture.
-  if is_apple_silicon && [[ -n ${YB_TARGET_ARCH:-} ]]; then
+  if is_apple_silicon; then
+    detect_architecture
     virtualenv_dir+="-${YB_TARGET_ARCH}"
   fi
 
@@ -2282,19 +2283,35 @@ activate_virtualenv() {
       mkdir -p "$virtualenv_parent_dir"
       cd "$virtualenv_parent_dir"
       local python3_interpreter=python3
-      if is_mac && [[ ${YB_TARGET_ARCH:-} == "arm64" ]]; then
-        python3_interpreter=/opt/homebrew/bin/python3
+      local arch_prefix=""
+      if is_apple_silicon; then
+        # On Apple Silicon, use the system Python 3 interpreter. This is necessary because the
+        # Homebrew Python was upgraded to version 3.11 in April 2023, and setup.py fails for
+        # the typed-ast module.
+        python3_interpreter=/usr/bin/python3
+        arch_prefix="arch -${YB_TARGET_ARCH}"
       fi
 
       # Require Python version at least 3.7.
       local python3_version
-      python3_version=$("$python3_interpreter" -V)
+      python3_version=$( "$python3_interpreter" -V )
       if [ "$(echo "$python3_version" | cut -d. -f2)" -lt 7 ]; then
         fatal "Python version too low: $python3_version"
       fi
 
-      set -x
-      "$python3_interpreter" -m venv "${virtualenv_dir##*/}"
+      $arch_prefix "$python3_interpreter" -m venv "${virtualenv_dir##*/}"
+
+      # Validate the architecture of the virtualenv.
+      if [[ -n ${YB_TARGET_ARCH:-} ]]; then
+        local actual_python_arch
+        actual_python_arch=$(
+          "${virtualenv_dir}/bin/python3" -c "import platform; print(platform.machine())"
+        )
+        if [[ $actual_python_arch != "$YB_TARGET_ARCH" ]]; then
+          fatal "Failed to create virtualenv for $YB_TARGET_ARCH, got $actual_python_arch instead" \
+                "for virtualenv at $virtualenv_dir"
+        fi
+      fi
     )
   fi
 
@@ -2312,6 +2329,7 @@ activate_virtualenv() {
     local requirements_file_path="$YB_SRC_ROOT/requirements_frozen.txt"
     local installed_requirements_file_path=$virtualenv_dir/${requirements_file_path##*/}
     if ! cmp --silent "$requirements_file_path" "$installed_requirements_file_path"; then
+      "$pip_executable" install --upgrade pip
       run_with_retries 10 0.5 "$pip_executable" install -r "$requirements_file_path" \
         $pip_no_cache
     fi

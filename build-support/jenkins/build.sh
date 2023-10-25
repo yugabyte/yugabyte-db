@@ -570,7 +570,7 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
       # for the GCC fastdebug build requires locale setup inside the Docker image.
       grep -Eq "AlmaLinux 8[.]" /etc/os-release &&
       using_linuxbrew &&
-      $YB_COMPILER_TYPE == clang*
+      [[ $YB_COMPILER_TYPE == clang* ]]
     ); then
     "$YB_SRC_ROOT/bin/release_package_docker_test.sh" --package-path "${YB_PACKAGE_PATH}"
   else
