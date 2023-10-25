@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-## Add Table to Replication
+## Add a table to replication
 
 1. Create table on the Primary (if it does not already exist).
 1. Create table on the Standby.
@@ -22,13 +22,13 @@ If the newly added table already has data before adding it to replication, then 
 
 **Note**: The recommendation is to always set up replication on the new table before starting any workload to ensure that data is protected at all times.
 
-## Remove Table from Replication
+## Remove a table from replication
 
 1. Remove the table from replication using the YBA UI.
 
 1. Drop the table from both Primary and Standby databases separately.
 
-## Add a new Index to replication
+## Add a new index to replication
 
 Indexes are automatically added to replication in an atomic fashion after you create the indexes separately on Primary and Standby. You do not have to stop the writes on the Primary clusters.
 
@@ -36,15 +36,17 @@ Indexes are automatically added to replication in an atomic fashion after you cr
 
 1. Create an index on the Primary.
 
-1. Wait for index backfill to finish (monitor backfill progress: https://yugabytedb.tips/?p=2215 )
+1. Wait for index backfill to finish.
 
 1. Create the same index on Standby.
 
-1. Wait for index backfill to finish (monitor backfill progress: https://yugabytedb.tips/?p=2215 )
+1. Wait for index backfill to finish.
 
-1. Manually resync YBA monitoring.
+1. [Manually resync YBA monitoring](#manually-resync-yba-monitoring).
 
-## Remove Index from replication
+For instructions on monitoring backfill, refer to [Monitor index backfill from the command line](https://yugabytedb.tips/?p=2215).
+
+## Remove an index from replication
 
 When an index is dropped it is automatically removed from replication.
 
@@ -52,9 +54,9 @@ When an index is dropped it is automatically removed from replication.
 
 1. Drop the index on the Primary universe.
 
-1. Manually resync YBA monitoring
+1. [Manually resync YBA monitoring](#manually-resync-yba-monitoring).
 
-## Add a Table Partition to the Replication
+## Add a table partition to the replication
 
 The operation is the same as adding a table.
 
@@ -82,23 +84,23 @@ FOR VALUES FROM ('2023-01-01') TO ('2023-03-30');
 
 Assume the parent table and default partition are included in the replication stream.
 
-To add a table partition to the replication, Follow the same steps for [Add Table to replication](#add-table-to-replication).
+To add a table partition to the replication, follow the same steps for [Add Table to replication](#add-table-to-replication).
 
-## Remove Table Partition from Replication
+## Remove table partition from replication
 
 Remove Partition from Replication is the same as [Remove Table from Replication](#remove-table-from-replication).
 
-## Manually resync YBA Monitoring
+## Manually resync YBA monitoring
 
 One time setup:
 
-1. Open https://<yourportal.yugabyte.com>/profile in your browser.
+1. In YugabyteDB Anywhere, navigate to your profile by clicking the profile icon in the top right and choosing **User Profile** (that is, https://<yourportal.yugabyte.com>/profile).
 
-1. Click Generate Key.
+1. Click **Generate Key**.
 
-1. Copy the Customer ID and API Token and store it in a secure location.
+1. Copy the API Token and Customer ID and store it in a secure location.
 
-1. Navigate to the Standby universe YBA UI page and get the cluster UUID from the URL.
+1. Navigate to the Standby universe and get the cluster UUID from the URL.
 
 1. Run the following command:
 

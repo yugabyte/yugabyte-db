@@ -35,28 +35,28 @@ xCluster safe time is the transactionally consistent time across all tables in a
 
 ## Limitations
 
-Tablet splitting is not supported with Transactional Atomicity and Global Ordering.
-
-Supports only Active-Standby setups with transactional atomicity and global ordering.
-
-Transactional consistency is currently not supported for YCQL, only for YSQL.
+- Tablet splitting is not supported with Transactional Atomicity and Global Ordering.
+- Supports only Active-Standby setups with transactional atomicity and global ordering.
+- Transactional consistency is currently not supported for YCQL, only for YSQL.
 
 ## Recommended guardrails
 
-CPU utilisation: keep it below 65%.
-Disk space utilisation: under 65%.
+- CPU utilisation: keep below 65%.
+- Disk space utilisation: under 65%.
 
 ## Prerequisites
 
-Create Primary and Standby Universes with TLS enabled.
+- Create Primary and Standby Universes with TLS enabled.
 
-Set the following g-flags are to be set on both universes - Primary and Standby:
+- Set the following flags on both Primary and Standby:
 
-- Only TSERVER side flags
+  - YB-TServer
 
-    log_min_seconds_to_retain = 86400 (The value for this depends on how long of a network partition or standby cluster outage can be tolerated and amount of WAL expected to be generated during that period)
+    - [log_min_seconds_to_retain](../../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) = 86400
 
-- Only MASTER side flags
+        This value depends on how long a network partition or standby cluster outage can be tolerated and the amount of WAL expected to be generated during that period.
 
-    enable_automatic_tablet_splitting = false
-    enable_tablet_split_of_xcluster_replicated_tables = false
+  - YB-Master
+
+    - [enable_automatic_tablet_splitting](../../../../reference/configuration/yb-master/#enable-automatic-tablet-splitting) = false
+    - [enable_tablet_split_of_xcluster_replicated_tables](../../../../reference/configuration/yb-master/#enable-tablet-split-of-xcluster-replicated-tables) = false

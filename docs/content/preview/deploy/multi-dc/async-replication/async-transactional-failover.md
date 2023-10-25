@@ -61,7 +61,7 @@ Assuming universe A is the current source (active) universe and B is the current
 
 1. Determine if the estimated data loss and the `safe_time` to which the system will be reset are acceptable.
 
-1. Use PITR to restore the universe to a consistent state that cuts off any partially replicated transactions. Use the xCluster safe time obtained in the previous step as the "Restore" time in the following restore step.
+1. Use PITR to restore the universe to a consistent state that cuts off any partially replicated transactions. Use the xCluster safe time obtained in the previous step as the Restore time in the following restore step.
 
     Find the Snapshot Schedule name for this database:
 
@@ -243,7 +243,7 @@ Do the following:
     Changed role successfully
     ```
 
-1. In YugabyteDB Anywhere, delete the replication from A->B. Navigate to universe B, choose **Replication**, and select the replication.
+1. In YugabyteDB Anywhere, to delete the replication from A to B, navigate to universe B, choose **Replication**, and select the replication.
 
 1. Click **Actions > Delete Replication**.
 
@@ -297,6 +297,7 @@ Do the following:
         -master_addresses <A_master_ips>
         -certs_dir_name <dir_name>
         delete_cdc_stream <streamID>
+        ```
 
 1. Recreate the database(s) on A.
 
@@ -332,7 +333,7 @@ Do the following:
     ]
     ```
 
-    Default time reported in xCluster SafeTime is year 2112. Need to wait until the xCluster SafeTime on Standby advances beyond setup replication clock time.
+    Default time reported in xCluster safe time is year 2112. Need to wait until the xCluster safe time on Standby advances beyond setup replication clock time.
 
 Replication is now complete.
 
