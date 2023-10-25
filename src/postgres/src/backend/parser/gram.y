@@ -3731,7 +3731,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					if ($14 && $15)
 					{
 						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with SPLIT.")));
+										errmsg("cannot use TABLEGROUP with SPLIT")));
 					}
 					$$ = (Node *) n;
 				}
@@ -3775,7 +3775,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					if ($17 && $18)
 					{
 						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with SPLIT.")));
+										errmsg("cannot use TABLEGROUP with SPLIT")));
 					}
 					$$ = (Node *) n;
 				}
@@ -3820,7 +3820,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					if ($13 && $14)
 					{
 						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with SPLIT.")));
+										errmsg("cannot use TABLEGROUP with SPLIT")));
 					}
 					$$ = (Node *) n;
 				}
@@ -3865,7 +3865,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					if ($16 && $17)
 					{
 						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with SPLIT.")));
+										errmsg("cannot use TABLEGROUP with SPLIT")));
 					}
 					$$ = (Node *) n;
 				}
