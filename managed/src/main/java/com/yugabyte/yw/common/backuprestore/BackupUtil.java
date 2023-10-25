@@ -772,20 +772,22 @@ public class BackupUtil {
 
               // Tablespaces section
               if (restoreParams.useTablespaces) {
-                List<String> unsupportedTablespaces =
-                    bInfo.tablespaceResponse.unsupportedTablespaces;
-                List<String> conflictingTablespaces =
-                    bInfo.tablespaceResponse.conflictingTablespaces;
-                if (CollectionUtils.isNotEmpty(unsupportedTablespaces)) {
-                  LOG.warn(
-                      "Attempting tablespaces restore with unsupported topology: {}",
-                      unsupportedTablespaces);
-                }
-                if (CollectionUtils.isNotEmpty(conflictingTablespaces)) {
-                  LOG.warn(
-                      "Attempting tablespaces restore which already exist on target Universe: {}."
-                          + "Note that these will not be overwritten.",
-                      unsupportedTablespaces);
+                if (bInfo.tablespaceResponse != null) {
+                  List<String> unsupportedTablespaces =
+                      bInfo.tablespaceResponse.unsupportedTablespaces;
+                  List<String> conflictingTablespaces =
+                      bInfo.tablespaceResponse.conflictingTablespaces;
+                  if (CollectionUtils.isNotEmpty(unsupportedTablespaces)) {
+                    LOG.warn(
+                        "Attempting tablespaces restore with unsupported topology: {}",
+                        unsupportedTablespaces);
+                  }
+                  if (CollectionUtils.isNotEmpty(conflictingTablespaces)) {
+                    LOG.warn(
+                        "Attempting tablespaces restore which already exist on target Universe: {}."
+                            + "Note that these will not be overwritten.",
+                        unsupportedTablespaces);
+                  }
                 }
               }
 
