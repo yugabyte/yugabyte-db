@@ -1390,6 +1390,14 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE)),
 					errmsg("data directory with the specified OID %u already exists", dboid));
+
+		/*
+		 * YB_TODO: Due to GH issue #19656, CREATE DATABASE will fail if the
+		 * OID was used by a database that's been dropped.
+		 */
+		if (IsYugaByteEnabled())
+			YBCCreateDatabase(dboid, dbname, src_dboid, InvalidOid, dbcolocated,
+							  /*retry_on_oid_collision=*/ NULL);
 	}
 	else
 	{
