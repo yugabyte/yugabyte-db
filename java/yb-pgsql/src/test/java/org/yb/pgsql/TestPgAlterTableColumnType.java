@@ -131,7 +131,8 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE TABLE int4_table2(c1 int) PARTITION BY RANGE(c1)");
       runInvalidQuery(statement, "ALTER TABLE int4_table2 ALTER c1 TYPE varchar",
-          "ERROR: cannot alter type of column named in partition key");
+          "ERROR: cannot alter column \"c1\" because it is part of the partition key of relation " +
+          "\"int4_table2\"");
     }
   }
 
