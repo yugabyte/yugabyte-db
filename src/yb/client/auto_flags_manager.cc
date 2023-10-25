@@ -310,7 +310,7 @@ Status AutoFlagsManager::ApplyConfig(ApplyNonRuntimeAutoFlags apply_non_runtime)
     LOG(INFO) << "AutoFlags promoted: " << JoinStrings(flags_promoted, ",");
   }
   if (!flags_demoted.empty()) {
-    LOG(INFO) << "AutoFlags demoted: " << JoinStrings(flags_promoted, ",");
+    LOG(INFO) << "AutoFlags demoted: " << JoinStrings(flags_demoted, ",");
   }
   if (!non_runtime_flags_skipped.empty()) {
     LOG(WARNING) << "Non-runtime AutoFlags skipped apply: "
