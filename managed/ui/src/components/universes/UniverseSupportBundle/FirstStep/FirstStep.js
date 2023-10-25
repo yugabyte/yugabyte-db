@@ -1,6 +1,9 @@
 import { YBButton } from '../../../common/forms/fields';
 import { UserPermissionMap } from '../../../../redesign/features/rbac/UserPermPathMapping';
-import { RbacValidator, hasNecessaryPerm } from '../../../../redesign/features/rbac/common/RbacValidator';
+import {
+  RbacValidator,
+  hasNecessaryPerm
+} from '../../../../redesign/features/rbac/common/RbacValidator';
 import { Action, Resource } from '../../../../redesign/features/rbac';
 
 export const FirstStep = ({ onCreateSupportBundle, universeUUID }) => {
@@ -11,7 +14,14 @@ export const FirstStep = ({ onCreateSupportBundle, universeUUID }) => {
         isControl
         accessRequiredOn={UserPermissionMap.createSupportBundle}
         customValidateFunction={() => {
-          return hasNecessaryPerm(UserPermissionMap.createSupportBundle) && hasNecessaryPerm({ onResource: universeUUID, resourceType: Resource.UNIVERSE, permissionRequired: [Action.UPDATE] });
+          return (
+            hasNecessaryPerm(UserPermissionMap.createSupportBundle) &&
+            hasNecessaryPerm({
+              onResource: universeUUID,
+              resourceType: Resource.UNIVERSE,
+              permissionRequired: [Action.READ]
+            })
+          );
         }}
         popOverOverrides={{ zIndex: 100000 }}
       >

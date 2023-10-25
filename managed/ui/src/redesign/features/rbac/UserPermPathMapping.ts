@@ -248,7 +248,7 @@ export const UserPermissionMap = {
     createSupportBundle: {
         onResource: "CUSTOMER_ID",
         resourceType: RbacResourceTypes.SUPPORT_BUNDLE,
-        permissionRequired: [Action.UPDATE]
+        permissionRequired: [Action.CREATE]
     },
     deleteSupportBundle: {
         onResource: "CUSTOMER_ID",
@@ -258,7 +258,7 @@ export const UserPermissionMap = {
     downloadSupportBundle: {
         onResource: "CUSTOMER_ID",
         resourceType: RbacResourceTypes.SUPPORT_BUNDLE,
-        permissionRequired: [Action.READ]
+        permissionRequired: [Action.CREATE]
     },
 
     //CA-Certs

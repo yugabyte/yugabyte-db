@@ -407,4 +407,13 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Enables OpenTelemetry Collector installation on DB nodes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Duration> waitForYQLRetryDuration =
+      new ConfKeyInfo<>(
+          "yb.wait_for_yqlserver_retry",
+          ScopeType.PROVIDER,
+          "Duration between retries while waiting for ysql to come up",
+          "Duration between retries while waiting for ysql to come up",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

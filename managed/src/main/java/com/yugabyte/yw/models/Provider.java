@@ -85,9 +85,10 @@ public class Provider extends Model {
   private UUID customerUUID;
 
   public static final Set<Common.CloudType> InstanceTagsEnabledProviders =
-      ImmutableSet.of(Common.CloudType.aws, Common.CloudType.azu, Common.CloudType.gcp);
+      ImmutableSet.of(
+          Common.CloudType.aws, Common.CloudType.azu, Common.CloudType.gcp, Common.CloudType.local);
   public static final Set<Common.CloudType> InstanceTagsModificationEnabledProviders =
-      ImmutableSet.of(Common.CloudType.aws, Common.CloudType.gcp);
+      ImmutableSet.of(Common.CloudType.aws, Common.CloudType.gcp, Common.CloudType.local);
 
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
   @ApiModelProperty(value = "Deprecated since YBA version 2.17.2.0. Use details.metadata instead")

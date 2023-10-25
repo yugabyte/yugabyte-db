@@ -45,9 +45,19 @@ var reconfigureCmd = &cobra.Command{
 		// TODO(minor): probably not a good idea in the long run
 		os.Chdir(common.GetBinaryDir())
 
+		// Set any necessary config values due to changes
+		common.FixConfigValues()
+
 		for _, name := range serviceOrder {
 			log.Info("Regenerating config for service " + name)
 			config.GenerateTemplate(services[name])
+			if name == PrometheusServiceName {
+				// Fix up basic auth
+				prom := services[name].(Prometheus)
+				if err := prom.FixBasicAuth(); err != nil {
+					log.Fatal("failed to edit basic auth: " + err.Error())
+				}
+			}
 			log.Info("Starting service " + name)
 			services[name].Start()
 		}

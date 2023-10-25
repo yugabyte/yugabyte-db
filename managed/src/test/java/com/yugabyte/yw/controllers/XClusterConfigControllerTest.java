@@ -45,13 +45,13 @@ import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
-import com.yugabyte.yw.models.CustomerTask.TaskType;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
+import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
 import com.yugabyte.yw.models.rbac.Role;
@@ -175,7 +175,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     }
     createRequest.putArray("tables").addAll(tables);
 
-    taskUUID = UUID.randomUUID();
+    taskUUID = buildTaskInfo(null, TaskType.XClusterConfigSync);
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
 
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
@@ -413,7 +413,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(
         customerTask.getTargetType(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
-    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Create)));
+    assertThat(
+        customerTask.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Create)));
     assertThat(customerTask.getTargetName(), allOf(notNullValue(), equalTo(configName)));
 
     assertAuditEntry(1, customer.getUuid());
@@ -451,7 +452,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(
         customerTask.getTargetType(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
-    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Create)));
+    assertThat(
+        customerTask.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Create)));
     assertThat(customerTask.getTargetName(), allOf(notNullValue(), equalTo(configName)));
 
     assertAuditEntry(1, customer.getUuid());
@@ -828,7 +830,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(
         customerTask.getTargetType(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
-    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Edit)));
+    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Edit)));
     assertThat(customerTask.getTargetName(), allOf(notNullValue(), equalTo(configName)));
 
     assertAuditEntry(1, customer.getUuid());
@@ -868,7 +870,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(
         customerTask.getTargetType(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
-    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Edit)));
+    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Edit)));
     assertThat(customerTask.getTargetName(), allOf(notNullValue(), equalTo(configName)));
 
     assertAuditEntry(1, customer.getUuid());
@@ -903,7 +905,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(
         customerTask.getTargetType(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
-    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Edit)));
+    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Edit)));
     assertThat(customerTask.getTargetName(), allOf(notNullValue(), equalTo(configName)));
 
     assertAuditEntry(1, customer.getUuid());
@@ -1132,7 +1134,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(
         customerTask.getTargetType(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
-    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Delete)));
+    assertThat(
+        customerTask.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Delete)));
     assertThat(customerTask.getTargetName(), allOf(notNullValue(), equalTo(configName)));
 
     assertAuditEntry(1, customer.getUuid());
@@ -1194,7 +1197,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(
         customerTask.getTargetType(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
-    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Sync)));
+    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Sync)));
     assertThat(customerTask.getTargetName(), allOf(notNullValue(), equalTo(targetUniverseName)));
 
     assertAuditEntry(1, customer.getUuid());
@@ -1267,7 +1270,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(customerTask.getTaskUUID(), allOf(notNullValue(), equalTo(taskUUID)));
     assertThat(
         customerTask.getTargetType(), allOf(notNullValue(), equalTo(TargetType.XClusterConfig)));
-    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(TaskType.Sync)));
+    assertThat(customerTask.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Sync)));
     assertThat(customerTask.getTargetName(), allOf(notNullValue(), equalTo(targetUniverseName)));
 
     assertAuditEntry(1, customer.getUuid());

@@ -43,7 +43,7 @@
 #include <vector>
 
 #include <boost/signals2/dummy_mutex.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/logging-inl.h"

@@ -37,7 +37,7 @@
 #include <string>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"

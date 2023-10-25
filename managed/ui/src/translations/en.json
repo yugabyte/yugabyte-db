@@ -1155,6 +1155,7 @@
         "endTime": "End time",
         "copyUUID": "Copy UUID",
         "database": "Database",
+        "tables": "Tables",
         "copyBackupLocation": "Copy backup location",
         "copied": "Copied"
       }

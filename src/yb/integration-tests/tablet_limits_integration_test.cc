@@ -31,8 +31,8 @@ namespace yb {
 
 namespace {
 
-const std::string kCoreLimitFlagName = "TEST_tablet_replicas_per_core_limit";
-const std::string kMemoryLimitFlagName = "TEST_tablet_replicas_per_gib_limit";
+const std::string kCoreLimitFlagName = "tablet_replicas_per_core_limit";
+const std::string kMemoryLimitFlagName = "tablet_replicas_per_gib_limit";
 
 const std::string kErrorMessageFragment = "to exceed the safe system maximum";
 }  // namespace
@@ -48,7 +48,7 @@ Status IsTabletLimitErrorStatus(const Status& status) {
   }
   if (status.message().ToBuffer().find(kErrorMessageFragment) == std::string::npos) {
     return STATUS_FORMAT(
-        IllegalState, "Status message doesn't contain limit exceed string, instead is: ",
+        IllegalState, "Status message doesn't contain limit exceed string, instead is: $0",
         status.message().ToBuffer());
   }
   return Status::OK();

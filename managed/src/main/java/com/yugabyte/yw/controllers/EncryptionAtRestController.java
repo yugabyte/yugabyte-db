@@ -43,6 +43,8 @@ import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.KmsHistoryId;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
@@ -632,7 +634,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
     }
   }
 
-  @ApiOperation(value = "Refresh KMS Config", response = YBPSuccess.class)
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.19.0.0")
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. Refresh KMS Config",
+      response = YBPSuccess.class)
   @ApiResponses(
       @ApiResponse(
           code = 500,
@@ -661,8 +666,9 @@ public class EncryptionAtRestController extends AuthenticatedController {
             kmsConfig.getKeyProvider().name(), configUUID));
   }
 
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value = "Retrive a universe's KMS key",
+      value = "YbaApi Internal. Retrive a universe's KMS key",
       response = Object.class,
       responseContainer = "Map")
   @AuthzPath({
@@ -709,8 +715,9 @@ public class EncryptionAtRestController extends AuthenticatedController {
     return recoveredKey;
   }
 
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value = "Get a universe's key reference history",
+      value = "YbaApi Internal. Get a universe's key reference history",
       response = Object.class,
       responseContainer = "List")
   @AuthzPath({
@@ -740,7 +747,13 @@ public class EncryptionAtRestController extends AuthenticatedController {
             .collect(Collectors.toList()));
   }
 
-  @ApiOperation(value = "Remove a universe's key reference history", response = YBPSuccess.class)
+  @Deprecated
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
+  @ApiOperation(
+      value =
+          "Deprecated since YBA version 2.20.0.0. Do not use. This API removes a universe's key"
+              + " reference history",
+      response = YBPSuccess.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -764,8 +777,9 @@ public class EncryptionAtRestController extends AuthenticatedController {
     return YBPSuccess.withMessage("Key ref was successfully removed");
   }
 
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value = "Get a universe's key reference",
+      value = "YbaApi Internal. Get a universe's key reference",
       response = Object.class,
       responseContainer = "Map")
   @AuthzPath({

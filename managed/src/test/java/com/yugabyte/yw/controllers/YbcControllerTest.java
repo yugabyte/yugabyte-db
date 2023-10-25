@@ -23,6 +23,7 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
@@ -67,7 +68,7 @@ public class YbcControllerTest extends FakeDBApplication {
 
   @Test
   public void testDisableYbcSuccess() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.DisableYbc);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Result result = disableYbc(defaultYbcUniverse.getUniverseUUID());
     assertOk(result);
@@ -102,7 +103,7 @@ public class YbcControllerTest extends FakeDBApplication {
   @Test
   @Parameters({"", "1.0.0-b2"})
   public void testUpgradeYbcSuccess(String ybcVersion) {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.UpgradeYbc);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Result result = upgradeYbc(defaultYbcUniverse.getUniverseUUID(), ybcVersion);
     assertOk(result);
@@ -153,7 +154,7 @@ public class YbcControllerTest extends FakeDBApplication {
   @Test
   @Parameters({"", "1.0.0-b2"})
   public void testInstallYbcSuccess(String ybcVersion) {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.InstallYbcSoftware);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UserIntent userIntent =
         defaultNonYbcUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
@@ -162,10 +163,8 @@ public class YbcControllerTest extends FakeDBApplication {
         defaultNonYbcUniverse.getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent));
     Result result = installYbc(defaultNonYbcUniverse.getUniverseUUID(), ybcVersion);
     assertOk(result);
-    result = installYbc(defaultYbcUniverse.getUniverseUUID(), ybcVersion);
-    assertOk(result);
-    verify(mockCommissioner, times(2)).submit(any(), any());
-    assertAuditEntry(2, defaultCustomer.getUuid());
+    verify(mockCommissioner, times(1)).submit(any(), any());
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test

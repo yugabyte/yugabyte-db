@@ -309,6 +309,9 @@ GET     /customers/:cUUID/universes/:uniUUID/cdc_streams                       c
 POST    /customers/:cUUID/universes/:uniUUID/cdc_streams                       com.yugabyte.yw.controllers.UniverseCdcStreamController.createCdcStream(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 DELETE  /customers/:cUUID/universes/:uniUUID/cdc_streams/:streamId             com.yugabyte.yw.controllers.UniverseCdcStreamController.deleteCdcStream(cUUID: java.util.UUID, uniUUID: java.util.UUID, streamId: String)
 
+# Universe LDAP users Sync API
+POST /customers/:cUUID/universes/:univUUID/ldap_roles_sync                     com.yugabyte.yw.controllers.LdapUniverseSyncController.syncUniverse(cUUID: java.util.UUID, univUUID: java.util.UUID, request: Request)
+
 # Universe performance suggestions
 GET     /customers/:cUUID/universes/:uniUUID/unused_indexes                    com.yugabyte.yw.controllers.UniversePerfController.getUnusedIndexes(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/query_distribution_suggestions    com.yugabyte.yw.controllers.UniversePerfController.getQueryDistributionSuggestions(cUUID: java.util.UUID, uniUUID: java.util.UUID)

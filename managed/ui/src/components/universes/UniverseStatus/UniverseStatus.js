@@ -34,11 +34,11 @@ export default class UniverseStatus extends Component {
     }
   }
 
-  retryTaskClicked = (currentTaskUUID) => {
+  retryTaskClicked = (currentTaskUUID, universeUUID) => {
     this.props.retryCurrentTask(currentTaskUUID).then((response) => {
       const status = response?.payload?.response?.status || response?.payload?.status;
       if (status === 200 || status === 201) {
-        browserHistory.push('/tasks');
+        browserHistory.push(`/universes/${universeUUID}/tasks`);
       } else {
         const taskResponse = response?.payload?.response;
         const toastMessage = taskResponse?.data?.error
@@ -150,7 +150,7 @@ export default class UniverseStatus extends Component {
             <YBButton
               btnText={'Retry Task'}
               btnClass="btn btn-default view-task-details-btn"
-              onClick={() => this.retryTaskClicked(failedTask.id)}
+              onClick={() => this.retryTaskClicked(failedTask.id, currentUniverse.universeUUID)}
             />
           )}
         </div>

@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/util/hash_util.h"

@@ -189,6 +189,9 @@ void CatalogManagerBgTasks::Run() {
             "Failed to create Test Echo service");
       }
 
+      // TODO(auto-analyze, #19464): we allow enabling this service at runtime. We should also allow
+      // disabling this service at runtime i.e., the service should stop on the tserver hosting it
+      // when the flag is set to false.
       if (GetAtomicFlag(&FLAGS_ysql_enable_auto_analyze_service)) {
         WARN_NOT_OK(catalog_manager_->CreatePgAutoAnalyzeService(l.epoch()),
                     "Failed to create Auto Analyze service");

@@ -4,11 +4,9 @@ import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 import { browserHistory } from 'react-router';
 import { toast } from 'react-toastify';
-import { Box } from '@material-ui/core';
 import { UniverseFormContext } from './UniverseFormContainer';
 import { UniverseForm } from './form/UniverseForm';
 import { DeleteClusterModal } from './action-modals';
-import { YBPermissionNotFound } from '../../../components';
 import { YBLoading } from '../../../../components/common/indicators';
 import { api, QUERY_KEY } from './utils/api';
 import { getPlacements } from './form/fields/PlacementsField/PlacementsFieldHelper';
@@ -22,8 +20,6 @@ import {
 } from './utils/helpers';
 import { CloudType, ClusterModes, ClusterType, UniverseFormData } from './utils/dto';
 import { TOAST_AUTO_DISMISS_INTERVAL } from './utils/constants';
-import { hasNecessaryPerm } from '../../rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../rbac/UserPermPathMapping';
 
 interface EditReadReplicaProps {
   uuid: string;
@@ -35,16 +31,10 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid }) => {
   const { initializeForm, setUniverseResourceTemplate } = contextMethods;
   const [showDeleteRRModal, setShowDeleteRRModal] = useState(false);
 
-  const isEditRRAllowed = hasNecessaryPerm({
-    ...UserPermissionMap.editUniverse,
-    onResource: uuid
-  });
-
   const { isLoading, data: universe } = useQuery(
     [QUERY_KEY.fetchUniverse, uuid],
     () => api.fetchUniverse(uuid),
     {
-      enabled: isEditRRAllowed,
       onSuccess: async (resp) => {
         initializeForm({
           clusterType: ClusterType.ASYNC,
@@ -94,13 +84,6 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid }) => {
     editReadReplica(configurePayload);
   };
 
-  if (!isEditRRAllowed)
-    return (
-      <Box height="600px" display="flex">
-        <YBPermissionNotFound />
-      </Box>
-    );
-
   if (isLoading || contextState.isLoading) return <YBLoading />;
 
   if (!universe?.universeDetails) return null;
@@ -122,6 +105,7 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid }) => {
         onFormSubmit={(data: UniverseFormData) => onSubmit(data)}
         onCancel={onCancel}
         onDeleteRR={() => setShowDeleteRRModal(true)} //Deleting existing RR (API)
+        universeUUID={uuid}
       />
     </>
   );

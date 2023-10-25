@@ -9,7 +9,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
@@ -21,11 +20,13 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.Region;
@@ -369,7 +370,6 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         "{\"boot_disks_per_zone\":[\"root-volume-4\", \"root-volume-5\"], "
             + "\"root_device_name\":\"/dev/sda1\"}");
 
-    ObjectMapper om = new ObjectMapper();
     for (Map.Entry<UUID, String> e : createVolumeOutputResponse.entrySet()) {
       when(mockNodeManager.nodeCommand(
               eq(NodeCommandType.Create_Root_Volumes),
@@ -471,5 +471,99 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         (key, value) -> assertEquals(value.size(), (int) replaceRootVolumeParams.get(key)));
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testVMImageUpgradeRetries() {
+    Region secondRegion = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
+    AvailabilityZone az4 = AvailabilityZone.createOrThrow(secondRegion, "az-4", "AZ 4", "subnet-4");
+
+    Universe.UniverseUpdater updater =
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          Cluster primaryCluster = universeDetails.getPrimaryCluster();
+          UserIntent userIntent = primaryCluster.userIntent;
+          userIntent.regionList = ImmutableList.of(region.getUuid(), secondRegion.getUuid());
+
+          PlacementInfo placementInfo = primaryCluster.placementInfo;
+          PlacementInfoUtil.addPlacementZone(az4.getUuid(), placementInfo, 1, 2, false);
+          universe.setUniverseDetails(universeDetails);
+
+          for (int idx = userIntent.numNodes + 1; idx <= userIntent.numNodes + 2; idx++) {
+            NodeDetails node = new NodeDetails();
+            node.nodeIdx = idx;
+            node.placementUuid = primaryCluster.uuid;
+            node.nodeName = "host-n" + idx;
+            node.isMaster = true;
+            node.isTserver = true;
+            node.cloudInfo = new CloudSpecificInfo();
+            node.cloudInfo.private_ip = "10.0.0." + idx;
+            node.cloudInfo.az = az4.getCode();
+            node.azUuid = az4.getUuid();
+            node.state = NodeDetails.NodeState.Live;
+            universeDetails.nodeDetailsSet.add(node);
+          }
+
+          for (NodeDetails node : universeDetails.nodeDetailsSet) {
+            node.nodeUuid = UUID.randomUUID();
+          }
+
+          userIntent.numNodes += 2;
+          userIntent.providerType = CloudType.aws;
+          userIntent.deviceInfo = new DeviceInfo();
+          userIntent.deviceInfo.storageType = StorageType.Persistent;
+        };
+
+    defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
+
+    VMImageUpgradeParams taskParams = new VMImageUpgradeParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.machineImages.put(region.getUuid(), "test-vm-image-1");
+    taskParams.machineImages.put(secondRegion.getUuid(), "test-vm-image-2");
+    taskParams.creatingUser = defaultUser;
+    taskParams.expectedUniverseVersion = -1;
+    Map<UUID, List<String>> createVolumeOutput =
+        Stream.of(az1, az2, az3)
+            .collect(
+                Collectors.toMap(
+                    az -> az.getUuid(),
+                    az ->
+                        Collections.singletonList(String.format("root-volume-%s", az.getCode()))));
+    // AZ 4 has 2 nodes so return 2 volumes here
+    createVolumeOutput.put(az4.getUuid(), Arrays.asList("root-volume-4", "root-volume-5"));
+
+    // Use output for verification and response is the raw string that parses into output.
+    Map<UUID, String> createVolumeOutputResponse =
+        Stream.of(az1, az2, az3)
+            .collect(
+                Collectors.toMap(
+                    az -> az.getUuid(),
+                    az ->
+                        String.format(
+                            "{\"boot_disks_per_zone\":[\"root-volume-%s\"], "
+                                + "\"root_device_name\":\"/dev/sda1\"}",
+                            az.getCode())));
+    createVolumeOutputResponse.put(
+        az4.getUuid(),
+        "{\"boot_disks_per_zone\":[\"root-volume-4\", \"root-volume-5\"], "
+            + "\"root_device_name\":\"/dev/sda1\"}");
+
+    for (Map.Entry<UUID, String> e : createVolumeOutputResponse.entrySet()) {
+      when(mockNodeManager.nodeCommand(
+              eq(NodeCommandType.Create_Root_Volumes),
+              argThat(new CreateRootVolumesMatcher(e.getKey()))))
+          .thenReturn(ShellResponse.create(0, e.getValue()));
+    }
+
+    TestUtils.setFakeHttpContext(defaultUser);
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.VMImageUpgrade,
+        CustomerTask.TargetType.Universe,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.VMImageUpgrade,
+        taskParams,
+        false);
   }
 }

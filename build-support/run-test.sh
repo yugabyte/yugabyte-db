@@ -175,8 +175,15 @@ if [[ -z $TEST_PATH ]]; then
 fi
 shift
 
+if [[ -n ${BUILD_ROOT:-} ]]; then
+  if [[ ! -d $BUILD_ROOT ]]; then
+    fatal "The directory specified by $BUILD_ROOT does not exist"
+  fi
+  cd "$BUILD_ROOT"
+fi
+
 if [[ ! -f $TEST_PATH ]]; then
-  fatal "Test binary '$TEST_PATH' does not exist"
+  fatal "Test binary '$TEST_PATH' does not exist. Current directory: $PWD"
 fi
 
 if [[ -n ${YB_CHECK_TEST_EXISTENCE_ONLY:-} ]]; then

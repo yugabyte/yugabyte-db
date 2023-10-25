@@ -33,7 +33,7 @@
 
 #include <memory>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/dockv/partition.h"
 #include "yb/qlexpr/ql_rowblock.h"

@@ -197,6 +197,7 @@ class TransactionStatusResolver::Impl {
     status_infos_.resize(request_size);
     for (size_t i = 0; i != request_size; ++i) {
       auto& status_info = status_infos_[i];
+      status_info.status_tablet = it->first;
       status_info.transaction_id = queue.front();
       status_info.status = TransactionStatus::ABORTED;
       status_info.status_ht = HybridTime::kMax;
@@ -257,6 +258,7 @@ class TransactionStatusResolver::Impl {
     status_infos_.resize(response.status().size());
     for (int i = 0; i != response.status().size(); ++i) {
       auto& status_info = status_infos_[i];
+      status_info.status_tablet = it->first;
       status_info.transaction_id = queue.front();
       status_info.status = response.status(i);
       if (response.deadlock_reason().size() > i &&

@@ -257,7 +257,7 @@ OutboundCall::~OutboundCall() {
               << MonoDelta(CoarseMonoClock::Now() - start_).ToMicroseconds() << "us."
               << (trace_ ? " Trace:" : "");
     if (trace_) {
-      trace_->Dump(&LOG(INFO), true);
+      trace_->DumpToLogInfo(true);
     }
   }
 

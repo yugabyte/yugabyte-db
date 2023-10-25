@@ -41,7 +41,7 @@
 
 #include <boost/range/iterator_range_core.hpp>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/column_id.h"
 #include "yb/common/common_types.pb.h"
