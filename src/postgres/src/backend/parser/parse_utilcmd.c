@@ -4897,11 +4897,66 @@ YBTransformPartitionSplitValue(ParseState *pstate,
 	int idx = 0;
 	foreach(lc, split_point) {
 		/* Find the constant value for the given column */
-		PartitionRangeDatum *datum = (PartitionRangeDatum *)lfirst(lc);
-		if (datum->value) {
+		Node *expr = (Node *) lfirst(lc);
+		PartitionRangeDatum *prd = NULL;
+
+		Assert(expr);
+
+		/*
+		 * (The rest of this scope has parts of code copied from
+		 * transformPartitionRangeBounds.)
+		 */
+
+		/*
+		 * Infinite range bounds -- "minvalue" and "maxvalue" -- get passed in
+		 * as ColumnRefs.
+		 */
+		if (IsA(expr, ColumnRef))
+		{
+			ColumnRef  *cref = (ColumnRef *) expr;
+			char	   *cname = NULL;
+
+			/*
+			 * There should be a single field named either "minvalue" or
+			 * "maxvalue".
+			 */
+			if (list_length(cref->fields) == 1 &&
+				IsA(linitial(cref->fields), String))
+				cname = strVal(linitial(cref->fields));
+
+			if (cname == NULL)
+			{
+				/*
+				 * ColumnRef is not in the desired single-field-name form. For
+				 * consistency between all partition strategies, let the
+				 * expression transformation report any errors rather than
+				 * doing it ourselves.
+				 */
+			}
+			else if (strcmp("minvalue", cname) == 0)
+			{
+				prd = makeNode(PartitionRangeDatum);
+				prd->kind = PARTITION_RANGE_DATUM_MINVALUE;
+				prd->value = NULL;
+			}
+			else if (strcmp("maxvalue", cname) == 0)
+			{
+				prd = makeNode(PartitionRangeDatum);
+				prd->kind = PARTITION_RANGE_DATUM_MAXVALUE;
+				prd->value = NULL;
+			}
+		}
+		/*
+		 * Note: unlike transformPartitionRangeBounds, there is no
+		 * validateInfiniteBounds since we allow a mix of values and infinite
+		 * bounds.
+		 */
+
+		if (prd == NULL)
+		{
 			/* TODO(minghui@yugabyte) -- Collation for split value */
 			Const *value = transformPartitionBoundValue(pstate,
-														datum->value,
+														expr,
 														NameStr(attrs[idx]->attname),
 														attrs[idx]->atttypid,
 														attrs[idx]->atttypmod,
@@ -4910,12 +4965,12 @@ YBTransformPartitionSplitValue(ParseState *pstate,
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						 errmsg("cannot specify NULL in range bound")));
-
-			datum = copyObject(datum); /* don't scribble on input */
-			datum->value = (Node *) value;
+			prd = makeNode(PartitionRangeDatum);
+			prd->kind = PARTITION_RANGE_DATUM_VALUE;
+			prd->value = (Node *) value;
 		}
 
-		datums[idx] = datum;
+		datums[idx] = prd;
 		idx++;
 	}
 	*datum_count = idx;
