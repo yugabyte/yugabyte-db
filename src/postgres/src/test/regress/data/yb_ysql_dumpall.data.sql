@@ -369,7 +369,7 @@ SET default_tablespace = tsp2;
 -- Name: idx1; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: tsp2
 --
 
-CREATE INDEX idx1 ON public.table1 USING lsm (id HASH) SPLIT INTO 3 TABLETS;
+CREATE INDEX NONCONCURRENTLY idx1 ON public.table1 USING lsm (id HASH) SPLIT INTO 3 TABLETS;
 
 
 SET default_tablespace = tsp1;
@@ -378,7 +378,7 @@ SET default_tablespace = tsp1;
 -- Name: idx2; Type: INDEX; Schema: public; Owner: yugabyte_test; Tablespace: tsp1
 --
 
-CREATE INDEX idx2 ON public.table2 USING lsm (name HASH) SPLIT INTO 3 TABLETS;
+CREATE INDEX NONCONCURRENTLY idx2 ON public.table2 USING lsm (name HASH) SPLIT INTO 3 TABLETS;
 
 
 --
