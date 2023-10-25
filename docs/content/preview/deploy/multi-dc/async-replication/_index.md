@@ -36,7 +36,7 @@ For information on xCluster deployment architecture and replication scenarios, s
         <div class="title">Deploy transactional xCluster</div>
       </div>
       <div class="body">
-        Set up transactional unidirectional or bidirectional replication.
+        Set up transactional unidirectional replication.
       </div>
     </a>
   </div>

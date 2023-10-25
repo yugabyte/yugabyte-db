@@ -168,11 +168,13 @@ When A comes back up, to bring A into sync with B and set up replication in the 
 
 Assuming cluster A is the PRIMARY Universe and cluster B is the STANDBY Universe, use the following procedure to perform an unplanned failover and resume applications from B.
 
+#### Obtain the xCluster safe time
+
 If the Primary is Terminated for some reason, do the following:
 
 1. Stop the application traffic to ensure no more updates are attempted.
 
-1. Get the latest consistent time on Standby(B). This API provides an approximate value for the data loss expected to occur when the unplanned failover process finishes and the consistent timestamp on the Standby universe.
+1. Get the latest consistent time on Standby (B). This API provides an approximate value for the data loss expected to occur when the unplanned failover process finishes and the consistent timestamp on the Standby universe.
 
     ```sh
     yb-admin 
@@ -200,16 +202,35 @@ If the Primary is Terminated for some reason, do the following:
 
     `safe_time_skew_sec` is the time elapsed in microseconds for replication between the first and the last tablet replica on the target cluster.
 
-    Determine if the estimated data loss and the `safe_time` to which the system will be reset are acceptable.
+    Determine if the estimated data loss and the safe time to which the system will be reset are acceptable.
 
-1. Use PITR to restore the cluster to a consistent state that cuts off any partially replicated transactions. Use the xCluster `safe_time` obtained in the previous step as the restore time in the restore step below.
+#### Restore the cluster to a consistent state
 
-    Using YBA
-    **Note**: YBA only supports minute-level granularity.
-    **Note**: If there are multiple databases in the same cluster, please do a PITR on all the databases sequentially (one after the other).
-    **Note**: YBA shows the time in local time by default whereas the above yb-admin returns the time in UTC. So for this step, when using YBA - the xCluster Safe time needs to be converted to local time when entering in the UI. Alternatively, YBA can be switched to use UTC time (always) by changing the Preferred Timezone to UTC from the User-Profile settings.
+Use PITR to restore the cluster to a consistent state that cuts off any partially replicated transactions. Use the xCluster `safe_time` obtained in the previous step as the restore time.
 
-1. Promote B to an Active Role:
+If there are multiple databases in the same cluster, do PITR on all the databases sequentially (one after the other).
+
+YBA only supports minute-level granularity.
+
+To do a PITR on a database:
+
+1. In YugabyteDB Anywhere, navigate to universe B and choose **Backups > Point-in-time Recovery**.
+
+1. For the database or keyspace, click **...** and choose **Recover to a Point in Time**.
+
+1. Select the Date and Time option and enter the safe time you obtained.
+
+    By default, YBA shows the time in local time, whereas yb-admin returns the time in UTC. Therefore, you need to convert the xCluster Safe time to local time when entering the date and time.
+
+    Alternatively, you can configure YBA to use UTC time (always) by changing the Preferred Timezone to UTC in the **User > Profile** settings.
+
+1. Click **Recover**.
+
+#### Promote B and delete the replication
+
+Do the following:
+
+1. Promote B to an Active Role as follows:
 
     ```sh
     yb-admin \
@@ -222,35 +243,45 @@ If the Primary is Terminated for some reason, do the following:
     Changed role successfully
     ```
 
-1. Delete the replication from A->B using YBA UI. You will need to use the **Ignore errors and force delete** option if the old ACTIVE universe (A) is completely down and not reachable.
+1. In YugabyteDB Anywhere, delete the replication from A->B. Navigate to universe B, choose **Replication**, and select the replication.
 
-    **Note**: If the old ACTIVE universe (A) is unreachable, it takes longer to show the replication page on the UI. In this case, a page like the following shows up and it allows you to either pause or delete the replication configuration.
+1. Click **Actions > Delete Replication**.
+
+1. If the old ACTIVE universe (A) is completely down and not reachable, select the **Ignore errors and force delete** option.
+
+1. Click **Delete Replication**
+
+    If the old ACTIVE universe (A) is unreachable, it takes longer to show the replication page on the UI. In this case, a page like the following shows up and it allows you to either pause or delete the replication configuration.
 
 1. Resume the application traffic on B.
 
-After completing the steps above, cluster B becomes the new primary cluster.
+After completing the preceding steps, cluster B becomes the new primary cluster.
 
-There is no secondary cluster until A comes back up and is restored to the correct state (steps for this are described below).
+There is no secondary cluster until A is brought back up and is restored to the correct state.
 
-### Set up Reverse Replication (From B to A)
+### Set up reverse replication (from B to A)
 
-If A doesn't come back and we end up creating a new Cluster in place of Old-A, then follow steps of fresh Replication setup as listed above.
+If A doesn't come back and you end up creating a new cluster in place of A, follow the [steps for a fresh replication setup](../async-transactional-setup/).
 
-If Original Cluster-A is back, in order to bring A in sync with B and set up replication in the opposite direction (B->A) using YBA UI, the database on A needs to be dropped and recreated from a backup of B (Bootstrap).
+If cluster A is brought back, to bring A into sync with B and set up replication in the opposite direction (B->A), the database on A needs to be dropped and recreated from a backup of B (Bootstrap).
 
-1. Delete PITR Snapshot schedule on A.
+Do the following:
+
+1. In YugabyteDB Anywhere, navigate to universe A and choose **Backups > Point-in-time Recovery**.
+
+1. For the database or keyspace, click **...** and choose **Disable Point-in-time Recovery**.
 
 1. Drop the database(s) on A.
 
-    If the original Cluster-A went down and could not clean up any of its replication streams, then drop database may fail with the following error:
+    If the original cluster A went down and could not clean up any of its replication streams, then dropping the database may fail with the following error:
 
     ```output
     ERROR: Table: 00004000000030008000000000004037 is under replication
     ```
 
-    If this happens, then the following steps need to be executed using yb-admin to clean up replication streams on A:
+    If this happens, do the following using yb-admin to clean up replication streams on A:
 
-    - List the CDC streams on Cluster A to obtain the list of stream IDs
+    - List the CDC streams on Cluster A to obtain the list of stream IDs as follows:
 
         ```sh
         yb-admin \
@@ -259,7 +290,7 @@ If Original Cluster-A is back, in order to bring A in sync with B and set up rep
         list_cdc_streams
         ```
 
-    - For each stream ID above, delete the corresponding CDC stream.
+    - For each stream ID, delete the corresponding CDC stream:
 
         ```sh
         yb-admin \
@@ -271,11 +302,11 @@ If Original Cluster-A is back, in order to bring A in sync with B and set up rep
 
     DO NOT create any tables. Replication setup (Bootstrapping) will create tables/objects on A from B.
 
-1. Enable PITR using YBA UI on all replicating databases on both Primary and Standby universes
+1. In YugabyteDB Anywhere, enable PITR on all replicating databases on both Primary and Standby universes.
 
-1. Set up xCluster Replication from ACTIVE to STANDBY universe using YBA UI from B->A.
+1. In YugabyteDB Anywhere, set up xCluster Replication from the ACTIVE to STANDBY universe (B to A).
 
-1. On Standby, verify `xcluster_safe_time` is progressing. This is the indicator of data flow from Primary to Standby.
+1. On the Standby (A), verify `xcluster_safe_time` is progressing. This is the indicator of data flow from Primary to Standby.
 
     ```sh
     yb-admin \
@@ -303,4 +334,6 @@ If Original Cluster-A is back, in order to bring A in sync with B and set up rep
 
     Default time reported in xCluster SafeTime is year 2112. Need to wait until the xCluster SafeTime on Standby advances beyond setup replication clock time.
 
-1. If the eventual desired configuration is A (Active) -> B (Standby), follow steps for Planned Switchover as described above.
+Replication is now complete.
+
+If your eventual desired configuration is for A to be the primary cluster and B the standby, follow the steps for [Planned Switchover](../async-transactional-switchover/).
