@@ -11,13 +11,7 @@ menu:
 type: docs
 ---
 
-Use Product Labs to explore core features of YugabyteDB using a demo application connected to globally distributed test clusters in real time. Learn how YugabyteDB solves problems with:
-
-- Resilience
-- Geo-distribution
-- Availability
-
-Each lab runs a live demo application, accessing real clusters deployed in a variety of geographies and topologies.
+Use Product Labs to explore core features of YugabyteDB using a demo application connected to globally distributed test clusters in real time.
 
 The following lab is available (with more in development):
 
@@ -26,6 +20,8 @@ The following lab is available (with more in development):
 ![Product Lab](/images/yb-cloud/managed-lab.png)
 
 ## Run a lab
+
+Labs run a live demo application, accessing real clusters deployed in a variety of geographies and topologies.
 
 To access the labs:
 
