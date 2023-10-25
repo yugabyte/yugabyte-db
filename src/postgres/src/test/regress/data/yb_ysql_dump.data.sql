@@ -1450,84 +1450,84 @@ ALTER TABLE ONLY public.p2
 -- Name: hints_norm_and_app; Type: INDEX; Schema: hint_plan; Owner: yugabyte_test
 --
 
-CREATE UNIQUE INDEX hints_norm_and_app ON hint_plan.hints USING lsm (norm_query_string HASH, application_name ASC) SPLIT INTO 3 TABLETS;
+CREATE UNIQUE INDEX NONCONCURRENTLY hints_norm_and_app ON hint_plan.hints USING lsm (norm_query_string HASH, application_name ASC) SPLIT INTO 3 TABLETS;
 
 
 --
 -- Name: non_unique_idx_with_include_clause; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
-CREATE UNIQUE INDEX non_unique_idx_with_include_clause ON public.hash_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) SPLIT INTO 3 TABLETS;
+CREATE UNIQUE INDEX NONCONCURRENTLY non_unique_idx_with_include_clause ON public.hash_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) SPLIT INTO 3 TABLETS;
 
 
 --
 -- Name: tbl8_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
-CREATE INDEX tbl8_idx ON public.tbl8 USING lsm ((b, c) HASH) SPLIT INTO 3 TABLETS;
+CREATE INDEX NONCONCURRENTLY tbl8_idx ON public.tbl8 USING lsm ((b, c) HASH) SPLIT INTO 3 TABLETS;
 
 
 --
 -- Name: tbl8_idx2; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
-CREATE INDEX tbl8_idx2 ON public.tbl8 USING lsm (a HASH, b ASC) SPLIT INTO 3 TABLETS;
+CREATE INDEX NONCONCURRENTLY tbl8_idx2 ON public.tbl8 USING lsm (a HASH, b ASC) SPLIT INTO 3 TABLETS;
 
 
 --
 -- Name: tbl8_idx3; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
-CREATE INDEX tbl8_idx3 ON public.tbl8 USING lsm (b ASC);
+CREATE INDEX NONCONCURRENTLY tbl8_idx3 ON public.tbl8 USING lsm (b ASC);
 
 
 --
 -- Name: tbl8_idx4; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
-CREATE INDEX tbl8_idx4 ON public.tbl8 USING lsm (b DESC);
+CREATE INDEX NONCONCURRENTLY tbl8_idx4 ON public.tbl8 USING lsm (b DESC);
 
 
 --
 -- Name: tbl8_idx5; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
-CREATE INDEX tbl8_idx5 ON public.tbl8 USING lsm (c HASH) SPLIT INTO 3 TABLETS;
+CREATE INDEX NONCONCURRENTLY tbl8_idx5 ON public.tbl8 USING lsm (c HASH) SPLIT INTO 3 TABLETS;
 
 
 --
 -- Name: th2_c_b_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
-CREATE INDEX th2_c_b_idx ON public.th2 USING lsm (c HASH, b DESC) SPLIT INTO 4 TABLETS;
+CREATE INDEX NONCONCURRENTLY th2_c_b_idx ON public.th2 USING lsm (c HASH, b DESC) SPLIT INTO 4 TABLETS;
 
 
 --
 -- Name: th3_c_b_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
-CREATE INDEX th3_c_b_idx ON public.th3 USING lsm ((c, b) HASH) SPLIT INTO 3 TABLETS;
+CREATE INDEX NONCONCURRENTLY th3_c_b_idx ON public.th3 USING lsm ((c, b) HASH) SPLIT INTO 3 TABLETS;
 
 
 --
 -- Name: tr2_c_b_a_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
-CREATE INDEX tr2_c_b_a_idx ON public.tr2 USING lsm (c ASC, b DESC, a ASC) SPLIT AT VALUES ((-5.12000000000000011, 'z', 1), (-0.75, 'l', MINVALUE), (2.5, 'a', 100));
+CREATE INDEX NONCONCURRENTLY tr2_c_b_a_idx ON public.tr2 USING lsm (c ASC, b DESC, a ASC) SPLIT AT VALUES ((-5.12000000000000011, 'z', 1), (-0.75, 'l', MINVALUE), (2.5, 'a', 100));
 
 
 --
 -- Name: tr2_c_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
-CREATE INDEX tr2_c_idx ON public.tr2 USING lsm (c DESC) SPLIT AT VALUES ((100.5), (1.5));
+CREATE INDEX NONCONCURRENTLY tr2_c_idx ON public.tr2 USING lsm (c DESC) SPLIT AT VALUES ((100.5), (1.5));
 
 
 --
 -- Name: unique_idx_with_include_clause; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
-CREATE UNIQUE INDEX unique_idx_with_include_clause ON public.range_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) SPLIT INTO 3 TABLETS;
+CREATE UNIQUE INDEX NONCONCURRENTLY unique_idx_with_include_clause ON public.range_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) SPLIT INTO 3 TABLETS;
 
 
 --

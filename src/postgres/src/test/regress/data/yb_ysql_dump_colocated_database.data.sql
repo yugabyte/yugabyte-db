@@ -204,35 +204,35 @@ COPY public.tbl4 (k, v, v2) FROM stdin;
 -- Name: partial_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
-CREATE INDEX partial_idx ON public.tbl2 USING lsm (k ASC, v DESC) WITH (colocation_id=40001) WHERE ((k > 10) AND (k < 20) AND (v > 200));
+CREATE INDEX NONCONCURRENTLY partial_idx ON public.tbl2 USING lsm (k ASC, v DESC) WITH (colocation_id=40001) WHERE ((k > 10) AND (k < 20) AND (v > 200));
 
 
 --
 -- Name: partial_unique_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
-CREATE UNIQUE INDEX partial_unique_idx ON public.tbl USING lsm (v DESC) WITH (colocation_id=40000) WHERE ((v >= 100) AND (v <= 200));
+CREATE UNIQUE INDEX NONCONCURRENTLY partial_unique_idx ON public.tbl USING lsm (v DESC) WITH (colocation_id=40000) WHERE ((v >= 100) AND (v <= 200));
 
 
 --
 -- Name: tbl2_v2_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
-CREATE INDEX tbl2_v2_idx ON public.tbl2 USING lsm (v2 ASC) WITH (colocation_id=20004);
+CREATE INDEX NONCONCURRENTLY tbl2_v2_idx ON public.tbl2 USING lsm (v2 ASC) WITH (colocation_id=20004);
 
 
 --
 -- Name: tbl3_v_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
-CREATE UNIQUE INDEX tbl3_v_idx ON public.tbl3 USING lsm (v HASH) SPLIT INTO 3 TABLETS;
+CREATE UNIQUE INDEX NONCONCURRENTLY tbl3_v_idx ON public.tbl3 USING lsm (v HASH) SPLIT INTO 3 TABLETS;
 
 
 --
 -- Name: tbl_v_idx; Type: INDEX; Schema: public; Owner: yugabyte_test
 --
 
-CREATE UNIQUE INDEX tbl_v_idx ON public.tbl USING lsm (v DESC) WITH (colocation_id=20003);
+CREATE UNIQUE INDEX NONCONCURRENTLY tbl_v_idx ON public.tbl USING lsm (v DESC) WITH (colocation_id=20003);
 
 
 --
