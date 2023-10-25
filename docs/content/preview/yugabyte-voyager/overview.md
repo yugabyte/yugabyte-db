@@ -5,7 +5,7 @@ linkTitle: Overview
 headcontent: Migrate your database using YugabyteDB Voyager
 cascade:
   unversioned: true
-description: Migrate to YugabyteDB using YugabyteDB Voyager.
+description: Migrate your database to YugabyteDB using YugabyteDB Voyager.
 type: docs
 showRightNav: true
 menu:
