@@ -698,8 +698,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <partelem>	part_elem
 %type <list>		part_params
 %type <partboundspec> PartitionBoundSpec
-%type <node>		PartitionRangeDatum partbound_datum
-%type <list>		hash_partbound range_datum_list
+%type <list>		hash_partbound
 %type <defelt>		hash_partbound_elem
 
 %type <rowbounds>	RowBounds
@@ -3294,53 +3293,6 @@ hash_partbound:
 			}
 		;
 
-range_datum_list:
-			PartitionRangeDatum					{ $$ = list_make1($1); }
-			| range_datum_list ',' PartitionRangeDatum
-												{ $$ = lappend($1, $3); }
-		;
-
-PartitionRangeDatum:
-			MINVALUE
-				{
-					PartitionRangeDatum *n = makeNode(PartitionRangeDatum);
-
-					n->kind = PARTITION_RANGE_DATUM_MINVALUE;
-					n->value = NULL;
-					n->location = @1;
-
-					$$ = (Node *) n;
-				}
-			| MAXVALUE
-				{
-					PartitionRangeDatum *n = makeNode(PartitionRangeDatum);
-
-					n->kind = PARTITION_RANGE_DATUM_MAXVALUE;
-					n->value = NULL;
-					n->location = @1;
-
-					$$ = (Node *) n;
-				}
-			| partbound_datum
-				{
-					PartitionRangeDatum *n = makeNode(PartitionRangeDatum);
-
-					n->kind = PARTITION_RANGE_DATUM_VALUE;
-					n->value = $1;
-					n->location = @1;
-
-					$$ = (Node *) n;
-				}
-		;
-
-partbound_datum:
-			Sconst			{ $$ = makeStringConst($1, @1); }
-			| NumericOnly	{ $$ = makeAConst($1, @1); }
-			| TRUE_P		{ $$ = makeStringConst(pstrdup("true"), @1); }
-			| FALSE_P		{ $$ = makeStringConst(pstrdup("false"), @1); }
-			| NULL_P		{ $$ = makeNullAConst(@1); }
-		;
-
 /*****************************************************************************
  *
  *	ALTER TYPE
@@ -4854,7 +4806,7 @@ yb_split_points:
 		;
 
 yb_split_point:
-			'(' range_datum_list ')'				{ $$ = $2; }
+			'(' expr_list ')'				{ $$ = $2; }
 		;
 
 /*****************************************************************************

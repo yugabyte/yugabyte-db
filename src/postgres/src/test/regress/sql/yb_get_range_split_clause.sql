@@ -417,6 +417,14 @@ DROP TABLE tbl_group_table;
 
 DROP TABLEGROUP tbl_group;
 
+-- Test range split using expressions
+CREATE TABLE range_split_expressions (
+  k1 INT,
+  k2 TEXT,
+  PRIMARY KEY(k1 ASC, k2 DESC)
+) SPLIT AT VALUES ((1 + 2, substr('abc', 1, 2)), (factorial(4), repeat('d', 5)));
+SELECT yb_get_range_split_clause('range_split_expressions'::regclass);
+
 -- Test the scenario where primary key columns' ordering in PRIMARY KEY
 -- constraint is different from the key column's ordering in CREATE TABLE
 -- statement.
