@@ -976,22 +976,21 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, GarbageCollectExpiredTransact
 }
 
 TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
-  // Keep same tablet count for normal tablets.
-  ASSERT_OK(CreateClusterAndTable());
-  const auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
-
-  auto setup_write_verify_delete = [&](bool perform_bootstrap = false) {
-    if (!perform_bootstrap) {
-      ASSERT_OK(SetupReplicationAndWaitForValidSafeTime());
-    } else {
-      auto bootstrap_ids = ASSERT_RESULT(
-          BootstrapProducer(producer_cluster(), producer_client(), {producer_table_}));
-      ASSERT_OK(SetupUniverseReplication(
-          producer_tables_, bootstrap_ids, {LeaderOnly::kFalse, Transactional::kTrue}));
-      ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
-      ASSERT_OK(WaitForValidSafeTimeOnAllTServers(consumer_table_->name().namespace_id()));
-    }
-
+  const auto wait_for_txn_status_version = [](MiniCluster* cluster, uint64_t version) {
+    constexpr auto error =
+        "Timed out waiting for transaction manager to update status tablet cache version to $0";
+    ASSERT_OK(WaitFor(
+        [cluster, version] {
+          auto current_version = cluster->mini_tablet_server(0)
+                                     ->server()
+                                     ->TransactionManager()
+                                     .GetLoadedStatusTabletsVersion();
+          return current_version == version;
+        },
+        30s, strings::Substitute(error, version)));
+  };
+  const auto run_write_verify_delete_test = [&]() {
+    const auto duration = MonoDelta::FromSeconds(kTransactionalConsistencyTestDurationSecs);
     auto test_thread_holder = TestThreadHolder();
     AsyncTransactionConsistencyTest(
         producer_table_->name(), consumer_table_->name(), &test_thread_holder, duration);
@@ -1000,12 +999,20 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
     ASSERT_OK(DeleteUniverseReplication());
   };
 
+  int producer_version = 1, consumer_version = 1;
+
+  // Keep same tablet count for normal tablets.
+  ASSERT_OK(CreateClusterAndTable());
+
   // Create an additional transaction tablet on the producer before starting replication.
   auto global_txn_table_id =
       ASSERT_RESULT(client::GetTableId(producer_client(), producer_transaction_table_name));
   ASSERT_OK(producer_client()->AddTransactionStatusTablet(global_txn_table_id));
+  wait_for_txn_status_version(producer_cluster(), ++producer_version);
 
-  setup_write_verify_delete();
+  LOG(INFO) << "First run, more txn tablets on producer.";
+  ASSERT_OK(SetupReplicationAndWaitForValidSafeTime());
+  run_write_verify_delete_test();
 
   // Restart cluster to clear meta cache partition ranges.
   // TODO: don't check partition bounds for txn status tablets.
@@ -1015,7 +1022,10 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
   global_txn_table_id =
       ASSERT_RESULT(client::GetTableId(consumer_client(), producer_transaction_table_name));
   ASSERT_OK(consumer_client()->AddTransactionStatusTablet(global_txn_table_id));
+  wait_for_txn_status_version(consumer_cluster(), ++consumer_version);
   ASSERT_OK(consumer_client()->AddTransactionStatusTablet(global_txn_table_id));
+  wait_for_txn_status_version(consumer_cluster(), ++consumer_version);
+
   // Reset the role and data before setting up replication again.
   ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::ACTIVE));
   ASSERT_OK(WaitForRoleChangeToPropogateToAllTServers(cdc::XClusterRole::ACTIVE));
@@ -1024,7 +1034,16 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
     return conn.ExecuteFormat("delete from $0;", producer_table_->name().table_name());
   }));
 
-  setup_write_verify_delete(true /* perform_bootstrap */);
+  LOG(INFO) << "Second run, more txn tablets on consumer.";
+  // Need to run bootstrap flow for setup.
+  auto bootstrap_ids =
+      ASSERT_RESULT(BootstrapProducer(producer_cluster(), producer_client(), {producer_table_}));
+  ASSERT_OK(SetupUniverseReplication(
+      producer_tables_, bootstrap_ids, {LeaderOnly::kFalse, Transactional::kTrue}));
+  ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
+  ASSERT_OK(WaitForValidSafeTimeOnAllTServers(consumer_table_->name().namespace_id()));
+  // Run test.
+  run_write_verify_delete_test();
 }
 
 class XClusterYSqlTestStressTest : public XClusterYSqlTestConsistentTransactionsTest {
