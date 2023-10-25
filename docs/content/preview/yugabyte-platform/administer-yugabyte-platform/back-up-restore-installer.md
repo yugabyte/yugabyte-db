@@ -55,6 +55,18 @@ To back up your YugabyteDB Anywhere installation, perform the following steps:
 
     The `createBackup` command executes the `yb_platform_backup.sh` script to create a backup of your YugabyteDB Anywhere instance. Specify the `output_path` where you want the backup `.tar.gz` file to be stored.
 
+    The following table describes optional flags you can include with the `createBackup` command.
+
+    | Flag | Description |
+    | :--- | :---------- |
+    | --data_dir string | Data directory to be backed up. (default: "/opt/yugabyte") |
+    | --exclude_releases | Exclude Prometheus metric data from backup. (default: false) |
+    | -h, --help | Help for `createBackup`. (default: false) |
+    | --skip_restart | Don't restart processes during execution. (default: false) |
+    | --verbose | Display extra information in the output. (default: false) |
+    | -f, --force (global flag) | Run in non-interactive mode. All user confirmations are skipped. |
+    | --log_level string (global flag) | Log level for this command. Levels: panic, fatal, error, warn, info, debug, trace. (default: "info") |
+
 1. Verify that the backup `.tar.gz` file, with the correct timestamp, is in the specified output directory.
 
 1. Upload the backup file to your preferred storage location and delete it from the local disk.
@@ -74,3 +86,17 @@ To restore the YugabyteDB Anywhere content from your saved backup, perform the f
     The `restoreBackup` command executes the `yb_platform_backup.sh` script to restore from a previously taken backup of your YugabyteDB Anywhere instance. Specify the `input_path` to the backup `.tar.gz` file as the only argument.
 
 When finished, the restored YugabyteDB Anywhere is ready to continue managing your universes and clusters.
+
+The following table describes optional flags you can include with the `restoreBackup` command.
+
+| Flag | Description |
+| :--- | :---------- |
+| --destination string | Path to un-tar the backup. (default: "/opt/yugabyte") |
+| -h, --help | Help for restoreBackup. |
+| --migration | Restoring from a Replicated or Yugabundle installation. (default: false) |
+| --skip_dbdrop | Skip dropping the yugaware database before a migration restore. (default: false) |
+| --skip_restart | Don't restart processes during command execution. (default: false) |
+| --use_system_pg | Use system path's `pg_restore` as opposed to installed binary. (default: false) |
+| --verbose | Display extra information in the output. (default: false) |
+| -f, --force (global flag) | Run in non-interactive mode. All user confirmations are skipped. |
+| --log_level string (global flag) | Log level for this command. Levels: panic, fatal, error, warn, info, debug, trace. (default: "info") |
