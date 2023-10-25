@@ -34,7 +34,7 @@ export interface YBModalProps extends DialogProps {
   onSubmit?: () => void;
   enableBackdropDismiss?: boolean;
   submitLabel?: string;
-  submitButtonTooltip?: string;
+  submitButtonTooltip?: React.ReactNode;
   submitTestId?: string;
   cancelLabel?: React.ReactNode;
   cancelButtonTooltip?: string;

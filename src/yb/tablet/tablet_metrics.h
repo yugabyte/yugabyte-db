@@ -31,7 +31,6 @@
 //
 #pragma once
 
-#include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/util/enums.h"
@@ -39,9 +38,10 @@
 
 namespace yb {
 
-class Counter;
+class AggregateStats;
 template<class T>
 class AtomicGauge;
+class Counter;
 class EventStats;
 class MetricEntity;
 class PgsqlResponsePB;
@@ -112,6 +112,8 @@ class TabletMetrics {
 
   virtual void IncrementBy(TabletEventStats event_stats, uint64_t value, uint64_t amount) = 0;
 
+  virtual void AddAggregateStats(TabletEventStats event_stats, const AggregateStats& other) = 0;
+
  private:
   // Keeps track of the number of instances created for verification that the metrics belong
   // to the same tablet instance.
@@ -137,11 +139,7 @@ class ScopedTabletMetrics final : public TabletMetrics {
 
   void IncrementBy(TabletEventStats event_stats, uint64_t value, uint64_t amount) override;
 
-  void Prepare();
-
-  // TODO(hdr_histogram): histogram_context used to forward histogram changes until histogram
-  // support is added to this class.
-  void SetHistogramContext(TabletMetrics* histogram_context);
+  void AddAggregateStats(TabletEventStats event_stats, const AggregateStats& other) override;
 
   void CopyToPgsqlResponse(PgsqlResponsePB* response) const;
 
@@ -151,13 +149,9 @@ class ScopedTabletMetrics final : public TabletMetrics {
   void MergeAndClear(TabletMetrics* target);
 
  private:
-#if DCHECK_IS_ON()
-  bool in_use_ = false;
-#endif
   std::vector<uint64_t> counters_;
   std::vector<int64_t> gauges_;
-
-  TabletMetrics* histogram_context_ = nullptr;
+  std::vector<AggregateStats> stats_;
 };
 
 class ScopedTabletMetricsLatencyTracker {

@@ -72,6 +72,7 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
+#include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/server/webserver.h"
 #include "yb/server/webui_util.h"
 
@@ -2151,13 +2152,9 @@ vector<string> GetTabletUnderReplicatedPlacements(
       VLOG_WITH_FUNC(1) << "Skipping replica in state " << RaftGroupStatePB_Name(replica.state);
       continue;
     }
-    auto& ts_desc = replica.ts_desc;
-    if (!ts_desc->IsLiveAndHasReported()) {
-      VLOG_WITH_FUNC(1) << "Skipping not live TS " << ts_desc->permanent_uuid();
-      continue;
-    }
 
     // Decrement counters in the relevant placement.
+    auto& ts_desc = replica.ts_desc;
     VLOG_WITH_FUNC(1) << "Processing tablet replica on TS " << ts_desc->permanent_uuid();
     for (auto* placement : placements) {
       if (placement->placement_uuid() == ts_desc->placement_uuid()) {
@@ -2855,7 +2852,8 @@ void MasterPathHandlers::HandleGetClusterConfigJSON(
 
 Status MasterPathHandlers::GetClusterAndXClusterConfigStatus(
     SysXClusterConfigEntryPB* xcluster_config, SysClusterConfigEntryPB* cluster_config) {
-  RETURN_NOT_OK(master_->catalog_manager()->GetXClusterConfig(xcluster_config));
+  RETURN_NOT_OK(
+      master_->catalog_manager()->GetXClusterManager()->GetXClusterConfigEntryPB(xcluster_config));
   return master_->catalog_manager()->GetClusterConfig(cluster_config);
 }
 

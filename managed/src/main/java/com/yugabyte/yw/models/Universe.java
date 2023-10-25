@@ -50,6 +50,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import javax.persistence.CascadeType;
 import javax.persistence.Column;
@@ -60,6 +61,7 @@ import javax.persistence.PostRemove;
 import javax.persistence.Table;
 import javax.persistence.Transient;
 import javax.persistence.UniqueConstraint;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
@@ -285,7 +287,9 @@ public class Universe extends Model {
    * @return list of UUIDs of all universes
    */
   public static Set<UUID> getAllUUIDs(Customer customer) {
-    return ImmutableSet.copyOf(find.query().where().eq("customer_id", customer.getId()).findIds());
+    List<UUID> universeList = find.query().where().eq("customer_id", customer.getId()).findIds();
+    Set<UUID> universeUUIDs = new HashSet<UUID>(universeList);
+    return universeUUIDs;
   }
 
   public static Set<UUID> getAllUUIDs() {
@@ -431,6 +435,22 @@ public class Universe extends Model {
    */
   public interface UniverseUpdater {
     void run(Universe universe);
+
+    // Returns the config associated with this updater.
+    default UniverseUpdaterConfig getConfig() {
+      return UniverseUpdaterConfig.builder().build();
+    }
+  }
+
+  /** Config parameters for the universe updater. */
+  @Builder
+  @Getter
+  public static class UniverseUpdaterConfig {
+    private boolean checkSuccess;
+    private boolean forceUpdate;
+    @Builder.Default private boolean freezeUniverse = true;
+    private boolean ignoreAbsence;
+    private Consumer<Universe> callback;
   }
 
   /**

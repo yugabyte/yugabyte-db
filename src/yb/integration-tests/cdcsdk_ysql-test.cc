@@ -10,9 +10,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_types.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/integration-tests/cdcsdk_test_base.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
 #include "yb/cdc/cdc_state_table.h"
+#include "yb/master/tasks_tracker.h"
 #include "yb/util/tostring.h"
 
 namespace yb {
@@ -5342,74 +5347,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKLagMetricUnchangedOnEmp
   ASSERT_GE(metrics->cdcsdk_sent_lag_micros->value(), current_lag);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWithTabletId)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
-
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(SetUpWithParams(3, 1, false));
-  const uint32_t num_tablets = 1;
-
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
-  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
-  ASSERT_EQ(tablets.size(), num_tablets);
-
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
-  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
-  ASSERT_FALSE(resp.has_error());
-  GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
-
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-  ASSERT_OK(WriteRowsHelper(1, 200, &test_cluster_, true));
-  ASSERT_OK(test_client()->FlushTables(
-      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
-      /* is_compaction = */ true));
-  std::this_thread::sleep_for(std::chrono::milliseconds(FLAGS_aborted_intent_cleanup_ms));
-  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
-  SleepFor(MonoDelta::FromSeconds(30));
-
-  WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
-
-  ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &change_resp_1, stream_id, tablets, 199, &change_resp_1.cdc_sdk_checkpoint()));
-
-  ASSERT_GE(change_resp_1.cdc_sdk_proto_records_size(), 200);
-  LOG(INFO) << "Number of records after restart: " << change_resp_1.cdc_sdk_proto_records_size();
-
-  // Now that there are no more records to stream, further calls of 'GetChangesFromCDC' to the same
-  // tablet should fail.
-  ASSERT_NOK(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
-  LOG(INFO) << "The tablet split error is now communicated to the client.";
-
-  auto get_tablets_resp =
-      ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablets[0].tablet_id()));
-  ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs().size(), 2);
-
-  // Wait until the 'cdc_parent_tablet_deletion_task_' has run.
-  SleepFor(MonoDelta::FromSeconds(2));
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_split;
-  ASSERT_OK(test_client()->GetTablets(
-      table, 0, &tablets_after_split, /* partition_list_version =*/nullptr));
-
-  bool saw_row_child_one = false;
-  bool saw_row_child_two = false;
-  // We should no longer see the entry corresponding to the parent tablet.
-  TabletId parent_tablet_id = tablets[0].tablet_id();
-  for (const auto& tablet_checkpoint_pair : get_tablets_resp.tablet_checkpoint_pairs()) {
-    const auto& tablet_id = tablet_checkpoint_pair.tablet_locations().tablet_id();
-    ASSERT_TRUE(parent_tablet_id != tablet_id);
-
-    if (tablet_id == tablets_after_split[0].tablet_id()) {
-      saw_row_child_one = true;
-    } else if (tablet_id == tablets_after_split[1].tablet_id()) {
-      saw_row_child_two = true;
-    }
-  }
-
-  ASSERT_TRUE(saw_row_child_one && saw_row_child_two);
-}
-
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestExpiredStreamWithCompaction)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
@@ -7044,6 +6981,72 @@ TEST_F(CDCSDKYsqlTest, TestAlterOperationTableRewrite) {
   ASSERT_NOK(res);
   ASSERT_STR_CONTAINS(res.ToString(),
       "cannot change a column type of a table that is a part of CDC or XCluster replication.");
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestUnrelatedTableDropUponTserverRestart)) {
+  FLAGS_catalog_manager_bg_task_wait_ms = 50000;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto old_table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "old_table"));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(old_table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  LOG(INFO) << "Tablet ID at index 0 is " << tablets.Get(0).tablet_id();
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
+
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
+  ASSERT_FALSE(set_resp.has_error());
+
+  GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  // Call GetChanges again.
+  GetChangesResponsePB change_resp_2 =
+    ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
+
+  // Create new table.
+  auto new_table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "new_table"));
+
+  // Wait till this table gets added to the stream.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        while (true) {
+          auto resp = GetDBStreamInfo(stream_id);
+          if (resp.ok()) {
+            for (auto table_info : resp->table_info()) {
+              if (table_info.has_table_id() && table_info.table_id() == new_table.table_id()) {
+                return true;
+              }
+            }
+          }
+          continue;
+        }
+        return false;
+      },
+      MonoDelta::FromSeconds(70), "Waiting for table to be added."));
+
+  // Restart tserver hosting old tablet
+  TabletId old_tablet = tablets.Get(0).tablet_id();
+  uint32_t tserver_idx = -1;
+  for (uint32_t idx = 0; idx < 3; ++idx) {
+    auto tablet_peer_ptr =
+      test_cluster_.mini_cluster_->GetTabletManager(idx)->LookupTablet(old_tablet);
+    if (tablet_peer_ptr != nullptr && !tablet_peer_ptr->IsNotLeader()) {
+      LOG(INFO) << "Tserver at index " << idx << " hosts the leader for tablet " << old_tablet;
+      tserver_idx = idx;
+      break;
+    }
+  }
+
+  ASSERT_OK(test_cluster_.mini_cluster_->mini_tablet_server(tserver_idx)->Restart());
+
+  // Drop newly created table.
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  DropTable(&test_cluster_, "new_table");
+
+  // Call GetChanges on the old table.
+  LOG(INFO) << "Calling last GetChanges";
+  GetChangesResponsePB change_resp_3 = ASSERT_RESULT(
+      GetChangesFromCDCWithoutRetry(stream_id, tablets, &change_resp_2.cdc_sdk_checkpoint()));
 }
 
 }  // namespace cdc

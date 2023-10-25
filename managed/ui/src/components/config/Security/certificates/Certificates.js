@@ -191,6 +191,7 @@ class Certificates extends Component {
     // TODO: Replace dropdown option + modal with a side panel
     return (
       <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
+
         <MenuItem
           onClick={() => {
             if (row.customCertInfo) {
@@ -202,46 +203,82 @@ class Certificates extends Component {
         >
           <i className="fa fa-info-circle"></i> Details
         </MenuItem>
-        <MenuItem
-          disabled={disableCertEdit}
-          onClick={() => {
-            if (!disableCertEdit) {
-              this.setState({ mode: MODES.EDIT, selectedCert: row }, () => {
-                this.props.showAddCertificateModal();
-              });
-            }
+        <RbacValidator
+          accessRequiredOn={{
+            onResource: "CUSTOMER_ID",
+            ...UserPermissionMap.editEncryptionInTransit
           }}
+          isControl
+          overrideStyle={{ display: 'block' }}
         >
-          <i className="fa fa-edit"></i> Edit Certificate
-        </MenuItem>
-        <MenuItem
-          onClick={() => {
-            if (downloadEnabled) {
-              this.setState({ selectedCert: payload });
-              this.props.showDownloadCertificateModal();
-            }
+          <MenuItem
+            disabled={disableCertEdit}
+            onClick={() => {
+              if (!disableCertEdit) {
+                this.setState({ mode: MODES.EDIT, selectedCert: row }, () => {
+                  this.props.showAddCertificateModal();
+                });
+              }
+            }}
+          >
+            <i className="fa fa-edit"></i> Edit Certificate
+          </MenuItem>
+        </RbacValidator>
+        <RbacValidator
+          accessRequiredOn={{
+            onResource: "CUSTOMER_ID",
+            ...UserPermissionMap.editEncryptionInTransit
           }}
-          disabled={!downloadEnabled}
+          isControl
+          overrideStyle={{ display: 'block' }}
         >
-          <i className="fa fa-download"></i> Download YSQL Cert
-        </MenuItem>
-        <MenuItem
-          onClick={() => {
-            downloadEnabled && this.downloadRootCertificate(row);
+          <MenuItem
+            onClick={() => {
+              if (downloadEnabled) {
+                this.setState({ selectedCert: payload });
+                this.props.showDownloadCertificateModal();
+              }
+            }}
+            disabled={!downloadEnabled}
+          >
+            <i className="fa fa-download"></i> Download YSQL Cert
+          </MenuItem>
+        </RbacValidator>
+        <RbacValidator
+          accessRequiredOn={{
+            onResource: "CUSTOMER_ID",
+            ...UserPermissionMap.editEncryptionInTransit
           }}
-          disabled={!downloadEnabled}
+          isControl
+          overrideStyle={{ display: 'block' }}
         >
-          <i className="fa fa-download"></i> Download Root CA Cert
-        </MenuItem>
-        <MenuItem
-          onClick={() => {
-            !deleteDisabled && this.showDeleteCertificateModal(payload);
+          <MenuItem
+            onClick={() => {
+              downloadEnabled && this.downloadRootCertificate(row);
+            }}
+            disabled={!downloadEnabled}
+          >
+            <i className="fa fa-download"></i> Download Root CA Cert
+          </MenuItem>
+        </RbacValidator>
+        <RbacValidator
+          accessRequiredOn={{
+            onResource: "CUSTOMER_ID",
+            ...UserPermissionMap.deleteEncryptionInTransit
           }}
-          disabled={deleteDisabled}
-          title={deleteDisabled ? 'In use certificates cannot be deleted' : null}
+          isControl
+          overrideStyle={{ display: 'block' }}
         >
-          <i className="fa fa-trash"></i> Delete Certificate
-        </MenuItem>
+          <MenuItem
+            onClick={() => {
+              !deleteDisabled && this.showDeleteCertificateModal(payload);
+            }}
+            disabled={deleteDisabled}
+            title={deleteDisabled ? 'In use certificates cannot be deleted' : null}
+          >
+            <i className="fa fa-trash"></i> Delete Certificate
+          </MenuItem>
+        </RbacValidator>
         <MenuItem
           onClick={() => {
             this.setState({

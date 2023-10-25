@@ -84,13 +84,22 @@ export const StorageConfigurationList: FC<StorageConfigurationListProps> = ({
           id="bg-nested-dropdown"
           pullRight
         >
-          <MenuItem
-            onClick={() => {
-              setEditConfigData(row);
+          <RbacValidator
+            accessRequiredOn={{
+              onResource: "CUSTOMER_ID",
+              ...UserPermissionMap.editStorageConfiguration
             }}
+            isControl
+            overrideStyle={{ display: 'block' }}
           >
-            Edit Configuration
-          </MenuItem>
+            <MenuItem
+              onClick={() => {
+                setEditConfigData(row);
+              }}
+            >
+              Edit Configuration
+            </MenuItem>
+          </RbacValidator>
           <MenuItem
             onClick={(e) => {
               e.stopPropagation();
@@ -100,27 +109,36 @@ export const StorageConfigurationList: FC<StorageConfigurationListProps> = ({
           >
             Show associated backups
           </MenuItem>
-          <MenuItem
-            disabled={inUse}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!inUse) {
-                setConfigData({ configUUID, configName });
-                setDeleteModalVisible(true);
-              }
+          <RbacValidator
+            accessRequiredOn={{
+              onResource: "CUSTOMER_ID",
+              ...UserPermissionMap.deleteStorageConfiguration
             }}
+            isControl
+            overrideStyle={{ display: 'block' }}
           >
-            {!inUse && <>Delete Configuration</>}
+            <MenuItem
+              disabled={inUse}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!inUse) {
+                  setConfigData({ configUUID, configName });
+                  setDeleteModalVisible(true);
+                }
+              }}
+            >
+              {!inUse && <>Delete Configuration</>}
 
-            {inUse && (
-              <YBInfoTip
-                content="Storage configuration is in use and cannot be deleted until associated resources are removed."
-                placement="top"
-              >
-                <span className="disable-delete">Delete Configuration</span>
-              </YBInfoTip>
-            )}
-          </MenuItem>
+              {inUse && (
+                <YBInfoTip
+                  content="Storage configuration is in use and cannot be deleted until associated resources are removed."
+                  placement="top"
+                >
+                  <span className="disable-delete">Delete Configuration</span>
+                </YBInfoTip>
+              )}
+            </MenuItem>
+          </RbacValidator>
           <MenuItem
             onClick={() => {
               setConfigData(configName);
@@ -141,7 +159,6 @@ export const StorageConfigurationList: FC<StorageConfigurationListProps> = ({
         onResource: "CUSTOMER_ID",
         ...UserPermissionMap.listStorageConfiguration
       }}
-      isControl
     >
       <>
         <h2 className="table-container-title pull-left">Backup List</h2>

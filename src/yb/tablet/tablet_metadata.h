@@ -131,6 +131,8 @@ struct TableInfo {
             const qlexpr::IndexMap& index_map,
             const std::vector<DeletedColumn>& deleted_cols,
             SchemaVersion schema_version);
+  TableInfo(const TableInfo& other,
+            const Schema& schema);
   TableInfo(const TableInfo& other, SchemaVersion min_schema_version);
   ~TableInfo();
 
@@ -491,6 +493,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Returns a list of all tables colocated on this tablet.
   std::vector<TableId> GetAllColocatedTables();
 
+  // Gets a map of colocated tables UUIds with their colocation ids on this tablet.
+  std::unordered_map<TableId, ColocationId> GetAllColocatedTablesWithColocationId() const;
+
   // Set / get the remote bootstrap / tablet data state.
   void set_tablet_data_state(TabletDataState state);
   TabletDataState tablet_data_state() const;
@@ -645,8 +650,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   OpId MinUnflushedChangeMetadataOpId() const;
 
-  // Updates related meta data when post split compction as a reaction for post split compaction
-  // completed. Returns true if any field has been updated and a flush may be required.
+  // Updates related meta data as a reaction to index table backfilling is done.
+  void OnBackfillDone(const OpId& op_id, const TableId& table_id);
+
+  // Updates related meta data as a reaction for post split compaction completed. Returns true
+  // if any field has been updated and a flush may be required.
   bool OnPostSplitCompactionDone();
 
  private:

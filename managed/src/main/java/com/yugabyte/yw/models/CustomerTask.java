@@ -150,6 +150,9 @@ public class CustomerTask extends Model {
     @EnumValue("Synchronize")
     Sync,
 
+    @EnumValue("LdapSync")
+    LdapSync,
+
     @EnumValue("RestartUniverse")
     RestartUniverse,
 
@@ -161,6 +164,9 @@ public class CustomerTask extends Model {
 
     @EnumValue("FinalizeUpgrade")
     FinalizeUpgrade,
+
+    @EnumValue("RollbackUpgrade")
+    RollbackUpgrade,
 
     @EnumValue("GFlagsUpgrade")
     GFlagsUpgrade,
@@ -301,6 +307,9 @@ public class CustomerTask extends Model {
     @EnumValue("ThirdpartySoftwareUpgrade")
     ThirdpartySoftwareUpgrade,
 
+    @EnumValue("ModifyAuditLoggingConfig")
+    ModifyAuditLoggingConfig,
+
     @EnumValue("RotateAccessKey")
     RotateAccessKey,
 
@@ -368,6 +377,8 @@ public class CustomerTask extends Model {
           return completed ? "Edited " : "Editing ";
         case Sync:
           return completed ? "Synchronized " : "Synchronizing ";
+        case LdapSync:
+          return completed ? "LDAP Sync Completed on " : "LDAP Sync in Progress on ";
         case RestartUniverse:
           return completed ? "Restarted " : "Restarting ";
         case SoftwareUpgrade:
@@ -376,6 +387,8 @@ public class CustomerTask extends Model {
           return completed ? "Upgraded Software " : "Upgrading Software ";
         case FinalizeUpgrade:
           return completed ? "Finalized Upgrade" : "Finalizing Upgrade";
+        case RollbackUpgrade:
+          return completed ? "Rolled back upgrade" : "Rolling backup upgrade";
         case SystemdUpgrade:
           return completed ? "Upgraded to Systemd " : "Upgrading to Systemd ";
         case GFlagsUpgrade:
@@ -451,6 +464,10 @@ public class CustomerTask extends Model {
           return completed
               ? "Upgraded third-party software for "
               : "Upgrading third-party software for ";
+        case ModifyAuditLoggingConfig:
+          return completed
+              ? "Modified audit logging config for "
+              : "Modifying audit logging config for ";
         case CreateTableSpaces:
           return completed ? "Created tablespaces in " : "Creating tablespaces in ";
         case RotateAccessKey:
@@ -683,6 +700,10 @@ public class CustomerTask extends Model {
 
   public static CustomerTask get(Long id) {
     return CustomerTask.find.query().where().idEq(id).findOne();
+  }
+
+  public static List<CustomerTask> getByCustomerUUID(UUID customerUUID) {
+    return CustomerTask.find.query().where().eq("customer_uuid", customerUUID).findList();
   }
 
   @Deprecated

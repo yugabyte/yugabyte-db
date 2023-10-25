@@ -267,12 +267,17 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     if ((trace_ && trace_->must_print())
            || (threshold > 0 && ToMilliseconds(time_spent) > threshold)
            || (FLAGS_txn_print_trace_on_error && !status_.ok())) {
-      LOG(INFO) << ToString() << " took " << ToMicroseconds(time_spent) << "us. Trace: \n"
-        << (trace_ ? trace_->DumpToString(true) : "Not collected");
+      LOG(INFO) << ToString() << " took " << ToMicroseconds(time_spent)
+                << "us. Trace: " << (trace_ ? "" : "Not collected");
+      if (trace_)
+        trace_->DumpToLogInfo(true);
     } else if (trace_) {
+      bool was_printed = false;
       YB_LOG_IF_EVERY_N(INFO, print_trace_every_n > 0, print_trace_every_n)
-        << ToString() << " took " << ToMicroseconds(time_spent) << "us. Trace: \n"
-        << trace_->DumpToString(true);
+          << ToString() << " took " << ToMicroseconds(time_spent) << "us. Trace: \n"
+          << Trace::SetTrue(&was_printed);
+      if (was_printed)
+        trace_->DumpToLogInfo(true);
     }
   }
 
@@ -487,11 +492,16 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
               prev_tablet_id = &tablet_id;
               tablets_[tablet_id].has_metadata = true;
             }
+            // 'num_completed_batches' for the involved tablet should be updated only when the op
+            // performs a write at the tablet (explicit write/read with explicit locks), which is
+            // checked for in the above 'if' clause. Else, we could run into scenarios where a txn
+            // promotion request is sent to a participant which hasn't yet registered the txn, and
+            // would lead to a 40001 being returned to pg.
+            ++tablets_[tablet_id].num_completed_batches;
           }
           if (transaction_status_move_tablets_.count(tablet_id)) {
             schedule_status_moved = true;
           }
-          ++tablets_[tablet_id].num_completed_batches;
         }
       } else {
         const TransactionError txn_err(status);
@@ -894,6 +904,17 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return subtransaction_.SetActiveSubTransaction(id);
   }
 
+  Status SetPgTxnStart(int64_t pg_txn_start_us) {
+    VLOG_WITH_PREFIX(4) << "set pg_txn_start_us_=" << pg_txn_start_us;
+    RSTATUS_DCHECK(
+        !metadata_.pg_txn_start_us || metadata_.pg_txn_start_us == pg_txn_start_us,
+        InternalError,
+        Format("Tried to set pg_txn_start_us (= $0) to new value (= $1)",
+               metadata_.pg_txn_start_us, pg_txn_start_us));
+    metadata_.pg_txn_start_us = pg_txn_start_us;
+    return Status::OK();
+  }
+
   std::future<Status> SendHeartBeatOnRollback(
       const CoarseTimePoint& deadline, const internal::RemoteTabletPtr& status_tablet,
       rpc::Rpcs::Handle* handle,
@@ -1194,6 +1215,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       return;
     }
 
+    // TODO: In case of transaction promotion, DoCommit is called only after we hearback on all
+    // sent transation status move requests. So either the promotion went through, in which case
+    // transaction participants of all involved tablets check the txn's state against the new
+    // status tablet, or the promotion failed, in which case we anyways abort the transaction.
+    // TBD if we do require a successfull PENDING heartbeat to go through.
     if (old_status_tablet_ && last_old_heartbeat_failed_.load(std::memory_order_acquire)) {
       auto rpc = PrepareOldStatusTabletFinalHeartbeat(deadline, seal_only, status, transaction);
       lock.unlock();
@@ -1704,10 +1730,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     VLOG_WITH_PREFIX(4) << __func__ << "(" << TransactionStatus_Name(status) << ", "
                         << send_to_new_tablet << ")";
 
-    auto old_status_tablet_state = old_status_tablet_state_.load(std::memory_order_acquire);
-    if (!send_to_new_tablet &&
-        old_status_tablet_state != OldTransactionState::kNone &&
-        old_status_tablet_state != OldTransactionState::kRunning) {
+    if (!ShouldContinueHeartbeats(send_to_new_tablet)) {
       VLOG_WITH_PREFIX(1) << "Old status tablet is no longer in use, cancelling heartbeat";
       return;
     }
@@ -1760,6 +1783,34 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     FATAL_INVALID_ENUM_VALUE(TransactionState, current_state);
   }
 
+  // Returns whether the heartbeater thread should continue heartbeating.
+  //
+  // When 'send_to_new_tablet' is true, we should continue sending/processing heartbeat requests/
+  // responses as they are with the new status tablet stored in 'status_tablet_'.
+  //
+  // When 'send_to_new_tablet' is false, we should continue heartbeats in the following cases:
+  // 1. Heartbeating to 'status_tablet_':
+  //    - happens when the transaction started off as a global txn. In this case
+  //      'old_status_tablet_state_' remains in 'kNone'.
+  //    - transaction started off as local, and promotion hasn't been kicked off yet (new status
+  //      tablet hasn't been picked yet). 'old_status_tablet_state_' remains in 'kNone' until the
+  //      'status_tablet_' switch happens.
+  // 2. Heartbeating to 'old_status_tablet_':
+  //    - transaction started off as local, and was promoted. 'old_status_tablet_state_' remains
+  //      in 'kRunning' until abort is sent to 'old_status_tablet_'.
+  // Once an abort request is sent to the old status tablet, 'old_status_tablet_state_' transitions
+  // to 'kAborting', and to 'kAborted' from there. Hence, we should not process heartbeat responses
+  // or initiate new heartbeat requests when not in ('kNone', 'kRunning') states, as they wouldn't
+  // reflect the actual status of the transaction.
+  bool ShouldContinueHeartbeats(SendHeartbeatToNewTablet send_to_new_tablet) {
+    if (send_to_new_tablet) {
+      return true;
+    }
+    auto old_status_tablet_state = old_status_tablet_state_.load(std::memory_order_acquire);
+    return old_status_tablet_state == OldTransactionState::kNone ||
+           old_status_tablet_state == OldTransactionState::kRunning;
+  }
+
   void HeartbeatDone(Status status,
                      const tserver::UpdateTransactionRequestPB& request,
                      const tserver::UpdateTransactionResponsePB& response,
@@ -1789,6 +1840,20 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                         << TransactionStatus_Name(transaction_status) << ", "
                         << send_to_new_tablet << ")";
 
+    if (!ShouldContinueHeartbeats(send_to_new_tablet)) {
+      // It could have happended that all UpdateTransactionStatusLocation requests went through
+      // and we issued an abort to the old status tablet. We should ignore any heartbeat response
+      // we receive after that. Since the promotion went through, the involved txn participants
+      // would check against the latest status tablet for any course of action. So we need not
+      // be concerned on whether this was a genuine heartbeat error and can safely exit without
+      // error handling or cleanup (they will be handled by the other heartbeater thread hitting
+      // the new status tablet in 'status_tablet_').
+      VLOG_WITH_PREFIX_AND_FUNC(1)
+          << "Skipping cleanup because the heartbeat response from the old status tablet was "
+          << "received after sending abort to old status tablet. "
+          << old_status_tablet_state_.load(std::memory_order_relaxed);
+      return;
+    }
     if (!send_to_new_tablet) {
       last_old_heartbeat_failed_.store(!status.ok(), std::memory_order_release);
     }
@@ -2361,6 +2426,10 @@ Status YBTransaction::RollbackToSubTransaction(SubTransactionId id, CoarseTimePo
 
 bool YBTransaction::HasSubTransaction(SubTransactionId id) {
   return impl_->HasSubTransaction(id);
+}
+
+Status YBTransaction::SetPgTxnStart(int64_t pg_txn_start_us) {
+  return impl_->SetPgTxnStart(pg_txn_start_us);
 }
 
 void YBTransaction::IncreaseMutationCounts(

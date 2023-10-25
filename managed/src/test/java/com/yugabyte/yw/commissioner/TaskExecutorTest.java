@@ -94,7 +94,14 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.StartNodeInUniverse,
           TaskType.StopNodeInUniverse,
           TaskType.CloudProviderDelete,
-          TaskType.ReinstallNodeAgent);
+          TaskType.ReinstallNodeAgent,
+          TaskType.CloudBootstrap,
+          TaskType.KubernetesOverridesUpgrade,
+          TaskType.GFlagsKubernetesUpgrade,
+          TaskType.SoftwareKubernetesUpgrade,
+          TaskType.SoftwareUpgrade,
+          TaskType.SoftwareUpgradeYB,
+          TaskType.VMImageUpgrade);
 
   @Override
   protected Application provideApplication() {
@@ -621,5 +628,12 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     verify(subTask, times(1)).setTaskUUID(any());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     assertEquals(TaskInfo.State.Success, subTaskInfos.get(0).getTaskState());
+  }
+
+  @Test
+  public void testTaskValidationFailure() {
+    ITask task = mockTaskCommon(false);
+    doThrow(new IllegalArgumentException("Validation failed")).when(task).validateParams();
+    assertThrows(IllegalArgumentException.class, () -> taskExecutor.createRunnableTask(task));
   }
 }

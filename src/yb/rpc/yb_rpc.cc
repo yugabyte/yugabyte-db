@@ -338,7 +338,8 @@ void YBInboundCall::LogTrace() const {
                    << header_.timeout_ms << "ms).";
       auto my_trace = trace();
       if (my_trace) {
-        LOG(WARNING) << "Trace:\n" << my_trace->DumpToString(1, true);
+        LOG(INFO) << "Trace:";
+        my_trace->DumpToLogInfo(true);
       }
       return;
     }
@@ -351,7 +352,7 @@ void YBInboundCall::LogTrace() const {
           total_time > FLAGS_rpc_slow_query_threshold_ms)) {
     LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";
     if (my_trace) {
-      my_trace->Dump(&LOG(INFO), true);
+      my_trace->DumpToLogInfo(true);
     }
   }
 }

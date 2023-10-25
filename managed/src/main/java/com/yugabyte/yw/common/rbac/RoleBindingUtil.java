@@ -7,9 +7,12 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.rbac.ResourcePermissionData;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
@@ -18,6 +21,7 @@ import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import io.ebean.annotation.Transactional;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -31,10 +35,12 @@ import lombok.extern.slf4j.Slf4j;
 @Singleton
 public class RoleBindingUtil {
   PermissionUtil permissionUtil;
+  RuntimeConfGetter confGetter;
 
   @Inject
-  public RoleBindingUtil(PermissionUtil permissionUtil) {
+  public RoleBindingUtil(PermissionUtil permissionUtil, RuntimeConfGetter confGetter) {
     this.permissionUtil = permissionUtil;
+    this.confGetter = confGetter;
   }
 
   public RoleBinding createRoleBinding(
@@ -275,6 +281,19 @@ public class RoleBindingUtil {
    */
   public void populateSystemRoleResourceGroups(
       UUID customerUUID, UUID userUUID, List<RoleResourceDefinition> roleResourceDefinitions) {
+    // If there are no system roles assigned to the role bindings of a user, add ConnectOnly Role to
+    // the role bindings.
+    if (!roleResourceDefinitions.stream()
+        .anyMatch(
+            rrd ->
+                RoleType.System.equals(
+                    Role.getOrBadRequest(customerUUID, rrd.getRoleUUID()).getRoleType()))) {
+      Role connectOnlyRole = Role.getOrBadRequest(customerUUID, Users.Role.ConnectOnly.name());
+      roleResourceDefinitions.add(new RoleResourceDefinition(connectOnlyRole.getRoleUUID(), null));
+    }
+
+    // All the system roles should not have any resource group. They will be populated with default
+    // values as they cannot be scoped.
     for (RoleResourceDefinition roleResourceDefinition : roleResourceDefinitions) {
       Role role = Role.getOrBadRequest(customerUUID, roleResourceDefinition.getRoleUUID());
       if (RoleType.System.equals(role.getRoleType())) {
@@ -283,6 +302,52 @@ public class RoleBindingUtil {
                 customerUUID, userUUID, Users.Role.valueOf(role.getName()));
         roleResourceDefinition.setResourceGroup(systemDefaultResourceGroup);
       }
+    }
+  }
+
+  /**
+   * This method goes through all existing role bindings with the given role and expands all the
+   * resource definitions to allow access to all the resources which have the given generic resource
+   * types.
+   *
+   * @param customerUUID
+   * @param role
+   * @param genericResourceTypesToExpand
+   */
+  public void expandRoleBindings(
+      UUID customerUUID, Role role, Set<ResourceType> genericResourceTypesToExpand) {
+    List<RoleBinding> roleBindingsWithRole = RoleBinding.getAllWithRole(role.getRoleUUID());
+    for (RoleBinding roleBinding : roleBindingsWithRole) {
+      for (ResourceDefinition resourceDefinition :
+          roleBinding.getResourceGroup().getResourceDefinitionSet()) {
+        if (genericResourceTypesToExpand.contains(resourceDefinition.getResourceType())) {
+          ResourceDefinition oldResourceDefinition = resourceDefinition.clone();
+          switch (resourceDefinition.getResourceType()) {
+            case OTHER:
+              // For "OTHER" resource type, ensure allowAll is false and resource UUID set has only
+              // the customer UUID.
+              resourceDefinition.setAllowAll(false);
+              resourceDefinition.setResourceUUIDSet(new HashSet<>(Arrays.asList(customerUUID)));
+              break;
+            default:
+              // For the rest of the resource types, ensure allowAll is true and empty resource UUID
+              // set.
+              resourceDefinition.setAllowAll(true);
+              resourceDefinition.setResourceUUIDSet(new HashSet<>());
+              break;
+          }
+          log.info(
+              "Expanded {} RoleBinding '{}' with user UUID '{}', role UUID '{}', from "
+                  + "old resource definition '{}' to new resource definition '{}'.",
+              roleBinding.getType(),
+              roleBinding.getUuid(),
+              roleBinding.getUser().getUuid(),
+              roleBinding.getRole().getRoleUUID(),
+              oldResourceDefinition,
+              resourceDefinition);
+        }
+      }
+      roleBinding.update();
     }
   }
 
@@ -414,5 +479,37 @@ public class RoleBindingUtil {
       roleBinding.setResourceGroup(resourceGroup);
       roleBinding.update();
     }
+  }
+
+  public Set<UUID> getResourceUuids(UUID userUUID, ResourceType resourceType, Action action) {
+    Users user = Users.getOrBadRequest(userUUID);
+    Customer customer = Customer.get(user.getCustomerUUID());
+    boolean useNewRbacAuthz = confGetter.getGlobalConf(GlobalConfKeys.useNewRbacAuthz);
+    Set<UUID> resourceUuids = resourceType.getAllResourcesUUID(customer.getUuid());
+    if (resourceUuids.isEmpty() || !useNewRbacAuthz) {
+      return resourceUuids;
+    }
+
+    Set<UUID> roleBindingUUIDs = new HashSet<>();
+    List<RoleBinding> userRoleBindings = RoleBinding.fetchRoleBindingsForUser(userUUID);
+    for (RoleBinding roleBinding : userRoleBindings) {
+      Role role = roleBinding.getRole();
+      if (role.getPermissionDetails()
+          .getPermissionList()
+          .contains(new Permission(resourceType, action))) {
+        Set<ResourceDefinition> rDSet =
+            roleBinding.getResourceGroup().getResourceDefinitionSet().stream()
+                .filter(rD -> resourceType.equals(rD.getResourceType()))
+                .collect(Collectors.toSet());
+        for (ResourceDefinition rD : rDSet) {
+          if (rD.isAllowAll()) {
+            return resourceUuids;
+          } else {
+            roleBindingUUIDs.addAll(rD.getResourceUUIDSet());
+          }
+        }
+      }
+    }
+    return roleBindingUUIDs;
   }
 }

@@ -545,9 +545,24 @@ Status WriteQuery::DoExecute() {
   if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL) {
     auto now = tablet->clock()->Now();
     auto conflict_management_policy = GetConflictManagementPolicy(wait_queue, write_batch);
+
+    {
+      // TODO(#19498): Enable the below check if possible. Right now we can't enable it because the
+      // read time for all YCQL operations is picked on the YCQL query layer, and this might be
+      // indicative of some correctness bugs similar to #19407 which was seen on YSQL.
+
+      // Read time should not be picked until conflict resolution is successful for the single shard
+      // operation path. This is because ResolveOperationConflicts() doesn't check regular db for
+      // conflicting data committed in regular db. If in future, we have to read data before
+      // conflict resolution, we should check conflicts in regular db too.
+
+      // RSTATUS_DCHECK(
+      //     !read_time_, IllegalState,
+      //     "Read time was picked before conflict resolution for a single shard operation.");
+    }
     return docdb::ResolveOperationConflicts(
-        doc_ops_, conflict_management_policy, now, tablet->doc_db(),
-        partial_range_key_intents, transaction_participant,
+        doc_ops_, conflict_management_policy, now, write_batch.transaction().pg_txn_start_us(),
+        tablet->doc_db(), partial_range_key_intents, transaction_participant,
         tablet->metrics(), &prepare_result_.lock_batch,
         wait_queue,
         [this, now](const Result<HybridTime>& result) {
@@ -585,7 +600,7 @@ Status WriteQuery::DoExecute() {
   // TODO(wait-queues): Ensure that wait_queue respects deadline() during conflict resolution.
   return docdb::ResolveTransactionConflicts(
       doc_ops_, conflict_management_policy, write_batch, tablet->clock()->Now(),
-      read_time_ ? read_time_.read : HybridTime::kMax,
+      read_time_ ? read_time_.read : HybridTime::kMax, write_batch.transaction().pg_txn_start_us(),
       tablet->doc_db(), partial_range_key_intents,
       transaction_participant, tablet->metrics(),
       &prepare_result_.lock_batch, wait_queue,

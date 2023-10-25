@@ -28,11 +28,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseYbDbAdminHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -354,7 +356,8 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Required password to configure YSQL auth.");
     bodyJson.put("ysqlPassword", "Admin@123");
-    when(mockCommissioner.submit(any(), any())).thenReturn(UUID.randomUUID());
+    UUID taskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+    when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
     result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertOk(result);
   }
@@ -387,7 +390,8 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Required password to configure YCQL auth.");
     bodyJson.put("ycqlPassword", "Admin@123");
-    when(mockCommissioner.submit(any(), any())).thenReturn(UUID.randomUUID());
+    UUID taskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+    when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
     result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
     assertOk(result);
   }

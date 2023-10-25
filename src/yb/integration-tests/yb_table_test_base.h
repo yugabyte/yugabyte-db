@@ -19,7 +19,7 @@
 #include <future>
 
 #include "yb/util/flags.h"
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/client/schema.h"
 #include "yb/client/table_handle.h"

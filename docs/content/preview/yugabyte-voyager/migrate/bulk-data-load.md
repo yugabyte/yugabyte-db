@@ -3,7 +3,7 @@ title: Steps for a bulk data load
 headerTitle: Bulk data load from files
 linkTitle: Bulk data load
 headcontent: Import data from flat files using YugabyteDB Voyager
-description: Run the steps to ensure a successful offline migration using YugabyteDB Voyager.
+description: Import data from flat files using YugabyteDB Voyager.
 menu:
   preview_yugabyte-voyager:
     identifier: bulk-data-load
@@ -32,21 +32,48 @@ yb-voyager import data file --export-dir <EXPORT_DIR> \
        --target-db-schema <TARGET_DB_SCHEMA> \
        --data-dir </path/to/files/dir/> \
        --file-table-map <filename1:table1,filename2:table2> \
+       --format csv|text \ # default csv
        # Optional arguments as per data format
-       --delimiter <DELIMITER> \
-       --escape-char <ESCAPE_CHAR> \
-       --quote-char <QUOTE_CHAR> \
-       --has-header \
-       --null-string "<NULL_STRING>"
+       --delimiter <DELIMITER> \ # default ',' for csv and '\t' for text
+       --escape-char <ESCAPE_CHAR> \ # for csv format only. default: '"'
+       --quote-char <QUOTE_CHAR> \ # for csv format only. default: '"'
+       --has-header \ # for csv format only. default: false
+       --null-string <NULL_STRING> # default '' (empty string) for csv and '\N'  for text
 ```
 
-Refer to [import data file](../../reference/yb-voyager-cli/#import-data-file) for details about the arguments.
+Refer to [import data file](../../reference/bulk-data-load/import-data-file/) for details about the arguments.
+
+### Load multiple files into the same table
+
+The import data file command also supports importing multiple files to the same table by providing the `--file-table-map` flag with a `<fileName>:<tableName>` entry for each file, or by passing a glob expression in place of the file name. For example, `fileName1:tableName,fileName2:tableName` or `fileName*:tableName`.
 
 ### Incremental data loading
 
-The `import data file` command also supports importing multiple files to the same table by providing the [--file-table-map](../../reference/yb-voyager-cli/#file-table-map) flag `<fileName>:<tableName>` entry for each file, or by passing a glob expression in place of the file name.
+You can also import files to the same table across multiple runs. For example, you could import `orders1.csv` as follows:
 
-For example, `fileName1:tableName,fileName2:tableName` OR `fileName*:tableName`.
+```sh
+yb-voyager import data file --file-table-map 'orders1.csv:orders' ...
+```
+
+And then subsequently import `orders2.csv` to the same table as follows:
+
+```sh
+yb-voyager import data file --file-table-map 'orders2.csv:orders' ...
+```
+
+To import an updated version of the same file (that is, having the same file name and data-dir), use the `--start-clean` flag and proceed without truncating the table. yb-voyager ingests the data present in the file in upsert mode. For example:
+
+```sh
+yb-voyager import data file --data-dir /dir/data-dir --file-table-map 'orders.csv:orders' ...
+```
+
+After new rows are added to `orders.csv`, use the following command to load them with `--start-clean`:
+
+```sh
+yb-voyager import data file --data-dir /dir/data-dir --file-table-map 'orders.csv:orders' --start-clean ...`
+```
+
+For details about the argument, refer to the [arguments table](../../reference/bulk-data-load/import-data-file/#arguments).
 
 ## Import data files from cloud storage
 

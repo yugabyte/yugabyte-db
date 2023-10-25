@@ -29,7 +29,7 @@
 
 #include <algorithm>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/stl_util.h"  // for string_as_array, STLAppendToString

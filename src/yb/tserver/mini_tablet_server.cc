@@ -37,7 +37,7 @@
 #include <string>
 #include <utility>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"

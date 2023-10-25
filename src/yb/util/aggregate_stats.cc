@@ -32,7 +32,7 @@ AggregateStats::AggregateStats(const AggregateStats& other):
     min_value_(other.min_value_.Load()),
     max_value_(other.max_value_.Load()) {}
 
-void AggregateStats::IncrementBy(int64_t value, int64_t count) {
+void AggregateStats::IncrementBy(int64_t value, uint64_t count) {
   current_sum_.IncrementBy(value * count);
   current_count_.IncrementBy(count);
   min_value_.StoreMin(value);
@@ -65,11 +65,25 @@ double AggregateStats::MeanValue() const {
   return static_cast<double>(CurrentSum()) / count;
 }
 
-void AggregateStats::Reset() {
-  total_sum_.IncrementBy(current_sum_.Exchange(0));
-  total_count_.IncrementBy(current_count_.Exchange(0));
+void AggregateStats::Reset(PreserveTotalStats preserve_total) {
+  if (preserve_total) {
+    total_sum_.IncrementBy(current_sum_.Exchange(0));
+    total_count_.IncrementBy(current_count_.Exchange(0));
+  } else {
+    current_sum_.Store(0);
+    total_sum_.Store(0);
+    current_count_.Store(0);
+    total_count_.Store(0);
+  }
   min_value_.Store(std::numeric_limits<int64_t>::max());
   max_value_.Store(std::numeric_limits<int64_t>::min());
+}
+
+void AggregateStats::Add(const AggregateStats& other) {
+  current_sum_.IncrementBy(other.total_sum_.Load() + other.current_sum_.Load());
+  current_count_.IncrementBy(other.total_count_.Load() + other.current_count_.Load());
+  min_value_.StoreMin(other.min_value_.Load());
+  max_value_.StoreMax(other.max_value_.Load());
 }
 
 } // namespace yb

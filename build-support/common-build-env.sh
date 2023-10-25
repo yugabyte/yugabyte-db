@@ -79,6 +79,8 @@ $YB_SRC_ROOT/python/yugabyte/split_long_command_line.py
 $YB_SRC_ROOT/python/yugabyte/update_test_result_xml.py
   export YB_SCRIPT_PATH_YB_RELEASE_CORE_DB=$YB_SRC_ROOT/python/yugabyte/yb_release_core_db.py
   export YB_SCRIPT_PATH_LIST_PACKAGED_TARGETS=$YB_SRC_ROOT/python/yugabyte/list_packaged_targets.py
+  export YB_SCRIPT_PATH_VALIDATE_BUILD_ROOT=$YB_SRC_ROOT/python/yugabyte/validate_build_root.py
+  export YB_SCRIPT_PATH_ANALYZE_TEST_RESULTS=$YB_SRC_ROOT/python/yugabyte/analyze_test_results.py
 }
 
 set_yb_src_root() {
@@ -1632,7 +1634,9 @@ get_build_worker_list() {
     if [[ -n ${YB_BUILD_WORKERS_FILE:-} ]]; then
       build_workers=( $( cat "$YB_BUILD_WORKERS_FILE" ))
     else
-      build_workers=( $( curl -s "$YB_BUILD_WORKERS_LIST_URL" ) )
+      build_workers=( $( curl -s "$YB_BUILD_WORKERS_LIST_URL" ) ) \
+        || fatal "Failed to curl $YB_BUILD_WORKERS_LIST_URL: check your network connection or use" \
+                 "--no-remote"
     fi
     if [[ ${#build_workers[@]} -eq 0 ]]; then
       log "Got an empty list of build workers from $YB_BUILD_WORKERS_LIST_URL," \
@@ -2035,7 +2039,7 @@ handle_predefined_build_root() {
   if [[ $predefined_build_root != $YB_BUILD_INTERNAL_PARENT_DIR/* && \
         $predefined_build_root != $YB_BUILD_EXTERNAL_PARENT_DIR/* ]]; then
     # Sometimes $predefined_build_root contains symlinks on its path.
-    "$YB_SRC_ROOT/build-support/validate_build_root.py" \
+    "$YB_SCRIPT_PATH_VALIDATE_BUILD_ROOT" \
       "$predefined_build_root" \
       "$YB_BUILD_INTERNAL_PARENT_DIR" \
       "$YB_BUILD_EXTERNAL_PARENT_DIR"
@@ -2256,6 +2260,7 @@ check_python_script_syntax() {
 run_shellcheck() {
   local scripts_to_check=(
     bin/release_package_docker_test.sh
+    bin/run_tests_on_spark_tool.sh
     build-support/common-build-env.sh
     build-support/common-cli-env.sh
     build-support/common-test-env.sh
@@ -2376,7 +2381,7 @@ activate_virtualenv() {
   if [[ ${yb_readonly_virtualenv} == "false" ]]; then
     local requirements_file_path="$YB_SRC_ROOT/requirements_frozen.txt"
     local installed_requirements_file_path=$virtualenv_dir/${requirements_file_path##*/}
-    pip3 install --upgrade pip
+    "$pip_executable" --retries 0 install --upgrade pip
     if ! cmp --silent "$requirements_file_path" "$installed_requirements_file_path"; then
       run_with_retries 10 0.5 "$pip_executable" install -r "$requirements_file_path" \
         $pip_no_cache

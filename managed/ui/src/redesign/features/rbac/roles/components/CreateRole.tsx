@@ -28,7 +28,7 @@ import ListPermissionsModal from '../../permission/ListPermissionsModal';
 import { YBButton, YBInputField } from '../../../../components';
 import { YBLoadingCircleIcon } from '../../../../../components/common/indicators';
 import { resourceOrderByRelevance } from '../../common/RbacUtils';
-import { Role } from '../IRoles';
+import { Role, RoleType } from '../IRoles';
 import { Permission, Resource } from '../../permission';
 import { createRole, editRole, getAllAvailablePermissions } from '../../api';
 import { Pages, RoleContextMethods, RoleViewContext } from '../RoleContext';
@@ -107,6 +107,7 @@ export const CreateRole = forwardRef((_, forwardRef) => {
           permissionDetails: currentRole.permissionDetails
         }
       : {
+          description: '',
           permissionDetails: {
             permissionList: []
           }
@@ -169,6 +170,8 @@ export const CreateRole = forwardRef((_, forwardRef) => {
 
   const permissionListVal = watch('permissionDetails.permissionList');
 
+  const isSystemRole = currentRole?.roleType === RoleType.SYSTEM;
+
   return (
     <Box className={classes.root}>
       <div className={classes.title}>{t(currentRole?.roleUUID ? 'edit' : 'title')}</div>
@@ -179,13 +182,14 @@ export const CreateRole = forwardRef((_, forwardRef) => {
           label={t('form.name')}
           placeholder={t('form.namePlaceholder')}
           fullWidth
-          disabled={isNonEmptyString(currentRole?.roleUUID)}
+          disabled={isNonEmptyString(currentRole?.roleUUID) || isSystemRole}
         />
         <YBInputField
           name="description"
           control={control}
           label={t('form.description')}
           placeholder={t('form.descriptionPlaceholder')}
+          disabled={isSystemRole}
           fullWidth
         />
         {permissionListVal.length === 0 && (
@@ -198,6 +202,7 @@ export const CreateRole = forwardRef((_, forwardRef) => {
           setSelectedPermissions={(perm: Permission[]) => {
             setValue('permissionDetails.permissionList', perm);
           }}
+          disabled={isSystemRole}
         />
         {errors.permissionDetails?.message && (
           <FormHelperText required error>
@@ -322,11 +327,13 @@ const permissionsStyles = makeStyles((theme) => ({
 type SelectPermissionsProps = {
   selectedPermissions: Permission[];
   setSelectedPermissions: (permissions: Permission[]) => void;
+  disabled: boolean;
 };
 
 const SelectPermissions = ({
   selectedPermissions,
-  setSelectedPermissions
+  setSelectedPermissions,
+  disabled
 }: SelectPermissionsProps) => {
   const classes = permissionsStyles();
   const { t } = useTranslation('translation', {
@@ -347,7 +354,7 @@ const SelectPermissions = ({
 
   const getEmptyList = () => (
     <Box className={classes.root}>
-      <YBButton variant="secondary" onClick={() => togglePermissionModal(true)}>
+      <YBButton variant="secondary" onClick={() => togglePermissionModal(true)} disabled={disabled}>
         {t('selectPermissions')}
       </YBButton>
       <div className={classes.helpText}>{t('selectPermissionSubText')}</div>
@@ -371,6 +378,7 @@ const SelectPermissions = ({
             startIcon={<Create />}
             onClick={() => togglePermissionModal(true)}
             data-testid={`rbac-edit-universe-selection`}
+            disabled={disabled}
           >
             {t('editSelection')}
           </YBButton>

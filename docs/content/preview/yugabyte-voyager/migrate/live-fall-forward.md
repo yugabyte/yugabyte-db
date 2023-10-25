@@ -1,5 +1,5 @@
 ---
-title: Steps to perform live migration of your database using YugabyteDB Voyager
+title: Steps to perform live migration with fall-forward using YugabyteDB Voyager
 headerTitle: Live migration with fall-forward
 linkTitle: Live migration with fall-forward
 headcontent: Steps for a live migration with fall-forward using YugabyteDB Voyager
@@ -27,11 +27,11 @@ Before starting a [live migration](../live-migrate/#live-migration-workflow), yo
 
 ![After fall-forward setup](/images/migrate/after-fall-forward-setup.png)
 
-At [cutover](#cut-over-to-a-database), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, YB Voyager keeps the fall-forward database synchronized with changes from the target Yugabyte DB as shown in the following illustration:
+At [cutover](#cut-over-to-the-target), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, YB Voyager keeps the fall-forward database synchronized with changes from the target Yugabyte DB as shown in the following illustration:
 
 ![After cutover](/images/migrate/after-cutover.png)
 
-Finally, if you need to switch to the fall-forward database (because the current YugabyteDB system is not working as expected), you can [switch over your database](#switch-over-your-database-optional).
+Finally, if you need to switch to the fall-forward database (because the current YugabyteDB system is not working as expected), you can [switch over your database](#switch-over-to-the-fall-forward-optional).
 
 ![After fall-forward switchover](/images/migrate/after-fall-fwd-switchover.png)
 
@@ -80,9 +80,9 @@ If you want yb-voyager to connect to the source database over SSL, refer to [SSL
 {{< note title="Connecting to Oracle instances" >}}
 You can use only one of the following arguments to connect to your Oracle instance.
 
-- [`--source-db-schema`](../../reference/yb-voyager-cli/#source-db-schema)
-- [`--oracle-db-sid`](../../reference/yb-voyager-cli/#oracle-db-sid)
-- [`--oracle-tns-alias`](../../reference/yb-voyager-cli/#ssl-connectivity)
+- --source-db-schema (Schema name of the source database.)
+- --oracle-db-sid (Oracle System Identifier you can use while exporting data from Oracle instances.)
+- --oracle-tns-alias (TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.)
 {{< /note >}}
 
 ## Prepare the target database
@@ -236,7 +236,7 @@ yb-voyager export schema --export-dir <EXPORT_DIR> \
 
 ```
 
-Refer to [export schema](../../reference/yb-voyager-cli/#export-schema) for details about the arguments.
+Refer to [export schema](../../reference/schema-migration/export-schema/) for details about the arguments.
 
 #### Analyze schema
 
@@ -251,7 +251,7 @@ yb-voyager analyze-schema --export-dir <EXPORT_DIR> --output-format <FORMAT>
 
 The above command generates a report file under the `EXPORT_DIR/reports/` directory.
 
-Refer to [analyze schema](../../reference/yb-voyager-cli/#analyze-schema) for details about the arguments.
+Refer to [analyze schema](../../reference/schema-migration/analyze-schema/) for details about the arguments.
 
 #### Manually edit the schema
 
@@ -291,7 +291,7 @@ yb-voyager import schema --export-dir <EXPORT_DIR> \
         --target-db-schema <TARGET_DB_SCHEMA>
 ```
 
-Refer to [import schema](../../reference/yb-voyager-cli/#import-schema) for details about the arguments.
+Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
 
 yb-voyager applies the DDL SQL files located in the `$EXPORT_DIR/schema` directory to the target database. If yb-voyager terminates before it imports the entire schema, you can rerun it by adding the `--ignore-exist` option.
 
@@ -346,9 +346,9 @@ Additionally, the CDC phase is restartable. So, if yb-voyager terminates when da
 
 - Some data types are unsupported. For a detailed list, refer to [datatype mappings](../../reference/datatype-mapping-oracle/).
 - For Oracle where sequences are not attached to a column, resume value generation is unsupported.
-- [--parallel-jobs](../../reference/yb-voyager-cli/#parallel-jobs) argument has no effect on live migration.
+- `--parallel-jobs` argument (specifies the number of tables to be exported in parallel from the source database at a time) has no effect on live migration.
 
-Refer to [export data](../../reference/yb-voyager-cli/#export-data) for details about the arguments, and [export data status](../../reference/yb-voyager-cli/#export-data-status) to track the status of an export operation.
+Refer to [export data](../../reference/data-migration/export-data/) for details about the arguments, and [export data status](../../reference/data-migration/export-data/#export-data-status) to track the status of an export operation.
 
 The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
 
@@ -367,7 +367,7 @@ yb-voyager import data --export-dir <EXPORT_DIR> \
         --parallel-jobs <NUMBER_OF_JOBS>
 ```
 
-Refer to [import data](../../reference/yb-voyager-cli/#import-data) for details about the arguments.
+Refer to [import data](../../reference/data-migration/import-data/) for details about the arguments.
 
 For the snapshot exported, yb-voyager splits the data dump files (from the $EXPORT_DIR/data directory) into smaller batches. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB database cluster are used. After the snapshot is imported, a similar approach is employed for the CDC phase, where concurrent batches of change events are applied on the target YugabyteDB database cluster.
 
@@ -390,7 +390,8 @@ Some important metrics such as number of events, ingestion rate, and so on, will
 The entire import process is designed to be _restartable_ if yb-voyager terminates while the data import is in progress. If restarted, the data import resumes from its current state.
 
 {{< note title="Note">}}
-[table-list](../../reference/yb-voyager-cli/#table-list) and [exclude-table-list](../../reference/yb-voyager-cli/#exclude-table-list) flags are not supported in live migration.
+The arguments `table-list` and `exclude-table-list` are not supported in live migration.
+For details about the arguments, refer to the [arguments table](../../reference/data-migration/import-data/#arguments).
 {{< /note >}}
 
 {{< tip title="Importing large datasets" >}}
@@ -421,7 +422,7 @@ yb-voyager fall-forward setup --export-dir <EXPORT-DIR> \
 --parallel-jobs <COUNT>
 ```
 
-Refer to [fall-forward setup](../../reference/yb-voyager-cli/#fall-forward-setup) for details about the arguments.
+Refer to [fall-forward setup](../../reference/fall-forward/fall-forward-setup/) for details about the arguments.
 
 Similar to [import data](#import-data), during fall-forward:
 
@@ -443,7 +444,7 @@ As the migration continuously exports changes on the source database to the `EXP
 yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR> --delete
 ```
 
-Refer to [archive changes](../../reference/yb-voyager-cli/#archive-changes) for details about the arguments.
+Refer to [archive changes](../../reference/cutover-archive/archive-changes/) for details about the arguments.
 
 {{< note title = "Note" >}}
 Make sure to run the archive changes command only after completing [fall-forward setup](#fall-forward-setup). If you run the command before, you may archive some changes before they have been imported to the fall-forward database.
@@ -464,13 +465,13 @@ Perform the following steps as part of the cutover process:
     yb-voyager cutover initiate --export-dir <EXPORT_DIR>
     ```
 
-    Refer to [cutover initiate](../../reference/yb-voyager-cli/#cutover-initiate) for details about the arguments.
+    Refer to [cutover initiate](../../reference/cutover-archive/cutover/#cutover-initiate) for details about the arguments.
 
     As part of the cutover process, the following occurs in the background:
 
     1. The cutover initiate command stops the export data process, followed by the import data process after it has imported all the events to the target YugabyteDB database.
 
-    1. The [fall-forward synchronize](../../reference/yb-voyager-cli/#fall-forward-synchronize) command automatically starts synchronizing changes from the target YugabyteDB database to the fall-forward database.
+    1. The [fall-forward synchronize](../../reference/fall-forward/fall-forward-synchronize/) command automatically starts synchronizing changes from the target YugabyteDB database to the fall-forward database.
     Note that the [import data](#import-data) process transforms to a `fall-forward synchronize` process, so if it gets terminated for any reason, you need to restart the synchronization using the `fall-forward synchronize` command as suggested in the import data output.
 
 1. Import indexes and triggers using the `import schema` command with an additional `--post-import-data` flag as follows:
@@ -487,7 +488,7 @@ Perform the following steps as part of the cutover process:
             --post-import-data
     ```
 
-    Refer to [import schema](../../reference/yb-voyager-cli/#import-schema) for details about the arguments.
+    Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.
 
 1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and target database to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 
@@ -522,7 +523,7 @@ Perform the following steps as part of the switchover process:
     yb-voyager fall-forward switchover --export-dir <EXPORT_DIR>
     ```
 
-    Refer to [fall-forward switchover](../../reference/yb-voyager-cli/#fall-forward-switchover) for details about the arguments.
+    Refer to [fall-forward switchover](../../reference/fall-forward/fall-forward-switchover/) for details about the arguments.
 
     The `fall-forward switchover` command stops the `fall-forward synchronize` process, followed by the `fall-forward setup` process after it has imported all the events to the fall-forward database.
 
@@ -532,7 +533,7 @@ Perform the following steps as part of the switchover process:
     yb-voyager fall-forward status --export-dir <EXPORT_DIR>
     ```
 
-    Refer to [fall-forward status](../../reference/yb-voyager-cli/#fall-forward-status) for details about the arguments.
+    Refer to [fall-forward status](../../reference/fall-forward/fall-forward-switchover/#fall-forward-status) for details about the arguments.
 
 1. Setup indexes and triggers to the fall-forward database manually.
 

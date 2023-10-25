@@ -32,7 +32,7 @@
 
 #include <iostream>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/wire_protocol.h"
 

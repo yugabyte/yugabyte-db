@@ -38,7 +38,8 @@ public class PermissionUtilTest {
     // Check if all objects in a file have same resourceType.
     for (ResourceType resourceType : ResourceType.values()) {
       log.info("Testing unique resource type: " + resourceType.toString());
-      List<PermissionInfo> allPermissionInfo = permissionUtil.getAllPermissionInfo(resourceType);
+      List<PermissionInfo> allPermissionInfo =
+          permissionUtil.getAllPermissionInfoFromCache(resourceType);
       for (PermissionInfo permissionInfo : allPermissionInfo) {
         assertEquals(resourceType, permissionInfo.resourceType);
       }
@@ -51,7 +52,8 @@ public class PermissionUtilTest {
     for (ResourceType resourceType : ResourceType.values()) {
       log.info("Testing unique permissions on : " + resourceType.toString());
       HashSet<Action> allPermissionsInFile = new HashSet<Action>();
-      List<PermissionInfo> allPermissionInfo = permissionUtil.getAllPermissionInfo(resourceType);
+      List<PermissionInfo> allPermissionInfo =
+          permissionUtil.getAllPermissionInfoFromCache(resourceType);
       for (PermissionInfo permissionInfo : allPermissionInfo) {
         assertFalse(allPermissionsInFile.contains(permissionInfo.getAction()));
         allPermissionsInFile.add(permissionInfo.getAction());
@@ -64,7 +66,8 @@ public class PermissionUtilTest {
     // All objects in a file should have unique prerequisite permissions.
     for (ResourceType resourceType : ResourceType.values()) {
       log.info("Testing unique prerequisite permissions on : " + resourceType.toString());
-      List<PermissionInfo> allPermissionInfo = permissionUtil.getAllPermissionInfo(resourceType);
+      List<PermissionInfo> allPermissionInfo =
+          permissionUtil.getAllPermissionInfoFromCache(resourceType);
       for (PermissionInfo permissionInfo : allPermissionInfo) {
         // For each PermissionInfo object, traverse the list of prerequisite permissions.
         HashSet<Permission> allPrerequisitePermissionsInFile = new HashSet<Permission>();

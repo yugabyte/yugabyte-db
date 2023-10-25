@@ -123,13 +123,18 @@ public class UsersController extends AuthenticatedController {
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.USER, action = Action.READ),
-        resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT))
+        resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT),
+        checkOnlyPermission = true)
   })
   public Result list(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
+    UserWithFeatures u = RequestContext.get(TokenAuthenticator.USER);
+    Set<UUID> resourceUUIDs =
+        roleBindingUtil.getResourceUuids(u.getUser().getUuid(), ResourceType.USER, Action.READ);
     List<Users> users = Users.getAll(customerUUID);
     List<UserWithFeatures> userWithFeaturesList =
         users.stream()
+            .filter(user -> resourceUUIDs.contains(user.getUuid()))
             .map(user -> userService.getUserWithFeatures(customer, user))
             .collect(Collectors.toList());
     return PlatformResults.withData(userWithFeaturesList);

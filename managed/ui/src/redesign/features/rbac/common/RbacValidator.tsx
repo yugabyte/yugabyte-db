@@ -7,8 +7,9 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { Component, ErrorInfo, FC, cloneElement, useState } from 'react';
+import { Component, ErrorInfo, FC, cloneElement, useRef, useState } from 'react';
 import { find } from 'lodash';
+import { useClickAway } from 'react-use';
 import { Popover, Tooltip, Typography } from '@material-ui/core';
 import { CSSProperties } from '@material-ui/styles';
 import { ActionType, Permission } from '../permission';
@@ -28,9 +29,22 @@ export interface RbacValidatorProps {
   onEnd?: (resource: any) => void;
   overrideStyle?: CSSProperties;
   customValidateFunction?: (permissions: UserPermission[]) => boolean;
+  popOverOverrides?: CSSProperties;
 }
 
-export const RBAC_ERR_MSG_NO_PERM = "You don't have permission";
+type RequireProperty<T, Prop extends keyof T> = T & { [key in Prop]-?: T[key] };
+type RequireAccessReqOrCustomValidateFn =
+  | RequireProperty<RbacValidatorProps, 'accessRequiredOn'>
+  | RequireProperty<RbacValidatorProps, 'customValidateFunction'>;
+
+export const RBAC_ERR_MSG_NO_PERM = (
+  <Typography variant="body2">
+    You don’t have permission to do this action.
+    <br />
+    <br />
+    If you think you should be able to do this action, contact your administrator.
+  </Typography>
+);
 
 const findResource = (accessRequiredOn: RbacValidatorProps['accessRequiredOn']) => {
   const { onResource, resourceType } = accessRequiredOn;
@@ -83,32 +97,37 @@ export const hasNecessaryPerm = (accessRequiredOn: RbacValidatorProps['accessReq
   return false;
 };
 
-export const RbacValidator: FC<RbacValidatorProps> = ({
+export const RbacValidator: FC<RequireAccessReqOrCustomValidateFn> = ({
   accessRequiredOn,
   children,
   onEnd,
   customValidateFunction,
   minimal = false,
   isControl = false,
-  overrideStyle = {}
+  overrideStyle = {},
+  popOverOverrides = {}
 }) => {
   if (!isRbacEnabled()) {
     return <>{children}</>;
   }
 
-  const { permissionRequired } = accessRequiredOn;
-
-  const resource = findResource(accessRequiredOn);
-
-  if (onEnd) {
-    onEnd(resource);
-  }
-
-  if (customValidateFunction && customValidateFunction((window as any).rbac_permissions)) {
-    return <>{children}</>;
-  } else if (resource && permissionRequired.every((p) => resource.actions.includes(p))) {
-    return <>{children}</>;
-  }
+  const controlComp = (
+    <ErrorBoundary>
+      <div
+        style={{
+          opacity: 0.5,
+          userSelect: 'none',
+          display: 'inline-block',
+          ...overrideStyle
+        }}
+        data-testid="rbac-no-perm"
+      >
+        <ButtonDisabledPopover popOverOverrides={popOverOverrides}>
+          {children as any}
+        </ButtonDisabledPopover>
+      </div>
+    </ErrorBoundary>
+  );
 
   const getWrappedChildren = () => {
     if (minimal) {
@@ -120,34 +139,20 @@ export const RbacValidator: FC<RbacValidatorProps> = ({
     }
     return (
       <div
-        style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          textAlign: 'center'
+        }}
         data-testid="rbac-no-perm"
       >
         <LockIcon />
-        You don&apos;t have permission to view this page
+        {RBAC_ERR_MSG_NO_PERM}
       </div>
     );
   };
-
-  if (isControl) {
-    return (
-      <ErrorBoundary>
-        <div
-          style={{
-            opacity: 0.5,
-            userSelect: 'none',
-            display: 'inline-block',
-            ...overrideStyle
-          }}
-          data-testid="rbac-no-perm"
-        >
-          <RBACPopover>{children as any}</RBACPopover>
-        </div>
-      </ErrorBoundary>
-    );
-  }
-
-  return (
+  const getErrorBoundary = (
     <ErrorBoundary>
       <div
         style={{
@@ -175,6 +180,32 @@ export const RbacValidator: FC<RbacValidatorProps> = ({
       </div>
     </ErrorBoundary>
   );
+
+  if (customValidateFunction) {
+    if (customValidateFunction((window as any).rbac_permissions)) {
+      return <>{children}</>;
+    } else {
+      return isControl ? controlComp : getErrorBoundary;
+    }
+  }
+
+  const { permissionRequired } = accessRequiredOn;
+
+  const resource = findResource(accessRequiredOn);
+
+  if (onEnd) {
+    onEnd(resource);
+  }
+
+  if (resource && permissionRequired.every((p) => resource.actions.includes(p))) {
+    return <>{children}</>;
+  }
+
+  if (isControl) {
+    return controlComp;
+  }
+
+  return getErrorBoundary;
 };
 
 type ErrorBoundaryState = {
@@ -203,15 +234,23 @@ export class ErrorBoundary extends Component {
   }
 }
 
-const RBACPopover = ({ children }: { children: React.ReactElement }) => {
+export const ButtonDisabledPopover = ({
+  children,
+  popOverOverrides = {}
+}: {
+  children: React.ReactElement;
+  popOverOverrides: CSSProperties;
+}) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
+  const ref = useRef(null);
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     setAnchorEl(event.currentTarget);
   };
   const handleClose = () => {
     setAnchorEl(null);
   };
+
   const reactChild = cloneElement(children, {
     onClick: (e: React.MouseEvent<HTMLButtonElement>) => {
       e.preventDefault();
@@ -220,8 +259,10 @@ const RBACPopover = ({ children }: { children: React.ReactElement }) => {
     }
   });
 
+  useClickAway(ref, handleClose);
+
   return (
-    <div>
+    <div ref={ref}>
       {reactChild}
       <Popover
         id={'rbac_perm_error'}
@@ -236,6 +277,9 @@ const RBACPopover = ({ children }: { children: React.ReactElement }) => {
           vertical: 'top',
           horizontal: 'center'
         }}
+        style={{
+          ...popOverOverrides
+        }}
       >
         <div
           style={{
@@ -244,12 +288,7 @@ const RBACPopover = ({ children }: { children: React.ReactElement }) => {
             zIndex: 1001
           }}
         >
-          <Typography variant="body2">
-            You don’t have permission to do this action.
-            <br />
-            <br />
-            If you think you should be able to do this action, contact your administrator.
-          </Typography>
+          {RBAC_ERR_MSG_NO_PERM}
         </div>
       </Popover>
     </div>

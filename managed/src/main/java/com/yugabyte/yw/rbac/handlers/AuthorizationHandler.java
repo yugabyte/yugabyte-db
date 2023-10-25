@@ -119,6 +119,10 @@ public class AuthorizationHandler extends Action<AuthzPath> {
         return CompletableFuture.completedFuture(Results.unauthorized("Unable to authorize user"));
       }
 
+      if (permissionPath.checkOnlyPermission()) {
+        continue;
+      }
+
       UUID resourceUUID = null;
       boolean isPermissionPresentOnResource;
 

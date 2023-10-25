@@ -14,7 +14,7 @@
 #include <thread>
 
 #include <boost/algorithm/string.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"

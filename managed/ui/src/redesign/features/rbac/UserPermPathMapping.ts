@@ -116,6 +116,10 @@ export const UserPermissionMap = {
         resourceType: RbacResourceTypes.EAR,
         permissionRequired: [Action.CREATE]
     },
+    editEncryptionAtRest: {
+        resourceType: RbacResourceTypes.EAR,
+        permissionRequired: [Action.UPDATE]
+    },
     deleteEncryptionAtRest: {
         resourceType: RbacResourceTypes.EAR,
         permissionRequired: [Action.DELETE]
@@ -217,9 +221,18 @@ export const UserPermissionMap = {
     createMaintenenceWindow: {
         onResource: 'CUSTOMER_ID',
         resourceType: RbacResourceTypes.ALERT,
+        permissionRequired: [Action.CREATE]
+    },
+    editMaintenanceWindow: {
+        onResource: 'CUSTOMER_ID',
+        resourceType: RbacResourceTypes.ALERT,
         permissionRequired: [Action.UPDATE]
     },
-
+    deleteMaintenanceWindow: {
+        onResource: 'CUSTOMER_ID',
+        resourceType: RbacResourceTypes.ALERT,
+        permissionRequired: [Action.DELETE]
+    },
     // Performance Advisor
     rescan: {
         resourceType: RbacResourceTypes.UNIVERSE,
@@ -235,7 +248,7 @@ export const UserPermissionMap = {
     createSupportBundle: {
         onResource: "CUSTOMER_ID",
         resourceType: RbacResourceTypes.SUPPORT_BUNDLE,
-        permissionRequired: [Action.UPDATE]
+        permissionRequired: [Action.CREATE]
     },
     deleteSupportBundle: {
         onResource: "CUSTOMER_ID",
@@ -245,7 +258,7 @@ export const UserPermissionMap = {
     downloadSupportBundle: {
         onResource: "CUSTOMER_ID",
         resourceType: RbacResourceTypes.SUPPORT_BUNDLE,
-        permissionRequired: [Action.READ]
+        permissionRequired: [Action.CREATE]
     },
 
     //CA-Certs
@@ -298,8 +311,19 @@ export const UserPermissionMap = {
     //LDAP
 
     updateLDAP: {
-        onResource: 'CUSTOMER_ID',
         resourceType: RbacResourceTypes.LDAP,
         permissionRequired: [Action.UPDATE]
+    },
+    importRelease: {
+        resourceType: RbacResourceTypes.RELEASES,
+        permissionRequired: [Action.CREATE]
+    },
+    disableRelease: {
+        resourceType: RbacResourceTypes.RELEASES,
+        permissionRequired: [Action.UPDATE]
+    },
+    deleteRelease: {
+        resourceType: RbacResourceTypes.RELEASES,
+        permissionRequired: [Action.DELETE]
     }
 } satisfies UserPermissionMapType;

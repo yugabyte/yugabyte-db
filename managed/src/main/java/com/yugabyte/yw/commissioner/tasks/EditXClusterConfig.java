@@ -177,9 +177,6 @@ public class EditXClusterConfig extends CreateXClusterConfig {
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
       Map<String, List<String>> mainTableIndexTablesMap,
       Set<String> tableIdsScheduledForBeingRemoved) {
-    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
-    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
-
     Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
         dbToTablesInfoMapNeedBootstrap =
             getDbToTablesInfoMapNeedBootstrap(
@@ -189,19 +186,16 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                 mainTableIndexTablesMap,
                 taskParams().getSourceTableIdsWithNoTableOnTargetUniverse());
 
-    // Replication for tables that do NOT need bootstrapping.
+    // Add the subtasks to set up replication for tables that do not need bootstrapping.
     Set<String> tableIdsNotNeedBootstrap =
         getTableIdsNotNeedBootstrap(taskParams().getTableIdsToAdd());
     if (!tableIdsNotNeedBootstrap.isEmpty()) {
-      log.info(
-          "Creating a subtask to modify replication to add tables without bootstrap for "
-              + "tables {}",
-          tableIdsNotNeedBootstrap);
-      createXClusterConfigModifyTablesTask(
-              xClusterConfig,
-              tableIdsNotNeedBootstrap,
-              XClusterConfigModifyTables.Params.Action.ADD)
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+      addSubtasksForTablesNotNeedBootstrap(
+          xClusterConfig,
+          tableIdsNotNeedBootstrap,
+          requestedTableInfoList,
+          true /* isReplicationConfigCreated */,
+          taskParams().getPitrParams());
     }
 
     // YSQL tables replication with bootstrapping can only be set up with DB granularity. The
@@ -243,7 +237,8 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                 xClusterConfig,
                 State.Initializing,
                 SourceUniverseState.Unconfigured,
-                TargetUniverseState.Unconfigured)
+                TargetUniverseState.Unconfigured,
+                null /* keyspacePending */)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       }
 
@@ -271,7 +266,8 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                 xClusterConfig,
                 State.Initializing,
                 SourceUniverseState.Unconfigured,
-                TargetUniverseState.Unconfigured)
+                TargetUniverseState.Unconfigured,
+                null /* keyspacePending */)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       }
 

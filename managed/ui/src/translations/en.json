@@ -1040,7 +1040,7 @@
           "title": "Edit Role",
           "viewUsers": {
             "assignedUser": "Assigned users",
-            "noUsersAssgined": "No users assigned with this role"
+            "noUsersAssgined": "No users is assigned to this role"
           },
           "confirmModal": {
             "title": "Are you sure?",
@@ -1069,7 +1069,8 @@
           "selectAllPermissions": "Select All {{resource}} Management Permissions",
           "selectionCount": "{{count}} / {{total}} Selected",
           "universePrimaryAndReplica": "(Primary Universe and Read Replica)",
-          "universePrimaryAndReplica2": "Universes (Primary and Read)"
+          "universePrimaryAndReplica2": "Universes (Primary and Read)",
+          "disabledDependentPerm": "This permission is included with a selected higher-level  permission and cannot be unselected"
         }
       },
       "users": {
@@ -1154,6 +1155,7 @@
         "endTime": "End time",
         "copyUUID": "Copy UUID",
         "database": "Database",
+        "tables": "Tables",
         "copyBackupLocation": "Copy backup location",
         "copied": "Copied"
       }

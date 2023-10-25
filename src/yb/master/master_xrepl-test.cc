@@ -32,6 +32,7 @@
 #include "yb/util/result.h"
 
 DECLARE_int32(cdc_state_table_num_tablets);
+DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_bool(disable_truncate_table);
 
 namespace yb {
@@ -55,6 +56,13 @@ static const Schema kTableSchema({
 
 class MasterTestXRepl  : public MasterTestBase {
  protected:
+  void SetUp() override {
+    MasterTestBase::SetUp();
+    // Default of FLAGS_cdc_state_table_num_tablets is to fallback to num_tablet_servers which is 0
+    // in this test. So we need to explicitly set it here.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
+  }
+
   Result<xrepl::StreamId> CreateCDCStream(const TableId& table_id);
   Result<xrepl::StreamId> CreateCDCStreamForNamespace(
       const std::string& namespace_name, const std::string& cdcsdk_ysql_replication_slot_name);
@@ -303,7 +311,6 @@ TEST_F(MasterTestXRepl, TestCreateCDCStream) {
   TableId table_id;
   ASSERT_OK(CreateTableWithTableId(&table_id));
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
   auto stream_id = ASSERT_RESULT(CreateCDCStream(table_id));
 
   auto resp = ASSERT_RESULT(GetCDCStream(stream_id));
@@ -319,7 +326,6 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespace) {
     ASSERT_OK(CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchema));
   }
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
   auto stream_id =
       ASSERT_RESULT(CreateCDCStreamForNamespace(ns_id, kPgReplicationSlotName));
 
@@ -355,7 +361,6 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceCql) {
   ASSERT_OK(CreateNamespace(kNamespaceName, YQLDatabase::YQL_DATABASE_CQL, &create_namespace_resp));
   auto ns_id = create_namespace_resp.id();
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
 
   req.set_namespace_id(ns_id);
   AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
@@ -387,7 +392,6 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceInvalidDuplicationSlotNam
     ASSERT_OK(CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchema));
   }
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
   ASSERT_RESULT(CreateCDCStreamForNamespace(ns_id, kPgReplicationSlotName));
 
   CreateCDCStreamRequestPB req;
@@ -420,7 +424,6 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceInvalidIdTypeOption) {
   ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
   auto ns_id = create_namespace_resp.id();
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
 
   // Not setting kIdType option, treated as kTableId by default.
   req.set_namespace_id(ns_id);
@@ -450,7 +453,6 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceMissingReplicationSlotNam
   ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
   auto ns_id = create_namespace_resp.id();
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
 
   // Not populating cdcsdk_ysql_replication_slot_name.
   req.set_namespace_id(ns_id);
@@ -476,7 +478,6 @@ TEST_F(MasterTestXRepl, TestDeleteCDCStream) {
   TableId table_id;
   ASSERT_OK(CreateTableWithTableId(&table_id));
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
   auto stream_id = ASSERT_RESULT(CreateCDCStream(table_id));
 
   auto resp = ASSERT_RESULT(GetCDCStream(stream_id));
@@ -494,7 +495,6 @@ TEST_F(MasterTestXRepl, TestDeleteCDCStreamWithReplicationSlotName) {
   ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
   auto ns_id = create_namespace_resp.id();
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
   auto stream_id = ASSERT_RESULT(CreateCDCStreamForNamespace(ns_id, kPgReplicationSlotName));
   auto resp = ASSERT_RESULT(GetCDCStream(stream_id));
 
@@ -514,7 +514,6 @@ TEST_F(MasterTestXRepl, TestDeleteCDCStreamWithStreamIdAndReplicationSlotName) {
   ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
   auto ns_id = create_namespace_resp.id();
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
   auto stream_id_1 = ASSERT_RESULT(CreateCDCStream(table_id));
   auto stream_id_2 =
       ASSERT_RESULT(CreateCDCStreamForNamespace(ns_id, kPgReplicationSlotName));
@@ -563,7 +562,6 @@ TEST_F(MasterTestXRepl, TestDeleteTableWithCDCStream) {
   TableId table_id;
   ASSERT_OK(CreateTableWithTableId(&table_id));
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
   auto stream_id = ASSERT_RESULT(CreateCDCStream(table_id));
 
   auto resp = ASSERT_RESULT(GetCDCStream(stream_id));
@@ -583,7 +581,6 @@ TEST_F(MasterTestXRepl, YB_DISABLE_TEST_IN_SANITIZERS(TestDeleteCDCStreamNoForce
   ASSERT_OK(CreateTableWithTableId(&table_id));
 
   auto stream_id = xrepl::StreamId::Nil();
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
   // CreateCDCStream, simulating a fully-created XCluster configuration.
   {
     CreateCDCStreamRequestPB req;
@@ -613,11 +610,46 @@ TEST_F(MasterTestXRepl, YB_DISABLE_TEST_IN_SANITIZERS(TestDeleteCDCStreamNoForce
   ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());
 }
 
+TEST_F(MasterTestXRepl, TestCreateDropCDCStreamWithReplicationSlotName) {
+  // Default of FLAGS_cdc_state_table_num_tablets is to fallback to num_tablet_servers which is 0.
+  // So we need to explicitly set it here.
+  CreateNamespaceResponsePB create_namespace_resp;
+  ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
+  auto ns_id = create_namespace_resp.id();
+  for (auto i = 0; i < num_tables; ++i) {
+    ASSERT_OK(CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchema));
+  }
+
+  // Create and Delete CDC stream with replication slot name in quick succession.
+  for (size_t i = 0; i < 2; i++) {
+    auto stream_id = ASSERT_RESULT(CreateCDCStreamForNamespace(ns_id, kPgReplicationSlotName));
+    auto resp = ASSERT_RESULT(GetCDCStream(stream_id));
+    ASSERT_EQ(resp.stream().namespace_id(), ns_id);
+    ASSERT_EQ(resp.stream().stream_id(), stream_id.ToString());
+    ASSERT_EQ(resp.stream().cdcsdk_ysql_replication_slot_name(), kPgReplicationSlotName);
+
+    ASSERT_OK(DeleteCDCStream({} /*stream_ids*/, {kPgReplicationSlotName}));
+    resp = ASSERT_RESULT(GetCDCStream(kPgReplicationSlotName));
+    ASSERT_TRUE(resp.has_error());
+    ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());
+  }
+
+  auto stream_id = ASSERT_RESULT(CreateCDCStreamForNamespace(ns_id, kPgReplicationSlotName));
+  // Wait for background task to run (length of two wait intervals).
+  SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_catalog_manager_bg_task_wait_ms));
+
+  // Ensure that the created stream wasn't deleted from the cdcsdk_replication_slots_to_stream_map_
+  // map.
+  auto resp = ASSERT_RESULT(GetCDCStream(kPgReplicationSlotName));
+  ASSERT_EQ(resp.stream().namespace_id(), ns_id);
+  ASSERT_EQ(resp.stream().stream_id(), stream_id.ToString());
+  ASSERT_EQ(resp.stream().cdcsdk_ysql_replication_slot_name(), kPgReplicationSlotName);
+}
+
 TEST_F(MasterTestXRepl, TestListCDCStreams) {
   TableId table_id;
   ASSERT_OK(CreateTableWithTableId(&table_id));
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
   auto stream_id = ASSERT_RESULT(CreateCDCStream(table_id));
 
   auto resp = ASSERT_RESULT(ListCDCStreams());
@@ -638,7 +670,6 @@ TEST_F(MasterTestXRepl, TestListCDCStreamsCDCSDKWithReplicationSlot) {
   ASSERT_OK(CreatePgsqlTable(ns_id, "cdc_table_2", kTableIds[1], kTableSchema));
   ASSERT_OK(CreatePgsqlTable(ns_id2, "cdc_table_3", kTableIds[2], kTableSchema));
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
   auto stream_id = ASSERT_RESULT(CreateCDCStreamForNamespace(ns_id, kPgReplicationSlotName));
   auto stream_id2 = ASSERT_RESULT(CreateCDCStreamForNamespace(ns_id2, kPgReplicationSlotName2));
 
@@ -663,7 +694,6 @@ TEST_F(MasterTestXRepl, TestIsObjectPartOfXRepl) {
   TableId table_id;
   ASSERT_OK(CreateTableWithTableId(&table_id));
 
-  FLAGS_cdc_state_table_num_tablets = 1;
   ASSERT_RESULT(CreateCDCStream(table_id));
   ASSERT_TRUE(ASSERT_RESULT(IsObjectPartOfXRepl(table_id)));
 }

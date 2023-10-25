@@ -38,7 +38,7 @@
 #include <utility>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
@@ -225,6 +225,8 @@ Status TabletPeer::InitTabletPeer(
     std::this_thread::sleep_for(FLAGS_TEST_delay_init_tablet_peer_ms * 1ms);
   }
 
+  // Additional `consensus` variable is required for the out-of-lock-block usage in this method.
+  shared_ptr<consensus::RaftConsensus> consensus;
   {
     std::lock_guard lock(lock_);
     auto state = state_.load(std::memory_order_acquire);
@@ -306,6 +308,7 @@ Status TabletPeer::InitTabletPeer(
         retryable_requests_manager,
         multi_raft_manager);
     has_consensus_.store(true, std::memory_order_release);
+    consensus = consensus_;
 
     auto flush_retryable_requests_pool_token = flush_retryable_requests_pool
         ? flush_retryable_requests_pool->NewToken(ThreadPool::ExecutionMode::SERIAL) : nullptr;
@@ -323,7 +326,7 @@ Status TabletPeer::InitTabletPeer(
   }
   // End of lock scope for lock_.
 
-  auto raft_config = VERIFY_RESULT(GetRaftConsensus())->CommittedConfig();
+  auto raft_config = consensus->CommittedConfig();
   ChangeConfigReplicated(raft_config);  // Set initial flag value.
 
   RETURN_NOT_OK(prepare_thread_->Start());
@@ -429,6 +432,7 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
     VLOG_WITH_PREFIX(2) << "Peer starting";
 
     auto consensus = GetRaftConsensusUnsafe();
+    CHECK_NOTNULL(consensus.get()); // Sanity check, consensus must be alive at this point.
     VLOG(2) << "RaftConfig before starting: " << consensus->CommittedConfig().DebugString();
 
     // If tablet was previously considered shutdown w.r.t. metrics,
@@ -1366,9 +1370,12 @@ Result<std::shared_ptr<consensus::Consensus>> TabletPeer::GetConsensus() const {
 
 Result<shared_ptr<consensus::RaftConsensus>> TabletPeer::GetRaftConsensus() const {
   std::lock_guard lock(lock_);
-  SCHECK(!IsShutdownStarted(), NotFound, "Tablet peer $0 is shutting down", LogPrefix());
-  SCHECK(consensus_, IllegalState, "Consensus not yet initialized for tablet peer $0", LogPrefix());
-
+  // Cannot use NotFound status for the shutting down case as later the status may be extended with
+  // TabletServerErrorPB::TABLET_NOT_RUNNING error code, and this combination of the status and
+  // the code is not expected and is not considered as a retryable operation at least by yb-client.
+  // Refer to https://github.com/yugabyte/yugabyte-db/issues/19033 for the details.
+  SCHECK(!IsShutdownStarted(), IllegalState, "Tablet peer $0 is shutting down", LogPrefix());
+  SCHECK(consensus_, IllegalState, "Tablet peer $0 is not started yet", LogPrefix());
   return consensus_;
 }
 

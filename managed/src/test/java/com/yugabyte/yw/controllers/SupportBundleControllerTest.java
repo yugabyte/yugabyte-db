@@ -241,7 +241,7 @@ public class SupportBundleControllerTest extends FakeDBApplication {
     bodyJson.putArray("components").addAll(componentsArray);
 
     // Mocking commissioner submit functionality to create a support bundle
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.CreateSupportBundle);
     when(mockCommissioner.submit(any(TaskType.class), any(SupportBundleTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -276,7 +276,7 @@ public class SupportBundleControllerTest extends FakeDBApplication {
     bodyJson.putArray("components").addAll(componentsArray);
 
     // Mocking commissioner submit functionality to create a support bundle
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.CreateSupportBundle);
     lenient()
         .when(mockCommissioner.submit(any(TaskType.class), any(SupportBundleTaskParams.class)))
         .thenReturn(fakeTaskUUID);
@@ -321,7 +321,7 @@ public class SupportBundleControllerTest extends FakeDBApplication {
     bodyJson.putArray("components").addAll(componentsArray);
 
     // Mocking commissioner submit functionality to create a support bundle
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.CreateSupportBundle);
     lenient()
         .when(mockCommissioner.submit(any(TaskType.class), any(SupportBundleTaskParams.class)))
         .thenReturn(fakeTaskUUID);
@@ -366,7 +366,7 @@ public class SupportBundleControllerTest extends FakeDBApplication {
     bodyJson.putArray("components").addAll(componentsArray);
 
     // Mocking commissioner submit functionality to create a support bundle
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.CreateSupportBundle);
     lenient()
         .when(mockCommissioner.submit(any(TaskType.class), any(SupportBundleTaskParams.class)))
         .thenReturn(fakeTaskUUID);
@@ -411,7 +411,7 @@ public class SupportBundleControllerTest extends FakeDBApplication {
     bodyJson.putArray("components").addAll(componentsArray);
 
     // Mocking commissioner submit functionality to create a support bundle
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.CreateSupportBundle);
     lenient()
         .when(mockCommissioner.submit(any(TaskType.class), any(SupportBundleTaskParams.class)))
         .thenReturn(fakeTaskUUID);

@@ -928,6 +928,8 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(
     auto peers = server->tablet_manager()->GetTabletPeers();
     for (const auto& peer : peers) {
       WARN_NOT_OK(
+          // Checking for consensus is not enough here, we also need to not wait for peers
+          // which are being shut down -- these peers are being filtered out by next statement.
           WaitFor(
               [peer] { return peer->GetConsensus() || peer->IsShutdownStarted(); },
               5s,

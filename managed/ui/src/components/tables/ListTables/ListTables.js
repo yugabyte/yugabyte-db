@@ -339,7 +339,7 @@ class ListTableGrid extends Component {
         </TableHeaderColumn>
         {!universePaused && isNotHidden(currentCustomer.data.features, 'universes.backup') && hasNecessaryPerm({
           onResource: currentUniverse.universeUUID,
-          ...UserPermissionMap.backup
+          ...UserPermissionMap.listBackup
         }) &&  (
           <TableHeaderColumn
             dataField={'actions'}

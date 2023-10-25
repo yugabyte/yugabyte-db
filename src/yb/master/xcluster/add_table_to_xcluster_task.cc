@@ -14,6 +14,7 @@
 #include "yb/master/xcluster/add_table_to_xcluster_task.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+#include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/rpc/messenger.h"
 #include "yb/util/source_location.h"
@@ -175,7 +176,9 @@ void AddTableToXClusterTask::RefreshAndGetXClusterSafeTime() {
   // replication.
   auto namespace_id = table_info_->namespace_id();
   auto initial_safe_time = VERIFY_RESULT_AND_FAIL_TASK(
-      catalog_manager_->xcluster_safe_time_service_->RefreshAndGetXClusterNamespaceToSafeTimeMap());
+      catalog_manager_->GetXClusterManager()
+          ->xcluster_safe_time_service_->RefreshAndGetXClusterNamespaceToSafeTimeMap(
+              catalog_manager_->GetLeaderEpochInternal()));
   if (!initial_safe_time.contains(namespace_id)) {
     // Namespace is no longer part of any xCluster replication.
     CompleteTableCreation();

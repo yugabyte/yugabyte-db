@@ -35,7 +35,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <string>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #if defined(__APPLE__)
 #include <mach/clock.h>
 #include <mach/mach.h>

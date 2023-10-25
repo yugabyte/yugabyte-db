@@ -1235,6 +1235,10 @@ class Tablet : public AbstractTablet,
   // Gauge to monitor post-split compactions that have been started.
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_post_split_compaction_added_;
 
+  // Function to get min schema version for a table needed for xCluster.
+  std::function<uint32_t(const TableId&, const ColocationId&)>
+      get_min_xcluster_schema_version_ = nullptr;
+
   simple_spinlock operation_filters_mutex_;
 
   boost::intrusive::list<OperationFilter> operation_filters_ GUARDED_BY(operation_filters_mutex_);

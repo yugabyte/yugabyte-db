@@ -116,12 +116,13 @@ public class RestartUniverseTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks); // PreUpgrade hooks
     position = assertSequence(subTasksByPosition, MASTER, position);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
     position = assertSequence(subTasksByPosition, TSERVER, position);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks); // PostUpgrade hooks
-    assertEquals(75, position);
+    assertEquals(76, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }

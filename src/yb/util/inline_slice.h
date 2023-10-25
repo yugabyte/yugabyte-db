@@ -35,7 +35,7 @@
 #include <new>
 
 #include <boost/static_assert.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/casts.h"

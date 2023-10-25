@@ -35,7 +35,7 @@
 #include <algorithm>
 #include <random>
 
-#include <glog/logging.h> // For CHECK
+#include "yb/util/logging.h"  // For CHECK
 
 namespace yb {
 

@@ -19,6 +19,7 @@
 
 #include <boost/container/small_vector.hpp>
 
+#include "yb/common/pg_types.h"
 #include "yb/common/pgsql_protocol.fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -27,10 +28,8 @@
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 
-namespace yb {
-struct PgObjectId;
+namespace yb::pggate {
 
-namespace pggate {
 class PgSession;
 
 YB_DEFINE_ENUM(PrefetchingCacheMode, (TRUST_CACHE)(RENEW_CACHE_SOFT)(RENEW_CACHE_HARD));
@@ -48,6 +47,7 @@ struct PrefetcherOptions {
 
   struct CachingInfo {
     VersionInfo version_info;
+    PgOid db_oid;
     PrefetchingCacheMode mode;
 
     std::string ToString() const;
@@ -82,5 +82,4 @@ class PgSysTablePrefetcher {
   std::unique_ptr<Impl> impl_;
 };
 
-} // namespace pggate
-} // namespace yb
+} // namespace yb::pggate

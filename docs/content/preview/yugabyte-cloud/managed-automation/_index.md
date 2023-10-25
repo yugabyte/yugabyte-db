@@ -17,8 +17,8 @@ Use the following automation tools to manage your YugabyteDB Managed account and
 
 | Automation | Description |
 | :--------- | :---------- |
-| [REST API](https://api-docs.yugabyte.com/docs/managed-apis/) | Deploy and manage database clusters using a REST API. |
-| [Terraform provider](https://registry.terraform.io/providers/yugabyte/ybm/latest/docs) | Provider for automating YugabyteDB Managed resources that are accessible via the API. |
+| [REST API](managed-api/) | Deploy and manage database clusters using a REST API. |
+| [Terraform provider](managed-terraform/) | Provider for automating YugabyteDB Managed resources that are accessible via the API. |
 | [CLI](managed-cli/) | Manage YugabyteDB Managed resources from the command line. |
 
 ### Authentication
@@ -64,7 +64,7 @@ These identifiers can also be found in the URL when you access a cluster using t
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="https://api-docs.yugabyte.com/docs/managed-apis/">
+    <a class="section-link icon-offset" href="managed-api/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
         <div class="title">YugabyteDB Managed API</div>
@@ -76,7 +76,7 @@ These identifiers can also be found in the URL when you access a cluster using t
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="https://registry.terraform.io/providers/yugabyte/ybm/latest">
+    <a class="section-link icon-offset" href="managed-terraform/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/ecosystem/terraform.png" aria-hidden="true" />
         <div class="title">YugabyteDB Managed Terraform Provider</div>

@@ -11,7 +11,7 @@ import { find, groupBy, keys } from "lodash";
 import { Permission, Resource, ResourceType } from "./permission";
 import { UniverseResource } from "./policy/IPolicy";
 import { RbacUserWithResources } from "./users/interface/Users";
-import { Role } from "./roles";
+import { Role, RoleType } from "./roles";
 
 export const getPermissionDisplayText = (permission: Permission['prerequisitePermissions'][number]) => {
     return `${permission.resourceType}.${permission.action}`;
@@ -39,7 +39,7 @@ export const getResourceDefinitionSet = (role: Role, resourceType: UniverseResou
                 ...resource,
                 resourceType,
                 resourceUUIDSet: resource.allowAll ? [] : resource.resourceUUIDSet.map(i => i.universeUUID ?? i),
-                allowAll : resource.allowAll
+                allowAll: resource.allowAll
             };
     }
 
@@ -47,11 +47,17 @@ export const getResourceDefinitionSet = (role: Role, resourceType: UniverseResou
 
 export const mapResourceBindingsToApi = (usersWithRole: RbacUserWithResources) => {
     return usersWithRole.roleResourceDefinitions?.map((res) => {
+
         const permissionGroups = groupBy(res.role?.permissionDetails.permissionList, "resourceType");
+        if (res.roleType === RoleType.SYSTEM) {
+            return {
+                roleUUID: res.role?.roleUUID
+            };
+        }
         return {
             roleUUID: res.role?.roleUUID,
             resourceGroup: {
-                resourceDefinitionSet: keys(permissionGroups).map((p) => getResourceDefinitionSet(res.role!, p as ResourceType, find(res.resourceGroup.resourceDefinitionSet, {resourceType: permissionGroups[p][0].resourceType})!))
+                resourceDefinitionSet: keys(permissionGroups).map((p) => getResourceDefinitionSet(res.role!, p as ResourceType, find(res.resourceGroup.resourceDefinitionSet, { resourceType: permissionGroups[p][0].resourceType })!))
             }
         };
     });

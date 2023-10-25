@@ -492,8 +492,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.67-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b14"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.68-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b16"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b31"
 
 libraryDependencies ++= Seq(
@@ -618,6 +618,10 @@ val swaggerGen: TaskKey[Unit] = taskKey[Unit](
   "generate swagger.json"
 )
 
+val swaggerGenTest: TaskKey[Unit] = taskKey[Unit](
+  "test generate swagger.json"
+)
+
 val swaggerJacksonVersion = "2.11.1"
 val swaggerJacksonOverrides = jacksonLibs.map(_ % swaggerJacksonVersion)
 
@@ -650,6 +654,13 @@ lazy val swagger = project
         (Test / runMain )
           .toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest $swaggerStrictJson --exclude_deprecated all"),
       )
+    }.value,
+
+    swaggerGenTest := Def.taskDyn {
+      Def.sequential(
+        (root / Test / testOnly).toTask(s" com.yugabyte.yw.controllers.YbaApiTest"),
+        (Test / testOnly).toTask(s" com.yugabyte.yw.controllers.SwaggerGenTest"),
+      )
     }.value
   )
 
@@ -658,6 +669,7 @@ Test / test := (Test / test).dependsOn(swagger / Test / test).value
 swaggerGen := Def.taskDyn {
   Def.sequential(
     swagger /swaggerGen,
+    swagger /swaggerGenTest,
     javagen / openApiGenerate,
     compileJavaGenClient,
     pythongen / openApiGenerate,

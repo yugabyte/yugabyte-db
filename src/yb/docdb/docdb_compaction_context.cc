@@ -15,8 +15,6 @@
 
 #include <memory>
 
-#include <glog/logging.h>
-
 #include "yb/common/schema.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/dockv/doc_key.h"
@@ -963,6 +961,9 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
       bool start_packing =
           !packed_row_.active() &&
           packed_row_.can_start_packing() &&
+          // Start packing only for rows with liveness column.
+          column_id == dockv::KeyEntryValue::kLivenessColumn.GetColumnId() &&
+          // Don't start packing with deleted columns. TODO check if it is necessary.
           !value_slice.starts_with(dockv::ValueEntryTypeAsChar::kTombstone) &&
           // Don't start packing if we already passed columns for this key.
           // Could happen because of history retention.

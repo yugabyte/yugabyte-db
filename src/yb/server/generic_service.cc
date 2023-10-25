@@ -42,7 +42,7 @@
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/callback_forward.h"

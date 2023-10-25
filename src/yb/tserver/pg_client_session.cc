@@ -26,7 +26,6 @@
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/transaction.h"
-#include "yb/client/transaction_pool.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/ql_type.h"
@@ -68,7 +67,7 @@ DEFINE_RUNTIME_bool(report_ysql_ddl_txn_status_to_master, false,
                     "If set, at the end of DDL operation, the TServer will notify the YB-Master "
                     "whether the DDL operation was committed or aborted");
 
-DEFINE_RUNTIME_bool(ysql_enable_table_mutation_counter, false,
+DEFINE_NON_RUNTIME_bool(ysql_enable_table_mutation_counter, false,
                     "Enable counting of mutations on a per-table basis. These mutations are used "
                     "to automatically trigger ANALYZE as soon as the mutations of a table cross a "
                     "certain threshold (decided based on ysql_auto_analyze_tuples_threshold and "
@@ -414,8 +413,9 @@ struct PerformData {
                           << ", failed op[" << idx << "]: " << AsString(op);
         return status.CloneAndAddErrorCode(OpIndex(idx));
       }
-      // In case of write operation, increase mutation counter
-      if (!op->read_only() && GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
+      // In case of non-DDL write operations, increase mutation counters
+      if (!op->read_only() && (!req.has_options() || !req.options().ddl_mode()) &&
+          GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
           pg_node_level_mutation_counter) {
         const auto& table_id = down_cast<const client::YBPgsqlWriteOp&>(*op).table()->id();
 
@@ -533,25 +533,21 @@ HybridTime GetInTxnLimit(const PgPerformOptionsPB& options, ClockBase* clock) {
 } // namespace
 
 PgClientSession::PgClientSession(
-    uint64_t id, client::YBClient* client, const scoped_refptr<ClockBase>& clock,
-    std::reference_wrapper<const TransactionPoolProvider> transaction_pool_provider,
-    PgTableCache* table_cache, const std::optional<XClusterContext>& xcluster_context,
+    TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source, uint64_t id,
+    client::YBClient* client, const scoped_refptr<ClockBase>& clock, PgTableCache* table_cache,
+    const std::optional<XClusterContext>& xcluster_context,
     PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
-    PgSequenceCache* sequence_cache, TransactionCache* txn_cache)
-    : id_(id),
+    PgSequenceCache* sequence_cache)
+    : shared_this_(std::shared_ptr<PgClientSession>(std::move(shared_this_source), this)),
+      id_(id),
       client_(*client),
       clock_(clock),
-      transaction_pool_provider_(transaction_pool_provider.get()),
+      transaction_builder_(std::move(transaction_builder)),
       table_cache_(*table_cache),
       xcluster_context_(xcluster_context),
       pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
       response_cache_(*response_cache),
-      sequence_cache_(*sequence_cache),
-      txn_cache_(*txn_cache) {}
-
-uint64_t PgClientSession::id() const {
-  return id_;
-}
+      sequence_cache_(*sequence_cache) {}
 
 Status PgClientSession::CreateTable(
     const PgCreateTableRequestPB& req, PgCreateTableResponsePB* resp, rpc::RpcContext* context) {
@@ -863,13 +859,6 @@ Status PgClientSession::FinishTransaction(
   txn.swap(txn_value);
   Session(kind)->SetTransaction(nullptr);
 
-  // Clear the transaction from the cache
-  if (req.ddl_mode()) {
-    txn_cache_.EraseDdlTransaction(id());
-  } else {
-    txn_cache_.ErasePlainTransaction(id());
-  }
-
   if (req.commit()) {
     const auto commit_status = txn_value->CommitFuture().get();
     VLOG_WITH_PREFIX_AND_FUNC(2)
@@ -1174,14 +1163,7 @@ PgClientSession::SetupSession(
   if (transaction) {
     DCHECK_GE(options.active_sub_transaction_id(), 0);
     transaction->SetActiveSubTransaction(options.active_sub_transaction_id());
-
-    // To avoid updating cache unnecessarily (which requires taking a lock), check if the
-    // transaction ID has indeed changed.
-    if (sessions_[to_underlying(kind)].transaction->id() != transaction->id()) {
-      kind == PgClientSessionKind::kPlain
-          ? txn_cache_.InsertPlainTransaction(id(), transaction->id())
-          : txn_cache_.InsertDdlTransaction(id(), transaction->id());
-    }
+    RETURN_NOT_OK(transaction->SetPgTxnStart(options.pg_txn_start_us()));
   }
 
   return std::make_pair(sessions_[to_underlying(kind)], used_read_time);
@@ -1197,7 +1179,7 @@ PgClientSession::UsedReadTimePtr PgClientSession::ResetReadPoint(PgClientSession
   UsedReadTimePtr used_read_time;
   if (kind == PgClientSessionKind::kPlain && !data.transaction) {
     used_read_time = std::weak_ptr(
-        std::shared_ptr<UsedReadTime>(shared_from_this(), &plain_session_used_read_time_));
+        std::shared_ptr<UsedReadTime>(shared_this_.lock(), &plain_session_used_read_time_));
     std::lock_guard guard(plain_session_used_read_time_.lock);
     plain_session_used_read_time_.value = ReadHybridTime();
   }
@@ -1235,7 +1217,6 @@ Status PgClientSession::DoBeginTransactionIfNecessary(
     txn->Abort();
     session->SetTransaction(nullptr);
     txn = nullptr;
-    txn_cache_.ErasePlainTransaction(id());
   }
 
   if (isolation == IsolationLevel::NON_TRANSACTIONAL) {
@@ -1251,8 +1232,8 @@ Status PgClientSession::DoBeginTransactionIfNecessary(
         : Status::OK();
   }
 
-  txn = transaction_pool_provider_().Take(
-      client::ForceGlobalTransaction(options.force_global_transaction()), deadline);
+  txn = transaction_builder_(
+    IsDDL::kFalse, client::ForceGlobalTransaction(options.force_global_transaction()), deadline);
   txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
   if ((isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
            isolation == IsolationLevel::READ_COMMITTED) &&
@@ -1277,8 +1258,6 @@ Status PgClientSession::DoBeginTransactionIfNecessary(
   }
   txn->SetPriority(priority);
   session->SetTransaction(txn);
-  txn_cache_.InsertPlainTransaction(id(), txn->id());
-
   return Status::OK();
 }
 
@@ -1292,11 +1271,11 @@ Result<const TransactionMetadata*> PgClientSession::GetDdlTransactionMetadata(
   if (!txn) {
     const auto isolation = FLAGS_ysql_serializable_isolation_for_ddl_txn
         ? IsolationLevel::SERIALIZABLE_ISOLATION : IsolationLevel::SNAPSHOT_ISOLATION;
-    txn = VERIFY_RESULT(transaction_pool_provider_().TakeAndInit(isolation, deadline));
+    txn = transaction_builder_(IsDDL::kTrue, client::ForceGlobalTransaction::kTrue, deadline);
+    RETURN_NOT_OK(txn->Init(isolation));
     txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
     ddl_txn_metadata_ = VERIFY_RESULT(Copy(txn->GetMetadata(deadline).get()));
     EnsureSession(PgClientSessionKind::kDdl, deadline)->SetTransaction(txn);
-    txn_cache_.InsertDdlTransaction(id(), txn->id());
   }
 
   return &ddl_txn_metadata_;

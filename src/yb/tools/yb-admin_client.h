@@ -323,6 +323,11 @@ class ClusterAdminClient {
   Status PromoteAutoFlags(
       const std::string& max_flag_class, const bool promote_non_runtime_flags, const bool force);
 
+  Status RollbackAutoFlags(uint32_t rollback_version);
+
+  Status PromoteSingleAutoFlag(const std::string& process_name, const std::string& flag_name);
+  Status DemoteSingleAutoFlag(const std::string& process_name, const std::string& flag_name);
+
   Status ListAllNamespaces();
 
   // Snapshot operations.

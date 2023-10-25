@@ -137,6 +137,12 @@ func (pg Postgres) Install() error {
 			return err
 		}
 	}
+
+	// Set the password if we are doing the install
+	if viper.GetBool("postgres.install.enabled") {
+		pg.alterPassword()
+	}
+
 	if viper.GetBool("postgres.install.enabled") {
 		pg.createYugawareDatabase()
 	}
@@ -550,6 +556,26 @@ func (pg Postgres) runInitDB() error {
 			log.Error("Failed to run initdb for postgres")
 			return out.Error
 		}
+	}
+	return nil
+}
+
+func (pg Postgres) alterPassword() error {
+	// Reload hba conf
+	passwordCmd := fmt.Sprintf("ALTER USER %s PASSWORD '%s';",
+															viper.GetString("postgres.install.username"),
+															viper.GetString("postgres.install.password"))
+	psql := filepath.Join(pg.PgBin, "psql")
+	args := []string{
+		"-d", "postgres",
+		"-h", "localhost",
+		"-p", viper.GetString("postgres.install.port"),
+		"-U", pg.getPgUserName(),
+		"-c", passwordCmd,
+	}
+	out := shell.Run(psql, args...)
+	if !out.SucceededOrLog() {
+		return out.Error
 	}
 	return nil
 }

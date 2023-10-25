@@ -163,13 +163,19 @@ export const ConfigData: FC<GlobalConfigProps> = ({
           </MenuItem>
         </RbacValidator>
         {!row.isConfigInherited && (
-          <MenuItem
-            onClick={() => {
-              openResetConfig(row);
-            }}
+          <RbacValidator
+            accessRequiredOn={UserPermissionMap.editRuntimeConfig}
+            isControl
+            overrideStyle={{ display: 'block' }}
           >
-            {t('admin.advanced.globalConfig.ModelResetConfigTitle')}
-          </MenuItem>
+            <MenuItem
+              onClick={() => {
+                openResetConfig(row);
+              }}
+            >
+              {t('admin.advanced.globalConfig.ModelResetConfigTitle')}
+            </MenuItem>
+          </RbacValidator>
         )}
       </DropdownButton>
     );
