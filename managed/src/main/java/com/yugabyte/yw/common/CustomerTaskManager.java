@@ -17,15 +17,16 @@ import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareKubernetesUpgrade;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -382,12 +383,18 @@ public class CustomerTaskManager {
       case GFlagsKubernetesUpgrade:
         taskParams = Json.fromJson(oldTaskParams, KubernetesGFlagsUpgradeParams.class);
         break;
+      case SoftwareKubernetesUpgradeYB:
       case SoftwareKubernetesUpgrade:
-        taskParams = Json.fromJson(oldTaskParams, SoftwareUpgradeParams.class);
-        break;
       case SoftwareUpgrade:
       case SoftwareUpgradeYB:
         taskParams = Json.fromJson(oldTaskParams, SoftwareUpgradeParams.class);
+        break;
+      case FinalizeUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, FinalizeUpgradeParams.class);
+        break;
+      case RollbackUpgrade:
+      case RollbackKubernetesUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, RollbackUpgradeParams.class);
         break;
       case VMImageUpgrade:
         taskParams = Json.fromJson(oldTaskParams, VMImageUpgradeParams.class);

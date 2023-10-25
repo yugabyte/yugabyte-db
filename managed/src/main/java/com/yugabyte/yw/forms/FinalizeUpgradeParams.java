@@ -16,9 +16,7 @@ public class FinalizeUpgradeParams extends UpgradeTaskParams {
 
   @Override
   public boolean isKubernetesUpgradeSupported() {
-    // We will support it for k8s just after we are done with VM based
-    // universe upgrade.
-    return false;
+    return true;
   }
 
   @Override

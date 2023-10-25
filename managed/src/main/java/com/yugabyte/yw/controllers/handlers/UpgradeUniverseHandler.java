@@ -148,11 +148,13 @@ public class UpgradeUniverseHandler {
     String currentVersion =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
     if (confGetter.getConfForScope(universe, UniverseConfKeys.enableRollbackSupport)
-        && taskType.equals(TaskType.SoftwareUpgrade)
         && CommonUtils.isReleaseEqualOrAfter(
             Util.YBDB_ROLLBACK_DB_VERSION, requestParams.ybSoftwareVersion)
         && CommonUtils.isReleaseEqualOrAfter(Util.YBDB_ROLLBACK_DB_VERSION, currentVersion)) {
-      taskType = TaskType.SoftwareUpgradeYB;
+      taskType =
+          taskType.equals(TaskType.SoftwareUpgrade)
+              ? TaskType.SoftwareUpgradeYB
+              : TaskType.SoftwareKubernetesUpgradeYB;
     }
     return submitUpgradeTask(
         taskType, CustomerTask.TaskType.SoftwareUpgrade, requestParams, customer, universe);
@@ -174,12 +176,13 @@ public class UpgradeUniverseHandler {
       RollbackUpgradeParams requestParams, Customer customer, Universe universe) {
     // TODO(vbansal): Add validations for finalize based on universe state.
     // Will add them in subsequent diffs.
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    TaskType taskType =
+        userIntent.providerType.equals(CloudType.kubernetes)
+            ? TaskType.RollbackKubernetesUpgrade
+            : TaskType.RollbackUpgrade;
     return submitUpgradeTask(
-        TaskType.RollbackUpgrade,
-        CustomerTask.TaskType.RollbackUpgrade,
-        requestParams,
-        customer,
-        universe);
+        taskType, CustomerTask.TaskType.RollbackUpgrade, requestParams, customer, universe);
   }
 
   public UUID upgradeGFlags(
