@@ -40,7 +40,7 @@ func Install(version string) {
 	os.Chdir(GetBinaryDir())
 
 	// set default values for unspecified config values
-	fixConfigValues()
+	FixConfigValues()
 
 	createYugabyteUser()
 
@@ -348,11 +348,13 @@ func renameThirdPartyDependencies() {
 	RenameOrFail(GetInstallerSoftwareDir()+"/thirdparty", GetInstallerSoftwareDir()+"/third-party")
 }
 
-func fixConfigValues() {
+// FixConfigValues sets any mandatory config defaults not set by user (generally passwords)
+func FixConfigValues() {
 
 	if len(viper.GetString("service_username")) == 0 {
 		log.Info(fmt.Sprintf("Systemd services will be run as user %s", DefaultServiceUser))
 		SetYamlValue(InputFile(), "service_username", DefaultServiceUser)
+		InitViper()
 	}
 
 	if len(viper.GetString("platform.appSecret")) == 0 {
@@ -374,9 +376,10 @@ func fixConfigValues() {
 		InitViper()
 	}
 
+	var serverCertPath, serverKeyPath string
 	if len(viper.GetString("server_cert_path")) == 0 {
 		log.Info("Generating self-signed server certificates")
-		serverCertPath, serverKeyPath := generateSelfSignedCerts()
+		serverCertPath, serverKeyPath = generateSelfSignedCerts()
 		SetYamlValue(InputFile(), "server_cert_path", serverCertPath)
 		SetYamlValue(InputFile(), "server_key_path", serverKeyPath)
 		InitViper()
@@ -388,6 +391,21 @@ func fixConfigValues() {
 			SetYamlValue(InputFile(), "postgres.install.password", GenerateRandomStringURLSafe(32))
 			InitViper()
 	}
+
+	if viper.GetBool("prometheus.enableAuth") &&
+		len(viper.GetString("prometheus.authPassword")) == 0 {
+			log.Info("Generating default password for prometheus")
+			SetYamlValue(InputFile(), "prometheus.authPassword", GenerateRandomStringURLSafe(32))
+			InitViper()
+	}
+
+	if viper.GetBool("prometheus.enableHttps") {
+		// Default to YBA certs
+		SetYamlValue(InputFile(), "prometheus.httpsCertPath", viper.GetString("server_cert_path"))
+		SetYamlValue(InputFile(), "prometheus.httpsKeyPath", viper.GetString("server_key_path"))
+		InitViper()
+	}
+
 }
 
 func generateSelfSignedCerts() (string, string) {

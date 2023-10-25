@@ -82,7 +82,18 @@ services:
         devops.home = "{{ installRoot }}/yb-platform/devops"
         swamper.targetPath = "{{ baseInstall }}/data/prometheus/swamper_targets"
         swamper.rulesPath = "{{ baseInstall }}/data/prometheus/swamper_rules"
-        metrics.url = "http://127.0.0.1:{{ yamlPath "prometheus.port" }}/api/v1"
+        {{ if eq (yamlPath "prometheus.enableHttps") "true" }}
+        metrics.protocol = https
+        metrics.url = "https://{{ yamlPath "host" }}:{{ yamlPath "prometheus.port" }}/api/v1"
+        {{ else }}
+        metrics.protocol = http
+        metrics.url = "http://{{ yamlPath "host" }}:{{ yamlPath "prometheus.port" }}/api/v1"
+        {{ end }}
+        {{ if eq (yamlPath "prometheus.enableAuth") "true" }}
+        metrics.auth = true
+        metrics.auth_username = "{{ yamlPath "prometheus.authUsername" }}"
+        metrics.auth_password = "{{ yamlPath "prometheus.authPassword" }}"
+        {{ end }}
         storage.path = "{{ .DataDir }}"
         seedData = false
         multiTenant = false
