@@ -337,6 +337,9 @@ public enum TaskType {
   DeleteXClusterConfigEntry(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterConfigEntry.class),
 
+  DeleteXClusterTableConfigEntry(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterTableConfigEntry.class),
+
   DeleteDrConfigEntry(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteDrConfigEntry.class),
 
   WaitForReplicationDrain(

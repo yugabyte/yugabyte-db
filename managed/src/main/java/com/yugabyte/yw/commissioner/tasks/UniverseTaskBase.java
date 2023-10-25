@@ -113,9 +113,11 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ChangeXClusterRole;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteBootstrapIds;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteReplication;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterConfigEntry;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterTableConfigEntry;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.PromoteSecondaryConfigToMainConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ResetXClusterConfigEntry;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetDrStates;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigUpdateMasterAddresses;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterInfoPersist;
 import com.yugabyte.yw.common.DnsManager;
@@ -4353,6 +4355,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   // XCluster: All the xCluster related code resides in this section.
   // --------------------------------------------------------------------------------
+  protected SubTaskGroup createXClusterConfigModifyTablesTask(
+      XClusterConfig xClusterConfig,
+      Set<String> tables,
+      XClusterConfigModifyTables.Params.Action action) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterConfigModifyTables");
+    XClusterConfigModifyTables.Params modifyTablesParams = new XClusterConfigModifyTables.Params();
+    modifyTablesParams.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
+    modifyTablesParams.xClusterConfig = xClusterConfig;
+    modifyTablesParams.tables = tables;
+    modifyTablesParams.action = action;
+
+    XClusterConfigModifyTables task = createTask(XClusterConfigModifyTables.class);
+    task.initialize(modifyTablesParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   protected SubTaskGroup createDeleteReplicationTask(
       XClusterConfig xClusterConfig, boolean ignoreErrors) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("DeleteReplication");
@@ -4369,11 +4389,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected SubTaskGroup createDeleteBootstrapIdsTask(
-      XClusterConfig xClusterConfig, boolean forceDelete) {
+      XClusterConfig xClusterConfig, Set<String> tableIds, boolean forceDelete) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("DeleteBootstrapIds");
     DeleteBootstrapIds.Params deleteBootstrapIdsParams = new DeleteBootstrapIds.Params();
     deleteBootstrapIdsParams.setUniverseUUID(xClusterConfig.getSourceUniverseUUID());
     deleteBootstrapIdsParams.xClusterConfig = xClusterConfig;
+    deleteBootstrapIdsParams.tableIds = tableIds;
     deleteBootstrapIdsParams.forceDelete = forceDelete;
 
     DeleteBootstrapIds task = createTask(DeleteBootstrapIds.class);
@@ -4391,6 +4412,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     DeleteXClusterConfigEntry task = createTask(DeleteXClusterConfigEntry.class);
     task.initialize(deleteXClusterConfigEntryParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected SubTaskGroup createDeleteXClusterTableConfigEntryTask(
+      XClusterConfig xClusterConfig, Set<String> tableIds) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("DeleteXClusterTableConfigEntry");
+    DeleteXClusterTableConfigEntry.Params params = new DeleteXClusterTableConfigEntry.Params();
+    params.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
+    params.xClusterConfig = xClusterConfig;
+    params.tableIds = tableIds;
+
+    DeleteXClusterTableConfigEntry task = createTask(DeleteXClusterTableConfigEntry.class);
+    task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
@@ -4486,6 +4522,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  protected void createRemoveTableFromXClusterConfigSubtasks(
+      XClusterConfig xClusterConfig, Set<String> tableIds, boolean keepEntry) {
+    // Remove the tables from the replication group.
+    createXClusterConfigModifyTablesTask(
+            xClusterConfig, tableIds, XClusterConfigModifyTables.Params.Action.REMOVE)
+        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
+    // Delete bootstrap IDs created by bootstrap universe subtask.
+    createDeleteBootstrapIdsTask(xClusterConfig, tableIds, false /* forceDelete */)
+        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
+    if (!keepEntry) {
+      // Delete the xCluster table configs from DB.
+      createDeleteXClusterTableConfigEntryTask(xClusterConfig, tableIds);
+    }
+  }
+
   protected void createDeleteXClusterConfigSubtasks(
       XClusterConfig xClusterConfig, boolean keepEntry, boolean forceDelete) {
     // If target universe is destroyed, ignore creating this subtask.
@@ -4502,8 +4555,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
 
     // Delete bootstrap IDs created by bootstrap universe subtask.
-    // forceDelete is true to prevent errors until the user can choose if they want forceDelete.
-    createDeleteBootstrapIdsTask(xClusterConfig, forceDelete)
+    createDeleteBootstrapIdsTask(xClusterConfig, xClusterConfig.getTableIds(), forceDelete)
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
 
     // If target universe is destroyed, ignore creating this subtask.
