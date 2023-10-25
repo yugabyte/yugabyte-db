@@ -23,7 +23,7 @@ import { SelectTargetUniverseStep } from './SelectTargetUniverseStep';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import { ConfigureRpoStep } from './ConfigureRpoStep';
 import { RpoUnit, RPO_UNIT_TO_SECONDS } from '../constants';
-import { generateLowerCaseAlphanumericId } from '../../../configRedesign/providerRedesign/forms/utils';
+import { generateUniqueName } from '../../../../redesign/helpers/utils';
 
 import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
 
@@ -107,7 +107,7 @@ export const CreateConfigModal = ({
   const drConfigMutation = useMutation(
     (formValues: CreateDrConfigFormValues) => {
       const createDrConfigRequest: CreateDrConfigRequest = {
-        name: `dr-config-${generateLowerCaseAlphanumericId()}`,
+        name: `dr-config-${generateUniqueName()}`,
         sourceUniverseUUID: sourceUniverseUuid,
         targetUniverseUUID: formValues.targetUniverse.value.universeUUID,
         dbs: selectedKeyspaces.map(formatUuidForXCluster),
