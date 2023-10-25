@@ -38,7 +38,7 @@
 
 #include <stddef.h>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"

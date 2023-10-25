@@ -22,7 +22,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include <iomanip>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/strings/human_readable.h"
 

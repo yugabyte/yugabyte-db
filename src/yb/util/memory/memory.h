@@ -54,7 +54,7 @@
 
 #include <boost/mpl/if.hpp>
 #include <boost/type_traits/is_const.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/logging-inl.h"

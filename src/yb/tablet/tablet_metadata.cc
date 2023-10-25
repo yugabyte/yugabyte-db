@@ -37,7 +37,7 @@
 #include <string>
 
 #include <boost/optional.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/entity_ids.h"

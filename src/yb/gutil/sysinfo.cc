@@ -72,7 +72,7 @@
 #include <thread>
 #include "yb/util/flags.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/dynamic_annotations.h"   // for RunningOnValgrind

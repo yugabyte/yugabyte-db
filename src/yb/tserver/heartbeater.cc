@@ -42,7 +42,7 @@
 #include <vector>
 
 #include <boost/function.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/common_flags.h"
 #include "yb/common/hybrid_time.h"

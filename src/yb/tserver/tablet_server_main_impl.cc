@@ -36,7 +36,7 @@
 #include <iostream>
 
 #include <boost/optional/optional.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/termination_monitor.h"
 #include "yb/common/llvm_profile_dumper.h"

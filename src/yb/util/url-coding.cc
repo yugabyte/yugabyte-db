@@ -48,7 +48,7 @@
 #include <boost/archive/iterators/binary_from_base64.hpp>
 #include <boost/archive/iterators/transform_width.hpp>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 using std::string;
 using std::vector;

@@ -42,7 +42,7 @@
 
 #include <boost/container/static_vector.hpp>
 #include <boost/optional/optional.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/client/client.h"
 #include "yb/client/meta_data_cache.h"

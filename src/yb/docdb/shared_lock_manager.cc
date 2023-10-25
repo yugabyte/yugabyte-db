@@ -20,7 +20,7 @@
 #include <vector>
 
 #include <boost/range/adaptor/reversed.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/docdb/lock_batch.h"
 
