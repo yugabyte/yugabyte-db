@@ -1074,4 +1074,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "View granular level metrics when user selects specific time period in a chart",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> gflagMultilineConf =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.gflag_multiline_conf",
+          ScopeType.GLOBAL,
+          "Enable multiline option for GFlag conf.",
+          "Allows user to enter postgres hba rules and ident map rules in multiple rows",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
