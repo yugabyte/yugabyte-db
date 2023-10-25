@@ -44,10 +44,10 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.channels.Channels;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -100,13 +100,25 @@ public class GCPUtil implements CloudUtil {
     return new ConfigLocationInfo(bucket, cloudPath);
   }
 
-  public static Storage getStorageService(CustomerConfigStorageGCSData gcsData)
-      throws IOException, UnsupportedEncodingException {
-    String gcsCredentials = gcsData.gcsCredentialsJson;
-    Credentials credentials =
-        GoogleCredentials.fromStream(new ByteArrayInputStream(gcsCredentials.getBytes("UTF-8")));
-    Storage storage = StorageOptions.newBuilder().setCredentials(credentials).build().getService();
-    return storage;
+  public static Storage getStorageService(CustomerConfigStorageGCSData gcsData) throws IOException {
+    if (gcsData.useGcpIam) {
+      return getStorageService();
+    } else {
+      try (InputStream is =
+          new ByteArrayInputStream(gcsData.gcsCredentialsJson.getBytes(StandardCharsets.UTF_8))) {
+        return getStorageService(is);
+      }
+    }
+  }
+
+  public static Storage getStorageService() {
+    return StorageOptions.getDefaultInstance().getService();
+  }
+
+  public static Storage getStorageService(InputStream is) throws IOException {
+    Credentials credentials = GoogleCredentials.fromStream(is);
+    StorageOptions.Builder storageOptions = StorageOptions.newBuilder().setCredentials(credentials);
+    return storageOptions.build().getService();
   }
 
   @Override
