@@ -39,8 +39,6 @@
 #include <utility>
 #include <vector>
 
-#include "yb/util/logging.h"
-
 #include "yb/client/auto_flags_manager.h"
 #include "yb/client/client.h"
 #include "yb/client/client_fwd.h"

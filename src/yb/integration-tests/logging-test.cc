@@ -33,7 +33,6 @@
 #include <string>
 #include <vector>
 
-#include "yb/util/logging.h"
 #include <gmock/gmock.h>
 
 #include "yb/util/flags.h"

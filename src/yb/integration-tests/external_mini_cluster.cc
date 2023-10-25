@@ -42,7 +42,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"

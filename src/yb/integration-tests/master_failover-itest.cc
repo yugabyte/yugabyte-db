@@ -34,7 +34,6 @@
 #include <string>
 #include <vector>
 
-#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/client/client-internal.h"

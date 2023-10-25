@@ -36,7 +36,6 @@
 #include <memory>
 
 #include <boost/optional.hpp>
-#include "yb/util/logging.h"
 #include <rapidjson/document.h>
 
 #include "yb/client/client.h"

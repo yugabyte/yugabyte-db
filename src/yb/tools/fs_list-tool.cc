@@ -36,8 +36,6 @@
 #include <iostream>
 #include <vector>
 
-#include "yb/util/logging.h"
-
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"

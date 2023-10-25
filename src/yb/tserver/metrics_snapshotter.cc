@@ -38,8 +38,6 @@
 
 #include <rapidjson/document.h>
 
-#include "yb/util/logging.h"
-
 #include "yb/common/jsonb.h"
 #include "yb/common/wire_protocol.h"
 

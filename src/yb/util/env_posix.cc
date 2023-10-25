@@ -43,8 +43,6 @@
 #endif  // defined(__APPLE__)
 #include <sys/resource.h>
 
-#include "yb/util/logging.h"
-
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/callback.h"

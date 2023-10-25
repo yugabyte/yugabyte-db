@@ -36,8 +36,6 @@
 #include <memory>
 #include <vector>
 
-#include "yb/util/logging.h"
-
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/schema.h"
