@@ -16,7 +16,6 @@
 #include <memory>
 
 #include <boost/multi_index/member.hpp>
-#include <glog/logging.h>
 
 #include "yb/common/common.pb.h"
 

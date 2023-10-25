@@ -386,6 +386,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_minimal_catalog_caches_preload;
   const bool*     ysql_enable_create_database_oid_collision_retry;
   const char*     ysql_catalog_preload_additional_table_list;
+  const bool*     ysql_use_relcache_file;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -521,6 +522,20 @@ typedef struct PgLastKnownCatalogVersionInfo {
   uint64_t version;
   bool is_db_catalog_version_mode;
 } YBCPgLastKnownCatalogVersionInfo;
+
+typedef enum PgTransactionSetting {
+  // Single shard transactions can use a fast path to give full ACID guarantees without the overhead
+  // of a distributed transaction.
+  YB_SINGLE_SHARD_TRANSACTION,
+  // Force non-transactional semantics to avoid overhead of a distributed transaction. This is used
+  // in the following cases as of today:
+  //   (1) Index backfill
+  //   (2) COPY with ysql_non_txn_copy=true
+  //   (3) For normal DML writes if yb_disable_transactional_writes is set by the user
+  YB_NON_TRANSACTIONAL,
+  // Use a distributed transaction for full ACID semantics (common case).
+  YB_TRANSACTIONAL
+} YBCPgTransactionSetting;
 
 #ifdef __cplusplus
 }  // extern "C"

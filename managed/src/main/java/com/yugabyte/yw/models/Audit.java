@@ -558,7 +558,10 @@ public class Audit extends Model {
     DeleteMetadata,
 
     @EnumValue("Unlock Universe")
-    Unlock
+    Unlock,
+
+    @EnumValue("Sync Universe with LDAP server")
+    LdapUniverseSync
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

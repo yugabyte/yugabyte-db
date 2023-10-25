@@ -160,6 +160,14 @@ class MiniCluster : public MiniClusterBase {
   Status AddTServerToLeaderBlacklist(const tserver::MiniTabletServer& ts);
   Status ClearBlacklist();
 
+  Status AddTServerToBlacklist(size_t idx) {
+    return AddTServerToBlacklist(*mini_tablet_server(idx));
+  }
+
+  Status AddTServerToLeaderBlacklist(size_t idx) {
+    return AddTServerToLeaderBlacklist(*mini_tablet_server(idx));
+  }
+
   // If this cluster is configured for a single non-distributed
   // master, return the single master. Exits with a CHECK failure if
   // there are multiple masters.

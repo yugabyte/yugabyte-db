@@ -482,6 +482,8 @@ public enum TaskType {
 
   PromoteAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags.class),
 
+  RollbackAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.RollbackAutoFlags.class),
+
   StoreAutoFlagConfigVersion(
       com.yugabyte.yw.commissioner.tasks.subtasks.StoreAutoFlagConfigVersion.class),
 
@@ -573,7 +575,14 @@ public enum TaskType {
 
   UpdateUniverseIntent(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent.class),
 
-  FreezeUniverse(com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse.class);
+  FreezeUniverse(com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse.class),
+
+  LdapUniverseSync(com.yugabyte.yw.commissioner.tasks.LdapUnivSync.class),
+
+  // Tasks belonging to subtasks.ldap classpath
+  QueryLdapServer(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.QueryLdapServer.class),
+
+  DbLdapSync(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.DbLdapSync.class);
 
   private final Class<? extends ITask> taskClass;
 
@@ -662,6 +671,7 @@ public enum TaskType {
           .put(RunApiTriggeredHooks, 134)
           .put(SetUniverseKey, 135)
           .put(UpdateLoadBalancerConfig, 136)
+          .put(LdapUniverseSync, 137)
           .build();
 
   TaskType(Class<? extends ITask> taskClass) {

@@ -15,17 +15,24 @@
 
 #include "yb/integration-tests/cql_test_base.h"
 #include "yb/integration-tests/packed_row_test_base.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tserver/mini_tablet_server.h"
 
 using namespace std::literals;
 
+DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 DECLARE_bool(TEST_keep_intent_doc_ht);
+DECLARE_int32(remote_bootstrap_begin_session_timeout_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(TEST_rbs_sleep_after_taking_metadata_ms);
 
 namespace yb {
 
 class CqlPackedRowTest : public PackedRowTestBase<CqlTestBase<MiniCluster>> {
  public:
   virtual ~CqlPackedRowTest() = default;
+
+  void TestRemoteBootstrap();
 };
 
 Status CheckTableContent(
@@ -320,6 +327,67 @@ TEST_F(CqlPackedRowTest, CompactWithoutLivenessColumn) {
   ASSERT_OK(cluster_->CompactTablets());
   ASSERT_OK(session.ExecuteQueryFormat("UPDATE t SET value = NULL WHERE key = 1"));
   ASSERT_OK(CheckTableContent(&session, ""));
+}
+
+void CqlPackedRowTest::TestRemoteBootstrap() {
+  FLAGS_remote_bootstrap_begin_session_timeout_ms = 50000;
+  FLAGS_TEST_rbs_sleep_after_taking_metadata_ms = 500;
+  constexpr size_t kNewTServerIdx = 3;
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (key INT PRIMARY KEY, v1 INT) WITH tablets = 1"));
+
+  ASSERT_OK(cluster_->AddTabletServer());
+  // Force load balancer to move one replica to newly added tserver.
+  // Starting remote bootstrap process.
+  ASSERT_OK(cluster_->AddTServerToBlacklist(0));
+
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t (key, v1) VALUES (1, 1)"));
+
+  auto leaders = ListActiveTabletLeadersPeers(cluster_.get());
+  ASSERT_EQ(leaders.size(), 1);
+
+  // Perform a lot of alters to the table to get the following situation during remote
+  // bootstrap session initialization.
+  // Alter table was applied after tablet metadata was taken, but before checkpoint was created.
+  for (int i = 0;; ++i) {
+    if ((i & 1) == 0) {
+      ASSERT_OK(session.ExecuteQuery("ALTER TABLE t ADD v2 INT"));
+      ASSERT_OK(session.ExecuteQueryFormat("INSERT INTO t (key, v1, v2) VALUES ($0, $0, $0)", i));
+    } else {
+      ASSERT_OK(session.ExecuteQuery("ALTER TABLE t DROP v2"));
+      ASSERT_OK(session.ExecuteQueryFormat("INSERT INTO t (key, v1) VALUES ($0, $0)", i));
+    }
+
+    auto peers = cluster_->GetTabletPeers(kNewTServerIdx);
+    auto bootstrapped = false;
+    for (const auto& peer : peers) {
+      if (peer->tablet_id() == leaders[0]->tablet_id() && peer->CheckRunning().ok()) {
+        bootstrapped = true;
+        break;
+      }
+    }
+    if (bootstrapped) {
+      break;
+    }
+  }
+
+  auto new_server_uuid = cluster_->mini_tablet_server(kNewTServerIdx)->fs_manager().uuid();
+  ASSERT_OK(StepDown(leaders[0], new_server_uuid, ForceStepDown::kTrue));
+
+  auto value = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM t"));
+  LOG(INFO) << "Value: " << value;
+}
+
+TEST_F(CqlPackedRowTest, RemoteBootstrap) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_invalidate_last_change_metadata_op) = true;
+  TestRemoteBootstrap();
+}
+
+TEST_F(CqlPackedRowTest, RemoteBootstrapWithNewChangeMetadataReplayLogic) {
+  TestRemoteBootstrap();
 }
 
 } // namespace yb

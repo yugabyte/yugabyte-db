@@ -860,7 +860,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
   @Test
   public void testAwsBootstrapWithDestVpcId() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.BootstrapProducer);
     when(mockCommissioner.submit(
             Mockito.any(TaskType.class), Mockito.any(CloudBootstrap.Params.class)))
         .thenReturn(fakeTaskUUID);
@@ -907,7 +907,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
   private void prepareBootstrap(
       ObjectNode bodyJson, Provider provider, boolean expectCallToGetRegions) {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.BootstrapProducer);
     when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
         .thenReturn(fakeTaskUUID);
     when(mockCloudQueryHelper.getRegionCodes(provider))

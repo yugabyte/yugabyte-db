@@ -13,7 +13,7 @@ import lombok.Setter;
 @JsonDeserialize(converter = KubernetesGFlagsUpgradeParams.Converter.class)
 public class KubernetesGFlagsUpgradeParams extends GFlagsUpgradeParams {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.21.0.0")
-  @ApiModelProperty(value = "YbaAPi Internal", hidden = true)
+  @ApiModelProperty(value = "YbaApi Internal", hidden = true)
   @Getter
   @Setter
   private KubernetesResourceDetails kubernetesResourceDetails;

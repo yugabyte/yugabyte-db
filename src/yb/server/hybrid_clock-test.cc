@@ -32,7 +32,7 @@
 
 #include <algorithm>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/server/hybrid_clock.h"

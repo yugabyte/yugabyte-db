@@ -28,6 +28,7 @@ import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.LdapUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
@@ -68,12 +69,15 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import kamon.instrumentation.play.GuiceModule;
+import lombok.extern.slf4j.Slf4j;
 import org.jboss.logging.MDC;
 import org.junit.Before;
 import org.mockito.Mockito;
@@ -88,6 +92,7 @@ import play.Environment;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 
+@Slf4j
 public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseTest {
   private static final int MAX_RETRY_COUNT = 2000;
   protected static final String ENABLE_CUSTOM_HOOKS_PATH =
@@ -120,6 +125,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected AlertConfigurationService alertConfigurationService;
   protected YcqlQueryExecutor mockYcqlQueryExecutor;
   protected YsqlQueryExecutor mockYsqlQueryExecutor;
+  protected LdapUtil mockLdapUtil;
   protected NodeUniverseManager mockNodeUniverseManager;
   protected TaskExecutor taskExecutor;
   protected EncryptionAtRestManager mockEARManager;
@@ -218,6 +224,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockMetricQueryHelper = mock(MetricQueryHelper.class);
     mockYcqlQueryExecutor = mock(YcqlQueryExecutor.class);
     mockYsqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    mockLdapUtil = mock(LdapUtil.class);
     mockNodeUniverseManager = mock(NodeUniverseManager.class);
     mockEARManager = mock(EncryptionAtRestManager.class);
     mockSupportBundleComponent = mock(SupportBundleComponent.class);
@@ -260,6 +267,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                         .toInstance(mockSupportBundleComponentFactory))
                 .overrides(bind(YcqlQueryExecutor.class).toInstance(mockYcqlQueryExecutor))
                 .overrides(bind(YsqlQueryExecutor.class).toInstance(mockYsqlQueryExecutor))
+                .overrides(bind(LdapUtil.class).toInstance(mockLdapUtil))
                 .overrides(bind(NodeUniverseManager.class).toInstance(mockNodeUniverseManager))
                 .overrides(
                     bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class))
@@ -363,6 +371,17 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     MDC.remove(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY);
   }
 
+  public void verifyTaskRetries(
+      Customer customer,
+      CustomerTask.TaskType customerTaskType,
+      TargetType targetType,
+      UUID targetUuid,
+      TaskType taskType,
+      ITaskParams taskParams) {
+    verifyTaskRetries(
+        customer, customerTaskType, targetType, targetUuid, taskType, taskParams, true);
+  }
+
   /**
    * This method aborts before every sub-task starting from position 0 and retries to make sure no
    * pending subtasks from the first attempt are skipped on every retry. This mainly verifies that
@@ -375,7 +394,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       TargetType targetType,
       UUID targetUuid,
       TaskType taskType,
-      ITaskParams taskParams) {
+      ITaskParams taskParams,
+      boolean checkStrictOrdering) {
     try {
       // Pause at the beginning to capture the sub-tasks to be executed.
       setPausePosition(0);
@@ -394,14 +414,22 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
           expectedSubTaskMap.values().stream()
               .map(l -> l.get(0).getTaskType())
               .collect(Collectors.toList());
+      int freezeIdx = expectedSubTaskTypes.indexOf(TaskType.FreezeUniverse);
       // Number of sub-tasks to be executed on any run.
       int totalSubTaskCount = expectedSubTaskMap.size();
-      int pendingSubTaskCount = totalSubTaskCount;
+      // Fail after freeze universe if present to make it retryable.
+      int pendingSubTaskCount =
+          freezeIdx >= 0 ? totalSubTaskCount - (freezeIdx + 1) : totalSubTaskCount;
       int retryCount = 0;
       while (pendingSubTaskCount > 0) {
         // Abort starts from the first sub-task until there is no more sub-task left.
         int abortPosition = totalSubTaskCount - pendingSubTaskCount;
         if (pendingSubTaskCount > 1) {
+          int originalAbortPosition = expectedSubTaskTypes.size() - pendingSubTaskCount;
+          log.info(
+              "Abort position at {} relative to the original subtasks {}",
+              originalAbortPosition,
+              expectedSubTaskMap);
           setAbortPosition(abortPosition);
         } else {
           // Let the last sub-task complete.
@@ -414,6 +442,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         if (pendingSubTaskCount <= 1) {
           assertEquals(State.Success, taskInfo.getTaskState());
         } else {
+          assertEquals(State.Aborted, taskInfo.getTaskState());
           // Before retry, set the pause position to capture the list of subtasks
           // for the next abort in the next iteration.
           setPausePosition(0);
@@ -436,15 +465,17 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                   .collect(Collectors.toList());
           // Get the tail-end of the sub-tasks with size equal to the pending sub-task count.
           List<TaskType> expectedTailTaskTypes =
-              expectedSubTaskTypes.subList(
-                  expectedSubTaskTypes.size() - pendingSubTaskCount, expectedSubTaskTypes.size());
+              new ArrayList<>(
+                  expectedSubTaskTypes.subList(
+                      expectedSubTaskTypes.size() - pendingSubTaskCount,
+                      expectedSubTaskTypes.size()));
           // The number of sub-tasks to be executed must be at least the pending sub-tasks as some
           // sub-tasks can be re-executed.
           if (retryTaskTypes.size() < pendingSubTaskCount) {
             throw new RuntimeException(
                 String.format(
-                    "Some subtasks are skipped on retry %d. At least %d sub-tasks are expected, "
-                        + "but only %d are found. Expected(at least): %s, found: %s",
+                    "Some subtasks are skipped on retry %d. At least %d sub-tasks are expected, but"
+                        + " only %d are found. Expected(at least): %s, found: %s",
                     retryCount,
                     pendingSubTaskCount,
                     retryTaskTypes.size(),
@@ -452,14 +483,19 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                     retryTaskTypes));
           }
           List<TaskType> tailTaskTypes =
-              retryTaskTypes.subList(
-                  retryTaskTypes.size() - pendingSubTaskCount, retryTaskTypes.size());
+              new ArrayList<>(
+                  retryTaskTypes.subList(
+                      retryTaskTypes.size() - pendingSubTaskCount, retryTaskTypes.size()));
+          if (!checkStrictOrdering) {
+            Collections.sort(expectedTailTaskTypes);
+            Collections.sort(tailTaskTypes);
+          }
           // The tail sublist of sub-subtasks must be exactly equal.
           if (!expectedTailTaskTypes.equals(tailTaskTypes)) {
             throw new RuntimeException(
                 String.format(
-                    "Mismatched order detected in subtasks (pending %d/%d) on retry %d. "
-                        + "Expected: %s, found: %s",
+                    "Mismatched order detected in subtasks (pending %d/%d) on retry %d. Expected:"
+                        + " %s, found: %s",
                     retryCount,
                     pendingSubTaskCount,
                     expectedSubTaskTypes.size(),

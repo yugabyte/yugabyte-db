@@ -37,7 +37,7 @@
 #include <string>
 
 #include <boost/optional.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/entity_ids.h"
@@ -1899,6 +1899,18 @@ std::vector<TableId> RaftGroupMetadata::GetAllColocatedTables() {
     table_ids.emplace_back(id_and_info.first);
   }
   return table_ids;
+}
+
+std::unordered_map<TableId, ColocationId>
+RaftGroupMetadata::GetAllColocatedTablesWithColocationId() const {
+  DCHECK_NE(state_, kNotLoadedYet);
+
+  std::lock_guard lock(data_mutex_);
+  std::unordered_map<TableId, ColocationId> table_colocation_id_map;
+  for (const auto& [id, info] : kv_store_.colocation_to_table) {
+    table_colocation_id_map[info->table_id] = id;
+  }
+  return table_colocation_id_map;
 }
 
 Status CheckCanServeTabletData(const RaftGroupMetadata& metadata) {

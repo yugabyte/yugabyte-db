@@ -36,9 +36,9 @@
 
 // This module gets enough CPU information to optimize the
 // atomicops module on x86.
-#include "yb/gutil/atomicops-internals-x86.h"
+#include "yb/gutil/atomicops.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/integral_types.h"
 

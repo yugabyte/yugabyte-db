@@ -250,9 +250,11 @@ Result<bool> PgDdlAtomicityTestBase::CheckIfSchemaMatches(client::YBClient* clie
   RETURN_NOT_OK(sync.Wait());
 
   const auto& columns = table_info->schema.columns();
+
   if (expected_column_names.size() != columns.size()) {
     LOG(INFO) << "Expected " << expected_column_names.size() << " columns for " << table_name
-              << " but found " << columns.size() << " columns";
+              << " but found " << columns.size() << " columns. Table Schema: "
+              << table_info->schema.ToString();
     return false;
   }
 

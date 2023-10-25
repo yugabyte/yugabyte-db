@@ -254,6 +254,11 @@ extern bool YBSavepointsEnabled();
 extern bool YBIsDBCatalogVersionMode();
 
 /*
+ * Whether we need to preload additional catalog tables.
+ */
+extern bool YbNeedAdditionalCatalogTables();
+
+/*
  * Since DDL metadata in master DocDB and postgres system tables is not modified
  * in an atomic fashion, it is possible that we could have a table existing in
  * postgres metadata but not in DocDB. In the case of a delete it is really

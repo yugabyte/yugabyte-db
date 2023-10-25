@@ -17,6 +17,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include <boost/functional/hash.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/member.hpp>
@@ -113,6 +114,9 @@ class XClusterConsumer {
 
   Status PublishXClusterSafeTime();
 
+  SchemaVersion GetMinXClusterSchemaVersion(const TableId& table_id,
+      const ColocationId& colocation_id);
+
   // Stores a replication error and detail. This overwrites a previously stored 'error'.
   void StoreReplicationError(
       const TabletId& tablet_id, const xrepl::StreamId& stream_id, ReplicationErrorPb error,
@@ -202,6 +206,11 @@ class XClusterConsumer {
 
   cdc::StreamColocatedSchemaVersionMap stream_colocated_schema_version_map_
       GUARDED_BY(master_data_mutex_);
+
+  // Map of tableId,colocationid -> minimum schema version on consumer.
+  typedef std::pair<TableId, ColocationId> TableIdWithColocationId;
+  std::unordered_map<TableIdWithColocationId, SchemaVersion, boost::hash<TableIdWithColocationId>>
+      min_schema_version_map_ GUARDED_BY(master_data_mutex_);
 
   scoped_refptr<Thread> run_trigger_poll_thread_;
 

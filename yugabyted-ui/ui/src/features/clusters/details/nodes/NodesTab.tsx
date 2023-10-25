@@ -22,6 +22,7 @@ import RefreshIcon from '@app/assets/refresh.svg';
 import { StateEnum, StatusEntity, YBSmartStatus } from '@app/components/YBStatus/YBSmartStatus';
 import { StringParam, useQueryParams, withDefault } from 'use-query-params';
 import { useNodes } from './NodeHooks';
+import { YBTextBadge } from '@app/components/YBTextBadge/YBTextBadge';
 
 const useStyles = makeStyles((theme) => ({
     title: {
@@ -87,16 +88,6 @@ const useStyles = makeStyles((theme) => ({
     checkbox: {
         padding: '6px 6px 6px 6px'
     },
-    badge: {
-        backgroundColor: theme.palette.grey[200],
-        color: theme.palette.grey[700],
-        borderRadius: theme.shape.borderRadius,
-        fontSize: '10px',
-        fontWeight: 500,
-        letterSpacing: '0.2px',
-        textTransform: 'uppercase',
-        padding: theme.spacing(0.5, 1),
-    }
   }));
 
 // const StatusComponent = (isHealthy: boolean) => (
@@ -127,7 +118,7 @@ const NodeComponent = (classes: ClassNameMap, t: TFunction) => (
                 {node_data.host}
             </Typography> */}
             {node_data.is_read_replica &&
-                <Box className={classes.badge}>{t('clusterDetail.nodes.readReplica')}</Box>
+                <YBTextBadge>{t('clusterDetail.nodes.readReplica')}</YBTextBadge>
             }
         </Box>
         {node_data.bootstrapping && (

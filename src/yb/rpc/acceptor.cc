@@ -44,7 +44,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest_prod.h>
 
 #include "yb/gutil/ref_counted.h"
