@@ -1,7 +1,7 @@
 ---
 title: Release versioning
-headerTitle: Release versioning
-linkTitle: Release versioning
+headerTitle: Release versioning and feature availability
+linkTitle: Versioning
 description: Explains the new release versioning convention for preview and stable releases.
 aliases:
   - /stable/releases/versioning/
@@ -12,7 +12,9 @@ aliases:
 type: docs
 ---
 
-Starting with v2.16, YugabyteDB follows a new release versioning convention for stable (production-ready) and preview (development) releases. There are now three release types: long-term stable (LTS), standard-term stable (STS), and preview. The following sections cover the new release versioning convention and describe the release series types.
+Starting with v2.16, YugabyteDB follows a new release versioning convention for stable (production-ready) and preview (development) releases. There are three release types: long-term stable (LTS), standard-term stable (STS), and preview.
+
+Individual features may also be made available as tech previews or early access, which have different documentation and support standards than general availability features.
 
 ## Release versioning convention
 
