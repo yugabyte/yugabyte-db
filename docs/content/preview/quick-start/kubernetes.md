@@ -140,8 +140,8 @@ To start YugabyteDB Helm chart, perform the following:
     ```
 
     ```output
-    NAME                 CHART VERSION  APP VERSION   DESCRIPTION
-  yugabytedb/yugabyte  {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugabyteDB is the high-performance distributed ...
+    NAME                 CHART VERSION  APP VERSION    DESCRIPTION
+  yugabytedb/yugabyte  {{<yb-version version="preview" format="short">}}         {{<yb-version version="preview" format="build">}}  YugabyteDB is the high-performance distributed ...
   ```
 
 Now you are ready to create a local YugabyteDB cluster.
