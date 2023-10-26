@@ -201,6 +201,65 @@ $$) as (i agtype);
 (3 rows)
 
 --
+-- Issue 1302
+--
+SELECT create_graph('issue_1302');
+NOTICE:  graph "issue_1302" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('cypher_unwind', $$
+    CREATE (agtype {name: 'node1', a: [1, 2, 3]}),
+           (m {name: 'node2', a: [4, 5, 6]}),
+           (o {name: 'node3', a: [7, 8, 9]}),
+           (n)-[:KNOWS]->(m),
+           (m)-[:KNOWS]->(o)
+$$) as (i agtype);
+ i 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH (n)
+    WITH n.a AS a
+    UNWIND a AS i
+    RETURN *
+$$) as (i agtype, j agtype);
+     i     | j 
+-----------+---
+ [1, 2, 3] | 1
+ [1, 2, 3] | 2
+ [1, 2, 3] | 3
+ [4, 5, 6] | 4
+ [4, 5, 6] | 5
+ [4, 5, 6] | 6
+ [7, 8, 9] | 7
+ [7, 8, 9] | 8
+ [7, 8, 9] | 9
+ [1, 2, 3] | 1
+ [1, 2, 3] | 2
+ [1, 2, 3] | 3
+ [4, 5, 6] | 4
+ [4, 5, 6] | 5
+ [4, 5, 6] | 6
+ [7, 8, 9] | 7
+ [7, 8, 9] | 8
+ [7, 8, 9] | 9
+           | 
+(19 rows)
+
+SELECT * FROM cypher('cypher_unwind', $$
+    UNWIND NULL as i
+    RETURN i
+$$) as (i agtype);
+ i 
+---
+ 
+(1 row)
+
+--
 -- Clean up
 --
 SELECT drop_graph('cypher_unwind', true);
@@ -209,6 +268,16 @@ DETAIL:  drop cascades to table cypher_unwind._ag_label_vertex
 drop cascades to table cypher_unwind._ag_label_edge
 drop cascades to table cypher_unwind."KNOWS"
 NOTICE:  graph "cypher_unwind" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT drop_graph('issue_1302', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table issue_1302._ag_label_vertex
+drop cascades to table issue_1302._ag_label_edge
+NOTICE:  graph "issue_1302" has been dropped
  drop_graph 
 ------------
  

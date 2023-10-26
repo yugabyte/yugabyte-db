@@ -123,7 +123,34 @@ SELECT * FROM cypher('cypher_unwind', $$
 $$) as (i agtype);
 
 --
+-- Issue 1302
+--
+
+SELECT create_graph('issue_1302');
+
+SELECT * FROM cypher('cypher_unwind', $$
+    CREATE (agtype {name: 'node1', a: [1, 2, 3]}),
+           (m {name: 'node2', a: [4, 5, 6]}),
+           (o {name: 'node3', a: [7, 8, 9]}),
+           (n)-[:KNOWS]->(m),
+           (m)-[:KNOWS]->(o)
+$$) as (i agtype);
+
+SELECT * FROM cypher('cypher_unwind', $$
+    MATCH (n)
+    WITH n.a AS a
+    UNWIND a AS i
+    RETURN *
+$$) as (i agtype, j agtype);
+
+SELECT * FROM cypher('cypher_unwind', $$
+    UNWIND NULL as i
+    RETURN i
+$$) as (i agtype);
+
+--
 -- Clean up
 --
 
 SELECT drop_graph('cypher_unwind', true);
+SELECT drop_graph('issue_1302', true);
