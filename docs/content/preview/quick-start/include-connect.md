@@ -43,7 +43,7 @@ To open the YSQL shell, run `ysqlsh`:
 ```
 
 ```output
-ysqlsh (11.2-YB-{{< yb-version version="preview" >}}-b0)
+ysqlsh (11.2-YB-2.19.3.0-b0)
 Type "help" for help.
 
 yugabyte=#
