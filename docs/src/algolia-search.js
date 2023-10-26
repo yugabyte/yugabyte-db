@@ -58,8 +58,6 @@ import algoliasearch from 'algoliasearch';
    * Main Docs section HTML.
    */
   function docsSection(hitIs) {
-    const searchedQuery = searchInput.value.trim();
-
     let content = '';
     hitIs.forEach(hit => {
       let pageBreadcrumb = '';
@@ -76,7 +74,6 @@ import algoliasearch from 'algoliasearch';
         pageBreadcrumb = hit.breadcrumb;
       }
 
-      let highlightContent = '';
       if (hit._highlightResult.title.matchLevel !== 'full' && hit._highlightResult.description.matchLevel !== 'full') {
         let partialHeaderMatched = 0;
         if (hit._highlightResult.headers) {
@@ -100,36 +97,6 @@ import algoliasearch from 'algoliasearch';
 
             return true;
           });
-        }
-
-        if (pageHash === '' && hit._highlightResult.content.matchLevel === 'full') {
-          const contentValue = hit.content;
-          const sectionsMatched = contentValue.split(searchedQuery).length - 1;
-
-          if (sectionsMatched < 3) {
-            highlightContent = hit._highlightResult.content.value;
-            highlightContent = highlightContent.replace(/<em>|<\/em>/g, '');
-
-            if (highlightContent.length > 0) {
-              const firstWord = hit._highlightResult.content.matchedWords[0];
-              const valueToSentence = highlightContent.split(/\r?\n/);
-
-              let wordIndex;
-              valueToSentence.filter(
-                ((contentPart, index) => {
-                  if (contentPart.toLowerCase().includes(firstWord)) {
-                    wordIndex = index;
-                  }
-
-                  return wordIndex;
-                }),
-              );
-
-              if (wordIndex !== 'undefined' && valueToSentence[wordIndex]) {
-                pageHash = `#:~:text=${valueToSentence[wordIndex].replace(/-/g, '%2D')}`;
-              }
-            }
-          }
         }
       }
 
