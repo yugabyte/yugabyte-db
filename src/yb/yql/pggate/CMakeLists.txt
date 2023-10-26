@@ -22,6 +22,8 @@ add_subdirectory(util)
 
 add_subdirectory(webserver)
 
+add_subdirectory(ysql_bench_metrics_handler)
+
 # PGGate API library.
 set(PGGATE_SRCS
     ybc_pggate.cc
