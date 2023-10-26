@@ -13,7 +13,6 @@
 # under the License.
 #
 set -euo pipefail
-
 script_name=${0##*/}
 script_name=${script_name%.*}
 
@@ -272,6 +271,9 @@ Test options:
     Build|Do not build fuzz targets. By default - do not build.
   --(with|no)-odyssey
     Specify whether to build Odyssey (PostgreSQL connection pooler). Not building by default.
+
+  --validate-args-only
+    Only validate command-line arguments and exit immediately. Suppress all unnecessary output.
 
 Debug options:
 
@@ -964,12 +966,16 @@ build_tests=""
 build_fuzz_targets=""
 
 # These will influence what targets to build if invoked with the packaged_targets meta-target.
-build_odyssey="false"
+build_odyssey=false
 if is_linux; then
-  build_odyssey="true"
+  build_odyssey=true
 fi
 
-build_yugabyted_ui="false"
+build_yugabyted_ui=false
+
+# -------------------------------------------------------------------------------------------------
+
+validate_args_only=false
 
 # -------------------------------------------------------------------------------------------------
 # Actually parsing command-line arguments
@@ -1439,7 +1445,7 @@ while [[ $# -gt 0 ]]; do
       export YB_LINKING_TYPE=full-lto
     ;;
     --lto)
-      if [[ ! $2 =~ ^(thin|full|none) ]]; then
+      if [[ ! $2 =~ ^(thin|full|none)$ ]]; then
         fatal "Invalid LTO type: $2"
       fi
       if [[ $2 == "none" ]]; then
@@ -1489,6 +1495,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --reset-cxx-test-filter)
       reset_cxx_test_filter=true
+    ;;
+    --validate-args-only)
+      validate_args_only=true
     ;;
     *)
       if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then
@@ -1553,6 +1562,9 @@ if is_mac && [[ $should_build_clangd_index == "true" && ${YB_COMPILER_TYPE:-} ==
   # On macOS, we need to use our custom-built version of Clang to build the clangd index.
   YB_COMPILER_TYPE=clang16
 fi
+if [[ $validate_args_only == "true" ]]; then
+  yb_set_build_type_quietly=true
+fi
 set_cmake_build_type_and_compiler_type
 
 if [[ $should_build_clangd_index == "true" && ! ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ ]]; then
@@ -1570,8 +1582,10 @@ if [[ ${reset_cxx_test_filter} == "true" ]]; then
   set_cxx_test_filter_regex ""
 fi
 
-log "YugabyteDB build is running on host '$HOSTNAME'"
-log "YB_COMPILER_TYPE=$YB_COMPILER_TYPE"
+if [[ $validate_args_only == "false" ]]; then
+  log "YugabyteDB build is running on host '$HOSTNAME'"
+  log "YB_COMPILER_TYPE=$YB_COMPILER_TYPE"
+fi
 
 normalize_build_type
 if [[ ${verbose} == "true" ]]; then
@@ -1689,6 +1703,10 @@ then
         "--java-test <class_name>#testMethodName" \
         " or remove the --run-java-test-methods-separately flag. " \
         "To run all Java tests, replace --java-test=<test_name> with --java-tests."
+fi
+
+if [[ $validate_args_only == "true" ]]; then
+  exit
 fi
 
 # End of post-processing and validating command-line arguments.
