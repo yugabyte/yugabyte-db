@@ -101,10 +101,18 @@ public class GCPUtil implements CloudUtil {
   }
 
   public static Storage getStorageService(CustomerConfigStorageGCSData gcsData) throws IOException {
-    try (InputStream is =
-        new ByteArrayInputStream(gcsData.gcsCredentialsJson.getBytes(StandardCharsets.UTF_8))) {
-      return getStorageService(is, null);
+    if (gcsData.useGcpIam) {
+      return getStorageService();
+    } else {
+      try (InputStream is =
+          new ByteArrayInputStream(gcsData.gcsCredentialsJson.getBytes(StandardCharsets.UTF_8))) {
+        return getStorageService(is, null);
+      }
     }
+  }
+
+  public static Storage getStorageService() {
+    return StorageOptions.getDefaultInstance().getService();
   }
 
   public static Storage getStorageService(InputStream is, RetrySettings retrySettings)

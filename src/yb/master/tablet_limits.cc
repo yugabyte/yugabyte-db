@@ -20,12 +20,15 @@
 #include "yb/util/atomic.h"
 #include "yb/util/flags/flag_tags.h"
 
-DEFINE_test_flag(int32, tablet_replicas_per_gib_limit, 0,
+DEFINE_RUNTIME_int32(tablet_replicas_per_gib_limit, 0,
     "The maximum number of tablets per GiB of RAM reserved by TServers for tablet overheads the "
     "cluster can support. A non-positive number means no limit.");
-DEFINE_test_flag(int32, tablet_replicas_per_core_limit, 0,
+TAG_FLAG(tablet_replicas_per_gib_limit, experimental);
+
+DEFINE_RUNTIME_int32(tablet_replicas_per_core_limit, 0,
     "The maximum number of tablets per vCPU available to TServer processes the cluster can "
     "support. A non-positive number means no limit.");
+TAG_FLAG(tablet_replicas_per_core_limit, experimental);
 
 namespace yb::master {
 
@@ -99,8 +102,8 @@ Status CanCreateTabletReplicas(
     int num_tablets, const ReplicationInfoPB& replication_info,
     const TSDescriptorVector& ts_descs) {
   TabletReplicaPerResourceLimits limits{
-      .per_gib = PositiveOrNullopt(GetAtomicFlag(&FLAGS_TEST_tablet_replicas_per_gib_limit)),
-      .per_core = PositiveOrNullopt(GetAtomicFlag(&FLAGS_TEST_tablet_replicas_per_core_limit))};
+      .per_gib = PositiveOrNullopt(GetAtomicFlag(&FLAGS_tablet_replicas_per_gib_limit)),
+      .per_core = PositiveOrNullopt(GetAtomicFlag(&FLAGS_tablet_replicas_per_core_limit))};
   if (!limits.per_gib && !limits.per_core) {
     return Status::OK();
   }

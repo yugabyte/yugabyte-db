@@ -17,8 +17,8 @@
 
 #include "yb/util/status.h"
 
-DECLARE_int32(TEST_tablet_replicas_per_gib_limit);
-DECLARE_int32(TEST_tablet_replicas_per_core_limit);
+DECLARE_int32(tablet_replicas_per_gib_limit);
+DECLARE_int32(tablet_replicas_per_core_limit);
 
 namespace yb::master {
 

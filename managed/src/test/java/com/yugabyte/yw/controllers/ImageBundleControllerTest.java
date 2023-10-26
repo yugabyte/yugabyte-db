@@ -243,7 +243,7 @@ public class ImageBundleControllerTest extends FakeDBApplication {
     details.put("globalYbImage", "Testing Global YB Image");
     imageBundleBodyJson.put("details", details);
 
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.CloudImageBundleSetup);
     when(mockCommissioner.submit(any(TaskType.class), any(CloudImageBundleSetup.Params.class)))
         .thenReturn(fakeTaskUUID);
 

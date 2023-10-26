@@ -21,7 +21,7 @@
 #include <thread>
 
 #include <boost/lockfree/stack.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/util/mem_tracker.h"
 #include "yb/util/result.h"

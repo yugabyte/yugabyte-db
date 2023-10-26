@@ -238,6 +238,13 @@ public class CloudProviderEdit extends CloudTaskBase {
       provider.setName(editProviderReq.getName());
       updated = true;
     }
+
+    if (provider.getDetails().enableNodeAgent) {
+      // Enable Node-Agent is an internal property that should not be overwritten as part
+      // of edit provider operation.
+      editProviderReq.getDetails().enableNodeAgent = true;
+    }
+
     if (!provider.getDetails().equals(editProviderReq.getDetails())) {
       updated = true;
       provider.setDetails(editProviderReq.getDetails());

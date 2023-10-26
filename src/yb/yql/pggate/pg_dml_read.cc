@@ -100,15 +100,34 @@ inline void ApplyBound(
   FATAL_INVALID_ENUM_VALUE(SortingType, sorting_type);
 }
 
-// In some cases scan are sensitive to key values order. On DocDB side IN operator processes
-// based on column sort order and scan direction. It is necessary to preserve same order for
-// the constructed ybctids.
-[[nodiscard]] auto InOpOperandsProcessingRange(
-    size_t operands_count, SortingType sorting_type, bool is_forward_scan) {
-  auto operands_range = Range(narrow_cast<int>(operands_count));
-  return InOpInversesOperandOrder(sorting_type, is_forward_scan)
-      ? operands_range.Reversed() : operands_range;
-}
+// Helper class to generalize logic of ybctid's generation for regular and reverse iterators.
+class InOperatorYbctidsGenerator {
+ public:
+  using Ybctids = std::vector<std::string>;
+  using RangeComponents = std::vector<dockv::KeyEntryValue>;
+
+  InOperatorYbctidsGenerator(
+      Ybctids* ybctids,
+      RangeComponents* range_components,
+      size_t value_placeholder_idx,
+      std::reference_wrapper<const DocKeyBuilder> builder)
+      : ybctids_(*ybctids), range_components_(*range_components),
+        value_placeholder_(range_components_[value_placeholder_idx]), builder_(builder.get()) {}
+
+  template <class It>
+  void Generate(It it, const It& end) const {
+    for (; it != end; ++it) {
+      value_placeholder_ = *it;
+      ybctids_.push_back(builder_(range_components_).Encode().ToStringBuffer());
+    }
+  }
+
+ private:
+  Ybctids& ybctids_;
+  RangeComponents& range_components_;
+  dockv::KeyEntryValue& value_placeholder_;
+  const DocKeyBuilder& builder_;
+};
 
 } // namespace
 
@@ -709,7 +728,6 @@ Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
     const size_t placeholder_idx;
   };
 
-
   std::optional<InOperatorInfo> in_operator_info;
   std::vector<std::string> ybctids;
   for (auto i = bind_->num_hash_key_columns(); i < bind_->num_key_columns(); ++i) {
@@ -727,14 +745,19 @@ Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
   if (in_operator_info) {
     // Form ybctid for each argument in the IN operator.
     const auto& column = in_operator_info->column;
-    const auto count = column.SubExprsCount();
-    ybctids.reserve(count);
-    const auto idx_range = InOpOperandsProcessingRange(
-        count, column.desc().sorting_type(), read_req_->is_forward_scan());
-    auto& value_placeholder = range_components[in_operator_info->placeholder_idx];
-    for (auto idx : idx_range) {
-      value_placeholder = VERIFY_RESULT(column.BuildSubExprKeyColumnValue(idx));
-      ybctids.push_back(dockey_builder(range_components).Encode().ToStringBuffer());
+    const auto provider = column.BuildSubExprKeyColumnValueProvider();
+    ybctids.reserve(provider.size());
+    InOperatorYbctidsGenerator generator(
+        &ybctids, &range_components, in_operator_info->placeholder_idx, dockey_builder);
+    // In some cases scan are sensitive to key values order. On DocDB side IN operator processes
+    // based on column sort order and scan direction. It is necessary to preserve same order for
+    // the constructed ybctids.
+    auto begin = provider.cbegin();
+    auto end = provider.cend();
+    if (InOpInversesOperandOrder(column.desc().sorting_type(), read_req_->is_forward_scan())) {
+      generator.Generate(boost::make_reverse_iterator(end), boost::make_reverse_iterator(begin));
+    } else {
+      generator.Generate(begin, end);
     }
   } else {
     ybctids.push_back(dockey_builder(range_components).Encode().ToStringBuffer());

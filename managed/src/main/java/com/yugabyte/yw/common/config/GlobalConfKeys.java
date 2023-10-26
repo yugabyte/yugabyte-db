@@ -1094,7 +1094,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
   public static final ConfKeyInfo<Boolean> granularMetrics =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.granular_metrics",
-          ScopeType.UNIVERSE,
+          ScopeType.GLOBAL,
           "Granular level metrics",
           "View granular level metrics when user selects specific time period in a chart",
           ConfDataType.BooleanType,

@@ -105,6 +105,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   private TaskInfo taskInfo;
   private Role role;
   private ResourceDefinition rd1;
+  private UUID fakeTaskUUID;
 
   Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.BACKUP_RESTORE);
 
@@ -166,6 +167,9 @@ public class BackupsControllerTest extends FakeDBApplication {
 
     restore.setState(Restore.State.Created);
     restore.save();
+
+    fakeTaskUUID = buildTaskInfo(null, TaskType.CreateBackupSchedule);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
   }
 
   private JsonNode listBackups(UUID universeUUID) {
@@ -254,10 +258,8 @@ public class BackupsControllerTest extends FakeDBApplication {
   @Test
   public void testCreateBackup() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST21");
-    UUID fakeTaskUUID = UUID.randomUUID();
     CustomerConfigService mockCCS = mock(CustomerConfigService.class);
     when(mockCCS.getOrBadRequest(any(), any())).thenReturn(customerConfig);
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     when(mockBackupHelper.createBackupTask(any(), any())).thenCallRealMethod();
     ReflectionTestUtils.setField(mockBackupHelper, "customerConfigService", mockCCS);
     ReflectionTestUtils.setField(mockBackupHelper, "commissioner", mockCommissioner);
@@ -274,8 +276,6 @@ public class BackupsControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateScheduledBackupAsyncValidCron() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST22");
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
@@ -302,8 +302,6 @@ public class BackupsControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateBackupScheduleAsyncWithTimeUnit() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST25");
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
@@ -332,8 +330,6 @@ public class BackupsControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateScheduleBackupAsyncWithoutName() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST22");
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
@@ -358,8 +354,6 @@ public class BackupsControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateScheduleBackupAsyncWithoutTimeUnit() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST25");
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
@@ -411,8 +405,6 @@ public class BackupsControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateScheduleBackupAsyncWithDuplicateName() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST22");
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
@@ -454,8 +446,6 @@ public class BackupsControllerTest extends FakeDBApplication {
   @Test
   public void testCreateScheduledBackupAsyncInvalid() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST24");
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
     bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
@@ -494,8 +484,6 @@ public class BackupsControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateIncrementalScheduleBackupAsyncSuccess() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     ObjectNode bodyJson = Json.newObject();
     Universe universe =
         ModelFactory.createUniverse(
@@ -545,8 +533,6 @@ public class BackupsControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateIncrementalScheduleBackupAsyncWithOutFrequencyTimeUnit() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     ObjectNode bodyJson = Json.newObject();
     Universe universe =
         ModelFactory.createUniverse(
@@ -590,8 +576,6 @@ public class BackupsControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateIncrementalScheduleBackupAsyncOnNonYbcUniverse() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
     bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
@@ -661,8 +645,6 @@ public class BackupsControllerTest extends FakeDBApplication {
                 "Incremental backup frequency should be lower than full backup frequency."))
         .when(mockBackupHelper)
         .validateIncrementalScheduleFrequency(anyLong(), anyLong(), any());
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     ObjectNode bodyJson = Json.newObject();
     Universe universe =
         ModelFactory.createUniverse(
@@ -729,8 +711,6 @@ public class BackupsControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateIncrementalScheduleBackupAsyncWithBaseBackup() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     ObjectNode bodyJson = Json.newObject();
     Universe universe =
         ModelFactory.createUniverse(
@@ -759,9 +739,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   @Test
   public void testCreateBackupValidationFailed() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST25");
-    UUID fakeTaskUUID = UUID.randomUUID();
     when(mockBackupHelper.createBackupTask(any(), any())).thenCallRealMethod();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     doThrow(new PlatformServiceException(BAD_REQUEST, "error"))
         .when(mockBackupHelper)
         .validateBackupRequest(any(), any(), any());
@@ -799,9 +777,7 @@ public class BackupsControllerTest extends FakeDBApplication {
   @Test
   public void testCreateBackupWithoutTimeUnit() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST26");
-    UUID fakeTaskUUID = UUID.randomUUID();
     when(mockBackupHelper.createBackupTask(any(), any())).thenCallRealMethod();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
     bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
@@ -1046,8 +1022,6 @@ public class BackupsControllerTest extends FakeDBApplication {
     ArgumentCaptor<TaskType> taskType = ArgumentCaptor.forClass(TaskType.class);
     ArgumentCaptor<BackupTableParams> taskParams = ArgumentCaptor.forClass(BackupTableParams.class);
 
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Result result = restoreBackup(defaultUniverse.getUniverseUUID(), bodyJson, null);
     verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
     assertEquals(TaskType.BackupUniverse, taskType.getValue());
@@ -1088,8 +1062,6 @@ public class BackupsControllerTest extends FakeDBApplication {
     assertTrue(
         "Actual (approx) payload size " + aproxPayloadLength,
         aproxPayloadLength > maxReqSizeInBytes && aproxPayloadLength < maxReqSizeInBytes + 1000);
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Result result = restoreBackup(defaultUniverse.getUniverseUUID(), bodyJson, null);
     assertEquals(413, result.status());
     verify(mockCommissioner, never()).submit(any(), any());
@@ -1186,8 +1158,6 @@ public class BackupsControllerTest extends FakeDBApplication {
     ArgumentCaptor<BackupTableParams> taskParams = ArgumentCaptor.forClass(BackupTableParams.class);
 
     bodyJson.put("newOwner", "yugabyte");
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     result = restoreBackup(defaultUniverse.getUniverseUUID(), bodyJson, null);
     verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
     assertEquals(TaskType.BackupUniverse, taskType.getValue());
@@ -1210,12 +1180,10 @@ public class BackupsControllerTest extends FakeDBApplication {
     backup.transitionState(BackupState.Completed);
     List<String> backupUUIDList = new ArrayList<>();
     backupUUIDList.add(backup.getBackupUUID().toString());
-    UUID fakeTaskUUID = UUID.randomUUID();
     ObjectNode resultNode = Json.newObject();
     when(mockTaskManager.isDuplicateDeleteBackupTask(
             defaultCustomer.getUuid(), backup.getBackupUUID()))
         .thenReturn(false);
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     ArrayNode arrayNode = resultNode.putArray("backupUUID");
     for (String item : backupUUIDList) {
       arrayNode.add(item);
@@ -1239,12 +1207,10 @@ public class BackupsControllerTest extends FakeDBApplication {
     backup.transitionState(BackupState.Failed);
     List<String> backupUUIDList = new ArrayList<>();
     backupUUIDList.add(backup.getBackupUUID().toString());
-    UUID fakeTaskUUID = UUID.randomUUID();
     ObjectNode resultNode = Json.newObject();
     when(mockTaskManager.isDuplicateDeleteBackupTask(
             defaultCustomer.getUuid(), backup.getBackupUUID()))
         .thenReturn(false);
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     ArrayNode arrayNode = resultNode.putArray("backupUUID");
     for (String item : backupUUIDList) {
       arrayNode.add(item);
@@ -1272,9 +1238,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     backup.transitionState(state);
     List<String> backupUUIDList = new ArrayList<>();
     backupUUIDList.add(backup.getBackupUUID().toString());
-    UUID fakeTaskUUID = UUID.randomUUID();
     ObjectNode resultNode = Json.newObject();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     ArrayNode arrayNode = resultNode.putArray("backups");
     for (String item : backupUUIDList) {
       ObjectNode deleteBackupObject = Json.newObject();
@@ -1328,8 +1292,6 @@ public class BackupsControllerTest extends FakeDBApplication {
     backup.transitionState(BackupState.Completed);
     List<String> backupUUIDList = new ArrayList<>();
     backupUUIDList.add(backup.getBackupUUID().toString());
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     ObjectNode resultNode = Json.newObject();
     ArrayNode arrayNode = resultNode.putArray("backups");
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST6");
@@ -1362,7 +1324,6 @@ public class BackupsControllerTest extends FakeDBApplication {
 
     List<String> backupUUIDList = new ArrayList<>();
     backupUUIDList.add(backup.getBackupUUID().toString());
-    UUID fakeTaskUUID = UUID.randomUUID();
     ObjectNode resultNode = Json.newObject();
     when(mockTaskManager.isDuplicateDeleteBackupTask(
             defaultCustomer.getUuid(), backup.getBackupUUID()))
@@ -1912,10 +1873,8 @@ public class BackupsControllerTest extends FakeDBApplication {
     backup.transitionState(BackupState.Failed);
     List<String> backupUUIDList = new ArrayList<>();
     backupUUIDList.add(backup.getBackupUUID().toString());
-    UUID fakeTaskUUID = UUID.randomUUID();
     ReflectionTestUtils.setField(mockBackupHelper, "commissioner", mockCommissioner);
     when(mockBackupHelper.createDeleteBackupTasks(any(), any())).thenCallRealMethod();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     ObjectNode resultNode = Json.newObject();
     ArrayNode arrayNode = resultNode.putArray("backups");
     for (String item : backupUUIDList) {

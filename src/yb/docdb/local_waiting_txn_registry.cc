@@ -17,7 +17,6 @@
 #include <memory>
 
 #include <boost/optional/optional.hpp>
-#include <glog/logging.h>
 #include <glog/vlog_is_on.h>
 
 #include "yb/common/common_fwd.h"

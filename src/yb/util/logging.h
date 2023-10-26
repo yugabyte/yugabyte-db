@@ -320,8 +320,7 @@ std::ostream& operator<<(std::ostream &os, const PRIVATE_ThrottleMsg&);
 // There must be a LogPrefixUnlocked()/LogPrefixLocked() method available in the current
 // scope in order to use these macros.
 #define LOG_WITH_PREFIX_UNLOCKED(severity) LOG(severity) << LogPrefixUnlocked()
-#define VLOG_WITH_PREFIX_UNLOCKED(verboselevel) LOG_IF(INFO, VLOG_IS_ON(verboselevel)) \
-  << LogPrefixUnlocked()
+#define VLOG_WITH_PREFIX_UNLOCKED(verboselevel) VLOG(verboselevel) << LogPrefixUnlocked()
 
 // Same as the above, but obtain the lock.
 #define LOG_WITH_PREFIX(severity) LOG(severity) << LogPrefix()

@@ -7,6 +7,8 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
@@ -204,9 +206,6 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
           }
         });
 
-    // Put the gflag into xCluster info of the universe and persist it.
-    createXClusterInfoPersistTask();
-
     // If the gflags were manually set, persist the new target universe user intent without those
     // gflags. Otherwise, it means the gflags do not already exist in the conf files on the DB
     // nodes, and it should regenerate the conf files.
@@ -220,6 +219,26 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     } else {
       createGFlagsOverrideTasks(targetUniverse.getMasters(), ServerType.MASTER);
       createGFlagsOverrideTasks(targetUniverse.getTServersInPrimaryCluster(), ServerType.TSERVER);
+    }
+
+    // Put the gflag into xCluster info of the universe and persist it.
+    createXClusterInfoPersistTask();
+  }
+
+  protected void createPrecheckTasks(Universe universe, String newVersion) {
+    Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
+    Set<NodeDetails> allNodes = toOrderedSet(nodes);
+
+    // Preliminary checks for upgrades.
+    createCheckUpgradeTask(newVersion).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+
+    // PreCheck for Available Memory on tserver nodes.
+    long memAvailableLimit =
+        confGetter.getConfForScope(universe, UniverseConfKeys.dbMemAvailableLimit);
+    // No need to run the check if the minimum allowed is 0.
+    if (memAvailableLimit > 0) {
+      createAvailableMemoryCheck(allNodes, Util.AVAILABLE_MEMORY, memAvailableLimit)
+          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
     }
   }
 }

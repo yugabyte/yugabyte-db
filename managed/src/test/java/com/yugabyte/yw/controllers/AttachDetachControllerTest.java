@@ -46,6 +46,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.UniverseSpec;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.io.File;
 import java.nio.file.Files;
@@ -186,7 +187,7 @@ public class AttachDetachControllerTest extends FakeDBApplication {
 
   @Test
   public void testInvalidXClusterDetach() {
-    UUID taskUUID = UUID.randomUUID();
+    UUID taskUUID = buildTaskInfo(null, TaskType.EditXClusterConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
 
     // Set up simple xcluster config.

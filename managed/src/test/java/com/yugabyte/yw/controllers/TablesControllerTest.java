@@ -337,7 +337,7 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateCassandraTableWithValidParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.BackupTable);
     when(mockCommissioner.submit(
             ArgumentMatchers.any(TaskType.class),
             ArgumentMatchers.any(TableDefinitionTaskParams.class)))
@@ -523,7 +523,7 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testBulkImportWithValidParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.BackupTable);
     when(mockCommissioner.submit(
             ArgumentMatchers.any(TaskType.class), ArgumentMatchers.any(BulkImportParams.class)))
         .thenReturn(fakeTaskUUID);
@@ -681,7 +681,7 @@ public class TablesControllerTest extends FakeDBApplication {
     ArgumentCaptor<TaskType> taskType = ArgumentCaptor.forClass(TaskType.class);
 
     ArgumentCaptor<BackupTableParams> taskParams = ArgumentCaptor.forClass(BackupTableParams.class);
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.BackupTable);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Result result = doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson);
     verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
@@ -717,7 +717,7 @@ public class TablesControllerTest extends FakeDBApplication {
 
     ArgumentCaptor<BackupTableParams> taskParams = ArgumentCaptor.forClass(BackupTableParams.class);
 
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.BackupTable);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Result result = doRequestWithAuthTokenAndBody("PUT", url, user.createAuthToken(), bodyJson);
     verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
@@ -927,7 +927,7 @@ public class TablesControllerTest extends FakeDBApplication {
         new Http.RequestBuilder().method("DELETE").path("/api/customer/test/universe/test").build();
     RequestContext.put(TokenAuthenticator.USER, new UserWithFeatures().setUser(user));
     tablesController.commissioner = mockCommissioner;
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.BackupTable);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
 
     // Creating a fake table
@@ -1092,7 +1092,7 @@ public class TablesControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateTablespaces_HappyPath() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.BackupTable);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
 
     Provider provider = ModelFactory.awsProvider(customer);

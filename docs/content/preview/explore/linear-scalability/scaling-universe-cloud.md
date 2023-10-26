@@ -1,8 +1,8 @@
 ---
-title: Scale out a universe
+title: Scale out a universe in YugabyteDB Managed
 headerTitle: Scale out a universe
 linkTitle: Scale out a universe
-description: Scaling a universe in YugabyteDB.
+description: Scaling a universe in YugabyteDB Managed.
 headcontent: Horizontal scale-out and scale-in in YugabyteDB
 menu:
   preview:

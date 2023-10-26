@@ -17,6 +17,8 @@ import time
 from typing import Sequence, Union, Tuple, List, Set, Optional, Dict, Any
 
 from yugabyte.common_util import shlex_join
+from yugabyte import json_util
+
 
 REMOTE_BUILD_HOST_ENV_VAR = 'YB_REMOTE_BUILD_HOST'
 DEFAULT_UPSTREAM = 'origin'
@@ -147,9 +149,8 @@ def read_config_file() -> Optional[Dict[str, Any]]:
     if not os.path.exists(conf_file_path):
         logging.debug("Configuration file not found at %s", CONFIG_FILE_PATH)
         return None
-    with open(conf_file_path) as conf_file:
-        logging.debug("Reading configuratino file at %s", CONFIG_FILE_PATH)
-        return json.load(conf_file)
+    logging.debug("Reading configuration file at %s", CONFIG_FILE_PATH)
+    return json_util.read_json_file(conf_file_path, allow_comments=True)
 
 
 def apply_default_host_value(host: Optional[str]) -> str:
