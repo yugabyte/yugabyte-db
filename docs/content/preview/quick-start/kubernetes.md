@@ -244,7 +244,7 @@ $ kubectl --namespace yb-demo exec -it yb-tserver-0 -- sh -c "cd /home/yugabyte 
 ```
 
 ```output
-ysqlsh (11.2-YB-2.1.0.0-b0)
+ysqlsh (11.2-YB-{{< yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#
