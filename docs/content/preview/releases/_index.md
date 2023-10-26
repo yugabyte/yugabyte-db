@@ -13,9 +13,28 @@ cascade:
   unversioned: true
 ---
 
+This section describes the release support policy, versioning, and feature availability for YugabyteDB. You can also access releases and release notes for YugabyteDB and YugabyteDB Anywhere.
+
+-> For information on YugabyteDB Managed releases, refer to the [YugabyteDB Managed Change log](../yugabyte-cloud/release-notes/).
+
+-> For information on YugabyteDB Voyager releases, refer to the [YugabyteDB Voyager release notes](../yugabyte-voyager/release-notes/).
+
 ## Current supported releases
 
-The supported release series include:
+<ul class="nav yb-pills">
+  <li>
+    <a href="release-notes/">
+        <img src="/icons/database.svg" alt="Server Icon"><span>YugabyteDB</span>
+    </a>
+  </li>
+  <li>
+    <a href="yba-releases/">
+        <img src="/icons/server.svg" alt="Server Icon"><span>YugabyteDB Anywhere</span>
+    </a>
+  </li>
+</ul>
+
+The supported release series for YugabyteDB and YugabyteDB Anywhere include:
 
 * LTS and STS: Supported for production deployments.
 * Preview: Supported for development and testing only.
