@@ -643,10 +643,14 @@ set_cmake_build_type_and_compiler_type() {
 
   if [[ -z ${build_type:-} ]]; then
     if [[ ${YB_LINKING_TYPE:-} == *-lto ]]; then
-      log "Setting build type to 'release' by default (YB_LINKING_TYPE=${YB_LINKING_TYPE})"
+      if [[ ${yb_set_build_type_quietly:-} != "true" ]]; then
+        log "Setting build type to 'release' by default (YB_LINKING_TYPE=${YB_LINKING_TYPE})"
+      fi
       build_type=release
     else
-      log "Setting build type to 'debug' by default"
+      if [[ ${yb_set_build_type_quietly:-} != "true" ]]; then
+        log "Setting build type to 'debug' by default"
+      fi
       build_type=debug
     fi
   fi
