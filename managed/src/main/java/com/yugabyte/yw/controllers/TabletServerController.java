@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -55,10 +56,11 @@ public class TabletServerController extends AuthenticatedController {
    * @return Result tablet server information
    */
   @ApiOperation(
-      value = "List all tablet servers",
+      value = "YbaApi Internal. List all tablet servers",
       nickname = "listTabletServers",
       response = Object.class,
       responseContainer = "Map")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
