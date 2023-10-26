@@ -147,6 +147,7 @@ int32_t RpcController::call_id() const {
 std::string RpcController::CallStateDebugString() const {
   std::lock_guard l(lock_);
   if (call_) {
+    call_->QueueDumpConnectionState();
     return call_->DebugString();
   }
   return "call not set";

@@ -20,6 +20,7 @@
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/call_data.h"
+#include "yb/rpc/reactor_thread_role.h"
 
 namespace yb {
 namespace rpc {
@@ -47,7 +48,7 @@ class BinaryCallParser {
   // (or any of its ancestors) exceeds soft memory limit.
   Result<ProcessCallsResult> Parse(const rpc::ConnectionPtr& connection, const IoVecs& data,
                                    ReadBufferFull read_buffer_full,
-                                   const MemTrackerPtr* tracker_for_throttle);
+                                   const MemTrackerPtr* tracker_for_throttle) ON_REACTOR_THREAD;
 
  private:
   MemTrackerPtr buffer_tracker_;

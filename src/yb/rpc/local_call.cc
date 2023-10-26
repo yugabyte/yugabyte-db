@@ -31,7 +31,7 @@ namespace rpc {
 using std::shared_ptr;
 
 LocalOutboundCall::LocalOutboundCall(
-    const RemoteMethod* remote_method,
+    const RemoteMethod& remote_method,
     const shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
     AnyMessagePtr response_storage, RpcController* controller,
     std::shared_ptr<RpcMetrics> rpc_metrics, ResponseCallback callback,

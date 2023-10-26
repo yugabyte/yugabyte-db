@@ -67,7 +67,7 @@ void ConnectionContextWithQueue::Enqueue(std::shared_ptr<QueueableInboundCall> c
     first_without_reply_.store(call.get(), std::memory_order_release);
   }
   if (size <= max_concurrent_calls_) {
-    reactor->messenger()->Handle(call, Queue::kTrue);
+    reactor->messenger().Handle(call, Queue::kTrue);
   }
 }
 
@@ -99,7 +99,7 @@ void ConnectionContextWithQueue::CallProcessed(InboundCall* call) {
   --replies_being_sent_;
   if (calls_queue_.size() >= max_concurrent_calls_) {
     auto call_ptr = calls_queue_[max_concurrent_calls_ - 1];
-    reactor->messenger()->Handle(call_ptr, Queue::kTrue);
+    reactor->messenger().Handle(call_ptr, Queue::kTrue);
   }
   if (Idle() && idle_listener_) {
     idle_listener_();
@@ -110,19 +110,17 @@ void ConnectionContextWithQueue::CallProcessed(InboundCall* call) {
   }
 }
 
-void ConnectionContextWithQueue::QueueResponse(const ConnectionPtr& conn,
-                                               InboundCallPtr call) {
+Status ConnectionContextWithQueue::QueueResponse(const ConnectionPtr& conn, InboundCallPtr call) {
   QueueableInboundCall* queueable_call = down_cast<QueueableInboundCall*>(call.get());
   queueable_call->SetHasReply();
   if (queueable_call == first_without_reply_.load(std::memory_order_acquire)) {
-    auto scheduled = conn->reactor()->ScheduleReactorTask(flush_outbound_queue_task_);
-    LOG_IF(WARNING, !scheduled) << "Failed to schedule flush outbound queue";
+    return conn->reactor()->ScheduleReactorTask(flush_outbound_queue_task_);
   }
+  return Status::OK();
 }
 
 void ConnectionContextWithQueue::FlushOutboundQueue(Connection* conn) {
-  DCHECK(conn->reactor()->IsCurrentThread());
-
+  conn->reactor()->CheckCurrentThread();
   const size_t begin = replies_being_sent_;
   size_t end = begin;
   for (;;) {
@@ -151,10 +149,11 @@ void ConnectionContextWithQueue::FlushOutboundQueue(Connection* conn) {
   }
 }
 
-void ConnectionContextWithQueue::AssignConnection(const ConnectionPtr& conn) {
+Status ConnectionContextWithQueue::AssignConnection(const ConnectionPtr& conn) {
   flush_outbound_queue_task_ = MakeFunctorReactorTask(
       std::bind(&ConnectionContextWithQueue::FlushOutboundQueue, this, conn.get()), conn,
       SOURCE_LOCATION());
+  return Status::OK();
 }
 
 } // namespace rpc

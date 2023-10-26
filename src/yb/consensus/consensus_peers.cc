@@ -187,8 +187,11 @@ Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
         LOG_WITH_PREFIX(INFO) << Format(
             "Found a RPC call in stuck state - timeout: $0, last_rpc_start_time: $1, "
             "stuck threshold: $2, force recover: $3, call state: $4",
-            timeout, last_rpc_start_time, stuck_threshold,
-            FLAGS_consensus_force_recover_from_stuck_peer_call, controller_.CallStateDebugString());
+            /* $0 */ timeout,
+            /* $1 */ ToStringRelativeToNow(last_rpc_start_time, now),
+            /* $2 */ stuck_threshold,
+            /* $3 */ FLAGS_consensus_force_recover_from_stuck_peer_call,
+            /* $4 */ controller_.CallStateDebugString());
         if (FLAGS_consensus_force_recover_from_stuck_peer_call) {
           controller_.MarkCallAsFailed();
         }

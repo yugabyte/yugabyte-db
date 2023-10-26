@@ -182,7 +182,7 @@ void Proxy::AsyncLocalCall(
     RpcController* controller, ResponseCallback callback,
     const bool force_run_callback_on_reactor) {
   controller->call_ = std::make_shared<LocalOutboundCall>(
-      method, outbound_call_metrics_, resp, controller, context_->rpc_metrics(),
+      *method, outbound_call_metrics_, resp, controller, context_->rpc_metrics(),
       std::move(callback),
       GetCallbackThreadPool(force_run_callback_on_reactor, controller->invoke_callback_mode()));
   if (!PrepareCall(req, controller)) {
@@ -197,7 +197,7 @@ void Proxy::AsyncLocalCall(
   }
   auto call = controller->call_.get();
   call->SetQueued();
-  call->SetSent();
+  auto ignored [[maybe_unused]] = call->SetSent();  // NOLINT
   // If currrent thread is RPC worker thread, it is ok to call the handler in the current thread.
   // Otherwise, enqueue the call to be handled by the service's handler thread.
   const shared_ptr<LocalYBInboundCall>& local_call =
@@ -211,10 +211,12 @@ void Proxy::AsyncRemoteCall(
     const RemoteMethod* method, std::shared_ptr<const OutboundMethodMetrics> method_metrics,
     AnyMessageConstPtr req, AnyMessagePtr resp, RpcController* controller,
     ResponseCallback callback, const bool force_run_callback_on_reactor) {
-  controller->call_ = std::make_shared<OutboundCall>(
-      method, outbound_call_metrics_, std::move(method_metrics), resp, controller,
+  // Do not use make_shared to allow for long-lived weak OutboundCall pointers without wasting
+  // memory.
+  controller->call_ = std::shared_ptr<OutboundCall>(new OutboundCall(
+      *method, outbound_call_metrics_, std::move(method_metrics), resp, controller,
       context_->rpc_metrics(), std::move(callback),
-      GetCallbackThreadPool(force_run_callback_on_reactor, controller->invoke_callback_mode()));
+      GetCallbackThreadPool(force_run_callback_on_reactor, controller->invoke_callback_mode())));
   if (!PrepareCall(req, controller)) {
     return;
   }

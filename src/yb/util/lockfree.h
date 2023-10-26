@@ -51,6 +51,12 @@ class MPSCQueue {
     return result;
   }
 
+  void Drain() {
+    while (auto* entry = Pop()) {
+      delete entry;
+    }
+  }
+
  private:
   void PreparePop() {
     T* current = push_head_.exchange(nullptr, std::memory_order_acq_rel);
@@ -142,6 +148,66 @@ class LockFreeStack {
   } __attribute__((aligned(16)));
 
   boost::atomic<Head> head_{Head{nullptr, 0}};
+};
+
+// A weak pointer that can only be written to once, but can be read and written in a lock-free way.
+template<class T>
+class WriteOnceWeakPtr {
+ public:
+  WriteOnceWeakPtr() {}
+
+  explicit WriteOnceWeakPtr(const std::shared_ptr<T>& p)
+      : state_(p ? State::kSet : State::kUnset),
+        weak_ptr_(p) {
+  }
+
+  // Set the pointer to the given value. Return true if successful. Setting the value to a null
+  // pointer is never considered successful.
+  MUST_USE_RESULT bool Set(const std::shared_ptr<T>& p) {
+    if (!p)
+      return false;
+    auto expected_state = State::kUnset;
+    if (!state_.compare_exchange_strong(
+        expected_state, State::kSetting, std::memory_order_acq_rel)) {
+      return false;
+    }
+    // Only one thread will ever get here.
+    weak_ptr_ = p;
+    // Use sequential consistency here to prevent unexpected reorderings of future operations before
+    // this one.
+    state_ = State::kSet;
+    return true;
+  }
+
+  std::shared_ptr<T> lock() const {
+    return IsInitialized() ? weak_ptr_.lock() : nullptr;
+  }
+
+  // This always returns a const T*, because the object is not guaranteed to exist, and the return
+  // value of this function should only be used for logging/debugging.
+  const T* raw_ptr_for_logging() const {
+    // This uses the fact that the weak pointer stores the raw pointer as its first word, and avoids
+    // storing the raw pointer separately. This is true for libc++ and libstdc++.
+    return IsInitialized() ? *reinterpret_cast<const T* const*>(&weak_ptr_) : nullptr;
+  }
+
+  bool IsInitialized() const {
+    return state_.load(std::memory_order_acquire) == State::kSet;
+  }
+
+ private:
+  enum class State : uint8_t {
+    kUnset,
+    kSetting,
+    kSet
+  };
+
+  std::atomic<State> state_{State::kUnset};
+  std::weak_ptr<T> weak_ptr_;
+
+  static_assert(sizeof(weak_ptr_) == 2 * sizeof(void*));
+
+  DISALLOW_COPY_AND_ASSIGN(WriteOnceWeakPtr);
 };
 
 } // namespace yb

@@ -37,6 +37,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/util/test_util.h"
+#include "yb/util/format.h"
 
 using namespace std::literals;
 
@@ -83,6 +84,14 @@ TEST(TestMonoTime, TestComparison) {
   ASSERT_TRUE(mil.LessThan(sec));
   ASSERT_TRUE(mil.MoreThan(nano));
   ASSERT_TRUE(sec.MoreThan(mil));
+
+  ASSERT_TRUE(IsInitialized(CoarseMonoClock::Now()));
+  ASSERT_FALSE(IsInitialized(CoarseTimePoint::min()));
+  ASSERT_TRUE(IsInitialized(CoarseTimePoint::max()));
+
+  ASSERT_FALSE(IsExtremeValue(CoarseMonoClock::Now()));
+  ASSERT_TRUE(IsExtremeValue(CoarseTimePoint::min()));
+  ASSERT_TRUE(IsExtremeValue(CoarseTimePoint::max()));
 }
 
 TEST(TestMonoTime, TestTimeVal) {
@@ -267,6 +276,28 @@ TEST(TestMonoTime, TestSubtractDelta) {
   start_copy.SubtractDelta(delta);
   ASSERT_EQ(start_copy, start - delta);
   ASSERT_EQ(start_copy + delta, start);
+}
+
+TEST(TestMonoTime, ToStringRelativeToNow) {
+  auto now = CoarseMonoClock::Now();
+
+  auto t = now + 2s;
+  ASSERT_EQ(Format("$0 (2.000s from now)", t), ToStringRelativeToNow(t, now));
+  ASSERT_EQ("2.000s from now", ToStringRelativeToNowOnly(t, now));
+
+  t = now;
+  ASSERT_EQ(Format("$0 (now)", t), ToStringRelativeToNow(t, now));
+  ASSERT_EQ("now", ToStringRelativeToNowOnly(t, now));
+
+  t = now - 2s;
+  ASSERT_EQ(Format("$0 (2.000s ago)", t), ToStringRelativeToNow(t, now));
+  ASSERT_EQ("2.000s ago", ToStringRelativeToNowOnly(t, now));
+
+  ASSERT_EQ("-inf", ToStringRelativeToNow(CoarseTimePoint::min(), now));
+  ASSERT_EQ("+inf", ToStringRelativeToNow(CoarseTimePoint::max(), now));
+
+  ASSERT_EQ(ToString(t), ToStringRelativeToNow(t, CoarseTimePoint::min()));
+  ASSERT_EQ(ToString(t), ToStringRelativeToNow(t, CoarseTimePoint::max()));
 }
 
 } // namespace yb

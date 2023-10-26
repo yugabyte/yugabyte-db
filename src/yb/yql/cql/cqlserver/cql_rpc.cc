@@ -130,7 +130,7 @@ Status CQLConnectionContext::HandleCall(
     return s;
   }
 
-  reactor->messenger()->Handle(call, rpc::Queue::kTrue);
+  reactor->messenger().Handle(call, rpc::Queue::kTrue);
 
   return Status::OK();
 }

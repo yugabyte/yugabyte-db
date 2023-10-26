@@ -202,13 +202,10 @@ RedisInboundCall::~RedisInboundCall() {
   if (quit_.load(std::memory_order_acquire)) {
     rpc::ConnectionPtr conn = connection();
     rpc::Reactor* reactor = conn->reactor();
-    auto scheduled = reactor->ScheduleReactorTask(
-        MakeFunctorReactorTask(std::bind(&rpc::Reactor::DestroyConnection,
-                                         reactor,
-                                         conn.get(),
-                                         status),
-                               conn, SOURCE_LOCATION()));
-    LOG_IF(WARNING, !scheduled) << "Failed to schedule destroy";
+    auto scheduling_status = reactor->ScheduleReactorTask(MakeFunctorReactorTask(
+        std::bind(&rpc::Reactor::DestroyConnection, reactor, conn.get(), status), conn,
+        SOURCE_LOCATION()));
+    LOG_IF(DFATAL, !scheduling_status.ok()) << "Failed to schedule destroy";
   }
 }
 
