@@ -353,6 +353,7 @@ void XClusterConsumer::UpdateInMemoryState(
   stream_schema_version_map_.clear();
   stream_colocated_schema_version_map_.clear();
   stream_to_schema_version_.clear();
+  min_schema_version_map_.clear();
 
   for (const auto& producer_map : DCHECK_NOTNULL(consumer_registry)->producer_map()) {
     const auto& producer_entry_pb = producer_map.second;
@@ -396,6 +397,12 @@ void XClusterConsumer::UpdateInMemoryState(
           schema_version_map[schema_versions.old_producer_schema_version()] =
               schema_versions.old_consumer_schema_version();
         }
+
+        auto min_schema_version = schema_versions.old_consumer_schema_version() > 0 ?
+            schema_versions.old_consumer_schema_version() :
+            schema_versions.current_consumer_schema_version();
+        min_schema_version_map_[std::make_pair(
+            stream_entry_pb.consumer_table_id(), kColocationIdNotSet)] = min_schema_version;
       }
 
       for (const auto& [colocated_id, versions] : stream_entry_pb.colocated_schema_versions()) {
@@ -412,6 +419,11 @@ void XClusterConsumer::UpdateInMemoryState(
           schema_version_map[versions.old_producer_schema_version()] =
               versions.old_consumer_schema_version();
         }
+
+        auto min_schema_version = versions.old_consumer_schema_version() > 0 ?
+            versions.old_consumer_schema_version() : versions.current_consumer_schema_version();
+        min_schema_version_map_[std::make_pair(
+            stream_entry_pb.consumer_table_id(), colocated_id)] = min_schema_version;
       }
 
       for (const auto& tablet_entry : stream_entry_pb.consumer_producer_tablet_map()) {
@@ -453,6 +465,21 @@ Result<cdc::ConsumerTabletInfo> XClusterConsumer::GetConsumerTableInfo(
   }
   auto it = index_by_tablet.find(producer_tablet_id);
   return it->consumer_tablet_info;
+}
+
+SchemaVersion XClusterConsumer::GetMinXClusterSchemaVersion(const TableId& table_id,
+    const ColocationId& colocation_id) {
+  SharedLock read_lock_master(master_data_mutex_);
+  auto iter = min_schema_version_map_.find(make_pair(table_id, colocation_id));
+  if (iter != min_schema_version_map_.end()) {
+    VLOG_WITH_FUNC(4) << Format("XCluster min schema version for $0,$1:$2",
+        table_id, colocation_id, iter->second);
+    return iter->second;
+  }
+
+  VLOG_WITH_FUNC(4) << Format("XCluster tableid,colocationid pair not found in registry: $0,$1",
+      table_id, colocation_id);
+  return cdc::kInvalidSchemaVersion;
 }
 
 void XClusterConsumer::TriggerPollForNewTablets() {

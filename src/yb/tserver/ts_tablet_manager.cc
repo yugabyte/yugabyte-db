@@ -1582,7 +1582,9 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       .waiting_txn_registry = waiting_txn_registry_.get(),
       .wait_queue_pool = waiting_txn_pool_.get(),
       .full_compaction_pool = full_compaction_pool(),
-      .post_split_compaction_added = ts_post_split_compaction_added_
+      .post_split_compaction_added = ts_post_split_compaction_added_,
+      .get_min_xcluster_schema_version =
+          std::bind(&TabletServer::GetMinXClusterSchemaVersion, server_, _1, _2)
     };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,

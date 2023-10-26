@@ -474,6 +474,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Returns a list of all tables colocated on this tablet.
   std::vector<TableId> GetAllColocatedTables();
 
+  // Gets a map of colocated tables UUIds with their colocation ids on this tablet.
+  std::unordered_map<TableId, ColocationId> GetAllColocatedTablesWithColocationId() const;
+
   // Set / get the remote bootstrap / tablet data state.
   void set_tablet_data_state(TabletDataState state);
   TabletDataState tablet_data_state() const;
