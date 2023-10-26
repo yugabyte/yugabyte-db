@@ -17092,35 +17092,6 @@
         "tags" : [ "Customer Configuration" ]
       }
     },
-    "/api/v1/customers/{cUUID}/cost" : {
-      "get" : {
-        "description" : "",
-        "operationId" : "getUniverseCostForAll",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/UniverseResourceDetails"
-              },
-              "type" : "array"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Get a cost estimate for all universes",
-        "tags" : [ "Universe information" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/create_backup_schedule_async" : {
       "post" : {
         "description" : "",
@@ -21063,7 +21034,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List universes",
+        "summary" : "Available since YBA version 2.2.0.0. List universes",
         "tags" : [ "Universe management" ]
       }
     },
@@ -21154,7 +21125,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete a universe",
+        "summary" : "Available since YBA version 2.2.0.0. Delete a universe",
         "tags" : [ "Universe management" ]
       },
       "get" : {
@@ -21184,7 +21155,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get a universe",
+        "summary" : "Available since YBA version 2.2.0.0. Get a universe",
         "tags" : [ "Universe management" ]
       }
     },
@@ -21442,84 +21413,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Configure alerts for a universe",
+        "summary" : "Available since YBA version 2.2.0.0. Configure alerts for a universe",
         "tags" : [ "Universe management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/cost" : {
-      "get" : {
-        "description" : "",
-        "operationId" : "getUniverseCost",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/UniverseResourceDetails"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Get a cost estimate for a universe",
-        "tags" : [ "Universe information" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/create_db_credentials" : {
-      "post" : {
-        "description" : "",
-        "operationId" : "createUserInDB",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "The database user to create",
-          "in" : "body",
-          "name" : "DatabaseUserFormData",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/DatabaseUserFormData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Create a database user for a universe",
-        "tags" : [ "Universe database management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/health_check" : {
@@ -21553,7 +21448,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Run a universe health check",
+        "summary" : "Available since YBA version 2.2.0.0. Return results for the last health check",
         "tags" : [ "Universe information" ]
       }
     },
@@ -21671,7 +21566,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get IP address of a universe's master leader",
+        "summary" : "Available since YBA version 2.2.0.0. Get IP address of a universe's master leader",
         "tags" : [ "Universe information" ]
       }
     },
@@ -21703,78 +21598,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get live queries for a universe",
-        "tags" : [ "Universe information" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/mark_helm3_compatible" : {
-      "put" : {
-        "description" : "",
-        "operationId" : "setUniverseHelm3Compatible",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Flag a universe as Helm 3-compatible",
-        "tags" : [ "Universe management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/master_infos" : {
-      "get" : {
-        "description" : "",
-        "operationId" : "getMasterInfos",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/MasterInfo"
-              },
-              "type" : "array"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Get master information list",
+        "summary" : "Available since YBA version 2.4.0.0. Get live queries for a universe",
         "tags" : [ "Universe information" ]
       }
     },
@@ -21806,7 +21630,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List a master node's addresses",
+        "summary" : "Available since YBA version 2.2.0.0. List a master node's addresses",
         "tags" : [ "Universe node metadata (metamaster)" ]
       }
     },
@@ -21843,91 +21667,6 @@
         } ],
         "summary" : "Available since YBA version 2.21.1.0. Lists all master nodes details",
         "tags" : [ "Universe node metadata (metamaster)" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/multi_table_backup" : {
-      "put" : {
-        "description" : "",
-        "operationId" : "createMultiTableBackup",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "Table backup data to be created",
-          "in" : "body",
-          "name" : "Table backup",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/MultiTableBackupRequestParams"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "If requested schedule backup.",
-            "schema" : {
-              "$ref" : "#/definitions/Schedule"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Create a multi-table backup",
-        "tags" : [ "Backups", "Table management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/namespaces" : {
-      "get" : {
-        "description" : "Get a list of all namespaces in the specified universe",
-        "operationId" : "getAllNamespaces",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "default" : false,
-          "in" : "query",
-          "name" : "includeSystemNamespaces",
-          "required" : false,
-          "type" : "boolean"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/NamespaceInfoResp"
-              },
-              "type" : "array"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "List all namespaces",
-        "tags" : [ "Table management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/need_bootstrap" : {
@@ -22058,7 +21797,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Pause a universe",
+        "summary" : "Available since YBA version 2.6.0.0. Pause a universe",
         "tags" : [ "Universe management" ]
       }
     },
@@ -22288,7 +22027,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get query distribution improvement suggestion for a universe",
+        "summary" : "WARNING: This is a preview API that could change. Get query distribution improvement suggestion for a universe",
         "tags" : [ "Universe performance suggestions" ]
       }
     },
@@ -22320,7 +22059,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Return list of hash indexes",
+        "summary" : "WARNING: This is a preview API that could change. Return list of hash indexes",
         "tags" : [ "Universe performance suggestions" ]
       }
     },
@@ -22352,7 +22091,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List a REDIS server's addresses",
+        "summary" : "Available since YBA version 2.2.0.0. List a REDIS server's addresses",
         "tags" : [ "Universe node metadata (metamaster)" ]
       }
     },
@@ -22388,51 +22127,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Resume a paused universe",
+        "summary" : "Available since YBA version 2.6.0.0. Resume a paused universe",
         "tags" : [ "Universe management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/run_query" : {
-      "post" : {
-        "description" : "Runs a YSQL query. Only valid when the platform is running in `OSS` mode.",
-        "operationId" : "runYsqlQueryUniverse",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "in" : "body",
-          "name" : "RunQueryFormData",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/RunQueryFormData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "object"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Run a YSQL query in a universe",
-        "tags" : [ "Universe database management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/set_key" : {
@@ -22467,43 +22163,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Set a universe's key",
-        "tags" : [ "Universe management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/setup_universe_2dc" : {
-      "put" : {
-        "description" : "",
-        "operationId" : "resetUniverseVersion",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Reset universe version",
+        "summary" : "Available since YBA version 2.2.0.0. Set a universe's key",
         "tags" : [ "Universe management" ]
       }
     },
@@ -22539,7 +22199,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Reset slow queries for a universe",
+        "summary" : "Available since YBA version 2.6.0.0. Reset slow queries for a universe",
         "tags" : [ "Universe information" ]
       },
       "get" : {
@@ -22569,7 +22229,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get slow queries for a universe",
+        "summary" : "Available since YBA version 2.6.0.0. Get slow queries for a universe",
         "tags" : [ "Universe information" ]
       }
     },
@@ -22640,7 +22300,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get a universe's status",
+        "summary" : "Available since YBA version 2.2.0.0. Get a universe's status",
         "tags" : [ "Universe information" ]
       }
     },
@@ -22838,326 +22498,10 @@
         "tags" : [ "Support Bundle management" ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/tables" : {
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/universe_resources" : {
       "get" : {
-        "description" : "Get a list of all tables in the specified universe",
-        "operationId" : "getAllTables",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "default" : false,
-          "in" : "query",
-          "name" : "includeParentTableInfo",
-          "required" : false,
-          "type" : "boolean"
-        }, {
-          "default" : false,
-          "in" : "query",
-          "name" : "excludeColocatedTables",
-          "required" : false,
-          "type" : "boolean"
-        }, {
-          "default" : false,
-          "in" : "query",
-          "name" : "includeColocatedParentTables",
-          "required" : false,
-          "type" : "boolean"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/TableInfoResp"
-              },
-              "type" : "array"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "List all tables",
-        "tags" : [ "Table management" ]
-      },
-      "post" : {
-        "description" : "",
-        "operationId" : "createTable",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "Table definition to be created",
-          "in" : "body",
-          "name" : "Table",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/TableDefinitionTaskParams"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTask"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Create a YugabyteDB table",
-        "tags" : [ "Table management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/tables/{tableUUID}" : {
-      "delete" : {
-        "description" : "",
-        "operationId" : "dropTable",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "tableUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTask"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Drop a YugabyteDB table",
-        "tags" : [ "Table management" ]
-      },
-      "get" : {
-        "description" : "",
-        "operationId" : "describeTable",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "tableUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/TableDefinitionTaskParams"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Describe a table",
-        "tags" : [ "Table management" ]
-      },
-      "put" : {
-        "description" : "",
-        "operationId" : "alterTable",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "tableUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "additionalProperties" : {
-                "type" : "object"
-              },
-              "type" : "object"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Alter a YugabyteDB table",
-        "tags" : [ "Table management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/tables/{tableUUID}/bulk_import" : {
-      "put" : {
-        "description" : "Bulk import data into the specified table. This is currently AWS-only.",
-        "operationId" : "bulkImportData",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "tableUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "Bulk data to be imported",
-          "in" : "body",
-          "name" : "Bulk import",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/BulkImportParams"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTask"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Bulk import data",
-        "tags" : [ "Table management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/tables/{tableUUID}/create_backup" : {
-      "put" : {
-        "description" : "",
-        "operationId" : "createSingleTableBackup",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "tableUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "Backup data to be created",
-          "in" : "body",
-          "name" : "Backup",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/BackupTableParams"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTask"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Create a single-table backup",
-        "tags" : [ "Table management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/tablespaces" : {
-      "get" : {
-        "description" : "Get a list of all tablespaces of a given universe",
-        "operationId" : "getAllTableSpaces",
+        "description" : "Expects UniverseDefinitionTaskParams in request body and calculates the resource estimate for NodeDetailsSet in that.",
+        "operationId" : "getUniverseResources",
         "parameters" : [ {
           "format" : "uuid",
           "in" : "path",
@@ -23175,125 +22519,14 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "items" : {
-                "$ref" : "#/definitions/TableSpaceInfo"
-              },
-              "type" : "array"
+              "$ref" : "#/definitions/UniverseResourceDetails"
             }
           }
         },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List all tablespaces",
-        "tags" : [ "Table management" ]
-      },
-      "post" : {
-        "description" : "",
-        "operationId" : "createTableSpaces",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "in" : "body",
-          "name" : "CreateTableSpacesRequest",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/CreateTablespaceParams"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTask"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Create tableSpaces",
-        "tags" : [ "Table management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/tablet-servers" : {
-      "get" : {
-        "description" : "",
-        "operationId" : "listTabletServers",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "additionalProperties" : {
-                "type" : "object"
-              },
-              "type" : "object"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "List all tablet servers information",
-        "tags" : [ "Tablet server management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/trigger_health_check" : {
-      "get" : {
-        "description" : "Trigger a universe health check and return the trigger time.",
-        "operationId" : "triggerHealthCheck",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/TriggerHealthCheckResult"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Trigger a universe health check",
+        "summary" : "Available since YBA version 2.20.0.0. Get a resource usage estimate for a universe",
         "tags" : [ "Universe information" ]
       }
     },
@@ -23325,7 +22558,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Return list of each unused index across the universe",
+        "summary" : "WARNING: This is a preview API that could change. Return list of each unused index across the universe",
         "tags" : [ "Universe performance suggestions" ]
       }
     },
@@ -23366,52 +22599,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Set a universe's backup flag",
+        "summary" : "Available since YBA version 2.2.0.0. Set a universe's backup flag",
         "tags" : [ "Universe management", "Backups" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/update_db_credentials" : {
-      "post" : {
-        "description" : "",
-        "operationId" : "setDatabaseCredentials",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "The database credentials",
-          "in" : "body",
-          "name" : "DatabaseSecurityFormData",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/DatabaseSecurityFormData"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Set a universe's database credentials",
-        "tags" : [ "Universe database management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/update_lb_config" : {
@@ -23446,7 +22635,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Update load balancer config",
+        "summary" : "WARNING: This is a preview API that could change. Update load balancer config",
         "tags" : [ "Universe management" ]
       }
     },
@@ -24124,7 +23313,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List a YQL server's addresses",
+        "summary" : "Available since YBA version 2.2.0.0. List a YQL server's addresses",
         "tags" : [ "Universe node metadata (metamaster)" ]
       }
     },
@@ -24156,46 +23345,8 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List a YSQL server's addresses",
+        "summary" : "Available since YBA version 2.2.0.0. List a YSQL server's addresses",
         "tags" : [ "Universe node metadata (metamaster)" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/universes/{uniUUID}/{nodeName}/download_logs" : {
-      "get" : {
-        "description" : "Downloads the log files from a given node.",
-        "operationId" : "downloadNodeLogs",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "uniUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "path",
-          "name" : "nodeName",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "produces" : [ "application/x-compressed" ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "type" : "string"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Download a node's logs",
-        "tags" : [ "Universe information" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{univUUID}/configure/ycql" : {
@@ -24238,7 +23389,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Configure YCQL",
+        "summary" : "WARNING: This is a preview API that could change. Configure YCQL",
         "tags" : [ "Universe database management" ]
       }
     },
@@ -24282,7 +23433,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Configure YSQL",
+        "summary" : "WARNING: This is a preview API that could change. Configure YSQL",
         "tags" : [ "Universe database management" ]
       }
     },
@@ -25329,30 +24480,6 @@
         "tags" : [ "Instance types" ]
       }
     },
-    "/api/v1/metadata/yql_data_types" : {
-      "get" : {
-        "description" : "Get a list of all defined column types.",
-        "operationId" : "getYQLDataTypes",
-        "parameters" : [ ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "items" : {
-                "enum" : [ "TINYINT", "SMALLINT", "INT", "BIGINT", "VARCHAR", "BOOLEAN", "FLOAT", "DOUBLE_PRECISION", "BLOB", "TIMESTAMP", "DECIMAL", "VARINT", "INET", "LIST", "MAP", "SET", "UUID", "TIMEUUID", "FROZEN", "DATE", "TIME", "JSONB", "USER_DEFINED_TYPE" ],
-                "type" : "string"
-              },
-              "type" : "array"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "List column types",
-        "tags" : [ "Table management" ]
-      }
-    },
     "/api/v1/node_agents/download" : {
       "get" : {
         "description" : "",
@@ -25618,10 +24745,6 @@
     "name" : "Session management"
   }, {
     "name" : "Support Bundle management"
-  }, {
-    "name" : "Table management"
-  }, {
-    "name" : "Tablet server management"
   }, {
     "name" : "Universe Upgrades Management"
   }, {
