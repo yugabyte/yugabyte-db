@@ -40,7 +40,7 @@ const RBACAuthenticatedArea = (props) => {
       setRuntimeConfigLoaded(true);
     },
     onError: (resp) => {
-      setIsRbacEnabled(resp.response.status === 401);
+      setIsRbacEnabled(resp?.response?.status === 401);
       setRuntimeConfigLoaded(true);
     }
   });

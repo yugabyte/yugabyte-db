@@ -123,7 +123,7 @@ export default class NodeDetails extends Component {
       let instanceName = '';
 
       if (isDefinedNotNull(nodeInstanceList)) {
-        const matchingInstance = nodeInstanceList.data.filter(
+        const matchingInstance = nodeInstanceList.data?.filter(
           (instance) => instance.nodeName === nodeName
         );
         instanceName = _.get(matchingInstance, '[0]details.instanceName', '');
