@@ -1,5 +1,6 @@
 import algoliasearch from 'algoliasearch';
 
+/* eslint no-underscore-dangle: 0 */
 (function () {
   const ignoreClickOnMeElement = document.querySelector('body:not(.td-searchpage) .search-area');
   const searchInput = document.getElementById('search-query');
@@ -59,8 +60,9 @@ import algoliasearch from 'algoliasearch';
   function docsSection(hitIs) {
     let content = '';
     hitIs.forEach(hit => {
-      let pageTitle = '';
       let pageBreadcrumb = '';
+      let pageHash = '';
+      let pageTitle = '';
 
       if (hit.headers[0]) {
         pageTitle = hit.headers[0];
@@ -72,9 +74,35 @@ import algoliasearch from 'algoliasearch';
         pageBreadcrumb = hit.breadcrumb;
       }
 
+      if (hit._highlightResult.title.matchLevel !== 'full' && hit._highlightResult.description.matchLevel !== 'full') {
+        let partialHeaderMatched = 0;
+        if (hit._highlightResult.headers) {
+          hit._highlightResult.headers.every(pageHeader => {
+            if (pageHeader.matchLevel) {
+              if (pageHeader.matchLevel === 'full') {
+                pageHash = `#${pageHeader.value.toLowerCase().trim()}`;
+                pageHash = pageHash.replace(/<em>|<\/em>/g, '').replace(/\s+|_/g, '-');
+              } else if (pageHeader.matchLevel === 'partial') {
+                if (pageHeader.matchedWords.length > partialHeaderMatched) {
+                  partialHeaderMatched = pageHeader.matchedWords.length;
+                  pageHash = `#${pageHeader.value.toLowerCase().trim()}`;
+                  pageHash = pageHash.replace(/<em>|<\/em>/g, '').replace(/\s+|_/g, '-');
+                }
+              }
+
+              if (pageHeader.matchLevel === 'full') {
+                return false;
+              }
+            }
+
+            return true;
+          });
+        }
+      }
+
       content += `<li>
         <div class="search-title">
-          <a href="${hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/')}">
+          <a href="${hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/')}${pageHash}">
             <span class="search-title-inner">${pageTitle}</span>
             <div class="breadcrumb-item">${pageBreadcrumb}</div>
           </a>
