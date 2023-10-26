@@ -18,7 +18,8 @@
      "(^python/yb/test_data/.*[.](log|out)$)",
      "(^managed/src/main/resources/metric/Dashboard.json$)",
      "(^managed/src/main/resources/metric/recording_rules.yml$)",
-     "(^managed/devops/replicated.yml$)"
+     "(^managed/devops/replicated.yml$)",
+     "(.*/py.typed)"
   ],
   "linters": {
     "go-files": {
