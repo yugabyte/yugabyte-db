@@ -33,7 +33,7 @@ When enabled, the following data is collected while running yb-voyager:
 
 The following is an example of a payload that is collected:
 
-```output.json
+```output
 {
     "UUID": "ba4786e8-5923-11ee-8621-06e7faf40beb",
     "start_time": "2023-09-26 11:21:53",
@@ -75,7 +75,7 @@ The following is an example of a payload that is collected:
             "details": ""
         }
     ]",
-    "target_db_version": "11.2-YB-2.18.2.1-b0",
+    "target_db_version": "11.2-YB-{{< yb-version version="preview">}}-b0",
     "total_rows": 11927,
     "total_size": 225422,
     "largest_table_rows": 11907,
