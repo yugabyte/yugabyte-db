@@ -154,7 +154,7 @@ export const AlertListsWithFilter: FC<AlertsFilterProps> = ({
 }) => {
   const metricNames = useMemo(
     () =>
-      Array.from(new Set(metrics.map((metric) => metric.template))).map((template) => {
+      Array.from(new Set(metrics?.map((metric) => metric.template))).map((template) => {
         return { label: formatString(template), value: template };
       }),
     [metrics]
@@ -164,7 +164,7 @@ export const AlertListsWithFilter: FC<AlertsFilterProps> = ({
     () =>
       Array.from(
         new Set(
-          [...NO_DESTINATION_OPTION, ...DEFAULT_DESTINATION_OPTION, ...alertDestinationList].map(
+          [...NO_DESTINATION_OPTION, ...DEFAULT_DESTINATION_OPTION, ...alertDestinationList ?? []].map(
             (destination) => destination.name
           )
         )
