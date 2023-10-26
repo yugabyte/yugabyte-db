@@ -107,6 +107,7 @@ DELETE  /customers/:cUUID/configs/:configUUID/delete                           c
 # List keys that we allow configuring - no auth needed
 GET /runtime_config/mutable_keys                                               com.yugabyte.yw.controllers.RuntimeConfController.listKeys()
 GET /runtime_config/mutable_key_info                                           com.yugabyte.yw.controllers.RuntimeConfController.listKeyInfo()
+GET /runtime_config/feature_flags                                              com.yugabyte.yw.controllers.RuntimeConfController.listFeatureFlags()
 
 # List of Scopes for a given customer - static scope, the global scope, current customer scope and all its
 # sub-scopes (i.e. universes and providers owned by this customer)
