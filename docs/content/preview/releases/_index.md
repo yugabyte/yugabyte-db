@@ -36,7 +36,7 @@ This section describes the release support policy, versioning, and feature avail
 
 The supported release series for YugabyteDB and YugabyteDB Anywhere include:
 
-* LTS and STS: Supported for production deployments.
+* Long-term support (LTS) and standard-term support (STS): Supported for production deployments.
 * Preview: Supported for development and testing only.
 
 For details about the differences between the release series, see [Release versioning](versioning/).
@@ -45,9 +45,9 @@ For details about the differences between the release series, see [Release versi
 
 The type of YugabyteDB release series you are running determines its support timelines.
 
-**LTS (long-term support)** release series receive maintenance updates for at least 2 years (730 days) from the first release date of the minor release.
+**LTS** release series receive maintenance updates for at least 2 years (730 days) from the first release date of the minor release.
 
-**STS (standard-term support)** release series receive maintenance updates for at least 1 year (365 days) from the first release date of the minor release.
+**STS** release series receive maintenance updates for at least 1 year (365 days) from the first release date of the minor release.
 
 LTS and STS release series are both subject to the following support and EOL timelines:
 

@@ -10,7 +10,7 @@ cascade:
   unversioned: true
 ---
 
-### Releases
+## Releases
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
@@ -23,7 +23,7 @@ cascade:
 Starting with v2.16, the [release notes for YugabyteDB Anywhere](../yba-releases/) have moved to their own page.
 {{< /tip >}}
 
-### Releases at end of life (EOL) {#eol-releases}
+## Releases at end of life (EOL) {#eol-releases}
 
 {{<note title="Archived docs available">}}
 Documentation for EOL stable releases is available at the [YugabyteDB docs archive](https://docs-archive.yugabyte.com/).
