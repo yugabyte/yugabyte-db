@@ -4806,11 +4806,11 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
   auto replication_group_map =
       l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
   auto producer_entry = FindOrNull(*replication_group_map, replication_group_id.ToString());
-  SCHECK(producer_entry, NotFound, Format("Missing universe $0", replication_group_id));
+  SCHECK(producer_entry, NotFound, Format("Missing replication group $0", replication_group_id));
   auto stream_entry = FindOrNull(*producer_entry->mutable_stream_map(), stream_id.ToString());
   SCHECK(
       stream_entry, NotFound,
-      Format("Missing universe $0, stream $1", replication_group_id, stream_id));
+      Format("Missing replication group $0, stream $1", replication_group_id, stream_id));
   auto schema_cached = stream_entry->mutable_producer_schema();
   // Clear out any cached schema version
   schema_cached->Clear();
@@ -4858,7 +4858,13 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
   } else {
     // If we have already seen this producer schema version, then verify that the consumer schema
     // version matches what we saw from other tablets or we received a new one.
-    DCHECK(req->consumer_schema_version() >= current_consumer_schema_version);
+    // If we get an older schema version from the consumer, that's an indication that it
+    // has not yet performed the ALTER and caught up to the latest schema version so fail the
+    // request until it catches up to the latest schema version.
+    SCHECK(req->consumer_schema_version() >= current_consumer_schema_version, InternalError,
+        Format(
+            "Received Older Consumer schema version $0 for replication group $1, table $2",
+            req->consumer_schema_version(), replication_group_id, consumer_table_id));
   }
 
   schema_versions_pb->set_current_producer_schema_version(current_producer_schema_version);
@@ -4887,7 +4893,7 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
   LOG(INFO) << Format(
       "Updated the schema versions for table $0 with stream id $1, colocation id $2."
       "Current producer schema version:$3, current consumer schema version:$4 "
-      "old producer schema version:$5, old consumer schema version:$6, universe:$7",
+      "old producer schema version:$5, old consumer schema version:$6, replication group:$7",
       replication_group_id, stream_id, req->colocation_id(), current_producer_schema_version,
       current_consumer_schema_version, old_producer_schema_version, old_consumer_schema_version,
       replication_group_id);
