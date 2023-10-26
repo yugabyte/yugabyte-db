@@ -82,3 +82,58 @@ SELECT nspname FROM pg_catalog.pg_namespace WHERE nspname IN ('other_schema', 'd
  other_schema
 (1 row)
 
+-- issue 1305
+CREATE EXTENSION age;
+LOAD 'age';
+SET search_path TO ag_catalog;
+SELECT create_graph('issue_1305');
+NOTICE:  graph "issue_1305" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT create_vlabel('issue_1305', 'n');
+NOTICE:  VLabel "n" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+SELECT create_elabel('issue_1305', 'r');
+NOTICE:  ELabel "r" has been created
+ create_elabel 
+---------------
+ 
+(1 row)
+
+SELECT drop_label('issue_1305', 'r', false);
+NOTICE:  label "issue_1305"."r" has been dropped
+ drop_label 
+------------
+ 
+(1 row)
+
+SELECT drop_label('issue_1305', 'r');
+ERROR:  rel_name not found for label "r"
+SELECT drop_label('issue_1305', 'n', false);
+NOTICE:  label "issue_1305"."n" has been dropped
+ drop_label 
+------------
+ 
+(1 row)
+
+SELECT drop_label('issue_1305', 'n');
+ERROR:  rel_name not found for label "n"
+SELECT * FROM drop_graph('issue_1305', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table issue_1305._ag_label_vertex
+drop cascades to table issue_1305._ag_label_edge
+NOTICE:  graph "issue_1305" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+-- END
+DROP EXTENSION age CASCADE;

@@ -49,3 +49,19 @@ DROP EXTENSION age CASCADE;
 
 -- 'other_schema' should exist, 'drop' should be deleted
 SELECT nspname FROM pg_catalog.pg_namespace WHERE nspname IN ('other_schema', 'drop');
+
+-- issue 1305
+CREATE EXTENSION age;
+LOAD 'age';
+SET search_path TO ag_catalog;
+SELECT create_graph('issue_1305');
+SELECT create_vlabel('issue_1305', 'n');
+SELECT create_elabel('issue_1305', 'r');
+SELECT drop_label('issue_1305', 'r', false);
+SELECT drop_label('issue_1305', 'r');
+SELECT drop_label('issue_1305', 'n', false);
+SELECT drop_label('issue_1305', 'n');
+SELECT * FROM drop_graph('issue_1305', true);
+
+-- END
+DROP EXTENSION age CASCADE;

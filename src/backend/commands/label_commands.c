@@ -767,8 +767,27 @@ Datum drop_label(PG_FUNCTION_ARGS)
                         errmsg("force option is not supported yet")));
     }
 
+    /* validate schema_name */
     schema_name = get_namespace_name(nsp_id);
+    if (schema_name == NULL)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_TABLE),
+                 errmsg("schema_name not found for namespace id \"%d\"",
+                        nsp_id)));
+    }
+
+    /* validate rel_name */
     rel_name = get_rel_name(label_relation);
+    if (rel_name == NULL)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_TABLE),
+                 errmsg("rel_name not found for label \"%s\"",
+                        label_name_str)));
+    }
+
+    /* build qualified name */
     qname = list_make2(makeString(schema_name), makeString(rel_name));
 
     remove_relation(qname);
