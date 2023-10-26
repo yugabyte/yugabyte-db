@@ -702,6 +702,10 @@ public class CustomerTask extends Model {
     return CustomerTask.find.query().where().idEq(id).findOne();
   }
 
+  public static List<CustomerTask> getByCustomerUUID(UUID customerUUID) {
+    return CustomerTask.find.query().where().eq("customer_uuid", customerUUID).findList();
+  }
+
   @Deprecated
   public static CustomerTask get(UUID customerUUID, UUID taskUUID) {
     return CustomerTask.find

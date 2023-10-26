@@ -167,6 +167,16 @@ public class XClusterTableConfig extends Model {
     return getRestore().getRestoreUUID();
   }
 
+  public void reset() {
+    this.setStatus(XClusterTableConfig.Status.Validated);
+    this.setReplicationSetupDone(false);
+    this.setStreamId(null);
+    this.setBootstrapCreateTime(null);
+    this.setBackup(null);
+    this.setRestore(null);
+    this.setRestoreTime(null);
+  }
+
   /** This class is the primary key for XClusterTableConfig. */
   @Embeddable
   @EqualsAndHashCode

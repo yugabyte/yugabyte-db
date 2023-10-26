@@ -31,6 +31,7 @@ func (p prometheusCheck) Execute() Result {
 		Status: StatusPassed,
 	}
 
+	// Checks for scrape interval/timeout difference
 	intervalTime, err1 := time.ParseDuration(viper.GetString("prometheus.scrapeInterval"))
 	timeoutTime, err2 := time.ParseDuration(viper.GetString("prometheus.scrapeTimeout"))
 	if err1 != nil || err2 != nil {
@@ -50,6 +51,17 @@ func (p prometheusCheck) Execute() Result {
 			"prometheus scrape interval can not be less than scrape timeout",
 		)
 		return res
+	}
+
+	// Checks for HTTPS connection certs
+	if viper.GetBool("prometheus.enableHttps") {
+		cert := viper.GetString("prometheus.httpsCertPath")
+		key := viper.GetString("prometheus.httpsKeyPath")
+		if (len(cert) == 0 && len(key) != 0) || (len(cert) != 0 && len(key) == 0) {
+			res.Status = StatusCritical
+			res.Error = fmt.Errorf("need to either set both cert: %s and key: %s or neither", cert, key)
+			return res
+		}
 	}
 	return res
 }

@@ -3,7 +3,8 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -17,14 +18,14 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
 /**
  * This task will be deprecated for upgrading universe having version greater or equal to 2.20.x,
  * please ensure any new changes here should also be made on new task SoftwareUpgradeYB.
  */
-@Slf4j
+@Retryable
+@Abortable
 public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
 
   private final XClusterUniverseService xClusterUniverseService;
@@ -38,11 +39,16 @@ public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
 
   @Override
   public void validateParams() {
-    taskParams().verifyParams(getUniverse());
+    taskParams().verifyParams(getUniverse(), isFirstTry());
   }
 
   protected SoftwareUpgradeParams taskParams() {
     return (SoftwareUpgradeParams) taskParams;
+  }
+
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    createPrecheckTasks(universe, taskParams().ybSoftwareVersion);
   }
 
   @Override
@@ -52,21 +58,7 @@ public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
           Set<NodeDetails> allNodes = toOrderedSet(nodes);
           Universe universe = getUniverse();
-
           String newVersion = taskParams().ybSoftwareVersion;
-
-          // Preliminary checks for upgrades.
-          createCheckUpgradeTask(newVersion).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
-
-          // PreCheck for Available Memory on tserver nodes.
-          long memAvailableLimit =
-              confGetter.getConfForScope(universe, UniverseConfKeys.dbMemAvailableLimit);
-          // No need to run the check if the minimum allowed is 0.
-          if (memAvailableLimit > 0) {
-            createAvailableMemoryCheck(allNodes, Util.AVAILABLE_MEMORY, memAvailableLimit)
-                .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
-          }
-
           if (!universe
               .getUniverseDetails()
               .xClusterInfo

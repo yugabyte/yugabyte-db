@@ -55,7 +55,7 @@
 //
 #pragma once
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <string>
 
 #include "yb/gutil/macros.h"

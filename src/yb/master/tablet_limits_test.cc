@@ -69,8 +69,8 @@ void SetExistingTabletCount(int num_live_replicas, TSDescriptorVector* ts_descri
 }
 
 void SetTabletLimits(int tablets_per_core, int tablets_per_gib) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablet_replicas_per_core_limit) = tablets_per_core;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablet_replicas_per_gib_limit) = tablets_per_gib;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_replicas_per_core_limit) = tablets_per_core;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_replicas_per_gib_limit) = tablets_per_gib;
 }
 
 TEST(HomogeneousTabletLimitsTest, RF1OneTablet) {

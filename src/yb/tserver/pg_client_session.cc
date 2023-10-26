@@ -67,7 +67,7 @@ DEFINE_RUNTIME_bool(report_ysql_ddl_txn_status_to_master, false,
                     "If set, at the end of DDL operation, the TServer will notify the YB-Master "
                     "whether the DDL operation was committed or aborted");
 
-DEFINE_RUNTIME_bool(ysql_enable_table_mutation_counter, false,
+DEFINE_NON_RUNTIME_bool(ysql_enable_table_mutation_counter, false,
                     "Enable counting of mutations on a per-table basis. These mutations are used "
                     "to automatically trigger ANALYZE as soon as the mutations of a table cross a "
                     "certain threshold (decided based on ysql_auto_analyze_tuples_threshold and "
@@ -413,8 +413,9 @@ struct PerformData {
                           << ", failed op[" << idx << "]: " << AsString(op);
         return status.CloneAndAddErrorCode(OpIndex(idx));
       }
-      // In case of write operation, increase mutation counter
-      if (!op->read_only() && GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
+      // In case of non-DDL write operations, increase mutation counters
+      if (!op->read_only() && (!req.has_options() || !req.options().ddl_mode()) &&
+          GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
           pg_node_level_mutation_counter) {
         const auto& table_id = down_cast<const client::YBPgsqlWriteOp&>(*op).table()->id();
 

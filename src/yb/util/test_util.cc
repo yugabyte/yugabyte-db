@@ -32,7 +32,6 @@
 
 #include "yb/util/test_util.h"
 
-#include <glog/logging.h>
 #include <gtest/gtest-spi.h>
 
 #include "yb/gutil/casts.h"

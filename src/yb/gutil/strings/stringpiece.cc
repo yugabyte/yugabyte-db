@@ -22,7 +22,7 @@
 #include <algorithm>
 #include <string>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/hash/hash.h"
 #include "yb/gutil/stl_util.h"

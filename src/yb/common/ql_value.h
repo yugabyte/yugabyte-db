@@ -17,7 +17,7 @@
 
 #include <stdint.h>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"

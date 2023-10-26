@@ -29,6 +29,7 @@ import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Customer;
@@ -383,6 +384,13 @@ public class CustomerTaskManager {
         break;
       case SoftwareKubernetesUpgrade:
         taskParams = Json.fromJson(oldTaskParams, SoftwareUpgradeParams.class);
+        break;
+      case SoftwareUpgrade:
+      case SoftwareUpgradeYB:
+        taskParams = Json.fromJson(oldTaskParams, SoftwareUpgradeParams.class);
+        break;
+      case VMImageUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, VMImageUpgradeParams.class);
         break;
       case AddNodeToUniverse:
       case RemoveNodeFromUniverse:

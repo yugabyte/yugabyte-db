@@ -17,43 +17,11 @@ import logging
 import argparse
 import os
 import sys
-import signal
-import time
+import xml
 
 from typing import Any, Optional
 
-from xml.dom import minidom
-
-
-MAX_RESULT_XML_SIZE_BYTES = 16 * 1024 * 1024
-
-# This script sometimes gets stuck in our macOS NFS environment for unknown reasons, so we put a
-# timeout around it.
-TIMEOUT_SEC = 10
-
-
-# https://stackoverflow.com/questions/2281850/timeout-function-if-it-takes-too-long-to-finish
-class Timeout:
-    seconds: int
-    start_time: Optional[float]
-
-    def __init__(self, seconds: int = 1, error_message: str = 'Timeout'):
-        self.seconds = seconds
-        self.start_time = None
-
-    def handle_timeout(self, unused_signum: Any, unused_frame: Any) -> None:
-        if self.start_time is None:
-            raise RuntimeError("Timed out")
-        raise RuntimeError("Timed out after %.2f seconds" % (time.time() - self.start_time))
-
-    def __enter__(self) -> 'Timeout':
-        self.start_time = time.time()
-        signal.signal(signal.SIGALRM, self.handle_timeout)
-        signal.alarm(self.seconds)
-        return self
-
-    def __exit__(self, unused_type: Any, unused_value: Any, unused_traceback: Any) -> None:
-        signal.alarm(0)
+from yugabyte import junit_xml_parsing
 
 
 def initialize() -> None:
@@ -101,39 +69,12 @@ def parse_args() -> argparse.Namespace:
 
 
 def update_test_result_xml(args: argparse.Namespace) -> bool:
-    result_xml_size = os.stat(args.result_xml).st_size
-    if result_xml_size > MAX_RESULT_XML_SIZE_BYTES:
-        logging.error(
-            "Result XML file size is more than max allowed size (%d bytes): %d bytes. "
-            "Refusing to parse this XML file and add the log path there.",
-            MAX_RESULT_XML_SIZE_BYTES, result_xml_size)
+    try:
+        xml_dom: xml.dom.minidom.Document = junit_xml_parsing.parse_junit_test_result_xml(
+            args.result_xml)
+    except IOError as ex:
+        logging.exception("Failed to parse JUnit XML file %s: %s", args.result_xml, ex)
         return False
-
-    # Basic JUnit XML format description:
-    #
-    # <testsuites>        => the aggregated result of all junit testfiles
-    #   <testsuite>       => the output from a single TestSuite
-    #     <properties>    => the defined properties at test execution
-    #       <property>    => name/value pair for a single property
-    #       ...
-    #     </properties>
-    #     <error></error> => optional information, in place of a test case -
-    #                        normally if the tests in the suite could not be found etc.
-    #     <testcase>      => the results from executing a test method
-    #       <system-out>  => data written to System.out during the test run
-    #       <system-err>  => data written to System.err during the test run
-    #       <skipped/>    => test was skipped
-    #       <failure>     => test failed
-    #       <error>       => test encountered an error
-    #     </testcase>
-    #     ...
-    #   </testsuite>
-    #   ...
-    # </testsuites>
-    #
-    # (taken from http://help.catchsoftware.com/display/ET/JUnit+Format).
-
-    xml_dom = minidom.parse(args.result_xml)
 
     # It might happen that test case passed and produced XML with passed results, but after that
     # fails due to additional instrumented checks (ThreadSanitizer, AddressSanitizer, etc)
@@ -185,15 +126,8 @@ def update_test_result_xml(args: argparse.Namespace) -> bool:
 
 
 def main() -> bool:
-    args = None
-    try:
-        with Timeout(seconds=TIMEOUT_SEC):
-            args = parse_args()
-            return update_test_result_xml(args)
-    except:  # noqa
-        if args:
-            logging.error("Error while trying to update test result XML: %s", args.result_xml)
-        raise
+    args = parse_args()
+    return update_test_result_xml(args)
 
 
 if __name__ == "__main__":

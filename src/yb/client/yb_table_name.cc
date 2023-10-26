@@ -15,7 +15,7 @@
 
 #include <boost/functional/hash.hpp>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/redis_constants_common.h"
 

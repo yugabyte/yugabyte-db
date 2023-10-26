@@ -30,82 +30,6 @@ DECLARE_bool(ysql_legacy_colocated_database_creation);
 DECLARE_bool(ysql_enable_packed_row);
 
 namespace yb {
-namespace {
-
-/*
- * TODO (#11597): Given one is not able to get tablegroup ID by name, currently this works by
- * getting the first available tablegroup appearing in the namespace.
- */
-Result<TableId> GetTablegroupParentTable(
-    XClusterYsqlTestBase::Cluster* cluster, const std::string& namespace_name) {
-  // Lookup the namespace id from the namespace name.
-  std::string namespace_id;
-  // Whether the database named namespace_name is a colocated database.
-  bool colocated_database;
-  master::MasterDdlProxy master_proxy(
-      &cluster->client_->proxy_cache(),
-      VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
-  rpc::RpcController rpc;
-  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-  {
-    master::ListNamespacesRequestPB req;
-    master::ListNamespacesResponsePB resp;
-
-    RETURN_NOT_OK(master_proxy.ListNamespaces(req, &resp, &rpc));
-    if (resp.has_error()) {
-      return STATUS(IllegalState, "Failed to get namespace info");
-    }
-
-    // Find and return the namespace id.
-    bool namespaceFound = false;
-    for (const auto& entry : resp.namespaces()) {
-      if (entry.name() == namespace_name) {
-        namespaceFound = true;
-        namespace_id = entry.id();
-        break;
-      }
-    }
-
-    if (!namespaceFound) {
-      return STATUS(IllegalState, "Failed to find namespace");
-    }
-  }
-
-  {
-    master::GetNamespaceInfoRequestPB req;
-    master::GetNamespaceInfoResponsePB resp;
-
-    req.mutable_namespace_()->set_id(namespace_id);
-
-    rpc.Reset();
-    RETURN_NOT_OK(master_proxy.GetNamespaceInfo(req, &resp, &rpc));
-    if (resp.has_error()) {
-      return STATUS(IllegalState, "Failed to get namespace info");
-    }
-    colocated_database = resp.colocated();
-  }
-
-  master::ListTablegroupsRequestPB req;
-  master::ListTablegroupsResponsePB resp;
-
-  req.set_namespace_id(namespace_id);
-  rpc.Reset();
-  RETURN_NOT_OK(master_proxy.ListTablegroups(req, &resp, &rpc));
-  if (resp.has_error()) {
-    return STATUS(IllegalState, "Failed listing tablegroups");
-  }
-
-  // Find and return the tablegroup.
-  if (resp.tablegroups().empty()) {
-    return STATUS(
-        IllegalState, Format("Unable to find tablegroup in namespace $0", namespace_name));
-  }
-
-  if (colocated_database) return GetColocationParentTableId(resp.tablegroups()[0].id());
-  return GetTablegroupParentTableId(resp.tablegroups()[0].id());
-}
-
-}  // namespace
 
 class XClusterYsqlColocatedTest : public XClusterYsqlTestBase {
  public:
@@ -144,18 +68,6 @@ class XClusterYsqlColocatedTest : public XClusterYsqlTestBase {
     }));
 
     return PostSetUp();
-  }
-
-  Result<TableId> GetColocatedDatabaseParentTableId() {
-    if (FLAGS_ysql_legacy_colocated_database_creation) {
-      // Legacy colocated database
-      master::GetNamespaceInfoResponsePB ns_resp;
-      RETURN_NOT_OK(
-          producer_client()->GetNamespaceInfo("", namespace_name, YQL_DATABASE_PGSQL, &ns_resp));
-      return GetColocatedDbParentTableId(ns_resp.namespace_().id());
-    }
-    // Colocated database
-    return GetTablegroupParentTable(&producer_cluster_, namespace_name);
   }
 
   Status TestDatabaseReplication(bool compact = false, bool use_transaction = false) {

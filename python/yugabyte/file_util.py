@@ -52,11 +52,19 @@ def path_to_str(path: Union[str, pathlib.Path]) -> str:
 
 
 def read_file(file_path: Union[str, pathlib.Path]) -> str:
-    with open(path_to_str(file_path)) as input_file:
+    path_str = path_to_str(file_path)
+    if path_str.endswith('.gz'):
+        import gzip
+        with gzip.open(path_str, 'rt') as input_file:
+            return input_file.read()
+    with open(path_str) as input_file:
         return input_file.read()
 
 
-def write_file(content: str, output_file_path: Union[str, pathlib.Path]) -> None:
+def write_file(
+        content: Union[str, List[str]], output_file_path: Union[str, pathlib.Path]) -> None:
+    if isinstance(content, list):
+        content = '\n'.join(content) + '\n'
     with open(path_to_str(output_file_path), 'w') as output_file:
         output_file.write(content)
 

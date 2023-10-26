@@ -46,9 +46,12 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.yb.cdc.CdcConsumer;
 import org.yb.client.DeleteUniverseReplicationResponse;
+import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClusterOuterClass;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -259,11 +262,32 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
   @Test
   public void testDestroyUniverseAndPromoteAutoFlagsOnOthers() {
     Universe xClusterUniv = ModelFactory.createUniverse("univ-2");
-    XClusterConfig.create(
-        "test-2", defaultUniverse.getUniverseUUID(), xClusterUniv.getUniverseUUID());
+    XClusterConfig xClusterConfig1 =
+        XClusterConfig.create(
+            "test-2", defaultUniverse.getUniverseUUID(), xClusterUniv.getUniverseUUID());
+    CdcConsumer.ProducerEntryPB.Builder fakeProducerEntry =
+        CdcConsumer.ProducerEntryPB.newBuilder();
+    CdcConsumer.StreamEntryPB.Builder fakeStreamEntry1 =
+        CdcConsumer.StreamEntryPB.newBuilder()
+            .setProducerTableId("000030af000030008000000000004000");
+    fakeProducerEntry.putStreamMap("fea203ffca1f48349901e0de2b52c416", fakeStreamEntry1.build());
+    CdcConsumer.ConsumerRegistryPB.Builder fakeConsumerRegistryBuilder =
+        CdcConsumer.ConsumerRegistryPB.newBuilder()
+            .putProducerMap(xClusterConfig1.getReplicationGroupName(), fakeProducerEntry.build());
+    CatalogEntityInfo.SysClusterConfigEntryPB.Builder fakeClusterConfigBuilder =
+        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder()
+            .setConsumerRegistry(fakeConsumerRegistryBuilder.build());
+    GetMasterClusterConfigResponse fakeClusterConfigResponse =
+        new GetMasterClusterConfigResponse(0, "", fakeClusterConfigBuilder.build(), null);
+    try {
+      when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
+    } catch (Exception ignored) {
+    }
+
     Universe xClusterUniv2 = ModelFactory.createUniverse("univ-3");
     XClusterConfig.create(
         "test-3", xClusterUniv.getUniverseUUID(), xClusterUniv2.getUniverseUUID());
+
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.customerUUID = defaultCustomer.getUuid();

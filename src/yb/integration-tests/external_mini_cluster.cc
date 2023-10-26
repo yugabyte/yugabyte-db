@@ -42,7 +42,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
@@ -2518,6 +2517,14 @@ Result<bool> ExternalDaemon::ExtractMetricValue<bool>(const JsonReader& r,
                                                       const char* value_field) {
   bool value;
   RETURN_NOT_OK(r.ExtractBool(metric, value_field, &value));
+  return value;
+}
+
+template <>
+Result<uint32_t> ExternalDaemon::ExtractMetricValue<uint32_t>(
+    const JsonReader& r, const Value* metric, const char* value_field) {
+  uint32_t value;
+  RETURN_NOT_OK(r.ExtractUInt32(metric, value_field, &value));
   return value;
 }
 

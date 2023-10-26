@@ -72,14 +72,13 @@
 #include <thread>
 #include "yb/util/flags.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/dynamic_annotations.h"   // for RunningOnValgrind
 #include "yb/gutil/macros.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
-#include "yb/util/logging.h"
 
 DEFINE_UNKNOWN_int32(num_cpus, 0, "Number of CPU cores used in calculations");
 
