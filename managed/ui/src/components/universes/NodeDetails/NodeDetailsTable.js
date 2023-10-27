@@ -76,7 +76,7 @@ export default class NodeDetailsTable extends Component {
         sortedNodeDetails = sortedNodeDetails.filter((nodeDetails) =>
           isKubernetesCluster
             ? nodeDetails.isMasterProcess
-            : nodeDetails.nodeDetails.dedicatedTo === NodeType.Master.toUpperCase()
+            : nodeDetails.dedicatedTo === NodeType.Master.toUpperCase()
         );
       } else if (this.state.nodeTypeDropdownValue === NodeType.TServer) {
         sortedNodeDetails = sortedNodeDetails.filter((nodeDetails) =>
