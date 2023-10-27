@@ -12,6 +12,7 @@ menu:
     weight: 1120
 type: indexpage
 ---
+
 YugabyteDB's distributed transaction architecture is based on principles of atomicity, consistency, isolation, and durability (ACID), and is inspired by <a href="https://research.google.com/archive/spanner-osdi2012.pdf">Google Spanner</a>.
 
 <div class="row">

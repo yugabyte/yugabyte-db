@@ -57,6 +57,7 @@ insert into test values (1, 1);
 ```sql
 SET yb_transaction_priority_upper_bound = 0.4;
 ```
+
 <br>
 
    </td>
@@ -67,6 +68,7 @@ SET yb_transaction_priority_upper_bound = 0.4;
 ```sql
 SET yb_transaction_priority_lower_bound = 0.6;
 ```
+
 <br>
 
    </td>
@@ -81,6 +83,7 @@ SET yb_transaction_priority_lower_bound = 0.6;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -93,6 +96,7 @@ begin transaction isolation level repeatable read;
 ```sql
 select * from test where k=1 for update;
 ```
+
 <br>
 
 ```output
@@ -110,6 +114,7 @@ select * from test where k=1 for update;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -122,6 +127,7 @@ begin transaction isolation level repeatable read;
 ```sql
 select * from test where k=1 for update;
 ```
+
 <br>
 
 ```output
@@ -192,6 +198,7 @@ commit;
 ```sql
 SET yb_transaction_priority_lower_bound = 0.6;
 ```
+
 <br>
 
    </td>
@@ -202,6 +209,7 @@ SET yb_transaction_priority_lower_bound = 0.6;
 ```sql
 SET yb_transaction_priority_upper_bound = 0.4;
 ```
+
 <br>
 
    </td>
@@ -216,6 +224,7 @@ SET yb_transaction_priority_upper_bound = 0.4;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -228,6 +237,7 @@ begin transaction isolation level repeatable read;
 ```sql
 select * from test where k=1 for update;
 ```
+
 <br>
 
 ```output
@@ -236,6 +246,7 @@ select * from test where k=1 for update;
  1 | 1
 (1 row)
 ```
+
    </td>
   </tr>
   <tr>
@@ -244,6 +255,7 @@ select * from test where k=1 for update;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -256,6 +268,7 @@ begin transaction isolation level repeatable read;
 ```sql
 select * from test where k=1 for update;
 ```
+
 <br>
 
 ```output
@@ -305,7 +318,7 @@ This mode of concurrency control is applicable only for YSQL and provides the sa
 
 In this mode, transactions are not assigned priorities. If a conflict occurs when a transaction T1 tries to read, write, or lock a row in a conflicting mode with a few other concurrent transactions, T1 will **wait** until all conflicting transactions finish by either committing or rolling back. Once all conflicting transactions have finished, T1 will:
 
-1. Make progress if the conflicting transactions didn’t commit any permanent modifications that conflict with T1.
+1. Make progress if the conflicting transactions didn't commit any permanent modifications that conflict with T1.
 2. Abort otherwise.
 
 `Wait-on-Conflict` behavior can be enabled by setting the YB-TServer flag `enable_wait_queues=true`, which will enable use of in-memory wait queues that provide waiting semantics when conflicts are detected between transactions. A rolling restart is needed for the flag to take effect. Without this flag set, transactions operate in the priority based `Fail-on-Conflict` mode by default.
@@ -363,6 +376,7 @@ insert into test values (2, 2);
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -377,6 +391,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -387,6 +402,7 @@ begin transaction isolation level repeatable read;
 ```sql
 select * from test where k=1 for update;
 ```
+
 <br>
 
 ```output
@@ -408,11 +424,13 @@ select * from test where k=1 for update;
 ```sql
 select * from test where k=1 for update;
 ```
+
 <br>
 
 ```output
 (waits)
 ```
+
    </td>
   </tr>
   <tr>
@@ -473,6 +491,7 @@ commit;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -487,6 +506,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -497,6 +517,7 @@ begin transaction isolation level repeatable read;
 ```sql
 select * from test where k=1 for share;
 ```
+
 <br>
 
 ```output
@@ -537,6 +558,7 @@ commit;
 ```sql
 rollback;
 ```
+
    </td>
    <td>
    </td>
@@ -586,6 +608,7 @@ commit;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -600,6 +623,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -627,6 +651,7 @@ UPDATE 1
 ```sql
 select * from test where k=1 for share;
 ```
+
 <br>
 
 ```output
@@ -647,6 +672,7 @@ rollback;
 ```sql
 commit;
 ```
+
    </td>
    <td>
    </td>
@@ -703,6 +729,7 @@ rollback;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -717,6 +744,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -763,6 +791,7 @@ rollback;
 ```sql
 commit;
 ```
+
    </td>
    <td>
    </td>
@@ -792,6 +821,7 @@ kConflict
 ```sql
 rollback;
 ```
+
    </td>
   </tr>
 </tbody>
@@ -799,7 +829,7 @@ rollback;
 
 #### Wait queue jumping is allowed
 
-A transaction can jump the queue even if it does conflict with waiting transactions but doesn’t conflict with any active transactions.
+A transaction can jump the queue even if it does conflict with waiting transactions but doesn't conflict with any active transactions.
 
 <table class="no-alter-colors">
 <thead>
@@ -819,6 +849,7 @@ A transaction can jump the queue even if it does conflict with waiting transacti
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -827,6 +858,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -835,6 +867,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -845,6 +878,7 @@ begin transaction isolation level repeatable read;
 ```sql
 select * from test where k=1 for share;
 ```
+
 <br>
 
 ```output
@@ -868,6 +902,7 @@ select * from test where k=1 for share;
 ```sql
 select * from test where k=1 for update;
 ```
+
 <br>
 
 ```output
@@ -888,6 +923,7 @@ select * from test where k=1 for update;
 ```sql
 select * from test where k=1 for share;
 ```
+
 <br>
 
 ```output
@@ -980,6 +1016,7 @@ Suppose a transaction T1 is blocked on some operation of another transaction T2.
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -994,6 +1031,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -1012,6 +1050,7 @@ update test set v=1 where k=1;
 ```output
 UPDATE 1
 ```
+
    </td>
    <td>
    </td>
@@ -1095,6 +1134,7 @@ Add `enable_deadlock_detection=true` to the list of YB-TServer flags and restart
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -1109,6 +1149,7 @@ begin transaction isolation level repeatable read;
 ```sql
 begin transaction isolation level repeatable read;
 ```
+
 <br>
 
    </td>
@@ -1194,15 +1235,15 @@ All metrics are per tablet.
 
 #### Histograms
 
-1. **wait_queue_pending_time_waiting (ms):** the amount of time a still-waiting transaction has been in the wait queue
-2. **wait_queue_finished_waiting_latency (ms):** the amount of time an unblocked transaction spent in the wait queue
-3. **wait_queue_blockers_per_waiter:** the number of blockers a waiter is stuck on in the wait queue
+1. `wait_queue_pending_time_waiting` (ms): the amount of time a still-waiting transaction has been in the wait queue
+2. `wait_queue_finished_waiting_latency` (ms): the amount of time an unblocked transaction spent in the wait queue
+3. `wait_queue_blockers_per_waiter`: the number of blockers a waiter is stuck on in the wait queue
 
 #### Counters
 
-1. **wait_queue_waiters_per_blocker:** the number of waiters stuck on a particular blocker in the wait queue
-2. **wait_queue_num_waiters:** the number of waiters stuck on a blocker in the wait queue
-3. **wait_queue_num_blockers:** the number of unique blockers tracked in a wait queue
+1. `wait_queue_waiters_per_blocker`: the number of waiters stuck on a particular blocker in the wait queue
+2. `wait_queue_num_waiters`: the number of waiters stuck on a blocker in the wait queue
+3. `wait_queue_num_blockers`: the number of unique blockers tracked in a wait queue
 
 ### Limitations
 

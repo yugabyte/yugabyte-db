@@ -1,7 +1,7 @@
 ---
 title: Transaction isolation levels
 headerTitle: Transaction isolation levels
-linkTitle: Transaction isolation
+linkTitle: Isolation levels
 description: Learn how YugabyteDB supports two transaction isolation levels Snapshot Isolation and Serializable.
 menu:
   preview:
@@ -80,11 +80,13 @@ Although described here as a separate lock type for simplicity, the snapshot iso
 Locks can be taken at many levels of granularity.  For example, a serializable read lock could be taken at the level of an entire tablet, a single row, or a single column of a single row.  Such a lock will block attempts to take write locks at that or finer granularities. Thus, for example, a read lock taken at the row level will block attempts to write to that entire row or any column in that row.
 
 In addition to the above-mentioned levels of granularity, locks in DocDB can be taken at  prefixes of the primary key columns, treating the hash columns as a single unit.  For example, if you created a YSQL table via:
+
 ```sql
 CREATE TABLE test (h1 INT, h2 INT, r1 INT, r2 INT, v INT w INT PRIMARY KEY ((h1,h2) HASH, r1 ASC, r2 ASC);
 ```
 
 then any of the following objects could be locked:
+
 - the entire tablet
 - all rows having h1=2, h2=3
 - all rows having h1=2, h2=3, r1=4
@@ -97,7 +99,7 @@ With YCQL, granularities exist below the column level; for example, only one key
 
 The straightforward way to handle locks of different granularities would be to have a map from lockable objects to lock types.  However, this is too inefficient for detecting conflicts: attempting, for example, to add a lock at the tablet level would require checking for locks at every row and column in that tablet.
 
-To make conflict detection efficient, YugabyteDB stores extra information for each lockable object about any locks on subobjects of it.  In particular, instead of just taking a lock on _X_, it takes a normal lock on _X_ and also weaker versions of that lock on all objects that enclose _X_.  The normal locks are called _strong_ locks and the weaker variants _weak_ locks.
+To make conflict detection efficient, YugabyteDB stores extra information for each lockable object about any locks on sub-objects of it.  In particular, instead of just taking a lock on _X_, it takes a normal lock on _X_ and also weaker versions of that lock on all objects that enclose _X_.  The normal locks are called _strong_ locks and the weaker variants _weak_ locks.
 
 As an example, pretend YugabyteDB has only tablet- and row-level granularities. To take a serializable write lock at the row level (say on row _r_ of tablet _b_), it would take a strong write lock at the row level (on _r_) and a weak write lock at the tablet level (on _b_).  To take a serializable read lock at the tablet level (assume also on _b_), YugabyteDB would just take a strong read lock at the tablet level (on _b_).
 
@@ -108,7 +110,7 @@ Using the following conflict rules, YugabyteDB can decide if two original locks 
 - two weak locks never conflict
 - a strong lock conflicts with a weak lock if and only if they conflict ignoring their strength
 
-That is, for each lockable object that would have two locks, would they conflict under the above rules?  There is no need to enumerate the subobjects of any object.
+That is, for each lockable object that would have two locks, would they conflict under the above rules?  There is no need to enumerate the sub-objects of any object.
 
 Consider our example with a serializable write lock at the row level and a serializable read lock at the tablet level.  A conflict is detected at the tablet level because the strong read and the weak write locks on _b_ conflict because ordinary read and write locks conflict.
 

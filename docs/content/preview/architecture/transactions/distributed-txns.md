@@ -15,7 +15,7 @@ type: docs
 
 YugabyteDB supports distributed transactions based on principles of atomicity, consistency, isolation, durability (ACID) that modify multiple rows in more than one shard. This enables strongly consistent secondary indexes, as well as multi-table and multi-row ACID operations in both YCQL and YSQL contexts.
 
-Once you are familiar with the preceding concepts, refer to [Transactional I/O path](../transactional-io-path/) for an overview of a distributed transaction's lifecycle.
+After you are familiar with the preceding concepts, refer to [Transactional I/O path](../transactional-io-path/) for an overview of a distributed transaction's lifecycle.
 
 ## Provisional records
 
