@@ -477,6 +477,17 @@ CREATE INDEX NONCONCURRENTLY ON test_stats(i);
 SELECT reltuples FROM pg_class WHERE relname = 'test_stats';
 DROP TABLE test_stats;
 
+-- Split options on a partitioned table or its indexes should not be copied
+-- for a newly attached partition.
+CREATE TABLE test_part (a INT, PRIMARY KEY(a ASC)) PARTITION BY RANGE (a)
+    SPLIT AT VALUES ((5), (10)); -- split options are ignored.
+CREATE TABLE test_part_1 PARTITION OF test_part FOR VALUES FROM (1) TO (5);
+SELECT yb_get_range_split_clause('test_part_1'::regclass);
+CREATE INDEX test_part_idx ON test_part(a) SPLIT INTO 5 TABLETS;
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('test_part_1_a_idx'::regclass);
+CREATE TABLE test_part_2 PARTITION OF test_part DEFAULT;
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('test_part_2_a_idx'::regclass);
+
 -- Test creating temp index using lsm.
 CREATE TEMP TABLE test_temp_lsm (i int);
 CREATE INDEX ON test_temp_lsm USING lsm (i);
