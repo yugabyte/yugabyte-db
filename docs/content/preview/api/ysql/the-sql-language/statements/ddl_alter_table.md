@@ -208,7 +208,7 @@ ALTER TABLE test ALTER COLUMN a TYPE VARCHAR(51);
 
 If the change requires data on disk to change, a full table rewrite will be done and the following semantics apply:
 - The action creates an entirely new table under the hood, and concurrent DMLs may not be reflected in the new table which can lead to correctness issues.
-- If the operation fails, it is possible that the existing table is renamed in DocDB. This may lead to issues like yb-admin commands that take table name.
+- If the operation fails, it is possible that the existing table is renamed in DocDB. This may lead to issues with yb-admin commands that take table name. For example,`./bin/yb-admin list_tablets`.
 - If the operation fails, a new dangling table may exist in DocDB. Use `yb-admin delete_table` to drop it.
 - Altering the data type of a foreign key column is not supported.
 - If there might be concurrent DMLs, the user can first rename the table to fail the DMLs, alter the column data type, and then rename the table again.
