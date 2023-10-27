@@ -189,15 +189,14 @@ Change the type of an existing column. The following semantics apply:
 - If the optional `COLLATE` clause is not specified, the default collation for the new column type will be used.
 - If the optional `USING` clause is not provided, the default conversion for the new column value will be the same as an assignment cast from the old type to the new type.
 - A `USING` clause must be included when there is no implicit assignment cast available from the old type to the new type.
-- Alter type is not supported on partitioned tables [#16980](https://github.com/yugabyte/yugabyte-db/issues/16980).
-- Alter type is not supported on tables with rules (limitation inherited from PostgreSQL).
-- Alter type is not supported on tables with CDC streams or xCluster replication when it requires data on disk to change [#16625](https://github.com/yugabyte/yugabyte-db/issues/16625).
+- Alter type is not supported for partitioned tables. See [#16980](https://github.com/yugabyte/yugabyte-db/issues/16980).
+- Alter type is not supported for tables with rules (limitation inherited from PostgreSQL).
+- Alter type is not supported for tables with CDC streams, or xCluster replication when it requires data on disk to change. See [#16625](https://github.com/yugabyte/yugabyte-db/issues/16625).
 
 ##### Alter type without table-rewrite
 
-If the change doesn't require data on disk to change, concurrent DMLs to the table can be safely performed.
+If the change doesn't require data on disk to change, concurrent DMLs to the table can be safely performed as shown in the following example:
 
-Example:
 
 ```sql
 CREATE TABLE test (id BIGSERIAL PRIMARY KEY, a VARCHAR(50));
@@ -211,10 +210,10 @@ If the change requires data on disk to change, a full table rewrite will be done
 - If the operation fails, it is possible that the existing table is renamed in DocDB. This may lead to issues with yb-admin commands that take table name. For example,`./bin/yb-admin list_tablets`.
 - If the operation fails, a new dangling table may exist in DocDB. Use `yb-admin delete_table` to drop it.
 - Altering the data type of a foreign key column is not supported.
-- If there might be concurrent DMLs, the user can first rename the table to fail the DMLs, alter the column data type, and then rename the table again.
+- If there are concurrent DMLs, you can first rename the table to fail the DMLs, alter the column data type, and then rename the table again.
 - The operation preserves split properties for hash-partitioned tables and hash-partitioned secondary indexes. For range-partitioned tables (and secondary indexes), split properties are only preserved if the altered column is not part of the table's (or secondary index's) range key.
 
-Example:
+Following is an example of alter type with table rewrite:
 
 ```sql
 CREATE TABLE test (id BIGSERIAL PRIMARY KEY, a VARCHAR(50));
@@ -228,7 +227,7 @@ HINT:  You might need to specify "USING a::bigint".
 ALTER TABLE test ALTER COLUMN a SET DATA TYPE BIGINT USING a::BIGINT;
 ```
 
-Another option is to use a custom function:
+Another option is to use a custom function as follows:
 
 ```sql
 CREATE OR REPLACE FUNCTION myfunc(text) RETURNS BIGINT
