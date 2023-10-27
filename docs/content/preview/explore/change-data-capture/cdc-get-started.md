@@ -30,9 +30,9 @@ The following steps are necessary to set up YugabyteDB for use with the Debezium
 
     Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a stream ID using the yb-admin CLI command. Refer to the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) CDC command reference documentation for more details.
 
-- Make sure the YB-Master and YB-Tserver ports are open.
+- Make sure the YB-Master and YB-TServer ports are open.
 
-    The connector connects to the master processes running on the YugabyteDB server. Make sure the ports on which the YugabyteDB server's YB-Master and YB-Tserver processes are running are open. The [default ports](../../../reference/configuration/default-ports/) on which the processes run are `7100` and `9100` respectively.
+    The connector connects to the master processes running on the YugabyteDB server. Make sure the ports on which the YugabyteDB server's YB-Master and YB-TServer processes are running are open. The [default ports](../../../reference/configuration/default-ports/) on which the processes run are `7100` and `9100` respectively.
 
 - Monitor available disk space.
 
