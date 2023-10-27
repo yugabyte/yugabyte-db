@@ -115,4 +115,5 @@ message DumpRunningRpcsRequestPB {
 message DumpRunningRpcsResponsePB {
   repeated RpcConnectionPB inbound_connections = 1;
   repeated RpcConnectionPB outbound_connections = 2;
+  repeated RpcCallInProgressPB local_calls_in_flight = 3;
 }

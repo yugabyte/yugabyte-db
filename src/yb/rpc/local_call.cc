@@ -141,5 +141,24 @@ void LocalYBInboundCallTracker::Enqueue(InboundCall* call, InboundCallWeakPtr ca
   calls_being_handled_.emplace(call, call_ptr);
 }
 
+Status LocalYBInboundCallTracker::DumpRunningRpcs(
+    const DumpRunningRpcsRequestPB& req, DumpRunningRpcsResponsePB* resp) {
+  std::vector<InboundCallPtr> active_calls;
+  {
+    std::lock_guard<simple_spinlock> lg(lock_);
+    active_calls.reserve(calls_being_handled_.size());
+    for (auto& entry: calls_being_handled_) {
+      InboundCallPtr ptr = entry.second.lock();
+      if (ptr) {
+        active_calls.push_back(std::move(ptr));
+      }
+    }
+  }
+  for (auto call_ptr: active_calls) {
+    call_ptr->DumpPB(req, resp->add_local_calls_in_flight());
+  }
+  return Status::OK();
+}
+
 } // namespace rpc
 } // namespace yb

@@ -631,6 +631,7 @@ Status Messenger::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
   for (const auto& reactor : reactors_) {
     RETURN_NOT_OK(reactor->DumpRunningRpcs(req, resp));
   }
+  RETURN_NOT_OK(local_call_tracker_.DumpRunningRpcs(req, resp));
   return Status::OK();
 }
 

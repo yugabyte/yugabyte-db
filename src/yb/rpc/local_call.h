@@ -128,6 +128,8 @@ class LocalYBInboundCallTracker : public InboundCall::CallProcessedListener {
   public:
     void CallProcessed(InboundCall* call) override EXCLUDES(lock_);
     void Enqueue(InboundCall* call, InboundCallWeakPtr call_ptr) EXCLUDES(lock_);
+    Status DumpRunningRpcs(
+        const DumpRunningRpcsRequestPB& req, DumpRunningRpcsResponsePB* resp);
   private:
     simple_spinlock lock_;
     std::unordered_map<InboundCall*, InboundCallWeakPtr> calls_being_handled_ GUARDED_BY(lock_);

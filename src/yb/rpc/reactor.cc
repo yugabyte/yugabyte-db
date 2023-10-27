@@ -482,7 +482,6 @@ void Reactor::CheckReadyToStop() {
     if (VLOG_IS_ON(4)) {
       VLOG_WITH_PREFIX(4) << "Check ready to stop: " << thread_->ToString() << ", "
                           << "waiting connections: " << waiting_conns_.size();
-
       for (const auto& conn : waiting_conns_) {
         VLOG_WITH_PREFIX(4) << "Connection: " << conn->ToString()
                             << ", idle=" << conn->Idle()
