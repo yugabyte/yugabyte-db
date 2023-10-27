@@ -20629,13 +20629,7 @@ YbATGetCloneTableStmt(const char *namespace_name, const char *table_name,
 	}
 
 	if (clone_split_options)
-	{
-		create_stmt->split_options = makeNode(OptSplit);
-		create_stmt->split_options->split_type = NUM_TABLETS;
-		create_stmt->split_options->num_tablets =
-			rel->yb_table_properties->num_tablets;
-		create_stmt->split_options->split_points = NULL;
-	}
+		create_stmt->split_options = YbGetSplitOptions(rel);
 
 	/*
 	 * Set attributes and their defaults.
@@ -21407,7 +21401,7 @@ static void
 YbATCopyIndexes(Relation old_rel, Oid new_relid, const AttrMap *new2old_attmap,
 				const char *temp_suffix, const Oid namespace_oid,
 				RenameStmt *rename_stmt, const char *namespace_name,
-				ObjectAddress *new_index_addr)
+				ObjectAddress *new_index_addr, const char *altered_column_name)
 {
 	ListCell *cell;
 	List	 *idx_list = RelationGetIndexList(old_rel);
@@ -21420,6 +21414,22 @@ YbATCopyIndexes(Relation old_rel, Oid new_relid, const AttrMap *new2old_attmap,
 			NULL /* heapRel, we provide an oid instead */, idx_rel,
 			new2old_attmap,
 			NULL /* parent constraint OID pointer */);
+
+		/*
+		* For range partitioned secondary indexes, we only clone split options
+		* when the altered column (if any) is not a part of the index's range
+		* key (as in this case the split options cannot be copied in
+		* a straight-forward way).
+		*/
+		if (!idx_rel->rd_index->indisprimary)
+		{
+			YbGetTableProperties(idx_rel);
+			if (!idx_rel->yb_table_properties->is_colocated &&
+				!(YbIsColumnPartOfKey(idx_rel, altered_column_name) &&
+				idx_rel->yb_table_properties->num_range_key_columns > 0 &&
+				idx_rel->yb_table_properties->num_hash_key_columns == 0))
+				idx_stmt->split_options = YbGetSplitOptions(idx_rel);
+		}
 
 		/*
 		 * Index names on different tables conflict with each other, so
@@ -21754,7 +21764,7 @@ YbATCopyMetadataAndData(Relation old_rel, Relation new_rel,
 	pg_depend = table_open(DependRelationId, RowExclusiveLock);
 	YbATCopyIndexes(old_rel, RelationGetRelid(new_rel), new2old_attmap,
 					temp_suffix, namespace_oid, rename_stmt, namespace_name,
-					new_index_addr);
+					new_index_addr, altered_column_name);
 	/*
 	 * Either we're not changing indexes (new_index_addr passed in was null),
 	 * or otherwise new_index_addr is valid or invalid depending on whether
@@ -22190,9 +22200,19 @@ YbATCloneRelationSetColumnType(Relation old_rel,
 	/*
 	 * Prepare a statement to clone the old relation.
 	 */
+
+	/*
+	 * For range partitioned tables, we only clone split options
+	 * when the altered column (if any) is not a part of the table's range key
+	 * (as in this case the split options cannot be copied in
+	 * a straight-forward way).
+	 */
+	bool clone_split_options =
+		!old_rel->yb_table_properties->is_colocated &&
+		!(YbIsColumnPartOfKey(old_rel, altered_column_name) &&
+		  old_rel->yb_table_properties->num_range_key_columns > 0);
 	create_stmt = YbATGetCloneTableStmt(
-		namespace_name, orig_table_name, old_rel,
-		!old_rel->yb_table_properties->is_colocated /* clone_split_options */);
+		namespace_name, orig_table_name, old_rel, clone_split_options);
 
 	YbATUpdateColumnTypeForCreateStmt(create_stmt, old_rel, altered_column_name,
 									  altered_collation_id, altered_type_name);

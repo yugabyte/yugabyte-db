@@ -25,20 +25,27 @@ CREATE TABLE testsplitat (
   b TEXT,
   PRIMARY KEY(a ASC, b ASC));
 CREATE TABLE testlikesplitat(LIKE testsplitat INCLUDING INDEXES) SPLIT AT VALUES((-100, 'bar'), (250, 'foo'));
+CREATE INDEX ON testlikesplitat(a ASC) SPLIT AT VALUES ((10), (20));
 \d+ testlikesplitat
 SELECT yb_get_range_split_clause('testlikesplitat'::regclass);
+SELECT yb_get_range_split_clause('testlikesplitat_a_idx'::regclass);
 
 -- Test adding SPLIT INTO syntax with copied PK.
 CREATE TABLE testsplitinto(a INT, b text, PRIMARY KEY((a, b) HASH));
 CREATE TABLE testlikesplitinto(LIKE testsplitinto INCLUDING INDEXES) SPLIT INTO 2 TABLETS;
+CREATE INDEX ON testlikesplitinto(a) SPLIT INTO 5 TABLETS;
 \d+ testlikesplitinto
-SELECT * FROM yb_table_properties('testlikesplitinto'::regclass);
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('testlikesplitinto'::regclass);
+SELECT num_tablets, num_hash_key_columns
+    FROM yb_table_properties('testlikesplitinto_a_idx'::regclass);
 
 -- Split info is not copied.
 CREATE TABLE neg_splitat (LIKE testlikesplitat INCLUDING ALL);
 SELECT yb_get_range_split_clause('neg_splitat'::regclass);
+SELECT yb_get_range_split_clause('neg_splitat_a_idx'::regclass);
 CREATE TABLE neg_splitinto (LIKE testlikesplitinto INCLUDING ALL);
-SELECT * FROM yb_table_properties('neg_splitinto'::regclass);
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('neg_splitinto'::regclass);
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('neg_splitinto_a_idx'::regclass);
 DROP TABLE testsplitat, testlikesplitat, testsplitinto, testlikesplitinto, neg_splitat, neg_splitinto CASCADE;
 
 -- Test variations of unique key index.
