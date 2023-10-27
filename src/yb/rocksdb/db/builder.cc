@@ -50,9 +50,11 @@
 #include "yb/rocksdb/util/stop_watch.h"
 
 #include "yb/util/result.h"
+#include "yb/util/sync_point.h"
 
-using std::unique_ptr;
-using std::shared_ptr;
+#include "yb/util/flags/flag_tags.h"
+
+DECLARE_uint64(rocksdb_check_sst_file_tail_for_zeros);
 
 namespace rocksdb {
 
@@ -95,7 +97,7 @@ namespace {
   Status CreateWritableFileWriter(const std::string& filename, const EnvOptions& env_options,
       const yb::IOPriority io_priority, Env* env,
       std::shared_ptr<WritableFileWriter>* file_writer) {
-    unique_ptr<WritableFile> file;
+    std::unique_ptr<WritableFile> file;
     Status s = NewWritableFile(env, filename, &file, env_options);
     if (!s.ok()) {
       return s;
@@ -104,10 +106,11 @@ namespace {
     file_writer->reset(new WritableFileWriter(std::move(file), env_options));
     return Status::OK();
   }
-} // anonymous namespace
+
+} // namespace
 
 Status BuildTable(const std::string& dbname,
-                  Env* env,
+                  const DBOptions& db_options,
                   const ImmutableCFOptions& ioptions,
                   const EnvOptions& env_options,
                   TableCache* table_cache,
@@ -122,11 +125,12 @@ Status BuildTable(const std::string& dbname,
                   const CompressionOptions& compression_opts,
                   bool paranoid_file_checks,
                   InternalStats* internal_stats,
-                  BoundaryValuesExtractor* boundary_values_extractor,
                   const yb::IOPriority io_priority,
                   TableProperties* table_properties) {
   // Reports the IOStats for flush for every following bytes.
   const size_t kReportFlushIOStatsEvery = 1048576;
+  auto* env = db_options.env;
+
   Status s;
   meta->fd.total_file_size = 0;
   meta->fd.base_file_size = 0;
@@ -138,8 +142,8 @@ Status BuildTable(const std::string& dbname,
                                              meta->fd.GetPathId());
   const std::string data_fname = is_split_sst ? TableBaseToDataFileName(base_fname) : "";
   if (iter->Valid()) {
-    shared_ptr<WritableFileWriter> base_file_writer;
-    shared_ptr<WritableFileWriter> data_file_writer;
+    std::shared_ptr<WritableFileWriter> base_file_writer;
+    std::shared_ptr<WritableFileWriter> data_file_writer;
     s = CreateWritableFileWriter(base_fname, env_options, io_priority, env, &base_file_writer);
     if (s.ok() && is_split_sst) {
       s = CreateWritableFileWriter(data_fname, env_options, io_priority, env, &data_file_writer);
@@ -174,9 +178,9 @@ Status BuildTable(const std::string& dbname,
       const Slice& value = c_iter.value();
       builder->Add(key, value);
       meta->UpdateBoundarySeqNo(GetInternalKeySeqno(key));
-      if (boundary_values_extractor) {
+      if (db_options.boundary_extractor) {
         user_values.clear();
-        auto status = boundary_values_extractor->Extract(ExtractUserKey(key), &user_values);
+        auto status = db_options.boundary_extractor->Extract(ExtractUserKey(key), &user_values);
         if (!status.ok()) {
           builder->Abandon();
           return status;
@@ -222,6 +226,14 @@ Status BuildTable(const std::string& dbname,
       s = base_file_writer->Close();
     }
 
+    const auto rocksdb_check_sst_file_tail_for_zeros =
+        FLAGS_rocksdb_check_sst_file_tail_for_zeros;
+    if (s.ok() && !empty && PREDICT_FALSE(rocksdb_check_sst_file_tail_for_zeros > 0)) {
+      s = CheckSstTailForZeros(
+          db_options, env_options, is_split_sst ? data_fname : base_fname,
+          rocksdb_check_sst_file_tail_for_zeros);
+    }
+
     if (s.ok() && !empty) {
       // Verify that the table is usable
       std::unique_ptr<InternalIterator> it(table_cache->NewIterator(
@@ -248,6 +260,20 @@ Status BuildTable(const std::string& dbname,
     if (is_split_sst) {
       env->CleanupFile(data_fname);
     }
+  }
+  return s;
+}
+
+Status CheckSstTailForZeros(
+    const DBOptions& db_options, const EnvOptions& env_options, const std::string& file_path,
+    const size_t check_size) {
+  TEST_SYNC_POINT("CheckFileTailForZeros:Start");
+  auto s = CheckFileTailForZeros(
+      db_options.env, env_options, file_path, check_size);
+  if (!s.ok()) {
+      RLOG(
+          InfoLogLevel::ERROR_LEVEL, db_options.info_log,
+          "SST file %s tail corruption check failed: %s", file_path.c_str(), s.ToString().c_str());
   }
   return s;
 }
