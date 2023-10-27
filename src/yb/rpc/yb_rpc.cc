@@ -262,7 +262,8 @@ YBInboundCall::YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote
   header_.remote_method = remote_method.serialized_body();
 }
 
-YBInboundCall::~YBInboundCall() {}
+YBInboundCall::~YBInboundCall() {
+}
 
 CoarseTimePoint YBInboundCall::GetClientDeadline() const {
   if (header_.timeout_ms == 0) {

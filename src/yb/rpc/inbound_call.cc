@@ -233,6 +233,12 @@ bool InboundCall::RespondTimedOutIfPending(const char* message) {
   return true;
 }
 
+void InboundCall::SetCallProcessedListener(CallProcessedListener* call_processed_listener) {
+  DCHECK(call_processed_listener_ == nullptr) << this << " Trying to overwrite non-null call processed listner "
+      << " existing : " << call_processed_listener_ << " trying to set " << call_processed_listener;
+  call_processed_listener_ = call_processed_listener;
+}
+
 void InboundCall::Clear() {
   {
     std::lock_guard lock(mutex_);

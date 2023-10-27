@@ -38,7 +38,7 @@
 #include <sstream>
 #include <vector>
 
-#include "yb/util/logging.h"
+#include <glog/logging.h>
 
 #include "yb/rpc/local_call.h"
 #include "yb/rpc/lightweight_message.h"

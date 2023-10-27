@@ -486,9 +486,11 @@ void Messenger::Handle(InboundCallPtr call, Queue queue) {
     return;
   }
 
-  InboundCallWeakPtr weak_call_ptr(call);
-  call->SetCallProcessedListener(&local_call_tracker_);
-  local_call_tracker_.Enqueue(call.get(), weak_call_ptr);
+  if (call->IsLocalCall()) {
+    InboundCallWeakPtr weak_call_ptr(call);
+    call->SetCallProcessedListener(&local_call_tracker_);
+    local_call_tracker_.Enqueue(call.get(), weak_call_ptr);
+  }
 
   auto it = rpc_endpoints_.find(call->serialized_remote_method());
   if (it == rpc_endpoints_.end()) {

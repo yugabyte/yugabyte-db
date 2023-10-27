@@ -86,6 +86,9 @@ class LocalYBInboundCall : public YBInboundCall, public RpcCallParams {
     return outbound_call_.lock();
   }
 
+  std::string ToString() const override {
+    return yb::Format("Local call. call-id : $0 ", call_id());;
+  }
  protected:
   void Respond(AnyMessageConstPtr req, bool is_success) override;
 
