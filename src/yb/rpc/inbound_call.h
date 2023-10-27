@@ -224,9 +224,14 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   void EnsureTraceCreated() EXCLUDES(mutex_);
 
   util::WaitStateInfoPtr wait_state() {
-    // return &wait_state_;
     return wait_state_;
-  };
+  }
+
+  // Allows us to set a call processed listener if not already set.
+  // Used in the context of a local inbound call to track pending local calls.
+  void SetCallProcessedListener(CallProcessedListener* call_processed_listener) {
+    call_processed_listener_ = call_processed_listener;
+  }
  protected:
   ThreadPoolTask* BindTask(InboundCallHandler* handler, int64_t rpc_queue_limit);
 

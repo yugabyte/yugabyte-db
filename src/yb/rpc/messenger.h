@@ -214,7 +214,6 @@ class Messenger : public ProxyContext {
 
   // Invoke the RpcService to handle a call directly.
   void Handle(InboundCallPtr call, Queue queue) override;
-  std::unordered_map<uint64_t, InboundCall*> local_calls_being_handled_;
 
   const Protocol* DefaultProtocol() override { return listen_protocol_; }
 
@@ -344,6 +343,7 @@ class Messenger : public ProxyContext {
   RpcEndpointMap rpc_endpoints_;
 
   std::vector<std::unique_ptr<Reactor>> reactors_;
+  LocalYBInboundCallTracker local_call_tracker_;
 
   const scoped_refptr<MetricEntity> metric_entity_;
   const scoped_refptr<Histogram> outgoing_queue_time_;

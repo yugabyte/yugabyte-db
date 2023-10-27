@@ -485,6 +485,11 @@ void Messenger::Handle(InboundCallPtr call, Queue queue) {
     call->RespondFailure(ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN, MoveStatus(op));
     return;
   }
+
+  InboundCallWeakPtr weak_call_ptr(call);
+  call->SetCallProcessedListener(&local_call_tracker_);
+  local_call_tracker_.Enqueue(call.get(), weak_call_ptr);
+
   auto it = rpc_endpoints_.find(call->serialized_remote_method());
   if (it == rpc_endpoints_.end()) {
     auto remote_method = ParseRemoteMethod(call->serialized_remote_method());
