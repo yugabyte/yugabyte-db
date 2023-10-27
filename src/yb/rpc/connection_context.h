@@ -72,7 +72,7 @@ class ConnectionContext {
 
   virtual Status AssignConnection(const ConnectionPtr& connection) { return Status::OK(); }
 
-  virtual void Connected(const ConnectionPtr& connection) = 0;
+  virtual Status Connected(const ConnectionPtr& connection) = 0;
 
   virtual uint64_t ProcessedCallCount() = 0;
 
