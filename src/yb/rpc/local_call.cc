@@ -60,9 +60,13 @@ const std::shared_ptr<LocalYBInboundCall>& LocalOutboundCall::CreateLocalInbound
   const MonoDelta timeout = controller()->timeout();
   const CoarseTimePoint deadline =
       timeout.Initialized() ? start_ + timeout : CoarseTimePoint::max();
+
   auto outbound_call = std::static_pointer_cast<LocalOutboundCall>(shared_from(this));
+  static LocalYBInboundCallTracker tracker;
   inbound_call_ = InboundCall::Create<LocalYBInboundCall>(
-      &rpc_metrics(), remote_method(), outbound_call, deadline);
+      &rpc_metrics(), remote_method(), &tracker, outbound_call, deadline);
+  InboundCallWeakPtr weak_ptr{inbound_call_};
+  tracker.Enqueue(inbound_call_.get(), weak_ptr);
   return inbound_call_;
 }
 
@@ -77,9 +81,10 @@ size_t LocalOutboundCall::TransferSidecars(Sidecars* dest) {
 LocalYBInboundCall::LocalYBInboundCall(
     RpcMetrics* rpc_metrics,
     const RemoteMethod& remote_method,
+    CallProcessedListener* call_processed_listener,
     std::weak_ptr<LocalOutboundCall> outbound_call,
     CoarseTimePoint deadline)
-    : YBInboundCall(rpc_metrics, remote_method), outbound_call_(outbound_call),
+    : YBInboundCall(rpc_metrics, remote_method, call_processed_listener), outbound_call_(outbound_call),
       deadline_(deadline) {
 }
 
@@ -127,6 +132,17 @@ Result<size_t> LocalYBInboundCall::ParseRequest(Slice param, const RefCntBuffer&
 
 AnyMessageConstPtr LocalYBInboundCall::SerializableResponse() {
   return outbound_call()->response();
+}
+
+void LocalYBInboundCallTracker::CallProcessed(InboundCall* call) {
+  std::lock_guard<simple_spinlock> lg(lock_);
+  calls_being_handled_.erase(call);
+}
+
+
+void LocalYBInboundCallTracker::Enqueue(InboundCall* call, InboundCallWeakPtr call_ptr) {
+  std::lock_guard<simple_spinlock> lg(lock_);
+  calls_being_handled_.emplace(call, call_ptr);
 }
 
 } // namespace rpc

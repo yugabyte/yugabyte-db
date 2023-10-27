@@ -513,6 +513,7 @@ void Messenger::Handle(InboundCallPtr call, Queue queue) {
 
   // The RpcService will respond to the client on success or failure.
   call->set_method_index(it->second.second);
+  
   it->second.first->QueueInboundCall(std::move(call));
 }
 

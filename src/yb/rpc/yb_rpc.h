@@ -118,7 +118,8 @@ class YBInboundConnectionContext : public YBConnectionContext {
 class YBInboundCall : public InboundCall {
  public:
   YBInboundCall(ConnectionPtr conn, CallProcessedListener* call_processed_listener);
-  explicit YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method);
+  explicit YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method,
+                         CallProcessedListener* call_processed_listener);
   virtual ~YBInboundCall();
 
   // Is this a local call?

@@ -69,6 +69,7 @@ class LocalOutboundCall : public OutboundCall {
 class LocalYBInboundCall : public YBInboundCall, public RpcCallParams {
  public:
   LocalYBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method,
+                     CallProcessedListener* call_processed_listener,
                      std::weak_ptr<LocalOutboundCall> outbound_call,
                      CoarseTimePoint deadline);
 
@@ -123,6 +124,15 @@ auto HandleCall(InboundCallPtr call, F f) {
     }
   }
 }
+
+class LocalYBInboundCallTracker : public InboundCall::CallProcessedListener {
+  public:
+    void CallProcessed(InboundCall* call) override EXCLUDES(lock_);
+    void Enqueue(InboundCall* call, InboundCallWeakPtr call_ptr) EXCLUDES(lock_);
+  private:
+    simple_spinlock lock_;
+    std::unordered_map<InboundCall*, InboundCallWeakPtr> calls_being_handled_ GUARDED_BY(lock_);
+};
 
 } // namespace rpc
 } // namespace yb

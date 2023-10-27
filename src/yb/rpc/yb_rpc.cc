@@ -256,8 +256,9 @@ YBInboundCall::YBInboundCall(ConnectionPtr conn, CallProcessedListener* call_pro
     : InboundCall(std::move(conn), nullptr /* rpc_metrics */, call_processed_listener),
       sidecars_(&consumption_) {}
 
-YBInboundCall::YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method)
-    : InboundCall(nullptr /* conn */, rpc_metrics, nullptr /* call_processed_listener */),
+YBInboundCall::YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method,
+                             CallProcessedListener* call_processed_listener)
+    : InboundCall(nullptr /* conn */, rpc_metrics, call_processed_listener),
       sidecars_(&consumption_) {
   header_.remote_method = remote_method.serialized_body();
 }
