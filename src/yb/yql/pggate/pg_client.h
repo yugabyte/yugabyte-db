@@ -22,6 +22,7 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/client/yb_table_name.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
@@ -40,6 +41,7 @@
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/master/master_ddl.pb.h"
 
 namespace yb {
 namespace pggate {
@@ -177,6 +179,8 @@ class PgClient {
       bool size_only, uint32_t db_oid);
 
   Result<client::RpcsInfo> ActiveUniverseHistory();
+  
+  Result<tserver::PgTableIDMetadataResponsePB>TableIDMetadata();
   
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;

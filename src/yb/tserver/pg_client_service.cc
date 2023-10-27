@@ -27,6 +27,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/dockv/partition.h"
 #include "yb/common/pg_types.h"
@@ -35,6 +36,8 @@
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog_constants.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_ddl.proxy.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_context.h"
@@ -883,6 +886,16 @@ class PgClientServiceImpl::Impl {
       wait_state->ToPB(resp->add_bg_wait_states());
     }
 
+    return Status::OK();
+  }
+
+  Status TableIDMetadata(const PgTableIDMetadataRequestPB& req, PgTableIDMetadataResponsePB* resp, rpc::RpcContext* context) {
+    auto list_of_tables = VERIFY_RESULT(client().ListTableInfo());
+
+    for (const auto& tableInfo : list_of_tables.tables()) {
+        auto table = resp->add_tables();
+        table->CopyFrom(tableInfo);
+    }
     return Status::OK();
   }
 

@@ -76,6 +76,7 @@ class PgMutationCounter;
     (WaitForBackendsCatalogVersion) \
     (CancelTransaction) \
     (ActiveUniverseHistory) \
+    (TableIDMetadata) \
     (GetTServerUUID) \
     (GetActiveTransactionList) \
     /**/

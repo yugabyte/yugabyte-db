@@ -745,6 +745,14 @@ class PgClient::Impl {
     return resp;
   }
 
+  Result<tserver::PgTableIDMetadataResponsePB>TableIDMetadata() {
+    tserver::PgTableIDMetadataRequestPB req; 
+    tserver::PgTableIDMetadataResponsePB resp;
+    RETURN_NOT_OK(proxy_->TableIDMetadata(req, &resp, PrepareController()));
+    //std::vector<master::ListTablesResponsePB::TableInfo> result(resp.tables().begin(), resp.tables().end());
+    return resp;
+  }
+
   Result<client::RpcsInfo> ActiveUniverseHistory() {
     tserver::PgActiveUniverseHistoryRequestPB req;
     tserver::PgActiveUniverseHistoryResponsePB resp;
@@ -1019,6 +1027,10 @@ Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCa
 
 Result<client::RpcsInfo> PgClient::ActiveUniverseHistory() {
   return impl_->ActiveUniverseHistory();
+}
+
+Result<tserver::PgTableIDMetadataResponsePB> PgClient::TableIDMetadata() {
+  return impl_->TableIDMetadata();
 }
 
 Status PgClient::EnumerateActiveTransactions(

@@ -443,6 +443,31 @@ typedef struct AUHDescriptor {
   const char* wait_status_code_as_string;
 } YBCAUHDescriptor;
 
+typedef struct NamespaceIdentifierPB {
+  const char* id;
+  const char* name;
+  uint32_t database_type;
+} NamespaceIdentifierPB;
+
+typedef struct ColocatedInfo {
+  bool colocated;
+  const char* parent_table_id;
+} ColocatedInfo;
+
+typedef struct TableIDMetadataInfo {
+  const char* id;
+  const char* name;
+  uint32_t table_type;
+  uint32_t relation_type;
+  NamespaceIdentifierPB namespace_;
+  const char* pgschema_name;
+  ColocatedInfo colocated_info;
+} YBCTableIDMetadataInfo;
+
+typedef struct TableIDInfo {
+  YBCTableIDMetadataInfo metadata;
+} YBCTableIDInfo;
+
 typedef struct PgColumnInfo {
   bool is_primary;
   bool is_hash;

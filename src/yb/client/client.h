@@ -643,6 +643,7 @@ class YBClient {
       bool use_cache = false, const std::string* tablespace_id = nullptr,
       const master::ReplicationInfoPB* replication_info = nullptr);
 
+  Result<master::ListTablesResponsePB> ListTableInfo();
   Result<std::vector<YBTabletServer>> ListTabletServers();
 
   Result<TabletServersInfo> ListLiveTabletServers(bool primary_only = false);
