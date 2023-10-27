@@ -31,6 +31,7 @@ interface EditGflagsModalProps {
   open: boolean;
   onClose: () => void;
   universeData: Universe;
+  isGFlagMultilineConfEnabled: boolean;
 }
 
 export const useStyles = makeStyles((theme) => ({
@@ -76,7 +77,12 @@ export const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const EditGflagsModal: FC<EditGflagsModalProps> = ({ open, onClose, universeData }) => {
+export const EditGflagsModal: FC<EditGflagsModalProps> = ({
+  open,
+  onClose,
+  universeData,
+  isGFlagMultilineConfEnabled
+}) => {
   const { t } = useTranslation();
   const { universeDetails, universeUUID } = universeData;
   const { nodePrefix } = universeDetails;
@@ -303,6 +309,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({ open, onClose, unive
                 isReadReplica={false}
                 isReadOnly={false}
                 tableMaxHeight={!asyncCluster ? '420px' : inheritFromPrimary ? '362px' : '296px'}
+                isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
               />
             )}
             {!isPrimary && (
@@ -314,6 +321,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({ open, onClose, unive
                 isReadReplica={true}
                 isReadOnly={false}
                 tableMaxHeight={!asyncCluster ? '412px' : inheritFromPrimary ? '354px' : '288px'}
+                isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
               />
             )}
           </Box>

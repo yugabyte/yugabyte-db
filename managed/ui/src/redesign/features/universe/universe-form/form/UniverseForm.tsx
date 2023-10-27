@@ -241,7 +241,7 @@ export const UniverseForm: FC<UniverseFormProps> = ({
             <AdvancedConfiguration />
           </>
         )}
-        <GFlags />
+        <GFlags runtimeConfigs={runtimeConfigs} />
         {isPrimary && <HelmOverrides />}
         <UserTags />
       </>

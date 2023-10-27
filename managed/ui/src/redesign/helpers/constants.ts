@@ -35,5 +35,15 @@ export type SortOrder = typeof SortOrder[keyof typeof SortOrder];
 
 export const RuntimeConfigKey = {
   PROVIDER_REDESIGN_FEATURE_FLAG: 'yb.ui.feature_flags.provider_redesign',
-  XCLUSTER_TRANSACTIONAL_ATOMICITY_FEATURE_FLAG: 'yb.xcluster.transactional.enabled'
+  XCLUSTER_TRANSACTIONAL_ATOMICITY_FEATURE_FLAG: 'yb.xcluster.transactional.enabled',
+  IS_GFLAG_MULTILINE_ENABLED: 'yb.ui.feature_flags.gflag_multiline_conf'
+} as const;
+
+/**
+ * Toast notification duration in milliseconds.
+ */
+export const ToastNotificationDuration = {
+  SHORT: 2000,
+  DEFAULT: 3000,
+  LONG: 5000
 } as const;

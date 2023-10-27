@@ -46,6 +46,7 @@ interface GflagsFieldProps {
   isReadOnly: boolean;
   isReadReplica: boolean;
   tableMaxHeight?: string;
+  isGFlagMultilineConfEnabled: boolean;
 }
 
 interface SelectedOption {
@@ -106,7 +107,8 @@ export const GFlagsField = ({
   editMode = false,
   isReadOnly = false,
   isReadReplica = false,
-  tableMaxHeight
+  tableMaxHeight,
+  isGFlagMultilineConfEnabled
 }: GflagsFieldProps): ReactElement => {
   const { fields, append, insert, remove } = useFieldArray({
     name: fieldPath as any,
@@ -508,7 +510,12 @@ export const GFlagsField = ({
         return (
           <AddGFlag
             formProps={formProps}
-            gFlagProps={{ ...selectedProps, dbVersion, existingFlags: fields }}
+            gFlagProps={{
+              ...selectedProps,
+              dbVersion,
+              existingFlags: fields,
+              isGFlagMultilineConfEnabled
+            }}
             updateJWKSDialogStatus={updateJWKSDialogStatus}
           />
         );

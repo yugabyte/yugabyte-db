@@ -53,6 +53,7 @@ import { EncryptionInTransit } from '../../../redesign/features/universe/univers
 import { EnableYSQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYSQLModal';
 import { EnableYCQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYCQLModal';
 import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-flags/EditGflags';
+import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 import './UniverseDetail.scss';
 
 const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d', 'c6gd'];
@@ -292,6 +293,11 @@ class UniverseDetail extends Component {
     const isAuthEnforced =
       runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.universe.auth.is_enforced')
         ?.value === 'true';
+
+    const isGFlagMultilineConfEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (config) => config.key === RuntimeConfigKey.IS_GFLAG_MULTILINE_ENABLED
+      )?.value === 'true';
 
     const isConfigureYSQLEnabled =
       runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.configure_db_api.ysql')
@@ -941,6 +947,7 @@ class UniverseDetail extends Component {
             this.props.fetchCustomerTasks();
             this.props.getUniverseInfo(currentUniverse.data.universeUUID);
           }}
+          isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
           universeData={currentUniverse.data}
         />
         <DeleteUniverseContainer
