@@ -7305,6 +7305,152 @@ SELECT results, pg_typeof(user) FROM cypher('issue_1124', $$ MATCH (u) RETURN u 
 (1 row)
 
 --
+-- issue 1303: segmentation fault on queries like SELECT * FROM agtype(null);
+--
+-- Test Const and CoerceViaIO expression node types
+SELECT * FROM agtype(null);
+ agtype 
+--------
+ 
+(1 row)
+
+SELECT * FROM agtype('1');
+ agtype 
+--------
+ 1
+(1 row)
+
+SELECT * FROM agtype('[1, 2, 3]');
+  agtype   
+-----------
+ [1, 2, 3]
+(1 row)
+
+SELECT * FROM agtype('{"a": 1}');
+  agtype  
+----------
+ {"a": 1}
+(1 row)
+
+SELECT * FROM agtype('{"id": 844424930131971, "label": "v", "properties": {"i": 1}}::vertex');
+                                agtype                                 
+-----------------------------------------------------------------------
+ {"id": 844424930131971, "label": "v", "properties": {"i": 1}}::vertex
+(1 row)
+
+SELECT * FROM agtype('{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge');
+                                                          agtype                                                           
+---------------------------------------------------------------------------------------------------------------------------
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+(1 row)
+
+SELECT * FROM agtype('[{"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex, {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge, {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex, {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge, {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex]::path');
+                                                                                                                                                                                                                                                    agtype                                                                                                                                                                                                                                                     
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex, {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge, {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex, {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge, {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex]::path
+(1 row)
+
+SELECT * FROM text(1);
+ text 
+------
+ 1
+(1 row)
+
+SELECT * FROM text('1');
+ text 
+------
+ 1
+(1 row)
+
+SELECT * FROM int4(1);
+ int4 
+------
+    1
+(1 row)
+
+SELECT * FROM json('1');
+ json 
+------
+ 1
+(1 row)
+
+SELECT * FROM jsonb('1');
+ jsonb 
+-------
+ 1
+(1 row)
+
+SELECT * FROM bytea('1');
+ bytea 
+-------
+ \x31
+(1 row)
+
+-- Test Var expression node types
+SELECT create_graph('issue_1303');
+NOTICE:  graph "issue_1303" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT result, agtype('[1, 2, 3]')  FROM cypher('issue_1303', $$ CREATE (u) RETURN u $$) AS (result agtype);
+                             result                             |  agtype   
+----------------------------------------------------------------+-----------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex | [1, 2, 3]
+(1 row)
+
+SELECT result, result2, pg_typeof(result2) FROM cypher('issue_1303', $$ MATCH (u) RETURN u $$) AS (result agtype), agtype('[1, 2, 3]') AS result2;
+                             result                             |  result2  | pg_typeof 
+----------------------------------------------------------------+-----------+-----------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex | [1, 2, 3] | agtype
+(1 row)
+
+SELECT result, result2, pg_typeof(result2) FROM cypher('issue_1303', $$ MATCH (u) RETURN u $$) AS (result agtype), text(1) AS result2;
+                             result                             | result2 | pg_typeof 
+----------------------------------------------------------------+---------+-----------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex | 1       | text
+(1 row)
+
+SELECT result, result2, pg_typeof(result2), result3, pg_typeof(result3) FROM cypher('issue_1303', $$ MATCH (u) RETURN u $$) AS (result agtype), text(1) AS result2, agtype(result) AS result3;
+                             result                             | result2 | pg_typeof |                            result3                             | pg_typeof 
+----------------------------------------------------------------+---------+-----------+----------------------------------------------------------------+-----------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex | 1       | text      | {"id": 281474976710657, "label": "", "properties": {}}::vertex | agtype
+(1 row)
+
+SELECT result, result2, pg_typeof(result2), result3, pg_typeof(result3) FROM cypher('issue_1303', $$ MATCH (u) RETURN u $$) AS (result agtype), text(1) AS result2, agtype(result2) AS result3;
+                             result                             | result2 | pg_typeof | result3 | pg_typeof 
+----------------------------------------------------------------+---------+-----------+---------+-----------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex | 1       | text      | 1       | agtype
+(1 row)
+
+-- Text OpExpr expression node types
+SELECT * FROM agtype('[1, 2, 3]'::agtype || '[5, 6, 7]');
+       agtype       
+--------------------
+ [1, 2, 3, 5, 6, 7]
+(1 row)
+
+SELECT * FROM agtype('[1, 2, 3]'::agtype -> 2);
+ agtype 
+--------
+ 3
+(1 row)
+
+SELECT * FROM agtype('{"a": 1, "b": 2}'::agtype -> 'a'::text);
+ agtype 
+--------
+ 1
+(1 row)
+
+-- Text BoolExpr expression node types
+SELECT * FROM bool(true AND false);
+ bool 
+------
+ f
+(1 row)
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('issue_1124', true);
@@ -7312,6 +7458,16 @@ NOTICE:  drop cascades to 2 other objects
 DETAIL:  drop cascades to table issue_1124._ag_label_vertex
 drop cascades to table issue_1124._ag_label_edge
 NOTICE:  graph "issue_1124" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT * FROM drop_graph('issue_1303', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table issue_1303._ag_label_vertex
+drop cascades to table issue_1303._ag_label_edge
+NOTICE:  graph "issue_1303" has been dropped
  drop_graph 
 ------------
  

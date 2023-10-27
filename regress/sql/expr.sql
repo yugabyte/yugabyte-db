@@ -2987,9 +2987,46 @@ SELECT results, pg_typeof(user) FROM cypher('issue_1124', $$ CREATE (u) RETURN u
 SELECT results, pg_typeof(user) FROM cypher('issue_1124', $$ MATCH (u) RETURN u $$) AS (results agtype), user;
 
 --
+-- issue 1303: segmentation fault on queries like SELECT * FROM agtype(null);
+--
+
+-- Test Const and CoerceViaIO expression node types
+SELECT * FROM agtype(null);
+SELECT * FROM agtype('1');
+SELECT * FROM agtype('[1, 2, 3]');
+SELECT * FROM agtype('{"a": 1}');
+SELECT * FROM agtype('{"id": 844424930131971, "label": "v", "properties": {"i": 1}}::vertex');
+SELECT * FROM agtype('{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge');
+SELECT * FROM agtype('[{"id": 1125899906842625, "label": "v1", "properties": {"id": "initial"}}::vertex, {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge, {"id": 1125899906842626, "label": "v1", "properties": {"id": "middle"}}::vertex, {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge, {"id": 1125899906842627, "label": "v1", "properties": {"id": "end"}}::vertex]::path');
+
+SELECT * FROM text(1);
+SELECT * FROM text('1');
+SELECT * FROM int4(1);
+SELECT * FROM json('1');
+SELECT * FROM jsonb('1');
+SELECT * FROM bytea('1');
+
+-- Test Var expression node types
+SELECT create_graph('issue_1303');
+SELECT result, agtype('[1, 2, 3]')  FROM cypher('issue_1303', $$ CREATE (u) RETURN u $$) AS (result agtype);
+SELECT result, result2, pg_typeof(result2) FROM cypher('issue_1303', $$ MATCH (u) RETURN u $$) AS (result agtype), agtype('[1, 2, 3]') AS result2;
+SELECT result, result2, pg_typeof(result2) FROM cypher('issue_1303', $$ MATCH (u) RETURN u $$) AS (result agtype), text(1) AS result2;
+SELECT result, result2, pg_typeof(result2), result3, pg_typeof(result3) FROM cypher('issue_1303', $$ MATCH (u) RETURN u $$) AS (result agtype), text(1) AS result2, agtype(result) AS result3;
+SELECT result, result2, pg_typeof(result2), result3, pg_typeof(result3) FROM cypher('issue_1303', $$ MATCH (u) RETURN u $$) AS (result agtype), text(1) AS result2, agtype(result2) AS result3;
+
+-- Text OpExpr expression node types
+SELECT * FROM agtype('[1, 2, 3]'::agtype || '[5, 6, 7]');
+SELECT * FROM agtype('[1, 2, 3]'::agtype -> 2);
+SELECT * FROM agtype('{"a": 1, "b": 2}'::agtype -> 'a'::text);
+
+-- Text BoolExpr expression node types
+SELECT * FROM bool(true AND false);
+
+--
 -- Cleanup
 --
 SELECT * FROM drop_graph('issue_1124', true);
+SELECT * FROM drop_graph('issue_1303', true);
 SELECT * FROM drop_graph('graph_395', true);
 SELECT * FROM drop_graph('chained', true);
 SELECT * FROM drop_graph('VLE', true);

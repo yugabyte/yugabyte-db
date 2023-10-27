@@ -171,13 +171,20 @@ static bool convert_cypher_walker(Node *node, ParseState *pstate)
          * From PG -
          * SQLValueFunction - parameterless functions with special grammar
          *                    productions.
+         * CoerceViaIO - represents a type coercion between two types whose textual
+         *               representations are compatible
+         * Var - expression node representing a variable (ie, a table column)
+         * OpExpr - expression node for an operator invocation
+         * Const - constant value or expression node
+         * BoolExpr - expression node for the basic Boolean operators AND, OR, NOT
          *
          * These are a special case that needs to be ignored.
          *
-         * TODO: This likely needs to be done with XmlExpr types, and maybe
-         *       a few others too.
          */
-        if (IsA(funcexpr, SQLValueFunction))
+        if (IsA(funcexpr, SQLValueFunction)
+                || IsA(funcexpr, CoerceViaIO)
+                || IsA(funcexpr, Var)   || IsA(funcexpr, OpExpr)
+                || IsA(funcexpr, Const) || IsA(funcexpr, BoolExpr))
         {
             return false;
         }
@@ -315,13 +322,20 @@ static bool is_func_cypher(FuncExpr *funcexpr)
      * From PG -
      * SQLValueFunction - parameterless functions with special grammar
      *                    productions.
+     * CoerceViaIO - represents a type coercion between two types whose textual
+     *               representations are compatible
+     * Var - expression node representing a variable (ie, a table column)
+     * OpExpr - expression node for an operator invocation
+     * Const - constant value or expression node
+     * BoolExpr - expression node for the basic Boolean operators AND, OR, NOT
      *
      * These are a special case that needs to be ignored.
      *
-     *  TODO: This likely needs to be done with XmlExpr types, and maybe
-     *        a few others too.
      */
-    if (IsA(funcexpr, SQLValueFunction))
+    if (IsA(funcexpr, SQLValueFunction)
+            || IsA(funcexpr, CoerceViaIO)
+            || IsA(funcexpr, Var)   || IsA(funcexpr, OpExpr)
+            || IsA(funcexpr, Const) || IsA(funcexpr, BoolExpr))
     {
         return false;
     }
