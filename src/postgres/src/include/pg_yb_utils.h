@@ -810,6 +810,12 @@ void GetStatusMsgAndArgumentsByCode(
 bool YbIsBatchedExecution();
 void YbSetIsBatchedExecution(bool value);
 
+/* Check if the given column is a part of the relation's key. */
+bool YbIsColumnPartOfKey(Relation rel, const char *column_name);
+
+/* Get a relation's split options. */
+OptSplit *YbGetSplitOptions(Relation rel);
+
 #define HandleYBStatus(status) \
 	HandleYBStatusAtErrorLevel(status, ERROR)
 
