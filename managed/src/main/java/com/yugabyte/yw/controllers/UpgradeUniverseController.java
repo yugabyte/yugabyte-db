@@ -495,7 +495,8 @@ public class UpgradeUniverseController extends AuthenticatedController {
             UserIntent.class);
     UUID taskUuid = serviceMethod.upgrade(requestParams, customer, universe);
     JsonNode additionalDetails = null;
-    if (type.equals(GFlagsUpgradeParams.class)) {
+    if (GFlagsUpgradeParams.class.isAssignableFrom(type)) {
+      log.debug("setting up gflag audit logging");
       additionalDetails =
           upgradeUniverseHandler.constructGFlagAuditPayload(
               (GFlagsUpgradeParams) requestParams, userIntent);
