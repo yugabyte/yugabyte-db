@@ -62,11 +62,8 @@ const std::shared_ptr<LocalYBInboundCall>& LocalOutboundCall::CreateLocalInbound
       timeout.Initialized() ? start_ + timeout : CoarseTimePoint::max();
 
   auto outbound_call = std::static_pointer_cast<LocalOutboundCall>(shared_from(this));
-  static LocalYBInboundCallTracker tracker;
   inbound_call_ = InboundCall::Create<LocalYBInboundCall>(
-      &rpc_metrics(), remote_method(), &tracker, outbound_call, deadline);
-  InboundCallWeakPtr weak_ptr{inbound_call_};
-  tracker.Enqueue(inbound_call_.get(), weak_ptr);
+      &rpc_metrics(), remote_method(), outbound_call, deadline);
   return inbound_call_;
 }
 
@@ -81,10 +78,9 @@ size_t LocalOutboundCall::TransferSidecars(Sidecars* dest) {
 LocalYBInboundCall::LocalYBInboundCall(
     RpcMetrics* rpc_metrics,
     const RemoteMethod& remote_method,
-    CallProcessedListener* call_processed_listener,
     std::weak_ptr<LocalOutboundCall> outbound_call,
     CoarseTimePoint deadline)
-    : YBInboundCall(rpc_metrics, remote_method, call_processed_listener), outbound_call_(outbound_call),
+    : YBInboundCall(rpc_metrics, remote_method), outbound_call_(outbound_call),
       deadline_(deadline) {
 }
 

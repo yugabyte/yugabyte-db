@@ -47,6 +47,7 @@
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/io_thread_pool.h"
+#include "yb/rpc/local_call.h"
 #include "yb/rpc/proxy_context.h"
 #include "yb/rpc/scheduler.h"
 

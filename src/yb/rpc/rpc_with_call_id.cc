@@ -30,8 +30,16 @@ ConnectionContextWithCallId::ConnectionContextWithCallId() {}
 void ConnectionContextWithCallId::DumpPB(const DumpRunningRpcsRequestPB& req,
                                          RpcConnectionPB* resp) {
   for (const auto &entry : calls_being_handled_) {
-    entry.second->DumpPB(req, resp->add_calls_in_flight());
+    InboundCallPtr call_ptr{entry.second.lock()};
+    if (call_ptr) {
+      call_ptr->DumpPB(req, resp->add_calls_in_flight());
+    }
   }
+}
+
+std::string ToString(InboundCallWeakPtr weak_ptr) {
+  InboundCallPtr call_ptr{weak_ptr.lock()};
+  return (call_ptr ? "deleted" : yb::Format("$0", call_ptr.get()));
 }
 
 bool ConnectionContextWithCallId::Idle(std::string* reason_not_idle) {
@@ -48,9 +56,10 @@ bool ConnectionContextWithCallId::Idle(std::string* reason_not_idle) {
   return false;
 }
 
-Status ConnectionContextWithCallId::Store(InboundCall* call) {
-  uint64_t call_id = ExtractCallId(call);
-  if (!calls_being_handled_.emplace(call_id, call).second) {
+Status ConnectionContextWithCallId::Store(InboundCallPtr call) {
+  uint64_t call_id = ExtractCallId(call.get());
+  InboundCallWeakPtr weak_call_ptr(call);
+  if (!calls_being_handled_.emplace(call_id, weak_call_ptr).second) {
     LOG(WARNING) << call->connection()->ToString() << ": received call ID " << call_id
                  << " but was already processing this ID! Ignoring";
     return STATUS_FORMAT(NetworkError, "Received duplicate call id: $0", call_id);
@@ -65,8 +74,9 @@ void ConnectionContextWithCallId::CallProcessed(InboundCall* call) {
   ++processed_call_count_;
   auto id = ExtractCallId(call);
   auto it = calls_being_handled_.find(id);
-  if (it == calls_being_handled_.end() || it->second != call) {
-    std::string existing = it == calls_being_handled_.end() ? "<NONE>" : it->second->ToString();
+  InboundCallPtr call_ptr{it == calls_being_handled_.end() ? nullptr : it->second.lock()};
+  if (!call_ptr || call_ptr.get() != call) {
+    std::string existing = it == calls_being_handled_.end() || !call_ptr ? "<NONE>" : call_ptr->ToString();
     LOG(DFATAL) << "Processed call with invalid id: " << id << ", call: " << call->ToString()
                 << ", existing: " << existing;
     return;

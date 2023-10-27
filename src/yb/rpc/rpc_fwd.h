@@ -104,7 +104,7 @@ typedef std::weak_ptr<Connection> ConnectionWeakPtr;
 
 class InboundCall;
 typedef std::shared_ptr<InboundCall> InboundCallPtr;
-typedef std::shared_ptr<InboundCall> InboundCallWeakPtr;
+typedef std::weak_ptr<InboundCall> InboundCallWeakPtr;
 
 class Messenger;
 

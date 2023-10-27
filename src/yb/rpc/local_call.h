@@ -69,7 +69,6 @@ class LocalOutboundCall : public OutboundCall {
 class LocalYBInboundCall : public YBInboundCall, public RpcCallParams {
  public:
   LocalYBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method,
-                     CallProcessedListener* call_processed_listener,
                      std::weak_ptr<LocalOutboundCall> outbound_call,
                      CoarseTimePoint deadline);
 
