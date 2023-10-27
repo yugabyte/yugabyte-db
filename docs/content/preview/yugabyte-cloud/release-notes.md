@@ -295,7 +295,7 @@ On this page:
 
 **New Features**
 
-- Support for social logins. Sign up and log in to YugabyteDB Managed using your existing Google, LinkedIn, or GitHub account. Admin users can manage the available login methods from the **Users** tab on the **Security** page.
+- Support for social logins. Sign up and log in to YugabyteDB Managed using your existing Google, LinkedIn, or GitHub account. Admin users can manage the available login methods from the **Authentication** tab on the **Security** page.
 
 **Database**
 
