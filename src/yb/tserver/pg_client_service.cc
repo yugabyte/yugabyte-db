@@ -778,6 +778,7 @@ class PgClientServiceImpl::Impl {
   
   Status TableIDMetadata(const PgTableIDMetadataRequestPB& req, PgTableIDMetadataResponsePB* resp, rpc::RpcContext* context) {
     auto list_of_tables = VERIFY_RESULT(client().ListTableInfo());
+    
     for (const auto& tableInfo : list_of_tables.tables()) {
         auto table = resp->add_tables();
         table->CopyFrom(tableInfo);

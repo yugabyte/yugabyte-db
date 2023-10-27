@@ -990,9 +990,6 @@ Result<client::RpcsInfo> PgSession::ActiveUniverseHistory() {
   return pg_client_.ActiveUniverseHistory();
 }
 
-// Result<std::vector<master::ListTablesResponsePB::TableInfo>> PgSession::TableIDMetadata() {
-//   return pg_client_.TableIDMetadata();
-// }
 Result<tserver::PgTableIDMetadataResponsePB> PgSession::TableIDMetadata() {
     return pg_client_.TableIDMetadata();
 }

@@ -446,34 +446,29 @@ typedef struct AUHDescriptor {
 } YBCAUHDescriptor;
 
 typedef struct NamespaceIdentifierPB {
-  master::NamespaceIdentifierPB id;
-  master::SysNamespaceEntryPB_State state;
+  const char* id;
+  const char* name;
+  uint32_t database_type;
 } NamespaceIdentifierPB;
 
 typedef struct ColocatedInfo {
+  bool colocated;
+  const char* parent_table_id;
 } ColocatedInfo;
 
-typedef struct TableType {
-} TableType;
-
-typedef struct RelationType {
-} RelationType;
-
 typedef struct TableIDMetadataInfo {
-  const uint8_t* id;
+  const char* id;
   const char* name;
-  const TableType* table_type;
-  const RelationType* relation_type;
-  //const SysTablesEntryPB.State* state;
-  const NamespaceIdentifierPB* namespace_;
+  uint32_t table_type;
+  uint32_t relation_type;
+  NamespaceIdentifierPB namespace_;
   const char* pgschema_name;
-  const ColocatedInfo* colocated_info;
+  ColocatedInfo colocated_info;
 } YBCTableIDMetadataInfo;
 
 typedef struct TableIDInfo {
-  TableIDMetadataInfo metadata;
+  YBCTableIDMetadataInfo metadata;
 } YBCTableIDInfo;
-
 
 typedef struct PgColumnInfo {
   bool is_primary;

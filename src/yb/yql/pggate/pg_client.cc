@@ -1030,9 +1030,6 @@ Result<client::RpcsInfo> PgClient::ActiveUniverseHistory() {
   return impl_->ActiveUniverseHistory();
 }
 
-// Result<std::vector<master::ListTablesResponsePB::TableInfo>>PgClient::TableIDMetadata() {
-//   return impl_->TableIDMetadata();
-// }
 Result<tserver::PgTableIDMetadataResponsePB> PgClient::TableIDMetadata() {
   return impl_->TableIDMetadata();
 }

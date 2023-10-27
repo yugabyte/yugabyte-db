@@ -56,6 +56,18 @@ typedef struct ybauhEntry {
   float8 sample_weight;
 } ybauhEntry;
 
+typedef struct ybtableInfo {
+  const char* id;
+  const char* name;
+  uint32_t table_type;
+  uint32_t relation_type;
+  const char* namespace_id;
+  const char* namespace_name;
+  const char* pgschema_name;
+  bool colocated;
+  const char* parent_table_id;
+} ybtableInfo;
+
 /* counters */
 typedef struct circularBufferIndex
 {
@@ -90,8 +102,20 @@ static void auh_entry_store(TimestampTz auh_time,
                             long query_id,
                             TimestampTz start_ts_of_wait_event,
                             float8 sample_weight);
+static void table_info(const char* id,
+                        const char* name,
+                        uint32_t table_type,
+                        uint32_t relation_type,
+                        //const SysTablesEntryPB.State* state;
+                        const char* namespace_id,
+                        const char* namespace_name,
+                        uint32_t database_type,
+                        const char* pgschema_name,
+                        bool colocated,
+                       const char* parent_table_id);
 static void pg_collect_samples(TimestampTz auh_sample_time, uint16 num_procs_to_sample);
 static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs_to_sample);
+static void collect_table_info();
 
 static volatile sig_atomic_t got_sigterm = false;
 static volatile sig_atomic_t got_sighup = false;
@@ -167,7 +191,7 @@ yb_auh_main(Datum main_arg) {
 
     pg_collect_samples(auh_sample_time, auh_sample_size);
     tserver_collect_samples(auh_sample_time, auh_sample_size);
-
+    collect_table_info();
     MemoryContextSwitchTo(oldcxt);
     /* No problems, so clean exit */
   }
@@ -216,7 +240,20 @@ static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs
     }
   }
 }
-
+static void collect_table_info()
+{
+  YBCTableIDMetadataInfo *infolist = NULL;
+  size_t size = 0;
+  HandleYBStatus(YBCTableIDMetadata(&infolist, &size));
+  for (int i = 0; i < size; i++) 
+  {
+      table_info(infolist[i].id, infolist[i].name, 
+                infolist[i].table_type, infolist[i].relation_type, 
+                infolist[i].namespace_.id, infolist[i].namespace_.name, 
+                infolist[i].namespace_.database_type, infolist[i].pgschema_name,
+                infolist[i].colocated_info.colocated, infolist[i].colocated_info.parent_table_id);
+  }
+}
 void
 _PG_init(void)
 {
@@ -337,7 +374,29 @@ static void auh_entry_store(TimestampTz auh_time,
   AUHEntryArray[inserted].sample_weight = sample_weight;
   LWLockRelease(auh_entry_array_lock); 
 }
+static void table_info(const char* id,
+                       const char* name,
+                       uint32_t table_type,
+                       uint32_t relation_type,
+                       const char* namespace_id,
+                       const char* namespace_name,
+                       uint32_t database_type,
+                       const char* pgschema_name,
+                       bool colocated,
+                       const char* parent_table_id) {
+    ybtableInfo tableInfo;
 
+    tableInfo.id = id;
+    tableInfo.name = name;
+    tableInfo.table_type = table_type;
+    tableInfo.relation_type = relation_type;
+    tableInfo.namespace_id = namespace_id;
+    tableInfo.namespace_name = namespace_name;
+    tableInfo.pgschema_name = pgschema_name;
+    tableInfo.colocated = colocated;
+    tableInfo.parent_table_id = parent_table_id;
+
+}
 static void
 ybauh_startup_hook(void)
 {
@@ -397,9 +456,7 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
 
   MemoryContextSwitchTo(oldcontext);
   LWLockAcquire(auh_entry_array_lock, LW_SHARED);
-
-  HandleYBStatus(YBCTableIDMetadata());
-
+  
   for (i = 0; i < circular_buf_size; i++)
   {
     Datum           values[PG_ACTIVE_UNIVERSE_HISTORY_COLS];

@@ -1642,13 +1642,35 @@ YBCStatus YBCPgCheckIfPitrActive(bool* is_active) {
   }
   return ToYBCStatus(res.status());
 }
+YBCStatus YBCTableIDMetadata(YBCTableIDMetadataInfo** infolist, size_t* count) {
+    const auto result = pgapi->TableIDMetadata();
+    if (!result.ok()) {
+        return ToYBCStatus(result.status());
+    }
+    
+    const auto& table_info_list = result.get().tables();
+    *count = table_info_list.size();
+    *infolist = nullptr;
+    if (*count > 0) {
+        *infolist = static_cast<YBCTableIDMetadataInfo*>(YBCPAlloc(sizeof(YBCTableIDMetadataInfo) * (*count)));
+        YBCTableIDMetadataInfo* dest = *infolist;
+        for (const auto& table_info : table_info_list) {
 
-YBCStatus YBCTableIDMetadata(tserver::PgTableIDMetadataResponsePB *info) {
-  *info = VERIFY_RESULT(pgapi->TableIDMetadata());
-  // if (!result.ok()) {
-  //   return ToYBCStatus(result.status());
-  // }
-  return YBCStatusOK();
+            dest->id = YBCPAllocStdString(table_info.id());
+            dest->name = YBCPAllocStdString(table_info.name());
+            dest->table_type = table_info.table_type();
+            dest->relation_type = table_info.relation_type();
+            dest->namespace_.id = YBCPAllocStdString(table_info.namespace_().id()); 
+            dest->namespace_.name = YBCPAllocStdString(table_info.namespace_().name()); 
+            dest->namespace_.database_type = table_info.namespace_().database_type(); 
+            dest->pgschema_name = YBCPAllocStdString(table_info.pgschema_name());
+            dest->colocated_info.colocated = table_info.colocated_info().colocated();
+            dest->colocated_info.parent_table_id = YBCPAllocStdString(table_info.colocated_info().parent_table_id());
+
+            ++dest;
+        }
+    }
+    return YBCStatusOK();
 }
 
 YBCStatus YBCActiveUniverseHistory(YBCAUHDescriptor **rpcs, size_t* count) {

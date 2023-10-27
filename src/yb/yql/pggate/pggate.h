@@ -684,7 +684,6 @@ class PgApiImpl {
   // Active Universe History.
   Result<client::RpcsInfo> ActiveUniverseHistory();
 
-  //Result<std::vector<master::ListTablesResponsePB::TableInfo>> TableIDMetadata();
   Result<tserver::PgTableIDMetadataResponsePB> TableIDMetadata();
 
   Status SetTopLevelNodeId();

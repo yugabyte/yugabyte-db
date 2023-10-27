@@ -15,7 +15,6 @@
 #pragma once
 
 #include <stdint.h>
-#include <vector>
 
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -692,7 +691,7 @@ YBCStatus YBCPrefetchRegisteredSysTables();
 
 YBCStatus YBCPgCheckIfPitrActive(bool* is_active);
 
-YBCStatus YBCTableIDMetadata(yb::tserver::PgTableIDMetadataResponsePB *info);
+YBCStatus YBCTableIDMetadata(YBCTableIDMetadataInfo** infolist, size_t* count);
 
 YBCStatus YBCActiveUniverseHistory(YBCAUHDescriptor **rpcs, size_t* numrpcs);
 
