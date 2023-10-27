@@ -227,18 +227,20 @@ param \${id}
  * These are tokens that are used as operators and language constructs in
  * Cypher, and some of them are structural characters in JSON.
  */
-any_exists  "?|"
-all_exists  "?&"
-concat      "||"
-access_path "#>"
-lt_gt       "<>"
-lt_eq       "<="
-gt_eq       ">="
-dot_dot     ".."
-plus_eq     "+="
-eq_tilde    "=~"
-typecast    "::"
-self        [?%()*+,\-./:;<=>[\]^{|}]
+left_contains  "<@"
+right_contains "@>"
+any_exists     "?|"
+all_exists     "?&"
+concat         "||"
+access_path    "#>"
+lt_gt          "<>"
+lt_eq          "<="
+gt_eq          ">="
+dot_dot        ".."
+plus_eq        "+="
+eq_tilde       "=~"
+typecast       "::"
+self           [?%()*+,\-./:;<=>[\]^{|}]
 
 other .
 
@@ -665,6 +667,22 @@ ag_token token;
 {any_exists} {
     update_location();
     token.type = AG_TOKEN_ANY_EXISTS;
+    token.value.s = yytext;
+    token.location = get_location();
+    return token;
+}
+
+{left_contains} {
+    update_location();
+    token.type = AG_TOKEN_LEFT_CONTAINS;
+    token.value.s = yytext;
+    token.location = get_location();
+    return token;
+}
+
+{right_contains} {
+    update_location();
+    token.type = AG_TOKEN_RIGHT_CONTAINS;
     token.value.s = yytext;
     token.location = get_location();
     return token;

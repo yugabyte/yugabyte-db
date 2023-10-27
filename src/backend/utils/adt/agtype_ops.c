@@ -1424,6 +1424,22 @@ Datum agtype_contains(PG_FUNCTION_ARGS)
     properties = AG_GET_ARG_AGTYPE_P(0);
     constraints = AG_GET_ARG_AGTYPE_P(1);
 
+    if (AGT_ROOT_IS_SCALAR(properties)
+            && AGTE_IS_AGTYPE(properties->root.children[0]))
+    {
+        properties =
+            agtype_value_to_agtype(extract_entity_properties(properties,
+                                                             false));
+    }
+
+    if (AGT_ROOT_IS_SCALAR(constraints)
+            && AGTE_IS_AGTYPE(constraints->root.children[0]))
+    {
+        constraints =
+            agtype_value_to_agtype(extract_entity_properties(constraints,
+                                                             false));
+    }
+
     if (AGT_ROOT_IS_OBJECT(properties) != AGT_ROOT_IS_OBJECT(constraints))
     {
         PG_RETURN_BOOL(false);
@@ -1453,6 +1469,22 @@ Datum agtype_contained_by(PG_FUNCTION_ARGS)
 
     properties = AG_GET_ARG_AGTYPE_P(0);
     constraints = AG_GET_ARG_AGTYPE_P(1);
+
+    if (AGT_ROOT_IS_SCALAR(properties)
+            && AGTE_IS_AGTYPE(properties->root.children[0]))
+    {
+        properties =
+            agtype_value_to_agtype(extract_entity_properties(properties,
+                                                             false));
+    }
+
+    if (AGT_ROOT_IS_SCALAR(constraints)
+            && AGTE_IS_AGTYPE(constraints->root.children[0]))
+    {
+        constraints =
+            agtype_value_to_agtype(extract_entity_properties(constraints,
+                                                             false));
+    }
 
     constraint_it = agtype_iterator_init(&constraints->root);
     property_it = agtype_iterator_init(&properties->root);

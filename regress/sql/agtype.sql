@@ -905,12 +905,6 @@ SELECT age_id(agtype_in('null'));
 SELECT age_start_id(agtype_in('null'));
 SELECT age_end_id(agtype_in('null'));
 
-SELECT agtype_contains('{"id": 1}','{"id": 1}');
-SELECT agtype_contains('{"id": 1}','{"id": 2}');
-
-SELECT '{"id": 1}'::agtype @> '{"id": 1}';
-SELECT '{"id": 1}'::agtype @> '{"id": 2}';
-
 --
 -- Test STARTS WITH, ENDS WITH, and CONTAINS
 --

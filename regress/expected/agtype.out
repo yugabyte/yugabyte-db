@@ -3205,30 +3205,6 @@ SELECT age_end_id(agtype_in('null'));
  
 (1 row)
 
-SELECT agtype_contains('{"id": 1}','{"id": 1}');
- agtype_contains 
------------------
- t
-(1 row)
-
-SELECT agtype_contains('{"id": 1}','{"id": 2}');
- agtype_contains 
------------------
- f
-(1 row)
-
-SELECT '{"id": 1}'::agtype @> '{"id": 1}';
- ?column? 
-----------
- t
-(1 row)
-
-SELECT '{"id": 1}'::agtype @> '{"id": 2}';
- ?column? 
-----------
- f
-(1 row)
-
 --
 -- Test STARTS WITH, ENDS WITH, and CONTAINS
 --

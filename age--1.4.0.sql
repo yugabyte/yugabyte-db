@@ -3170,7 +3170,8 @@ PARALLEL SAFE;
 
 CREATE OPERATOR CLASS ag_catalog.gin_agtype_ops
 DEFAULT FOR TYPE agtype USING gin AS
-  OPERATOR 7 @>,
+  OPERATOR 7 @>(agtype, agtype),
+  OPERATOR 8 <@(agtype, agtype),
   OPERATOR 9 ?(agtype, agtype),
   OPERATOR 10 ?|(agtype, agtype),
   OPERATOR 11 ?&(agtype, agtype),

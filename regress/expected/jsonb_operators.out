@@ -19,7 +19,7 @@
 LOAD 'age';
 SET search_path TO ag_catalog;
 --
--- jsonb operators in AGE (?, ?&, ?|, ->, ->>, #>, #>>, ||)
+-- jsonb operators in AGE (?, ?&, ?|, ->, ->>, #>, #>>, ||, @>, <@)
 --
 --
 -- Agtype exists operator
@@ -2312,6 +2312,348 @@ LINE 1: SELECT '3'::agtype || true;
                            ^
 HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
 --
+-- Agtype containment operator
+--
+/*
+ * right contains @> operator
+ */
+-- returns true
+SELECT '{"a":"b", "b":1, "c":null}'::agtype @> '{"a":"b"}';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"a":"b", "b":1, "c":null}'::agtype @> '{"a":"b", "c":null}';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"a":"b", "b":1, "c":null}'::agtype @> '{}';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"name": "Bob", "tags": ["enim", "qui"]}'::agtype @> '{"tags":["qui"]}';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"name": "Bob", "tags": ["enim", "qui"]}'::agtype @> '{"tags":[]}';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '[1,2]'::agtype @> '[1,2,2]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '[1,1,2]'::agtype @> '[1,2,2]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '[[1,2]]'::agtype @> '[[1,2,2]]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '[1,2,2]'::agtype @> '[]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '[[1,2]]'::agtype @> '[[]]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '[[1,2]]'::agtype @> '[[1,2,2], []]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 281474976710657, "label": "", "properties": {"name": "A"}}::vertex'::agtype @> '{"name": "A"}';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"name": "A"}' @> '{"id": 281474976710657, "label": "", "properties": {"name": "A"}}::vertex'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 281474976710657, "label": "", "properties": {"name": "A"}}::vertex'::agtype @> '{"id": 281474976710657, "label": "", "properties": {"name": "A"}}::vertex';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_contains('{"id": 1}','{"id": 1}');
+ agtype_contains 
+-----------------
+ t
+(1 row)
+
+SELECT agtype_contains('[1, 2, 3]','[3, 3]');
+ agtype_contains 
+-----------------
+ t
+(1 row)
+
+-- In general, one thing should always contain itself
+SELECT '["9", ["7", "3"], 1]'::agtype @> '["9", ["7", "3"], 1]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"a":"b", "b":1, "c":null}'::agtype @> '{"a":"b", "b":1, "c":null}';
+ ?column? 
+----------
+ t
+(1 row)
+
+-- returns false
+SELECT '{"a":"b", "b":1, "c":null}'::agtype @> '{"a":"b", "g":null}';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"a":"b", "b":1, "c":null}'::agtype @> '{"g":null}';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"a":"b", "b":1, "c":null}'::agtype @> '{"a":"c"}';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"a":"b", "b":1, "c":null}'::agtype @> '{"a":"b", "c":"q"}';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"a":"b", "b":1, "c":null}'::agtype @> '[]';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"name": "Bob", "tags": ["enim", "qui"]}'::agtype @> '{"tags":{}}';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '[1,1,2]'::agtype @> '[1,2,[2]]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '[1,2,2]'::agtype @> '{}'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '[[1,2]]'::agtype @> '[[{}]]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '[[1,2]]'::agtype @> '[[1,2,2, []], []]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '[[1,2]]'::agtype @> '[[1,2,2, []], [[]]]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT agtype_contains('{"id": 1}','{"id": 2}');
+ agtype_contains 
+-----------------
+ f
+(1 row)
+
+SELECT agtype_contains('[1, 2, 3]','[3, 3, []]');
+ agtype_contains 
+-----------------
+ f
+(1 row)
+
+-- Raw scalar may contain another raw scalar, array may contain a raw scalar
+SELECT '[5]'::agtype @> '[5]';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '5'::agtype @> '5';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '[5]'::agtype @> '5';
+ ?column? 
+----------
+ t
+(1 row)
+
+-- But a raw scalar cannot contain an array
+SELECT '5'::agtype @> '[5]';
+ ?column? 
+----------
+ f
+(1 row)
+
+-- object/array containment is different from agtype_string_match_contains
+SELECT '{ "name": "Bob", "tags": [ "enim", "qui"]}'::agtype @> '{"tags":["qu"]}';
+ ?column? 
+----------
+ f
+(1 row)
+
+/*
+ * left contains <@ operator
+ */
+-- returns true
+SELECT '{"a":"b"}'::agtype <@ '{"a":"b", "b":1, "c":null}';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"a":"b", "c":null}'::agtype <@ '{"a":"b", "b":1, "c":null}';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '[1,2,2]'::agtype <@ '[1,2]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '[1,2,2]'::agtype <@ '[1,1,2]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '[[1,2,2]]'::agtype <@ '[[1,2]]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '[]'::agtype <@ '[1,2,2]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"name": "A"}' <@ '{"id": 281474976710657, "label": "", "properties": {"name": "A"}}::vertex'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 281474976710657, "label": "", "properties": {"name": "A"}}::vertex'::agtype <@ '{"name": "A"}';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"id": 281474976710657, "label": "", "properties": {"name": "A"}}::vertex'::agtype <@ '{"id": 281474976710657, "label": "", "properties": {"name": "A"}}::vertex';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT agtype_contained_by('{"id": 1}','{"id": 1}');
+ agtype_contained_by 
+---------------------
+ t
+(1 row)
+
+-- returns false
+SELECT '[1,2,2]'::agtype <@ '[]'::agtype;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"a":"b", "g":null}'::agtype <@ '{"a":"b", "b":1, "c":null}';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"g":null}'::agtype <@ '{"a":"b", "b":1, "c":null}';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"a":"c"}'::agtype <@ '{"a":"b", "b":1, "c":null}';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT '{"id": 281474976710657, "label": "", "properties": {"name": "A"}}::vertex'::agtype <@ '{"id": 281474976710657, "label": "", "properties": {"name": "B"}}::vertex';
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT agtype_contained_by('{"id": 1}','{"id": 2}');
+ agtype_contained_by 
+---------------------
+ f
+(1 row)
+
+-- In general, one thing should always contain itself
+SELECT '["9", ["7", "3"], ["1"]]'::agtype <@ '["9", ["7", "3"], ["1"]]'::agtype;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT '{"a":"b", "b":1, "c":null}'::agtype <@ '{"a":"b", "b":1, "c":null}';
+ ?column? 
+----------
+ t
+(1 row)
+
+--
 -- jsonb operators inside cypher queries
 --
 SELECT create_graph('jsonb_operators');
@@ -3225,6 +3567,191 @@ SELECT * FROM cypher('jsonb_operators', $$ WITH 'b' AS m WITH m, m || {a: 1} AS 
 ERROR:  invalid left operand for agtype concatenation
 SELECT * FROM cypher('jsonb_operators', $$ MATCH (n) RETURN n.json || 1 $$) AS (result agtype);
 ERROR:  invalid right operand for agtype concatenation
+/*
+ * @> and <@ contains operators
+ */
+-- right contains @> operator
+SELECT *
+FROM cypher('jsonb_operators', $$
+    MATCH (n)
+    WHERE n @> {json: {a: 1, b: ["a", "b"], c: {d: "a"}}, list: ["a", "b", "c"]}
+    RETURN n
+$$) as (a agtype);
+                                                                     a                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"json": {"a": 1, "b": ["a", "b"], "c": {"d": "a"}}, "list": ["a", "b", "c"]}}::vertex
+(1 row)
+
+SELECT *
+FROM cypher('jsonb_operators', $$
+    MATCH (n)
+    WHERE n.json @> {c: {d: "a"}}
+    RETURN n
+$$) as (a agtype);
+                                                                     a                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"json": {"a": 1, "b": ["a", "b"], "c": {"d": "a"}}, "list": ["a", "b", "c"]}}::vertex
+(1 row)
+
+SELECT *
+FROM cypher('jsonb_operators', $$
+    MATCH (n)
+    WHERE n.json @> {c: {}}
+    RETURN n
+$$) as (a agtype);
+                                                                     a                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"json": {"a": 1, "b": ["a", "b"], "c": {"d": "a"}}, "list": ["a", "b", "c"]}}::vertex
+(1 row)
+
+SELECT *
+FROM cypher('jsonb_operators', $$
+    MATCH (n)
+    WHERE n.json @> {b: ["a"]}
+    RETURN n
+$$) as (a agtype);
+                                                                     a                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"json": {"a": 1, "b": ["a", "b"], "c": {"d": "a"}}, "list": ["a", "b", "c"]}}::vertex
+(1 row)
+
+SELECT *
+FROM cypher('jsonb_operators', $$
+    MATCH (n)
+    WHERE n.json @> {b: ["a", "a"]}
+    RETURN n
+$$) as (a agtype);
+                                                                     a                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"json": {"a": 1, "b": ["a", "b"], "c": {"d": "a"}}, "list": ["a", "b", "c"]}}::vertex
+(1 row)
+
+SELECT *
+FROM cypher('jsonb_operators', $$
+    MATCH (n)
+    WHERE n.list @> []
+    RETURN n
+$$) as (a agtype);
+                                                                     a                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"json": {"a": 1, "b": ["a", "b"], "c": {"d": "a"}}, "list": ["a", "b", "c"]}}::vertex
+(1 row)
+
+SELECT *
+FROM cypher('jsonb_operators', $$
+    MATCH (n)
+    WHERE n.list[2] @> "c"
+    RETURN n
+$$) as (a agtype);
+                                                                     a                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"json": {"a": 1, "b": ["a", "b"], "c": {"d": "a"}}, "list": ["a", "b", "c"]}}::vertex
+(1 row)
+
+SELECT *
+FROM cypher('jsonb_operators', $$
+    MATCH (n)
+    WHERE n @> {}
+    RETURN n
+$$) as (a agtype);
+                                                                     a                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"json": {"a": 1, "b": ["a", "b"], "c": {"d": "a"}}, "list": ["a", "b", "c"]}}::vertex
+(1 row)
+
+SELECT *
+FROM cypher('jsonb_operators', $$
+    MATCH (n)
+    RETURN properties(n).json @> {c: {d: "a"}}
+$$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT *
+FROM cypher('jsonb_operators', $$
+    MATCH (n)
+    RETURN properties(n).json @> {c: {d: "b"}}
+$$) as (a agtype);
+   a   
+-------
+ false
+(1 row)
+
+ SELECT *
+FROM cypher('jsonb_operators', $$
+    MATCH (n)
+    WHERE n.json @> {b: ["e"]}
+    RETURN n
+$$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT *
+FROM cypher('jsonb_operators', $$
+    MATCH (n)
+    WHERE n.list[2] @> []
+    RETURN n
+$$) as (a agtype);
+ a 
+---
+(0 rows)
+
+-- left contains <@ operator
+SELECT *
+FROM cypher('jsonb_operators', $$
+    MATCH (n)
+    RETURN  {c: {d: "a"}} <@ properties(n).json
+$$) as (a agtype);
+  a   
+------
+ true
+(1 row)
+
+SELECT *
+FROM cypher('jsonb_operators', $$
+    MATCH (n)
+    WHERE {c: {d: "a"}} <@ n.json
+    RETURN n
+$$) as (a agtype);
+                                                                     a                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"json": {"a": 1, "b": ["a", "b"], "c": {"d": "a"}}, "list": ["a", "b", "c"]}}::vertex
+(1 row)
+
+SELECT *
+FROM cypher('jsonb_operators', $$
+    MATCH (n)
+    WHERE []  <@ n.list
+    RETURN n
+$$) as (a agtype);
+                                                                     a                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {"json": {"a": 1, "b": ["a", "b"], "c": {"d": "a"}}, "list": ["a", "b", "c"]}}::vertex
+(1 row)
+
+SELECT *
+FROM cypher('jsonb_operators', $$
+    MATCH (n)
+    WHERE {c: {d: "b"}} <@ n.json
+    RETURN n
+$$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT *
+FROM cypher('jsonb_operators', $$
+    MATCH (n)
+    WHERE [] <@ n.json
+    RETURN n
+$$) as (a agtype);
+ a 
+---
+(0 rows)
+
 -- clean up
 SELECT drop_graph('jsonb_operators', true);
 NOTICE:  drop cascades to 2 other objects
