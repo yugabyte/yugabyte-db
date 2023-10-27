@@ -319,11 +319,7 @@ export default class NodeDetailsTable extends Component {
     const displayNodeActions =
       !this.props.isReadOnlyUniverse &&
       universeStatus.state !== UniverseState.PAUSED &&
-      isNotHidden(customer.currentCustomer.data.features, 'universes.tableActions') &&
-      hasNecessaryPerm({
-        onResource: currentUniverse.data.universeUUID,
-        ...UserPermissionMap.editUniverse
-      });
+      isNotHidden(customer.currentCustomer.data.features, 'universes.tableActions');
     return (
       <div className="node-details-table-container">
         <YBPanelItem
