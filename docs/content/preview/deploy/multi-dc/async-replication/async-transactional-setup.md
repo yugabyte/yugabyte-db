@@ -156,12 +156,10 @@ Backups > point-in-time-recovery.
 
     **Note**: When you add a new database to an existing replication stream:
 
-    - you need to create the same objects on standby. If Source and Target objects do not match then DB will not be allowed to be added to replication.
-    - If the WALs are GC-ed from Primary then the DB will need to be bootstrapped. Bootstrap process is handled by the YBA. Only single DB is bootstrapped and not all the databases involved in existing Replication Stream.
+    - You need to create the same objects on the Standby. If Source and Target objects do not match, then the database will not be allowed to be added to the replication.
+    - If the WALs are GC-ed from Primary then the database will need to be bootstrapped. The bootstrap process is handled by YBA. Only single database is bootstrapped, not all the databases involved in the existing replication.
 
-1. On Standby, verify `xcluster_safe_time` is progressing. This is the indicator of data flow from Primary to Standby.
-
-    (To know when to read from standby as of, YugabyteDB maintains an analog of safe time called xCluster safe time. This is the latest time it is currently safe to read as of with xCluster transactional replication in order to guarantee consistency and atomicity.)
+1. On the Standby, verify [xCluster safe time](../../../../architecture/docdb-replication/async-replication/#transactional-replication) is progressing. This is the indicator of data flow from Primary to Standby.
 
     ```sh
     yb-admin \
@@ -183,4 +181,4 @@ Backups > point-in-time-recovery.
     ]
     ```
 
-**Note**: Default time reported in xCluster SafeTime is year 2112. Need to wait until the xCluster SafeTime on Standby advances beyond setup replication clock time.
+**Note**: Default time reported in xCluster safe time is year 2112. You need to wait until the xCluster safe time on the Standby advances beyond setup replication clock time.

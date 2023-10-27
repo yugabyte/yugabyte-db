@@ -3,7 +3,7 @@ title: Unplanned failover with transactional xCluster replication
 headerTitle: Unplanned failover
 linkTitle: Failover
 description: Unplanned failover using transactional (active-standby) replication between universes
-headContent: Switch application traffic to the standby universe
+headContent: Failover of application traffic to the standby universe
 menu:
   preview:
     parent: async-replication-transactional

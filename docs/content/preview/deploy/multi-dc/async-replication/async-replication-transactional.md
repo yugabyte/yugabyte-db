@@ -35,7 +35,6 @@ xCluster safe time is the transactionally consistent time across all tables in a
 
 ## Limitations
 
-- Tablet splitting is not supported with Transactional Atomicity and Global Ordering.
 - Supports only Active-Standby setups with transactional atomicity and global ordering.
 - Transactional consistency is currently not supported for YCQL, only for YSQL.
 
@@ -54,9 +53,6 @@ xCluster safe time is the transactionally consistent time across all tables in a
 
     - [log_min_seconds_to_retain](../../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) = 86400
 
-        This value depends on how long a network partition or standby cluster outage can be tolerated and the amount of WAL expected to be generated during that period.
+        This flag determines the duration for which WAL is retained on the Primary universe in case of a network partition or a complete outage of the Standby universe. Be sure to allocate enough disk space to hold WAL generated for this duration.
 
-  - YB-Master
-
-    - [enable_automatic_tablet_splitting](../../../../reference/configuration/yb-master/#enable-automatic-tablet-splitting) = false
-    - [enable_tablet_split_of_xcluster_replicated_tables](../../../../reference/configuration/yb-master/#enable-tablet-split-of-xcluster-replicated-tables) = false
+        The value depends on how long a network partition or standby cluster outage can be tolerated, and the amount of WAL expected to be generated during that period.
