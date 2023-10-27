@@ -93,6 +93,7 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pgstat.h"
 #include "postmaster/interrupt.h"
+#include "nodes/readfuncs.h"
 
 #ifdef __linux__
 #include <sys/prctl.h>
@@ -2318,11 +2319,15 @@ yb_table_properties(PG_FUNCTION_ARGS)
 
 /*
  * This function is adapted from code of PQescapeLiteral() in fe-exec.c.
- * Convert a string value to an SQL string literal and append it to
- * the given StringInfo.
+ * If use_quote_strategy_token is false, the string value will be converted
+ * to an SQL string literal and appended to the given StringInfo.
+ * If use_quote_strategy_token is true, the string value will be enclosed in
+ * double quotes, backslashes will be escaped and the value will be appended
+ * to the given StringInfo.
  */
 static void
-appendStringLiteral(StringInfo buf, const char *str, int encoding)
+appendStringToString(StringInfo buf, const char *str, int encoding,
+					 bool use_quote_strategy_token)
 {
 	const char *s;
 	int			num_quotes = 0;
@@ -2333,7 +2338,7 @@ appendStringLiteral(StringInfo buf, const char *str, int encoding)
 	/* Scan the string for characters that must be escaped. */
 	for (s = str; (s - str) < strlen(str) && *s != '\0'; ++s)
 	{
-		if (*s == '\'')
+		if ((*s == '\'' && !use_quote_strategy_token))
 			++num_quotes;
 		else if (*s == '\\')
 			++num_backslashes;
@@ -2363,14 +2368,17 @@ appendStringLiteral(StringInfo buf, const char *str, int encoding)
 	 * If we are escaping a literal that contains backslashes, we use the
 	 * escape string syntax so that the result is correct under either value
 	 * of standard_conforming_strings.
+	 * Note: if we are using double quotes, the string should not have escape
+	 * string syntax.
 	 */
-	if (num_backslashes > 0)
+	if (num_backslashes > 0 && !use_quote_strategy_token)
 	{
 		appendStringInfoChar(buf, 'E');
 	}
 
 	/* Opening quote. */
-	appendStringInfoChar(buf, '\'');
+	use_quote_strategy_token ? appendStringInfoChar(buf, '\"') :
+		appendStringInfoChar(buf, '\'');
 
 	/*
 	 * Use fast path if possible.
@@ -2391,7 +2399,11 @@ appendStringLiteral(StringInfo buf, const char *str, int encoding)
 	{
 		for (s = str; s - str < input_len; ++s)
 		{
-			if (*s == '\'' || *s == '\\')
+			/*
+			 * Note: if we are using double quotes, we do not need to escape
+			 * single quotes.
+			 */
+			if ((*s == '\'' && !use_quote_strategy_token) || *s == '\\')
 			{
 				appendStringInfoChar(buf, *s);
 				appendStringInfoChar(buf, *s);
@@ -2414,7 +2426,8 @@ appendStringLiteral(StringInfo buf, const char *str, int encoding)
 	}
 
 	/* Closing quote. */
-	appendStringInfoChar(buf, '\'');
+	use_quote_strategy_token ? appendStringInfoChar(buf, '\"') :
+		appendStringInfoChar(buf, '\'');
 }
 
 /*
@@ -2427,7 +2440,8 @@ appendStringLiteral(StringInfo buf, const char *str, int encoding)
  * make the generated string look better.
  */
 static void
-appendDatumToString(StringInfo str, uint64_t datum, Oid typid, int encoding)
+appendDatumToString(StringInfo str, uint64_t datum, Oid typid, int encoding,
+					bool use_double_quotes)
 {
 	const char *datum_str = YBDatumToString(datum, typid);
 	switch (typid)
@@ -2446,7 +2460,9 @@ appendDatumToString(StringInfo str, uint64_t datum, Oid typid, int encoding)
 			if (strspn(datum_str, "0123456789 +-eE.") == strlen(datum_str))
 				appendStringInfoString(str, datum_str);
 			else
-				appendStringInfo(str, "'%s'", datum_str);
+				use_double_quotes ?
+					appendStringInfo(str, "\"%s\"", datum_str) :
+					appendStringInfo(str, "'%s'", datum_str);
 			break;
 		/*
 		 * Currently, cannot create tables/indexes with a key containing
@@ -2461,7 +2477,8 @@ appendDatumToString(StringInfo str, uint64_t datum, Oid typid, int encoding)
 			break;
 		default:
 			/* All other types are appended as string literals. */
-			appendStringLiteral(str, datum_str, encoding);
+			appendStringToString(str, datum_str, encoding,
+								 use_double_quotes);
 			break;
 	}
 }
@@ -2591,7 +2608,8 @@ rangeSplitClause(Oid relid, YBCPgTableDesc yb_tabledesc,
 				appendDatumToString(cur_split_point,
 									split_datums[split_datum_idx].datum,
 									pkeys_atttypid[col_idx],
-									pg_get_client_encoding());
+									pg_get_client_encoding(),
+									false /* use_double_quotes */);
 			}
 		}
 		appendStringInfoChar(cur_split_point, ')');
@@ -2620,6 +2638,86 @@ rangeSplitClause(Oid relid, YBCPgTableDesc yb_tabledesc,
 		resetStringInfo(cur_split_point);
 	}
 	appendStringInfoChar(str, ')');
+}
+
+/*
+ * This function is used to retrieve a range partitioned table's split points
+ * as a list of list of Exprs.
+ */
+static void
+getRangeSplitPointsList(Oid relid, YBCPgTableDesc yb_tabledesc,
+						YbTableProperties yb_table_properties,
+						List **split_points)
+{
+	Assert(yb_table_properties->num_tablets > 1);
+	size_t num_range_key_columns = yb_table_properties->num_range_key_columns;
+	size_t num_splits = yb_table_properties->num_tablets - 1;
+	Oid pkeys_atttypid[num_range_key_columns];
+	YBCPgSplitDatum split_datums[num_splits * num_range_key_columns];
+	bool has_null;
+
+	/* Get Split point values as YBCPgSplitDatum. */
+	getSplitPointsInfo(relid, yb_tabledesc, yb_table_properties,
+					   pkeys_atttypid, split_datums, &has_null);
+
+	/* Construct split points list. */
+	for (int split_idx = 0; split_idx < num_splits; ++split_idx)
+	{
+		List *split_point = NIL;
+		for (int col_idx = 0; col_idx < num_range_key_columns; ++col_idx)
+		{
+			int split_datum_idx = split_idx * num_range_key_columns + col_idx;
+			switch (split_datums[split_datum_idx].datum_kind)
+			{
+				ColumnRef  *c;
+				StringInfo	str;
+
+				case YB_YQL_DATUM_LIMIT_MIN:
+					c = makeNode(ColumnRef);
+					c->fields = list_make1(makeString("minvalue"));
+					split_point = lappend(split_point, c);
+					break;
+				case YB_YQL_DATUM_LIMIT_MAX:
+					c = makeNode(ColumnRef);
+					c->fields = list_make1(makeString("maxvalue"));
+					split_point = lappend(split_point, c);
+					break;
+				default:
+					str = makeStringInfo();
+					appendDatumToString(str,
+										split_datums[split_datum_idx].datum,
+										pkeys_atttypid[col_idx],
+										pg_get_client_encoding(),
+										true /* use_double_quotes */);
+					Node *value = nodeRead(str->data, str->len);
+					A_Const *n = makeNode(A_Const);
+					switch (value->type)
+					{
+						case T_Integer:
+							n->val.ival = *((Integer *) value);
+							break;
+						case T_Float:
+							n->val.fval = *((Float *) value);
+							break;
+						case T_Boolean:
+							n->val.boolval = *((Boolean *) value);
+							break;
+						case T_String:
+							n->val.sval = *((String *) value);
+							break;
+						case T_BitString:
+							n->val.bsval = *((BitString *) value);
+							break;
+						default:
+							ereport(ERROR,
+									(errmsg("unexpected node type %d",
+											value->type)));
+					}
+					split_point = lappend(split_point, n);
+			}
+		}
+		*split_points = lappend(*split_points, split_point);
+	}
 }
 
 Datum
@@ -3527,12 +3625,61 @@ uint32_t YbGetNumberOfDatabases()
 
 static bool yb_is_batched_execution = false;
 
-bool YbIsBatchedExecution() {
+bool YbIsBatchedExecution()
+{
 	return yb_is_batched_execution;
 }
 
 bool yb_is_client_ysqlconnmgr = false;
 
-void YbSetIsBatchedExecution(bool value) {
+void YbSetIsBatchedExecution(bool value)
+{
 	yb_is_batched_execution = value;
+}
+
+OptSplit *
+YbGetSplitOptions(Relation rel)
+{
+	OptSplit *split_options = makeNode(OptSplit);
+	split_options->split_type = NUM_TABLETS;
+	split_options->num_tablets = rel->yb_table_properties->num_tablets;
+	/* 
+	 * Copy split points if we have a live range key.
+	 * (RelationGetPrimaryKeyIndex returns InvalidOid if pkey is currently
+	 * being dropped).
+	 */
+	if (rel->yb_table_properties->num_hash_key_columns == 0
+		&& rel->yb_table_properties->num_tablets > 1
+		&& !(rel->rd_rel->relkind == RELKIND_RELATION
+		&& RelationGetPrimaryKeyIndex(rel) == InvalidOid))
+	{
+		split_options->split_type = SPLIT_POINTS;
+		YBCPgTableDesc yb_desc = NULL;
+		HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId,
+						RelationGetRelid(rel), &yb_desc));
+		getRangeSplitPointsList(RelationGetRelid(rel), yb_desc,
+								rel->yb_table_properties,
+								&split_options->split_points);
+	}
+	return split_options;
+}
+
+bool YbIsColumnPartOfKey(Relation rel, const char *column_name)
+{
+	if (column_name)
+	{
+		Bitmapset  *pkey   = YBGetTablePrimaryKeyBms(rel);
+		HeapTuple  attTup =
+			SearchSysCacheCopyAttName(RelationGetRelid(rel), column_name);
+		if (HeapTupleIsValid(attTup))
+		{
+			Form_pg_attribute attform =
+				(Form_pg_attribute) GETSTRUCT(attTup);
+			AttrNumber	attnum = attform->attnum;
+			if (bms_is_member(attnum -
+							  YBGetFirstLowInvalidAttributeNumber(rel), pkey))
+				return true;
+		}
+	}
+	return false;
 }
