@@ -31,7 +31,8 @@ enum transform_entity_type
 {
     ENT_VERTEX = 0x0,
     ENT_EDGE,
-    ENT_VLE_EDGE
+    ENT_VLE_EDGE,
+    ENT_PATH
 };
 
 enum transform_entity_join_side
@@ -83,6 +84,7 @@ typedef struct
     {
         cypher_node *node;
         cypher_relationship *rel;
+        cypher_path *path;
     } entity;
 } transform_entity;
 

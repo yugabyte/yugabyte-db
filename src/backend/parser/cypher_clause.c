@@ -3907,6 +3907,13 @@ static transform_entity *transform_VLE_edge_entity(cypher_parsestate *cpstate,
                         errmsg("variable '%s' is for an edge", rel->name),
                         parser_errposition(pstate, rel->location)));
             }
+            else if (entity->type == ENT_PATH)
+            {
+                ereport(ERROR,
+                       (errcode(ERRCODE_DUPLICATE_ALIAS),
+                        errmsg("variable '%s' is for a path", rel->name),
+                        parser_errposition(pstate, rel->location)));
+            }
             else
             {
                 ereport(ERROR,
@@ -4497,9 +4504,13 @@ transform_match_create_path_variable(cypher_parsestate *cpstate,
     /* otherwise, build the expr node for the function */
     else
     {
+        transform_entity *entity;
         expr = (Expr*)makeFuncExpr(build_path_oid, AGTYPEOID, entity_exprs,
                                    InvalidOid, InvalidOid,
                                    COERCE_EXPLICIT_CALL);
+
+        entity = make_transform_entity(cpstate, ENT_PATH, (Node *)path, expr);
+        cpstate->entities = lappend(cpstate->entities, entity);
     }
 
     resno = cpstate->pstate.p_next_resno++;
@@ -4666,6 +4677,13 @@ static Expr *transform_cypher_edge(cypher_parsestate *cpstate,
                 ereport(ERROR,
                        (errcode(ERRCODE_DUPLICATE_ALIAS),
                         errmsg("variable '%s' is for a VLE edge", rel->name),
+                        parser_errposition(pstate, rel->location)));
+            }
+            else if (entity->type == ENT_PATH)
+            {
+                ereport(ERROR,
+                       (errcode(ERRCODE_DUPLICATE_ALIAS),
+                        errmsg("variable '%s' is for a path", rel->name),
                         parser_errposition(pstate, rel->location)));
             }
         }
@@ -4905,6 +4923,13 @@ static Expr *transform_cypher_node(cypher_parsestate *cpstate,
                 ereport(ERROR,
                        (errcode(ERRCODE_DUPLICATE_ALIAS),
                         errmsg("variable '%s' is for a VLE edge", node->name),
+                        parser_errposition(pstate, node->location)));
+            }
+            else if (entity->type == ENT_PATH)
+            {
+                ereport(ERROR,
+                       (errcode(ERRCODE_DUPLICATE_ALIAS),
+                        errmsg("variable '%s' is for a path", node->name),
                         parser_errposition(pstate, node->location)));
             }
         }

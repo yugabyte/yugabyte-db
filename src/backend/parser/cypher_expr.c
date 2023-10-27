@@ -341,17 +341,15 @@ static Node *transform_ColumnRef(cypher_parsestate *cpstate, ColumnRef *cref)
                 }
 
                 /*
-                 * If expr_kind is WHERE, Try to find the columnRef as a
-                 * transform_entity and extract the expr.
+                 * Try to find the columnRef as a transform_entity
+                 * and extract the expr.
                  */
-                if (pstate->p_expr_kind == EXPR_KIND_WHERE)
+                te = find_variable(cpstate, colname) ;
+                if (te != NULL && te->expr != NULL &&
+                    te->declared_in_current_clause)
                 {
-                    te = find_variable(cpstate, colname) ;
-                    if (te != NULL && te->expr != NULL)
-                    {
-                        node = (Node *)te->expr;
-                        break;
-                    }
+                    node = (Node *)te->expr;
+                    break;
                 }
                 /*
                  * Not known as a column of any range-table entry.

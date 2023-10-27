@@ -1170,6 +1170,15 @@ SELECT * FROM cypher('issue_945', $$ MATCH (a:Part) MATCH (b:Part) RETURN count(
 
 
 --
+-- Issue 1045
+--
+SELECT * FROM cypher('cypher_match', $$ MATCH p=()-[*]->() RETURN length(p) $$) as (length agtype);
+SELECT * FROM cypher('cypher_match', $$ MATCH p=()-[*]->() WHERE length(p) > 1 RETURN length(p) $$) as (length agtype);
+SELECT * FROM cypher('cypher_match', $$ MATCH p=()-[*]->() WHERE size(nodes(p)) = 3 RETURN nodes(p)[0] $$) as (nodes agtype);
+SELECT * FROM cypher('cypher_match', $$ MATCH (n {name:'Dave'}) MATCH p=()-[*]->() WHERE nodes(p)[0] = n RETURN length(p) $$) as (length agtype);
+SELECT * FROM cypher('cypher_match', $$ MATCH p1=(n {name:'Dave'})-[]->() MATCH p2=()-[*]->() WHERE p2=p1 RETURN p2=p1 $$) as (path agtype);
+
+--
 -- Clean up
 --
 SELECT drop_graph('cypher_match', true);

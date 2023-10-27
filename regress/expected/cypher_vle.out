@@ -807,7 +807,7 @@ ERROR:  variable 'p' is for a VLE edge
 LINE 1: ... cypher('cypher_vle', $$ MATCH ()-[p *]-() MATCH (p) RETURN ...
                                                              ^
 SELECT * FROM cypher('cypher_vle', $$ MATCH p=() MATCH ()-[p *]-() RETURN p $$)as (p agtype);
-ERROR:  variable 'p' already exists
+ERROR:  variable 'p' is for a path
 LINE 1: ... FROM cypher('cypher_vle', $$ MATCH p=() MATCH ()-[p *]-() R...
                                                              ^
 SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p *]-() MATCH p=() RETURN p $$)as (p agtype);

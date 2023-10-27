@@ -2249,15 +2249,15 @@ ERROR:  variable "p" is for a path
 LINE 1: ...ELECT * FROM cypher('cypher_match', $$ MATCH p=()-[p]->() RE...
                                                              ^
 SELECT * FROM cypher('cypher_match', $$ MATCH p=() MATCH (p) RETURN p $$)as (p agtype);
-ERROR:  variable 'p' already exists
+ERROR:  variable 'p' is for a path
 LINE 1: ... FROM cypher('cypher_match', $$ MATCH p=() MATCH (p) RETURN ...
                                                              ^
 SELECT * FROM cypher('cypher_match', $$ MATCH p=() MATCH (p)-[]->() RETURN p $$)as (p agtype);
-ERROR:  variable 'p' already exists
+ERROR:  variable 'p' is for a path
 LINE 1: ... FROM cypher('cypher_match', $$ MATCH p=() MATCH (p)-[]->() ...
                                                              ^
 SELECT * FROM cypher('cypher_match', $$ MATCH p=() MATCH ()-[p]->() RETURN p $$)as (p agtype);
-ERROR:  variable 'p' already exists
+ERROR:  variable 'p' is for a path
 LINE 1: ...ROM cypher('cypher_match', $$ MATCH p=() MATCH ()-[p]->() RE...
                                                              ^
 SELECT * FROM cypher('cypher_match', $$ MATCH (p) MATCH p=() RETURN p $$)as (p agtype);
@@ -2782,6 +2782,51 @@ SELECT * FROM cypher('issue_945', $$ MATCH (a:Part) MATCH (b:Part) RETURN count(
  result 
 --------
  16
+(1 row)
+
+--
+-- Issue 1045
+--
+SELECT * FROM cypher('cypher_match', $$ MATCH p=()-[*]->() RETURN length(p) $$) as (length agtype);
+ length 
+--------
+ 1
+ 2
+ 1
+ 1
+ 1
+ 2
+ 1
+ 2
+(8 rows)
+
+SELECT * FROM cypher('cypher_match', $$ MATCH p=()-[*]->() WHERE length(p) > 1 RETURN length(p) $$) as (length agtype);
+ length 
+--------
+ 2
+ 2
+ 2
+(3 rows)
+
+SELECT * FROM cypher('cypher_match', $$ MATCH p=()-[*]->() WHERE size(nodes(p)) = 3 RETURN nodes(p)[0] $$) as (nodes agtype);
+                                                nodes                                                
+-----------------------------------------------------------------------------------------------------
+ {"id": 281474976710660, "label": "_ag_label_vertex", "properties": {"age": 4, "name": "F"}}::vertex
+ {"id": 281474976710667, "label": "_ag_label_vertex", "properties": {"name": "Dave"}}::vertex
+ {"id": 281474976710668, "label": "_ag_label_vertex", "properties": {"name": "John"}}::vertex
+(3 rows)
+
+SELECT * FROM cypher('cypher_match', $$ MATCH (n {name:'Dave'}) MATCH p=()-[*]->() WHERE nodes(p)[0] = n RETURN length(p) $$) as (length agtype);
+ length 
+--------
+ 1
+ 2
+(2 rows)
+
+SELECT * FROM cypher('cypher_match', $$ MATCH p1=(n {name:'Dave'})-[]->() MATCH p2=()-[*]->() WHERE p2=p1 RETURN p2=p1 $$) as (path agtype);
+ path 
+------
+ true
 (1 row)
 
 --
