@@ -399,7 +399,7 @@ Default: `16`
 
 ##### --automatic_compaction_extra_priority
 
-Assigns an extra priority to automatic (minor) compactions when automatic tablet splitting is enabled. This deprioritizes post-split compactions and ensures that smaller compactions are not starved. Suggested values are between 0 and 50.
+Assigns an extra priority to automatic (minor) compactions when automatic tablet splitting is enabled. This de-prioritizes post-split compactions and ensures that smaller compactions are not starved. Suggested values are between 0 and 50.
 
 Default: `50`
 
@@ -465,7 +465,7 @@ Default: `true`
 
 ## xCluster flags
 
-Settings related to managing xClusters.
+Settings related to managing xCluster deployments.
 
 ##### --xcluster_svc_queue_size
 
