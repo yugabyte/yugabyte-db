@@ -234,7 +234,7 @@ TEST_F_EX(RetryableRequestTest, TestMemTrackerMetric, SingleServerRetryableReque
       tablet_server->server()->tablet_manager()->GetServingTablet(tablet_id));
   // Make sure mem_tracker metric is in the tablet metric entity.
   std::string mem_tracker_metric_name =
-      "mem_tracker_server_1_Tablets_PerTablet_Retryable_Requests";
+      "mem_tracker_server_1_Tablets_overhead_PerTablet_Retryable_Requests";
   auto tablet_metrics_entity = tablet_peer->tablet()->GetTabletMetricsEntity();
   ASSERT_TRUE(tablet_metrics_entity->TEST_ContainMetricName(mem_tracker_metric_name));
 }
