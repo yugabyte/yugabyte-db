@@ -289,12 +289,10 @@ export const UniverseView = (props) => {
             (featureFlags.test['pausedUniverse'] || featureFlags.released['pausedUniverse']) && (
               <RbacValidator
                 isControl
-                accessRequiredOn={
-                  {
-                    onResource: row.universeUUID,
-                    ...UserPermissionMap.editUniverse
-                  }
-                }
+                accessRequiredOn={{
+                  onResource: row.universeUUID,
+                  ...UserPermissionMap.editUniverse
+                }}
               >
                 <YBMenuItem
                   onClick={() => {
@@ -316,12 +314,10 @@ export const UniverseView = (props) => {
             )}
           <RbacValidator
             isControl
-            accessRequiredOn={
-              {
-                onResource: row.universeUUID,
-                ...UserPermissionMap.deleteUniverse
-              }
-            }
+            accessRequiredOn={{
+              onResource: row.universeUUID,
+              ...UserPermissionMap.deleteUniverse
+            }}
             overrideStyle={{ display: 'block' }}
           >
             <YBMenuItem
@@ -524,26 +520,26 @@ export const UniverseView = (props) => {
   let universes =
     _.isObject(universeList) && isNonEmptyArray(universeList.data)
       ? universeList.data.map((universeBase) => {
-        const universe = _.cloneDeep(universeBase);
-        universe.pricePerMonth = universe.pricePerHour * 24 * moment().daysInMonth();
+          const universe = _.cloneDeep(universeBase);
+          universe.pricePerMonth = universe.pricePerHour * 24 * moment().daysInMonth();
 
-        const clusterProviderUUIDs = getClusterProviderUUIDs(universe.universeDetails.clusters);
-        const clusterProviders = props.providers.data.filter((p) =>
-          clusterProviderUUIDs.includes(p.uuid)
-        );
-        universe.providerTypes = clusterProviders.map((provider) => {
-          return getProviderMetadata(provider).name;
-        });
-        universe.providerNames = clusterProviders.map((provider) => provider.name);
+          const clusterProviderUUIDs = getClusterProviderUUIDs(universe.universeDetails.clusters);
+          const clusterProviders = props.providers.data.filter((p) =>
+            clusterProviderUUIDs.includes(p.uuid)
+          );
+          universe.providerTypes = clusterProviders.map((provider) => {
+            return getProviderMetadata(provider).name;
+          });
+          universe.providerNames = clusterProviders.map((provider) => provider.name);
 
-        const universeStatus = getUniverseStatus(
-          universe,
-          universePendingTasks[universe.universeUUID]
-        );
-        universe.status = universeStatus.state;
-        universe.statusText = universeStatus.state.text;
-        return universe;
-      })
+          const universeStatus = getUniverseStatus(
+            universe,
+            universePendingTasks[universe.universeUUID]
+          );
+          universe.status = universeStatus.state;
+          universe.statusText = universeStatus.state.text;
+          return universe;
+        })
       : [];
 
   const statusFilterTokens = curStatusFilter.map((status) => ({
@@ -623,6 +619,7 @@ export const UniverseView = (props) => {
                 disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
                 btnText="Create Universe"
                 btnIcon="fa fa-plus"
+                data-testid="UniverseList-CreateUniverse"
               />
             </Link>
           </RbacValidator>

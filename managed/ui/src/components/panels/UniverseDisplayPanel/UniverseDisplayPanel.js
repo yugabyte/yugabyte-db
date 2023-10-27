@@ -177,13 +177,15 @@ export default class UniverseDisplayPanel extends Component {
                     onResource: undefined,
                     ...UserPermissionMap.createUniverse
                   }}
-                  isControl>
+                  isControl
+                >
                   <Link to="/universes/create">
                     <YBButton
                       btnClass="universe-button btn btn-lg btn-orange"
                       disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
                       btnText="Create Universe"
                       btnIcon="fa fa-plus"
+                      data-testid="Dashboard-CreateUniverse"
                     />
                   </Link>
                 </RbacValidator>

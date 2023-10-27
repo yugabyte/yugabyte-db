@@ -17,7 +17,10 @@ import { AssociatedUniverse } from '../../../common/associatedUniverse/Associate
 import { YBConfirmModal } from '../../../modals';
 import { ybFormatDate } from '../../../../redesign/helpers/DateUtils';
 import './certificates.scss';
-import { RbacValidator, hasNecessaryPerm } from '../../../../redesign/features/rbac/common/RbacValidator';
+import {
+  RbacValidator,
+  hasNecessaryPerm
+} from '../../../../redesign/features/rbac/common/RbacValidator';
 import { UserPermissionMap } from '../../../../redesign/features/rbac/UserPermPathMapping';
 
 const validationSchema = Yup.object().shape({
@@ -170,13 +173,17 @@ class Certificates extends Component {
   };
 
   formatActionButtons = (cell, row) => {
-    const downloadEnabled = ['SelfSigned', 'HashicorpVault'].includes(row.type) || !hasNecessaryPerm({
-      ...UserPermissionMap.listEAT
-    });;
-    const deleteDisabled = row.inUse || !hasNecessaryPerm({
-      onResource: 'CUSTOMER_ID',
-      ...UserPermissionMap.deleteEncryptionInTransit
-    });
+    const downloadEnabled =
+      ['SelfSigned', 'HashicorpVault'].includes(row.type) ||
+      !hasNecessaryPerm({
+        ...UserPermissionMap.listEAT
+      });
+    const deleteDisabled =
+      row.inUse ||
+      !hasNecessaryPerm({
+        onResource: 'CUSTOMER_ID',
+        ...UserPermissionMap.deleteEncryptionInTransit
+      });
     const payload = {
       name: row.name,
       uuid: row.uuid,
@@ -184,14 +191,15 @@ class Certificates extends Component {
       expiryDate: row.expiryDateIso,
       universeDetails: row.universeDetails
     };
-    const disableCertEdit = row.type !== 'HashicorpVault' || !hasNecessaryPerm({
-      onResource: 'CUSTOMER_ID',
-      ...UserPermissionMap.editEncryptionInTransit
-    });
+    const disableCertEdit =
+      row.type !== 'HashicorpVault' ||
+      !hasNecessaryPerm({
+        onResource: 'CUSTOMER_ID',
+        ...UserPermissionMap.editEncryptionInTransit
+      });
     // TODO: Replace dropdown option + modal with a side panel
     return (
       <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
-
         <MenuItem
           onClick={() => {
             if (row.customCertInfo) {
@@ -200,12 +208,13 @@ class Certificates extends Component {
             this.setState({ selectedCert: row });
             this.props.showCertificateDetailsModal();
           }}
+          data-testid="Certificates-Details"
         >
           <i className="fa fa-info-circle"></i> Details
         </MenuItem>
         <RbacValidator
           accessRequiredOn={{
-            onResource: "CUSTOMER_ID",
+            onResource: 'CUSTOMER_ID',
             ...UserPermissionMap.editEncryptionInTransit
           }}
           isControl
@@ -220,13 +229,14 @@ class Certificates extends Component {
                 });
               }
             }}
+            data-testid="Certificates-EditCertificate"
           >
             <i className="fa fa-edit"></i> Edit Certificate
           </MenuItem>
         </RbacValidator>
         <RbacValidator
           accessRequiredOn={{
-            onResource: "CUSTOMER_ID",
+            onResource: 'CUSTOMER_ID',
             ...UserPermissionMap.editEncryptionInTransit
           }}
           isControl
@@ -240,13 +250,14 @@ class Certificates extends Component {
               }
             }}
             disabled={!downloadEnabled}
+            data-testid="Certificates-DownloadYSQLCert"
           >
             <i className="fa fa-download"></i> Download YSQL Cert
           </MenuItem>
         </RbacValidator>
         <RbacValidator
           accessRequiredOn={{
-            onResource: "CUSTOMER_ID",
+            onResource: 'CUSTOMER_ID',
             ...UserPermissionMap.editEncryptionInTransit
           }}
           isControl
@@ -257,13 +268,14 @@ class Certificates extends Component {
               downloadEnabled && this.downloadRootCertificate(row);
             }}
             disabled={!downloadEnabled}
+            data-testid="Certificates-DownloadRootCACert"
           >
             <i className="fa fa-download"></i> Download Root CA Cert
           </MenuItem>
         </RbacValidator>
         <RbacValidator
           accessRequiredOn={{
-            onResource: "CUSTOMER_ID",
+            onResource: 'CUSTOMER_ID',
             ...UserPermissionMap.deleteEncryptionInTransit
           }}
           isControl
@@ -275,6 +287,7 @@ class Certificates extends Component {
             }}
             disabled={deleteDisabled}
             title={deleteDisabled ? 'In use certificates cannot be deleted' : null}
+            data-testid="Certificates-DeleteCertificate"
           >
             <i className="fa fa-trash"></i> Delete Certificate
           </MenuItem>
@@ -286,6 +299,7 @@ class Certificates extends Component {
               isVisibleModal: true
             });
           }}
+          data-testid="Certificates-ShowUniverses"
         >
           <i className="fa fa-eye"></i> Show Universes
         </MenuItem>
@@ -316,29 +330,29 @@ class Certificates extends Component {
 
     const certificateArray = getPromiseState(userCertificates).isSuccess()
       ? userCertificates.data
-        .reduce((allCerts, cert) => {
-          const certInfo = {
-            type: cert.certType,
-            uuid: cert.uuid,
-            name: cert.label,
-            expiryDate: cert.expiryDateIso,
-            certificate: cert.certificate,
-            creationTime: cert.startDateIso,
-            privateKey: cert.privateKey,
-            customCertInfo: cert.customCertInfo,
-            inUse: cert.inUse,
-            universeDetails: cert.universeDetails,
-            hcVaultCertParams: cert.customHCPKICertInfo
-          };
+          .reduce((allCerts, cert) => {
+            const certInfo = {
+              type: cert.certType,
+              uuid: cert.uuid,
+              name: cert.label,
+              expiryDate: cert.expiryDateIso,
+              certificate: cert.certificate,
+              creationTime: cert.startDateIso,
+              privateKey: cert.privateKey,
+              customCertInfo: cert.customCertInfo,
+              inUse: cert.inUse,
+              universeDetails: cert.universeDetails,
+              hcVaultCertParams: cert.customHCPKICertInfo
+            };
 
-          const isVaultCert = cert.certType === 'HashicorpVault';
-          if (isVaultCert) {
-            isHCVaultEnabled && allCerts.push(certInfo);
-          } else allCerts.push(certInfo);
+            const isVaultCert = cert.certType === 'HashicorpVault';
+            if (isVaultCert) {
+              isHCVaultEnabled && allCerts.push(certInfo);
+            } else allCerts.push(certInfo);
 
-          return allCerts;
-        }, [])
-        .sort((a, b) => new Date(b.creationTime) - new Date(a.creationTime))
+            return allCerts;
+          }, [])
+          .sort((a, b) => new Date(b.creationTime) - new Date(a.creationTime))
       : [];
 
     return (
@@ -369,9 +383,12 @@ class Certificates extends Component {
                             showAddCertificateModal();
                           });
                         }}
-                        disabled={isDisabled(currentCustomer.data.features, 'universe.create') || !hasNecessaryPerm({
-                          ...UserPermissionMap.createEncryptionInTransit
-                        })}
+                        disabled={
+                          isDisabled(currentCustomer.data.features, 'universe.create') ||
+                          !hasNecessaryPerm({
+                            ...UserPermissionMap.createEncryptionInTransit
+                          })
+                        }
                         btnText="Add Certificate"
                         btnIcon="fa fa-plus"
                       />

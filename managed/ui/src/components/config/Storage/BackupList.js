@@ -16,7 +16,10 @@ import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { YBPanelItem } from '../../panels';
 
 import { StorageConfigDeleteModal } from './StorageConfigDeleteModal';
-import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
+import {
+  RbacValidator,
+  hasNecessaryPerm
+} from '../../../redesign/features/rbac/common/RbacValidator';
 import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 
 /**
@@ -98,7 +101,7 @@ export const BackupList = (props) => {
         >
           <RbacValidator
             accessRequiredOn={{
-              onResource: "CUSTOMER_ID",
+              onResource: 'CUSTOMER_ID',
               ...UserPermissionMap.editStorageConfiguration
             }}
             isControl
@@ -107,30 +110,39 @@ export const BackupList = (props) => {
             <MenuItem
               onClick={() => {
                 onEditConfig(row);
-              }}>Edit Configuration</MenuItem>
+              }}
+              data-testid={`${currTab}-BackupList-EditConfiguration`}
+            >
+              Edit Configuration
+            </MenuItem>
           </RbacValidator>
           <MenuItem
             onClick={(e) => {
-              if (!hasNecessaryPerm({
-                onResource: 'CUSTOMER_ID',
-                ...UserPermissionMap.listBackup
-              })) {
+              if (
+                !hasNecessaryPerm({
+                  onResource: 'CUSTOMER_ID',
+                  ...UserPermissionMap.listBackup
+                })
+              ) {
                 return;
               }
               e.stopPropagation();
               setShowAssociatedBackups(true);
               setConfigData({ configUUID, configName });
             }}
-            disabled={!hasNecessaryPerm({
-              onResource: 'CUSTOMER_ID',
-              ...UserPermissionMap.listBackup
-            })}
+            disabled={
+              !hasNecessaryPerm({
+                onResource: 'CUSTOMER_ID',
+                ...UserPermissionMap.listBackup
+              })
+            }
+            data-testid={`${currTab}-BackupList-ShowAssociatedBackups`}
           >
             Show associated backups
           </MenuItem>
           <RbacValidator
             accessRequiredOn={{
-              onResource: "CUSTOMER_ID",
+              onResource: 'CUSTOMER_ID',
               ...UserPermissionMap.deleteStorageConfiguration
             }}
             isControl
@@ -144,6 +156,7 @@ export const BackupList = (props) => {
                   showDeleteStorageConfig(configName);
                 }
               }}
+              data-testid={`${currTab}-BackupList-DeleteConfiguration`}
             >
               {!inUse && <>Delete Configuration</>}
 
@@ -172,6 +185,7 @@ export const BackupList = (props) => {
               setUniverseDetails([...universeDetails]);
               setIsUniverseVisible(true);
             }}
+            data-testid={`${currTab}-BackupList-ShowUniverses`}
           >
             Show Universes
           </MenuItem>

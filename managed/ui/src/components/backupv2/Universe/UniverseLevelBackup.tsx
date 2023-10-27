@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC, useState } from 'react';
+import { FC, useState } from 'react';
 import { DropdownButton, MenuItem, Tab } from 'react-bootstrap';
 import { withRouter } from 'react-router';
 import { useSelector } from 'react-redux';
@@ -124,6 +124,7 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
                       setShowAdvancedRestore(true);
                     }}
                     disabled={currentUniverse?.data?.universeDetails?.universePaused}
+                    data-testid="UniverseBackup-AdvancedRestore"
                   >
                     Advanced Restore
                   </MenuItem>
@@ -143,6 +144,7 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
                         setShowThrottleParametersModal(true);
                       }}
                       disabled={currentUniverse?.data?.universeDetails?.universePaused}
+                      data-testid="UniverseBackup-ConfigureThrottle"
                     >
                       Configure Throttle Parameters
                     </MenuItem>
