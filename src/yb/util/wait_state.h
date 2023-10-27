@@ -33,6 +33,8 @@
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/monotime.h"
 
+DECLARE_bool(export_wait_state_names);
+
 #define SET_WAIT_STATUS_TO(ptr, state) \
   if (ptr) ptr->set_state(state)
 #define SET_WAIT_STATUS(state) \
@@ -347,9 +349,9 @@ class WaitStateInfo {
     metadata_.ToPB(pb->mutable_metadata());
     WaitStateCode code = get_state();
     pb->set_wait_status_code(yb::to_underlying(code));
-#ifndef NDEBUG
-    pb->set_wait_status_code_as_string(yb::ToString(code));
-#endif
+    if (FLAGS_export_wait_state_names) {
+      pb->set_wait_status_code_as_string(yb::ToString(code));
+    }
     aux_info_.ToPB(pb->mutable_aux_info());
   }
 
