@@ -32,7 +32,7 @@ The following steps are necessary to set up YugabyteDB for use with the Debezium
 
 - Make sure the YB-Master and YB-TServer ports are open.
 
-    The connector connects to the master processes running on the YugabyteDB server. Make sure the ports on which the YugabyteDB server's YB-Master and YB-TServer processes are running are open. The [default ports](../../../reference/configuration/default-ports/) on which the processes run are `7100` and `9100` respectively.
+    The connector connects to the YB-Master and YB-TServer processes running on the YugabyteDB server. Make sure the ports on which these processes are running are open. The [default ports](../../../reference/configuration/default-ports/) on which the processes run are `7100` and `9100` respectively.
 
 - Monitor available disk space.
 
