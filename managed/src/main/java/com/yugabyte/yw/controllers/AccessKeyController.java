@@ -18,6 +18,8 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -106,7 +108,10 @@ public class AccessKeyController extends AuthenticatedController {
   // TODO: Move this endpoint under region since this api is per region
   @ApiOperation(
       nickname = "createAccesskey",
-      value = "Create/Upload an access key for onprem Provider region",
+      value =
+          "Deprecated since YBA version 2.20.0.0, "
+              + "Use /api/v1/customers/{cUUID}/provider/{pUUID}/edit instead"
+              + " for adding the key",
       notes = "UNSTABLE - This API will undergo changes in future.",
       response = AccessKey.class)
   @ApiImplicitParams(
@@ -121,6 +126,8 @@ public class AccessKeyController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @Deprecated
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
     final Provider provider = Provider.getOrBadRequest(providerUUID);
     AccessKeyFormData formData =
@@ -140,7 +147,7 @@ public class AccessKeyController extends AuthenticatedController {
 
   @ApiOperation(
       nickname = "editAccesskey",
-      value = "Modify an access key",
+      value = "WARNING: This is a preview API that could change. Modify the existing access Key",
       response = AccessKey.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -155,6 +162,7 @@ public class AccessKeyController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result edit(UUID customerUUID, UUID providerUUID, String keyCode, Http.Request request) {
     // As part of access key edit we will be creating a new access key
     // so that if the old key is associated with some universes remains
