@@ -62,6 +62,7 @@ DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_running_test);
 DECLARE_bool(never_fsync);
 DECLARE_string(vmodule);
+DEFINE_test_flag(bool, use_yb_controller, false, "Use YBController in tests.");
 
 using std::string;
 using strings::Substitute;
@@ -299,6 +300,20 @@ string GetToolPath(const string& rel_path, const string& tool_name) {
   const string tool_path = JoinPathSegments(binroot, tool_name);
   CHECK(Env::Default()->FileExists(tool_path)) << tool_name << " tool not found at " << tool_path;
   return tool_path;
+}
+
+bool UseYbController() {
+  if (FLAGS_TEST_use_yb_controller) {
+    return true;
+  }
+  const char* env = getenv("YB_TEST_YB_CONTROLLER");
+  if (env) {
+    auto s = string(env);
+    if (s == "1" || s == "true") {
+      return true;
+    }
+  }
+  return false;
 }
 
 string GetCertsDir() {
