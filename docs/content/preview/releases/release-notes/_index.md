@@ -29,7 +29,7 @@ Starting with v2.16, the [release notes for YugabyteDB Anywhere](../yba-releases
 Documentation for EOL stable releases is available at the [YugabyteDB docs archive](https://docs-archive.yugabyte.com/).
 {{</note>}}
 
-The following releases are no longer supported:
+The following stable and preview releases are no longer supported:
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
@@ -48,5 +48,3 @@ The following releases are no longer supported:
 | [v2.1](end-of-life/v2.1/) | February 25, 2020 | February 25, 2021 | August 08, 2021 |
 | [v2.0](end-of-life/v2.0/) | September 17, 2019 | September 17, 2020 | March 03, 2021 |
 | [v1.3](end-of-life/v1.3/) | July 15, 2019 | July 15, 2020 | January 15, 2021 |
-
-All non-current preview releases are unsupported.

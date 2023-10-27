@@ -20,3 +20,7 @@ cascade:
 | [v2.14](../release-notes/v2.14/) <span class='metadata-tag-green'>LTS</span> | {{< yb-eol-dates "v2.14" release >}} | {{< yb-eol-dates "v2.14" EOM >}} | {{< yb-eol-dates "v2.14" EOL >}} |
 
 For end-of-life releases, see [Releases at end of life](../release-notes/#eol-releases).
+
+For information on release support policy, see [Releases](../).
+
+For information on release versioning, see [Versioning](../versioning/).

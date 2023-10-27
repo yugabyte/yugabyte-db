@@ -13,23 +13,34 @@ cascade:
   unversioned: true
 ---
 
-This section describes the release support policy, versioning, and feature availability for YugabyteDB. You can also access releases and release notes for YugabyteDB and YugabyteDB Anywhere.
+This section describes the release support policy, versioning, and feature availability for YugabyteDB and YugabyteDB Anywhere. You can also access releases and release notes for YugabyteDB and YugabyteDB Anywhere.
 
 -> For information on YugabyteDB Managed releases, refer to the [YugabyteDB Managed Change log](../yugabyte-cloud/release-notes/).
 
 -> For information on YugabyteDB Voyager releases, refer to the [YugabyteDB Voyager release notes](../yugabyte-voyager/release-notes/).
+
+## Recommended release series for projects
+
+To ensure that your production go-live uses the most up-to-date stable release, follow this guideline.
+
+| Production go-live | Recommended release series |
+| :----------------- | :------------------------- |
+| Less than 3 months | [{{<yb-version version="stable" format="displayName">}}](release-notes/{{<yb-version version="stable" format="series">}}/) |
+| More than 3 months | [{{<yb-version version="preview" format="displayName">}}](release-notes/{{<yb-version version="preview" format="series">}}/) |
+
+If your production go-live is more than three months from now, start your development and testing with the preview release series. By the time your production is ready to go live, the current stable release series (which is based on the preview release series you used for development and testing) will be available. By following this guideline, you ensure that your application is developed with the latest available features, enhancements, and fixes.
 
 ## Current supported releases
 
 <ul class="nav yb-pills">
   <li>
     <a href="release-notes/">
-        <img src="/icons/database.svg" alt="Server Icon"><span>YugabyteDB</span>
+        <img src="/icons/database.svg" alt="Server Icon"><span>YugabyteDB -></span>
     </a>
   </li>
   <li>
     <a href="yba-releases/">
-        <img src="/icons/server.svg" alt="Server Icon"><span>YugabyteDB Anywhere</span>
+        <img src="/icons/server.svg" alt="Server Icon"><span>YugabyteDB Anywhere -></span>
     </a>
   </li>
 </ul>
@@ -72,14 +83,3 @@ For information on key features planned for the upcoming releases, visit [Curren
 | Release series | Planned release |
 | :------------- | :-------------- |
 | v2.20 (LTS) | Late 2023 |
-
-## Recommended release series for projects
-
-To ensure that your production go-live uses the most up-to-date stable release, follow this guideline.
-
-| Production go-live | Recommended release series |
-| :----------------- | :------------------------- |
-| Less than 3 months | [{{<yb-version version="stable" format="displayName">}}](release-notes/{{<yb-version version="stable" format="series">}}/) |
-| More than 3 months | [{{<yb-version version="preview" format="displayName">}}](release-notes/{{<yb-version version="preview" format="series">}}/) |
-
-If your production go-live is more than three months from now, start your development and testing with the preview release series. By the time your production is ready to go live, the current stable release series (which is based on the preview release series you used for development and testing) will be available. By following this guideline, you ensure that your application is developed with the latest available features, enhancements, and fixes.
