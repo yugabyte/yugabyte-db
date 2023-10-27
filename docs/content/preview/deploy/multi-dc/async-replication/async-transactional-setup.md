@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-The following assumes you have set up source and target universes. Refer to [Set up universes](../async-replication/#set-up-universes).
+The following assumes you have set up source and target universes. Refer to [Set up universes](../async-deployment/#set-up-universes).
 
 ## Manual setup
 
@@ -115,11 +115,11 @@ Set up unidirectional transactional replication as follows:
 
 ## Setup using YugabyteDB Anywhere
 
-On Primary (with and without data):
+On the source universe (with and without data), do the following:
 
-1. Create a fresh database on the Primary cluster. Do Not create these objects in the default `yugabyte` database.
+1. Create a fresh database. Don't create these objects in the default `yugabyte` database.
 
-1. Create the following tables/indexes on Primary DB
+1. Create the following tables and indexes:
 
     ```sql
     create database ybdb;
@@ -138,9 +138,9 @@ On Primary (with and without data):
 
 1. On Standby, create a fresh database with the same name (with and without data).
 
-    During initial replication setup, You are not required to create objects on standby cluster. xCluster Bootstrap auto-creates tables/objects and restores data on Standby from Primary cluster.
+    During initial replication setup, you don't need to create objects on the target cluster. xCluster bootstrap auto-creates tables and objects and restores data on the Standby from the Primary cluster.
 
-1. Enable PITR using YBA UI on both Primary and Standby universes
+1. In YugabyteDB Anywhere, enable PITR on both Primary and Standby universes.
 Backups > point-in-time-recovery.
 
 1. Set up xCluster Replication from PRIMARY to STANDBY universe using YBA UI.

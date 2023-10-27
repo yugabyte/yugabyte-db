@@ -14,6 +14,8 @@ menu:
 type: docs
 ---
 
+## Set up universes
+
 You can create source and target universes as follows:
 
 1. Create the source universe by following the procedure from [Manual deployment](../../manual-deployment/).
