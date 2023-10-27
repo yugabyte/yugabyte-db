@@ -1001,7 +1001,7 @@ Number of records fetched in a single batch of snapshot operation of CDC.
 
 Default: `250`
 
-##### --cdc_min_replicated_index_considered_stale_seconds
+##### --cdc_min_replicated_index_considered_stale_secs
 
 If `cdc_min_replicated_index` hasn't been replicated in this amount of time, we reset its value to max int64 to avoid retaining any logs.
 
