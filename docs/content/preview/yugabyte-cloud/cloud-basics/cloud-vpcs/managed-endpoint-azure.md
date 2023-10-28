@@ -30,6 +30,8 @@ type: docs
 
 </ul>
 
+Connect your cluster to an application VPC via Azure Private Link.
+
 To use Azure Private Link, you need the following:
 
 - An Azure user account with an active subscription.

@@ -218,8 +218,8 @@ void WriteQuery::Finished(WriteOperation* operation, const Status& status) {
     TabletMetrics* metrics = tablet->metrics();
     if (metrics) {
       auto op_duration_usec =
-          MonoDelta(CoarseMonoClock::now() - start_time_).ToMicroseconds();
-      metrics->ql_write_latency->Increment(op_duration_usec);
+          make_unsigned(MonoDelta(CoarseMonoClock::now() - start_time_).ToMicroseconds());
+      metrics->Increment(tablet::TabletHistograms::kQlWriteLatency, op_duration_usec);
     }
   }
 
@@ -504,8 +504,7 @@ Status WriteQuery::DoExecute() {
 
   dockv::PartialRangeKeyIntents partial_range_key_intents(metadata.UsePartialRangeKeyIntents());
   prepare_result_ = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
-      doc_ops_, write_batch.read_pairs(), tablet->metrics()->write_lock_latency,
-      tablet->metrics()->failed_batch_lock, isolation_level_, row_mark_type,
+      doc_ops_, write_batch.read_pairs(), tablet->metrics(), isolation_level_, row_mark_type,
       transactional_table, write_batch.has_transaction(), deadline(), partial_range_key_intents,
       tablet->shared_lock_manager()));
 
@@ -538,7 +537,7 @@ Status WriteQuery::DoExecute() {
     return docdb::ResolveOperationConflicts(
         doc_ops_, conflict_management_policy, now, tablet->doc_db(),
         partial_range_key_intents, transaction_participant,
-        tablet->metrics()->transaction_conflicts.get(), &prepare_result_.lock_batch,
+        tablet->metrics(), &prepare_result_.lock_batch,
         wait_queue,
         [this, now](const Result<HybridTime>& result) {
           if (!result.ok()) {
@@ -577,7 +576,7 @@ Status WriteQuery::DoExecute() {
       doc_ops_, conflict_management_policy, write_batch, tablet->clock()->Now(),
       read_time_ ? read_time_.read : HybridTime::kMax,
       tablet->doc_db(), partial_range_key_intents,
-      transaction_participant, tablet->metrics()->transaction_conflicts.get(),
+      transaction_participant, tablet->metrics(),
       &prepare_result_.lock_batch, wait_queue,
       [this](const Result<HybridTime>& result) {
         if (!result.ok()) {

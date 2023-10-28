@@ -50,6 +50,7 @@
 #include "yb/server/clock.h"
 
 #include "yb/tablet/operations/update_txn_operation.h"
+#include "yb/tablet/tablet_metrics.h"
 
 #include "yb/tserver/tserver_service.pb.h"
 
@@ -1058,10 +1059,10 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
  public:
   Impl(const std::string& permanent_uuid,
        TransactionCoordinatorContext* context,
-       Counter* expired_metric,
+       TabletMetrics* tablet_metrics,
        const MetricEntityPtr& metrics)
       : context_(*context),
-        expired_metric_(*expired_metric),
+        metrics_(*tablet_metrics),
         log_prefix_(consensus::MakeTabletLogPrefix(context->tablet_id(), permanent_uuid)),
         deadlock_detector_(context->client_future(), this, context->tablet_id(), metrics),
         deadlock_detection_poller_(log_prefix_, std::bind(&Impl::PollDeadlockDetector, this)),
@@ -1875,7 +1876,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
           it = index.erase(it);
         } else {
           if (leader) {
-            expired_metric_.Increment();
+            metrics_.Increment(TabletCounters::kExpiredTransactions);
             bool modified = index.modify(it, [](TransactionState& state) {
               VLOG(4) << state.LogPrefix() << "Cleanup expired transaction";
               state.Abort();
@@ -1939,7 +1940,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   }
 
   TransactionCoordinatorContext& context_;
-  Counter& expired_metric_;
+  TabletMetrics& metrics_;
   const std::string log_prefix_;
 
   std::mutex managed_mutex_;
@@ -1961,9 +1962,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
 
 TransactionCoordinator::TransactionCoordinator(const std::string& permanent_uuid,
                                                TransactionCoordinatorContext* context,
-                                               Counter* expired_metric,
+                                               TabletMetrics* tablet_metrics,
                                                const MetricEntityPtr& metrics)
-    : impl_(new Impl(permanent_uuid, context, expired_metric, metrics)) {
+    : impl_(new Impl(permanent_uuid, context, tablet_metrics, metrics)) {
 }
 
 TransactionCoordinator::~TransactionCoordinator() {

@@ -36,6 +36,7 @@
 #include "yb/gutil/stl_util.h"
 
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_metrics.h"
 
 #include "yb/util/lazy_invoke.h"
 #include "yb/util/logging.h"
@@ -76,8 +77,8 @@ using TransactionConflictInfoMap = std::unordered_map<TransactionId,
                                                       TransactionIdHash>;
 
 Status MakeConflictStatus(const TransactionId& our_id, const TransactionId& other_id,
-                          const char* reason, Counter* conflicts_metric) {
-  conflicts_metric->Increment();
+                          const char* reason, tablet::TabletMetrics* tablet_metrics) {
+  tablet_metrics->Increment(tablet::TabletCounters::kTransactionConflicts);
   return (STATUS(TryAgain, Format("$0 conflicts with $1 transaction: $2", our_id, reason, other_id),
                  Slice(), TransactionError(TransactionErrorCode::kConflict)));
 }
@@ -109,6 +110,8 @@ class ConflictResolverContext {
   virtual bool IgnoreConflictsWith(const TransactionId& other) = 0;
 
   virtual TransactionId transaction_id() const = 0;
+
+  virtual SubTransactionId subtransaction_id() const = 0;
 
   virtual std::string ToString() const = 0;
 
@@ -610,8 +613,8 @@ class WaitOnConflictResolver : public ConflictResolver {
   void TryPreWait() {
     DCHECK(!status_tablet_id_.empty());
     auto did_wait_or_status = wait_queue_->MaybeWaitOnLocks(
-        context_->transaction_id(), lock_batch_, status_tablet_id_, serial_no_,
-        std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
+        context_->transaction_id(), context_->subtransaction_id(), lock_batch_, status_tablet_id_,
+        serial_no_, std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
     if (!did_wait_or_status.ok()) {
       InvokeCallback(did_wait_or_status.status());
     } else if (!*did_wait_or_status) {
@@ -627,8 +630,8 @@ class WaitOnConflictResolver : public ConflictResolver {
            conflict_data_->NumActiveTransactions(), wait_for_iters_);
 
     return wait_queue_->WaitOn(
-        context_->transaction_id(), lock_batch_, ConsumeTransactionDataAndReset(),
-        status_tablet_id_, serial_no_,
+        context_->transaction_id(), context_->subtransaction_id(), lock_batch_,
+        ConsumeTransactionDataAndReset(), status_tablet_id_, serial_no_,
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
   }
 
@@ -726,12 +729,12 @@ class StrongConflictChecker {
   StrongConflictChecker(const TransactionId& transaction_id,
                         HybridTime read_time,
                         ConflictResolver* resolver,
-                        Counter* conflicts_metric,
+                        tablet::TabletMetrics* tablet_metrics,
                         KeyBytes* buffer)
       : transaction_id_(transaction_id),
         read_time_(read_time),
         resolver_(*resolver),
-        conflicts_metric_(*conflicts_metric),
+        tablet_metrics_(*tablet_metrics),
         buffer_(*buffer)
   {}
 
@@ -800,7 +803,7 @@ class StrongConflictChecker {
           return STATUS(InternalError, "Skip locking since entity was modified in regular db",
                         TransactionError(TransactionErrorCode::kSkipLocking));
         } else {
-          conflicts_metric_.Increment();
+          tablet_metrics_.Increment(tablet::TabletCounters::kTransactionConflicts);
           return STATUS_EC_FORMAT(TryAgain, TransactionError(TransactionErrorCode::kConflict),
                                   "Value write after transaction start: $0 >= $1",
                                   doc_ht.hybrid_time(), read_time_);
@@ -823,7 +826,7 @@ class StrongConflictChecker {
   const TransactionId& transaction_id_;
   const HybridTime read_time_;
   ConflictResolver& resolver_;
-  Counter& conflicts_metric_;
+  tablet::TabletMetrics& tablet_metrics_;
   KeyBytes& buffer_;
 
   // RocksDb iterator with bloom filter can be reused in case keys has same hash component.
@@ -834,11 +837,11 @@ class ConflictResolverContextBase : public ConflictResolverContext {
  public:
   ConflictResolverContextBase(const DocOperations& doc_ops,
                               HybridTime resolution_ht,
-                              Counter* conflicts_metric,
+                              tablet::TabletMetrics* tablet_metrics,
                               ConflictManagementPolicy conflict_management_policy)
       : doc_ops_(doc_ops),
         resolution_ht_(resolution_ht),
-        conflicts_metric_(conflicts_metric),
+        tablet_metrics_(*tablet_metrics),
         conflict_management_policy_(conflict_management_policy) {
   }
 
@@ -854,8 +857,8 @@ class ConflictResolverContextBase : public ConflictResolverContext {
     resolution_ht_.MakeAtLeast(resolution_ht);
   }
 
-  Counter* GetConflictsMetric() {
-    return conflicts_metric_;
+  tablet::TabletMetrics* GetTabletMetrics() {
+    return &tablet_metrics_;
   }
 
   ConflictManagementPolicy GetConflictManagementPolicy() const override {
@@ -890,7 +893,7 @@ class ConflictResolverContextBase : public ConflictResolverContext {
       //   2. a kConflict is raised even if their_priority equals our_priority.
       if (our_priority <= their_priority) {
         return MakeConflictStatus(
-            our_transaction_id, transaction.id, "higher priority", GetConflictsMetric());
+            our_transaction_id, transaction.id, "higher priority", GetTabletMetrics());
       }
     }
     fetched_metadata_for_transactions_ = true;
@@ -906,7 +909,7 @@ class ConflictResolverContextBase : public ConflictResolverContext {
 
   bool fetched_metadata_for_transactions_ = false;
 
-  Counter* conflicts_metric_ = nullptr;
+  tablet::TabletMetrics& tablet_metrics_;
 
   const ConflictManagementPolicy conflict_management_policy_;
 };
@@ -918,10 +921,10 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
                                      const LWKeyValueWriteBatchPB& write_batch,
                                      HybridTime resolution_ht,
                                      HybridTime read_time,
-                                     Counter* conflicts_metric,
+                                     tablet::TabletMetrics* tablet_metrics,
                                      ConflictManagementPolicy conflict_management_policy)
       : ConflictResolverContextBase(
-            doc_ops, resolution_ht, conflicts_metric, conflict_management_policy),
+            doc_ops, resolution_ht, tablet_metrics, conflict_management_policy),
         write_batch_(write_batch),
         read_time_(read_time),
         transaction_id_(FullyDecodeTransactionId(write_batch.transaction().transaction_id()))
@@ -1009,7 +1012,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
                                  << AsString(container);
 
     StrongConflictChecker checker(
-        *transaction_id_, read_time_, resolver, GetConflictsMetric(), &buffer);
+        *transaction_id_, read_time_, resolver, GetTabletMetrics(), &buffer);
     // Iterator on intents DB should be created before iterator on regular DB.
     // This is to prevent the case when we create an iterator on the regular DB where a
     // provisional record has not yet been applied, and then create an iterator the intents
@@ -1104,7 +1107,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
                         TransactionError(TransactionErrorCode::kSkipLocking));
         } else {
           return MakeConflictStatus(
-            *transaction_id_, transaction_data.id, "committed", GetConflictsMetric());
+            *transaction_id_, transaction_data.id, "committed", GetTabletMetrics());
         }
       }
     }
@@ -1118,6 +1121,13 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
 
   TransactionId transaction_id() const override {
     return *transaction_id_;
+  }
+
+  SubTransactionId subtransaction_id() const override {
+    if (write_batch_.subtransaction().has_subtransaction_id()) {
+      return write_batch_.subtransaction().subtransaction_id();
+    }
+    return kMinSubTransactionId;
   }
 
   bool IsSingleShardTransaction() const override {
@@ -1146,10 +1156,10 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
  public:
   OperationConflictResolverContext(const DocOperations* doc_ops,
                                    HybridTime resolution_ht,
-                                   Counter* conflicts_metric,
+                                   tablet::TabletMetrics* tablet_metrics,
                                    ConflictManagementPolicy conflict_management_policy)
       : ConflictResolverContextBase(
-            *doc_ops, resolution_ht, conflicts_metric, conflict_management_policy) {
+            *doc_ops, resolution_ht, tablet_metrics, conflict_management_policy) {
   }
 
   virtual ~OperationConflictResolverContext() {}
@@ -1224,6 +1234,10 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
     return TransactionId::Nil();
   }
 
+  SubTransactionId subtransaction_id() const override {
+    return kMinSubTransactionId;
+  }
+
   bool IsSingleShardTransaction() const override {
     return true;
   }
@@ -1256,7 +1270,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
                                    const DocDB& doc_db,
                                    PartialRangeKeyIntents partial_range_key_intents,
                                    TransactionStatusManager* status_manager,
-                                   Counter* conflicts_metric,
+                                   tablet::TabletMetrics* tablet_metrics,
                                    LockBatch* lock_batch,
                                    WaitQueue* wait_queue,
                                    ResolutionCallback callback) {
@@ -1269,7 +1283,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
       << ", read_time: " << read_time;
 
   auto context = std::make_unique<TransactionConflictResolverContext>(
-      doc_ops, write_batch, resolution_ht, read_time, conflicts_metric,
+      doc_ops, write_batch, resolution_ht, read_time, tablet_metrics,
       conflict_management_policy);
   if (conflict_management_policy == WAIT_ON_CONFLICT) {
     RSTATUS_DCHECK(
@@ -1297,7 +1311,7 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
                                  const DocDB& doc_db,
                                  PartialRangeKeyIntents partial_range_key_intents,
                                  TransactionStatusManager* status_manager,
-                                 Counter* conflicts_metric,
+                                 tablet::TabletMetrics* tablet_metrics,
                                  LockBatch* lock_batch,
                                  WaitQueue* wait_queue,
                                  ResolutionCallback callback) {
@@ -1307,7 +1321,7 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
       << ", initial_resolution_ht: " << intial_resolution_ht;
 
   auto context = std::make_unique<OperationConflictResolverContext>(
-      &doc_ops, intial_resolution_ht, conflicts_metric, conflict_management_policy);
+      &doc_ops, intial_resolution_ht, tablet_metrics, conflict_management_policy);
 
   if (conflict_management_policy == WAIT_ON_CONFLICT) {
     RSTATUS_DCHECK(

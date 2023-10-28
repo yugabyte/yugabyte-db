@@ -43,6 +43,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (IsObjectPartOfXRepl)
     (SetUniverseReplicationEnabled)
     (PauseResumeXClusterProducerStreams)
+    (SetupNamespaceReplicationWithBootstrap)
     (SetupUniverseReplication)
     (UpdateCDCStream)
     (GetCDCDBStreamInfo)

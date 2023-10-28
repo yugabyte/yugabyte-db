@@ -50,6 +50,7 @@ class OperationFilter;
 class SnapshotCoordinator;
 class SnapshotOperation;
 class SplitOperation;
+class TabletMetrics;
 class TabletSnapshots;
 class TabletSplitter;
 class TabletStatusListener;
@@ -72,7 +73,6 @@ struct PgsqlReadRequestResult;
 struct QLReadRequestResult;
 struct RemoveIntentsData;
 struct TabletInitData;
-struct TabletMetrics;
 struct TransactionApplyData;
 struct TransactionStatusInfo;
 

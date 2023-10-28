@@ -87,15 +87,60 @@ Result<google::protobuf::RepeatedPtrField<TabletLocationsPB>> CDCRpcTasks::GetTa
   return tablets;
 }
 
-Result<std::vector<std::pair<TableId, client::YBTableName>>> CDCRpcTasks::ListTables() {
-  auto tables = VERIFY_RESULT(yb_client_->ListTables());
-  std::vector<std::pair<TableId, client::YBTableName>> result;
-  result.reserve(tables.size());
-  for (auto& t : tables) {
-    auto table_id = t.table_id();
-    result.emplace_back(std::move(table_id), std::move(t));
+Result<TableBootstrapIdsMap> CDCRpcTasks::BootstrapProducer(
+    const NamespaceIdentifierPB& producer_namespace,
+    const std::vector<client::YBTableName>& tables) {
+  SCHECK(!tables.empty(), InvalidArgument, "Empty tables");
+  const auto& db_type = producer_namespace.database_type();
+  const auto& namespace_name = producer_namespace.name();
+  auto has_schema_name = (db_type == YQL_DATABASE_PGSQL);
+  std::vector<std::string> table_names;
+  table_names.reserve(tables.size());
+
+  std::vector<std::string> schema_names;
+  schema_names.reserve(has_schema_name ? tables.size() : 0);
+
+  for (auto& table : tables) {
+    SCHECK_EQ(
+        table.namespace_type(), db_type, IllegalState,
+        Format(
+            "Table db type $0 does not match given db type $1", table.namespace_type(), db_type));
+    SCHECK_EQ(
+        table.namespace_name(), namespace_name, IllegalState,
+        Format(
+            "Table namespace $0 does not match given namespace $1", table.namespace_name(),
+            namespace_name));
+
+    table_names.emplace_back(std::move(table.table_name()));
+    if (has_schema_name) {
+      schema_names.emplace_back(std::move(table.pgschema_name()));
+    }
   }
-  return result;
+
+  std::promise<Result<TableBootstrapIdsMap>> promise;
+  RETURN_NOT_OK(yb_client_->BootstrapProducer(
+      db_type, namespace_name, schema_names, table_names,
+      [this, &promise](client::BootstrapProducerResult bootstrap_result) {
+        promise.set_value(BootstrapProducerCallback(std::move(bootstrap_result)));
+      }));
+
+  return promise.get_future().get();
+}
+
+Result<TableBootstrapIdsMap> CDCRpcTasks::BootstrapProducerCallback(
+    client::BootstrapProducerResult bootstrap_result) {
+  auto [table_ids, bootstrap_ids, _] = VERIFY_RESULT(std::move(bootstrap_result));
+  SCHECK_EQ(
+      table_ids.size(), bootstrap_ids.size(), IllegalState,
+      Format("Received $0 table ids and $1 bootstrap ids", table_ids.size(), bootstrap_ids.size()));
+
+  TableBootstrapIdsMap table_bootstrap_ids;
+  for (size_t i = 0; i < table_ids.size(); ++i) {
+    auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(bootstrap_ids.at(i)));
+    table_bootstrap_ids.insert_or_assign(table_ids[i], stream_id);
+  }
+
+  return table_bootstrap_ids;
 }
 
 } // namespace master

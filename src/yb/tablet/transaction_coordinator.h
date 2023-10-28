@@ -89,7 +89,7 @@ class TransactionCoordinator {
  public:
   TransactionCoordinator(const std::string& permanent_uuid,
                          TransactionCoordinatorContext* context,
-                         Counter* expired_metric,
+                         TabletMetrics* tablet_metrics,
                          const MetricEntityPtr& metrics);
   ~TransactionCoordinator();
 

@@ -18,6 +18,8 @@ Monitor performance metrics for your cluster to ensure the cluster configuration
 
 - The **Performance** tab **Metrics** displays a comprehensive array of more specific performance metrics, including for YSQL and YCQL API performance.
 
+{{< youtube id="Xv4y6wWSHJ8" title="Monitor cluster performance in YugabyteDB Managed" >}}
+
 Use these metrics to monitor the performance of your cluster and to determine whether the configuration needs to change. For information on changing or scaling your cluster, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
 You can enable alerts for some performance metrics. Refer to [Alerts](../cloud-alerts/).

@@ -386,8 +386,8 @@ void KeyStatsSlidingWindow::RecordCurrentStats(
     const tablet::TabletMetrics& metrics, uint64_t last_compact_time) {
   // Reset the window anytime a full compaction or new tablet instance is detected.
   if (last_compact_time > last_compaction_time_
-      || metrics.instance_id != metrics_instance_id_) {
-    ResetWindow(last_compact_time, metrics.instance_id);
+      || metrics.InstanceId() != metrics_instance_id_) {
+    ResetWindow(last_compact_time, metrics.InstanceId());
   }
 
   ComputeWindowSizeAndIntervals();
@@ -407,8 +407,9 @@ void KeyStatsSlidingWindow::RecordCurrentStats(
   }
 
   // Finally, push the latest metrics into the back of the window.
-  key_stats_window_.push_back({ metrics.docdb_keys_found->value(),
-      metrics.docdb_obsolete_keys_found_past_cutoff->value() });
+  key_stats_window_.push_back({
+      metrics.Get(tablet::TabletCounters::kDocDBKeysFound),
+      metrics.Get(tablet::TabletCounters::kDocDBObsoleteKeysFoundPastCutoff)});
 }
 
 KeyStatistics KeyStatsSlidingWindow::current_stats() const {

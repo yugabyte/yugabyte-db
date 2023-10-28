@@ -143,6 +143,10 @@ macro(yb_find_third_party_dependencies)
     SHARED_LIB "${GFLAGS_SHARED_LIB}")
   list(APPEND YB_BASE_LIBS gflags)
 
+  ## JwtCpp
+  find_package(JwtCpp REQUIRED)
+  include_directories(SYSTEM ${JWTCPP_INCLUDE_DIR})
+
   ## GTest
   find_package(GTest REQUIRED)
   include_directories(SYSTEM ${GTEST_INCLUDE_DIR})
