@@ -251,6 +251,7 @@ void WriteQuery::Complete(const Status& status) {
 }
 
 void WriteQuery::ExecuteDone(const Status& status) {
+  docdb_locks_ = std::move(prepare_result_.lock_batch);
   scoped_read_operation_.Reset();
   switch (execute_mode_) {
     case ExecuteMode::kSimple:
@@ -702,8 +703,6 @@ Status WriteQuery::DoCompleteExecute() {
   if (restart_read_ht_.is_valid()) {
     return Status::OK();
   }
-
-  docdb_locks_ = std::move(prepare_result_.lock_batch);
 
   return Status::OK();
 }
