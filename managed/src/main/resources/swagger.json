@@ -15830,77 +15830,6 @@
         "tags" : [ "Certificate Info" ]
       }
     },
-    "/api/v1/customers/{cUUID}/certificates/create_self_signed_cert" : {
-      "post" : {
-        "description" : "",
-        "operationId" : "createSelfSignedCert",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "certificate label",
-          "in" : "body",
-          "name" : "label",
-          "required" : true,
-          "schema" : {
-            "type" : "string"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "format" : "uuid",
-              "type" : "string"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Create a self signed certificate",
-        "tags" : [ "Certificate Info" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/certificates/{name}" : {
-      "get" : {
-        "description" : "",
-        "operationId" : "getCertificate",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "path",
-          "name" : "name",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "format" : "uuid",
-              "type" : "string"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Get a certificate's UUID",
-        "tags" : [ "Certificate Info" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/certificates/{rUUID}" : {
       "delete" : {
         "description" : "",
@@ -15934,48 +15863,6 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Delete a certificate",
-        "tags" : [ "Certificate Info" ]
-      },
-      "post" : {
-        "description" : "",
-        "operationId" : "getClientCert",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "rUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "post certificate info",
-          "in" : "body",
-          "name" : "certificate",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/ClientCertParams"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/CertificateDetails"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Add a client certificate",
         "tags" : [ "Certificate Info" ]
       }
     },
@@ -16048,42 +15935,6 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Edit TLS certificate config details",
-        "tags" : [ "Certificate Info" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/certificates/{rUUID}/update_empty_cert" : {
-      "post" : {
-        "description" : "",
-        "operationId" : "updateEmptyCustomCert",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "rUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/CertificateInfoExt"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Update an empty certificate",
         "tags" : [ "Certificate Info" ]
       }
     },
@@ -16506,7 +16357,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Add a named custom CA certificate",
+        "summary" : "WARNING: This is a preview API that could change. Add a named custom CA certificate",
         "tags" : [ "Custom CA Certificates" ]
       }
     },
@@ -16551,7 +16402,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Update a named custom CA certificate",
+        "summary" : "WARNING: This is a preview API that could change. Update a named custom CA certificate",
         "tags" : [ "Custom CA Certificates" ]
       }
     },
@@ -16580,7 +16431,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List all custom CA certificates of a customer",
+        "summary" : "WARNING: This is a preview API that could change. List all custom CA certificates of a customer",
         "tags" : [ "Custom CA Certificates" ]
       }
     },
@@ -16616,7 +16467,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete a named custom CA certificate",
+        "summary" : "WARNING: This is a preview API that could change. Delete a named custom CA certificate",
         "tags" : [ "Custom CA Certificates" ]
       },
       "get" : {
@@ -16650,7 +16501,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Download a custom CA certificates of a customer",
+        "summary" : "WARNING: This is a preview API that could change. Download a custom CA certificates of a customer",
         "tags" : [ "Custom CA Certificates" ]
       }
     },
@@ -17871,7 +17722,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Rotate access key for a provider",
+        "summary" : "WARNING: This is a preview API that could change. Rotate access key for a provider",
         "tags" : [ "Cloud providers" ]
       }
     },
@@ -17906,7 +17757,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List all schedules for a provider's access key rotation",
+        "summary" : "WARNING: This is a preview API that could change. List all schedules for a provider's access key rotation",
         "tags" : [ "Cloud providers" ]
       },
       "post" : {
@@ -17940,7 +17791,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Rotate access key for a provider - Scheduled",
+        "summary" : "WARNING: This is a preview API that could change. Rotate access key for a provider - Scheduled",
         "tags" : [ "Cloud providers" ]
       }
     },
@@ -17989,7 +17840,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Edit a access key rotation schedule",
+        "summary" : "WARNING: This is a preview API that could change. Edit a access key rotation schedule",
         "tags" : [ "Cloud providers" ]
       }
     },
@@ -18028,6 +17879,7 @@
         "tags" : [ "Access Keys" ]
       },
       "post" : {
+        "deprecated" : true,
         "description" : "UNSTABLE - This API will undergo changes in future.",
         "operationId" : "createAccesskey",
         "parameters" : [ {
@@ -18065,7 +17917,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create/Upload an access key for onprem Provider region",
+        "summary" : "Deprecated since YBA version 2.20.0.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/edit instead for adding the key",
         "tags" : [ "Access Keys" ]
       }
     },
@@ -18188,7 +18040,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Modify an access key",
+        "summary" : "WARNING: This is a preview API that could change. Modify the existing access Key",
         "tags" : [ "Access Keys" ]
       }
     },
@@ -18285,7 +18137,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "List image bundles",
+        "summary" : "WARNING: This is a preview API that could change. List image bundles",
         "tags" : [ "preview" ]
       },
       "post" : {
@@ -18327,7 +18179,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create a image bundle",
+        "summary" : "WARNING: This is a preview API that could change. Create a image bundle",
         "tags" : [ "preview" ]
       }
     },
@@ -18369,7 +18221,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Delete a image bundle",
+        "summary" : "WARNING: This is a preview API that could change. Delete a image bundle",
         "tags" : [ "preview" ]
       },
       "get" : {
@@ -18405,7 +18257,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get a image bundle",
+        "summary" : "WARNING: This is a preview API that could change. Get a image bundle",
         "tags" : [ "preview" ]
       },
       "put" : {
@@ -18453,7 +18305,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Update a image bundle",
+        "summary" : "WARNING: This is a preview API that could change. Update a image bundle",
         "tags" : [ "preview" ]
       }
     },
@@ -18795,7 +18647,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create a new region",
+        "summary" : "WARNING: This is a preview API that could change. Create a new region",
         "tags" : [ "Region management" ]
       }
     },
@@ -18845,7 +18697,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Modify a region",
+        "summary" : "WARNING: This is a preview API that could change. Modify a region",
         "tags" : [ "Region management" ]
       }
     },
@@ -18898,7 +18750,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create an availability zone",
+        "summary" : "WARNING: This is a preview API that could change. Create an availability zone",
         "tags" : [ "Availability Zones" ]
       }
     },
@@ -18954,7 +18806,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Modify an availability zone",
+        "summary" : "WARNING: This is a preview API that could change. Modify an availability zone",
         "tags" : [ "Availability Zones" ]
       }
     },
@@ -18990,7 +18842,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Refresh pricing",
+        "summary" : "WARNING: This is a preview API that could change. Refresh pricing",
         "tags" : [ "Cloud providers" ]
       }
     },

@@ -15,6 +15,8 @@ import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CustomCaCertificateInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -47,7 +49,9 @@ public class CustomCAStoreController extends AuthenticatedController {
     this.tokenAuthenticator = tokenAuthenticator;
   }
 
-  @ApiOperation(value = "Add a named custom CA certificate", response = UUID.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. Add a named custom CA certificate",
+      response = UUID.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "X509CACertificate",
@@ -61,6 +65,7 @@ public class CustomCAStoreController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result addCA(UUID customerId, Http.Request request) {
     if (!customCAStoreManager.isEnabled()) {
       throw new PlatformServiceException(
@@ -98,7 +103,9 @@ public class CustomCAStoreController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List all custom CA certificates of a customer",
+      value =
+          "WARNING: This is a preview API that could change. List all custom CA certificates of a"
+              + " customer",
       responseContainer = "List",
       response = CustomCaCertificateInfo.class,
       nickname = "listAllCustomCaCertificates")
@@ -108,13 +115,16 @@ public class CustomCAStoreController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result listCAs(UUID customerId) {
     Customer.getOrBadRequest(customerId);
     return PlatformResults.withData(customCAStoreManager.getAll());
   }
 
   @ApiOperation(
-      value = "Download a custom CA certificates of a customer",
+      value =
+          "WARNING: This is a preview API that could change. Download a custom CA certificates of a"
+              + " customer",
       response = CustomCaCertificateInfo.class,
       nickname = "getAllCustomCaCertificates")
   @AuthzPath({
@@ -123,13 +133,17 @@ public class CustomCAStoreController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result downloadCA(UUID customerId, UUID certId, Http.Request request) {
     Customer.getOrBadRequest(customerId);
     CustomCaCertificateInfo cert = customCAStoreManager.get(customerId, certId);
     return PlatformResults.withData(cert);
   }
 
-  @ApiOperation(value = "Update a named custom CA certificate", response = UUID.class)
+  @ApiOperation(
+      value =
+          "WARNING: This is a preview API that could change. Update a named custom CA certificate",
+      response = UUID.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "X509CACertificate",
@@ -143,6 +157,7 @@ public class CustomCAStoreController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result updateCA(UUID customerId, UUID oldCertId, Http.Request request) {
     if (!customCAStoreManager.isEnabled()) {
       throw new PlatformServiceException(
@@ -179,7 +194,8 @@ public class CustomCAStoreController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Delete a named custom CA certificate",
+      value =
+          "WARNING: This is a preview API that could change. Delete a named custom CA certificate",
       response = YBPSuccess.class,
       nickname = "Delete custom CA certificate")
   @AuthzPath({
@@ -188,6 +204,7 @@ public class CustomCAStoreController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result deleteCA(UUID customerId, UUID certId, Http.Request request) {
     if (!customCAStoreManager.isEnabled()) {
       throw new PlatformServiceException(

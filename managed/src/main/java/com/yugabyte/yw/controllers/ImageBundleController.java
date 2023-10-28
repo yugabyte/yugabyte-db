@@ -14,6 +14,8 @@ import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -42,7 +44,7 @@ public class ImageBundleController extends AuthenticatedController {
   @Inject ImageBundleHandler imageBundleHandler;
 
   @ApiOperation(
-      value = "Create a image bundle",
+      value = "WARNING: This is a preview API that could change. Create a image bundle",
       response = ImageBundle.class,
       nickname = "createImageBundle")
   @ApiImplicitParams(
@@ -57,6 +59,7 @@ public class ImageBundleController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     final Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -73,7 +76,7 @@ public class ImageBundleController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List image bundles",
+      value = "WARNING: This is a preview API that could change. List image bundles",
       response = ImageBundle.class,
       responseContainer = "List",
       nickname = "getListOfImageBundles")
@@ -83,6 +86,7 @@ public class ImageBundleController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result list(UUID customerUUID, UUID providerUUID, @Nullable String arch) {
     Provider.getOrBadRequest(customerUUID, providerUUID);
     List<ImageBundle> imageBundles;
@@ -101,7 +105,7 @@ public class ImageBundleController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Get a image bundle",
+      value = "WARNING: This is a preview API that could change. Get a image bundle",
       response = ImageBundle.class,
       nickname = "getImageBundle")
   @AuthzPath({
@@ -110,6 +114,7 @@ public class ImageBundleController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result index(UUID customerUUID, UUID providerUUID, UUID imageBundleUUID) {
     Provider.getOrBadRequest(customerUUID, providerUUID);
     ImageBundle bundle = ImageBundle.getOrBadRequest(providerUUID, imageBundleUUID);
@@ -117,7 +122,7 @@ public class ImageBundleController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Update a image bundle",
+      value = "WARNING: This is a preview API that could change. Update a image bundle",
       response = ImageBundle.class,
       nickname = "editImageBundle")
   @ApiImplicitParams(
@@ -132,6 +137,7 @@ public class ImageBundleController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result edit(UUID customerUUID, UUID providerUUID, UUID iBUUID, Http.Request request) {
     final Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     checkImageBundleUsageInUniverses(providerUUID, iBUUID);
@@ -148,13 +154,16 @@ public class ImageBundleController extends AuthenticatedController {
     return PlatformResults.withData(cBundle);
   }
 
-  @ApiOperation(value = "Delete a image bundle", response = YBPSuccess.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. Delete a image bundle",
+      response = YBPSuccess.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result delete(UUID customerUUID, UUID providerUUID, UUID iBUUID, Http.Request request) {
     checkImageBundleUsageInUniverses(providerUUID, iBUUID);
     imageBundleHandler.delete(providerUUID, iBUUID);
