@@ -482,6 +482,7 @@ TEST_F(PgMiniTest, Tracing) {
 
   LOG(INFO) << "Doing Insert";
   ASSERT_OK(conn.Execute("INSERT INTO t (key, value, value2) VALUES (1, 'hello', 'world')"));
+  SleepFor(1s);
   last_logged_trace_size = trace_log_sink.last_logged_bytes();
   LOG(INFO) << "Logged " << last_logged_trace_size << " bytes";
   // 2601 is size of the current trace for insert.
@@ -491,6 +492,7 @@ TEST_F(PgMiniTest, Tracing) {
 
   LOG(INFO) << "Doing Select";
   auto value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
+  SleepFor(1s);
   last_logged_trace_size = trace_log_sink.last_logged_bytes();
   LOG(INFO) << "Logged " << last_logged_trace_size << " bytes";
   // 1884 is size of the current trace for select.
@@ -505,6 +507,7 @@ TEST_F(PgMiniTest, Tracing) {
   ASSERT_OK(conn.Execute("INSERT INTO t (key, value, value2) VALUES (3, 'good', 'morning')"));
   value = ASSERT_RESULT(conn.FetchValue<std::string>("SELECT value FROM t WHERE key = 1"));
   ASSERT_OK(conn.Execute("ABORT"));
+  SleepFor(1s);
   last_logged_trace_size = trace_log_sink.last_logged_bytes();
   LOG(INFO) << "Logged " << last_logged_trace_size << " bytes";
   // 5446 is size of the current trace for the transaction block.
