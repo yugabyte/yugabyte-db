@@ -22,7 +22,7 @@ You can scale the following cluster properties:
 
 Cluster edit operations are performed using the **Edit Infrastructure** option on the cluster **Settings** tab.
 
-{{< youtube id="yL4WR6wpjPs" title="Perform a live infrastructure upgrade in YugabyteDB Managed" >}}
+{{< youtube id="Dhb-R-tlFKM" title="Perform a live infrastructure upgrade in YugabyteDB Managed" >}}
 
 For clusters with Region, Availability Zone, or Node Level fault tolerance, the scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
 

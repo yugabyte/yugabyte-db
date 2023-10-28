@@ -389,6 +389,17 @@ class Tablet : public AbstractTablet,
       const SubTransactionMetadataPB& subtransaction_metadata,
       PgsqlReadRequestResult* result) override;
 
+  Status DoHandlePgsqlReadRequest(
+      ScopedRWOperation* scoped_read_operation,
+      docdb::DocDBStatistics* statistics,
+      TabletMetrics* metrics,
+      const docdb::ReadOperationData& read_operation_data,
+      bool is_explicit_request_read_time,
+      const PgsqlReadRequestPB& pgsql_read_request,
+      const TransactionMetadataPB& transaction_metadata,
+      const SubTransactionMetadataPB& subtransaction_metadata,
+      PgsqlReadRequestResult* result);
+
   Status CreatePagingStateForRead(
       const PgsqlReadRequestPB& pgsql_read_request, const size_t row_count,
       PgsqlResponsePB* response) const override;
@@ -555,9 +566,6 @@ class Tablet : public AbstractTablet,
 
   Schema GetKeySchema(const std::string& table_id = "") const;
 
-  const docdb::YQLStorageIf& QLStorage() const override {
-    return *ql_storage_;
-  }
 
   // Provide a way for write operations to wait when tablet schema is
   // being changed.
@@ -598,13 +606,13 @@ class Tablet : public AbstractTablet,
   Status ForceFullRocksDBCompact(rocksdb::CompactionReason compaction_reason,
       docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
 
-  docdb::DocDB doc_db() const {
+  docdb::DocDB doc_db(TabletMetrics* metrics = nullptr) const {
     return {
         regular_db_.get(),
         intents_db_.get(),
         &key_bounds_,
         retention_policy_.get(),
-        metrics_.get() };
+        metrics ? metrics : metrics_.get() };
   }
 
   // Returns approximate middle key for tablet split:

@@ -18,6 +18,8 @@ Evaluate the performance of slow queries that have run on your cluster using the
 - Evaluate query execution times over time.
 - Discover potential queries for [tuning](../../../explore/query-1-performance/).
 
+{{< youtube id="hXphqRCQImQ" title="Monitor and optimize queries in YugabyteDB Managed" >}}
+
 Slow queries are not available for YCQL.
 
 ![Cluster Slow Queries](/images/yb-cloud/managed-monitor-slow-queries.png)

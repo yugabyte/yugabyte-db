@@ -495,6 +495,101 @@ class XClusterTestNoParam : public XClusterTestBase {
     return Status::OK();
   }
 
+  Status TestSetupNamespaceReplicationWithBootstrap(
+      const std::vector<uint32_t>& tables_vector,
+      master::SetupNamespaceReplicationWithBootstrapResponsePB* resp,
+      bool use_invalid_namespace = false) {
+    auto tables = VERIFY_RESULT(SetUpWithParams(tables_vector, tables_vector, 3));
+
+    std::unique_ptr<client::YBClient> client;
+    std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy;
+    client = VERIFY_RESULT(consumer_cluster()->CreateClient());
+    producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
+        &client->proxy_cache(),
+        HostPort::FromBoundEndpoint(producer_cluster()->mini_tablet_server(0)->bound_rpc_addr()));
+
+    // tables contains both producer and consumer universe tables (alternately).
+    // Pick out just the producer tables from the list.
+    std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+    std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+    producer_tables.reserve(tables.size() / 2);
+    consumer_tables.reserve(tables.size() / 2);
+    for (size_t i = 0; i < tables.size(); i++) {
+      if (i % 2 == 0) {
+        producer_tables.push_back(tables[i]);
+      } else {
+        consumer_tables.push_back(tables[i]);
+      }
+    }
+
+    // 1. Write some data so that we can verify that only new records get replicated
+    for (const auto& producer_table : producer_tables) {
+      LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
+      WriteWorkload(0, 100, producer_client(), producer_table->name());
+    }
+
+    master::NamespaceIdentifierPB producer_namespace;
+    if (use_invalid_namespace) {
+      producer_namespace.set_id("invalid_id");
+      producer_namespace.set_name("invalid_name");
+      producer_namespace.set_database_type(::yb::YQLDatabase::YQL_DATABASE_UNKNOWN);
+    } else {
+      SCHECK(!producer_tables.empty(), IllegalState, "Producer tables are empty");
+      producer_tables.front()->name().SetIntoNamespaceIdentifierPB(&producer_namespace);
+    }
+
+    rpc::RpcController rpc;
+    master::SetupNamespaceReplicationWithBootstrapRequestPB req;
+    req.set_replication_id(kReplicationGroupId.ToString());
+    req.mutable_producer_namespace()->CopyFrom(producer_namespace);
+    string master_addr = producer_cluster()->GetMasterAddresses();
+    auto hp_vec = VERIFY_RESULT(HostPort::ParseStrings(master_addr, 0));
+    HostPortsToPBs(hp_vec, req.mutable_producer_master_addresses());
+
+    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+        &consumer_client()->proxy_cache(),
+        VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    return master_proxy->SetupNamespaceReplicationWithBootstrap(req, resp, &rpc);
+  }
+
+  Status VerifyCdcStateTableEntriesExistForTables(
+      const std::size_t& tables_count,
+      const int tablets_per_table) {
+    std::unordered_map<xrepl::StreamId, int> stream_tablet_count;
+
+    // Verify that for each of the table's tablets, a new row in cdc_state table with the
+    // returned id was inserted.
+    cdc::CDCStateTable cdc_state_table(producer_client());
+    Status s;
+    auto table_range = VERIFY_RESULT(
+        cdc_state_table.GetTableRange(cdc::CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
+    SCHECK_EQ(
+        std::distance(table_range.begin(), table_range.end()), tables_count * tablets_per_table,
+        InternalError, "Mismatched size");
+
+    for (auto row_result : table_range) {
+      RETURN_NOT_OK(row_result);
+      auto& row = *row_result;
+      stream_tablet_count[row.key.stream_id]++;
+      SCHECK(row.checkpoint, InternalError, "Invalid row checkpoint");
+      SCHECK(row.checkpoint->index > 0, InternalError, "Row checkpoint index should be > 0");
+
+      LOG(INFO) << "Bootstrap id " << row.key.stream_id << " for tablet " << row.key.tablet_id
+                << " "
+                << " has checkpoint " << *row.checkpoint;
+    }
+
+    SCHECK_EQ(
+        stream_tablet_count.size(), tables_count, InternalError,
+        "Tablet bootstraps and producer tables should be same size");
+    for (const auto& e : stream_tablet_count) {
+      SCHECK_EQ(e.second, tablets_per_table, InternalError, "Expected same num tablets per table");
+    }
+    return Status::OK();
+  }
+
  private:
   server::ClockPtr clock_{new server::HybridClock()};
 
@@ -591,8 +686,8 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
     ASSERT_OK(master_proxy->SetupUniverseReplication(
       setup_universe_req, &setup_universe_resp, &rpc));
     ASSERT_TRUE(setup_universe_resp.has_error());
-    std::string prefix = "Duplicate between request master addresses";
-    ASSERT_TRUE(setup_universe_resp.error().status().message().substr(0, prefix.size()) == prefix);
+    std::string substring = "belongs to the target universe";
+    ASSERT_TRUE(setup_universe_resp.error().status().message().find(substring) != string::npos);
   }
 
   {
@@ -621,6 +716,27 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
     std::string prefix = "The request UUID and cluster UUID are identical.";
     ASSERT_TRUE(setup_universe_resp.error().status().message().substr(0, prefix.size()) == prefix);
   }
+}
+
+TEST_P(XClusterTest, SetupNamespaceReplicationWithBootstrap) {
+  constexpr int kNTabletsPerTable = 1;
+  std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
+  master::SetupNamespaceReplicationWithBootstrapResponsePB resp;
+
+  ASSERT_OK(TestSetupNamespaceReplicationWithBootstrap(tables_vector, &resp));
+  ASSERT_FALSE(resp.has_error());
+  ASSERT_OK(VerifyCdcStateTableEntriesExistForTables(tables_vector.size(), kNTabletsPerTable));
+  // TODO: Test SetupUniverseReplication once the flow has been completed.
+}
+
+TEST_P(XClusterTest, SetupNamespaceReplicationWithBootstrapFailure) {
+  std::vector<uint32_t> tables_vector;
+  master::SetupNamespaceReplicationWithBootstrapResponsePB resp;
+
+  ASSERT_OK(TestSetupNamespaceReplicationWithBootstrap(
+      tables_vector, &resp,
+      /* use_invalid_namespace = */ true));
+  ASSERT_TRUE(resp.has_error());
 }
 
 TEST_P(XClusterTest, SetupUniverseReplicationWithProducerBootstrapId) {
@@ -673,38 +789,7 @@ TEST_P(XClusterTest, SetupUniverseReplicationWithProducerBootstrapId) {
     LOG(INFO) << "Got bootstrap id " << bootstrap_id
               << " for table " << producer_tables[table_idx++]->name().table_name();
   }
-
-  std::unordered_map<xrepl::StreamId, int> tablet_bootstraps;
-
-  // Verify that for each of the table's tablets, a new row in cdc_state table with the returned
-  // id was inserted.
-  cdc::CDCStateTable cdc_state_table(producer_client());
-  Status s;
-  auto table_range = ASSERT_RESULT(
-      cdc_state_table.GetTableRange(cdc::CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
-
-  // 2 tables with 8 tablets each.
-  ASSERT_EQ(
-      tables_vector.size() * kNTabletsPerTable,
-      std::distance(table_range.begin(), table_range.end()));
-
-  for (auto row_result : table_range) {
-    ASSERT_OK(row_result);
-    auto& row = *row_result;
-    tablet_bootstraps[row.key.stream_id]++;
-    ASSERT_TRUE(row.checkpoint);
-    ASSERT_GT(row.checkpoint->index, 0);
-
-    LOG(INFO) << "Bootstrap id " << row.key.stream_id << " for tablet " << row.key.tablet_id << " "
-              << " has checkpoint " << *row.checkpoint;
-  }
-  ASSERT_OK(s);
-
-  ASSERT_EQ(tablet_bootstraps.size(), producer_tables.size());
-  // Check that each bootstrap id has 8 tablets.
-  for (const auto& e : tablet_bootstraps) {
-    ASSERT_EQ(e.second, kNTabletsPerTable);
-  }
+  ASSERT_OK(VerifyCdcStateTableEntriesExistForTables(tables_vector.size(), kNTabletsPerTable));
 
   // Map table -> bootstrap_id. We will need when setting up replication.
   std::unordered_map<TableId, std::string> table_bootstrap_ids;

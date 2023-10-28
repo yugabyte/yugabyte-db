@@ -41,10 +41,10 @@ typedef std::multimap<HybridTime, tablet::TabletPeerPtr> PeerNextCompactList;
 // within a window of time).
 struct KeyStatistics {
   // Total keys accessed.
-  int64_t total;
+  uint64_t total;
   // Obsolete keys accessed that are past their history retention cutoff (i.e. eligible
   // for compation).
-  int64_t obsolete_cutoff;
+  uint64_t obsolete_cutoff;
 
   // Calculates the percentage of obsolete keys read (that are past their history
   // cutoff) vs the total number of keys read in the window.

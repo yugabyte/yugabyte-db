@@ -224,7 +224,7 @@ int64_t GetFailedBatchLockNum(MiniCluster* cluster)  {
     if (peer->tablet()->metadata()->table_name() == "t") {
       auto metrics = peer->tablet()->metrics();
       if (metrics) {
-        failed_batch_lock += metrics->failed_batch_lock->value();
+        failed_batch_lock += metrics->Get(tablet::TabletCounters::kFailedBatchLock);
       }
     }
   }

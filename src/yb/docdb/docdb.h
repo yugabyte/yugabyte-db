@@ -109,8 +109,7 @@ struct PrepareDocWriteOperationResult {
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
-    const scoped_refptr<Histogram>& write_lock_latency,
-    const scoped_refptr<Counter>& failed_batch_lock,
+    tablet::TabletMetrics* tablet_metrics,
     IsolationLevel isolation_level,
     RowMarkType row_mark_type,
     bool transactional_table,

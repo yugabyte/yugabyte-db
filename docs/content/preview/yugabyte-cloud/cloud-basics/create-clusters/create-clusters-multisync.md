@@ -15,6 +15,8 @@ Clusters [replicated across regions](../../create-clusters-topology/#replicate-a
 
 Currently, Azure is not supported for replicated across region clusters (coming soon).
 
+{{< youtube id="fCjTB8IuTuA" title="Create a multi-region cluster in YugabyteDB Managed" >}}
+
 ## Preferred region
 
 You can optionally designate one region in the cluster as preferred. The preferred region handles all read and write requests from clients.

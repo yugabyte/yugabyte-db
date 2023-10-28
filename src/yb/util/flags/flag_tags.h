@@ -344,8 +344,7 @@ class FlagTagger {
   DEFINE_int32(name, default_value, description)
 
 #define DEFINE_UNKNOWN_int64(name, default_value, description) \
-  DEFINE_int64(name, default_value, description); \
-  _TAG_FLAG_RUNTIME(name);
+  DEFINE_int64(name, default_value, description);
 
 #define DEFINE_UNKNOWN_uint64(name, default_value, description) \
   DEFINE_uint64(name, default_value, description)

@@ -36,6 +36,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/sys_catalog-internal.h"
@@ -1782,6 +1783,79 @@ CatalogManager::CreateUniverseReplicationInfoForProducer(
   return ri;
 }
 
+Status CatalogManager::ValidateMasterAddressesBelongToDifferentCluster(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& master_addresses) {
+  std::vector<ServerEntryPB> cluster_master_addresses;
+  RETURN_NOT_OK(master_->ListMasters(&cluster_master_addresses));
+  std::unordered_set<HostPort, HostPortHash> cluster_master_hps;
+
+  for (const auto& cluster_elem : cluster_master_addresses) {
+    if (cluster_elem.has_registration()) {
+      auto p_rpc_addresses = cluster_elem.registration().private_rpc_addresses();
+      for (const auto& p_rpc_elem : p_rpc_addresses) {
+        cluster_master_hps.insert(HostPort::FromPB(p_rpc_elem));
+      }
+
+      auto broadcast_addresses = cluster_elem.registration().broadcast_addresses();
+      for (const auto& bc_elem : broadcast_addresses) {
+        cluster_master_hps.insert(HostPort::FromPB(bc_elem));
+      }
+    }
+
+    for (const auto& master_address : master_addresses) {
+      auto master_hp = HostPort::FromPB(master_address);
+      SCHECK(
+          !cluster_master_hps.contains(master_hp), InvalidArgument,
+          "Master address $0 belongs to the target universe", master_hp);
+    }
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::SetupNamespaceReplicationWithBootstrap(
+    const SetupNamespaceReplicationWithBootstrapRequestPB* req,
+    SetupNamespaceReplicationWithBootstrapResponsePB* resp, rpc::RpcContext* rpc) {
+  LOG(INFO) << "SetupNamespaceReplicationWithBootstrap from " << RequestorString(rpc) << ": "
+            << req->DebugString();
+
+  // Sanity checking section.
+  SCHECK(
+      !req->replication_id().empty(), InvalidArgument, "Replication ID must be provided",
+      req->ShortDebugString());
+
+  SCHECK(
+      req->producer_master_addresses_size() > 0, InvalidArgument,
+      "Producer master address must be provided", req->ShortDebugString());
+
+  {
+    auto l = ClusterConfig()->LockForRead();
+    SCHECK(
+        l->pb.cluster_uuid() != req->replication_id(), InvalidArgument,
+        "Replication name cannot be the target universe UUID", req->ShortDebugString());
+  }
+
+  RETURN_NOT_OK_PREPEND(
+      ValidateMasterAddressesBelongToDifferentCluster(req->producer_master_addresses()),
+      req->ShortDebugString());
+
+  // Connect to producer universe.
+  const cdc::ReplicationGroupId replication_id(req->replication_id());
+  std::vector<HostPort> hp;
+  HostPortsFromPBs(req->producer_master_addresses(), &hp);
+  std::string master_addrs = HostPort::ToCommaSeparatedString(hp);
+  auto cdc_rpc_tasks =
+      VERIFY_RESULT(CDCRpcTasks::CreateWithMasterAddrs(replication_id, master_addrs));
+
+  // TODO: Make this async.
+  auto tables = VERIFY_RESULT(cdc_rpc_tasks->client()->ListUserTables(req->producer_namespace()));
+
+  // TODO: these bootstrap IDs will be used later.
+  auto table_bootstrap_ids =
+      VERIFY_RESULT(cdc_rpc_tasks->BootstrapProducer(req->producer_namespace(), tables));
+
+  return Status::OK();
+}
+
 /*
  * UniverseReplication is setup in 4 stages within the Catalog Manager
  * 1. SetupUniverseReplication: Validates user input & requests Producer schema.
@@ -1825,36 +1899,9 @@ Status CatalogManager::SetupUniverseReplication(
     }
   }
 
-  {
-    auto request_master_addresses = req->producer_master_addresses();
-    std::vector<ServerEntryPB> cluster_master_addresses;
-    RETURN_NOT_OK(master_->ListMasters(&cluster_master_addresses));
-    for (const auto& req_elem : request_master_addresses) {
-      for (const auto& cluster_elem : cluster_master_addresses) {
-        if (cluster_elem.has_registration()) {
-          auto p_rpc_addresses = cluster_elem.registration().private_rpc_addresses();
-          for (const auto& p_rpc_elem : p_rpc_addresses) {
-            if (req_elem.host() == p_rpc_elem.host() && req_elem.port() == p_rpc_elem.port()) {
-              return STATUS(
-                  InvalidArgument,
-                  "Duplicate between request master addresses and private RPC addresses",
-                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
-            }
-          }
-
-          auto broadcast_addresses = cluster_elem.registration().broadcast_addresses();
-          for (const auto& bc_elem : broadcast_addresses) {
-            if (req_elem.host() == bc_elem.host() && req_elem.port() == bc_elem.port()) {
-              return STATUS(
-                  InvalidArgument,
-                  "Duplicate between request master addresses and broadcast addresses",
-                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
-            }
-          }
-        }
-      }
-    }
-  }
+  RETURN_NOT_OK_PREPEND(
+      ValidateMasterAddressesBelongToDifferentCluster(req->producer_master_addresses()),
+      req->ShortDebugString());
 
   SetupReplicationInfo setup_info;
   setup_info.transactional = req->transactional();
