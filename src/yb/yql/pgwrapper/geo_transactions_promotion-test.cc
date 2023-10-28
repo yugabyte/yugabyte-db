@@ -22,6 +22,7 @@
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
 
 DECLARE_bool(TEST_consider_all_local_transaction_tables_local);
+DECLARE_bool(TEST_pause_sending_txn_status_requests);
 DECLARE_bool(TEST_select_all_status_tablets);
 DECLARE_bool(TEST_txn_status_moved_rpc_force_fail);
 DECLARE_bool(auto_create_local_transaction_tables);
@@ -29,6 +30,7 @@ DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
 DECLARE_bool(enable_deadlock_detection);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(force_global_transactions);
+DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_int32(TEST_old_txn_status_abort_delay_ms);
 DECLARE_int32(TEST_transaction_inject_flushed_delay_ms);
@@ -815,6 +817,157 @@ TEST_F(GeoPartitionedDeadlockTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockAcrossTab
     });
   }
   thread_holder.WaitAndStop(35s * kTimeMultiplier);
+}
+
+class GeoPartitionedReadCommiittedTest : public GeoTransactionsTestBase {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
+    GeoTransactionsTestBase::SetUp();
+    SetupTablespaces();
+  }
+
+  // Sets up a partitioned table with primary key(state, country) partitioned on state into 3
+  // partitions. partition P_i hosts states S_(2*i-1), S_(2*i). Partitioned table P1 is split
+  // into 2 tablets and the other partitioned tables are split into 1 tablet.
+  void SetUpPartitionedTable(const std::string& table_name) {
+    auto current_version = GetCurrentVersion();
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0(people int, state VARCHAR, country VARCHAR, $1) PARTITION BY LIST (state)",
+        table_name, "PRIMARY KEY(state, country)"));
+
+    std::vector<std::string> partition_list;
+    partition_list.reserve(NumRegions());
+    for (size_t i = 1; i <= NumRegions(); i++) {
+      partition_list.push_back(Format("('S$0', 'S$1')", 2*i - 1, 2*i));
+    }
+    for (size_t i = 1; i <= NumRegions(); i++) {
+      auto num_tablets = Format("SPLIT INTO $0 TABLETS", i == 1 ? 2 : 1);
+      ASSERT_OK(conn.ExecuteFormat(
+          "CREATE TABLE $0$1 PARTITION OF $0 FOR VALUES IN $2 TABLESPACE tablespace$1 $3",
+          table_name, i, partition_list[i - 1], num_tablets));
+
+      if (ANNOTATE_UNPROTECTED_READ(FLAGS_auto_create_local_transaction_tables)) {
+        WaitForStatusTabletsVersion(current_version + 1);
+        ++current_version;
+      }
+    }
+    ASSERT_OK(conn.ExecuteFormat(
+          "CREATE TABLE $0_defaut PARTITION OF $0 DEFAULT TABLESPACE tablespace$1", table_name, 3));
+
+    // For states S[1-6], insert countries C[0-10].
+    for (size_t i = 0; i <= 10; i++) {
+      for (size_t j = 1; j <= 2 * NumRegions(); j++) {
+        ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES(0, 'S$1', 'C$2')", table_name, j, i));
+      }
+    }
+  }
+};
+
+// The below test helps assert that transaction promotion requests are sent only to involved
+// tablets that have already processed a write of the transaction (explicit write/read with locks).
+TEST_F(GeoPartitionedReadCommiittedTest, TestPromotionAmidstConflicts) {
+  auto table_name = "foo";
+  SetUpPartitionedTable(table_name);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
+
+  TestThreadHolder thread_holder;
+  const auto num_sessions = 5;
+  const auto num_iterations = 20;
+  for (int i = 1; i <= num_sessions; i++) {
+    thread_holder.AddThreadFunctor([this, i, table_name] {
+      for (int j = 1; j <= num_iterations; j++) {
+        auto conn = ASSERT_RESULT(Connect());
+        ASSERT_OK(conn.Execute("SET force_global_transaction = false"));
+        ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED"));
+        // Start off as a local txn, hitting just one tablet of the local partition.
+        ASSERT_OK(conn.ExecuteFormat(
+            "UPDATE $0 SET people=people+1 WHERE country='C0' AND state='S$1'",
+            table_name, i%2 + 1));
+        // The below would trigger transaction promotion since it would launch read ops across all
+        // tablets. This would lead to transaction promotion amidst conflicting writes.
+        ASSERT_OK(conn.ExecuteFormat(
+            "UPDATE $0 SET people=people+1 WHERE country='C$1'", table_name, (j + 1)/2));
+        ASSERT_OK(conn.CommitTransaction());
+      }
+    });
+  }
+  thread_holder.WaitAndStop(60s * kTimeMultiplier);
+
+  // Assert that the conflicting updates above go through successfully.
+  auto conn = ASSERT_RESULT(Connect());
+  for (int i = 1; i <= num_iterations/2; i++) {
+    auto rows_res = ASSERT_RESULT(conn.FetchFormat(
+        Format("SELECT people FROM $0 WHERE country='C$1'", table_name, i)));
+    auto num_fetched_rows = PQntuples(rows_res.get());
+    for (int j = 0; j < num_fetched_rows; j++) {
+      ASSERT_EQ(num_sessions * 2, ASSERT_RESULT(pgwrapper::GetValue<int32>(rows_res.get(), j, 0)));
+    }
+  }
+}
+
+// The test asserts that the transaction participant ignores status responses from old status tablet
+// for transactions that underwent promotion. If not, the participant could end up cleaning intents
+// and silently let the commit go through, thus leading to data loss/inconsistency in case of
+// promoted transactions. Refer #19535 for details.
+TEST_F(GeoPartitionedReadCommiittedTest,
+       YB_DISABLE_TEST_IN_TSAN(TestParticipantIgnoresAbortFromOldStatusTablet)) {
+  auto table_name = "foo";
+  const auto kLocalState = "S1";
+  const auto kOtherState = "S6";
+  SetUpPartitionedTable(table_name);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
+
+  auto update_query = Format(
+      "UPDATE $0 SET people=people+1 WHERE country='C0' AND state='$1'", table_name, kLocalState);
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET force_global_transaction = false"));
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED"));
+  // Start off as a local txn. Will end up writing intents.
+  ASSERT_OK(conn.Execute(update_query));
+  // Delay sending all status requests for this txn from the txn participant end.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_sending_txn_status_requests) = true;
+
+  const auto num_sessions = 5;
+  CountDownLatch requested_status_of_txn_with_intents{num_sessions};
+  TestThreadHolder thread_holder;
+  for (int i = 0; i < num_sessions; i++) {
+    thread_holder.AddThreadFunctor(
+        [this, &requested_status_of_txn_with_intents, update_query] {
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.Execute("SET force_global_transaction = false"));
+      ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED"));
+      // Try performing conflicting updates which end up requesting status of the txn with intents.
+      auto status_future = std::async(std::launch::async, [&conn, update_query]() {
+        return conn.Execute(update_query);
+      });
+      ASSERT_OK(WaitFor([&conn] () {
+        return conn.IsBusy();
+      }, 1s * kTimeMultiplier, "Wait for blocking request to be submitted to the query layer"));
+      requested_status_of_txn_with_intents.CountDown();
+      ASSERT_OK(status_future.get());
+      ASSERT_OK(conn.CommitTransaction());
+    });
+  }
+  // Wait for the status requests for this transaction to pile up with the current status tablet.
+  ASSERT_TRUE(requested_status_of_txn_with_intents.WaitFor(10s * kTimeMultiplier));
+  SleepFor(5s * kTimeMultiplier);
+  // Make the transaction undergo transaction promotion, which switches its status tablet.
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET people=people+1 WHERE country='C1' AND state='$1'", table_name, kOtherState));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_sending_txn_status_requests) = false;
+  // Wait for the piled up status requests to get executed and process the response from the old
+  // status tablet.
+  SleepFor(5s * kTimeMultiplier);
+  ASSERT_OK(conn.CommitTransaction());
+
+  thread_holder.WaitAndStop(60s * kTimeMultiplier);
+  auto res = ASSERT_RESULT(conn.FetchValue<int32_t>(Format(
+      "SELECT people FROM $0 WHERE country='C0' AND state='$1'", table_name, kLocalState)));
+  ASSERT_EQ(res, num_sessions + 1);
 }
 
 } // namespace client
