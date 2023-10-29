@@ -2129,5 +2129,44 @@ Result<boost::container::small_vector<RefCntSlice, 2>> PgApiImpl::GetTableKeyRan
       max_key_length);
 }
 
+//--------------------------------------------------------------------------------------------------
+
+Status PgApiImpl::NewCreateReplicationSlot(const char *slot_name,
+                                           const PgOid database_oid,
+                                           PgStatement **handle) {
+  auto stmt = std::make_unique<PgCreateReplicationSlot>(pg_session_, slot_name, database_oid);
+  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
+  return Status::OK();
+}
+
+Status PgApiImpl::ExecCreateReplicationSlot(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_REPLICATION_SLOT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  PgCreateReplicationSlot *pg_stmt = down_cast<PgCreateReplicationSlot*>(handle);
+  return pg_stmt->Exec();
+}
+
+Result<tserver::PgListReplicationSlotsResponsePB> PgApiImpl::ListReplicationSlots() {
+  return pg_session_->ListReplicationSlots();
+}
+
+Status PgApiImpl::NewDropReplicationSlot(const char *slot_name,
+                                         PgStatement **handle) {
+  auto stmt = std::make_unique<PgDropReplicationSlot>(pg_session_, slot_name);
+  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
+  return Status::OK();
+}
+
+Status PgApiImpl::ExecDropReplicationSlot(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_REPLICATION_SLOT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  PgDropReplicationSlot *pg_stmt = down_cast<PgDropReplicationSlot*>(handle);
+  return pg_stmt->Exec();
+}
+
 } // namespace pggate
 } // namespace yb

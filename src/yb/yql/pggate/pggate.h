@@ -704,6 +704,22 @@ class PgApiImpl {
   // Using this function instead of GetRootMemTracker allows us to avoid copying a shared_pointer
   int64_t GetRootMemTrackerConsumption() { return MemTracker::GetRootTrackerConsumption(); }
 
+  //------------------------------------------------------------------------------------------------
+  // Replication Slots Functions.
+
+  // Create Replication Slot.
+  Status NewCreateReplicationSlot(const char *slot_name,
+                                  const PgOid database_oid,
+                                  PgStatement **handle);
+  Status ExecCreateReplicationSlot(PgStatement *handle);
+
+  Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
+
+  // Drop Replication Slot.
+  Status NewDropReplicationSlot(const char *slot_name,
+                                PgStatement **handle);
+  Status ExecDropReplicationSlot(PgStatement *handle);
+
  private:
   class Interrupter;
 

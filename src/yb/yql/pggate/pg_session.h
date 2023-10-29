@@ -357,6 +357,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Check whether the specified table has a CDC stream.
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
 
+  Result<yb::tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
+
  private:
   Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);
   Result<PerformFuture> FlushOperations(BufferableOperations ops, bool transactional);
