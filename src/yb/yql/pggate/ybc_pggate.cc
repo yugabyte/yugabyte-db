@@ -1775,6 +1775,59 @@ YBCStatus YBCGetTableKeyRanges(
   return YBCStatusOK();
 }
 
+//--------------------------------------------------------------------------------------------------
+// Replication Slots.
+
+YBCStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
+                                        YBCPgOid database_oid,
+                                        YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewCreateReplicationSlot(slot_name,
+                                                     database_oid,
+                                                     handle));
+}
+
+YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecCreateReplicationSlot(handle));
+}
+
+YBCStatus YBCPgListReplicationSlots(
+    YBCReplicationSlotDescriptor **replication_slots, size_t *numreplicationslots) {
+  const auto result = pgapi->ListReplicationSlots();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  const auto &replication_slots_info = result.get().replication_slots();
+  *DCHECK_NOTNULL(numreplicationslots) = replication_slots_info.size();
+  *DCHECK_NOTNULL(replication_slots) = NULL;
+  if (!replication_slots_info.empty()) {
+    *replication_slots = static_cast<YBCReplicationSlotDescriptor *>(
+        YBCPAlloc(sizeof(YBCReplicationSlotDescriptor) * replication_slots_info.size()));
+    YBCReplicationSlotDescriptor *dest = *replication_slots;
+    for (const auto &info : replication_slots_info) {
+      new (dest) YBCReplicationSlotDescriptor{
+          .slot_name = YBCPAllocStdString(info.slot_name()),
+          .stream_id = YBCPAllocStdString(info.stream_id()),
+          .database_oid = info.database_oid(),
+          // TODO(#19211): Fetch the status of the stream.
+          .active = false,
+      };
+      ++dest;
+    }
+  }
+  return YBCStatusOK();
+}
+
+YBCStatus YBCPgNewDropReplicationSlot(const char *slot_name,
+                                      YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewDropReplicationSlot(slot_name,
+                                                   handle));
+}
+
+YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecDropReplicationSlot(handle));
+}
+
 } // extern "C"
 
 } // namespace yb::pggate

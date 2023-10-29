@@ -437,5 +437,39 @@ Status PgDropDBSequences::Exec() {
   return pg_session_->pg_client().DeleteDBSequences(database_oid_);
 }
 
+// PgCreateReplicationSlot
+//--------------------------------------------------------------------------------------------------
+
+PgCreateReplicationSlot::PgCreateReplicationSlot(PgSession::ScopedRefPtr pg_session,
+                                                 const char *slot_name,
+                                                 PgOid database_oid)
+    : PgDdl(pg_session) {
+  req_.set_database_oid(database_oid);
+  req_.set_replication_slot_name(slot_name);
+}
+
+Status PgCreateReplicationSlot::Exec() {
+  return pg_session_->pg_client().CreateReplicationSlot(&req_, DdlDeadline());
+}
+
+PgCreateReplicationSlot::~PgCreateReplicationSlot() {
+}
+
+// PgDropReplicationSlot
+//--------------------------------------------------------------------------------------------------
+
+PgDropReplicationSlot::PgDropReplicationSlot(PgSession::ScopedRefPtr pg_session,
+                                             const char *slot_name)
+    : PgDdl(pg_session) {
+  req_.set_replication_slot_name(slot_name);
+}
+
+Status PgDropReplicationSlot::Exec() {
+  return pg_session_->pg_client().DropReplicationSlot(&req_, DdlDeadline());
+}
+
+PgDropReplicationSlot::~PgDropReplicationSlot() {
+}
+
 }  // namespace pggate
 }  // namespace yb

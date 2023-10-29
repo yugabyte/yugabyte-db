@@ -986,4 +986,8 @@ Result<boost::container::small_vector<RefCntSlice, 2>> PgSession::GetTableKeyRan
       max_key_length);
 }
 
+Result<tserver::PgListReplicationSlotsResponsePB> PgSession::ListReplicationSlots() {
+  return pg_client_.ListReplicationSlots();
+}
+
 }  // namespace yb::pggate

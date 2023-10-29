@@ -101,3 +101,13 @@ extern void YBCDropSequence(Oid sequence_oid);
 
 /*  System Validation -------------------------------------------------------------------------- */
 extern void YBCValidatePlacement(const char *placement_info);
+
+/*  Replication Slot Functions ------------------------------------------------------------------ */
+
+extern void YBCCreateReplicationSlot(const char *slot_name);
+
+extern void
+YBCListReplicationSlots(YBCReplicationSlotDescriptor **replication_slots,
+						size_t *numreplicationslots);
+
+extern void YBCDropReplicationSlot(const char *slot_name);

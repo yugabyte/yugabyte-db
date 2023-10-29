@@ -537,6 +537,13 @@ typedef enum PgTransactionSetting {
   YB_TRANSACTIONAL
 } YBCPgTransactionSetting;
 
+typedef struct PgReplicationSlotDescriptor {
+  const char *slot_name;
+  const char *stream_id;
+  YBCPgOid database_oid;
+  bool active;
+} YBCReplicationSlotDescriptor;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

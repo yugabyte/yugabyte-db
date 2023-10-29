@@ -41,6 +41,7 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/gutil/strings/util.h"
 #include "yb/integration-tests/mini_cluster.h"
 
 #include "yb/master/catalog_manager.h"
@@ -402,6 +403,29 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStream(
   RETURN_NOT_OK(cdc_proxy_->CreateCDCStream(req, &resp, &rpc));
 
   return xrepl::StreamId::FromString(resp.db_stream_id());
+}
+
+Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot() {
+  // Generate a unique name for the replication slot as a UUID. Replication slot names cannot
+  // contain dash. Hence, we remove them from here.
+  auto uuid_without_dash = StringReplace(Uuid::Generate().ToString(), "-", "", true);
+  auto slot_name = Format("test_replication_slot_$0", uuid_without_dash);
+  return CreateDBStreamWithReplicationSlot(slot_name);
+}
+
+Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamWithReplicationSlot(
+    const std::string& replication_slot_name) {
+  auto conn = VERIFY_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  RETURN_NOT_OK(conn.FetchFormat(
+      "SELECT * FROM pg_create_logical_replication_slot('$0', 'yboutput', false)",
+      replication_slot_name));
+
+  // Fetch the stream_id of the replication slot.
+  auto result = VERIFY_RESULT(conn.FetchFormat(
+      "select yb_stream_id from pg_replication_slots WHERE slot_name = '$0'",
+      replication_slot_name));
+  auto stream_id = VERIFY_RESULT(pgwrapper::GetValue<std::string>(result.get(), 0, 0));
+  return xrepl::StreamId::FromString(stream_id);
 }
 
 }  // namespace cdc

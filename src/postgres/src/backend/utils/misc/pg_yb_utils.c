@@ -750,6 +750,22 @@ HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found)
 	HandleYBStatus(status);
 }
 
+extern void HandleYBStatusIgnoreAlreadyPresent(YBCStatus status,
+											   bool *already_present)
+{
+	if (!status)
+		return;
+
+	if (YBCStatusIsAlreadyPresent(status))
+	{
+		*already_present = true;
+		YBCFreeStatus(status);
+		return;
+	}
+	*already_present = false;
+	HandleYBStatus(status);
+}
+
 void
 HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table)
 {
