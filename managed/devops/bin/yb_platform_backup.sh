@@ -420,8 +420,10 @@ create_backup() {
   FIND_OPTIONS+=( $(printf " -o -path '%s'"  "**/data/keys/**" "**/data/provision/**" \
               "**/data/licenses/**"  "**/data/yb-platform/keys/**" "**/data/yb-platform/certs/**" \
               "**/swamper_rules/**" "**/swamper_targets/**" "**/prometheus/rules/**"  \
-              "**/prometheus/targets/**" "**/${PLATFORM_DUMP_FNAME}" \
-              "**/${VERSION_METADATA_BACKUP}" "${include_releases_flag}") )
+              "**/prometheus/targets/**" "**/data/yb-platform/node-agent/certs/**" \
+              "**/data/node-agent/certs/**" "**/provision/**/provision_instance.py" \
+              "**/${PLATFORM_DUMP_FNAME}" "**/${VERSION_METADATA_BACKUP}" \
+              "${include_releases_flag}") )
 
   # Backup prometheus data.
   if [[ "$exclude_prometheus" = false ]]; then
