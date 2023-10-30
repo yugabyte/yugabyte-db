@@ -2158,6 +2158,11 @@ Result<tserver::PgListReplicationSlotsResponsePB> PgApiImpl::ListReplicationSlot
   return pg_session_->ListReplicationSlots();
 }
 
+Result<tserver::PgGetReplicationSlotStatusResponsePB> PgApiImpl::GetReplicationSlotStatus(
+    const ReplicationSlotName& slot_name) {
+  return pg_session_->GetReplicationSlotStatus(slot_name);
+}
+
 Status PgApiImpl::NewDropReplicationSlot(const char *slot_name,
                                          PgStatement **handle) {
   auto stmt = std::make_unique<PgDropReplicationSlot>(pg_session_, slot_name);

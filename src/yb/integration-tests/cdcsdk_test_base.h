@@ -48,6 +48,7 @@ namespace cdc {
 constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
+static const std::string kReplicationSlotName = "test_replication_slot";
 constexpr static const char* const kTableName = "test_table";
 constexpr static const char* const kKeyColumnName = "key";
 constexpr static const char* const kValueColumnName = "value_1";
@@ -83,6 +84,15 @@ class CDCSDKTestBase : public YBTest {
         .port = pg_host_port_.port(),
         .dbname = dbname,
       }).Connect();
+    }
+
+    Result<pgwrapper::PGConn> ConnectToDBWithReplication(const std::string& dbname) {
+      return pgwrapper::PGConnBuilder({
+        .host = pg_host_port_.host(),
+        .port = pg_host_port_.port(),
+        .dbname = dbname,
+        .replication = "database",
+      }).Connect(/*simple_query_protocol=*/true);
     }
   };
 

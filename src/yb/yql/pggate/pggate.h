@@ -718,6 +718,9 @@ class PgApiImpl {
 
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
 
+  Result<tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
+      const ReplicationSlotName& slot_name);
+
   // Drop Replication Slot.
   Status NewDropReplicationSlot(const char *slot_name,
                                 PgStatement **handle);

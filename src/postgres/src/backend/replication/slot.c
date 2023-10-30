@@ -550,6 +550,14 @@ ReplicationSlotDrop(const char *name, bool nowait)
 	 */
 	if (IsYugaByteEnabled())
 	{
+		bool		stream_active;
+
+		YBCGetReplicationSlotStatus(name, &stream_active);
+		if (stream_active)
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_IN_USE),
+					 errmsg("replication slot \"%s\" is active", name)));
+
 		YBCDropReplicationSlot(name);
 		return;
 	}

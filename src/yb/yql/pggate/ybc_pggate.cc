@@ -1810,12 +1810,23 @@ YBCStatus YBCPgListReplicationSlots(
           .slot_name = YBCPAllocStdString(info.slot_name()),
           .stream_id = YBCPAllocStdString(info.stream_id()),
           .database_oid = info.database_oid(),
-          // TODO(#19211): Fetch the status of the stream.
-          .active = false,
+          .active = info.replication_slot_status() == tserver::ReplicationSlotStatus::ACTIVE,
       };
       ++dest;
     }
   }
+  return YBCStatusOK();
+}
+
+YBCStatus YBCPgGetReplicationSlotStatus(const char *slot_name,
+                                        bool *active) {
+  const auto replication_slot_name = ReplicationSlotName(std::string(slot_name));
+  const auto result = pgapi->GetReplicationSlotStatus(replication_slot_name);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+
+  *active = result->replication_slot_status() == tserver::ReplicationSlotStatus::ACTIVE;
   return YBCStatusOK();
 }
 

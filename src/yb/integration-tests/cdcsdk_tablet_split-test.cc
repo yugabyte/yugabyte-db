@@ -1741,15 +1741,15 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollFor
 
   WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
 
-  ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &change_resp_1, stream_id, tablets, 199, &change_resp_1.cdc_sdk_checkpoint()));
+  auto cp = &change_resp_1.cdc_sdk_checkpoint();
+  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp_1, stream_id, tablets, 199, cp));
 
   ASSERT_GE(change_resp_1.cdc_sdk_proto_records_size(), 200);
   LOG(INFO) << "Number of records after restart: " << change_resp_1.cdc_sdk_proto_records_size();
 
   // Now that there are no more records to stream, further calls of 'GetChangesFromCDC' to the same
   // tablet should fail.
-  ASSERT_NOK(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
+  ASSERT_NOK(GetChangesFromCDC(stream_id, tablets, cp));
   LOG(INFO) << "The tablet split error is now communicated to the client.";
 
   auto get_tablets_resp =

@@ -110,4 +110,8 @@ extern void
 YBCListReplicationSlots(YBCReplicationSlotDescriptor **replication_slots,
 						size_t *numreplicationslots);
 
+extern void 
+YBCGetReplicationSlotStatus(const char *slot_name, 
+							bool *active);
+
 extern void YBCDropReplicationSlot(const char *slot_name);

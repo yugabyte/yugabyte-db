@@ -24,6 +24,8 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/server/server_base_options.h"
+
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/pg_client.service.h"
 #include "yb/tserver/xcluster_context.h"
@@ -58,6 +60,7 @@ class PgMutationCounter;
     (GetDatabaseInfo) \
     (GetIndexBackfillProgress) \
     (GetLockStatus) \
+    (GetReplicationSlotStatus) \
     (GetTableDiskSize) \
     (GetTablePartitionList) \
     (Heartbeat) \
@@ -98,7 +101,9 @@ class PgClientServiceImpl : public PgClientServiceIf {
       TransactionPoolProvider transaction_pool_provider,
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
       const scoped_refptr<MetricEntity>& entity,
-      rpc::Scheduler* scheduler,
+      rpc::Messenger* messenger,
+      const std::string& permanent_uuid,
+      const server::ServerBaseOptions* tablet_server_opts,
       const std::optional<XClusterContext>& xcluster_context = std::nullopt,
       PgMutationCounter* pg_node_level_mutation_counter = nullptr);
 

@@ -269,6 +269,7 @@ struct PGConnSettings {
   const std::string& dbname = std::string();
   const std::string& user = kDefaultUser;
   const std::string& password = std::string();
+  const std::string& replication = std::string();
   size_t connect_timeout = 0;
 };
 
