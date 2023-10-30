@@ -1,5 +1,3 @@
-/*
-
 ---
 title: Use Yugabyte Platform to view universe details
 headerTitle: View universe details
@@ -11,6 +9,5 @@ menu:
     parent: manage-deployments
     weight: 30
 type: docs
+private: true
 ---
-
-*/
