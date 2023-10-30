@@ -277,7 +277,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.DeleteXClusterConfig,
           TaskType.RestartXClusterConfig,
           TaskType.SyncXClusterConfig,
-          TaskType.DestroyUniverse);
+          TaskType.DestroyUniverse,
+          TaskType.DestroyKubernetesUniverse);
 
   protected Set<UUID> lockedXClusterUniversesUuidSet = null;
 
