@@ -94,6 +94,8 @@ class LookupByIdRpc;
 using ProcessedTablesMap =
     std::unordered_map<TableId, std::unordered_map<PartitionKey, RemoteTabletPtr>>;
 
+using tserver::AllowSplitTablet;
+
 // The information cached about a given tablet server in the cluster.
 //
 // A RemoteTabletServer could be the local tablet server.
@@ -570,7 +572,8 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // just skip updating cache for these tablets until they become running.
   Status ProcessTabletLocations(
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
-      boost::optional<PartitionListVersion> table_partition_list_version, LookupRpc* lookup_rpc);
+      boost::optional<PartitionListVersion> table_partition_list_version, LookupRpc* lookup_rpc,
+      AllowSplitTablet allow_split_tablets);
 
   void InvalidateTableCache(const YBTable& table);
 
