@@ -64,10 +64,12 @@ import algoliasearch from 'algoliasearch';
       let pageHash = '';
       let pageTitle = '';
 
-      if (hit.headers[0]) {
-        pageTitle = hit.headers[0];
-      } else if (hit.title) {
+      if (hit.title) {
         pageTitle = hit.title;
+      } else if (hit.headers[0]) {
+        pageTitle = hit.headers[0];
+      } else {
+        return;
       }
 
       if (hit.breadcrumb) {
