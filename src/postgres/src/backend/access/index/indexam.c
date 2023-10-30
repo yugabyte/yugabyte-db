@@ -66,7 +66,6 @@
 /* Yugabyte includes */
 #include "pg_yb_utils.h"
 #include "access/yb_scan.h"
-#include "access/yb_lsm.h"
 
 /* ----------------------------------------------------------------
  *					macros used in index_ routines
