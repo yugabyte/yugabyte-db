@@ -295,7 +295,8 @@ class CDCServiceImpl : public CDCServiceIf {
       const uint64_t& last_active_time, const uint64_t& snapshot_time);
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> GetTablets(
-      const CDCStreamId& stream_id);
+      const CDCStreamId& stream_id,
+      bool ignore_errors = false);
 
   Status CreateCDCStreamForTable(
       const TableId& table_id,

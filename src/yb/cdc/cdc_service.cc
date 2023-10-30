@@ -1467,7 +1467,8 @@ void CDCServiceImpl::ListTablets(
 }
 
 Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> CDCServiceImpl::GetTablets(
-    const CDCStreamId& stream_id) {
+    const CDCStreamId& stream_id,
+    bool ignore_errors) {
   auto stream_metadata = VERIFY_RESULT(GetStream(stream_id, RefreshStreamMapOption::kAlways));
   client::YBTableName table_name;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> all_tablets;
@@ -1477,9 +1478,19 @@ Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> CDCService
   for (const auto& table_id : table_ids) {
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
     table_name.set_table_id(table_id);
-    RETURN_NOT_OK(client()->GetTablets(
+    Status s = client()->GetTablets(
         table_name, 0, &tablets, /* partition_list_version =*/nullptr,
-        RequireTabletsRunning::kFalse, master::IncludeInactive::kTrue));
+        RequireTabletsRunning::kFalse, master::IncludeInactive::kTrue);
+
+    if (!s.ok()) {
+      if (ignore_errors) {
+        LOG(WARNING) << "Fetching tablets for table " << table_name.table_id()
+                     << " failed with error: " << s;
+        continue;
+      }
+
+      return s;
+    }
 
     all_tablets.MergeFrom(tablets);
   }
@@ -4129,7 +4140,7 @@ Status CDCServiceImpl::CheckTabletValidForStream(const ProducerTabletInfo& info)
   // If we don't recognize the tablet_id, populate our full tablet list for this stream.
   // This can happen if we call "GetChanges" on a split tablet. We will initalise the entries for
   // the split tablets in both: tablet_checkpoints_ and cdc_state_metadata_.
-  auto tablets = VERIFY_RESULT(GetTablets(info.stream_id));
+  auto tablets = VERIFY_RESULT(GetTablets(info.stream_id, true /* ignore_errors */));
 
   auto status = impl_->CheckTabletValidForStream(info, tablets);
 
@@ -4215,7 +4226,7 @@ void CDCServiceImpl::IsBootstrapRequired(
 }
 
 Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForCDCSDK(const ProducerTabletInfo& info) {
-  auto tablets = VERIFY_RESULT(GetTablets(info.stream_id));
+  auto tablets = VERIFY_RESULT(GetTablets(info.stream_id, true /* ignore_errors */));
   const OpId& children_op_id = OpId();
 
   std::array<const master::TabletLocationsPB*, 2> children_tablets;

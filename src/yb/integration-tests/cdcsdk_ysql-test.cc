@@ -10,6 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/integration-tests/cdcsdk_test_base.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
 #include "yb/util/tostring.h"
@@ -8139,6 +8142,70 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTxnWithExplicitStream)) 
   for (int i = 0; i < 8; i++) {
     ASSERT_EQ(expected_count[i], count[i]);
   }
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestUnrelatedTableDropUponTserverRestart)) {
+  FLAGS_catalog_manager_bg_task_wait_ms = 50000;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto old_table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "old_table"));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(old_table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  LOG(INFO) << "Tablet ID at index 0 is " << tablets.Get(0).tablet_id();
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
+  ASSERT_FALSE(set_resp.has_error());
+
+  GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  // Call GetChanges again.
+  GetChangesResponsePB change_resp_2 =
+    ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
+
+  // Create new table.
+  auto new_table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "new_table"));
+
+  // Wait till this table gets added to the stream.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        while (true) {
+          auto resp = GetDBStreamInfo(stream_id);
+          if (resp.ok()) {
+            for (auto table_info : resp->table_info()) {
+              if (table_info.has_table_id() && table_info.table_id() == new_table.table_id()) {
+                return true;
+              }
+            }
+          }
+          continue;
+        }
+        return false;
+      },
+      MonoDelta::FromSeconds(60), "Waiting for table to be added."));
+
+  // Restart tserver hosting old tablet
+  TabletId old_tablet = tablets.Get(0).tablet_id();
+  uint32_t tserver_idx = -1;
+  for (uint32_t idx = 0; idx < 3; ++idx) {
+    auto tablet_peer_ptr =
+      test_cluster_.mini_cluster_->GetTabletManager(idx)->LookupTablet(old_tablet);
+    if (tablet_peer_ptr != nullptr && !tablet_peer_ptr->IsNotLeader()) {
+      LOG(INFO) << "Tserver at index " << idx << " hosts the leader for tablet " << old_tablet;
+      tserver_idx = idx;
+      break;
+    }
+  }
+
+  ASSERT_OK(test_cluster_.mini_cluster_->mini_tablet_server(tserver_idx)->Restart());
+
+  // Drop newly created table.
+  DropTable(&test_cluster_, "new_table");
+
+  // Call GetChanges on the old table.
+  GetChangesResponsePB change_resp_3 =
+    ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_2.cdc_sdk_checkpoint()));
 }
 
 }  // namespace cdc
