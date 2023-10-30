@@ -700,6 +700,7 @@ public class NodeManagerTest extends FakeDBApplication {
     gflags.put("cluster_uuid", String.valueOf(configureParams.getUniverseUUID()));
     if (configureParams.isMaster) {
       gflags.put("replication_factor", String.valueOf(userIntent.replicationFactor));
+      gflags.put("load_balancer_initial_delay_secs", "480");
     }
 
     if (configureParams.currentClusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY
