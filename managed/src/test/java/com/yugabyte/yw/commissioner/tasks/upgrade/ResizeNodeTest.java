@@ -563,6 +563,12 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     taskParams.getPrimaryCluster().userIntent.setCgroupSize(NEW_CGROUP_SIZE);
     TaskInfo taskInfo = submitTask(taskParams);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    subTasks.stream()
+        .filter(s -> s.getTaskType() == TaskType.ChangeInstanceType)
+        .forEach(
+            t ->
+                assertEquals(
+                    String.valueOf(NEW_CGROUP_SIZE), t.getDetails().get("cgroupSize").asText()));
     assertTasksSequence(subTasks, true, true);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(true, true);
