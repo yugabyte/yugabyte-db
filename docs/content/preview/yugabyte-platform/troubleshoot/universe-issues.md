@@ -24,7 +24,7 @@ The **Metrics** page displays graphs representing information on operations, lat
 
 You access metrics by navigating to **Universes > Universe-Name > Metrics**.
 
-For information on the available metrics, refer to [Performance metrics](../../alerts-monitoring/anywhere-metrics/)
+For information on the available metrics, refer to [Performance metrics](../../alerts-monitoring/anywhere-metrics/).
 
 ## Use nodes status
 
