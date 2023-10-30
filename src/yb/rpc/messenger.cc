@@ -629,11 +629,15 @@ Status Messenger::Init(const MessengerBuilder &bld) {
 
 Status Messenger::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                                   DumpRunningRpcsResponsePB* resp) {
-  PerCpuRwSharedLock guard(lock_);
-  for (const auto& reactor : reactors_) {
-    RETURN_NOT_OK(reactor->DumpRunningRpcs(req, resp));
+  {
+    PerCpuRwSharedLock guard(lock_);
+    for (const auto& reactor : reactors_) {
+      RETURN_NOT_OK(reactor->DumpRunningRpcs(req, resp));
+    }
   }
-  RETURN_NOT_OK(local_call_tracker_.DumpRunningRpcs(req, resp));
+  if (req.get_local_calls()) {
+    RETURN_NOT_OK(local_call_tracker_.DumpRunningRpcs(req, resp));
+  }
   return Status::OK();
 }
 

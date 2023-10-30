@@ -116,6 +116,7 @@ void LocalYBInboundCall::Respond(AnyMessageConstPtr resp, bool is_success) {
     auto status = STATUS(RemoteError, "Local call error", error->message());
     call->SetFailed(std::move(status), std::move(error));
   }
+  NotifyTransferred(Status::OK(), /* ConnectionPtr */ nullptr);
 }
 
 Status LocalYBInboundCall::ParseParam(RpcCallParams* params) {
@@ -154,8 +155,11 @@ Status LocalYBInboundCallTracker::DumpRunningRpcs(
       }
     }
   }
+  auto* local_calls = resp->mutable_local_calls();
+  local_calls->set_remote_ip("local calls");
+  local_calls->set_state(RpcConnectionPB::StateType::RpcConnectionPB_StateType_OPEN);
   for (auto call_ptr: active_calls) {
-    call_ptr->DumpPB(req, resp->add_local_calls_in_flight());
+    call_ptr->DumpPB(req, local_calls->add_calls_in_flight());
   }
   return Status::OK();
 }
