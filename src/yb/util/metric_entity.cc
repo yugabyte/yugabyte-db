@@ -184,6 +184,16 @@ scoped_refptr<Metric> MetricEntity::FindOrNull(const MetricPrototype& prototype)
   return FindPtrOrNull(metric_map_, &prototype);
 }
 
+bool MetricEntity::TEST_ContainMetricName(const std::string& metric_name) const {
+  std::lock_guard l(lock_);
+  for (const MetricMap::value_type& val : metric_map_) {
+    if (val.first->name() == metric_name) {
+      return true;
+    }
+  }
+  return false;
+}
+
 namespace {
 
 const string kWildCardString = "*";

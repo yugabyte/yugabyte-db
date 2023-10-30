@@ -129,7 +129,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
    * @return JSON response of newly created zone(s)
    */
   @ApiOperation(
-      value = "Create an availability zone",
+      value = "WARNING: This is a preview API that could change. Create an availability zone",
       response = AvailabilityZone.class,
       responseContainer = "Map",
       nickname = "createZone")
@@ -146,6 +146,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.2.0")
   public Result createZoneNew(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
     Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
@@ -168,7 +169,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
    * @return JSON response of the modified zone
    */
   @ApiOperation(
-      value = "Modify an availability zone",
+      value = "WARNING: This is a preview API that could change. Modify an availability zone",
       response = AvailabilityZone.class,
       nickname = "editZone")
   @ApiImplicitParams(
@@ -184,6 +185,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.2.0")
   public Result editZoneNew(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID zoneUUID, Http.Request request) {
     Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);

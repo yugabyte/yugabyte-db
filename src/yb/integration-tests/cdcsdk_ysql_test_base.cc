@@ -1559,7 +1559,7 @@ namespace cdc {
     ASSERT_EQ(tablets.size(), 1);
 
     std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
+    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());

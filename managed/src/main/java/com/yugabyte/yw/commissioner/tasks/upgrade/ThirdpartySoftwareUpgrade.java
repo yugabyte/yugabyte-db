@@ -38,10 +38,14 @@ public class ThirdpartySoftwareUpgrade extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams() {
+    taskParams().verifyParams(getUniverse());
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
-          taskParams().verifyParams(getUniverse());
           LinkedHashSet<NodeDetails> nodesToUpdate = fetchAllNodes(taskParams().upgradeOption);
 
           createRollingNodesUpgradeTaskFlow(

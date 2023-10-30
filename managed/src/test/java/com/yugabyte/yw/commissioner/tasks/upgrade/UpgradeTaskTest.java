@@ -30,7 +30,6 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
-import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -56,6 +55,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -216,8 +216,8 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
       lenient().when(mockClient.autoFlagsConfig()).thenReturn(resp);
       lenient().when(mockClient.ping(anyString(), anyInt())).thenReturn(true);
       lenient()
-          .when(mockClient.getStatus(anyString(), anyInt()))
-          .thenReturn(TestUtils.prepareGetStatusResponse("2.17.0.0", "1"));
+          .when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
+          .thenReturn(Optional.of("2.17.0.0-b1"));
       lenient()
           .when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
           .thenReturn(

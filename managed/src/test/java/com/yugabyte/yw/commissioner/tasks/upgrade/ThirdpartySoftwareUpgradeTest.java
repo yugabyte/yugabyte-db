@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -129,8 +130,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
     ThirdpartySoftwareUpgradeParams taskParams = new ThirdpartySoftwareUpgradeParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
-    TaskInfo taskInfo = submitTask(taskParams, expectedUniverseVersion);
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertThrows(RuntimeException.class, () -> submitTask(taskParams, expectedUniverseVersion));
     verifyNoMoreInteractions(mockNodeManager);
   }
 

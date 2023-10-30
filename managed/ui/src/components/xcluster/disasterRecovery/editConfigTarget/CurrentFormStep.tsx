@@ -1,4 +1,3 @@
-import { DrConfig } from '../types';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import { FormStep } from './EditConfigTargetModal';
 import { SelectTargetUniverseStep } from './SelectTargetUniverseStep';

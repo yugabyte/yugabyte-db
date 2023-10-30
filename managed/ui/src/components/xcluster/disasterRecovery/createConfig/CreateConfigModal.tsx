@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { AxiosError } from 'axios';
 import { FormikActions, FormikErrors, FormikProps } from 'formik';
-import { makeStyles } from '@material-ui/core';
+import { makeStyles, Typography } from '@material-ui/core';
 import { toast } from 'react-toastify';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useTranslation } from 'react-i18next';
@@ -23,9 +23,11 @@ import { SelectTargetUniverseStep } from './SelectTargetUniverseStep';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import { ConfigureRpoStep } from './ConfigureRpoStep';
 import { RpoUnit, RPO_UNIT_TO_SECONDS } from '../constants';
-import { generateLowerCaseAlphanumericId } from '../../../configRedesign/providerRedesign/forms/utils';
+import { generateUniqueName } from '../../../../redesign/helpers/utils';
 
 import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
+
+import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
 
 export interface CreateDrConfigFormValues {
   targetUniverse: { label: string; value: Universe };
@@ -63,14 +65,6 @@ interface CreateConfigModalProps {
   sourceUniverseUuid: string;
 }
 const useStyles = makeStyles((theme) => ({
-  toastContainer: {
-    display: 'flex',
-    gap: theme.spacing(0.5),
-    '& a': {
-      textDecoration: 'underline',
-      color: '#fff'
-    }
-  },
   formInstruction: {
     marginBottom: theme.spacing(3)
   }
@@ -113,7 +107,7 @@ export const CreateConfigModal = ({
   const drConfigMutation = useMutation(
     (formValues: CreateDrConfigFormValues) => {
       const createDrConfigRequest: CreateDrConfigRequest = {
-        name: `dr-config-${generateLowerCaseAlphanumericId()}`,
+        name: `dr-config-${generateUniqueName()}`,
         sourceUniverseUUID: sourceUniverseUuid,
         targetUniverseUUID: formValues.targetUniverse.value.universeUUID,
         dbs: selectedKeyspaces.map(formatUuidForXCluster),
@@ -143,18 +137,23 @@ export const CreateConfigModal = ({
         const handleTaskCompletion = (error: boolean) => {
           if (error) {
             toast.error(
-              <span className={classes.toastContainer}>
+              <span className={toastStyles.toastMessage}>
                 <i className="fa fa-exclamation-circle" />
-                <span>{t('error.taskFailure')}</span>
+                <Typography variant="body2" component="span">
+                  {t('error.taskFailure')}
+                </Typography>
                 <a href={`/tasks/${response.taskUUID}`} rel="noopener noreferrer" target="_blank">
                   {t('viewDetails', { keyPrefix: 'task' })}
                 </a>
               </span>
             );
           } else {
-            toast.success(t('success.taskSuccess'));
+            toast.success(
+              <Typography variant="body2" component="span">
+                {t('success.taskSuccess')}
+              </Typography>
+            );
           }
-          // TODO: Any invalidation requried here? Or when the task starts?
         };
 
         closeModal();

@@ -1351,7 +1351,7 @@ Suppose you have a deployment in the following regions: `gcp.us-west1.us-west1-a
 curl -s http://<any-master-ip>:7000/cluster-config
 ```
 
-Here is a sample configuration:
+The following is a sample configuration:
 
 ```output
 replication_info {
@@ -1488,8 +1488,9 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *placement_info*: A comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
-* *replication_factor*: The number of replicas.
+* *placement_info*: A comma-delimited list of read replica placements for *cloud*.*region*.*zone*, using the format `<cloud1.region1.zone1>:<num_replicas_in_zone1>,<cloud2.region2.zone2>:<num_replicas_in_zone2>,...`. Default value is `cloud1.datacenter1.rack1`.
+    Read replica availability zones must be uniquely different from the primary availability zones. To use the same cloud, region, and availability zone for a read replica as a primary cluster, you can suffix the zone with `_rr` (for read replica). For example, `c1.r1.z1` vs `c1.r1.z1_rr:1`.
+* *replication_factor*: The total number of read replicas.
 * *placement_id*: The identifier of the read replica cluster, which can be any unique string. If not set, a randomly-generated ID will be used. Primary and read replica clusters must use different placement IDs.
 
 #### modify_read_replica_placement_info

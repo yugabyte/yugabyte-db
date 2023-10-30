@@ -3698,5 +3698,26 @@ TEST_F(PgLibPqTest, DropSequenceTest) {
   ASSERT_NOK(conn.FetchRowAsString("SELECT nextval('foo')"));
 }
 
+TEST_F(PgLibPqTest, TempTableViewFileCountTest) {
+  const std::string kTableName = "foo";
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE TEMP TABLE $0 (k INT)", kTableName));
+
+  // Check that only one file is present in this database and that corresponds to temp table foo.
+  auto query = Format(
+      "SELECT pg_ls_dir('$0/pg_data/' || substring(pg_relation_filepath('$1') from '.*/')) = 't1_' "
+      "|| '$1'::regclass::oid::text;",
+      pg_ts->GetRootDir(), kTableName);
+  auto values = ASSERT_RESULT(conn.FetchAll<bool>(query));
+  decltype(values) expected_values = {{true}};
+  ASSERT_EQ(values, expected_values);
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE VIEW tempview AS SELECT * FROM $0", kTableName));
+
+  // Check that no new files are created on view creation.
+  values = ASSERT_RESULT(conn.FetchAll<bool>(query));
+  ASSERT_EQ(values, expected_values);
+}
+
 } // namespace pgwrapper
 } // namespace yb

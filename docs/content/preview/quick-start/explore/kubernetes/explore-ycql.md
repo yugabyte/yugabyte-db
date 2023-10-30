@@ -1,3 +1,9 @@
+<!--
++++
+private = true
++++
+-->
+
 To connect to the service, open the YCQL shell (`ycqlsh`) by running the following command:
 
 ```sh

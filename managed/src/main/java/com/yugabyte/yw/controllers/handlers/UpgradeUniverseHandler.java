@@ -18,11 +18,14 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.forms.AuditLogConfigParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
+import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
@@ -95,7 +98,7 @@ public class UpgradeUniverseHandler {
       requestParams.clusters.add(universe.getUniverseDetails().getReadOnlyClusters().get(0));
     }
     // Verify request params
-    requestParams.verifyParams(universe);
+    requestParams.verifyParams(universe, true);
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
 
@@ -145,18 +148,20 @@ public class UpgradeUniverseHandler {
     String currentVersion =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
     if (confGetter.getConfForScope(universe, UniverseConfKeys.enableRollbackSupport)
-        && taskType.equals(TaskType.SoftwareUpgrade)
         && CommonUtils.isReleaseEqualOrAfter(
             Util.YBDB_ROLLBACK_DB_VERSION, requestParams.ybSoftwareVersion)
         && CommonUtils.isReleaseEqualOrAfter(Util.YBDB_ROLLBACK_DB_VERSION, currentVersion)) {
-      taskType = TaskType.SoftwareUpgradeYB;
+      taskType =
+          taskType.equals(TaskType.SoftwareUpgrade)
+              ? TaskType.SoftwareUpgradeYB
+              : TaskType.SoftwareKubernetesUpgradeYB;
     }
     return submitUpgradeTask(
         taskType, CustomerTask.TaskType.SoftwareUpgrade, requestParams, customer, universe);
   }
 
   public UUID finalizeUpgrade(
-      SoftwareUpgradeParams requestParams, Customer customer, Universe universe) {
+      FinalizeUpgradeParams requestParams, Customer customer, Universe universe) {
     // TODO(vbansal): Add validations for finalize based on universe state.
     // Will add them in subsequent diffs.
     return submitUpgradeTask(
@@ -165,6 +170,19 @@ public class UpgradeUniverseHandler {
         requestParams,
         customer,
         universe);
+  }
+
+  public UUID rollbackUpgrade(
+      RollbackUpgradeParams requestParams, Customer customer, Universe universe) {
+    // TODO(vbansal): Add validations for finalize based on universe state.
+    // Will add them in subsequent diffs.
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    TaskType taskType =
+        userIntent.providerType.equals(CloudType.kubernetes)
+            ? TaskType.RollbackKubernetesUpgrade
+            : TaskType.RollbackUpgrade;
+    return submitUpgradeTask(
+        taskType, CustomerTask.TaskType.RollbackUpgrade, requestParams, customer, universe);
   }
 
   public UUID upgradeGFlags(
@@ -285,6 +303,21 @@ public class UpgradeUniverseHandler {
     return submitUpgradeTask(
         TaskType.ThirdpartySoftwareUpgrade,
         CustomerTask.TaskType.ThirdpartySoftwareUpgrade,
+        requestParams,
+        customer,
+        universe);
+  }
+
+  public UUID modifyAuditLoggingConfig(
+      AuditLogConfigParams requestParams, Customer customer, Universe universe) {
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+
+    requestParams.verifyParams(universe);
+    userIntent.auditLogConfig = requestParams.auditLogConfig;
+    return submitUpgradeTask(
+        TaskType.ModifyAuditLoggingConfig,
+        CustomerTask.TaskType.ModifyAuditLoggingConfig,
         requestParams,
         customer,
         universe);

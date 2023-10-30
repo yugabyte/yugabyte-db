@@ -76,7 +76,7 @@ export default class NodeDetailsTable extends Component {
         sortedNodeDetails = sortedNodeDetails.filter((nodeDetails) =>
           isKubernetesCluster
             ? nodeDetails.isMasterProcess
-            : nodeDetails.nodeDetails.dedicatedTo === NodeType.Master.toUpperCase()
+            : nodeDetails.dedicatedTo === NodeType.Master.toUpperCase()
         );
       } else if (this.state.nodeTypeDropdownValue === NodeType.TServer) {
         sortedNodeDetails = sortedNodeDetails.filter((nodeDetails) =>
@@ -319,11 +319,7 @@ export default class NodeDetailsTable extends Component {
     const displayNodeActions =
       !this.props.isReadOnlyUniverse &&
       universeStatus.state !== UniverseState.PAUSED &&
-      isNotHidden(customer.currentCustomer.data.features, 'universes.tableActions') &&
-      hasNecessaryPerm({
-        onResource: currentUniverse.data.universeUUID,
-        ...UserPermissionMap.editUniverse
-      });
+      isNotHidden(customer.currentCustomer.data.features, 'universes.tableActions');
     return (
       <div className="node-details-table-container">
         <YBPanelItem

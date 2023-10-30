@@ -34,7 +34,7 @@
 
 #include <mutex>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"

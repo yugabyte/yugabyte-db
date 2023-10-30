@@ -549,6 +549,9 @@ public class UniverseCRUDHandler {
 
       PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
       PlacementInfoUtil.finalSanityCheckConfigure(c, taskParams.getNodesInCluster(c.uuid));
+
+      taskParams.otelCollectorEnabled =
+          confGetter.getConfForScope(provider, ProviderConfKeys.otelCollectorEnabled);
     }
 
     if (taskParams.getPrimaryCluster() != null) {

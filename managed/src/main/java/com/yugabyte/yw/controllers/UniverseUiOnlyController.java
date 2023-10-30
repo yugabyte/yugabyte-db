@@ -122,7 +122,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
         resourceLocation =
             @Resource(path = Util.UNIVERSE_UUID, sourceType = SourceType.REQUEST_BODY))
   })

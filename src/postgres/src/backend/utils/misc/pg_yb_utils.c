@@ -29,6 +29,7 @@
 #include <assert.h>
 #include <inttypes.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -626,6 +627,15 @@ YBCanEnableDBCatalogVersionMode()
 	return (YbGetNumberOfDatabases() > 1);
 }
 
+/*
+ * Used to determine whether we should preload certain catalog tables.
+ */
+bool YbNeedAdditionalCatalogTables() 
+{
+	return *YBCGetGFlags()->ysql_catalog_preload_additional_tables ||
+			IS_NON_EMPTY_STR_FLAG(YBCGetGFlags()->ysql_catalog_preload_additional_table_list);
+}
+
 void
 YBReportFeatureUnsupported(const char *msg)
 {
@@ -737,6 +747,22 @@ HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found)
 		return;
 	}
 	*not_found = false;
+	HandleYBStatus(status);
+}
+
+extern void HandleYBStatusIgnoreAlreadyPresent(YBCStatus status,
+											   bool *already_present)
+{
+	if (!status)
+		return;
+
+	if (YBCStatusIsAlreadyPresent(status))
+	{
+		*already_present = true;
+		YBCFreeStatus(status);
+		return;
+	}
+	*already_present = false;
 	HandleYBStatus(status);
 }
 
@@ -3550,6 +3576,43 @@ void assign_yb_xcluster_consistency_level(const char* newval, void* extra) {
 	yb_xcluster_consistency_level = *((int*)extra);
 }
 
+bool
+check_yb_read_time(char **newval, void **extra, GucSource source)
+{
+	/* Read time should be convertable to unsigned long long */
+	unsigned long long read_time_ull = strtoull(*newval, NULL, 0);
+	char read_time_string[23];
+	sprintf(read_time_string, "%llu", read_time_ull);
+	if (strcmp(*newval, read_time_string))
+	{
+		GUC_check_errdetail("Accepted value is Unix timestamp in microseconds."
+							" i.e. 1694673026673528");
+		return false;
+	}
+	/* Read time should not be set to a timestamp in the future */
+	struct timeval now_tv;
+	gettimeofday(&now_tv, NULL);
+	unsigned long long now_micro_sec = ((unsigned long long)now_tv.tv_sec * USECS_PER_SEC) + now_tv.tv_usec;
+	if(read_time_ull > now_micro_sec)
+	{
+		GUC_check_errdetail("Provided timestamp is in the future.");
+		return false;
+	}
+	return true;
+}
+
+void
+assign_yb_read_time(const char* newval, void *extra) 
+{
+	yb_read_time = strtoull(newval, NULL, 0);
+	ereport(NOTICE,
+			(errmsg("yb_read_time should be set with caution."),
+			 errdetail("No DDL operations should be performed while it is set and "
+			 		   "it should not be set to a timestamp before a DDL "
+					   "operation has been performed. It doesn't have well defined semantics"
+					   " for normal transactions and is only to be used after consultation")));
+}
+
 void YBCheckServerAccessIsAllowed() {
 	if (*YBCGetGFlags()->ysql_disable_server_file_access)
 		ereport(ERROR,
@@ -3581,8 +3644,17 @@ aggregateStats(YbInstrumentation *instr, const YBCPgExecStats *exec_stats)
 	instr->write_flushes.count += exec_stats->num_flushes;
 	instr->write_flushes.wait_time += exec_stats->flush_wait;
 
-	for (int i = 0; i < YB_ANALYZE_METRIC_COUNT; ++i) {
-		instr->storage_metrics[i] += exec_stats->storage_metrics[i];
+	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
+		instr->storage_gauge_metrics[i] += exec_stats->storage_gauge_metrics[i];
+	}
+	for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
+		instr->storage_counter_metrics[i] += exec_stats->storage_counter_metrics[i];
+	}
+	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
+		YbPgEventMetric* agg = &instr->storage_event_metrics[i];
+		const YBCPgExecEventMetric* val = &exec_stats->storage_event_metrics[i];
+		agg->sum += val->sum;
+		agg->count += val->count;
 	}
 }
 
@@ -3608,8 +3680,20 @@ calculateExecStatsDiff(const YbSessionStats *stats, YBCPgExecStats *result)
 	result->num_flushes = current->num_flushes - old->num_flushes;
 	result->flush_wait = current->flush_wait - old->flush_wait;
 
-	for (int i = 0; i < YB_ANALYZE_METRIC_COUNT; ++i) {
-		result->storage_metrics[i] = current->storage_metrics[i] - old->storage_metrics[i];
+	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
+		result->storage_gauge_metrics[i] =
+				current->storage_gauge_metrics[i] - old->storage_gauge_metrics[i];
+	}
+	for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
+		result->storage_counter_metrics[i] =
+				current->storage_counter_metrics[i] - old->storage_counter_metrics[i];
+	}
+	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
+		YBCPgExecEventMetric* result_metric = &result->storage_event_metrics[i];
+		const YBCPgExecEventMetric* current_metric = &current->storage_event_metrics[i];
+		const YBCPgExecEventMetric* old_metric = &old->storage_event_metrics[i];
+		result_metric->sum = current_metric->sum - old_metric->sum;
+		result_metric->count = current_metric->count - old_metric->count;
 	}
 }
 
@@ -3629,8 +3713,18 @@ refreshExecStats(YbSessionStats *stats, bool include_catalog_stats)
 		old->catalog = current->catalog;
 
 	if (yb_session_stats.current_state.metrics_capture) {
-		for (int i = 0; i < YB_ANALYZE_METRIC_COUNT; ++i) {
-			old->storage_metrics[i] = current->storage_metrics[i];
+		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
+			old->storage_gauge_metrics[i] = current->storage_gauge_metrics[i];
+		}
+		for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
+			old->storage_counter_metrics[i] = current->storage_counter_metrics[i];
+		}
+		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
+			YBCPgExecEventMetric* old_metric = &old->storage_event_metrics[i];
+			const YBCPgExecEventMetric* current_metric =
+					&current->storage_event_metrics[i];
+			old_metric->sum = current_metric->sum;
+			old_metric->count = current_metric->count;
 		}
 	}
 }

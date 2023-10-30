@@ -13,7 +13,7 @@
 
 #include "yb/master/flush_manager.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/master/async_flush_tablets_task.h"
 #include "yb/master/catalog_entity_info.h"

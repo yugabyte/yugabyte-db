@@ -33,8 +33,7 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
     return true;
   }
 
-  @Override
-  public void verifyParams(Universe universe) {
+  public void verifyParams(Universe universe, boolean isFirstTry) {
     super.verifyParams(universe);
 
     if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
@@ -48,42 +47,32 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
     }
 
     UserIntent currentIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-
-    if (ybSoftwareVersion.equals(currentIntent.ybSoftwareVersion)) {
+    if (isFirstTry && ybSoftwareVersion.equals(currentIntent.ybSoftwareVersion)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "Software version is already: " + ybSoftwareVersion);
     }
     RuntimeConfigFactory runtimeConfigFactory =
         StaticInjectorHolder.injector().instanceOf(RuntimeConfigFactory.class);
 
-    // Defaults to false, but we need to extract the variable in case the user wishes to perform
-    // a downgrade with a runtime configuration override. We perform this check before verifying the
-    // general
-    // SoftwareUpgradeParams to avoid introducing an API parameter.
+    // Defaults to false, but we need to extract the variable in case the user wishes to perform a
+    // downgrade with a runtime configuration override. We perform this check before verifying the
+    // general SoftwareUpgradeParams to avoid introducing an API parameter.
     boolean isUniverseDowngradeAllowed =
         runtimeConfigFactory.forUniverse(universe).getBoolean("yb.upgrade.allow_downgrades");
 
     String currentVersion = currentIntent.ybSoftwareVersion;
 
-    if (currentVersion != null) {
-      if (Util.compareYbVersions(currentVersion, ybSoftwareVersion, true) > 0) {
-        if (!isUniverseDowngradeAllowed) {
-          String msg =
-              String.format(
-                  "DB version downgrades are not recommended,"
-                      + " %s"
-                      + " would downgrade from"
-                      + " %s"
-                      + ". Aborting."
-                      + " To override this check and force a downgrade, please set the runtime"
-                      + " config yb.upgrade.allow_downgrades"
-                      + " to true"
-                      + " (using the script set-runtime-config.sh if necessary).",
-                  ybSoftwareVersion, currentVersion);
-
-          throw new PlatformServiceException(Status.BAD_REQUEST, msg);
-        }
-      }
+    if (currentVersion != null
+        && !isUniverseDowngradeAllowed
+        && Util.compareYbVersions(currentVersion, ybSoftwareVersion, true) > 0) {
+      String msg =
+          String.format(
+              "DB version downgrades are not recommended, %s would downgrade from %s. Aborting "
+                  + "task. To override this check and force a downgrade, please set the runtime "
+                  + "config yb.upgrade.allow_downgrades to true "
+                  + "(using the script set-runtime-config.sh if necessary).",
+              ybSoftwareVersion, currentVersion);
+      throw new PlatformServiceException(Status.BAD_REQUEST, msg);
     }
   }
 

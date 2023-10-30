@@ -26,21 +26,11 @@ fi
 . "${BASH_SOURCE[0]%/*}/common-build-env.sh"
 
 NON_GTEST_TESTS=(
-  merge-test
   non_gtest_failures-test
   c_test
-  compact_on_deletion_collector_test
   db_sanity_test
-  merge_test
 )
 make_regex_from_list NON_GTEST_TESTS "${NON_GTEST_TESTS[@]}"
-
-# There gtest suites have internal dependencies between tests, so those tests can't be run
-# separately.
-TEST_BINARIES_TO_RUN_AT_ONCE=(
-  tests-rocksdb/thread_local_test
-)
-make_regex_from_list TEST_BINARIES_TO_RUN_AT_ONCE "${TEST_BINARIES_TO_RUN_AT_ONCE[@]}"
 
 VALID_TEST_BINARY_DIRS_PREFIX="tests"
 VALID_TEST_BINARY_DIRS_RE="^${VALID_TEST_BINARY_DIRS_PREFIX}-[0-9a-zA-Z\-]+"
@@ -185,7 +175,6 @@ validate_test_descriptor() {
 }
 
 # Some tests are not based on the gtest framework and don't generate an XML output file.
-# Also, RocksDB's thread_list_test is like that on Mac OS X.
 is_known_non_gtest_test() {
   local test_name=$1
 
@@ -227,8 +216,6 @@ is_known_non_gtest_test_by_rel_path() {
 #   tests
 #     This is an array that should be initialized by the caller. This adds new "test descriptors" to
 #     this array.
-#   num_binaries_to_run_at_once
-#     The number of binaries to be run in one shot. This variable is incremented if it exists.
 #   num_test_cases
 #     Total number of test cases collected. Test cases are Google Test's way of grouping tests
 #     (test functions) together. Usually they are methods of the same test class.
@@ -246,12 +233,8 @@ collect_gtest_tests() {
     return
   fi
 
-  if is_known_non_gtest_test_by_rel_path "$rel_test_binary" || \
-     [[ "$rel_test_binary" =~ $TEST_BINARIES_TO_RUN_AT_ONCE_RE ]]; then
+  if is_known_non_gtest_test_by_rel_path "$rel_test_binary"; then
     tests+=( "$rel_test_binary" )
-    if [ -n "${num_binaries_to_run_at_once:-}" ]; then
-      (( num_binaries_to_run_at_once+=1 ))
-    fi
     return
   fi
 
@@ -774,7 +757,8 @@ handle_cxx_test_xml_output() {
   expect_vars_to_be_set \
     rel_test_binary \
     test_log_path \
-    xml_output_file
+    xml_output_file \
+    junit_test_case_id
 
   if [[ ! -f "$xml_output_file" || ! -s "$xml_output_file" ]]; then
     # XML does not exist or empty (most probably due to test crash during XML generation)
@@ -791,8 +775,10 @@ handle_cxx_test_xml_output() {
       # parse_test_failure will also generate XML file in this case.
     fi
     echo "Generating an XML output file using parse_test_failure.py: $xml_output_file" >&2
-    "$YB_SCRIPT_PATH_PARSE_TEST_FAILURE" -x "$junit_test_case_id" "$test_log_path" \
-      >"$xml_output_file"
+    "$YB_SCRIPT_PATH_PARSE_TEST_FAILURE" \
+        "--xml_output_path=$xml_output_file" \
+        "--input_path=$test_log_path" \
+        "--junit_test_case_id=$junit_test_case_id"
   fi
 
   process_tree_supervisor_append_log_to_on_error=$test_log_path
@@ -904,8 +890,6 @@ run_one_cxx_test() {
   pushd "$TEST_TMPDIR" >/dev/null
 
   export YB_FATAL_DETAILS_PATH_PREFIX=$test_log_path_prefix.fatal_failure_details
-
-  about_to_start_running_test
 
   local attempts_left
   for attempts_left in {1..0}; do
@@ -1371,6 +1355,8 @@ run_tests_on_spark() {
     run_tests_args+=( "--reports-dir" "$JENKINS_NFS_BUILD_REPORT_BASE_DIR" --write_report )
   fi
 
+  run_tests_args+=( "$@" )
+
   set +e
   (
     set -x
@@ -1480,16 +1466,6 @@ fix_gtest_cxx_test_name() {
   done <<< "$targets"
 
   log "Unable to find test matching gtest_filter $YB_GTEST_FILTER"
-}
-
-# This is called immediately before we start running the test. The Spark-based test runner watches
-# for this "flag file" to appear to catch a case where run-test.sh gets totally stuck on macOS
-# before even getting to the test.
-about_to_start_running_test() {
-  if [[ -n ${YB_TEST_STARTED_RUNNING_FLAG_FILE:-} ]]; then
-    touch "$YB_TEST_STARTED_RUNNING_FLAG_FILE"
-    log "Created file $YB_TEST_STARTED_RUNNING_FLAG_FILE to indicate that the test is starting"
-  fi
 }
 
 user_mvn_opts_for_java_test=()
@@ -1650,7 +1626,6 @@ run_java_test() {
   log "Test log path: $test_log_path"
 
   local mvn_output_path=""
-  about_to_start_running_test
   if [[ ${YB_REDIRECT_MVN_OUTPUT_TO_FILE:-0} == 1 ]]; then
     mvn_output_path=$surefire_reports_dir/${test_class}__mvn_output.log
   fi

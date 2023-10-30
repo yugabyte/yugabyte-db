@@ -677,25 +677,25 @@
     showSection = true
     hideLink = true
 
-[[preview_yugabyte-platform]]
-  name = "YugabyteDB Anywhere API"
-  parent = "anywhere-automation"
-  weight = 3
-  identifier = "yugabytedb-anywhere-api"
-  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
-  [preview_yugabyte-platform.params]
-    showSection = true
-    newTab = true
+#[[preview_yugabyte-platform]]
+#  name = "YugabyteDB Anywhere API"
+#  parent = "anywhere-automation"
+#  weight = 3
+#  identifier = "yugabytedb-anywhere-api"
+#  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
+#  [preview_yugabyte-platform.params]
+#    showSection = true
+#    newTab = true
 
-[[preview_yugabyte-platform]]
-  name = "Terraform provider"
-  parent = "anywhere-automation"
-  weight = 30
-  identifier = "yba-terraform-provider"
-  url = "https://registry.terraform.io/providers/yugabyte/yba/latest/docs/"
-  [preview_yugabyte-platform.params]
-    showSection = true
-    newTab = true
+# [[preview_yugabyte-platform]]
+#  name = "Terraform provider"
+#  parent = "anywhere-automation"
+#  weight = 30
+#  identifier = "yba-terraform-provider"
+#  url = "https://registry.terraform.io/providers/yugabyte/yba/latest/docs/"
+#  [preview_yugabyte-platform.params]
+#    showSection = true
+#    newTab = true
 
 
 ########## Menus (in preview) for YB Managed section
@@ -717,25 +717,25 @@
     showSection = true
     hideLink = true
 
-[[preview_yugabyte-cloud]]
-  name = "REST API"
-  parent = "managed-automation"
-  weight = 20
-  identifier = "yugabytedb-managed-api"
-  url = "https://api-docs.yugabyte.com/docs/managed-apis/"
-  [preview_yugabyte-cloud.params]
-    showSection = true
-    newTab = true
+# [[preview_yugabyte-cloud]]
+#  name = "REST API"
+#  parent = "managed-automation"
+#  weight = 20
+#  identifier = "yugabytedb-managed-api"
+#  url = "https://api-docs.yugabyte.com/docs/managed-apis/"
+#  [preview_yugabyte-cloud.params]
+#    showSection = true
+#    newTab = true
 
-[[preview_yugabyte-cloud]]
-  name = "Terraform provider"
-  parent = "managed-automation"
-  weight = 30
-  identifier = "yugabytedb-terraform-provider"
-  url = "https://registry.terraform.io/providers/yugabyte/ybm/latest/docs/"
-  [preview_yugabyte-cloud.params]
-    showSection = true
-    newTab = true
+# [[preview_yugabyte-cloud]]
+#  name = "Terraform provider"
+#  parent = "managed-automation"
+#  weight = 30
+#  identifier = "yugabytedb-terraform-provider"
+#  url = "https://registry.terraform.io/providers/yugabyte/ybm/latest/docs/"
+#  [preview_yugabyte-cloud.params]
+#    showSection = true
+#    newTab = true
 
 # [[preview_yugabyte-cloud]]
 #   name = "What's New"

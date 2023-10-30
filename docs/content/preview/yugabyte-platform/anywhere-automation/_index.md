@@ -17,8 +17,8 @@ Use the following automation tools to manage your YugabyteDB Anywhere installati
 
 | Automation | Description |
 | :--------- | :---------- |
-| [REST API](https://api-docs.yugabyte.com/docs/yugabyte-platform/) | Deploy and manage database universes using a REST API. |
-| [Terraform provider](https://registry.terraform.io/providers/yugabyte/yba/latest/docs/) | Provider for automating YugabyteDB Anywhere resources that are accessible via the API. |
+| [REST API](anywhere-api/) | Deploy and manage database universes using a REST API. |
+| [Terraform provider](anywhere-terraform/) | Provider for automating YugabyteDB Anywhere resources that are accessible via the API. |
 
 ### Authentication
 
@@ -53,10 +53,10 @@ For some REST API commands, you may need one or more of the following account de
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="https://api-docs.yugabyte.com/docs/yugabyte-platform/">
+    <a class="section-link icon-offset" href="anywhere-api/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
-        <div class="title">YugabyteDB Anywhere API</div>
+        <div class="title">YugabyteDB Anywhere REST API</div>
       </div>
       <div class="body">
         Manage your account and universes using a REST API.
@@ -65,7 +65,7 @@ For some REST API commands, you may need one or more of the following account de
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="https://registry.terraform.io/providers/yugabyte/yba/latest">
+    <a class="section-link icon-offset" href="anywhere-terraform/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/ecosystem/terraform.png" aria-hidden="true" />
         <div class="title">YugabyteDB Anywhere Terraform Provider</div>

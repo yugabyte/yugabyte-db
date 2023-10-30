@@ -36,6 +36,8 @@ import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
@@ -127,7 +129,7 @@ public class CloudProviderApiController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Refresh pricing",
+      value = "WARNING: This is a preview API that could change. Refresh pricing",
       notes = "Refresh provider pricing info",
       response = YBPSuccess.class)
   @AuthzPath({
@@ -136,6 +138,7 @@ public class CloudProviderApiController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result refreshPricing(UUID customerUUID, UUID providerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -280,7 +283,7 @@ public class CloudProviderApiController extends AuthenticatedController {
 
   @ApiOperation(
       nickname = "accessKeyRotation",
-      value = "Rotate access key for a provider",
+      value = "WARNING: This is a preview API that could change. Rotate access key for a provider",
       response = YBPTask.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -288,6 +291,7 @@ public class CloudProviderApiController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result accessKeysRotation(UUID customerUUID, UUID providerUUID, Http.Request request) {
     RotateAccessKeyFormData params = parseJsonAndValidate(request, RotateAccessKeyFormData.class);
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -326,7 +330,9 @@ public class CloudProviderApiController extends AuthenticatedController {
 
   @ApiOperation(
       nickname = "scheduledAccessKeyRotation",
-      value = "Rotate access key for a provider - Scheduled",
+      value =
+          "WARNING: This is a preview API that could change. Rotate access key for a provider -"
+              + " Scheduled",
       response = Schedule.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -334,6 +340,7 @@ public class CloudProviderApiController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result scheduledAccessKeysRotation(
       UUID customerUUID, UUID providerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -372,7 +379,9 @@ public class CloudProviderApiController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List all schedules for a provider's access key rotation",
+      value =
+          "WARNING: This is a preview API that could change. List all schedules for a provider's"
+              + " access key rotation",
       response = Schedule.class,
       responseContainer = "List",
       nickname = "listSchedules")
@@ -382,6 +391,7 @@ public class CloudProviderApiController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result listAccessKeyRotationSchedules(UUID customerUUID, UUID providerUUID) {
     Customer.getOrBadRequest(customerUUID);
     Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -394,7 +404,8 @@ public class CloudProviderApiController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Edit a access key rotation schedule",
+      value =
+          "WARNING: This is a preview API that could change. Edit a access key rotation schedule",
       response = Schedule.class,
       nickname = "editAccessKeyRotationSchedule")
   @ApiImplicitParams({
@@ -409,6 +420,7 @@ public class CloudProviderApiController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   public Result editAccessKeyRotationSchedule(
       UUID customerUUID, UUID providerUUID, UUID scheduleUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);

@@ -204,6 +204,10 @@ bool YBCStatusIsTryAgain(YBCStatus s) {
   return StatusWrapper(s)->IsTryAgain();
 }
 
+bool YBCStatusIsAlreadyPresent(YBCStatus s) {
+  return StatusWrapper(s)->IsAlreadyPresent();
+}
+
 uint32_t YBCStatusPgsqlError(YBCStatus s) {
   return to_underlying(FetchErrorCode(s));
 }

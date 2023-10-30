@@ -847,6 +847,16 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status ListReplicationSlots(
+      const PgListReplicationSlotsRequestPB& req, PgListReplicationSlotsResponsePB* resp,
+      rpc::RpcContext* context) {
+    auto streams = VERIFY_RESULT(client().ListCDCSDKStreams());
+    for (const auto& stream : streams) {
+      stream.ToPB(resp->mutable_replication_slots()->Add());
+    }
+    return Status::OK();
+  }
+
   Status GetIndexBackfillProgress(
       const PgGetIndexBackfillProgressRequestPB& req, PgGetIndexBackfillProgressResponsePB* resp,
       rpc::RpcContext* context) {

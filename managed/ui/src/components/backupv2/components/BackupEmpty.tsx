@@ -38,16 +38,22 @@ export const ScheduledBackupEmpty = ({
   return (
     <BackupEmpty>
       {UPLOAD_ICON}
-      <BackupDisabledTooltip disabled={disabled} hasPerm={hasPerm}>
-        <YBButton
-          onClick={onActionButtonClick}
-          btnClass="btn btn-orange backup-empty-button"
-          btnText="Create Scheduled Backup Policy"
-          disabled={disabled}
-        />
-      </BackupDisabledTooltip>
+      <RbacValidator
+        accessRequiredOn={{ ...UserPermissionMap.createBackup, onResource: 'CUSTOMER_ID' }}
+        customValidateFunction={() => hasPerm}
+        isControl
+      >
+        <BackupDisabledTooltip disabled={disabled} hasPerm={hasPerm}>
+          <YBButton
+            onClick={onActionButtonClick}
+            btnClass="btn btn-orange backup-empty-button"
+            btnText="Create Scheduled Backup Policy"
+            disabled={disabled}
+          />
+        </BackupDisabledTooltip>
+      </RbacValidator>
       <div className="sub-text">Currently there are no Scheduled Backup Policies to show</div>
-    </BackupEmpty>
+    </BackupEmpty >
   );
 };
 
@@ -65,6 +71,7 @@ export const UniverseLevelBackupEmpty = ({
       {UPLOAD_ICON}
       <RbacValidator
         accessRequiredOn={{ ...UserPermissionMap.createBackup, onResource: 'CUSTOMER_ID' }}
+        customValidateFunction={() => hasPerm}
         isControl
       >
         <BackupDisabledTooltip disabled={disabled} hasPerm={hasPerm}>

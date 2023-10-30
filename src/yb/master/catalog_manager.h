@@ -174,7 +174,7 @@ YB_DEFINE_ENUM(
     // Only populate the table_id. It is only used by xCluster.
     (kXClusterTableIds)
     // Populate the namespace_id and a list of table ids. It is only used by CDCSDK.
-    (kNamespaceAndTableIds)
+    (kCdcsdkNamespaceAndTableIds)
 );
 
 using DdlTxnIdToTablesMap =
@@ -1103,6 +1103,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status GetAllAffinitizedZones(std::vector<AffinitizedZonesSet>* affinitized_zones) override;
   Result<std::vector<BlacklistSet>> GetAffinitizedZoneSet();
   Result<BlacklistSet> BlacklistSetFromPB(bool leader_blacklist = false) const override;
+
+  Status GetUniverseKeyRegistryFromOtherMastersAsync();
 
   std::vector<std::string> GetMasterAddresses();
 

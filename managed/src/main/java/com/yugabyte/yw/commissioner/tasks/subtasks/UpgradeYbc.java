@@ -6,7 +6,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.Universe;
@@ -58,23 +57,10 @@ public class UpgradeYbc extends AbstractTaskBase {
       Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       preChecks(universe, taskParams().ybcVersion);
       ybcUpgrade.upgradeYBC(taskParams().universeUUID, taskParams().ybcVersion, true /* force */);
-
-      int numRetries = waitForYbcUpgrade();
+      waitForYbcUpgrade();
       boolean success =
           ybcUpgrade.pollUpgradeTaskResult(
               taskParams().universeUUID, taskParams().ybcVersion, true /* verbose */);
-
-      if (!success
-          && numRetries == ybcUpgrade.MAX_YBC_UPGRADE_POLL_RESULT_TRIES
-          && confGetter.getGlobalConf(GlobalConfKeys.forceYbcShutdownDuringUpgrade)) {
-        // Shutdown YBC explicitly.
-        ybcUpgrade.shutdownYbc(universe);
-        // Wait for ybc to start after explicit shutdown.
-        numRetries = waitForYbcUpgrade();
-        success =
-            ybcUpgrade.pollUpgradeTaskResult(
-                taskParams().universeUUID, taskParams().ybcVersion, true /* verbose */);
-      }
 
       if (!success && !taskParams().validateOnlyMasterLeader) {
         throw new RuntimeException("YBC Upgrade task did not complete in expected time.");
@@ -115,9 +101,9 @@ public class UpgradeYbc extends AbstractTaskBase {
       numRetries++;
       if (!ybcUpgrade.checkYBCUpgradeProcessExists(taskParams().universeUUID)) {
         break;
-      } else {
-        ybcUpgrade.pollUpgradeTaskResult(
-            taskParams().universeUUID, taskParams().ybcVersion, false /* verbose */);
+      } else if (ybcUpgrade.pollUpgradeTaskResult(
+          taskParams().universeUUID, taskParams().ybcVersion, false /* verbose */)) {
+        break;
       }
       waitFor(Duration.ofMillis(ybcUpgrade.YBC_UPGRADE_POLL_RESULT_SLEEP_MS));
     }

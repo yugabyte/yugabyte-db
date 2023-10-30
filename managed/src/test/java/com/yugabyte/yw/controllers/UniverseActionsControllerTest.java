@@ -32,6 +32,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -102,7 +103,7 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
 
   @Test
   public void testUniverseSetKey() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SetUniverseKey);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
 
     // Create the universe with encryption enabled through SMARTKEY KMS provider
@@ -155,7 +156,7 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
     assertNotNull(json.get("universeUUID"));
     String testUniUUID = json.get("universeUUID").asText();
 
-    fakeTaskUUID = UUID.randomUUID();
+    fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     // Rotate the universe key
     EncryptionAtRestKeyParams taskParams = new EncryptionAtRestKeyParams();
@@ -175,7 +176,7 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
 
   @Test
   public void testUniversePauseValidUUID() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.PauseUniverse);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getId());
 
@@ -209,7 +210,7 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
 
   @Test
   public void testUniverseResumeValidUUID() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.ResumeUniverse);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getId());
 

@@ -85,6 +85,7 @@ export const UserPermissionMap = {
         permissionRequired: [Action.CREATE]
     },
     listProvider: {
+        onResource: 'CUSTOMER_ID',
         resourceType: RbacResourceTypes.PROVIDER,
         permissionRequired: [Action.READ]
     },
@@ -248,7 +249,7 @@ export const UserPermissionMap = {
     createSupportBundle: {
         onResource: "CUSTOMER_ID",
         resourceType: RbacResourceTypes.SUPPORT_BUNDLE,
-        permissionRequired: [Action.UPDATE]
+        permissionRequired: [Action.CREATE]
     },
     deleteSupportBundle: {
         onResource: "CUSTOMER_ID",
@@ -258,7 +259,7 @@ export const UserPermissionMap = {
     downloadSupportBundle: {
         onResource: "CUSTOMER_ID",
         resourceType: RbacResourceTypes.SUPPORT_BUNDLE,
-        permissionRequired: [Action.READ]
+        permissionRequired: [Action.CREATE]
     },
 
     //CA-Certs
@@ -283,6 +284,11 @@ export const UserPermissionMap = {
         onResource: 'CUSTOMER_ID',
         resourceType: RbacResourceTypes.RUN_TIME_CONFIG,
         permissionRequired: [Action.UPDATE]
+    },
+    listRuntimeConfig: {
+        onResource: 'CUSTOMER_ID',
+        resourceType: RbacResourceTypes.RUN_TIME_CONFIG,
+        permissionRequired: [Action.READ]
     },
 
     //Create user

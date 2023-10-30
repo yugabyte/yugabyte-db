@@ -19,6 +19,8 @@ import io.ebean.DB;
 import io.ebean.DuplicateKeyException;
 import java.nio.charset.Charset;
 import java.security.KeyStore;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
@@ -337,53 +339,64 @@ public class LdapUtil {
     return new ImmutableTriple<Entry, String, String>(userEntry, distinguishedName, role);
   }
 
+  public LdapNetworkConnection createConnection(
+      String ldapUrl, int ldapPort, boolean ldapUseSsl, boolean ldapUseTls, String tlsVersion)
+      throws LdapException, NoSuchAlgorithmException, KeyStoreException {
+
+    LdapConnectionConfig config = new LdapConnectionConfig();
+    config.setLdapHost(ldapUrl);
+    config.setLdapPort(ldapPort);
+    if (ldapUseSsl || ldapUseTls) {
+      config.setEnabledProtocols(new String[] {tlsVersion});
+
+      boolean customCAUploaded = customCAStoreManager.areCustomCAsPresent();
+      if (customCAStoreManager.isEnabled() && isCertVerificationEnforced()) {
+        if (customCAUploaded) {
+          log.debug("Using YBA's custom trust-store manager along-with Java defaults");
+          KeyStore ybaJavaKeyStore = customCAStoreManager.getYbaAndJavaKeyStore();
+          TrustManagerFactory trustFactory =
+              TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+          trustFactory.init(ybaJavaKeyStore);
+          TrustManager[] ybaJavaTrustManagers = trustFactory.getTrustManagers();
+          config.setTrustManagers(ybaJavaTrustManagers);
+        } else {
+          log.debug("Using Java default trust managers");
+        }
+      } else {
+        if (customCAUploaded) {
+          log.warn(
+              "Skipping to use YBA's trust-store as the feature is disabled. CA-store "
+                  + "feature flag: {}, certification-verfication for LDAP: {}",
+              customCAStoreManager.isEnabled(),
+              isCertVerificationEnforced());
+        }
+        config.setTrustManagers(new NoVerificationTrustManager());
+      }
+
+      if (ldapUseSsl) {
+        config.setUseSsl(true);
+      } else {
+        config.setUseTls(true);
+      }
+    }
+
+    return createNewLdapConnection(config);
+  }
+
   public Users authViaLDAP(String email, String password, LdapConfiguration ldapConfiguration)
       throws LdapException {
     Users users = new Users();
     LdapNetworkConnection connection = null;
     try {
-      LdapConnectionConfig config = new LdapConnectionConfig();
-      config.setLdapHost(ldapConfiguration.getLdapUrl());
-      config.setLdapPort(ldapConfiguration.getLdapPort());
-      if (ldapConfiguration.isLdapUseSsl() || ldapConfiguration.isLdapUseTls()) {
-
-        config.setEnabledProtocols(
-            new String[] {ldapConfiguration.getLdapTlsProtocol().getVersionString()});
-
-        boolean customCAUploaded = customCAStoreManager.areCustomCAsPresent();
-        if (customCAStoreManager.isEnabled() && isCertVerificationEnforced()) {
-          if (customCAUploaded) {
-            log.debug("Using YBA's custom trust-store manager along-with Java defaults");
-            KeyStore ybaJavaKeyStore = customCAStoreManager.getYbaAndJavaKeyStore();
-            TrustManagerFactory trustFactory =
-                TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-            trustFactory.init(ybaJavaKeyStore);
-            TrustManager[] ybaJavaTrustManagers = trustFactory.getTrustManagers();
-            config.setTrustManagers(ybaJavaTrustManagers);
-          } else {
-            log.debug("Using Java default trust managers");
-          }
-        } else {
-          if (customCAUploaded) {
-            log.warn(
-                "Skipping to use YBA's trust-store as the feature is disabled. CA-store "
-                    + "feature flag: {}, certification-verfication for LDAP: {}",
-                customCAStoreManager.isEnabled(),
-                isCertVerificationEnforced());
-          }
-          config.setTrustManagers(new NoVerificationTrustManager());
-        }
-
-        if (ldapConfiguration.isLdapUseSsl()) {
-          config.setUseSsl(true);
-        } else {
-          config.setUseTls(true);
-        }
-      }
-
       String distinguishedName =
           ldapConfiguration.getLdapDnPrefix() + email + "," + ldapConfiguration.getLdapBaseDN();
-      connection = createNewLdapConnection(config);
+      connection =
+          createConnection(
+              ldapConfiguration.getLdapUrl(),
+              ldapConfiguration.getLdapPort(),
+              ldapConfiguration.isLdapUseSsl(),
+              ldapConfiguration.isLdapUseTls(),
+              ldapConfiguration.getLdapTlsProtocol().getVersionString());
 
       String role = "";
       Entry userEntry = null;

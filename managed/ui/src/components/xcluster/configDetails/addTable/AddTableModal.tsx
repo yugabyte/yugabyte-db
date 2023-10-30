@@ -30,8 +30,7 @@ import {
   fetchTablesInUniverse
 } from '../../../../actions/xClusterReplication';
 import { TableSelect } from '../../sharedComponents/tableSelect/TableSelect';
-
-import { XClusterConfig } from '../..';
+import { XClusterConfig } from '../../dtos';
 
 import styles from './AddTableModal.module.scss';
 

@@ -356,7 +356,7 @@ class RetryableRequests::Impl {
   explicit Impl(const MemTrackerPtr& tablet_mem_tracker, std::string log_prefix)
       : log_prefix_(std::move(log_prefix)),
         mem_tracker_(MemTracker::FindOrCreateTracker(
-            "Retryable Requests", tablet_mem_tracker)) {
+            "Retryable Requests", tablet_mem_tracker, AddToParent::kTrue, CreateMetrics::kFalse)) {
     VLOG_WITH_PREFIX(1) << "Start";
   }
 
@@ -647,6 +647,7 @@ class RetryableRequests::Impl {
         metric_entity, counts.running);
     replicated_request_ranges_gauge_ = METRIC_replicated_retryable_request_ranges.Instantiate(
         metric_entity, counts.replicated);
+    mem_tracker_->SetMetricEntity(metric_entity);
   }
 
   void SetServerClock(const server::ClockPtr& clock) {

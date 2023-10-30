@@ -42,12 +42,14 @@ class PgMutationCounter;
     (AlterTable) \
     (BackfillIndex) \
     (CreateDatabase) \
+    (CreateReplicationSlot) \
     (CreateSequencesDataTable) \
     (CreateTable) \
     (CreateTablegroup) \
     (DeleteDBSequences) \
     (DeleteSequenceTuple) \
     (DropDatabase) \
+    (DropReplicationSlot) \
     (DropTable) \
     (DropTablegroup) \
     (FetchSequenceTuple) \
@@ -63,6 +65,7 @@ class PgMutationCounter;
     (IsInitDbDone) \
     (IsObjectPartOfXRepl) \
     (ListLiveTabletServers) \
+    (ListReplicationSlots) \
     (OpenTable) \
     (ReadSequenceTuple) \
     (ReserveOids) \

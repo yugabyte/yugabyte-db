@@ -19,15 +19,21 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.audit.YCQLAuditConfig;
+import com.yugabyte.yw.models.helpers.audit.YSQLAuditConfig;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
@@ -54,11 +60,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.csv.CSVRecord;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -110,6 +118,7 @@ public class GFlagsUtil {
   public static final String PSQL_PROXY_BIND_ADDRESS = "pgsql_proxy_bind_address";
   public static final String PSQL_PROXY_WEBSERVER_PORT = "pgsql_proxy_webserver_port";
   public static final String YSQL_HBA_CONF_CSV = "ysql_hba_conf_csv";
+  public static final String YSQL_PG_CONF_CSV = "ysql_pg_conf_csv";
   public static final String CSQL_PROXY_BIND_ADDRESS = "cql_proxy_bind_address";
   public static final String CSQL_PROXY_WEBSERVER_PORT = "cql_proxy_webserver_port";
   public static final String ALLOW_INSECURE_CONNECTIONS = "allow_insecure_connections";
@@ -156,6 +165,9 @@ public class GFlagsUtil {
   public static final String JWT_JWKS_FILE_PATH = "jwt_jwks_path";
   public static final String JWT_AUTH = "jwt";
   public static final String GFLAG_REMOTE_FILES_PATH = TSERVER_DIR + "/conf/gflag_files/";
+  // DB internal glag to suppress going into shell mode and delete files on master removal.
+  public static final String NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER =
+      "notify_peer_of_removal_from_cluster";
 
   private static final Set<String> GFLAGS_FORBIDDEN_TO_OVERRIDE =
       ImmutableSet.<String>builder()
@@ -216,7 +228,7 @@ public class GFlagsUtil {
       Universe universe,
       UniverseDefinitionTaskParams.UserIntent userIntent,
       boolean useHostname,
-      Config config) {
+      RuntimeConfGetter confGetter) {
     Map<String, String> extra_gflags = new TreeMap<>();
     extra_gflags.put(PLACEMENT_CLOUD, taskParam.getProvider().getCode());
     extra_gflags.put(PLACEMENT_REGION, taskParam.getRegion().getCode());
@@ -245,7 +257,7 @@ public class GFlagsUtil {
     boolean legacyNet =
         universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("true");
     boolean isDualNet =
-        config.getBoolean("yb.cloud.enabled")
+        confGetter.getStaticConf().getBoolean("yb.cloud.enabled")
             && node.cloudInfo.secondary_private_ip != null
             && !node.cloudInfo.secondary_private_ip.equals("null");
     boolean useSecondaryIp = isDualNet && !legacyNet;
@@ -260,14 +272,14 @@ public class GFlagsUtil {
     if (processType == null) {
       extra_gflags.put(MASTER_ADDRESSES, "");
     } else if (processType.equals(UniverseTaskBase.ServerType.TSERVER.name())) {
-      boolean configCgroup = config.getInt(NodeManager.POSTGRES_MAX_MEM_MB) > 0;
+      boolean configCgroup = confGetter.getStaticConf().getInt(NodeManager.POSTGRES_MAX_MEM_MB) > 0;
 
       // If the cluster is a read replica, use the read replica max mem value if its >= 0. -1 means
       // to use the primary cluster value instead.
       if (universe.getUniverseDetails().getClusterByUuid(taskParam.placementUuid).clusterType
               == UniverseDefinitionTaskParams.ClusterType.ASYNC
-          && config.getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) >= 0) {
-        configCgroup = config.getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) > 0;
+          && confGetter.getStaticConf().getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) >= 0) {
+        configCgroup = confGetter.getStaticConf().getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) > 0;
       }
       extra_gflags.putAll(
           getTServerDefaultGflags(
@@ -279,8 +291,12 @@ public class GFlagsUtil {
               isDualNet,
               configCgroup));
     } else {
-      extra_gflags.putAll(
-          getMasterDefaultGFlags(taskParam, universe, useHostname, useSecondaryIp, isDualNet));
+      Map<String, String> masterGFlags =
+          getMasterDefaultGFlags(
+              taskParam, universe, useHostname, useSecondaryIp, isDualNet, confGetter);
+      // Merge into masterGFlags.
+      mergeCSVs(masterGFlags, extra_gflags, UNDEFOK);
+      extra_gflags.putAll(masterGFlags);
     }
 
     // Set on both master and tserver processes to allow db to validate inter-node RPCs.
@@ -319,12 +335,15 @@ public class GFlagsUtil {
 
   /** Return the map of ybc flags which will be passed to the db nodes. */
   public static Map<String, String> getYbcFlags(
-      AnsibleConfigureServers.Params taskParam, Config config) {
-    Universe universe = Universe.getOrBadRequest(taskParam.getUniverseUUID());
+      Universe universe,
+      AnsibleConfigureServers.Params taskParam,
+      RuntimeConfGetter confGetter,
+      Config config) {
     NodeDetails node = universe.getNode(taskParam.nodeName);
     // Both for old clusters and new, binding to both IPs works.
     boolean isDualNet =
-        config.getBoolean("yb.cloud.enabled")
+        confGetter.getConfForScope(
+                Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled)
             && node.cloudInfo.secondary_private_ip != null
             && !node.cloudInfo.secondary_private_ip.equals("null");
     String serverAddresses =
@@ -376,6 +395,13 @@ public class GFlagsUtil {
       String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
       ybcFlags.put("certs_dir_name", certsNodeDir);
     }
+    boolean enableVerbose =
+        confGetter.getConfForScope(universe, UniverseConfKeys.ybcEnableVervbose);
+    if (enableVerbose) {
+      ybcFlags.put("v", "1");
+    }
+    String nfsDirs = confGetter.getConfForScope(universe, UniverseConfKeys.nfsDirs);
+    ybcFlags.put("nfs_dirs", nfsDirs);
     return ybcFlags;
   }
 
@@ -533,10 +559,61 @@ public class GFlagsUtil {
       } else {
         gflags.put(YSQL_ENABLE_AUTH, "false");
       }
+      String ysqlPgConfCsv = getYsqlPgConfCsv(universe);
+      if (StringUtils.isNotEmpty(ysqlPgConfCsv)) {
+        gflags.put(YSQL_PG_CONF_CSV, ysqlPgConfCsv);
+      }
     } else {
       gflags.put(ENABLE_YSQL, "false");
     }
     return gflags;
+  }
+
+  private static String getYsqlPgConfCsv(Universe universe) {
+    List<String> ysqlPgConfCsvEntries = new ArrayList<>();
+    AuditLogConfig auditLogConfig =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig;
+    if (auditLogConfig != null) {
+      if (auditLogConfig.getYsqlAuditConfig() != null
+          && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
+        YSQLAuditConfig ysqlAuditConfig = auditLogConfig.getYsqlAuditConfig();
+        if (CollectionUtils.isNotEmpty(ysqlAuditConfig.getClasses())) {
+          ysqlPgConfCsvEntries.add(
+              "\"pgaudit.log='"
+                  + ysqlAuditConfig.getClasses().stream()
+                      .map(YSQLAuditConfig.YSQLAuditStatementClass::name)
+                      .collect(Collectors.joining(","))
+                  + "'\"");
+        }
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("pgaudit.log_catalog", ysqlAuditConfig.isLogCatalog()));
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("pgaudit.log_client", ysqlAuditConfig.isLogClient()));
+        if (ysqlAuditConfig.getLogLevel() != null) {
+          ysqlPgConfCsvEntries.add("pgaudit.log_level=" + ysqlAuditConfig.getLogLevel().name());
+        }
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("pgaudit.log_parameter", ysqlAuditConfig.isLogParameter()));
+        if (ysqlAuditConfig.getLogParameterMaxSize() != null) {
+          ysqlPgConfCsvEntries.add(
+              "pgaudit.log_parameter_max_size=" + ysqlAuditConfig.getLogParameterMaxSize());
+        }
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("pgaudit.log_relation", ysqlAuditConfig.isLogRelation()));
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("pgaudit.log_row", ysqlAuditConfig.isLogRow()));
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag("pgaudit.log_statement", ysqlAuditConfig.isLogStatement()));
+        ysqlPgConfCsvEntries.add(
+            encodeBooleanPgAuditFlag(
+                "pgaudit.log_statement_once", ysqlAuditConfig.isLogStatementOnce()));
+      }
+    }
+    return String.join(",", ysqlPgConfCsvEntries);
+  }
+
+  private static String encodeBooleanPgAuditFlag(String flag, boolean value) {
+    return flag + "=" + (value ? "ON" : "OFF");
   }
 
   private static Map<String, String> getYCQLGFlags(
@@ -562,10 +639,59 @@ public class GFlagsUtil {
       } else {
         gflags.put(USE_CASSANDRA_AUTHENTICATION, "false");
       }
+      gflags.putAll(getYcqlAuditFlags(universe));
     } else {
       gflags.put(START_CQL_PROXY, "false");
     }
     return gflags;
+  }
+
+  private static Map<String, String> getYcqlAuditFlags(Universe universe) {
+    Map<String, String> result = new HashMap<>();
+    AuditLogConfig auditLogConfig =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.getAuditLogConfig();
+    if (auditLogConfig != null) {
+      if (auditLogConfig.getYcqlAuditConfig() != null
+          && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
+        YCQLAuditConfig ycqlAuditConfig = auditLogConfig.getYcqlAuditConfig();
+        if (CollectionUtils.isNotEmpty(ycqlAuditConfig.getIncludedCategories())) {
+          result.put(
+              "ycql_audit_included_categories",
+              ycqlAuditConfig.getIncludedCategories().stream()
+                  .map(YCQLAuditConfig.YCQLAuditCategory::name)
+                  .collect(Collectors.joining(",")));
+        }
+        if (CollectionUtils.isNotEmpty(ycqlAuditConfig.getExcludedCategories())) {
+          result.put(
+              "ycql_audit_excluded_categories",
+              ycqlAuditConfig.getExcludedCategories().stream()
+                  .map(YCQLAuditConfig.YCQLAuditCategory::name)
+                  .collect(Collectors.joining(",")));
+        }
+        if (CollectionUtils.isNotEmpty(ycqlAuditConfig.getIncludedUsers())) {
+          result.put(
+              "ycql_audit_included_users", String.join(",", ycqlAuditConfig.getIncludedUsers()));
+        }
+        if (CollectionUtils.isNotEmpty(ycqlAuditConfig.getExcludedUsers())) {
+          result.put(
+              "ycql_audit_excluded_users", String.join(",", ycqlAuditConfig.getExcludedUsers()));
+        }
+        if (CollectionUtils.isNotEmpty(ycqlAuditConfig.getIncludedKeyspaces())) {
+          result.put(
+              "ycql_audit_included_keyspaces",
+              String.join(",", ycqlAuditConfig.getIncludedKeyspaces()));
+        }
+        if (CollectionUtils.isNotEmpty(ycqlAuditConfig.getExcludedCategories())) {
+          result.put(
+              "ycql_audit_excluded_keyspaces",
+              String.join(",", ycqlAuditConfig.getExcludedKeyspaces()));
+        }
+        if (ycqlAuditConfig.getLogLevel() != null) {
+          result.put("ycql_audit_log_level", ycqlAuditConfig.getLogLevel().name());
+        }
+      }
+    }
+    return result;
   }
 
   public static Map<String, String> getCertsAndTlsGFlags(
@@ -612,7 +738,8 @@ public class GFlagsUtil {
       Universe universe,
       Boolean useHostname,
       Boolean useSecondaryIp,
-      Boolean isDualNet) {
+      Boolean isDualNet,
+      RuntimeConfGetter confGetter) {
     Map<String, String> gflags = new TreeMap<>();
     NodeDetails node = universe.getNode(taskParam.nodeName);
     String masterAddresses = universe.getMasterAddresses(false, useSecondaryIp);
@@ -650,6 +777,14 @@ public class GFlagsUtil {
 
     gflags.put(WEBSERVER_PORT, Integer.toString(node.masterHttpPort));
     gflags.put(WEBSERVER_INTERFACE, privateIp);
+
+    boolean notifyPeerOnRemoval =
+        confGetter.getConfForScope(universe, UniverseConfKeys.notifyPeerOnRemoval);
+    if (!notifyPeerOnRemoval) {
+      // By default, it is true in the DB.
+      gflags.put(NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER, String.valueOf(notifyPeerOnRemoval));
+      gflags.put(UNDEFOK, NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER);
+    }
 
     return gflags;
   }
@@ -901,15 +1036,16 @@ public class GFlagsUtil {
                 new StringReader(platformGFlags.getOrDefault(key, "").toString()), csvFormat);
         Set<String> records = new LinkedHashSet<>();
         StringWriter writer = new StringWriter();
-        CSVPrinter csvPrinter = new CSVPrinter(writer, csvFormat);
-        for (CSVRecord record : userValueParser) {
-          records.addAll(record.toList());
+        try (CSVPrinter csvPrinter = new CSVPrinter(writer, csvFormat)) {
+          for (CSVRecord record : userValueParser) {
+            records.addAll(record.toList());
+          }
+          for (CSVRecord record : platformValuesParser) {
+            records.addAll(record.toList());
+          }
+          csvPrinter.printRecord(records);
+          csvPrinter.flush();
         }
-        for (CSVRecord record : platformValuesParser) {
-          records.addAll(record.toList());
-        }
-        csvPrinter.printRecord(records);
-        csvPrinter.flush();
         String result = writer.toString();
         userGFlags.put(key, result.replaceAll("\n", "").replace("\r", ""));
       } catch (IOException ignored) {
@@ -1118,7 +1254,7 @@ public class GFlagsUtil {
    * @param userIntent current user intent.
    * @param universe to check.
    * @param userGFlags provider user gflags.
-   * @param config
+   * @param confGetter
    * @return
    */
   public static String checkForbiddenToOverride(
@@ -1127,13 +1263,13 @@ public class GFlagsUtil {
       UniverseDefinitionTaskParams.UserIntent userIntent,
       Universe universe,
       Map<String, String> userGFlags,
-      Config config) {
+      RuntimeConfGetter confGetter) {
     boolean useHostname =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.useHostname
             || !NodeManager.isIpAddress(node.cloudInfo.private_ip);
 
     Map<String, String> platformGFlags =
-        getAllDefaultGFlags(taskParams, universe, userIntent, useHostname, config);
+        getAllDefaultGFlags(taskParams, universe, userIntent, useHostname, confGetter);
     for (String gflag : GFLAGS_FORBIDDEN_TO_OVERRIDE) {
       if (userGFlags.containsKey(gflag)
           && platformGFlags.containsKey(gflag)

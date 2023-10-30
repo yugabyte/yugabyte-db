@@ -24,14 +24,8 @@ import { UnavailableUniverseStates, YBTableRelationType } from '../../redesign/h
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { SortOrder } from '../../redesign/helpers/constants';
 
-import {
-  Metrics,
-  MetricTrace,
-  XClusterConfig,
-  XClusterTable,
-  XClusterTableCandidate,
-  XClusterTableDetails
-} from './XClusterTypes';
+import { Metrics, MetricTrace, XClusterTable, XClusterTableCandidate } from './XClusterTypes';
+import { XClusterConfig, XClusterTableDetails } from './dtos';
 import { TableType, Universe, YBTable } from '../../redesign/helpers/dtos';
 
 import './ReplicationUtils.scss';

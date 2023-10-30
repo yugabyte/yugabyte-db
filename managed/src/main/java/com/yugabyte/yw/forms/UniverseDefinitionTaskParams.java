@@ -29,6 +29,7 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.*;
+import com.yugabyte.yw.models.helpers.audit.*;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
@@ -243,6 +244,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @Getter
   @Setter
   private KubernetesResourceDetails kubernetesResourceDetails;
+
+  @ApiModelProperty public boolean otelCollectorEnabled = false;
 
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
@@ -698,6 +701,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // 0 will not set any cgroup limits.
     // For read replica null or -1 value means use that of from primary cluster.
     @Getter @Setter @ApiModelProperty private Integer cgroupSize;
+
+    // Audit Logging Config
+    @ApiModelProperty public AuditLogConfig auditLogConfig;
+
+    // for gflags
+    public AuditLogConfig getAuditLogConfig() {
+      return auditLogConfig;
+    }
 
     @Override
     public String toString() {
@@ -1225,6 +1236,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       return taskParams;
     }
+  }
+
+  @ApiModelProperty("Previous software version related data")
+  public PrevYBSoftwareConfig prevYBSoftwareConfig;
+
+  @Data
+  public static class PrevYBSoftwareConfig {
+
+    @ApiModelProperty private String softwareVersion;
+
+    @ApiModelProperty private int autoFlagConfigVersion;
   }
 
   // XCluster: All the xCluster related code resides in this section.

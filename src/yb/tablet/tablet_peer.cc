@@ -38,8 +38,6 @@
 #include <utility>
 #include <vector>
 
-#include <glog/logging.h>
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_util.h"

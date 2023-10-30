@@ -41,7 +41,7 @@
 #include <utility>
 
 #include "yb/util/flags.h"
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/integral_types.h"

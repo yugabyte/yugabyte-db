@@ -60,7 +60,8 @@ body {
 }
 
 p > img,
-.td-content > img:not(.icon) {
+.td-content > img:not(.icon),
+.td-content table img {
   cursor: pointer;
 }
 

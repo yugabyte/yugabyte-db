@@ -100,7 +100,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
     std::vector<xrepl::StreamId> created_streams;
     // We will create some DB Streams to be listed out later.
     for (int i = 0; i < num_streams; i++) {
-      auto db_stream_id = VERIFY_RESULT(CreateDBStream());
+      auto db_stream_id = VERIFY_RESULT(CreateDBStreamWithReplicationSlot());
       SCHECK(db_stream_id, IllegalState, "The created db_stream_id is empty!");
       created_streams.push_back(db_stream_id);
     }
@@ -229,7 +229,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
 
     // Sorting would make assertion easier later on.
     std::sort(created_table_ids_with_pk.begin(), created_table_ids_with_pk.end());
-    auto db_stream_id = ASSERT_RESULT(CreateDBStream());
+    auto db_stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
     auto get_resp = ASSERT_RESULT(GetDBStreamInfo(db_stream_id));
     ASSERT_FALSE(get_resp.has_error());
@@ -275,7 +275,7 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(CreateCDCSDKStreamExplicit)) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   // The function CreateDBStream() creates a stream with EXPLICIT checkpointing by default.
-  auto db_stream_id = ASSERT_RESULT(CreateDBStream());
+  auto db_stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   ASSERT_NE(0, db_stream_id.size());
 }
 
@@ -295,7 +295,7 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(TestStreamCreation)) {
   // We have a table with primary key and one without primary key so while creating
   // the DB Stream ID, the latter one will be ignored and will not be a part of streaming with CDC.
   // Now we just need to ensure that everything is working fine.
-  auto db_stream_id = ASSERT_RESULT(CreateDBStream());
+  auto db_stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   ASSERT_NE(0, db_stream_id.size());
 }
 
@@ -303,7 +303,7 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(TestOnSingleRF)) {
   // Create a cluster.
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
-  auto db_stream_id = ASSERT_RESULT(CreateDBStream());
+  auto db_stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   ASSERT_NE(0, db_stream_id.size());
 }
 
@@ -312,7 +312,7 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(DeleteDBStream)) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   // Create a DB Stream ID to be deleted later on.
-  auto db_stream_id = ASSERT_RESULT(CreateDBStream());
+  auto db_stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   ASSERT_NE(0, db_stream_id.size());
 
   // Deleting the created DB Stream ID.

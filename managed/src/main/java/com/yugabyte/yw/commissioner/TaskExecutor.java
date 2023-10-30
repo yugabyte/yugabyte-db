@@ -319,6 +319,7 @@ public class TaskExecutor {
    */
   public RunnableTask createRunnableTask(ITask task) {
     checkNotNull(task, "Task must be set");
+    task.validateParams();
     TaskInfo taskInfo = createTaskInfo(task);
     taskInfo.setPosition(-1);
     taskInfo.save();
