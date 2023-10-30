@@ -14,9 +14,11 @@ import com.yugabyte.yw.common.TemplateManager;
 import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
+import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -251,5 +253,34 @@ public class AccessKeyHandler {
       }
     }
     return newAccessKey;
+  }
+
+  public void deleteFile(String filePath) {
+    if (!new File(filePath).delete()) {
+      log.error("Failed to delete {}", filePath);
+      throw new PlatformServiceException(
+          BAD_REQUEST, String.format("Failed to delete %s", filePath));
+    }
+    // Delete the key from file_data
+    FileData.deleteFileFromDB(filePath);
+  }
+
+  public void delete(AccessKey accessKey) {
+    KeyInfo keyInfo = accessKey.getKeyInfo();
+
+    // Delete the key from FS : publicKey, privateKey, vault_password, vaultFile
+    try {
+      deleteFile(keyInfo.publicKey);
+      deleteFile(keyInfo.privateKey);
+      deleteFile(keyInfo.vaultFile);
+      deleteFile(keyInfo.vaultPasswordFile);
+    } catch (Exception e) {
+      log.error("Failed to delete access key with error: ", e);
+      throw new PlatformServiceException(
+          BAD_REQUEST, String.format("Failed to delete access key with error: %s", e));
+    }
+
+    // Delete the key from DB
+    accessKey.deleteOrThrow();
   }
 }
