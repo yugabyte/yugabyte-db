@@ -78,6 +78,8 @@ public class GCPUtil implements CloudUtil {
   public static final String YBC_GOOGLE_APPLICATION_CREDENTIALS_FIELDNAME =
       "GOOGLE_APPLICATION_CREDENTIALS";
 
+  public static final String YBC_GOOGLE_IAM_FIELDNAME = "USE_GOOGLE_IAM";
+
   private static JsonNode PRICE_JSON = null;
   private static final String IMAGE_PREFIX = "CP-COMPUTEENGINE-VMIMAGE-";
 
@@ -327,7 +329,14 @@ public class GCPUtil implements CloudUtil {
   private Map<String, String> createCredsMapYbc(CustomerConfigData configData) {
     CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
     Map<String, String> gcsCredsMap = new HashMap<>();
-    gcsCredsMap.put(YBC_GOOGLE_APPLICATION_CREDENTIALS_FIELDNAME, gcsData.gcsCredentialsJson);
+    if (StringUtils.isNotBlank(gcsData.gcsCredentialsJson)) {
+      gcsCredsMap.put(YBC_GOOGLE_APPLICATION_CREDENTIALS_FIELDNAME, gcsData.gcsCredentialsJson);
+    } else if (gcsData.useGcpIam) {
+      gcsCredsMap.put(YBC_GOOGLE_IAM_FIELDNAME, String.valueOf(gcsData.useGcpIam));
+    } else {
+      throw new RuntimeException(
+          "Neither 'GCS_CREDENTIALS_JSON' nor 'USE_GCP_IAM' are present in the backup config.");
+    }
     return gcsCredsMap;
   }
 
