@@ -51,7 +51,8 @@ As YugabyteDB Anywhere was formerly called Yugabyte Platform, you might see the 
 
 Before you install YugabyteDB Anywhere on an OpenShift cluster, you need to prepare the environment, as described in [Prepare the OpenShift environment](../../../install-yugabyte-platform/prepare-environment/openshift/).
 
-Configure the OpenShift command-line interface (CLI) tool `oc` by logging in to the OCP web console with your user account. For more information and specific instructions, see [Getting Started with the CLI](https://docs.openshift.com/container-platform/4.2/cli_reference/openshift_cli/getting-started-cli.html).  
+Configure the OpenShift command-line interface (CLI) `oc` by logging in to the OpenShift Container Platform (OCP) web console with your user account. For more information and specific instructions, see [Getting Started with the CLI](https://docs.openshift.com/container-platform/4.2/cli_reference/openshift_cli/getting-started-cli.html) in the Red Hat documentation.  
+
 Unless otherwise specified, you can use a user account for executing the steps described in this document. Using admin account for all the steps should work as well.
 
 Additionally, you need to perform the following steps before attempting to install YugabyteDB Anywhere using Helm:
@@ -96,7 +97,7 @@ Additionally, you need to perform the following steps before attempting to insta
 
 Installing the YugabyteDB Anywhere [Red Hat certified Helm chart](https://catalog.redhat.com/software/container-stacks/detail/6371ef8950ac9be93651a765) on an OpenShift cluster involves the following:
 
-- [Creating an instance of YugabyteDB Anywhere](#install-yugabytedb-anywhere-using-certified-helm-chart)
+- [Installing YugabyteDB Anywhere using certified Helm chart](#install-yugabytedb-anywhere-using-certified-helm-chart)
 - [Finding the availability zone labels](#find-the-availability-zone-labels)
 - [Accessing and configuring YugabyteDB Anywhere](#access-and-configure-yugabyte-platform)
 
@@ -104,13 +105,13 @@ Installing the YugabyteDB Anywhere [Red Hat certified Helm chart](https://catalo
 
 You can install the YugabyteDB Anywhere Red Hat certified Helm chart using OpenShift console as follows:
 
-- Log in to the OpenShift Container Platform (OCP) cluster's web console using admin credentials (for example, kube:admin).
+- Log in to the OCP cluster's web console using admin credentials (for example, kube:admin).
 - If the console shows **Administrator** in the top left corner, then switch it to the **Developer** mode.
 - Navigate to the **+Add** section, and select the "yb-platform" project which you created in the [Prerequisites](#prerequisites).
 - Select **Helm Chart** from the **Developer Catalog** section as shown in the following illustration:
 
   ![Add Certified Helm Chart on OpenShift console](/images/ee/openshift/openshift-add-certified-helm-chart.png)
-- Now search for "yugaware-openshift", and open it to display details about the chart, as shown in the following illustration:
+- Search for "yugaware-openshift", and open it to display details about the chart, as shown in the following illustration:
 
   ![Search result of yugaware-openshift on OpenShift console](/images/ee/openshift/openshift-search-chart-ui.png)
 - Click **Install Helm Chart**.
@@ -121,7 +122,7 @@ You can install the YugabyteDB Anywhere Red Hat certified Helm chart using OpenS
   ```
 
   If your cluster doesn't have a default StorageClass (an entry with `(default)` in its name) or you want to use a different StorageClass than the default one, set the value of `yugaware.storageClass` to `<storage-class-name>` when installing the YugabyteDB Anywhere Helm chart in the next step.
-- You can customize the installation by modifying the values YAML shown in the console, and click **Install**, following image shows a custom storageClass configuration:
+- To customize the installation, modify the values in the YAML view in the console, and click **Install**. The following image shows a custom storageClass configuration:
 
   ![Customizing the Helm values using the OpenShift console](/images/ee/openshift/openshift-helm-install-values-ui.png)
   
@@ -149,13 +150,13 @@ You can install the YugabyteDB Anywhere Red Hat certified Helm chart using OpenS
     apiGroup: rbac.authorization.k8s.io
   EOF
   ```
-  - Certain container-level metrics like CPU, memory will be unavailable without the above `ClusterRoleBinding`.
+If you don't create the `ClusterRoleBinding`, some container-level metrics like CPU and memory will be unavailable.
 
-After installation is complete, status is shown as follows:
+After installation is complete, the status is shown as follows:
 
 ![Successful Helm installation OpenShift console](/images/ee/openshift/openshift-helm-install-success-ui.png)
 
-You can also install the certified Helm chart using CLI, see [Installing a Helm chart on an OpenShift Container Platform cluster](https://docs.openshift.com/container-platform/4.13/applications/working_with_helm_charts/configuring-custom-helm-chart-repositories.html#installing-a-helm-chart-on-an-openshift-cluster_configuring-custom-helm-chart-repositories) for more details.
+You can also install the certified Helm chart using the CLI. For instructions, refer to [Installing a Helm chart on an OpenShift Container Platform cluster](https://docs.openshift.com/container-platform/4.13/applications/working_with_helm_charts/configuring-custom-helm-chart-repositories.html#installing-a-helm-chart-on-an-openshift-cluster_configuring-custom-helm-chart-repositories) in the Red Hat documentation.
 
 ## Helm-based installation
 
@@ -163,7 +164,7 @@ Installing YugabyteDB Anywhere on an OpenShift cluster using Helm involves the f
 
 - [Creating an instance of YugabyteDB Anywhere](#create-an-instance-of-yugabytedb-anywhere-via-helm)
 - [Finding the availability zone labels](#find-the-availability-zone-labels)
-- [Accessing and configuring YugabyteDB Anywhere](#access-and-configure-yugabyte-platform)
+- [Accessing and configuring YugabyteDB Anywhere](#access-and-configure-yugabytedb-anywhere)
 
 ### Create an instance of YugabyteDB Anywhere via Helm
 
@@ -238,7 +239,7 @@ To create a YugabyteDB Anywhere instance, perform the following:
   ```
 
   - ClusterRole or ClusterRoleBinding with the cluster-admin role are recommended if your intention is to create clusters across multiple namespaces.
-  - Certain container-level metrics like CPU, memory will be unavailable without the above `ClusterRoleBinding`.
+If you don't create the `ClusterRoleBinding`, some container-level metrics like CPU and memory will be unavailable.
 
 You can customize the installation by specifying more values, see [Customize YugabyteDB Anywhere](../kubernetes/#customize-yugabytedb-anywhere) for details about the supported Helm values.
 
@@ -346,12 +347,12 @@ Expect the following output:
 ## (Deprecated) Operator-based installation {#operator-based-installation}
 
 {{< warning title="Operator based installation is deprecated" >}}
-The operator based installation of YugabyteDB Anywhere has been deprecated, consider using the [Red Hat certified Helm charts](#certified-helm-chart-based-installation) instead.
+Operator-based installation of YugabyteDB Anywhere has been deprecated, consider using the [Red Hat certified Helm charts](#certified-helm-chart-based-installation) instead.
 {{< /warning >}}
 
 Installing YugabyteDB Anywhere on an OpenShift cluster using the YugabyteDB Anywhere Operator involves the following:
 
-- [Installing the Operator itself](#install-the-operator)
+- [Installing the Operator](#install-the-operator)
 - [Creating an instance of YugabyteDB Anywhere](#create-an-instance-of-yugabytedb-anywhere-via-operator)
 - [Finding the availability zone labels](#find-the-availability-zone-labels)
 - [Accessing and configuring YugabyteDB Anywhere](#access-and-configure-yugabytedb-anywhere)

@@ -52,7 +52,7 @@ As YugabyteDB Anywhere was formerly called Yugabyte Platform, you might see the 
 
 Before you install YugabyteDB Anywhere on an OpenShift cluster, you need to prepare the environment, as described in [Prepare the OpenShift environment](../../../install-yugabyte-platform/prepare-environment/openshift/).
 
-Configure the OpenShift command-line interface (CLI) tool `oc` by logging in to the OCP web console with your user account. For more information and specific instructions, see [Getting Started with the CLI](https://docs.openshift.com/container-platform/4.2/cli_reference/openshift_cli/getting-started-cli.html).  
+Configure the OpenShift command-line interface (CLI) `oc` by logging in to the OpenShift Container Platform (OCP) web console with your user account. For more information and specific instructions, see [Getting Started with the CLI](https://docs.openshift.com/container-platform/4.2/cli_reference/openshift_cli/getting-started-cli.html) in the Red Hat documentation.  
 Unless otherwise specified, you can use a user account for executing the steps described in this document. Using admin account for all the steps should work as well.
 
 Additionally, you need to perform the following steps before attempting to install YugabyteDB Anywhere using Helm:
@@ -108,7 +108,7 @@ Installing YugabyteDB Anywhere on an OpenShift cluster using Helm involves the f
 
 - [Creating an instance of YugabyteDB Anywhere](#create-an-instance-of-yugabytedb-anywhere-via-helm)
 - [Finding the availability zone labels](#find-the-availability-zone-labels)
-- [Accessing and configuring YugabyteDB Anywhere](#access-and-configure-yugabyte-platform)
+- [Accessing and configuring YugabyteDB Anywhere](#access-and-configure-yugabytedb-anywhere)
 
 ### Create an instance of YugabyteDB Anywhere via Helm
 
