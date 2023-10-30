@@ -521,12 +521,13 @@ SELECT count(*) FROM partial
 
 EXPLAIN (costs off) SELECT count(*) FROM partial
     WHERE j @? '$.g[*] ? (@ == "h")';
-                       QUERY PLAN
---------------------------------------------------------
- Aggregate
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Finalize Aggregate
    ->  Seq Scan on partial
-         Filter: (j @? '$."g"[*]?(@ == "h")'::jsonpath)
-(3 rows)
+         Remote Filter: (j @? '$."g"[*]?(@ == "h")'::jsonpath)
+         Partial Aggregate: true
+(4 rows)
 
 EXPLAIN (costs off) SELECT count(*) FROM partial
     WHERE j @? '$.g[*] ? (@ == "h")' and a && ARRAY['f'];

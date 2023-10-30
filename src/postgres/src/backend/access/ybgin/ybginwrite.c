@@ -400,10 +400,13 @@ ybgininsert(Relation index, Datum *values, bool *isnull, ItemPointer heap_tid,
 }
 
 void
-ybgindelete(Relation index, Datum *values, bool *isnull, ItemPointer heap_tid,
+ybgindelete(Relation index, Datum *values, bool *isnull, Datum ybctid,
 			Relation heap, struct IndexInfo *indexInfo)
 {
-	ybginWrite(index, values, isnull, heap_tid, heap, indexInfo, false /* isinsert */);
+	ItemPointerData tid;
+	YbItemPointerYbctid(&tid) = ybctid;
+	ybginWrite(index, values, isnull, &tid, heap, indexInfo,
+			   false /* isinsert */);
 }
 
 IndexBuildResult *

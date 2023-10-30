@@ -32,7 +32,7 @@ typedef struct GinOptions
 #define GIN_DEFAULT_USE_FASTUPDATE	true
 #define GinGetUseFastUpdate(relation) \
 	(AssertMacro(relation->rd_rel->relkind == RELKIND_INDEX && \
-				 relation->rd_rel->relam == GIN_AM_OID), \
+				 relation->rd_rel->relam == (IsYBRelation(relation) ? YBGIN_AM_OID : GIN_AM_OID)), \
 	 (relation)->rd_options ? \
 	 ((GinOptions *) (relation)->rd_options)->useFastUpdate : GIN_DEFAULT_USE_FASTUPDATE)
 #define GinGetPendingListCleanupSize(relation) \

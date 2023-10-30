@@ -88,6 +88,7 @@ itemptr_to_uint64(const ItemPointer iptr)
 {
 	uint64		val;
 
+	Assert(YbItemPointerYbctid(iptr) == 0);
 	Assert(ItemPointerIsValid(iptr));
 	Assert(GinItemPointerGetOffsetNumber(iptr) < (1 << MaxHeapTuplesPerPageBits));
 
@@ -101,6 +102,7 @@ itemptr_to_uint64(const ItemPointer iptr)
 static inline void
 uint64_to_itemptr(uint64 val, ItemPointer iptr)
 {
+	YbItemPointerSetInvalid(iptr);
 	GinItemPointerSetOffsetNumber(iptr, val & ((1 << MaxHeapTuplesPerPageBits) - 1));
 	val = val >> MaxHeapTuplesPerPageBits;
 	GinItemPointerSetBlockNumber(iptr, val);

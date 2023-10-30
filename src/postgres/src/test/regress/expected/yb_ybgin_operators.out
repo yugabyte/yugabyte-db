@@ -530,11 +530,11 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: boolean is unknown
 EXPLAIN (costs off)
 SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ is unknown)';
-ERROR:  syntax error, unexpected IS_P at or near " " of jsonpath input
+ERROR:  syntax error at or near " " of jsonpath input
 LINE 2: SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ is unknown)';
                                         ^
 SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ is unknown)';
-ERROR:  syntax error, unexpected IS_P at or near " " of jsonpath input
+ERROR:  syntax error at or near " " of jsonpath input
 LINE 1: SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ is unknown)';
                                         ^
 -- jsonpath: string like_regex string
