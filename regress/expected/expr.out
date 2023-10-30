@@ -6503,6 +6503,115 @@ $$ ) AS (case_statement agtype);
  {"id": 844424930131970, "label": "connected_to", "end_id": 281474976710660, "start_id": 281474976710659, "properties": {"k": 1, "id": 2}}::edge
 (2 rows)
 
+--CASE with count()
+--count(*)
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN n, CASE n.j
+    WHEN 1 THEN count(*)
+    ELSE 'not count'
+  END
+$$ ) AS (j agtype, case_statement agtype);
+                                               j                                                | case_statement 
+------------------------------------------------------------------------------------------------+----------------
+ {"id": 281474976710658, "label": "", "properties": {"i": "a", "j": "b", "id": 2}}::vertex      | "not count"
+ {"id": 281474976710661, "label": "", "properties": {"i": [], "j": [0, 1, 2], "id": 5}}::vertex | "not count"
+ {"id": 281474976710657, "label": "", "properties": {"i": 1, "id": 1}}::vertex                  | "not count"
+ {"id": 281474976710659, "label": "", "properties": {"i": 0, "j": 1, "id": 3}}::vertex          | 1
+ {"id": 281474976710660, "label": "", "properties": {"i": true, "j": false, "id": 4}}::vertex   | "not count"
+ {"id": 281474976710662, "label": "", "properties": {"i": {}, "j": {"i": 1}, "id": 6}}::vertex  | "not count"
+(6 rows)
+
+--concatenated
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n) MATCH (m)
+  RETURN n, CASE n.j
+    WHEN 1 THEN count(*)
+    ELSE 'not count'
+  END
+$$ ) AS (j agtype, case_statement agtype);
+                                               j                                                | case_statement 
+------------------------------------------------------------------------------------------------+----------------
+ {"id": 281474976710658, "label": "", "properties": {"i": "a", "j": "b", "id": 2}}::vertex      | "not count"
+ {"id": 281474976710661, "label": "", "properties": {"i": [], "j": [0, 1, 2], "id": 5}}::vertex | "not count"
+ {"id": 281474976710657, "label": "", "properties": {"i": 1, "id": 1}}::vertex                  | "not count"
+ {"id": 281474976710659, "label": "", "properties": {"i": 0, "j": 1, "id": 3}}::vertex          | 6
+ {"id": 281474976710660, "label": "", "properties": {"i": true, "j": false, "id": 4}}::vertex   | "not count"
+ {"id": 281474976710662, "label": "", "properties": {"i": {}, "j": {"i": 1}, "id": 6}}::vertex  | "not count"
+(6 rows)
+
+--count(n)
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN n, CASE n.j
+    WHEN 1 THEN count(n)
+    ELSE 'not count'
+  END
+$$ ) AS (j agtype, case_statement agtype);
+                                               j                                                | case_statement 
+------------------------------------------------------------------------------------------------+----------------
+ {"id": 281474976710658, "label": "", "properties": {"i": "a", "j": "b", "id": 2}}::vertex      | "not count"
+ {"id": 281474976710661, "label": "", "properties": {"i": [], "j": [0, 1, 2], "id": 5}}::vertex | "not count"
+ {"id": 281474976710657, "label": "", "properties": {"i": 1, "id": 1}}::vertex                  | "not count"
+ {"id": 281474976710659, "label": "", "properties": {"i": 0, "j": 1, "id": 3}}::vertex          | 1
+ {"id": 281474976710660, "label": "", "properties": {"i": true, "j": false, "id": 4}}::vertex   | "not count"
+ {"id": 281474976710662, "label": "", "properties": {"i": {}, "j": {"i": 1}, "id": 6}}::vertex  | "not count"
+(6 rows)
+
+--concatenated
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n) MATCH (m)
+  RETURN n, CASE n.j
+    WHEN 1 THEN count(n)
+    ELSE 'not count'
+  END
+$$ ) AS (j agtype, case_statement agtype);
+                                               j                                                | case_statement 
+------------------------------------------------------------------------------------------------+----------------
+ {"id": 281474976710658, "label": "", "properties": {"i": "a", "j": "b", "id": 2}}::vertex      | "not count"
+ {"id": 281474976710661, "label": "", "properties": {"i": [], "j": [0, 1, 2], "id": 5}}::vertex | "not count"
+ {"id": 281474976710657, "label": "", "properties": {"i": 1, "id": 1}}::vertex                  | "not count"
+ {"id": 281474976710659, "label": "", "properties": {"i": 0, "j": 1, "id": 3}}::vertex          | 6
+ {"id": 281474976710660, "label": "", "properties": {"i": true, "j": false, "id": 4}}::vertex   | "not count"
+ {"id": 281474976710662, "label": "", "properties": {"i": {}, "j": {"i": 1}, "id": 6}}::vertex  | "not count"
+(6 rows)
+
+--count(1)
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN n, CASE n.j
+    WHEN 1 THEN count(1)
+    ELSE 'not count'
+  END
+$$ ) AS (j agtype, case_statement agtype);
+                                               j                                                | case_statement 
+------------------------------------------------------------------------------------------------+----------------
+ {"id": 281474976710658, "label": "", "properties": {"i": "a", "j": "b", "id": 2}}::vertex      | "not count"
+ {"id": 281474976710661, "label": "", "properties": {"i": [], "j": [0, 1, 2], "id": 5}}::vertex | "not count"
+ {"id": 281474976710657, "label": "", "properties": {"i": 1, "id": 1}}::vertex                  | "not count"
+ {"id": 281474976710659, "label": "", "properties": {"i": 0, "j": 1, "id": 3}}::vertex          | 1
+ {"id": 281474976710660, "label": "", "properties": {"i": true, "j": false, "id": 4}}::vertex   | "not count"
+ {"id": 281474976710662, "label": "", "properties": {"i": {}, "j": {"i": 1}, "id": 6}}::vertex  | "not count"
+(6 rows)
+
+--concatenated
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n) MATCH (m)
+  RETURN n, CASE n.j
+    WHEN 1 THEN count(1)
+    ELSE 'not count'
+  END
+$$ ) AS (j agtype, case_statement agtype);
+                                               j                                                | case_statement 
+------------------------------------------------------------------------------------------------+----------------
+ {"id": 281474976710658, "label": "", "properties": {"i": "a", "j": "b", "id": 2}}::vertex      | "not count"
+ {"id": 281474976710661, "label": "", "properties": {"i": [], "j": [0, 1, 2], "id": 5}}::vertex | "not count"
+ {"id": 281474976710657, "label": "", "properties": {"i": 1, "id": 1}}::vertex                  | "not count"
+ {"id": 281474976710659, "label": "", "properties": {"i": 0, "j": 1, "id": 3}}::vertex          | 6
+ {"id": 281474976710660, "label": "", "properties": {"i": true, "j": false, "id": 4}}::vertex   | "not count"
+ {"id": 281474976710662, "label": "", "properties": {"i": {}, "j": {"i": 1}, "id": 6}}::vertex  | "not count"
+(6 rows)
+
 -- RETURN * and (u)--(v) optional forms
 SELECT create_graph('opt_forms');
 NOTICE:  graph "opt_forms" has been created

@@ -2718,6 +2718,62 @@ SELECT * FROM cypher('case_statement', $$
   END
 $$ ) AS (case_statement agtype);
 
+--CASE with count()
+
+--count(*)
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN n, CASE n.j
+    WHEN 1 THEN count(*)
+    ELSE 'not count'
+  END
+$$ ) AS (j agtype, case_statement agtype);
+
+--concatenated
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n) MATCH (m)
+  RETURN n, CASE n.j
+    WHEN 1 THEN count(*)
+    ELSE 'not count'
+  END
+$$ ) AS (j agtype, case_statement agtype);
+
+--count(n)
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN n, CASE n.j
+    WHEN 1 THEN count(n)
+    ELSE 'not count'
+  END
+$$ ) AS (j agtype, case_statement agtype);
+
+--concatenated
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n) MATCH (m)
+  RETURN n, CASE n.j
+    WHEN 1 THEN count(n)
+    ELSE 'not count'
+  END
+$$ ) AS (j agtype, case_statement agtype);
+
+--count(1)
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n)
+  RETURN n, CASE n.j
+    WHEN 1 THEN count(1)
+    ELSE 'not count'
+  END
+$$ ) AS (j agtype, case_statement agtype);
+
+--concatenated
+SELECT * FROM cypher('case_statement', $$
+  MATCH (n) MATCH (m)
+  RETURN n, CASE n.j
+    WHEN 1 THEN count(1)
+    ELSE 'not count'
+  END
+$$ ) AS (j agtype, case_statement agtype);
+
 
 -- RETURN * and (u)--(v) optional forms
 SELECT create_graph('opt_forms');

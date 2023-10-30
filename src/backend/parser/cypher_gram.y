@@ -225,6 +225,9 @@ static Node *make_typecast_expr(Node *expr, char *typecast, int location);
 
 // functions
 static Node *make_function_expr(List *func_name, List *exprs, int location);
+static Node *make_star_function_expr(List *func_name, List *exprs, int location);
+static Node *make_distinct_function_expr(List *func_name, List *exprs, int location);
+static FuncCall *wrap_pg_funccall_to_agtype(Node* fnode, char *type, int location);
 
 // setops
 static Node *make_set_op(SetOperation op, bool all_or_distinct, List *larg,
@@ -1699,19 +1702,16 @@ expr_func_norm:
              * and there are no other aggregates in SQL that accept
              * '*' as parameter.
              *
-             * The FuncCall node is also marked agg_star = true,
+             * The FuncCall node is marked agg_star = true by make_star_function_expr,
              * so that later processing can detect what the argument
              * really was.
              */
-             FuncCall *n = (FuncCall *)make_function_expr($1, NIL, @1);
-             n->agg_star = true;
-             $$ = (Node *)n;
+            FuncCall *n = (FuncCall *)make_star_function_expr($1, NIL, @1);
+            $$ = (Node *)n;
          }
     | func_name '(' DISTINCT  expr_list ')'
         {
-            FuncCall *n = (FuncCall *)make_function_expr($1, $4, @1);
-            n->agg_order = NIL;
-            n->agg_distinct = true;
+            FuncCall *n = (FuncCall *)make_distinct_function_expr($1, $4, @1);
             $$ = (Node *)n;
         }
     ;
@@ -2282,23 +2282,184 @@ static Node *make_function_expr(List *func_name, List *exprs, int location)
          * could be many.
          */
         if (pg_strcasecmp(name, "count") == 0)
+        {
             funcname = SystemFuncName("count");
+
+            /* build the function call */
+            fnode = makeFuncCall(funcname, exprs, COERCE_SQL_SYNTAX, location);
+
+            /* build the cast to wrap the function call to return agtype. */
+            fnode = wrap_pg_funccall_to_agtype((Node *)fnode, "integer", location);
+
+            return (Node *)fnode;
+        }
         else
+        {
             /*
              * We don't qualify AGE functions here. This is done in the
              * transform layer and allows us to know which functions are ours.
              */
             funcname = func_name;
 
-        /* build the function call */
-        fnode = makeFuncCall(funcname, exprs, COERCE_SQL_SYNTAX, location);
+            /* build the function call */
+            fnode = makeFuncCall(funcname, exprs, COERCE_SQL_SYNTAX, location);
+        }
     }
     /* all other functions are passed as is */
     else
+    {
         fnode = makeFuncCall(func_name, exprs, COERCE_SQL_SYNTAX, location);
+    }
 
     /* return the node */
     return (Node *)fnode;
+}
+
+/*
+ * function to make a function that has received a star-argument
+ */
+static Node *make_star_function_expr(List *func_name, List *exprs, int location)
+{
+    FuncCall *fnode;
+
+    /* AGE function names are unqualified. So, their list size = 1 */
+    if (list_length(func_name) == 1)
+    {
+        List *funcname;
+        char *name;
+
+        /* get the name of the function */
+        name = ((String*)linitial(func_name))->sval;
+
+        /*
+         * Check for openCypher functions that are directly mapped to PG
+         * functions. We may want to find a better way to do this, as there
+         * could be many.
+         */
+        if (pg_strcasecmp(name, "count") == 0)
+        {
+            funcname = SystemFuncName("count");
+
+            /* build the function call */
+            fnode = makeFuncCall(funcname, exprs, COERCE_SQL_SYNTAX, location);
+            fnode->agg_star = true;
+
+            /* build the cast to wrap the function call to return agtype. */
+            fnode = wrap_pg_funccall_to_agtype((Node *)fnode, "integer", location);
+
+            return (Node *)fnode;
+        }
+        else
+        {
+            /*
+             * We don't qualify AGE functions here. This is done in the
+             * transform layer and allows us to know which functions are ours.
+             */
+            funcname = func_name;
+
+            /* build the function call */
+            fnode = makeFuncCall(funcname, exprs, COERCE_SQL_SYNTAX, location);
+        }
+    }
+    /* all other functions are passed as is */
+    else
+    {
+        fnode = makeFuncCall(func_name, exprs, COERCE_SQL_SYNTAX, location);
+    }
+
+    /* return the node */
+    fnode->agg_star = true;
+    return (Node *)fnode;
+}
+
+/*
+ * function to make a function that has received a distinct keyword
+ */
+static Node *make_distinct_function_expr(List *func_name, List *exprs, int location)
+{
+    FuncCall *fnode;
+
+    /* AGE function names are unqualified. So, their list size = 1 */
+    if (list_length(func_name) == 1)
+    {
+        List *funcname;
+        char *name;
+
+        /* get the name of the function */
+        name = ((String*)linitial(func_name))->sval;
+
+        /*
+         * Check for openCypher functions that are directly mapped to PG
+         * functions. We may want to find a better way to do this, as there
+         * could be many.
+         */
+        if (pg_strcasecmp(name, "count") == 0)
+        {
+            funcname = SystemFuncName("count");
+
+            /* build the function call */
+            fnode = makeFuncCall(funcname, exprs, COERCE_SQL_SYNTAX, location);
+            fnode->agg_order = NIL;
+            fnode->agg_distinct = true;
+
+            /* build the cast to wrap the function call to return agtype. */
+            fnode = wrap_pg_funccall_to_agtype((Node *)fnode, "integer", location);
+            return (Node *)fnode;
+        }
+        else
+        {
+            /*
+             * We don't qualify AGE functions here. This is done in the
+             * transform layer and allows us to know which functions are ours.
+             */
+            funcname = func_name;
+
+            /* build the function call */
+            fnode = makeFuncCall(funcname, exprs, COERCE_SQL_SYNTAX, location);
+        }
+    }
+    /* all other functions are passed as is */
+    else
+    {
+        fnode = makeFuncCall(func_name, exprs, COERCE_SQL_SYNTAX, location);
+    }
+
+    /* return the node */
+    fnode->agg_order = NIL;
+    fnode->agg_distinct = true;
+    return (Node *)fnode;
+}
+
+/*
+ * helper function to wrap pg_function in the appropiate typecast function to
+ * interface with AGE components
+ */
+static FuncCall *wrap_pg_funccall_to_agtype(Node * fnode, char *type, int location)
+{
+    List *funcname = list_make1(makeString("ag_catalog"));
+
+    if (pg_strcasecmp(type, "float") == 0)
+    {
+        funcname = lappend(funcname, makeString("float8_to_agtype"));
+    }
+    else if (pg_strcasecmp(type, "int") == 0 ||
+             pg_strcasecmp(type, "integer") == 0)
+    {
+        funcname = lappend(funcname, makeString("int8_to_agtype"));
+    }
+    else if (pg_strcasecmp(type, "bool") == 0 ||
+             pg_strcasecmp(type, "boolean") == 0)
+    {
+        funcname = lappend(funcname, makeString("bool_to_agtype"));
+    }
+    else
+    {
+        ereport(ERROR,
+            (errmsg_internal("type \'%s\' not supported by AGE functions",
+                             type)));
+    }
+
+    return makeFuncCall(funcname, list_make1(fnode), COERCE_EXPLICIT_CAST, location);
 }
 
 /* function to create a unique name given a prefix */
