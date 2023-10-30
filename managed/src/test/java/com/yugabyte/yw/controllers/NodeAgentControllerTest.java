@@ -59,6 +59,7 @@ import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Date;
@@ -235,6 +236,8 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     assertEquals(result.status(), BAD_REQUEST);
     result = unregisterNodeAgent(nodeAgentUuid, jwt);
     assertOk(result);
+    Path certPath = nodeAgentManager.getNodeAgentBaseCertDirectory(nodeAgent);
+    assertTrue(!certPath.toFile().exists());
     result = assertPlatformException(() -> getNodeAgent(nodeAgentUuid, jwt));
     assertUnauthorized(result, "Invalid token");
   }

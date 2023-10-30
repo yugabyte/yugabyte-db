@@ -82,6 +82,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
     Customer customer = taskParams().customer;
     Universe universe = taskParams().universe;
     Path bundlePath = generateBundlePath(universe);
+    supportBundle.setPathObject(bundlePath);
     Files.createDirectories(bundlePath);
     Path gzipPath =
         Paths.get(bundlePath.toAbsolutePath().toString().concat(".tar.gz")); // test this path
