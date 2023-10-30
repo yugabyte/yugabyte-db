@@ -79,6 +79,7 @@ public class GFlagsUtil {
   public static final String YSQL_CGROUP_PATH = "ysql";
 
   private static final int DEFAULT_MAX_MEMORY_USAGE_PCT_FOR_DEDICATED = 90;
+  private static final int DEFAULT_LOAD_BALANCER_INITIAL_DELAY_SECS = 480;
 
   public static final String DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO =
       "default_memory_limit_to_ram_ratio";
@@ -134,6 +135,7 @@ public class GFlagsUtil {
   public static final String LEADER_LEASE_DURATION_MS = "leader_lease_duration_ms";
   public static final String LEADER_FAILURE_MAX_MISSED_HEARTBEAT_PERIODS =
       "leader_failure_max_missed_heartbeat_periods";
+  public static final String LOAD_BALANCER_INITIAL_DELAY_SECS = "load_balancer_initial_delay_secs";
 
   public static final String YBC_LOG_SUBDIR = "/controller/logs";
   public static final String CORES_DIR_PATH = "/cores";
@@ -305,6 +307,9 @@ public class GFlagsUtil {
 
     if (taskParam.isMaster) {
       extra_gflags.put(REPLICATION_FACTOR, String.valueOf(userIntent.replicationFactor));
+      extra_gflags.put(
+          LOAD_BALANCER_INITIAL_DELAY_SECS,
+          String.valueOf(DEFAULT_LOAD_BALANCER_INITIAL_DELAY_SECS));
     }
 
     if (taskParam.getCurrentClusterType() == UniverseDefinitionTaskParams.ClusterType.PRIMARY
