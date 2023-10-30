@@ -175,7 +175,8 @@ export const convertBackupToFormValues = (backup: IBackup, storage_config: IStor
     parallel_threads: ParallelThreads.MIN,
     storage_config: null as any,
     baseBackupUUID: backup.commonBackupInfo.baseBackupUUID,
-    isTableByTableBackup: backup.commonBackupInfo.tableByTableBackup
+    isTableByTableBackup: backup.commonBackupInfo.tableByTableBackup,
+    useTablespaces: backup.useTablespaces
   };
   if (backup.isFullBackup) {
     formValues['db_to_backup'] = {
