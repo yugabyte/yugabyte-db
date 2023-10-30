@@ -630,6 +630,10 @@ class YBClient {
       std::unordered_map<std::string, std::string>* options,
       cdc::StreamModeTransactional* transactional);
 
+  Status GetCDCStream(
+      const ReplicationSlotName& replication_slot_name,
+      xrepl::StreamId* stream_id);
+
   void GetCDCStream(
       const xrepl::StreamId& stream_id,
       std::shared_ptr<TableId> table_id,

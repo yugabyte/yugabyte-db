@@ -126,6 +126,9 @@ std::string BuildConnectionString(const PGConnSettings& settings, bool mask_pass
   if (!settings.password.empty()) {
     result += Format(" password=$0", mask_password ? "<REDACTED>" : settings.password);
   }
+  if (!settings.replication.empty()) {
+    result += Format(" replication=$0", PqEscapeLiteral(settings.replication));
+  }
   return result;
 }
 

@@ -1503,6 +1503,19 @@ Status YBClient::GetCDCStream(
   return Status::OK();
 }
 
+Status YBClient::GetCDCStream(
+    const ReplicationSlotName& replication_slot_name,
+    xrepl::StreamId* stream_id) {
+  GetCDCStreamRequestPB req;
+  req.set_cdcsdk_ysql_replication_slot_name(replication_slot_name.ToString());
+
+  GetCDCStreamResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, GetCDCStream);
+
+  *stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(resp.stream().stream_id()));
+  return Status::OK();
+}
+
 void YBClient::GetCDCStream(
     const xrepl::StreamId& stream_id,
     std::shared_ptr<TableId> table_id,

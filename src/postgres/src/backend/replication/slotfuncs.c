@@ -332,6 +332,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 		int			i;
 
 		const char	*yb_stream_id;
+		bool		yb_stream_active;
 
 		if (IsYugaByteEnabled())
 		{
@@ -341,6 +342,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 			namestrcpy(&slot_name, slot->slot_name);
 			namestrcpy(&plugin, YB_OUTPUT_PLUGIN);
 			yb_stream_id = slot->stream_id;
+			yb_stream_active = slot->active;
 
 			/* Fill in the dummy values. */
 			xmin = InvalidXLogRecPtr;
@@ -391,7 +393,11 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 			values[i++] = database;
 
 		values[i++] = BoolGetDatum(persistency == RS_TEMPORARY);
-		values[i++] = BoolGetDatum(active_pid != 0);
+
+		if (IsYugaByteEnabled())
+			values[i++] = BoolGetDatum(yb_stream_active);
+		else
+			values[i++] = BoolGetDatum(active_pid != 0);
 
 		if (active_pid != 0)
 			values[i++] = Int32GetDatum(active_pid);

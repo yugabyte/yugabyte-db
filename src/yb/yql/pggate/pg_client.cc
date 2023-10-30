@@ -815,6 +815,18 @@ class PgClient::Impl {
     return resp;
   }
 
+  Result<tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
+      const ReplicationSlotName& slot_name) {
+    tserver::PgGetReplicationSlotStatusRequestPB req;
+    req.set_replication_slot_name(slot_name.ToString());
+
+    tserver::PgGetReplicationSlotStatusResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->GetReplicationSlotStatus(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
  private:
   std::string LogPrefix() const {
     return Format("Session id $0: ", session_id_);
@@ -1071,6 +1083,11 @@ Status PgClient::CancelTransaction(const unsigned char* transaction_id) {
 
 Result<tserver::PgListReplicationSlotsResponsePB> PgClient::ListReplicationSlots() {
   return impl_->ListReplicationSlots();
+}
+
+Result<tserver::PgGetReplicationSlotStatusResponsePB> PgClient::GetReplicationSlotStatus(
+    const ReplicationSlotName& slot_name) {
+  return impl_->GetReplicationSlotStatus(slot_name);
 }
 
 }  // namespace pggate

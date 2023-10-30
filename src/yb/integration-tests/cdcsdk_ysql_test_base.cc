@@ -3102,7 +3102,8 @@ namespace cdc {
   Status CDCSDKYsqlTest::WaitForGetChangesToFetchRecords(
       GetChangesResponsePB* get_changes_resp, const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-      const int& expected_count, const CDCSDKCheckpointPB* cp, const int& tablet_idx,
+      const int& expected_count, bool is_explicit_checkpoint,
+      const CDCSDKCheckpointPB* cp, const int& tablet_idx,
       const int64& safe_hybrid_time, const int& wal_segment_index, const double& timeout_secs) {
     int actual_count = 0;
     return WaitFor(
@@ -3119,7 +3120,57 @@ namespace cdc {
               }
             }
           }
-          return actual_count == expected_count;
+          LOG_WITH_FUNC(INFO) << "Actual Count = " << actual_count
+                              << ", Expected count = " << expected_count;
+
+          bool result = actual_count == expected_count;
+          // Reset the count back to zero for explicit checkpoint since we are going to receive
+          // these records again as we are not forwarding the checkpoint in the next GetChanges
+          // call based on the rows received.
+          if (is_explicit_checkpoint) {
+            actual_count = 0;
+          }
+          return result;
+        },
+        MonoDelta::FromSeconds(timeout_secs),
+        "Waiting for GetChanges to fetch: " + std::to_string(expected_count) + " records");
+  }
+
+  Status CDCSDKYsqlTest::WaitForGetChangesToFetchRecordsAcrossTablets(
+      const xrepl::StreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const int& expected_count, bool is_explicit_checkpoint, const CDCSDKCheckpointPB* cp,
+      const int64& safe_hybrid_time, const int& wal_segment_index, const double& timeout_secs) {
+    int actual_count = 0;
+    return WaitFor(
+        [&]() -> Result<bool> {
+          // Call GetChanges for each tablet.
+          for (int tablet_idx = 0; tablet_idx < tablets.size(); tablet_idx++) {
+            auto get_changes_resp_result = GetChangesFromCDC(
+              stream_id, tablets, cp, tablet_idx, safe_hybrid_time, wal_segment_index);
+            if (get_changes_resp_result.ok()) {
+              for (const auto& record : get_changes_resp_result->cdc_sdk_proto_records()) {
+                if (record.row_message().op() == RowMessage::INSERT ||
+                    record.row_message().op() == RowMessage::UPDATE ||
+                    record.row_message().op() == RowMessage::DELETE) {
+                  actual_count += 1;
+                }
+              }
+            }
+          }
+
+          LOG_WITH_FUNC(INFO) << "Actual Count = " << actual_count
+                              << ", Expected count = " << expected_count;
+
+          bool result = actual_count == expected_count;
+
+          // Reset the count back to zero for explicit checkpoint since we are going to receive
+          // these records again as we are not forwarding the checkpoint in the next GetChanges
+          // call based on the rows received.
+          if (is_explicit_checkpoint) {
+            actual_count = 0;
+          }
+          return result;
         },
         MonoDelta::FromSeconds(timeout_secs),
         "Waiting for GetChanges to fetch: " + std::to_string(expected_count) + " records");
