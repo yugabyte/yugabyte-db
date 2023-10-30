@@ -210,6 +210,7 @@ using std::string;
 using std::vector;
 using google::protobuf::RepeatedField;
 using google::protobuf::RepeatedPtrField;
+using yb::tserver::AllowSplitTablet;
 
 using namespace yb::size_literals;  // NOLINT.
 
@@ -1872,7 +1873,7 @@ Status YBClient::GetTabletsAndUpdateCache(
   FillFromRepeatedTabletLocations(tablets, tablet_uuids, ranges, locations);
 
   RETURN_NOT_OK(data_->meta_cache_->ProcessTabletLocations(
-      tablets, partition_list_version, /* lookup_rpc = */ nullptr));
+      tablets, partition_list_version, /* lookup_rpc = */ nullptr, AllowSplitTablet::kFalse));
 
   return Status::OK();
 }
