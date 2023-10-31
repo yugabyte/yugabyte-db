@@ -3,6 +3,10 @@ title: Prerequisites
 headerTitle: Prerequisites
 linkTitle: Prerequisites
 description: Prerequisites for installing YugabyteDB Anywhere.
+aliases:
+  - /v2.14/yugabyte-platform/install-yugabyte-platform/prerequisites/default/
+  - /v2.14/yugabyte-platform/install-yugabyte-platform/prerequisites/installer/
+  - /v2.14/yugabyte-platform/install-yugabyte-platform/prerequisites/kubernetes/
 menu:
   v2.14_yugabyte-platform:
     identifier: prerequisites

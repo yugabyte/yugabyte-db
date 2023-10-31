@@ -33,11 +33,14 @@ service PgClientService {
   rpc AlterTable(PgAlterTableRequestPB) returns (PgAlterTableResponsePB);
   rpc BackfillIndex(PgBackfillIndexRequestPB) returns (PgBackfillIndexResponsePB);
   rpc CreateDatabase(PgCreateDatabaseRequestPB) returns (PgCreateDatabaseResponsePB);
+  rpc CreateReplicationSlot(PgCreateReplicationSlotRequestPB)
+      returns (PgCreateReplicationSlotResponsePB);
   rpc CreateSequencesDataTable(PgCreateSequencesDataTableRequestPB)
       returns (PgCreateSequencesDataTableResponsePB);
   rpc CreateTable(PgCreateTableRequestPB) returns (PgCreateTableResponsePB);
   rpc CreateTablegroup(PgCreateTablegroupRequestPB) returns (PgCreateTablegroupResponsePB);
   rpc DropDatabase(PgDropDatabaseRequestPB) returns (PgDropDatabaseResponsePB);
+  rpc DropReplicationSlot(PgDropReplicationSlotRequestPB) returns (PgDropReplicationSlotResponsePB);
   rpc DropTable(PgDropTableRequestPB) returns (PgDropTableResponsePB);
   rpc DropTablegroup(PgDropTablegroupRequestPB) returns (PgDropTablegroupResponsePB);
   rpc FinishTransaction(PgFinishTransactionRequestPB) returns (PgFinishTransactionResponsePB);
@@ -48,6 +51,8 @@ service PgClientService {
   rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
   rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
       returns (PgListLiveTabletServersResponsePB);
+  rpc ListReplicationSlots(PgListReplicationSlotsRequestPB)
+      returns (PgListReplicationSlotsResponsePB);
   rpc GetIndexBackfillProgress(PgGetIndexBackfillProgressRequestPB)
       returns (PgGetIndexBackfillProgressResponsePB);
   rpc OpenTable(PgOpenTableRequestPB) returns (PgOpenTableResponsePB);
@@ -85,6 +90,9 @@ service PgClientService {
       returns (PgGetActiveTransactionListResponsePB);
 
   rpc GetTableKeyRanges(PgGetTableKeyRangesRequestPB) returns (PgGetTableKeyRangesResponsePB);
+
+  rpc GetNewObjectId(PgGetNewObjectIdRequestPB)
+      returns (PgGetNewObjectIdResponsePB);
 
   // DEPRECATED
   rpc SetActiveSubTransaction(PgSetActiveSubTransactionRequestPB)
@@ -168,6 +176,17 @@ message PgCreateDatabaseResponsePB {
 message PgCreateSequencesDataTableRequestPB {
 }
 
+message PgCreateReplicationSlotRequestPB {
+  uint64 session_id = 1;
+  uint32 database_oid = 2;
+  string replication_slot_name = 3;
+}
+
+message PgCreateReplicationSlotResponsePB {
+  AppStatusPB status = 1;
+  bytes stream_id = 2;
+}
+
 message PgCreateSequencesDataTableResponsePB {
   AppStatusPB status = 1;
 }
@@ -246,6 +265,15 @@ message PgDropDatabaseRequestPB {
 }
 
 message PgDropDatabaseResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgDropReplicationSlotRequestPB {
+  uint64 session_id = 1;
+  string replication_slot_name = 2;
+}
+
+message PgDropReplicationSlotResponsePB {
   AppStatusPB status = 1;
 }
 
@@ -373,6 +401,19 @@ message PgListLiveTabletServersResponsePB {
   repeated PgLiveTabletServerPB servers = 2;
 }
 
+message PgListReplicationSlotsRequestPB {}
+
+message PgReplicationSlotInfoPB {
+  string slot_name = 1;
+  bytes stream_id = 2;
+  uint32 database_oid = 3;
+}
+
+message PgListReplicationSlotsResponsePB {
+  AppStatusPB status = 1;
+  repeated PgReplicationSlotInfoPB replication_slots = 2;
+}
+
 message PgOpenTableRequestPB {
   string table_id = 1;
   bool reopen = 2;
@@ -428,8 +469,9 @@ message OptionalUint64PB { uint64 value = 1; }
 
 message PgPerformOptionsPB {
   message CachingInfoPB {
-    bytes key = 1;
-    OptionalUint32PB lifetime_threshold_ms = 2;
+    uint64 key_group = 1;
+    bytes key_value = 2;
+    OptionalUint32PB lifetime_threshold_ms = 3;
   }
 
   // Cannot use IsolationLevel enum, since we cannot use proto2 enum in proto3 messages.
@@ -456,6 +498,7 @@ message PgPerformOptionsPB {
   bool read_from_followers = 18;
   bool trace_requested = 19;
   bool yb_non_ddl_txn_for_sys_tables_allowed = 21;
+  int64 pg_txn_start_us = 22;
 }
 
 message PgPerformRequestPB {
@@ -724,4 +767,13 @@ message PgGetTableKeyRangesRequestPB {
 
 message PgGetTableKeyRangesResponsePB {
   AppStatusPB status = 1;
+}
+
+message PgGetNewObjectIdRequestPB {
+  uint32 db_oid = 1;
+}
+
+message PgGetNewObjectIdResponsePB {
+  AppStatusPB status = 1;
+  uint32 new_oid = 2;
 }

@@ -254,6 +254,11 @@ extern bool YBSavepointsEnabled();
 extern bool YBIsDBCatalogVersionMode();
 
 /*
+ * Whether we need to preload additional catalog tables.
+ */
+extern bool YbNeedAdditionalCatalogTables();
+
+/*
  * Since DDL metadata in master DocDB and postgres system tables is not modified
  * in an atomic fashion, it is possible that we could have a table existing in
  * postgres metadata but not in DocDB. In the case of a delete it is really
@@ -262,6 +267,14 @@ extern bool YBIsDBCatalogVersionMode();
  * delete our metadata.
  */
 extern void HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found);
+
+/*
+ * Handle a DocDB status while ignoring the 'AlreadyPresent' error case. It is
+ * useful in providing specific error messages in the case of 'AlreadyPresent"
+ * error.
+ */
+extern void HandleYBStatusIgnoreAlreadyPresent(YBCStatus status,
+											   bool *already_present);
 
 /*
  * Same as HandleYBStatus but delete the table description first if the
@@ -784,6 +797,8 @@ extern void assign_yb_xcluster_consistency_level(const char *newval,
  */
 void YbUpdateSessionStats(YbInstrumentation *yb_instr);
 
+extern bool check_yb_read_time(char **newval, void **extra, GucSource source);
+extern void assign_yb_read_time(const char *newval, void *extra);
 /*
  * Refreshes the session stats snapshot with the collected stats. This function
  * is to be invoked before the query has started its execution.

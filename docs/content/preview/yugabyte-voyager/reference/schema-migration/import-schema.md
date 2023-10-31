@@ -42,7 +42,7 @@ The valid *arguments* for import schema are described in the following table:
 | --object-list <objectTypes> | Comma-separated list of schema object types (object types are case-insensitive) to include while importing schema.<br>Example: `--object-list 'TABLE,VIEW,MVIEW'` |
 | --post-import-data | Imports indexes and triggers in the YugabyteDB database after data import is complete. This argument assumes that data import is already done and imports only indexes and triggers in the YugabyteDB database. (default: false) |
 | --refresh-mviews | Refreshes the materialized views on target during the post-import-data phase (default: false) |
-| --send-diagnostics| Send diagnostics information to Yugabyte. (default: true)|
+| --send-diagnostics| Send [diagnostics](../../../diagnostics-report/) information to Yugabyte. (default: true)|
 | --start-clean | Starts a fresh schema import on the target yugabyteDB database for the schema present in the `schema` directory. |
 | --straight-order | Imports the schema objects in the order specified via the `--object-list` flag (default: false)<br> Usage to set it: `yb-voyager import schema ... --object-list 'TYPE,TABLE,VIEW...'  --straight-order` |
 | --target-db-host <hostname> | Domain name or IP address of the machine on which target database server is running. (default: 127.0.0.1)|

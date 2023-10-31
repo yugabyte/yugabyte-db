@@ -56,8 +56,9 @@ YB_DEFINE_ENUM(
 );
 
 #define YB_PG_CLIENT_SIMPLE_METHODS \
-    (AlterDatabase)(AlterTable)(CreateDatabase)(CreateTable)(CreateTablegroup) \
-    (DropDatabase)(DropTablegroup)(TruncateTable)
+    (AlterDatabase)(AlterTable) \
+    (CreateDatabase)(CreateReplicationSlot)(CreateTable)(CreateTablegroup) \
+    (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable)
 
 struct PerformResult {
   Status status;
@@ -96,6 +97,8 @@ class PgClient {
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
   Result<std::pair<PgOid, PgOid>> ReserveOids(PgOid database_oid, PgOid next_oid, uint32_t count);
+
+  Result<PgOid> GetNewObjectId(PgOid db_oid);
 
   Result<bool> IsInitDbDone();
 
@@ -178,6 +181,8 @@ class PgClient {
 
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid);
+
+  Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
 
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;

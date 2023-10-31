@@ -379,6 +379,10 @@ struct TransactionMetadata {
   // start_time is used only for backward compability during rolling update.
   HybridTime start_time;
 
+  // Used by the wait queue to determine the order in which waiting transactions are resumed.
+  // Matches the txn start time tracked by postgres.
+  int64_t pg_txn_start_us = 0;
+
   // Indicates whether this transaction is a local transaction or global transaction.
   TransactionLocality locality = TransactionLocality::GLOBAL;
 

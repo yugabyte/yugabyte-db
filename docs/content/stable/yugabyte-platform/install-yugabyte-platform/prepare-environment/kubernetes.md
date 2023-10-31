@@ -94,7 +94,6 @@ The type of volume provisioned for YugabyteDB Anywhere and YugabyteDB depends on
    - [Google Kubernetes Engine: persistent volumes and dynamic provisioning](https://cloud.google.com/kubernetes-engine/docs/concepts/persistent-volumes)
    - [Google Cloud: regional persistent disks](https://cloud.google.com/compute/docs/disks/high-availability-regional-persistent-disk)
 
-
 1. Use an SSD-based storage class and an extent-based file system (XFS), as per recommendations provided in [Deployment checklist - Disks](../../../../deploy/checklist/#disks).
 
 1. Set the `allowVolumeExpansion` to `true`. This enables you to expand the volumes later by performing additional steps if you run out of disk space. Note that some storage providers might not support this setting. For more information, see [Expanding persistent volumes claims](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#expanding-persistent-volumes-claims).
@@ -159,14 +158,14 @@ Generally, the process involves the following:
 - Pushing images to the private container registry.
 - Modifying the Helm chart values to point to the new private location.
 
-![img](/images/yp/docker-pull.png)
+![Pull and push YugabyteDB Docker images](/images/yp/docker-pull.png)
 
 You need to perform the following steps:
 
 - Log in to [quay.io](https://quay.io/) to access the YugabyteDB private registry using the user name and password provided in the secret YAML file. To find the `auth` field, use `base64 -d` to decode the data inside the `yaml` file twice. In this field, the user name and password are separated by a colon. For example, `yugabyte+<user-name>:ZQ66Z9C1K6AHD5A9VU28B06Q7N0AXZAQSR`.
 
   ```sh
-  docker login -u "your_yugabyte_username" -p "yugabyte_provided_password" quay.
+  docker login -u "your_yugabyte_username" -p "yugabyte_provided_password" quay.io
   docker search quay.io/yugabyte
   ```
 
@@ -236,9 +235,9 @@ You need to perform the following steps:
   ...
   ```
 
-- Pull images to your machine, as follows:
+- Pull images to your machine.
 
-  **Note**: These image tags will vary based on the version.
+  These image tags will vary based on the version.
 
   ```sh
   docker pull quay.io/yugabyte/yugaware:{{<yb-version version="stable" format="build">}}
@@ -248,32 +247,38 @@ You need to perform the following steps:
   docker pull nginxinc/nginx-unprivileged:1.23.3
   ```
 
-- Log in to your target container registry, as per the following example that uses Google Container Registry (GCR):
+- Log in to your target container registry, as per the following example that uses Google Artifact Registry.
+
+  Replace the Service Account and Location in the example as applicable.
 
   ```sh
-  docker login -u _json_key --password-stdin https://gcr.io < .ssh/my-service-account-key.json
+  gcloud auth activate-service-account yugabytedb-test@yugabytedb-test-384308.iam.gserviceaccount.com --key-file=key.json
+  gcloud auth configure-docker us-central1-docker.pkg.dev
+  
   ```
 
-- Tag the local images to your target registry, as follows:
+- Tag the local images to your target registry. The following example uses Google Artifact Registry.
+
+  Replace the Location, Project ID, Repository, and Image in the example as applicable.
 
   ```sh
-  docker tag quay.io/yugabyte/yugaware:{{<yb-version version="stable" format="build">}} gcr.io/dataengineeringdemos/yugabyte/yugaware:{{<yb-version version="stable" format="build">}}
-  docker tag nginxinc/nginx-unprivileged:1.23.3 gcr.io/dataengineeringdemos/nginxinc/nginx-unprivileged:1.23.3
-  docker tag postgres:14.4 gcr.io/dataengineeringdemos/postgres:14.4
-  docker tag tianon/postgres-upgrade:11-to-14 gcr.io/dataengineeringdemos/tianon/postgres-upgrade:11-to-14
-  docker tag prom/prometheus:v2.41.0 gcr.io/dataengineeringdemos/prom/prometheus:v2.41.0
+  docker tag quay.io/yugabyte/yugaware:{{<yb-version version="stable" format="build">}} us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/yugabyte/yugaware:{{<yb-version version="stable" format="build">}}
+  docker tag nginxinc/nginx-unprivileged:1.23.3 us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/nginxinc/nginx-unprivileged:1.23.3
+  docker tag postgres:14.4 us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/postgres:14.4
+  docker tag tianon/postgres-upgrade:11-to-14 us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/tianon/postgres-upgrade:11-to-14
+  docker tag prom/prometheus:v2.41.0 us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/prom/prometheus:v2.41.0
   ```
 
-- Push images to the private container registry, as follows:
+- Push images to the private container registry.
+
+  Replace the Location, Project ID, Repository, and Image in the example as applicable.
 
   ```sh
-  docker push gcr.io/dataengineeringdemos/yugabyte/yugaware:{{<yb-version version="stable" format="build">}}
-  docker push gcr.io/dataengineeringdemos/nginxinc/nginx-unprivileged:1.23.3
-  docker push gcr.io/dataengineeringdemos/postgres:14.4
-  docker push gcr.io/dataengineeringdemos/tianon/postgres-upgrade:11-to-14
-  docker push gcr.io/dataengineeringdemos/prom/prometheus:v2.41.0
+  docker push us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/yugabyte/yugaware:{{<yb-version version="stable" format="build">}}
+  docker push us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/nginxinc/nginx-unprivileged:1.23.3
+  docker push us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/postgres:14.4
+  docker push us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/tianon/postgres-upgrade:11-to-14
+  docker push us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/prom/prometheus:v2.41.0
   ```
-
-  ![img](/images/yp/docker-image.png)
 
 - Follow [Specify custom container registry](../../install-software/kubernetes/#specify-custom-container-registry) to install YugabyteDB Anywhere with the images from your private registry.

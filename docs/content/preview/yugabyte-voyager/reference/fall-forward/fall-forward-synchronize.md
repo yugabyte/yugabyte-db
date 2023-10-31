@@ -29,7 +29,7 @@ The valid *arguments* for fall-forward synchronize are described in the followin
 | --exclude-table-list <tableNames> | Comma-separated list of tables to exclude while importing data (ignored if `--table-list` is used). |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for synchronize. |
-| --send-diagnostics | Send diagnostics information to Yugabyte. (default: true) |
+| --send-diagnostics | Send [diagnostics](../../../diagnostics-report/) information to Yugabyte. (default: true) |
 | --table-list | Comma-separated list of the tables to export data. Do not use in conjunction with `--exclude-table-list.`|
 | --target-db-host <hostname> | Domain name or IP address of the machine on which target database server is running. (default: 127.0.0.1)|
 | --target-db-name <name> | Target database name on which import needs to be done.|

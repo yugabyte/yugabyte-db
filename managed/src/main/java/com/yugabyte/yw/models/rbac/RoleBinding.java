@@ -135,6 +135,10 @@ public class RoleBinding extends Model {
     return find.query().where().eq("role_uuid", roleUUID).findList();
   }
 
+  public static boolean checkUserHasRole(UUID userUUID, UUID roleUUID) {
+    return find.query().where().eq("user_uuid", userUUID).eq("role_uuid", roleUUID).exists();
+  }
+
   public void edit(Role role, ResourceGroup resourceGroup) {
     this.role = role;
     this.resourceGroup = resourceGroup;

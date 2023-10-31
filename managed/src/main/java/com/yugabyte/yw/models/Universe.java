@@ -287,7 +287,9 @@ public class Universe extends Model {
    * @return list of UUIDs of all universes
    */
   public static Set<UUID> getAllUUIDs(Customer customer) {
-    return ImmutableSet.copyOf(find.query().where().eq("customer_id", customer.getId()).findIds());
+    List<UUID> universeList = find.query().where().eq("customer_id", customer.getId()).findIds();
+    Set<UUID> universeUUIDs = new HashSet<UUID>(universeList);
+    return universeUUIDs;
   }
 
   public static Set<UUID> getAllUUIDs() {
@@ -504,6 +506,14 @@ public class Universe extends Model {
    */
   public Collection<NodeDetails> getNodes() {
     return getUniverseDetails().nodeDetailsSet;
+  }
+
+  /** Returns the list of nodes based on the placement/cluster uuid for this universe. */
+  @JsonIgnore
+  public List<NodeDetails> getNodesByCluster(UUID placementUuid) {
+    return getNodes().stream()
+        .filter(n -> n.placementUuid.equals(placementUuid))
+        .collect(Collectors.toList());
   }
 
   /**

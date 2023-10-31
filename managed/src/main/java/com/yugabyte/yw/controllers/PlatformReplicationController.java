@@ -51,7 +51,9 @@ public class PlatformReplicationController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+            @PermissionAttribute(
+                resourceType = ResourceType.OTHER,
+                action = Action.SUPER_ADMIN_ACTIONS),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result startPeriodicBackup(UUID configUUID, Http.Request request) {
@@ -88,7 +90,9 @@ public class PlatformReplicationController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+            @PermissionAttribute(
+                resourceType = ResourceType.OTHER,
+                action = Action.SUPER_ADMIN_ACTIONS),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result stopPeriodicBackup(UUID configUUID, Http.Request request) {
@@ -114,7 +118,9 @@ public class PlatformReplicationController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+            @PermissionAttribute(
+                resourceType = ResourceType.OTHER,
+                action = Action.SUPER_ADMIN_ACTIONS),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result getBackupInfo(UUID configUUID) {
@@ -135,7 +141,9 @@ public class PlatformReplicationController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+            @PermissionAttribute(
+                resourceType = ResourceType.OTHER,
+                action = Action.SUPER_ADMIN_ACTIONS),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result listBackups(UUID configUUID, String leaderAddr) {

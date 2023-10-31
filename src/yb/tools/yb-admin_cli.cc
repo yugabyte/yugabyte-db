@@ -1265,6 +1265,69 @@ Status promote_auto_flags_action(
   return Status::OK();
 }
 
+const auto rollback_auto_flags_args = "<rollback_version>";
+Status rollback_auto_flags_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const int64_t rollback_version = VERIFY_RESULT(CheckedStoll(args[0]));
+  SCHECK_LT(
+      rollback_version, std::numeric_limits<uint32_t>::max(), InvalidArgument,
+      "rollback_version exceeds bounds");
+
+  RETURN_NOT_OK_PREPEND(
+      client->RollbackAutoFlags(static_cast<uint32_t>(rollback_version)),
+      "Unable to Rollback AutoFlags");
+  return Status::OK();
+}
+
+const auto promote_single_auto_flag_args = "<process_name> <auto_flag_name>";
+Status promote_single_auto_flag_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  auto& process_name = args[0];
+  auto& auto_flag_name = args[1];
+
+  RETURN_NOT_OK_PREPEND(
+      client->PromoteSingleAutoFlag(process_name, auto_flag_name), "Unable to Promote AutoFlag");
+  return Status::OK();
+}
+
+const auto demote_single_auto_flag_args = "<process_name> <auto_flag_name> [force]";
+Status demote_single_auto_flag_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() > 3) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  auto& process_name = args[0];
+  auto& auto_flag_name = args[1];
+  if (args.size() == 3 && !IsEqCaseInsensitive(args[2], "force")) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  const bool force = args.size() == 3;
+
+  if (!force) {
+    std::cout
+        << "WARNING: Demotion of AutoFlags is dangerous and can lead to silent corruptions and "
+           "data loss!";
+    std::cout << "Are you sure you want to demote the flag '" << auto_flag_name
+              << "' belonging to process '" << process_name << "'? (y/N)?";
+    std::string answer;
+    std::cin >> answer;
+    SCHECK(answer == "y" || answer == "Y", InvalidArgument, "demote_single_auto_flag aborted");
+  }
+
+  RETURN_NOT_OK_PREPEND(
+      client->DemoteSingleAutoFlag(process_name, auto_flag_name), "Unable to Demote AutoFlag");
+  return Status::OK();
+}
+
 std::string GetListSnapshotsFlagList() {
   std::string options = "";
   for (auto flag : ListSnapshotsFlagList()) {
@@ -1697,7 +1760,7 @@ Status create_change_data_stream_action(
     return ClusterAdminCli::kInvalidArguments;
   }
 
-  std::string checkpoint_type = yb::ToString("IMPLICIT");
+  std::string checkpoint_type = yb::ToString("EXPLICIT");
   std::string record_type = yb::ToString("CHANGE");
   std::string uppercase_checkpoint_type;
   std::string uppercase_record_type;
@@ -2171,6 +2234,9 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(set_wal_retention_secs);
   REGISTER_COMMAND(get_wal_retention_secs);
   REGISTER_COMMAND(promote_auto_flags);
+  REGISTER_COMMAND(rollback_auto_flags);
+  REGISTER_COMMAND(promote_single_auto_flag);
+  REGISTER_COMMAND(demote_single_auto_flag);
   REGISTER_COMMAND(list_snapshots);
   REGISTER_COMMAND(create_snapshot);
   REGISTER_COMMAND(list_snapshot_restorations);

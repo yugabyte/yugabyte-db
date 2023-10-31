@@ -37,8 +37,6 @@
 #include <limits>
 #include <utility>
 
-#include <glog/logging.h>
-
 #include "yb/common/hybrid_time.h"
 
 #include "yb/consensus/consensus.messages.h"

@@ -34,7 +34,8 @@ import { YBLabelWithIcon } from '../../common/descriptors';
 import ellipsisIcon from '../../common/media/more.svg';
 import { DeleteProviderConfigModal } from './DeleteProviderConfigModal';
 import { UniverseItem } from './providerView/providerDetails/UniverseTable';
-import { getLinkedUniverses, usePillStyles } from './utils';
+import { getLinkedUniverses } from './utils';
+import { usePillStyles } from '../../../redesign/styles/styles';
 import { YBButton } from '../../../redesign/components';
 import { ProviderStatusLabel } from './components/ProviderStatusLabel';
 import { SortOrder } from '../../../redesign/helpers/constants';
@@ -151,24 +152,33 @@ export const ProviderList = (props: ProviderListProps) => {
           <img src={ellipsisIcon} alt="more" className="ellipsis-icon" />
         </Dropdown.Toggle>
         <Dropdown.Menu>
-          <MenuItem
-            eventKey="1"
-            onSelect={() => handleDeleteProviderConfig(row)}
-            data-testid="DeleteConfiguration-button"
-            disabled={row.linkedUniverses.length > 0 || !hasNecessaryPerm({
+          <RbacValidator
+            accessRequiredOn={{
               onResource: "CUSTOMER_ID",
               ...UserPermissionMap.deleteProvider
-            })}
+            }}
+            isControl
+            overrideStyle={{ display: 'block' }}
           >
-            <YBLabelWithIcon icon="fa fa-trash">Delete Configuration</YBLabelWithIcon>
-          </MenuItem>
+            <MenuItem
+              eventKey="1"
+              onSelect={() => handleDeleteProviderConfig(row)}
+              data-testid="DeleteConfiguration-button"
+              disabled={row.linkedUniverses.length > 0 || !hasNecessaryPerm({
+                onResource: "CUSTOMER_ID",
+                ...UserPermissionMap.deleteProvider
+              })}
+            >
+              <YBLabelWithIcon icon="fa fa-trash">Delete Configuration</YBLabelWithIcon>
+            </MenuItem>
+          </RbacValidator>
         </Dropdown.Menu>
       </Dropdown>
     );
   };
   const formatUsage = (_: unknown, row: ProviderListItem) => {
     return row.linkedUniverses.length ? (
-      <Box display="flex" gridGap="5px">
+      <Box display="flex" gridGap="5px" alignItems="center">
         <Typography variant="body2">In Use</Typography>
         <div className={classes.pill}>{row.linkedUniverses.length}</div>
       </Box>

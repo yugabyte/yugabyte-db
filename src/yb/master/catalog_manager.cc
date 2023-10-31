@@ -69,7 +69,7 @@
 #include <vector>
 
 #include <boost/optional.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/cdc/cdc_state_table.h"
 
@@ -311,6 +311,10 @@ DEFINE_test_flag(bool, catalog_manager_simulate_system_table_create_failure, fal
                  "This is only used in tests to simulate a failure where the table information is "
                  "persisted in syscatalog, but the tablet information is not yet persisted and "
                  "there is a failure.");
+
+DEFINE_test_flag(bool, fail_table_creation_at_preparing_state, false,
+                 "This is only used in tests to simulate a failure that occurs when a table in "
+                 "process of creation is still in PREPARING state.");
 
 DEFINE_test_flag(bool, pause_before_send_hinted_election, false,
                  "Inside StartElectionIfReady, pause before sending request for hinted election");
@@ -1042,23 +1046,7 @@ Status CatalogManager::Init() {
   // within CatalogManager. Need not start sys catalog or background tasks
   // when we are started in shell mode.
   if (!master_->opts().IsShellMode()) {
-    RETURN_NOT_OK_PREPEND(sys_catalog_->WaitUntilRunning(),
-                          "Failed waiting for the catalog tablet to run");
-    std::vector<consensus::RaftPeerPB> masters_raft;
-    RETURN_NOT_OK(master_->ListRaftConfigMasters(&masters_raft));
-    std::vector<HostPort> hps;
-    for (const auto& peer : masters_raft) {
-      if (NodeInstance().permanent_uuid() == peer.permanent_uuid()) {
-        continue;
-      }
-      HostPort hp = HostPortFromPB(DesiredHostPort(peer, master_->MakeCloudInfoPB()));
-      hps.push_back(hp);
-    }
-    universe_key_client_ = std::make_unique<client::UniverseKeyClient>(
-        hps, &master_->proxy_cache(), [&] (const encryption::UniverseKeysPB& universe_keys) {
-          encryption_manager_->PopulateUniverseKeys(universe_keys);
-        });
-    universe_key_client_->GetUniverseKeyRegistryAsync();
+    RETURN_NOT_OK(GetUniverseKeyRegistryFromOtherMastersAsync());
     RETURN_NOT_OK(EnableBgTasks());
   }
 
@@ -1592,6 +1580,29 @@ Status CatalogManager::SetUniverseUuidIfNeeded(const LeaderEpoch& epoch) {
   l.mutable_data()->pb.set_universe_uuid(universe_uuid);
   RETURN_NOT_OK(sys_catalog_->Upsert(epoch, cluster_config_.get()));
   l.Commit();
+  return Status::OK();
+}
+
+Status CatalogManager::GetUniverseKeyRegistryFromOtherMastersAsync() {
+  RETURN_NOT_OK_PREPEND(sys_catalog_->WaitUntilRunning(),
+                      "Failed waiting for the catalog tablet to run");
+  std::vector<consensus::RaftPeerPB> masters_raft;
+  RETURN_NOT_OK(master_->ListRaftConfigMasters(&masters_raft));
+  std::vector<HostPort> hps;
+  for (const auto& peer : masters_raft) {
+    if (NodeInstance().permanent_uuid() == peer.permanent_uuid()) {
+      continue;
+    }
+    HostPort hp = HostPortFromPB(DesiredHostPort(peer, master_->MakeCloudInfoPB()));
+    hps.push_back(hp);
+  }
+  if (!universe_key_client_) {
+    universe_key_client_ = std::make_unique<client::UniverseKeyClient>(
+        hps, &master_->proxy_cache(), [&] (const encryption::UniverseKeysPB& universe_keys) {
+          encryption_manager_->PopulateUniverseKeys(universe_keys);
+        });
+  }
+  universe_key_client_->GetUniverseKeyRegistryAsync();
   return Status::OK();
 }
 
@@ -2833,13 +2844,6 @@ Status CatalogManager::TEST_IncrementTablePartitionListVersion(const TableId& ta
   RETURN_NOT_OK(sys_catalog_->Upsert(GetLeaderEpochInternal(), table_info));
   table_lock.Commit();
   return Status::OK();
-}
-
-Status CatalogManager::TEST_SendTestRetryRequest(
-    const PeerId& ts_id, const int32_t num_retries, StdStatusCallback callback) {
-  auto task = std::make_shared<AsyncTestRetry>(
-      master_, AsyncTaskPool(), ts_id, num_retries, std::move(callback), GetLeaderEpochInternal());
-  return ScheduleTask(task);
 }
 
 Status CatalogManager::ShouldSplitValidCandidate(
@@ -4271,6 +4275,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   DVLOG(3) << __PRETTY_FUNCTION__ << " Done.";
+
+  if (FLAGS_TEST_fail_table_creation_at_preparing_state) {
+    return STATUS(IllegalState, "Failing table creation at PREPARING state");
+  }
+
   return Status::OK();
 }
 
@@ -6029,7 +6038,6 @@ Status CatalogManager::DeleteTable(
   if (req->ysql_ddl_rollback_enabled() && req->has_transaction() &&
       table->GetTableType() == PGSQL_TABLE_TYPE) {
     bool ysql_txn_verifier_state_present = false;
-    bool table_created_by_same_transaction = false;
     auto l = table->LockForWrite();
     if (l->has_ysql_ddl_txn_verifier_state()) {
       DCHECK(!l->pb_transaction_id().empty());
@@ -6043,37 +6051,34 @@ Status CatalogManager::DeleteTable(
       // This DROP operation is part of a DDL transaction that has already made changes
       // to this table.
       ysql_txn_verifier_state_present = true;
-      // If this table is being dropped in the same transaction where it was being created, then
-      // it can be dropped without waiting for the transaction to end. This is because this table
-      // will be dropped anyway whether this transaction commits or aborts.
-      table_created_by_same_transaction = l->is_being_created_by_ysql_ddl_txn();
     }
 
-    // If this table has not been created in the same transaction that is dropping it, mark this
-    // table for deletion upon successful commit of this transaction.
-    if (!table_created_by_same_transaction) {
-      // Setup a background task. It monitors the YSQL transaction. If it commits, the task drops
-      // the table. Otherwise it removes the deletion marker in the ysql_ddl_txn_verifier_state.
-      TransactionMetadata txn;
-      auto& pb = l.mutable_data()->pb;
-      if (!ysql_txn_verifier_state_present) {
-        pb.mutable_transaction()->CopyFrom(req->transaction());
-        txn = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
-        RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
-        pb.add_ysql_ddl_txn_verifier_state();
-      }
-      DCHECK_EQ(pb.ysql_ddl_txn_verifier_state_size(), 1);
-      pb.mutable_ysql_ddl_txn_verifier_state(0)->set_contains_drop_table_op(true);
-      // Upsert to sys_catalog.
-      RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
-      // Update the in-memory state.
-      TRACE("Committing in-memory state as part of DeleteTable operation");
-      l.Commit();
-      if (!ysql_txn_verifier_state_present) {
-        ScheduleYsqlTxnVerification(table, txn, epoch);
-      }
-      return Status::OK();
+    // Setup a background task. It monitors the YSQL transaction. If it commits, the task drops
+    // the table. Otherwise it removes the deletion marker in the ysql_ddl_txn_verifier_state.
+    // Note that we could ideally drop this table right now if it was created in the same
+    // transaction, as we are sure that this table will be dropped whether the transaction commits
+    // or aborts. However, in cases where a table could be deleted and re-created multiple times in
+    // an alter operation, that would abort the DDL transaction operating on it. Hence we do not
+    // perform the actual deletion until commit.
+    TransactionMetadata txn;
+    auto& pb = l.mutable_data()->pb;
+    if (!ysql_txn_verifier_state_present) {
+      pb.mutable_transaction()->CopyFrom(req->transaction());
+      txn = VERIFY_RESULT(TransactionMetadata::FromPB(req->transaction()));
+      RSTATUS_DCHECK(!txn.status_tablet.empty(), Corruption, "Given incomplete Transaction");
+      pb.add_ysql_ddl_txn_verifier_state();
     }
+    DCHECK_EQ(pb.ysql_ddl_txn_verifier_state_size(), 1);
+    pb.mutable_ysql_ddl_txn_verifier_state(0)->set_contains_drop_table_op(true);
+    // Upsert to sys_catalog.
+    RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
+    // Update the in-memory state.
+    TRACE("Committing in-memory state as part of DeleteTable operation");
+    l.Commit();
+    if (!ysql_txn_verifier_state_present) {
+      ScheduleYsqlTxnVerification(table, txn, epoch);
+    }
+    return Status::OK();
   }
 
   return DeleteTableInternal(req, resp, rpc, epoch);
@@ -6287,7 +6292,7 @@ Status CatalogManager::DeleteTableInMemory(
       transaction_table_ids_set_.erase(table->id());
     }
     RETURN_NOT_OK(IncrementTransactionTablesVersion());
-    RETURN_NOT_OK(WaitForTransactionTableVersionUpdateToPropagate(epoch));
+    RETURN_NOT_OK(WaitForTransactionTableVersionUpdateToPropagate());
   }
 
   TRACE(Substitute("Locking $0", object_type));
@@ -7740,7 +7745,7 @@ bool CatalogManager::ProcessCommittedConsensusState(
     const TabletInfoPtr& tablet,
     const TabletInfo::WriteLock& tablet_lock,
     std::map<TableId, scoped_refptr<TableInfo>>* tables,
-    std::vector<RetryingTSRpcTaskPtr>* rpcs) {
+    std::vector<RetryingTSRpcTaskWithTablePtr>* rpcs) {
   const ConsensusStatePB& prev_cstate = tablet_lock->pb.committed_consensus_state();
   ConsensusStatePB cstate = report.committed_consensus_state();
   bool tablet_was_mutated = false;
@@ -8007,7 +8012,7 @@ Status CatalogManager::ProcessTabletReportBatch(
     ReportedTablets::iterator end,
     const LeaderEpoch& epoch,
     TabletReportUpdatesPB* full_report_update,
-    std::vector<RetryingTSRpcTaskPtr>* rpcs) {
+    std::vector<RetryingTSRpcTaskWithTablePtr>* rpcs) {
   // First Pass. Iterate in TabletId Order to discover all Table locks we'll need.
 
   // Maps a table ID to its corresponding TableInfo.
@@ -8335,7 +8340,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
         reported_tablets.end() - tablet_iter, FLAGS_catalog_manager_report_batch_size);
 
     // Keeps track of all RPCs that should be sent when we're done with a single batch.
-    std::vector<RetryingTSRpcTaskPtr> rpcs;
+    std::vector<RetryingTSRpcTaskWithTablePtr> rpcs;
     auto status = ProcessTabletReportBatch(
         ts_desc, full_report.is_incremental(), batch_begin, tablet_iter, epoch, full_report_update,
         &rpcs);
@@ -8656,8 +8661,12 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
                             STATUS(NotFound, "Source keyspace not found",
                                    req->source_namespace_id()));
         }
-        auto source_ns_lock = source_ns->LockForRead();
-        metadata->set_next_pg_oid(source_ns_lock->pb.next_pg_oid());
+        if (FLAGS_ysql_enable_pg_per_database_oid_allocator) {
+          metadata->set_next_pg_oid(kPgFirstNormalObjectId);
+        } else {
+          auto source_ns_lock = source_ns->LockForRead();
+          metadata->set_next_pg_oid(source_ns_lock->pb.next_pg_oid());
+        }
       }
     }
 
@@ -10102,7 +10111,7 @@ uint64_t CatalogManager::GetTransactionTablesVersion() {
   return l->pb.transaction_tables_config().version();
 }
 
-Status CatalogManager::WaitForTransactionTableVersionUpdateToPropagate(const LeaderEpoch& epoch) {
+Status CatalogManager::WaitForTransactionTableVersionUpdateToPropagate() {
   auto ts_descriptors = master_->ts_manager()->GetAllDescriptors();
   size_t num_descriptors = ts_descriptors.size();
 
@@ -10116,7 +10125,7 @@ Status CatalogManager::WaitForTransactionTableVersionUpdateToPropagate(const Lea
       latch.CountDown();
     };
     auto task = std::make_shared<AsyncUpdateTransactionTablesVersion>(
-        master_, AsyncTaskPool(), ts_uuid, GetTransactionTablesVersion(), epoch, callback);
+        master_, AsyncTaskPool(), ts_uuid, GetTransactionTablesVersion(), callback);
     auto s = ScheduleTask(task);
     if (!s.ok()) {
       statuses[i] = s;
@@ -10501,6 +10510,8 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
 
   LOG(INFO) << "Master completed remote bootstrap and is out of shell mode.";
 
+  // Now that we're no longer in shell mode, make call to fetch encryption keys from other masters.
+  RETURN_NOT_OK(GetUniverseKeyRegistryFromOtherMastersAsync());
   RETURN_NOT_OK(EnableBgTasks());
 
   return Status::OK();
@@ -13154,9 +13165,6 @@ Status CatalogManager::SubmitToSysCatalog(std::unique_ptr<tablet::Operation> ope
 
 Status CatalogManager::PromoteAutoFlags(
     const PromoteAutoFlagsRequestPB* req, PromoteAutoFlagsResponsePB* resp) {
-  bool non_runtime_flags_promoted = false;
-  uint32_t new_config_version = 0;
-
   const auto max_class = VERIFY_RESULT_PREPEND(
       ParseEnumInsensitive<AutoFlagClass>(req->max_flag_class()),
       "Invalid value provided for flag class");
@@ -13165,15 +13173,49 @@ Status CatalogManager::PromoteAutoFlags(
   // to avoid promotion of flags with AutoFlagClass::kNewInstallsOnly class.
   SCHECK_LT(
       max_class, AutoFlagClass::kNewInstallsOnly, InvalidArgument,
-      Format("It is not allowed to promote with max_class set to $0.",
-      ToString(AutoFlagClass::kNewInstallsOnly)));
+      Format(
+          "max_class cannot be set to $0.",
+          ToString(AutoFlagClass::kNewInstallsOnly)));
 
-  RETURN_NOT_OK(master::PromoteAutoFlags(
+  auto [new_config_version, outcome] = VERIFY_RESULT(master::PromoteAutoFlags(
       max_class, PromoteNonRuntimeAutoFlags(req->promote_non_runtime_flags()), req->force(),
-      *master_->auto_flags_manager(), this, &new_config_version, &non_runtime_flags_promoted));
+      *master_->auto_flags_manager(), this));
 
   resp->set_new_config_version(new_config_version);
-  resp->set_non_runtime_flags_promoted(non_runtime_flags_promoted);
+  resp->set_flags_promoted(outcome != PromoteAutoFlagsOutcome::kNoFlagsPromoted);
+  resp->set_non_runtime_flags_promoted(
+      outcome == PromoteAutoFlagsOutcome::kNonRuntimeFlagsPromoted);
+  return Status::OK();
+}
+
+Status CatalogManager::RollbackAutoFlags(
+    const RollbackAutoFlagsRequestPB* req, RollbackAutoFlagsResponsePB* resp) {
+  auto [new_config_version, outcome] = VERIFY_RESULT(
+      master::RollbackAutoFlags(req->rollback_version(), *master_->auto_flags_manager(), this));
+
+  resp->set_new_config_version(new_config_version);
+  resp->set_flags_rolledback(outcome);
+  return Status::OK();
+}
+
+Status CatalogManager::PromoteSingleAutoFlag(
+    const PromoteSingleAutoFlagRequestPB* req, PromoteSingleAutoFlagResponsePB* resp) {
+  auto [new_config_version, outcome] = VERIFY_RESULT(master::PromoteSingleAutoFlag(
+      req->process_name(), req->auto_flag_name(), *master_->auto_flags_manager(), this));
+
+  resp->set_new_config_version(new_config_version);
+  resp->set_flag_promoted(outcome != PromoteAutoFlagsOutcome::kNoFlagsPromoted);
+  resp->set_non_runtime_flag_promoted(outcome == PromoteAutoFlagsOutcome::kNonRuntimeFlagsPromoted);
+  return Status::OK();
+}
+
+Status CatalogManager::DemoteSingleAutoFlag(
+    const DemoteSingleAutoFlagRequestPB* req, DemoteSingleAutoFlagResponsePB* resp) {
+  auto [new_config_version, outcome] = VERIFY_RESULT(master::DemoteSingleAutoFlag(
+      req->process_name(), req->auto_flag_name(), *master_->auto_flags_manager(), this));
+
+  resp->set_new_config_version(new_config_version);
+  resp->set_flag_demoted(outcome);
   return Status::OK();
 }
 

@@ -61,11 +61,13 @@ class PgMutationCounter;
     (AlterTable) \
     (BackfillIndex) \
     (CreateDatabase) \
+    (CreateReplicationSlot) \
     (CreateTable) \
     (CreateTablegroup) \
     (DeleteDBSequences) \
     (DeleteSequenceTuple) \
     (DropDatabase) \
+    (DropReplicationSlot) \
     (DropTable) \
     (DropTablegroup) \
     (FetchSequenceTuple) \

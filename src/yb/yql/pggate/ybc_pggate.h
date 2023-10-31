@@ -489,9 +489,9 @@ YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, dou
 // INSERT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(YBCPgOid database_oid,
                          YBCPgOid table_oid,
-                         bool is_single_row_txn,
                          bool is_region_local,
-                         YBCPgStatement *handle);
+                         YBCPgStatement *handle,
+                         YBCPgTransactionSetting transaction_setting);
 
 YBCStatus YBCPgExecInsert(YBCPgStatement handle);
 
@@ -504,18 +504,18 @@ YBCStatus YBCPgInsertStmtSetIsBackfill(YBCPgStatement handle, const bool is_back
 // UPDATE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewUpdate(YBCPgOid database_oid,
                          YBCPgOid table_oid,
-                         bool is_single_row_txn,
                          bool is_region_local,
-                         YBCPgStatement *handle);
+                         YBCPgStatement *handle,
+                         YBCPgTransactionSetting transaction_setting);
 
 YBCStatus YBCPgExecUpdate(YBCPgStatement handle);
 
 // DELETE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewDelete(YBCPgOid database_oid,
                          YBCPgOid table_oid,
-                         bool is_single_row_txn,
                          bool is_region_local,
-                         YBCPgStatement *handle);
+                         YBCPgStatement *handle,
+                         YBCPgTransactionSetting transaction_setting);
 
 YBCStatus YBCPgExecDelete(YBCPgStatement handle);
 
@@ -524,9 +524,9 @@ YBCStatus YBCPgDeleteStmtSetIsPersistNeeded(YBCPgStatement handle, const bool is
 // Colocated TRUNCATE ------------------------------------------------------------------------------
 YBCStatus YBCPgNewTruncateColocated(YBCPgOid database_oid,
                                     YBCPgOid table_oid,
-                                    bool is_single_row_txn,
                                     bool is_region_local,
-                                    YBCPgStatement *handle);
+                                    YBCPgStatement *handle,
+                                    YBCPgTransactionSetting transaction_setting);
 
 YBCStatus YBCPgExecTruncateColocated(YBCPgStatement handle);
 
@@ -559,7 +559,7 @@ YBCStatus YBCSRFGetNext(YBCPgFunction handle, uint64_t *values, bool *is_nulls, 
 YBCStatus YBCFinalizeFunctionTargets(YBCPgFunction handle);
 
 // Transaction control -----------------------------------------------------------------------------
-YBCStatus YBCPgBeginTransaction();
+YBCStatus YBCPgBeginTransaction(int64_t start_time);
 YBCStatus YBCPgRecreateTransaction();
 YBCStatus YBCPgRestartTransaction();
 YBCStatus YBCPgResetTransactionReadPoint();
@@ -695,6 +695,7 @@ YBCStatus YBCGetIndexBackfillProgress(YBCPgOid* index_oids, YBCPgOid* database_o
 void YBCStartSysTablePrefetchingNoCache();
 
 void YBCStartSysTablePrefetching(
+    YBCPgOid database_oid,
     YBCPgLastKnownCatalogVersionInfo catalog_version,
     YBCPgSysTablePrefetcherCacheMode cache_mode);
 
@@ -728,6 +729,24 @@ YBCStatus YBCGetTableKeyRanges(
     size_t lower_bound_key_size, const char* upper_bound_key, size_t upper_bound_key_size,
     uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
     void callback(void* callback_param, const char* key, size_t key_size), void* callback_param);
+
+//--------------------------------------------------------------------------------------------------
+// Replication Slots.
+
+YBCStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
+                                        YBCPgOid database_oid,
+                                        YBCPgStatement *handle);
+YBCStatus YBCPgExecCreateReplicationSlot(YBCPgStatement handle);
+
+YBCStatus YBCPgListReplicationSlots(
+    YBCReplicationSlotDescriptor **replication_slots, size_t *numreplicationslots);
+
+YBCStatus YBCPgNewDropReplicationSlot(const char *slot_name,
+                                      YBCPgStatement *handle);
+YBCStatus YBCPgExecDropReplicationSlot(YBCPgStatement handle);
+
+// Get a new OID from the OID allocator of database db_oid.
+YBCStatus YBCGetNewObjectId(YBCPgOid db_oid, YBCPgOid* new_oid);
 
 #ifdef __cplusplus
 }  // extern "C"

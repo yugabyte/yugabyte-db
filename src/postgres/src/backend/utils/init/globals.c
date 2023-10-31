@@ -88,6 +88,12 @@ Oid			MyDatabaseTableSpace = InvalidOid;
 bool		MyDatabaseColocated = false;
 
 /*
+ * The OID of the database used as a namespace to allocate a new object
+ * identifier.
+ */
+Oid			YbDatabaseIdForNewObjectId = InvalidOid;
+
+/*
  * Before we fully deprecate legacy colocated databases, we need this extra
  * variable to tell whether a colocated database is a legacy colocated
  * database or a colocated database based on new Colocation GA implementation.

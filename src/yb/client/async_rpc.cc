@@ -111,7 +111,7 @@ namespace yb::client::internal {
 
 bool IsTracingEnabled() {
   auto *trace = Trace::CurrentTrace();
-  return FLAGS_collect_end_to_end_traces || (trace && trace->end_to_end_traces_requested());
+  return trace && (FLAGS_collect_end_to_end_traces || trace->end_to_end_traces_requested());
 }
 
 namespace {
@@ -184,15 +184,17 @@ AsyncRpc::~AsyncRpc() {
   if (trace_) {
     if (trace_->must_print()) {
       LOG(INFO) << ToString() << " took " << ToMicroseconds(CoarseMonoClock::Now() - start_)
-                << "us. Trace:\n"
-                << trace_->DumpToString(true);
+                << "us. Trace:";
+      trace_->DumpToLogInfo(true);
     } else {
       const auto print_trace_every_n = GetAtomicFlag(&FLAGS_ybclient_print_trace_every_n);
       if (print_trace_every_n > 0) {
+        bool was_printed = false;
         YB_LOG_EVERY_N(INFO, print_trace_every_n)
             << ToString() << " took " << ToMicroseconds(CoarseMonoClock::Now() - start_)
-            << "us. Trace:\n"
-            << trace_->DumpToString(true);
+            << "us. Trace:" << Trace::SetTrue(&was_printed);
+        if (was_printed)
+          trace_->DumpToLogInfo(true);
       }
     }
   }
@@ -343,6 +345,7 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
   } else {
     metadata.transaction.TransactionIdToPB(transaction);
   }
+  transaction->set_pg_txn_start_us(metadata.transaction.pg_txn_start_us);
   dest->set_deprecated_may_have_metadata(true);
 
   if (metadata.subtransaction && !metadata.subtransaction->IsDefaultState()) {
@@ -455,7 +458,8 @@ template <class Req, class Resp>
 void AsyncRpcBase<Req, Resp>::ProcessResponseFromTserver(const Status& status) {
   TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
   if (resp_.has_trace_buffer()) {
-    TRACE_TO(trace_, "Received from server: \n BEGIN\n$0 END.", resp_.trace_buffer());
+    TRACE_TO(
+        trace_, "Received from server: \n BEGIN AsyncRpc\n$0 END AsyncRpc", resp_.trace_buffer());
   }
   NotifyBatcher(status);
   if (!CommonResponseCheck(status)) {

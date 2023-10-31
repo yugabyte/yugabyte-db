@@ -386,6 +386,11 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  public ListLiveTabletServersResponse listLiveTabletServers() throws Exception {
+    Deferred<ListLiveTabletServersResponse> d = asyncClient.listLiveTabletServers();
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
   /**
    * Get the list of all the masters.
    * @return a list of masters
@@ -1844,7 +1849,7 @@ public class YBClient implements AutoCloseable {
     d.addErrback(new Callback<Exception, Exception>() {
       @Override
       public Exception call(Exception o) throws Exception {
-        o.printStackTrace();
+        LOG.error("Error: ", o);
         throw o;
       }
     });
@@ -1854,7 +1859,7 @@ public class YBClient implements AutoCloseable {
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
   }
 
-    /**
+  /**
    * Promotes the auto flag config for each servers.
    * @param maxFlagClass class category up to which auto flag should be promoted.
    * @param promoteNonRuntimeFlags promotes auto flag non-runtime flags if true.
@@ -1871,12 +1876,34 @@ public class YBClient implements AutoCloseable {
     d.addErrback(new Callback<Exception, Exception>() {
       @Override
       public Exception call(Exception o) throws Exception {
-        o.printStackTrace();
+        LOG.error("Error: ", o);
         throw o;
       }
     });
     d.addCallback(promoteAutoFlagsResponse -> {
       return promoteAutoFlagsResponse;
+    });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Rollbacks the auto flag config for each servers.
+   * @param rollbackVersion auto flags version to which rollback is desired.
+   * @return response from the server for rolling back auto flag config,
+   *         else a MasterErrorException.
+   */
+  public RollbackAutoFlagsResponse rollbackAutoFlags(int rollbackVersion) throws Exception {
+    Deferred<RollbackAutoFlagsResponse> d = asyncClient.getRollbackAutoFlagsResponse(
+        rollbackVersion);
+    d.addErrback(new Callback<Exception, Exception>() {
+      @Override
+      public Exception call(Exception o) throws Exception {
+        LOG.error("Error: ", o);
+        throw o;
+      }
+    });
+    d.addCallback(rollbackAutoFlagsResponse -> {
+      return rollbackAutoFlagsResponse;
     });
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
   }

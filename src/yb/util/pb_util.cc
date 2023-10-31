@@ -42,7 +42,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <google/protobuf/descriptor.pb.h>
 #include <google/protobuf/descriptor_database.h>
 #include <google/protobuf/dynamic_message.h>

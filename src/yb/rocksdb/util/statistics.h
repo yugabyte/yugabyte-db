@@ -54,10 +54,12 @@ class StatisticsMetricImpl : public Statistics {
 
   uint64_t getTickerCount(uint32_t ticker_type) const override;
   void histogramData(uint32_t histogram_type, HistogramData* const data) const override;
+  const yb::AggregateStats& getAggregateStats(uint32_t histogramType) const override;
 
   void setTickerCount(uint32_t ticker_type, uint64_t count) override;
   void recordTick(uint32_t ticker_type, uint64_t count) override;
   void measureTime(uint32_t histogram_type, uint64_t value) override;
+  void addHistogram(uint32_t histogramType, const yb::AggregateStats& stats) override;
   void resetTickersForTest() override;
 
   const char* GetTickerName(uint32_t ticker_type) const override;
@@ -73,23 +75,21 @@ class ScopedStatistics : public Statistics {
 
   uint64_t getTickerCount(uint32_t ticker_type) const override;
   void histogramData(uint32_t histogram_type, HistogramData* const data) const override;
+  const yb::AggregateStats& getAggregateStats(uint32_t histogramType) const override;
 
   void setTickerCount(uint32_t ticker_type, uint64_t count) override;
   void recordTick(uint32_t ticker_type, uint64_t count) override;
   void measureTime(uint32_t histogram_type, uint64_t value) override;
+  void addHistogram(uint32_t histogramType, const yb::AggregateStats& stats) override;
   void resetTickersForTest() override;
 
   const char* GetTickerName(uint32_t ticker_type) const override;
-
-  // TODO(hdr_histogram): used to forward histogram changes until histogram support is added to
-  // this class.
-  void SetHistogramContext(std::shared_ptr<Statistics> histogram_context);
 
   void MergeAndClear(Statistics* target);
 
  private:
   std::vector<uint64_t> tickers_;
-  std::shared_ptr<Statistics> histogram_context_;
+  std::vector<yb::AggregateStats> histograms_;
 };
 
 // Utility functions

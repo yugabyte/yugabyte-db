@@ -191,6 +191,8 @@ extern PGDLLIMPORT Oid MyDatabaseTableSpace;
 
 extern PGDLLIMPORT bool MyDatabaseColocated;
 
+extern PGDLLIMPORT Oid YbDatabaseIdForNewObjectId;
+
 extern PGDLLIMPORT bool MyColocatedDatabaseLegacy;
 
 extern PGDLLIMPORT bool YbTablegroupCatalogExists;

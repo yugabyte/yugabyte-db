@@ -37,8 +37,6 @@
 #include <string>
 #include <vector>
 
-#include <glog/logging.h>
-
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
@@ -2211,6 +2209,10 @@ void ConsensusServiceImpl::UpdateConsensus(const consensus::LWConsensusRequestPB
 
   CompleteUpdateConsensusResponse(tablet_peer, resp);
 
+  auto trace = Trace::CurrentTrace();
+  if (trace && req->trace_requested()) {
+    resp->dup_trace_buffer(trace->DumpToString(true));
+  }
   context.RespondSuccess();
 }
 
@@ -2975,7 +2977,7 @@ void TabletServiceAdminImpl::TestRetry(
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "TestRetry", req, resp, &context)) {
     return;
   }
-  auto num_calls = num_test_retry_calls.fetch_add(1) + 1;
+  auto num_calls = TEST_num_test_retry_calls_.fetch_add(1) + 1;
   if (num_calls < req->num_retries()) {
     SetupErrorAndRespond(
         resp->mutable_error(),

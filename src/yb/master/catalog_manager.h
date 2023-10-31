@@ -61,6 +61,7 @@
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/cdc_split_driver.h"
+#include "yb/master/master_admin.pb.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_dcl.fwd.h"
 #include "yb/master/master_defaults.h"
@@ -174,7 +175,7 @@ YB_DEFINE_ENUM(
     // Only populate the table_id. It is only used by xCluster.
     (kXClusterTableIds)
     // Populate the namespace_id and a list of table ids. It is only used by CDCSDK.
-    (kNamespaceAndTableIds)
+    (kCdcsdkNamespaceAndTableIds)
 );
 
 using DdlTxnIdToTablesMap =
@@ -667,7 +668,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   uint64_t GetTransactionTablesVersion() override;
 
-  Status WaitForTransactionTableVersionUpdateToPropagate(const LeaderEpoch& epoch);
+  Status WaitForTransactionTableVersionUpdateToPropagate();
 
   Status FillHeartbeatResponse(const TSHeartbeatRequestPB* req, TSHeartbeatResponsePB* resp);
 
@@ -1038,9 +1039,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status TEST_IncrementTablePartitionListVersion(const TableId& table_id) override;
 
-  Status TEST_SendTestRetryRequest(
-      const PeerId& peer_id, int32_t num_retries, StdStatusCallback callback);
-
   PitrCount pitr_count() const override {
     return sys_catalog_->pitr_count();
   }
@@ -1104,6 +1102,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<std::vector<BlacklistSet>> GetAffinitizedZoneSet();
   Result<BlacklistSet> BlacklistSetFromPB(bool leader_blacklist = false) const override;
 
+  Status GetUniverseKeyRegistryFromOtherMastersAsync();
+
   std::vector<std::string> GetMasterAddresses();
 
   // Returns true if there is at-least one snapshot schedule on any database/keyspace
@@ -1126,6 +1126,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status SubmitToSysCatalog(std::unique_ptr<tablet::Operation> operation);
 
   Status PromoteAutoFlags(const PromoteAutoFlagsRequestPB* req, PromoteAutoFlagsResponsePB* resp);
+  Status RollbackAutoFlags(
+      const RollbackAutoFlagsRequestPB* req, RollbackAutoFlagsResponsePB* resp);
+  Status PromoteSingleAutoFlag(
+      const PromoteSingleAutoFlagRequestPB* req, PromoteSingleAutoFlagResponsePB* resp);
+  Status DemoteSingleAutoFlag(
+      const DemoteSingleAutoFlagRequestPB* req, DemoteSingleAutoFlagResponsePB* resp);
 
   Status ReportYsqlDdlTxnStatus(
       const ReportYsqlDdlTxnStatusRequestPB* req,
@@ -2422,7 +2428,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TabletInfoPtr& tablet,
       const TabletInfo::WriteLock& tablet_lock,
       std::map<TableId, scoped_refptr<TableInfo>>* tables,
-      std::vector<RetryingTSRpcTaskPtr>* rpcs);
+      std::vector<RetryingTSRpcTaskWithTablePtr>* rpcs);
 
   struct ReportedTablet {
     TabletId tablet_id;
@@ -2440,7 +2446,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       ReportedTablets::iterator end,
       const LeaderEpoch& epoch,
       TabletReportUpdatesPB* full_report_update,
-      std::vector<RetryingTSRpcTaskPtr>* rpcs);
+      std::vector<RetryingTSRpcTaskWithTablePtr>* rpcs);
 
   size_t GetNumLiveTServersForPlacement(const PlacementId& placement_id);
 

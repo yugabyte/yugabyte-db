@@ -22,6 +22,7 @@ export interface IRestore {
   restoreKeyspaceList: {
     targetKeyspace: string;
     storageLocation: string;
+    tableNameList?: string[];
   }[]
 }
 

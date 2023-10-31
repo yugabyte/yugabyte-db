@@ -8,6 +8,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -39,7 +40,7 @@ public class MetricGrafanaController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Get Grafana Dashboard",
+      value = "WARNING: This is a preview API that could change. Get Grafana Dashboard",
       response = String.class,
       nickname = "GrafanaDashboard")
   @AuthzPath({
@@ -48,6 +49,7 @@ public class MetricGrafanaController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
   public Result getGrafanaDashboard() {
     String resourcePath = "metric/Dashboard.json";
     String dashboardContent = "";

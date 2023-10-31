@@ -1,5 +1,3 @@
-/*
-
 ---
 title: Use YugabyteDB Anywhere to view all universes
 headerTitle: View all universes
@@ -11,6 +9,5 @@ menu:
     parent: manage-deployments
     weight: 20
 type: docs
+private: true
 ---
-
-*/

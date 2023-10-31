@@ -53,6 +53,7 @@ import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
@@ -545,6 +546,7 @@ public class CustomerControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertTrue(json.get("success").asBoolean());
     assertAuditEntry(1, customer.getUuid());
+    assertEquals(0, CustomerTask.getByCustomerUUID(customer.getUuid()).size());
   }
 
   @Test

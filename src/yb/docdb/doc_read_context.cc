@@ -50,6 +50,13 @@ DocReadContext::DocReadContext(
       << ", added: " << schema_version;
 }
 
+DocReadContext::DocReadContext(const DocReadContext& rhs, const Schema& schema)
+    : schema_packing_storage(rhs.schema_packing_storage), is_index_(rhs.is_index_), schema_(schema),
+      log_prefix_(rhs.log_prefix_) {
+  UpdateKeyPrefix();
+  LOG_WITH_PREFIX(INFO) << "DocReadContext, copy and replace schema";
+}
+
 DocReadContext::DocReadContext(const DocReadContext& rhs, SchemaVersion min_schema_version)
     : schema_packing_storage(rhs.schema_packing_storage, min_schema_version),
       is_index_(rhs.is_index_), schema_(rhs.schema_), log_prefix_(rhs.log_prefix_) {

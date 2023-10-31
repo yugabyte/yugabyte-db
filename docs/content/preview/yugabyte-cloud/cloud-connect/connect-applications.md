@@ -127,24 +127,6 @@ For an example of building a Java application connected to YugabyteDB Managed us
 
 {{< /tabpane >}}
 
-<!--
-## Run the sample application
-
-YugabyteDB Managed comes configured with a sample application that you can use to test your cluster.
-
-Before you can connect from your computer, you must add the IP address of the computer to an IP allow list, and the IP allow list must be assigned to the cluster. Refer to [Assign IP Allow Lists](../add-connections/).
-
-You will also need Docker installed on you computer.
-
-To run the sample application:
-
-1. On the **Clusters** tab, select a cluster.
-1. Click **Connect**.
-1. Click **Run a Sample Application**.
-1. Copy the connect string for YSQL or YCQL.
-1. Run the command in docker from your computer, replacing `<path to CA cert>`, `<db user>`, and `<db password>` with the path to the CA certificate for the cluster and your database credentials.
--->
-
 ## Learn more
 
 - [Add database users](../../cloud-secure-clusters/add-users/)

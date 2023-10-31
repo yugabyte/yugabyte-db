@@ -99,6 +99,11 @@ DEFINE_UNKNOWN_int64(rpc_throttle_threshold_bytes, 1_MB,
     "Throttling is disabled if negative value is specified. The value must be at least 16 and less "
     "than the strictly enforced consensus_max_batch_size_bytes.");
 
+DEFINE_NON_RUNTIME_bool(ysql_enable_pg_per_database_oid_allocator, true,
+    "If true, enable per-database PG new object identifier allocator.");
+TAG_FLAG(ysql_enable_pg_per_database_oid_allocator, advanced);
+TAG_FLAG(ysql_enable_pg_per_database_oid_allocator, hidden);
+
 namespace {
 
 constexpr const auto kMinRpcThrottleThresholdBytes = 16;

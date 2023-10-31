@@ -83,7 +83,8 @@ Status XClusterConfig::FillHeartbeatResponse(
     const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp) const {
   SharedLock mutex_lock(mutex_);
   SCHECK(xcluster_config_info_, IllegalState, "XCluster config is not initialized");
-  const auto& config_pb = xcluster_config_info_->LockForRead()->pb;
+  auto l = xcluster_config_info_->LockForRead();
+  const auto& config_pb = l->pb;
 
   if (req.has_xcluster_config_version() && req.xcluster_config_version() < config_pb.version()) {
     resp->set_xcluster_config_version(config_pb.version());

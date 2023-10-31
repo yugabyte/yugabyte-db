@@ -68,6 +68,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -75,6 +76,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/service_util.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -179,6 +181,8 @@ DECLARE_int32(cdc_checkpoint_opid_interval_ms);
 DECLARE_int32(rpc_workers_limit);
 
 DECLARE_int64(cdc_intent_retention_ms);
+
+DECLARE_bool(ysql_yb_enable_replication_commands);
 
 METRIC_DEFINE_entity(cdc);
 
@@ -966,88 +970,19 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
   // Generate a stream id by calling CreateCDCStream, and also setup the stream in the master.
   std::unordered_map<std::string, std::string> options = GetCreateCDCStreamOptions(req);
 
-  // Filter out tables with PK
-  master::NamespaceIdentifierPB ns_identifier;
-  ns_identifier.set_id(ns_id);
-  auto table_list = VERIFY_RESULT_OR_SET_CODE(
-      client()->ListUserTables(ns_identifier), CDCError(CDCErrorPB::INTERNAL_ERROR));
-  std::vector<client::YBTableName> required_tables;
-  for (const auto& table_iter : table_list) {
-    std::shared_ptr<client::YBTable> table;
-
-    RETURN_NOT_OK_SET_CODE(
-        client()->OpenTable(table_iter.table_id(), &table), CDCError(CDCErrorPB::TABLE_NOT_FOUND));
-
-    // internally if any of the table doesn't have a primary key, then do not create
-    // a CDC stream ID for that table
-    if (!YsqlTableHasPrimaryKey(table->schema())) {
-      LOG(WARNING) << "Skipping CDC stream creation on " << table->name().table_name()
-                   << " because it does not have a primary key";
-      continue;
-    }
-
-    // We don't allow CDC on YEDIS and tables without a primary key.
-    if (req->record_format() != CDCRecordFormat::WAL) {
-      RETURN_NOT_OK_SET_CODE(CheckCdcCompatibility(table), CDCError(CDCErrorPB::INVALID_REQUEST));
-    }
-
-    required_tables.push_back(table_iter);
-  }
-
-  bool set_active = required_tables.empty();
-  xrepl::StreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
-      client()->CreateCDCStream(ns_id, options, set_active), CDCError(CDCErrorPB::INTERNAL_ERROR));
-
-  options.erase(kIdType);
-
-  std::vector<TableId> table_ids;
-  std::vector<xrepl::StreamId> stream_ids;
-  std::vector<CDCStateTableEntry> entries_to_insert;
-
-  for (const auto& table_iter : required_tables) {
-    // We only change the stream's state to "ACTIVE", while we are inserting the last table for the
-    // stream.
-    bool set_active = table_iter == required_tables.back();
-    const xrepl::StreamId stream_id = VERIFY_RESULT_OR_SET_CODE(
-        client()->CreateCDCStream(table_iter.table_id(), options, set_active, db_stream_id),
+  // Forward request to master directly since we support creating CDCSDK stream for a namespace
+  // atomically in master now.
+  if (FLAGS_ysql_yb_enable_replication_commands) {
+    xrepl::StreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
+        client()->CreateCDCSDKStreamForNamespace(ns_id, options),
         CDCError(CDCErrorPB::INTERNAL_ERROR));
-
-    creation_state.created_cdc_streams.push_back(stream_id);
-
-    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-    RETURN_NOT_OK_SET_CODE(
-        client()->GetTabletsFromTableId(table_iter.table_id(), 0, &tablets),
-        CDCError(CDCErrorPB::TABLE_NOT_FOUND));
-
-    // For each tablet, create a row in cdc_state table containing the generated stream id, and
-    // the op id as max in the logs.
-    for (const auto& tablet : tablets) {
-      InitNewTabletStreamEntry(
-          db_stream_id,
-          tablet.tablet_id(),
-          &creation_state.producer_entries_modified,
-          &entries_to_insert);
-    }
-    stream_ids.push_back(std::move(stream_id));
-    table_ids.push_back(table_iter.table_id());
+    resp->set_db_stream_id(db_stream_id.ToString());
+    return Status::OK();
+  } else {
+    return STATUS(
+        ServiceUnavailable, "Creating a CDC stream is disallowed during an upgrade",
+        CDCError(CDCErrorPB::OPERATION_DISALLOWED));
   }
-
-  // Add stream to cache.
-  AddStreamMetadataToCache(
-      db_stream_id,
-      std::make_shared<StreamMetadata>(
-          ns_id, table_ids, req->record_type(), req->record_format(), req->source_type(),
-          req->checkpoint_type(), StreamModeTransactional(req->transactional())));
-
-  RETURN_NOT_OK_SET_CODE(
-      cdc_state_table_->InsertEntries(entries_to_insert), CDCError(CDCErrorPB::INTERNAL_ERROR));
-
-  resp->set_db_stream_id(db_stream_id.ToString());
-
-  // Clear creation_state so no changes are reversed by scope_exit since we succeeded.
-  creation_state.Clear();
-
-  return Status::OK();
 }
 
 void CDCServiceImpl::CreateCDCStream(
@@ -1095,6 +1030,12 @@ void CDCServiceImpl::CreateCDCStream(
             req->checkpoint_type(),
             StreamModeTransactional(req->transactional())));
   } else if (req->has_namespace_name()) {
+    // Return error if we see that no checkpoint type has been populated.
+    RPC_CHECK_AND_RETURN_ERROR(
+        req->has_checkpoint_type(),
+        STATUS(InvalidArgument, "Checkpoint type is required to create a CDCSDK stream"),
+        resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
+
     auto deadline = GetDeadline(context, client());
     Status status = CreateCDCStreamForNamespace(req, resp, deadline);
     CDCError error(status);
@@ -1435,7 +1376,8 @@ void CDCServiceImpl::ListTablets(
 }
 
 Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> CDCServiceImpl::GetTablets(
-    const xrepl::StreamId& stream_id) {
+    const xrepl::StreamId& stream_id,
+    bool ignore_errors) {
   auto stream_metadata = VERIFY_RESULT(GetStream(stream_id, RefreshStreamMapOption::kAlways));
   client::YBTableName table_name;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> all_tablets;
@@ -1445,9 +1387,19 @@ Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> CDCService
   for (const auto& table_id : table_ids) {
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
     table_name.set_table_id(table_id);
-    RETURN_NOT_OK(client()->GetTablets(
+    Status s = client()->GetTablets(
         table_name, 0, &tablets, /* partition_list_version =*/nullptr,
-        RequireTabletsRunning::kFalse, master::IncludeInactive::kTrue));
+        RequireTabletsRunning::kFalse, master::IncludeInactive::kTrue);
+
+    if (!s.ok()) {
+      if (ignore_errors) {
+        LOG(WARNING) << "Fetching tablets for table " << table_name.table_id()
+                     << " failed with error: " << s;
+        continue;
+      }
+
+      return s;
+    }
 
     all_tablets.MergeFrom(tablets);
   }
@@ -1743,11 +1695,13 @@ void CDCServiceImpl::GetChanges(
         ->UpdateStats(start_time, status, num_records, bytes_sent, sent_index, latest_wal_index);
   }
 
-  auto tablet_metric_row =
-      GetCDCTabletMetrics(producer_tablet, tablet_peer, record.GetSourceType());
   if (record.GetSourceType() == XCLUSTER) {
-    auto tablet_metric = std::static_pointer_cast<CDCTabletMetrics>(tablet_metric_row);
-    tablet_metric->is_bootstrap_required->set_value(status.IsNotFound());
+    auto tablet_metric_row =
+        GetCDCTabletMetrics(producer_tablet, tablet_peer, record.GetSourceType());
+    if (tablet_metric_row) {
+      auto tablet_metric = std::static_pointer_cast<CDCTabletMetrics>(tablet_metric_row);
+      tablet_metric->is_bootstrap_required->set_value(status.IsNotFound());
+    }
   }
 
   VLOG(1) << "T " << req->tablet_id() << " sending GetChanges response " << AsString(*resp);
@@ -3867,7 +3821,7 @@ Status CDCServiceImpl::CheckTabletValidForStream(const ProducerTabletInfo& info)
   // If we don't recognize the tablet_id, populate our full tablet list for this stream.
   // This can happen if we call "GetChanges" on a split tablet. We will initalise the entries for
   // the split tablets in both: tablet_checkpoints_ and cdc_state_metadata_.
-  auto tablets = VERIFY_RESULT(GetTablets(info.stream_id));
+  auto tablets = VERIFY_RESULT(GetTablets(info.stream_id, true /* ignore_errors */));
 
   auto status = impl_->CheckTabletValidForStream(info, tablets);
 
@@ -3943,7 +3897,7 @@ void CDCServiceImpl::IsBootstrapRequired(
 }
 
 Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForCDCSDK(const ProducerTabletInfo& info) {
-  auto tablets = VERIFY_RESULT(GetTablets(info.stream_id));
+  auto tablets = VERIFY_RESULT(GetTablets(info.stream_id, true /* ignore_errors */));
   const OpId& children_op_id = OpId();
 
   std::array<const master::TabletLocationsPB*, 2> children_tablets;

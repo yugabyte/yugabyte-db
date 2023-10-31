@@ -5,7 +5,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.yugabyte.yw.common.CloudProviderHelper.EditableInUseProvider;
-import com.yugabyte.yw.models.common.YBADeprecated;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.ApiModelProperty;
@@ -24,10 +25,11 @@ public class KubernetesInfo implements CloudInfoInterface {
   @ApiModelProperty
   private String kubernetesProvider;
 
-  @YBADeprecated(sinceDate = "2023-03-8", sinceYBAVersion = "2.17.3.0")
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.3.0")
   @JsonAlias("KUBECONFIG_SERVICE_ACCOUNT")
   @EditableInUseProvider(name = "Kubernetes Service Account", allowed = false)
-  @ApiModelProperty(value = "DEPRECATED: kubernetes service account is not needed.")
+  @ApiModelProperty(
+      value = "Deprecated since YBA version 2.17.3.0. kubernetes service account is not needed.")
   private String kubernetesServiceAccount;
 
   @JsonAlias("KUBECONFIG_IMAGE_REGISTRY")

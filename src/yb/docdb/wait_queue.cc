@@ -13,6 +13,7 @@
 
 #include "yb/docdb/wait_queue.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <future>
@@ -234,7 +235,8 @@ struct WaiterLockStatusInfo {
 // and are discarded.
 struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   WaiterData(const TransactionId id_, SubTransactionId subtxn_id_, LockBatch* const locks_,
-             uint64_t serial_no_, HybridTime wait_start_, const TabletId& status_tablet_,
+             uint64_t serial_no_, int64_t txn_start_us_, HybridTime wait_start_,
+             const TabletId& status_tablet_,
              const std::vector<BlockerDataAndConflictInfo> blockers_,
              const WaitDoneCallback callback_,
              std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration_, rpc::Rpcs* rpcs,
@@ -244,6 +246,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
         subtxn_id(subtxn_id_),
         locks(locks_),
         serial_no(serial_no_),
+        txn_start_us(txn_start_us_),
         wait_start(wait_start_),
         status_tablet(status_tablet_),
         blockers(std::move(blockers_)),
@@ -253,6 +256,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
         unlocked_(locks->Unlock()),
         rpcs_(*rpcs),
         in_progress_rpc_status_req_callbacks_(in_progress_rpc_status_req_callbacks) {
+    DCHECK(txn_start_us || id.IsNil());
     VLOG_WITH_PREFIX(4) << "Constructed waiter";
   }
 
@@ -264,6 +268,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   const SubTransactionId subtxn_id;
   LockBatch* const locks;
   const uint64_t serial_no;
+  const int64_t txn_start_us;
   const HybridTime wait_start;
   const TabletId status_tablet;
   const std::vector<BlockerDataAndConflictInfo> blockers;
@@ -394,6 +399,13 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
     return info;
   }
 
+  bool ShouldResumeBefore(const std::shared_ptr<WaiterData>& rhs) const {
+    if (txn_start_us && rhs->txn_start_us && txn_start_us != rhs->txn_start_us) {
+      return txn_start_us < rhs->txn_start_us;
+    }
+    return serial_no < rhs->serial_no;
+  }
+
  private:
   int64_t MicrosSinceCreation() const {
     return GetCurrentTimeMicros() - wait_start.GetPhysicalValueMicros();
@@ -497,6 +509,12 @@ class BlockerData {
       }
       return true;
     }, &post_resolve_waiters_);
+    // TODO(wait-queues): Instead of sorting here, we could modify the API of ResumedWaiterRunner to
+    // atomically accept a batch of waiters, and rework some of the upstream code to provide that.
+    std::sort(waiters_to_signal.begin(), waiters_to_signal.end(),
+        [](const auto& lhs, const auto& rhs) {
+      return lhs->ShouldResumeBefore(rhs);
+    });
     return waiters_to_signal;
   }
 
@@ -651,7 +669,9 @@ struct SerialWaiter {
   WaiterDataPtr waiter;
   HybridTime resolve_ht;
   bool operator()(const SerialWaiter& w1, const SerialWaiter& w2) const {
-    return w1.waiter->serial_no > w2.waiter->serial_no;
+    // Reverse operator order to ensure we pop off items with lower start time first, since the
+    // priority_queue implementation is a max PQ.
+    return !w1.waiter->ShouldResumeBefore(w2.waiter);
   }
 };
 
@@ -659,8 +679,8 @@ struct SerialWaiter {
 // serial number first in a best effort manner.
 class ResumedWaiterRunner {
  public:
-  explicit ResumedWaiterRunner(ThreadPoolToken* thread_pool_token)
-    : thread_pool_token_(DCHECK_NOTNULL(thread_pool_token)) {}
+  ResumedWaiterRunner(ThreadPoolToken* thread_pool_token, const std::string& log_prefix)
+    : thread_pool_token_(DCHECK_NOTNULL(thread_pool_token)), log_prefix_(log_prefix) {}
 
   void Submit(const WaiterDataPtr& waiter, const Status& status, HybridTime resolve_ht) {
     {
@@ -712,6 +732,8 @@ class ResumedWaiterRunner {
           to_invoke = pq_.top().waiter;
           resolve_ht = pq_.top().resolve_ht;
           pq_.pop();
+          VLOG_WITH_PREFIX(4) << "Popped waiter " << to_invoke->id
+                              << " with start time (us) " << to_invoke->txn_start_us;
         }
         to_invoke->InvokeCallback(Status::OK(), resolve_ht);
       }
@@ -725,6 +747,8 @@ class ResumedWaiterRunner {
         .waiter = waiter,
         .resolve_ht = resolve_ht,
       });
+      VLOG_WITH_PREFIX(4) << "Added waiter " << waiter->id
+                          << " with start time (us) " << waiter->txn_start_us;
     } else {
       // If error status, resume waiter right away, no need to respect serial_no
       WARN_NOT_OK(thread_pool_token_->SubmitFunc([waiter, status]() {
@@ -733,11 +757,16 @@ class ResumedWaiterRunner {
     }
   }
 
+  std::string LogPrefix() const {
+    return Format("ResumedWaiterRunner: $0", log_prefix_);
+  }
+
   mutable rw_spinlock mutex_;
   std::priority_queue<
       SerialWaiter, std::vector<SerialWaiter>, SerialWaiter> pq_ GUARDED_BY(mutex_);
   ThreadPoolToken* thread_pool_token_;
   bool shutting_down_ GUARDED_BY(mutex_) = false;
+  const std::string log_prefix_;
 };
 
 } // namespace
@@ -752,7 +781,7 @@ class WaitQueue::Impl {
       : txn_status_manager_(txn_status_manager), permanent_uuid_(permanent_uuid),
         waiting_txn_registry_(waiting_txn_registry), client_future_(client_future), clock_(clock),
         thread_pool_token_(std::move(thread_pool_token)),
-        waiter_runner_(thread_pool_token_.get()),
+        waiter_runner_(thread_pool_token_.get(), LogPrefix()),
         pending_time_waiting_(METRIC_wait_queue_pending_time_waiting.Instantiate(metrics)),
         finished_waiting_latency_(METRIC_wait_queue_finished_waiting_latency.Instantiate(metrics)),
         blockers_per_waiter_(METRIC_wait_queue_blockers_per_waiter.Instantiate(metrics)),
@@ -837,7 +866,8 @@ class WaitQueue::Impl {
 
   Result<bool> MaybeWaitOnLocks(
       const TransactionId& waiter_txn_id, SubTransactionId subtxn_id, LockBatch* locks,
-      const TabletId& status_tablet_id, uint64_t serial_no, WaitDoneCallback callback) {
+      const TabletId& status_tablet_id, uint64_t serial_no, int64_t txn_start_us,
+      WaitDoneCallback callback) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "waiter_txn_id=" << waiter_txn_id
                                  << " status_tablet_id=" << status_tablet_id;
     bool found_blockers = false;
@@ -866,8 +896,8 @@ class WaitQueue::Impl {
         }
 
         RETURN_NOT_OK(SetupWaiterUnlocked(
-            waiter_txn_id, subtxn_id, locks, status_tablet_id, serial_no, std::move(callback),
-            std::move(blocker_datas), std::move(blockers)));
+            waiter_txn_id, subtxn_id, locks, status_tablet_id, serial_no, txn_start_us,
+            std::move(callback), std::move(blocker_datas), std::move(blockers)));
         return true;
       } else {
         // It's possible that between checking above with a shared lock and checking again with a
@@ -885,7 +915,7 @@ class WaitQueue::Impl {
   Status WaitOn(
       const TransactionId& waiter_txn_id, SubTransactionId subtxn_id, LockBatch* locks,
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
-      uint64_t serial_no, WaitDoneCallback callback) {
+      uint64_t serial_no, int64_t txn_start_us, WaitDoneCallback callback) {
     AtomicFlagSleepMs(&FLAGS_TEST_sleep_before_entering_wait_queue_ms);
     VLOG_WITH_PREFIX_AND_FUNC(4) << "waiter_txn_id=" << waiter_txn_id
                                  << " blockers=" << *blockers
@@ -949,15 +979,15 @@ class WaitQueue::Impl {
       }
 
       return SetupWaiterUnlocked(
-          waiter_txn_id, subtxn_id, locks, status_tablet_id, serial_no, std::move(callback),
-          std::move(blocker_datas), std::move(blockers));
+          waiter_txn_id, subtxn_id, locks, status_tablet_id, serial_no, txn_start_us,
+          std::move(callback), std::move(blocker_datas), std::move(blockers));
     }
   }
 
   Status SetupWaiterUnlocked(
       const TransactionId& waiter_txn_id, SubTransactionId subtxn_id, LockBatch* locks,
-      const TabletId& status_tablet_id, uint64_t serial_no, WaitDoneCallback callback,
-      std::vector<BlockerDataAndConflictInfo>&& blocker_datas,
+      const TabletId& status_tablet_id, uint64_t serial_no, int64_t txn_start_us,
+      WaitDoneCallback callback, std::vector<BlockerDataAndConflictInfo>&& blocker_datas,
       std::shared_ptr<ConflictDataManager> blockers) REQUIRES(mutex_) {
     // TODO(wait-queues): similar to pg, we can wait 1s or so before beginning deadlock detection.
     // See https://github.com/yugabyte/yugabyte-db/issues/13576
@@ -979,7 +1009,7 @@ class WaitQueue::Impl {
     }
 
     auto waiter_data = std::make_shared<WaiterData>(
-        waiter_txn_id, subtxn_id, locks, serial_no, clock_->Now(), status_tablet_id,
+        waiter_txn_id, subtxn_id, locks, serial_no, txn_start_us, clock_->Now(), status_tablet_id,
         std::move(blocker_datas), std::move(callback), std::move(scoped_reporter), &rpcs_,
         &finished_waiting_latency_, &in_progress_rpc_status_req_callbacks_);
     if (waiter_data->IsSingleShard()) {
@@ -1639,16 +1669,19 @@ WaitQueue::~WaitQueue() = default;
 Status WaitQueue::WaitOn(
     const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
     std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
-    uint64_t serial_no, WaitDoneCallback callback) {
+    uint64_t serial_no, int64_t txn_start_us, WaitDoneCallback callback) {
   return impl_->WaitOn(
-      waiter, subtxn_id, locks, std::move(blockers), status_tablet_id, serial_no, callback);
+      waiter, subtxn_id, locks, std::move(blockers), status_tablet_id, serial_no, txn_start_us,
+      callback);
 }
 
 
 Result<bool> WaitQueue::MaybeWaitOnLocks(
     const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
-    const TabletId& status_tablet_id, uint64_t serial_no, WaitDoneCallback callback) {
-  return impl_->MaybeWaitOnLocks(waiter, subtxn_id, locks, status_tablet_id, serial_no, callback);
+    const TabletId& status_tablet_id, uint64_t serial_no, int64_t txn_start_us,
+    WaitDoneCallback callback) {
+  return impl_->MaybeWaitOnLocks(
+      waiter, subtxn_id, locks, status_tablet_id, serial_no, txn_start_us, callback);
 }
 
 void WaitQueue::Poll(HybridTime now) {

@@ -22,6 +22,7 @@
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
 
+#include "yb/cdc/cdc_types.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
@@ -126,6 +127,7 @@ DECLARE_bool(cdc_populate_end_markers_transactions);
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_int64(cdc_resolve_intent_lag_threshold_ms);
 DECLARE_bool(enable_tablet_split_of_cdcsdk_streamed_tables);
+DECLARE_bool(ysql_yb_enable_replication_commands);
 
 namespace yb {
 
@@ -393,13 +395,19 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       int tablet_idx = 0,
       int64 safe_hybrid_time = -1,
       int wal_segment_index = 0,
-      const bool populate_checkpoint = true);
+      const bool populate_checkpoint = true,
+      const bool should_retry = true);
 
   Result<GetChangesResponsePB> GetChangesFromCDC(
       const xrepl::StreamId& stream_id,
       const TabletId& tablet_id,
       const CDCSDKCheckpointPB* cp = nullptr,
       int tablet_idx = 0);
+
+  Result<GetChangesResponsePB> GetChangesFromCDCWithoutRetry(
+      const xrepl::StreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const CDCSDKCheckpointPB* cp);
 
   GetAllPendingChangesResponse GetAllPendingChangesWithRandomReqSafeTimeChanges(
       const xrepl::StreamId& stream_id,

@@ -694,6 +694,12 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
       !(ops_options.use_catalog_session || pg_txn_manager_->IsDdlMode() ||
         yb_non_ddl_txn_for_sys_tables_allowed));
 
+  if (yb_read_time != 0) {
+    SCHECK(
+        !pg_txn_manager_->IsDdlMode(), IllegalState,
+        "DDL operation should not be performed while yb_read_time is set to nonzero.");
+    ReadHybridTime::FromMicros(yb_read_time).ToPB(options.mutable_read_time());
+  }
   auto promise = std::make_shared<std::promise<PerformResult>>();
 
   // If all operations belong to the same database then set the namespace.
@@ -727,7 +733,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   if (ops_options.cache_options) {
     auto& cache_options = *ops_options.cache_options;
     auto& caching_info = *options.mutable_caching_info();
-    caching_info.set_key(std::move(cache_options.key));
+    caching_info.set_key_group(cache_options.key_group);
+    caching_info.set_key_value(std::move(cache_options.key_value));
     if (cache_options.lifetime_threshold_ms) {
       caching_info.mutable_lifetime_threshold_ms()->set_value(*cache_options.lifetime_threshold_ms);
     }
@@ -955,7 +962,7 @@ Result<PerformFuture> PgSession::RunAsync(const ReadOperationGenerator& generato
 
 Result<PerformFuture> PgSession::RunAsync(
     const ReadOperationGenerator& generator, CacheOptions&& cache_options) {
-  SCHECK(!cache_options.key.empty(), InvalidArgument, "Cache key can't be empty");
+  RSTATUS_DCHECK(!cache_options.key_value.empty(), InvalidArgument, "Cache key can't be empty");
   // Ensure no buffered requests will be added to cached request.
   RETURN_NOT_OK(buffer_.Flush());
   return DoRunAsync(generator, HybridTime(), ForceNonBufferable::kFalse, std::move(cache_options));
@@ -977,6 +984,10 @@ Result<boost::container::small_vector<RefCntSlice, 2>> PgSession::GetTableKeyRan
   return pg_client_.GetTableKeyRanges(
       table_id, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
       max_key_length);
+}
+
+Result<tserver::PgListReplicationSlotsResponsePB> PgSession::ListReplicationSlots() {
+  return pg_client_.ListReplicationSlots();
 }
 
 }  // namespace yb::pggate

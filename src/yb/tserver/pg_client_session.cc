@@ -18,6 +18,8 @@
 #include <mutex>
 #include <set>
 
+#include "yb/cdc/cdc_service.h"
+
 #include "yb/client/batcher.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
@@ -67,7 +69,7 @@ DEFINE_RUNTIME_bool(report_ysql_ddl_txn_status_to_master, false,
                     "If set, at the end of DDL operation, the TServer will notify the YB-Master "
                     "whether the DDL operation was committed or aborted");
 
-DEFINE_RUNTIME_bool(ysql_enable_table_mutation_counter, false,
+DEFINE_NON_RUNTIME_bool(ysql_enable_table_mutation_counter, false,
                     "Enable counting of mutations on a per-table basis. These mutations are used "
                     "to automatically trigger ANALYZE as soon as the mutations of a table cross a "
                     "certain threshold (decided based on ysql_auto_analyze_tuples_threshold and "
@@ -413,8 +415,9 @@ struct PerformData {
                           << ", failed op[" << idx << "]: " << AsString(op);
         return status.CloneAndAddErrorCode(OpIndex(idx));
       }
-      // In case of write operation, increase mutation counter
-      if (!op->read_only() && GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
+      // In case of non-DDL write operations, increase mutation counters
+      if (!op->read_only() && (!req.has_options() || !req.options().ddl_mode()) &&
+          GetAtomicFlag(&FLAGS_ysql_enable_table_mutation_counter) &&
           pg_node_level_mutation_counter) {
         const auto& table_id = down_cast<const client::YBPgsqlWriteOp&>(*op).table()->id();
 
@@ -665,6 +668,31 @@ Status PgClientSession::TruncateTable(
     const PgTruncateTableRequestPB& req, PgTruncateTableResponsePB* resp,
     rpc::RpcContext* context) {
   return client().TruncateTable(PgObjectId::GetYbTableIdFromPB(req.table_id()));
+}
+
+Status PgClientSession::CreateReplicationSlot(
+    const PgCreateReplicationSlotRequestPB& req, PgCreateReplicationSlotResponsePB* resp,
+    rpc::RpcContext* context) {
+  std::unordered_map<std::string, std::string> options;
+  // TODO(#19260): Support customizing the CDCRecordType.
+  options.reserve(5);
+  options.emplace(cdc::kIdType, cdc::kNamespaceId);
+  options.emplace(cdc::kRecordType, CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
+  options.emplace(cdc::kRecordFormat, CDCRecordFormat_Name(cdc::CDCRecordFormat::PROTO));
+  options.emplace(cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
+  options.emplace(cdc::kCheckpointType, CDCCheckpointType_Name(cdc::CDCCheckpointType::EXPLICIT));
+
+  auto stream_result = VERIFY_RESULT(client().CreateCDCSDKStreamForNamespace(
+      GetPgsqlNamespaceId(req.database_oid()), options,
+      ReplicationSlotName(req.replication_slot_name())));
+  *resp->mutable_stream_id() = stream_result.ToString();
+  return Status::OK();
+}
+
+Status PgClientSession::DropReplicationSlot(
+    const PgDropReplicationSlotRequestPB& req, PgDropReplicationSlotResponsePB* resp,
+    rpc::RpcContext* context) {
+  return client().DeleteCDCStream(ReplicationSlotName(req.replication_slot_name()));
 }
 
 Status PgClientSession::WaitForBackendsCatalogVersion(
@@ -1162,6 +1190,7 @@ PgClientSession::SetupSession(
   if (transaction) {
     DCHECK_GE(options.active_sub_transaction_id(), 0);
     transaction->SetActiveSubTransaction(options.active_sub_transaction_id());
+    RETURN_NOT_OK(transaction->SetPgTxnStart(options.pg_txn_start_us()));
   }
 
   return std::make_pair(sessions_[to_underlying(kind)], used_read_time);

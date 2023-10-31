@@ -72,6 +72,7 @@
 #include "yb/master/master_encryption.proxy.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_replication.proxy.h"
+#include "yb/master/master_test.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
@@ -661,6 +662,9 @@ void ClusterAdminClient::ResetMasterProxy(const HostPort& leader_addr) {
 
   master_replication_proxy_ = std::make_unique<master::MasterReplicationProxy>(
       proxy_cache_.get(), leader_addr_);
+
+  master_test_proxy_ = std::make_unique<master::MasterTestProxy>(
+      proxy_cache_.get(), leader_addr_);
 }
 
 Status ClusterAdminClient::MasterLeaderStepDown(
@@ -785,26 +789,109 @@ Status ClusterAdminClient::PromoteAutoFlags(
   req.set_force(force);
   RETURN_NOT_OK(master_cluster_proxy_->PromoteAutoFlags(req, &resp, &rpc));
   if (resp.has_error()) {
-    const auto status = StatusFromPB(resp.error().status());
-    if (!status.IsAlreadyPresent()) {
-      return status;
-    }
+    return StatusFromPB(resp.error().status());
   }
 
-  std::cout << "PromoteAutoFlags status: " << std::endl;
-  if (!resp.has_new_config_version()) {
-    std::cout << "No new AutoFlags to promote";
-  } else {
-    std::cout << "New AutoFlags were promoted. Config version: " << resp.new_config_version();
-    if (resp.non_runtime_flags_promoted()) {
-      std::cout << std::endl;
-      std::cout << "All YbMaster and YbTserver processes need to be restarted to apply the "
-                   "promoted AutoFlags";
+  std::cout << "PromoteAutoFlags completed successfully" << std::endl;
+  if (!resp.flags_promoted()) {
+    std::cout << "No new AutoFlags eligible to promote" << std::endl;
+    if (resp.has_new_config_version()) {
+      std::cout << "Current config version: " << resp.new_config_version() << std::endl;
     }
+    return Status::OK();
   }
-  std::cout << std::endl;
+    std::cout << "New AutoFlags were promoted" << std::endl;
+    std::cout << "New config version: " << resp.new_config_version() << std::endl;
+    if (resp.non_runtime_flags_promoted()) {
+      std::cout << "All yb-master and yb-tserver processes need to be restarted in order to apply "
+                   "the promoted AutoFlags"
+                << std::endl;
+    }
 
   return Status::OK();
+}
+
+Status ClusterAdminClient::RollbackAutoFlags(uint32_t rollback_version) {
+  master::RollbackAutoFlagsRequestPB req;
+  master::RollbackAutoFlagsResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+  req.set_rollback_version(rollback_version);
+  RETURN_NOT_OK(master_cluster_proxy_->RollbackAutoFlags(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::cout << "RollbackAutoFlags completed successfully" << std::endl;
+  if (!resp.flags_rolledback()) {
+    std::cout << "No AutoFlags have been promoted since version " << rollback_version << std::endl;
+    std::cout << "Current config version: " << resp.new_config_version() << std::endl;
+    return Status::OK();
+  }
+
+    std::cout << "AutoFlags that were promoted after config version " << rollback_version
+              << " were successfully rolled back" << std::endl;
+    std::cout << "New config version: " << resp.new_config_version() << std::endl;
+
+    return Status::OK();
+}
+
+Status ClusterAdminClient::PromoteSingleAutoFlag(
+    const std::string& process_name, const std::string& flag_name) {
+    master::PromoteSingleAutoFlagRequestPB req;
+    master::PromoteSingleAutoFlagResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(timeout_);
+    req.set_process_name(process_name);
+    req.set_auto_flag_name(flag_name);
+    RETURN_NOT_OK(master_cluster_proxy_->PromoteSingleAutoFlag(req, &resp, &rpc));
+    if (resp.has_error()) {
+     return StatusFromPB(resp.error().status());
+    }
+    if (!resp.flag_promoted()) {
+     std::cout << "AutoFlag " << flag_name << " from process " << process_name
+               << " was not promoted. Check the logs for more information" << std::endl;
+     std::cout << "Current config version: " << resp.new_config_version() << std::endl;
+     return Status::OK();
+    }
+
+    std::cout << "AutoFlag " << flag_name << " from process " << process_name
+              << " was successfully promoted" << std::endl;
+    std::cout << "New config version: " << resp.new_config_version() << std::endl;
+    if (resp.non_runtime_flag_promoted()) {
+     std::cout << "All yb-master and yb-tserver processes need to be restarted in order to apply "
+                  "the promoted AutoFlag"
+               << std::endl;
+    }
+
+    return Status::OK();
+}
+
+Status ClusterAdminClient::DemoteSingleAutoFlag(
+    const std::string& process_name, const std::string& flag_name) {
+    master::DemoteSingleAutoFlagRequestPB req;
+    master::DemoteSingleAutoFlagResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(timeout_);
+    req.set_process_name(process_name);
+    req.set_auto_flag_name(flag_name);
+    RETURN_NOT_OK(master_cluster_proxy_->DemoteSingleAutoFlag(req, &resp, &rpc));
+    if (resp.has_error()) {
+     return StatusFromPB(resp.error().status());
+    }
+    if (!resp.flag_demoted()) {
+     std::cout << "AutoFlag " << flag_name << " from process " << process_name
+               << " was not demoted. Either the flag does not exist or it is not promoted"
+               << std::endl;
+     std::cout << "Current config version: " << resp.new_config_version() << std::endl;
+     return Status::OK();
+    }
+
+    std::cout << "AutoFlag " << flag_name << " from process " << process_name
+              << " was successfully demoted" << std::endl;
+    std::cout << "New config version: " << resp.new_config_version() << std::endl;
+
+    return Status::OK();
 }
 
 Status ClusterAdminClient::ParseChangeType(

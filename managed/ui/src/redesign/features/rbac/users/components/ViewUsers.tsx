@@ -41,6 +41,9 @@ const useStyles = makeStyles((theme) => ({
     padding: `${theme.spacing(5.5)}px ${theme.spacing(3)}px`,
     '& .yb-table-header th,.yb-table-row td': {
       paddingLeft: '0 !important'
+    },
+    '& .yb-table-row': {
+      cursor: 'default'
     }
   },
   moreActionsBut: {
@@ -164,9 +167,24 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
               setCurrentUser(user);
               setCurrentPage(UserPages.EDIT_USER);
             },
-            disabled:
-              !hasNecessaryPerm({ ...UserPermissionMap.updateUser, onResource: user.uuid }) ||
-              isSuperAdmin
+            menuItemWrapper(elem) {
+              return (
+                <RbacValidator
+                  isControl
+                  accessRequiredOn={{ ...UserPermissionMap.updateUser, onResource: user.uuid }}
+                  overrideStyle={{ display: 'block' }}
+                  customValidateFunction={() => {
+                    return hasNecessaryPerm({
+                      ...UserPermissionMap.updateUser,
+                      onResource: user.uuid
+                    });
+                  }}
+                >
+                  {elem}
+                </RbacValidator>
+              );
+            },
+            disabled: isSuperAdmin
           },
           {
             text: t('table.moreActions.deleteUser'),
@@ -176,7 +194,18 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
               setCurrentUser(user);
               toggleDeleteModal(true);
             },
-            disabled: user.uuid === localStorage.getItem('userId') || isSuperAdmin
+            menuItemWrapper(elem) {
+              return (
+                <RbacValidator
+                  isControl
+                  accessRequiredOn={{ ...UserPermissionMap.deleteUser, onResource: user.uuid }}
+                  overrideStyle={{ display: 'block' }}
+                >
+                  {elem}
+                </RbacValidator>
+              );
+            },
+            disabled: isSuperAdmin
           }
         ]}
       >
@@ -221,7 +250,6 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
           {t('table.email')}
         </TableHeaderColumn>
         <TableHeaderColumn
-          dataSort
           dataField="roles"
           dataFormat={(_role, row: RbacUser) => {
             const roles: RbacBindings[] = [...(roleBindings?.[row.uuid] ?? [])];

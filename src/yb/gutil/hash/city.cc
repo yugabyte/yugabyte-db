@@ -34,7 +34,7 @@
 
 #include <sys/types.h>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/endian.h"
 #include "yb/gutil/hash/hash128to64.h"

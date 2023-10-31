@@ -16,12 +16,15 @@ import java.net.InetSocketAddress;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.util.Map;
 import java.util.Properties;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.util.EnvAndSysPropertyUtil;
+
+import com.yugabyte.PGProperty;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
@@ -145,13 +148,34 @@ public class ConnectionBuilder implements Cloneable {
     }
   }
 
+  public Connection replicationConnect() throws Exception {
+    Properties props = new Properties();
+    // Ask the driver to assume that the PG version is 11.2 which is what YSQL is based on. Any
+    // value above 9.4.0 works here since the support for replication connection was added to PG
+    // in 9.4.0.
+    PGProperty.ASSUME_MIN_SERVER_VERSION.set(props, "110200");
+    PGProperty.REPLICATION.set(props, "database");
+
+    if (preferQueryMode != null && preferQueryMode != "simple") {
+      throw new RuntimeException("replication connection only supports simple query mode");
+    }
+    // https://github.com/pgjdbc/pgjdbc/issues/759
+    PGProperty.PREFER_QUERY_MODE.set(props, "simple");
+    return connect(props);
+  }
+
   public Connection connect() throws Exception {
+    return connect(new Properties());
+  }
+
+  public Connection connect(Properties additionalProperties) throws Exception {
     final InetSocketAddress postgresAddress = connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR
         ? miniCluster.getYsqlConnMgrContactPoints().get(tserverIndex)
         : miniCluster.getPostgresContactPoints().get(tserverIndex);
     String url = String.format("jdbc:yugabytedb://%s:%d/%s", postgresAddress.getHostName(),
         postgresAddress.getPort(), database);
     Properties props = new Properties();
+    props.putAll(additionalProperties);
     props.setProperty("user", user);
     if (password != null) {
       props.setProperty("password", password);

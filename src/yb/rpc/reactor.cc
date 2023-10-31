@@ -45,7 +45,6 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 #include <ev++.h>
-#include <glog/logging.h>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"

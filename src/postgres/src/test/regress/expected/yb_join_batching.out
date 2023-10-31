@@ -622,16 +622,15 @@ CREATE TABLE q3(a int primary key);
 -- respected here.
 -- See issue #17150
 /*+Set(enable_mergejoin false) Set(enable_hashjoin false) Set(enable_material false) Leading((q1 (q2 q3)))*/explain (costs off) select * from q1, q2, q3 where q3.a = q2.a + q1.a;
-                                 QUERY PLAN
-----------------------------------------------------------------------------
- YB Batched Nested Loop Join
-   Join Filter: ((q2.a + q1.a) = q3.a)
+                  QUERY PLAN
+-----------------------------------------------
+ Nested Loop
+   ->  Seq Scan on q1
    ->  Nested Loop
-         ->  Seq Scan on q1
          ->  Seq Scan on q2
-   ->  Index Scan using q3_pkey on q3
-         Index Cond: (a = ANY (ARRAY[(q2.a + q1.a), ($1 + $4), ($2 + $5)]))
-(7 rows)
+         ->  Index Scan using q3_pkey on q3
+               Index Cond: (a = (q2.a + q1.a))
+(6 rows)
 
 -- This join is not dangerous as the clause q3.a = q2.a + q1.a
 -- will actually receive a cross product of q1 and q2 here.
@@ -704,7 +703,7 @@ CREATE INDEX ON s3 (r1 asc, r2 asc);
 INSERT INTO s1 select i,i,i from generate_series(1,10) i;
 INSERT INTO s2 select i,i,i from generate_series(1,10) i;
 INSERT INTO s3 select i,i from generate_series(1,100) i;
-/*+Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) NestLoop(s1 s3)*/explain (costs off) select s3.* from s1, s2, s3 where s3.r1 = s1.r1 and s3.r2 = s2.r2 and s1.r3 = s2.r3 order by s3.r1, s3.r2;
+/*+Set(enable_nestloop true) Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) YbBatchedNL(s1 s3)*/ explain (costs off) select s3.* from s1, s2, s3 where s3.r1 = s1.r1 and s3.r2 = s2.r2 and s1.r3 = s2.r3 order by s3.r1, s3.r2;
                                       QUERY PLAN
 --------------------------------------------------------------------------------------
  Sort
@@ -718,7 +717,7 @@ INSERT INTO s3 select i,i from generate_series(1,100) i;
                      Index Cond: ((r1 = ANY (ARRAY[s1.r1, $1, $2])) AND (r2 = s2.r2))
 (9 rows)
 
-/*+Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) NestLoop(s1 s3)*/select s3.* from s1, s2, s3 where s3.r1 = s1.r1 and s3.r2 = s2.r2 and s1.r3 = s2.r3 order by s3.r1, s3.r2;
+/*+Set(enable_nestloop true) Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) YbBatchedNL(s1 s3)*/ select s3.* from s1, s2, s3 where s3.r1 = s1.r1 and s3.r2 = s2.r2 and s1.r3 = s2.r3 order by s3.r1, s3.r2;
  r1 | r2
 ----+----
   1 |  1
@@ -931,8 +930,8 @@ create index q3_range on q3(a asc);
  Nested Loop Left Join
    ->  Index Scan using q1_pkey on q1 p1
    ->  Nested Loop
-         Join Filter: (p3.a <= p1.c1)
          ->  Index Only Scan using q3_range on q3 p3
+               Index Cond: (a <= p1.c1)
          ->  Index Scan using q2_pkey on q2 p2
                Index Cond: (c1 = p1.c1)
 (7 rows)

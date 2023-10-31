@@ -13,6 +13,7 @@ menu:
     parent: launch-and-manage
 type: indexpage
 ---
+
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="checklist/">
@@ -60,22 +61,7 @@ type: indexpage
       </div>
     </a>
   </div>
-<!--
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="docker/docker-compose/">
-      <div class="head">
-        <div class="icon">
-          <i class="fa-brands fa-docker"></i>
-        </div>
-        <div class="articles">2 articles</div>
-        <div class="title">Docker</div>
-      </div>
-      <div class="body">
-        Orchestrated deployment of YugabyteDB in Docker Compose.
-      </div>
-    </a>
-  </div>
--->
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="multi-dc/">
       <div class="head">

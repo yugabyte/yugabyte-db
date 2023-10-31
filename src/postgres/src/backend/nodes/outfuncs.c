@@ -774,20 +774,24 @@ _outNestLoop(StringInfo str, const NestLoop *node)
 static void
 _outYbBatchedNestLoop(StringInfo str, const YbBatchedNestLoop *node)
 {
-	WRITE_NODE_TYPE("YbBatchedNestLoop");
+	WRITE_NODE_TYPE("YBBATCHEDNESTLOOP");
 
-	_outNestLoop(str, &node->nl);
-	appendStringInfoString(str, " :" "num_hashClauseInfos" " ");
-	WRITE_OID_FIELD(num_hashClauseInfos);
+	_outJoinPlanInfo(str, (const Join *) node);
+	WRITE_NODE_FIELD(nl.nestParams);
+	WRITE_INT_FIELD(num_hashClauseInfos);
+	appendStringInfoString(str, " :hashOps");
+	for (int i = 0; i < node->num_hashClauseInfos; i++)
+		appendStringInfo(str, " %u", node->hashClauseInfos[i].hashOp);
+
+	appendStringInfoString(str, " :innerHashAttNos");
+	for (int i = 0; i < node->num_hashClauseInfos; i++)
+		appendStringInfo(str, " %d", node->hashClauseInfos[i].innerHashAttNo);
+
+	appendStringInfoString(str, " :outerParamExprs");
 	for (int i = 0; i < node->num_hashClauseInfos; i++)
 	{
-		YbBNLHashClauseInfo *current_hinfo = node->hashClauseInfos;
-		appendStringInfoString(str, " :" "hashOp" " ");
-		appendStringInfo(str, "%u", current_hinfo->hashOp);
-		appendStringInfoString(str, " :" "innerHashAttNo" " ");
-		appendStringInfo(str, "%d", current_hinfo->innerHashAttNo);
-		appendStringInfoString(str, " :" "outerParamExpr" " "),
-		outNode(str, current_hinfo->outerParamExpr);
+		appendStringInfoString(str, " ");
+		outNode(str, node->hashClauseInfos[i].outerParamExpr);
 	}
 }
 
@@ -1044,6 +1048,7 @@ _outNestLoopParam(StringInfo str, const NestLoopParam *node)
 
 	WRITE_INT_FIELD(paramno);
 	WRITE_NODE_FIELD(paramval);
+	WRITE_INT_FIELD(yb_batch_size);
 }
 
 static void

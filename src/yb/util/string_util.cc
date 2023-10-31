@@ -27,7 +27,7 @@
 
 #include <boost/preprocessor/cat.hpp>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 using std::vector;
 using std::regex;

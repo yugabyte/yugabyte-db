@@ -39,7 +39,7 @@
 #include <vector>
 #include <set>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/ref_counted.h"
 

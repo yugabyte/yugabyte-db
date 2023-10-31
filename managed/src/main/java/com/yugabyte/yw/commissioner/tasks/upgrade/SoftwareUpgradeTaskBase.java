@@ -7,8 +7,9 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
-import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.models.Universe;
@@ -20,6 +21,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -35,11 +37,6 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
   }
 
   @Override
-  protected SoftwareUpgradeParams taskParams() {
-    return (SoftwareUpgradeParams) taskParams;
-  }
-
-  @Override
   public SubTaskGroupType getTaskSubGroupType() {
     return SubTaskGroupType.UpgradingSoftware;
   }
@@ -49,12 +46,27 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     return NodeState.UpgradeSoftware;
   }
 
-  protected UpgradeContext getUpgradeContext() {
+  protected UpgradeContext getUpgradeContext(String targetSoftwareVersion) {
     return UpgradeContext.builder()
         .reconfigureMaster(false)
         .runBeforeStopping(false)
         .processInactiveMaster(true)
-        .targetSoftwareVersion(taskParams().ybSoftwareVersion)
+        .targetSoftwareVersion(targetSoftwareVersion)
+        .build();
+  }
+
+  protected UpgradeContext getRollbackUpgradeContext(
+      Set<NodeDetails> nodesToSkipMasterActions,
+      Set<NodeDetails> nodesToSkipTServerActions,
+      String targetSoftwareVersion) {
+    return UpgradeContext.builder()
+        .reconfigureMaster(false)
+        .runBeforeStopping(false)
+        .processInactiveMaster(true)
+        .processTServersFirst(true)
+        .targetSoftwareVersion(targetSoftwareVersion)
+        .nodesToSkipMasterActions(nodesToSkipMasterActions)
+        .nodesToSkipTServerActions(nodesToSkipTServerActions)
         .build();
   }
 
@@ -75,7 +87,10 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
   }
 
   protected void createUpgradeTaskFlowTasks(
-      Pair<List<NodeDetails>, List<NodeDetails>> nodes, String newVersion, boolean reProvision) {
+      Pair<List<NodeDetails>, List<NodeDetails>> nodes,
+      String newVersion,
+      UpgradeContext upgradeContext,
+      boolean reProvision) {
     createUpgradeTaskFlow(
         (nodes1, processTypes) -> {
           // Re-provisioning the nodes if ybc needs to be installed and systemd is already
@@ -91,7 +106,7 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
               nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType());
         },
         nodes,
-        getUpgradeContext(),
+        upgradeContext,
         false);
   }
 
@@ -191,9 +206,6 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
           }
         });
 
-    // Put the gflag into xCluster info of the universe and persist it.
-    createXClusterInfoPersistTask();
-
     // If the gflags were manually set, persist the new target universe user intent without those
     // gflags. Otherwise, it means the gflags do not already exist in the conf files on the DB
     // nodes, and it should regenerate the conf files.
@@ -207,6 +219,26 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     } else {
       createGFlagsOverrideTasks(targetUniverse.getMasters(), ServerType.MASTER);
       createGFlagsOverrideTasks(targetUniverse.getTServersInPrimaryCluster(), ServerType.TSERVER);
+    }
+
+    // Put the gflag into xCluster info of the universe and persist it.
+    createXClusterInfoPersistTask();
+  }
+
+  protected void createPrecheckTasks(Universe universe, String newVersion) {
+    Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
+    Set<NodeDetails> allNodes = toOrderedSet(nodes);
+
+    // Preliminary checks for upgrades.
+    createCheckUpgradeTask(newVersion).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+
+    // PreCheck for Available Memory on tserver nodes.
+    long memAvailableLimit =
+        confGetter.getConfForScope(universe, UniverseConfKeys.dbMemAvailableLimit);
+    // No need to run the check if the minimum allowed is 0.
+    if (memAvailableLimit > 0) {
+      createAvailableMemoryCheck(allNodes, Util.AVAILABLE_MEMORY, memAvailableLimit)
+          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
     }
   }
 }

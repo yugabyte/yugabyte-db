@@ -140,7 +140,7 @@ export const EditRole = () => {
           <Grid item className={classes.menuContainer}>
             {Menu.map((m) => (
               <div
-                key="m"
+                key={m.label}
                 onClick={() => {
                   setCurrentView(m.view);
                 }}

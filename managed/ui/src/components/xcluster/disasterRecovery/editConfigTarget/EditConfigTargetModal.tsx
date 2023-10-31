@@ -1,4 +1,4 @@
-import { makeStyles } from '@material-ui/core';
+import { Typography } from '@material-ui/core';
 import { AxiosError } from 'axios';
 import { useState } from 'react';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
@@ -16,7 +16,9 @@ import { api, drConfigQueryKey, EditDrConfigRequest } from '../../../../redesign
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import { fetchTaskUntilItCompletes } from '../../../../actions/xClusterReplication';
 
-import { DrConfig } from '../types';
+import { DrConfig } from '../dtos';
+
+import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
 
 interface EditConfigTargetModalProps {
   drConfig: DrConfig;
@@ -29,17 +31,6 @@ export interface EditConfigTargetFormValues {
   targetUniverse: Universe;
   storageConfig: StorageConfigOption;
 }
-
-const useStyles = makeStyles((theme) => ({
-  toastContainer: {
-    display: 'flex',
-    gap: theme.spacing(0.5),
-    '& a': {
-      textDecoration: 'underline',
-      color: '#fff'
-    }
-  }
-}));
 
 export const FormStep = {
   SELECT_TARGET_UNIVERSE: 'selectTargetUniverse',
@@ -61,7 +52,6 @@ export const EditConfigTargetModal = ({
   redirectUrl
 }: EditConfigTargetModalProps) => {
   const [currentFormStep, setCurrentFormStep] = useState<FormStep>(FIRST_FORM_STEP);
-  const classes = useStyles();
   const queryClient = useQueryClient();
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
 
@@ -86,16 +76,22 @@ export const EditConfigTargetModal = ({
         const handleTaskCompletion = (error: boolean) => {
           if (error) {
             toast.error(
-              <span className={classes.toastContainer}>
+              <span className={toastStyles.toastMessage}>
                 <i className="fa fa-exclamation-circle" />
-                <span>{t('error.taskFailure')}</span>
+                <Typography variant="body2" component="span">
+                  {t('error.taskFailure')}
+                </Typography>
                 <a href={`/tasks/${response.taskUUID}`} rel="noopener noreferrer" target="_blank">
                   {t('viewDetails', { keyPrefix: 'task' })}
                 </a>
               </span>
             );
           } else {
-            toast.success(t('success.taskSuccess'));
+            toast.success(
+              <Typography variant="body2" component="span">
+                {t('success.taskSuccess')}
+              </Typography>
+            );
           }
           invalidateQueries();
         };
@@ -107,7 +103,7 @@ export const EditConfigTargetModal = ({
         fetchTaskUntilItCompletes(response.taskUUID, handleTaskCompletion, invalidateQueries);
       },
       onError: (error: Error | AxiosError) =>
-        handleServerError(error, { customErrorLabel: t('error.requestFailure') })
+        handleServerError(error, { customErrorLabel: t('error.requestFailureLabel') })
     }
   );
 
@@ -130,10 +126,9 @@ export const EditConfigTargetModal = ({
         setCurrentFormStep(FormStep.CONFIGURE_BOOTSTRAP);
         return;
       case FormStep.CONFIGURE_BOOTSTRAP:
-        editDrConfigMutation.mutate(formValues);
-        return;
+        return editDrConfigMutation.mutateAsync(formValues);
       default:
-        assertUnreachableCase(currentFormStep);
+        return assertUnreachableCase(currentFormStep);
     }
   };
 

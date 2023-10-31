@@ -377,6 +377,9 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     (IsLoadBalancerIdle)
     (SetPreferredZones)
     (PromoteAutoFlags)
+    (RollbackAutoFlags)
+    (PromoteSingleAutoFlag)
+    (DemoteSingleAutoFlag)
   )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(XClusterManager,

@@ -327,7 +327,6 @@ public class NodeAgentPoller {
         // So, this client has to trust both old and new certs.
         // The new key should also work on node agent.
         // Update the state atomically with the cert update.
-        nodeAgent.setState(State.UPGRADED);
         nodeAgentManager.replaceCerts(nodeAgent);
       }
       if (nodeAgent.getState() == State.UPGRADED) {
@@ -343,9 +342,7 @@ public class NodeAgentPoller {
           // If the node has restarted and loaded the new cert and key,
           // delete the local merged certs.
           nodeAgentManager.postUpgrade(nodeAgent);
-          nodeAgent.setHome(nodeAgentHome);
-          nodeAgent.setVersion(serverInfo.getVersion());
-          nodeAgent.saveState(State.READY);
+          nodeAgent.finalizeUpgrade(nodeAgentHome, serverInfo.getVersion());
           log.info("Node agent {} has been upgraded successfully", nodeAgent.getUuid());
         }
       }

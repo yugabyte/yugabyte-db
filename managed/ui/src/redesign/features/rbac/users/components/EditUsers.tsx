@@ -13,6 +13,7 @@ import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useToggle } from 'react-use';
 import { toast } from 'react-toastify';
+import { find } from 'lodash';
 
 import { Box, FormHelperText, makeStyles } from '@material-ui/core';
 import Container from '../../common/Container';
@@ -22,11 +23,14 @@ import { RolesAndResourceMapping } from '../../policy/RolesAndResourceMapping';
 import { YBButton, YBInputField } from '../../../../components';
 import { editUsersRolesBindings, getRoleBindingsForUser } from '../../api';
 import { convertRbacBindingsToUISchema } from './UserUtils';
+import { RbacValidator, hasNecessaryPerm } from '../../common/RbacValidator';
 
 import { RbacUserWithResources } from '../interface/Users';
 import { UserContextMethods, UserPages, UserViewContext } from './UserContext';
 import { createErrorMessage } from '../../../universe/universe-form/utils/helpers';
+import { ForbiddenRoles, Role } from '../../roles';
 import { getEditUserValidationSchema } from './UserValidationSchema';
+import { UserPermissionMap } from '../../UserPermPathMapping';
 
 import { ReactComponent as ArrowLeft } from '../../../../assets/arrow_left.svg';
 import { ReactComponent as Delete } from '../../../../assets/trashbin.svg';
@@ -103,7 +107,7 @@ export const EditUser = () => {
     }
   );
 
-  const { isLoading } = useQuery(
+  const { isLoading, data: roleBindings } = useQuery(
     ['role_binding', currentUser?.uuid],
     () => getRoleBindingsForUser(currentUser!.uuid!),
     {
@@ -118,6 +122,16 @@ export const EditUser = () => {
   );
 
   if (isLoading) return <YBLoadingCircleIcon />;
+
+  let userRoles: Role[] = [];
+  let isSuperAdmin = false;
+
+  if (currentUser?.uuid) {
+    userRoles = [...(roleBindings?.[currentUser.uuid] ?? [])].map((r) => r.role);
+    isSuperAdmin = userRoles.some((role) =>
+      find(ForbiddenRoles, { name: role.name, roleType: role.roleType })
+    );
+  }
 
   return (
     <Container
@@ -144,17 +158,32 @@ export const EditUser = () => {
             />
             {t('title')}
           </div>
-          <YBButton
-            variant="secondary"
-            size="large"
-            startIcon={<Delete />}
-            onClick={() => {
-              toggleDeleteModal(true);
+          <RbacValidator
+            accessRequiredOn={UserPermissionMap.deleteUser}
+            customValidateFunction={() => {
+              return (
+                hasNecessaryPerm({
+                  ...UserPermissionMap.deleteUser,
+                  onResource: currentUser?.uuid
+                }) &&
+                currentUser?.uuid !== localStorage.getItem('userId') &&
+                !isSuperAdmin
+              );
             }}
-            data-testid={`rbac-resource-delete-user`}
+            isControl
           >
-            {t('delete')}
-          </YBButton>
+            <YBButton
+              variant="secondary"
+              size="large"
+              startIcon={<Delete />}
+              onClick={() => {
+                toggleDeleteModal(true);
+              }}
+              data-testid={`rbac-resource-delete-user`}
+            >
+              {t('delete')}
+            </YBButton>
+          </RbacValidator>
         </div>
         <FormProvider {...methods}>
           <form className={classes.form}>

@@ -26,10 +26,10 @@ namespace pggate {
 
 PgDmlWrite::PgDmlWrite(PgSession::ScopedRefPtr pg_session,
                        const PgObjectId& table_id,
-                       bool is_single_row_txn,
-                       bool is_region_local)
+                       bool is_region_local,
+                       YBCPgTransactionSetting transaction_setting)
     : PgDml(std::move(pg_session), table_id, is_region_local),
-      is_single_row_txn_(is_single_row_txn) {
+      transaction_setting_(transaction_setting) {
 }
 
 PgDmlWrite::~PgDmlWrite() {
@@ -121,7 +121,9 @@ Status PgDmlWrite::Exec(ForceNonBufferable force_non_bufferable) {
 
   // Execute the statement. If the request has been sent, get the result and handle any rows
   // returned.
-  if (VERIFY_RESULT(doc_op_->Execute(force_non_bufferable)) == RequestSent::kTrue) {
+  if (VERIFY_RESULT(doc_op_->Execute(ForceNonBufferable(
+          force_non_bufferable.get() ||
+          (transaction_setting_ == YB_SINGLE_SHARD_TRANSACTION)))) == RequestSent::kTrue) {
     rowsets_.splice(rowsets_.end(), VERIFY_RESULT(doc_op_->GetResult()));
 
     // Save the number of rows affected by the op.
@@ -138,8 +140,11 @@ Status PgDmlWrite::SetWriteTime(const HybridTime& write_time) {
 }
 
 void PgDmlWrite::AllocWriteRequest() {
-  auto write_op = ArenaMakeShared<PgsqlWriteOp>(arena_ptr(), &arena(), !is_single_row_txn_,
-                                                is_region_local_);
+  auto write_op = ArenaMakeShared<PgsqlWriteOp>(
+      arena_ptr(), &arena(),
+      /* need_transaction */
+      (transaction_setting_ == YBCPgTransactionSetting::YB_TRANSACTIONAL),
+      is_region_local_);
 
   write_req_ = std::shared_ptr<LWPgsqlWriteRequestPB>(write_op, &write_op->write_request());
   write_req_->set_stmt_type(stmt_type());

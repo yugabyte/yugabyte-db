@@ -118,7 +118,7 @@ class UniverseAction extends Component {
       <div>
         {!universePaused && (
           <RbacValidator
-            accessRequiredOn={UserPermissionMap.editUniverse}
+            accessRequiredOn={{...UserPermissionMap.editUniverse, onResource: universe.universeUUID}}
             isControl
           >
             <YBButton

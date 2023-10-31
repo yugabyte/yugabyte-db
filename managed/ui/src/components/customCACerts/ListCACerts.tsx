@@ -80,12 +80,15 @@ const ListCACerts: FC<ListCACertsProps> = () => {
           {
             text: t('customCACerts.listing.table.moreActions.updateCert'),
             callback: () => {
-              if(!hasNecessaryPerm({...UserPermissionMap.createCACerts})){
+              if (!hasNecessaryPerm({ ...UserPermissionMap.createCACerts })) {
                 return;
               }
               setSelectedCADetails(cert);
               setShowUploadCACertModal(true);
-            }
+            },
+            menuItemWrapper(elem) {
+              return <RbacValidator accessRequiredOn={{ ...UserPermissionMap.createCACerts }} isControl>{elem}</RbacValidator>;
+            },
           },
           {
             text: '',
@@ -96,12 +99,15 @@ const ListCACerts: FC<ListCACertsProps> = () => {
             text: t('common.delete'),
             className: classes.deleteMenu,
             callback: () => {
-              if(!hasNecessaryPerm({...UserPermissionMap.deleteCACerts})){
+              if (!hasNecessaryPerm({ ...UserPermissionMap.deleteCACerts })) {
                 return;
               }
               setSelectedCADetails(cert);
               setShowDeleteCACertModal(true);
-            }
+            },
+            menuItemWrapper(elem) {
+              return <RbacValidator accessRequiredOn={{ ...UserPermissionMap.deleteCACerts }} isControl>{elem}</RbacValidator>;
+            },
           }
         ]}
       >

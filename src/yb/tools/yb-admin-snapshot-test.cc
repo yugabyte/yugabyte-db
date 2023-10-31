@@ -22,6 +22,7 @@
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/schema.h"
+#include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/table_info.h"
 
@@ -50,8 +51,8 @@
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
-DECLARE_string(certs_dir);
 DECLARE_bool(check_bootstrap_required);
+DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 DECLARE_bool(TEST_create_table_with_empty_namespace_name);
 DECLARE_bool(TEST_simulate_long_restore);
 
@@ -170,13 +171,6 @@ class AdminCliTest : public AdminCliTestBase {
  private:
   std::unique_ptr<MasterBackupProxy> backup_service_proxy_;
 };
-
-TEST_F(AdminCliTest, TestNonTLS) { ASSERT_OK(RunAdminToolCommand("list_all_masters")); }
-
-// TODO: Enabled once ENG-4900 is resolved.
-TEST_F(AdminCliTest, DISABLED_TestTLS) {
-  ASSERT_OK(RunAdminToolCommand("--certs_dir_name", GetCertsDir(), "list_all_masters"));
-}
 
 TEST_F(AdminCliTest, TestCreateSnapshot) {
   CreateTable(Transactional::kFalse);
@@ -834,7 +828,34 @@ TEST_F(AdminCliTest, TestSetPreferredZone) {
       strings::Substitute("$0:3", c2z1)));
 }
 
-TEST_F(AdminCliTest, TestListSnapshotWithNamespaceNameMigration) {
+class SnapshotAdminCliTest : public AdminCliTest {
+ public:
+  void SetUp() override {
+    AdminCliTest::SetUp();
+    snapshot_util_ = std::make_unique<client::SnapshotTestUtil>();
+    snapshot_util_->SetProxy(&client_->proxy_cache());
+    snapshot_util_->SetCluster(cluster_.get());
+  }
+
+  Result<master::SysTablesEntryPB> GetTableEntryFromSnapshot(
+      const client::Snapshots& snapshots, const TxnSnapshotId& snapshot_id) {
+    for (const auto& snapshot : snapshots) {
+      if (VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id())) == snapshot_id) {
+        for (const auto& entry : snapshot.entry().entries()) {
+          if (entry.type() == master::SysRowEntryType::TABLE) {
+            return pb_util::ParseFromSlice<master::SysTablesEntryPB>(entry.data());
+          }
+        }
+      }
+    }
+    return STATUS(NotFound, "Could not find TABLE entry");
+  }
+
+ protected:
+  std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
+};
+
+TEST_F_EX(AdminCliTest, TestListSnapshotWithNamespaceNameMigration, SnapshotAdminCliTest) {
   // Start with a table missing its namespace_name (as if created before 2.3).
   FLAGS_TEST_create_table_with_empty_namespace_name = true;
   CreateTable(Transactional::kFalse);
@@ -845,40 +866,30 @@ TEST_F(AdminCliTest, TestListSnapshotWithNamespaceNameMigration) {
   // Create snapshot of default table that gets created.
   LOG(INFO) << ASSERT_RESULT(RunAdminToolCommand("create_snapshot", keyspace, table_name));
 
-  ListSnapshotsRequestPB req;
-  ListSnapshotsResponsePB resp;
-  RpcController rpc;
-  ASSERT_OK(ASSERT_RESULT(BackupServiceProxy())->ListSnapshots(req, &resp, &rpc));
-  ASSERT_EQ(resp.snapshots_size(), 1);
-  auto snapshot_id = FullyDecodeTxnSnapshotId(resp.snapshots(0).id());
-  auto get_table_entry = [&]() -> Result<master::SysTablesEntryPB> {
-    for (auto& entry : resp.snapshots(0).entry().entries()) {
-      if (entry.type() == master::SysRowEntryType::TABLE) {
-        return pb_util::ParseFromSlice<master::SysTablesEntryPB>(entry.data());
-      }
-    }
-    return STATUS(NotFound, "Could not find TABLE entry");
-  };
+  auto snapshots = ASSERT_RESULT(snapshot_util_->ListSnapshots());
+  ASSERT_EQ(snapshots.size(), 1);
+  auto snapshot_id = ASSERT_RESULT(FullyDecodeTxnSnapshotId(snapshots[0].id()));
 
   // Old behaviour, snapshot doesn't have namespace_name.
-  master::SysTablesEntryPB table_meta = ASSERT_RESULT(get_table_entry());
+  auto table_meta = ASSERT_RESULT(GetTableEntryFromSnapshot(snapshots, snapshot_id));
   ASSERT_FALSE(table_meta.has_namespace_name());
-
-  // Delete snapshot.
-  LOG(INFO) << ASSERT_RESULT(RunAdminToolCommand("delete_snapshot", snapshot_id));
 
   // Restart cluster, run namespace_name migration to populate the namespace_name field.
   ASSERT_OK(cluster_->RestartSync());
 
   // Create a new snapshot.
   LOG(INFO) << ASSERT_RESULT(RunAdminToolCommand("create_snapshot", keyspace, table_name));
+  snapshots = ASSERT_RESULT(snapshot_util_->ListSnapshots());
+  ASSERT_EQ(snapshots.size(), 2);
 
-  rpc.Reset();
-  ASSERT_OK(ASSERT_RESULT(BackupServiceProxy())->ListSnapshots(req, &resp, &rpc));
-  ASSERT_EQ(resp.snapshots_size(), 1);
+  // Find the new snapshot id.
+  TxnSnapshotId new_snapshot_id = ASSERT_RESULT(FullyDecodeTxnSnapshotId(snapshots[0].id()));
+  if (new_snapshot_id == snapshot_id) {
+    new_snapshot_id = ASSERT_RESULT(FullyDecodeTxnSnapshotId(snapshots[1].id()));
+  }
 
   // Ensure that the namespace_name field is now populated.
-  table_meta = ASSERT_RESULT(get_table_entry());
+  table_meta = ASSERT_RESULT(GetTableEntryFromSnapshot(snapshots, new_snapshot_id));
   ASSERT_TRUE(table_meta.has_namespace_name());
   ASSERT_EQ(table_meta.namespace_name(), keyspace);
 }

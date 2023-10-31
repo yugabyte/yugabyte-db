@@ -253,7 +253,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
       ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);
 
   struct CacheOptions {
-    std::string key;
+    uint64_t key_group;
+    std::string key_value;
     std::optional<uint32_t> lifetime_threshold_ms;
   };
 
@@ -355,6 +356,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Check whether the specified table has a CDC stream.
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
+
+  Result<yb::tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
 
  private:
   Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);

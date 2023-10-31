@@ -692,6 +692,21 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Rollbacks the auto flag config for each servers.
+   * @param rollbackVersion auto flags version to which rollback is desired.
+   * @return a deferred object that yields the response to the rollback autoFlag config from
+   *         server.
+   */
+  public Deferred<RollbackAutoFlagsResponse> getRollbackAutoFlagsResponse(int rollbackVersion) {
+    checkIsClosed();
+    RollbackAutoFlagsRequest rpc = new RollbackAutoFlagsRequest(this.masterTable, rollbackVersion);
+    Deferred<RollbackAutoFlagsResponse> d = rpc.getDeferred();
+    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    sendRpcToTablet(rpc);
+    return d;
+  }
+
+  /**
    * Check whether YSQL has finished upgrading.
    * @param hp the host and port of the tserver.
    * @param useSingleConnection whether or not to use a single connection.
@@ -892,6 +907,17 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<ListTabletServersResponse> listTabletServers() {
     checkIsClosed();
     ListTabletServersRequest rpc = new ListTabletServersRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Get the list of live tablet servers.
+   * @return a deferred object that yields a list of live tablet servers
+   */
+  public Deferred<ListLiveTabletServersResponse> listLiveTabletServers() {
+    checkIsClosed();
+    ListLiveTabletServersRequest rpc = new ListLiveTabletServersRequest(this.masterTable);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }

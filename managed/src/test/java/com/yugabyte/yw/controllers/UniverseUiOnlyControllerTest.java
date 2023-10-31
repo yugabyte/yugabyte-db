@@ -40,6 +40,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -405,7 +406,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseCreateWithInvalidTServerJson() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CheckTServers);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -460,7 +461,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseExpand() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -510,7 +511,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     assertNotNull(primaryClusterJson.get("userIntent"));
     assertAuditEntry(1, customer.getUuid());
 
-    fakeTaskUUID = UUID.randomUUID();
+    fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     // Try universe expand only, and re-check.
@@ -531,7 +532,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseExpandWithYbc() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -585,7 +586,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     assertNotNull(primaryClusterJson.get("userIntent"));
     assertAuditEntry(1, customer.getUuid());
 
-    fakeTaskUUID = UUID.randomUUID();
+    fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     // Try universe expand only, and re-check.
@@ -656,7 +657,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseUpdateWithChangingIP() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -717,7 +718,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseUpdateIllegalIP() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -780,7 +781,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseUpdateWithAllNodesRemoved() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -838,7 +839,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseUpdateWithMissingNodes() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -899,7 +900,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseUpdateWithUnknownNodes() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -961,7 +962,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseUpdateWithNodeNameInToBeAdded() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -1015,7 +1016,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseUpdateWithValidParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -1159,8 +1160,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testVMImageUpgradeValidParams() {
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
-
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.VMImageUpgrade);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -1211,7 +1211,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     "Non-Restart",
   })
   public void testUniverseUpgradeWithNodesInTransit(String upgradeOption) {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.UpgradeUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     UUID uUUID = createUniverse(customer.getId()).getUniverseUUID();
@@ -1278,7 +1278,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseSoftwareUpgradeValidParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareUpgrade);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getId());
@@ -1304,7 +1304,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseRollingRestartValidParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.RestartUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getId());
@@ -1338,7 +1338,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseRollingRestartNonRolling() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.RestartUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getId());
@@ -1387,7 +1387,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseGFlagsUpgradeValidParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getId());
@@ -1425,7 +1425,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseGFlagsUpgradeWithTrimParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getId());
@@ -1598,7 +1598,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseNonRollingGFlagsUpgrade() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getId());
@@ -1641,7 +1641,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseNonRollingSoftwareUpgrade() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareUpgrade);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getId());
@@ -1706,8 +1706,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testResizeNodeWithUnsupportedProvider() {
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
-
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.ResizeNode);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -1745,8 +1744,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testResizeNodeValidParams() {
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
-
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.ResizeNode);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -1849,7 +1847,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testExpandDiskSizeSuccess() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getId());

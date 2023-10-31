@@ -5,12 +5,17 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.rbac.PermissionUtil;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.rbac.RoleUtil;
+import com.yugabyte.yw.common.rbac.routes.Operator;
+import com.yugabyte.yw.common.rbac.routes.RbacPermissionDefinition;
+import com.yugabyte.yw.common.rbac.routes.RbacPermissionDefinitionList;
+import com.yugabyte.yw.common.rbac.routes.RouteRbacPermissionDefinition;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.rbac.ResourcePermissionData;
@@ -21,6 +26,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.models.rbac.RoleBinding;
@@ -36,6 +42,8 @@ import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
 import io.swagger.annotations.Authorization;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -43,11 +51,18 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.inject.Provider;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.EnumUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.reflections.Reflections;
+import org.reflections.scanners.MethodAnnotationsScanner;
+import org.reflections.util.ClasspathHelper;
+import org.reflections.util.ConfigurationBuilder;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
+import play.routing.Router;
 
 @Api(
     value = "RBAC management",
@@ -60,13 +75,18 @@ public class RBACController extends AuthenticatedController {
   private final PermissionUtil permissionUtil;
   private final RoleUtil roleUtil;
   private final RoleBindingUtil roleBindingUtil;
+  private final Provider<Router> routerProvider;
 
   @Inject
   public RBACController(
-      PermissionUtil permissionUtil, RoleUtil roleUtil, RoleBindingUtil roleBindingUtil) {
+      PermissionUtil permissionUtil,
+      RoleUtil roleUtil,
+      RoleBindingUtil roleBindingUtil,
+      Provider<Router> routerProvider) {
     this.permissionUtil = permissionUtil;
     this.roleUtil = roleUtil;
     this.roleBindingUtil = roleBindingUtil;
+    this.routerProvider = routerProvider;
   }
 
   /**
@@ -82,7 +102,7 @@ public class RBACController extends AuthenticatedController {
       sinceYBAVersion = "2.19.3.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      value = "List all the permissions available",
+      value = "YbaApi Internal. List all the permissions available",
       nickname = "listPermissions",
       response = PermissionInfo.class,
       responseContainer = "List")
@@ -96,9 +116,9 @@ public class RBACController extends AuthenticatedController {
     List<PermissionInfo> permissionInfoList = Collections.emptyList();
     ResourceType resourceTypeEnum = EnumUtils.getEnumIgnoreCase(ResourceType.class, resourceType);
     if (resourceTypeEnum != null) {
-      permissionInfoList = permissionUtil.getAllPermissionInfo(resourceTypeEnum);
+      permissionInfoList = permissionUtil.getAllPermissionInfoFromCache(resourceTypeEnum);
     } else {
-      permissionInfoList = permissionUtil.getAllPermissionInfo();
+      permissionInfoList = permissionUtil.getAllPermissionInfoFromCache();
     }
     return PlatformResults.withData(permissionInfoList);
   }
@@ -114,7 +134,10 @@ public class RBACController extends AuthenticatedController {
       visibility = YbaApiVisibility.INTERNAL,
       sinceYBAVersion = "2.19.3.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
-  @ApiOperation(value = "Get a role's information", nickname = "getRole", response = Role.class)
+  @ApiOperation(
+      value = "YbaApi Internal. Get a role's information",
+      nickname = "getRole",
+      response = Role.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -141,7 +164,7 @@ public class RBACController extends AuthenticatedController {
       sinceYBAVersion = "2.19.3.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      value = "List all the roles available",
+      value = "YbaApi Internal. List all the roles available",
       nickname = "listRoles",
       response = Role.class,
       responseContainer = "List")
@@ -156,6 +179,9 @@ public class RBACController extends AuthenticatedController {
       @ApiParam(value = "Optional role type to filter roles list") String roleType) {
     // Check if customer exists.
     Customer.getOrBadRequest(customerUUID);
+    UserWithFeatures u = RequestContext.get(TokenAuthenticator.USER);
+    Set<UUID> resourceUUIDs =
+        roleBindingUtil.getResourceUuids(u.getUser().getUuid(), ResourceType.ROLE, Action.READ);
 
     // Get all roles for the customer if 'roleType' is not a valid case insensitive enum
     List<Role> roleList = Collections.emptyList();
@@ -165,6 +191,10 @@ public class RBACController extends AuthenticatedController {
     } else {
       roleList = Role.getAll(customerUUID);
     }
+    roleList =
+        roleList.stream()
+            .filter(r -> resourceUUIDs.contains(r.getRoleUUID()))
+            .collect(Collectors.toList());
     return PlatformResults.withData(roleList);
   }
 
@@ -179,7 +209,10 @@ public class RBACController extends AuthenticatedController {
       visibility = YbaApiVisibility.INTERNAL,
       sinceYBAVersion = "2.19.3.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
-  @ApiOperation(value = "Create a custom role", nickname = "createRole", response = Role.class)
+  @ApiOperation(
+      value = "YbaApi Internal. Create a custom role",
+      nickname = "createRole",
+      response = Role.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "RoleFormData",
@@ -253,7 +286,10 @@ public class RBACController extends AuthenticatedController {
       visibility = YbaApiVisibility.INTERNAL,
       sinceYBAVersion = "2.19.3.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
-  @ApiOperation(value = "Edit a custom role", nickname = "editRole", response = Role.class)
+  @ApiOperation(
+      value = "YbaApi Internal. Edit a custom role",
+      nickname = "editRole",
+      response = Role.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "RoleFormData",
@@ -335,7 +371,7 @@ public class RBACController extends AuthenticatedController {
       sinceYBAVersion = "2.19.3.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      value = "Delete a custom role",
+      value = "YbaApi Internal. Delete a custom role",
       nickname = "deleteRole",
       response = YBPSuccess.class)
   @AuthzPath({
@@ -395,7 +431,7 @@ public class RBACController extends AuthenticatedController {
       sinceYBAVersion = "2.19.3.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      value = "Get all the role bindings available",
+      value = "YbaApi Internal. Get all the role bindings available",
       nickname = "getRoleBindings",
       response = RoleBinding.class,
       responseContainer = "Map")
@@ -432,7 +468,7 @@ public class RBACController extends AuthenticatedController {
       sinceYBAVersion = "2.19.3.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      value = "Set the role bindings of a user",
+      value = "YbaApi Internal. Set the role bindings of a user",
       nickname = "setRoleBinding",
       response = RoleBinding.class)
   @ApiImplicitParams(
@@ -491,7 +527,7 @@ public class RBACController extends AuthenticatedController {
       sinceYBAVersion = "2.19.3.0",
       runtimeConfig = newAuthzRuntimeFlagPath)
   @ApiOperation(
-      value = "UI_ONLY",
+      value = "YbaApi Internal. UI_ONLY",
       nickname = "getUserResourcePermissions",
       response = ResourcePermissionData.class,
       responseContainer = "Set",
@@ -519,5 +555,69 @@ public class RBACController extends AuthenticatedController {
     Set<ResourcePermissionData> userResourcePermissions =
         roleBindingUtil.getUserResourcePermissions(customerUUID, userUUID, resourceTypeEnum);
     return PlatformResults.withData(userResourcePermissions);
+  }
+
+  @AuthzPath
+  @YbaApi(
+      visibility = YbaApiVisibility.INTERNAL,
+      sinceYBAVersion = "2.19.3.0",
+      runtimeConfig = newAuthzRuntimeFlagPath)
+  @ApiOperation(
+      value = "YbaApi Internal. UI_ONLY",
+      nickname = "fetchRoutesPermissionDetails",
+      hidden = true,
+      notes = "Get all the authorized routes permission details")
+  public Result fetchRoutesPermissionDetails() {
+    List<Router.RouteDocumentation> routesList = routerProvider.get().documentation();
+    Map<String, String> routesMap = new HashMap<>();
+    Map<String, String> requestMap = new HashMap<>();
+    for (Router.RouteDocumentation route : routesList) {
+      String controllerMethodDef = route.getControllerMethodInvocation();
+      String controllerMethod = controllerMethodDef.split("\\(", 2)[0];
+      routesMap.put(controllerMethod, route.getPathPattern());
+      requestMap.put(controllerMethod, route.getHttpMethod());
+    }
+
+    Reflections reflections =
+        new Reflections(
+            new ConfigurationBuilder()
+                .setUrls(ClasspathHelper.forPackage("com.yugabyte.yw.controllers"))
+                .setScanners(new MethodAnnotationsScanner()));
+    Set<Method> annonatedMethods = reflections.getMethodsAnnotatedWith(AuthzPath.class);
+
+    List<RouteRbacPermissionDefinition> routeRbacPermissionDefinitionList = new ArrayList<>();
+    for (Method aM : annonatedMethods) {
+      String className = aM.getDeclaringClass().getName();
+      AuthzPath authzPath = aM.getAnnotation(AuthzPath.class);
+      String methodName = StringUtils.join(className, ".", aM.getName());
+      if (authzPath != null && requestMap.containsKey(methodName)) {
+        RouteRbacPermissionDefinition routeRbacPermissionDefinition =
+            new RouteRbacPermissionDefinition();
+        routeRbacPermissionDefinition.setRequestType(requestMap.get(methodName));
+        routeRbacPermissionDefinition.setEndpoint(routesMap.get(methodName));
+
+        RbacPermissionDefinitionList rbacPermissionDefinitions = new RbacPermissionDefinitionList();
+        rbacPermissionDefinitions.setOperator(Operator.OR);
+        List<RbacPermissionDefinition> rbacPermissionDefinitionList = new ArrayList<>();
+        rbacPermissionDefinitions.setRbacPermissionDefinitionList(rbacPermissionDefinitionList);
+
+        RbacPermissionDefinition rbacPermissionDefinition = new RbacPermissionDefinition();
+        rbacPermissionDefinitionList.add(rbacPermissionDefinition);
+        rbacPermissionDefinition.setOperator(Operator.AND);
+        List<Permission> rbacPermissionList = new ArrayList<>();
+        rbacPermissionDefinition.setRbacPermissionList(rbacPermissionList);
+
+        for (RequiredPermissionOnResource permissionOnResource : authzPath.value()) {
+          Permission rbacPermission = new Permission();
+          rbacPermission.setAction(permissionOnResource.requiredPermission().action());
+          rbacPermission.setResourceType(permissionOnResource.requiredPermission().resourceType());
+          rbacPermissionList.add(rbacPermission);
+        }
+        routeRbacPermissionDefinition.setRbacPermissionDefinitions(rbacPermissionDefinitions);
+        routeRbacPermissionDefinitionList.add(routeRbacPermissionDefinition);
+      }
+    }
+
+    return PlatformResults.withData(routeRbacPermissionDefinitionList);
   }
 }

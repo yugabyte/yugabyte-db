@@ -444,7 +444,7 @@ ERROR:  SPLIT AT option is not yet supported for hash partitioned tables
 CREATE TEMPORARY TABLE tbl10 (
 	a			int4 primary key
 ) SPLIT INTO 20 TABLETS;
-WARNING:  Split options on TEMP table will be ignored
+WARNING:  split options on TEMP table will be ignored
 CREATE TABLE tbl11 (
 	a			int4,
 	b			int4,

@@ -117,17 +117,25 @@ const GetMaintenanceWindowActions = ({
           pullRight
         >
           {Object.keys(extendTimeframes).map((timeframe) => (
-            <MenuItem
-              key={timeframe}
-              onClick={() => {
-                extendTime.mutateAsync({
-                  window: currentWindow,
-                  minutesToExtend: extendTimeframes[timeframe]
-                });
+            <RbacValidator
+              accessRequiredOn={{
+                ...UserPermissionMap.editMaintenanceWindow
               }}
+              isControl
+              overrideStyle={{ display: 'block' }}
             >
-              {timeframe}
-            </MenuItem>
+              <MenuItem
+                key={timeframe}
+                onClick={() => {
+                  extendTime.mutateAsync({
+                    window: currentWindow,
+                    minutesToExtend: extendTimeframes[timeframe]
+                  });
+                }}
+              >
+                {timeframe}
+              </MenuItem>
+            </RbacValidator>
           ))}
         </DropdownButton>
       )}
@@ -140,27 +148,50 @@ const GetMaintenanceWindowActions = ({
         pullRight
       >
         {currentWindow.state === MaintenanceWindowState.ACTIVE && (
-          <MenuItem onClick={() => markAsCompleted.mutateAsync(currentWindow)}>
-            <i className="fa fa-check" /> Mark as Completed
-          </MenuItem>
+          <RbacValidator
+            accessRequiredOn={{
+              ...UserPermissionMap.editMaintenanceWindow
+            }}
+            isControl
+            overrideStyle={{ display: 'block' }}
+          >
+            <MenuItem onClick={() => markAsCompleted.mutateAsync(currentWindow)}>
+              <i className="fa fa-check" /> Mark as Completed
+            </MenuItem>
+          </RbacValidator>
         )}
         {currentWindow.state !== MaintenanceWindowState.FINISHED && (
+          <RbacValidator
+            accessRequiredOn={{
+              ...UserPermissionMap.editMaintenanceWindow
+            }}
+            isControl
+            overrideStyle={{ display: 'block' }}
+          >
+            <MenuItem
+              onClick={() => {
+                setSelectedWindow(currentWindow);
+              }}
+            >
+              <i className="fa fa-pencil" /> Edit Window
+            </MenuItem>
+          </RbacValidator>
+        )}
+        <RbacValidator
+          accessRequiredOn={{
+            ...UserPermissionMap.deleteMaintenanceWindow
+          }}
+          isControl
+          overrideStyle={{ display: 'block' }}
+        >
           <MenuItem
             onClick={() => {
-              setSelectedWindow(currentWindow);
+              setVisibleModal(currentWindow?.uuid);
             }}
           >
-            <i className="fa fa-pencil" /> Edit Window
+            <i className="fa fa-trash-o" /> Delete Window
           </MenuItem>
-        )}
-
-        <MenuItem
-          onClick={() => {
-            setVisibleModal(currentWindow?.uuid);
-          }}
-        >
-          <i className="fa fa-trash-o" /> Delete Window
-        </MenuItem>
+        </RbacValidator>
       </DropdownButton>
       <YBConfirmModal
         name="delete-alert-config"

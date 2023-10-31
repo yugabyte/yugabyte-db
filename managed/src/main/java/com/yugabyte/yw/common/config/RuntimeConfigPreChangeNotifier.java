@@ -50,6 +50,14 @@ public class RuntimeConfigPreChangeNotifier {
     addListener(useNewRbacAuthzValidator);
   }
 
+  public void notifyListenersDeleteConfig(UUID scopeUUID, String path) {
+    if (!listenerMap.containsKey(path)) {
+      return;
+    }
+    RuntimeConfigPreChangeValidator listener = listenerMap.get(path);
+    listener.validateDeleteConfig(scopeUUID, path);
+  }
+
   public void notifyListeners(UUID scopeUUID, String path, String newValue) {
 
     if (keyMetaData.containsKey(path)) {

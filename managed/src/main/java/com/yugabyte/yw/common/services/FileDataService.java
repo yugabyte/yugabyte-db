@@ -23,6 +23,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.CustomerLicense;
 import com.yugabyte.yw.models.FileData;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
@@ -57,13 +58,15 @@ public class FileDataService {
   private static final String UUID_REGEX =
       "[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}";
   private static final Pattern keyPattern =
-      Pattern.compile(String.format("(.*)(/keys/%s)(.*)", UUID_REGEX));
+      Pattern.compile(String.format("(.*)(/keys/%s/)(.*)", UUID_REGEX));
   private static final Pattern provisionPattern =
       Pattern.compile(String.format("(.*)(/provision/%s/provision_instance.py)", UUID_REGEX));
   private static final Pattern certPattern =
-      Pattern.compile(String.format("(.*)(/certs/%s)(.*)", UUID_REGEX));
+      Pattern.compile(String.format("(.*)(/certs/%s/)(.*)", UUID_REGEX));
   private static final Pattern licensePattern =
-      Pattern.compile(String.format("(.*)(/licenses/%s)(.*)", UUID_REGEX));
+      Pattern.compile(String.format("(.*)(/licenses/%s/)(.*)", UUID_REGEX));
+  private static final Pattern nodeCertPattern =
+      Pattern.compile(String.format("(.*)(/node-agent/certs/%s/%s/)(.*)", UUID_REGEX, UUID_REGEX));
   private final RuntimeConfGetter confGetter;
   private final ConfigHelper configHelper;
 
@@ -343,6 +346,21 @@ public class FileDataService {
     }
   }
 
+  private void fixNodeAgentCerts(String storagePath) {
+    Set<NodeAgent> nodeAgentSet = NodeAgent.getAll();
+    for (NodeAgent nodeAgent : nodeAgentSet) {
+      try {
+        nodeAgent.updateCertDirPath(
+            Paths.get(
+                fixFilePath(nodeCertPattern, nodeAgent.getCertDirPath().toString(), storagePath)));
+      } catch (Exception e) {
+        log.warn(
+            "Error replacing node agent certificate directory {}. Skipping.",
+            nodeAgent.getCertDirPath().toString());
+      }
+    }
+  }
+
   private void fixLicenses(String storagePath) {
     List<CustomerLicense> licenseList = CustomerLicense.find.query().where().findList();
     for (CustomerLicense license : licenseList) {
@@ -361,5 +379,6 @@ public class FileDataService {
     fixProviderConfig(storagePath);
     fixCertificateInfo(storagePath);
     fixLicenses(storagePath);
+    fixNodeAgentCerts(storagePath);
   }
 }

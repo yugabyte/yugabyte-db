@@ -107,6 +107,7 @@ export const CreateRole = forwardRef((_, forwardRef) => {
           permissionDetails: currentRole.permissionDetails
         }
       : {
+          description: '',
           permissionDetails: {
             permissionList: []
           }

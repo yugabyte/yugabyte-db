@@ -61,7 +61,8 @@ import {
   UniverseNamespace,
   YBTable
 } from '../../../../redesign/helpers/dtos';
-import { XClusterConfig, XClusterTableType } from '../../XClusterTypes';
+import { XClusterTableType } from '../../XClusterTypes';
+import { XClusterConfig } from '../../dtos';
 import {
   EligibilityDetails,
   KeyspaceItem,
@@ -88,7 +89,7 @@ interface CommonTableSelectProps {
   selectionWarning: { title: string; body: string } | undefined;
 }
 
-type TableSelectProps =
+export type TableSelectProps =
   | (CommonTableSelectProps & {
       configAction: typeof XClusterConfigAction.CREATE;
       isTransactionalConfig: boolean;
@@ -137,12 +138,12 @@ const NOTE_CONTENT = (
       main table is selected.
     </p>
     <p>
-      If a YSQL keyspace contains any tables considered ineligible for replication, it will not be
-      selectable. Creating xCluster configurations for a subset of the tables in a YSQL keyspace is
+      If a YSQL database contains any tables considered ineligible for replication, it will not be
+      selectable. Creating xCluster configurations for a subset of the tables in a YSQL database is
       currently not supported.
     </p>
     <p>
-      Replication is done at the table level. Selecting a keyspace simply adds all its{' '}
+      Replication is done at the table level. Selecting a database simply adds all its{' '}
       <b>current</b> tables to the xCluster configuration.{' '}
       <b>
         Any tables created later on must be manually added to the xCluster configuration if
@@ -169,22 +170,23 @@ const NOTE_EXPAND_CONTENT = (
       If a table fails to meet any of the above criteria, then it is considered an <b>ineligible</b>{' '}
       table for xCluster purposes.
     </p>
-    <b>What are my options if I want to replicate a subset of tables from a YSQL keyspace?</b>
+    <b>What are my options if I want to replicate a subset of tables from a YSQL database?</b>
     <p>
-      Creating xCluster configurations for a subset of the tables in a YSQL keyspace is currently
-      not supported. In addition, if a YSQL keyspace contains ineligible tables, then the whole
-      keyspace will not be selectable for replication. If needed, you may still use yb-admin to
-      create xCluster configurations for a subset of the tables in a YSQL keyspace.
+      Creating xCluster configurations for a subset of the tables in a YSQL database is currently
+      not supported. In addition, if a YSQL database contains ineligible tables, then the whole
+      database will not be selectable for replication. If needed, you may still use yb-admin to
+      create xCluster configurations for a subset of the tables in a YSQL database.
     </p>
     <p>
       Please be aware that we currently do not support backup/restore at table-level granularity for
       YSQL. The bootstrapping step involves a backup/restore of the source universe data, and
       initiating a restart replication task from the UI will involve bootstrapping. For a smooth
       experience managing the xCluster configuration from the UI, we do not recommend creating
-      xCluster configurations for a subset of the tables in a YSQL keyspace.
+      xCluster configurations for a subset of the tables in a YSQL database.
     </p>
   </div>
 );
+const TABLE_DESCRIPTOR = 'List of databases and tables in the source universe';
 
 /**
  * Input component for selecting tables for xCluster configuration.
@@ -451,10 +453,6 @@ export const TableSelect = (props: TableSelectProps) => {
       true
     ) < 0 &&
     !hasExisitingReplicationConfig;
-  const tableDescriptor =
-    tableType === TableType.PGSQL_TABLE_TYPE
-      ? 'List of databases and tables the source universe'
-      : 'List of keyspaces and tables in the source universe';
   return (
     <>
       {isTransactionalAtomicityEnabled &&
@@ -502,7 +500,7 @@ export const TableSelect = (props: TableSelectProps) => {
             </YBTooltip>
           </Box>
         )}
-      <div className={styles.tableDescriptor}>{tableDescriptor}</div>
+      <div className={styles.tableDescriptor}>{TABLE_DESCRIPTOR}</div>
       <div className={styles.tableToolbar}>
         {!isDrConfig && (
           <Select
@@ -515,7 +513,7 @@ export const TableSelect = (props: TableSelectProps) => {
         )}
         <YBInputField
           containerClassName={styles.keyspaceSearchInput}
-          placeHolder="Search for keyspace.."
+          placeHolder="Search for databases.."
           onValueChanged={(searchTerm: string) => setKeyspaceSearchTerm(searchTerm)}
         />
       </div>
@@ -556,7 +554,7 @@ export const TableSelect = (props: TableSelectProps) => {
         >
           <TableHeaderColumn dataField="keyspace" isKey={true} hidden={true} />
           <TableHeaderColumn dataField="name" dataSort={true}>
-            Keyspace
+            Database
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="sizeBytes"
@@ -593,11 +591,11 @@ export const TableSelect = (props: TableSelectProps) => {
       {tableType === TableType.PGSQL_TABLE_TYPE ? (
         <div>
           Tables in {selectedKeyspaces.length} of{' '}
-          {Object.keys(replicationItems.PGSQL_TABLE_TYPE.keyspaces).length} keyspaces selected
+          {Object.keys(replicationItems.PGSQL_TABLE_TYPE.keyspaces).length} database(s) selected
         </div>
       ) : (
         <div>
-          {selectedTableUUIDs.length} of {replicationItems[tableType].tableCount} tables selected
+          {selectedTableUUIDs.length} of {replicationItems[tableType].tableCount} table(s) selected
         </div>
       )}
       {(selectionError || selectionWarning) && (

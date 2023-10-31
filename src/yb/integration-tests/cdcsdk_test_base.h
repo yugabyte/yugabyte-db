@@ -188,6 +188,12 @@ class CDCSDKTestBase : public YBTest {
   Result<xrepl::StreamId> CreateDBStream(
       CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
       CDCRecordType record_type = CDCRecordType::CHANGE);
+  // Creates a DB stream on the database kNamespaceName using the Replication Slot syntax.
+  // Only supports the CDCCheckpointType::EXPLICIT and CDCRecordType::CHANGE.
+  // TODO(#19260): Support customizing the CDCRecordType.
+  Result<xrepl::StreamId> CreateDBStreamWithReplicationSlot();
+  Result<xrepl::StreamId> CreateDBStreamWithReplicationSlot(
+      const std::string& replication_slot_name);
 
  protected:
   // Every test needs to initialize this cdc_proxy_.

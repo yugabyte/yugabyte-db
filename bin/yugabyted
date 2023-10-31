@@ -3592,9 +3592,9 @@ class ControlScript(object):
                                                                             ysql_username)
         if self.configs.saved_data.get("secure"):
             jdbc_string += Output.make_cyan("<DB_PASSWORD>")
+            status_display_info[jdbc_string] = Output.make_cyan
         else:
             jdbc_string += "yugabyte"
-        status_display_info[jdbc_string] = Output.make_cyan
 
         status_info += [
             (Output.make_yellow("JDBC"), jdbc_string),
@@ -3604,10 +3604,22 @@ class ControlScript(object):
             (Output.make_yellow("Log Dir"), self.configs.saved_data.get("log_dir")),
             (Output.make_yellow("Universe UUID"), self.configs.saved_data.get("universe_uuid"))
         ]
-        div_line = "+" + "-" * 106 + "+" + "\n"
+        max_key_len = 0
+        max_value_len = 0
+        for k, v in status_info:
+            if status_display_info is not None and v in status_display_info.keys():
+                func = status_display_info.get(v)
+                value_len = len(str(v)) - len(func(""))
+            else:
+                value_len = len(str(v))
+
+            max_key_len = max(max_key_len, len(str(k)))
+            max_value_len = max(max_value_len, value_len)
+
+        div_line = "+" + "-" * (max_key_len + max_value_len + 4) + "+" + "\n"
         status = "\n" + div_line
-        status += ("| {:^" + str(104
-         + extra_len) + "} |\n").format(title)
+        status += ("| {:^" + str(max_key_len + max_value_len + 2
+            + extra_len) + "} |\n").format(title)
         status += div_line
         for k, v in status_info:
             func = None
@@ -3615,11 +3627,12 @@ class ControlScript(object):
                 func = status_display_info.get(v)
 
             extra_len = len(Output.make_yellow(""))
-            status += ("| {:" + str(20 + extra_len) + "}: ").format(k)
+            status += ("| {:" + str(max_key_len + extra_len - 7) + "}: ").format(k)
             if func is not None:
-                status += ("{:<" + str(82 + len(func(""))) + "} |\n").format(v)
+                status += ("{:<" + str(max_value_len + 7 + len(func(""))) + "} |\n").format(v)
             else:
-                status += ("{:<" + str(82) + "} |\n").format(v if v is not None else "None")
+                status += ("{:<" + str(max_value_len + 7) + "} |\n"). \
+                    format(v if v is not None else "None")
 
         status += div_line
         return status
@@ -3629,24 +3642,28 @@ class ControlScript(object):
         title = Output.make_bold(Output.make_green(SCRIPT_NAME))
         extra_len = len(Output.make_bold(Output.make_green("")))
 
-        max_len = 0
+        max_key_len = 0
+        max_value_len = 0
         for k, v in status_info:
-            max_len = max(max_len, len(v))
+            max_key_len = max(max_key_len, len(str(k)))
+            max_value_len = max(max_value_len, len(str(v)))
 
-        div_line = "+" + "-" * (max_len + 33) + "+" + "\n"
+        div_line = "+" + "-" * (max_value_len + max_key_len + 5) + "+" + "\n"
         status = "\n" + div_line
-        status += ("| {:^" + str(max_len + 31 + extra_len) + "} |\n").format(title)
+        status += ("| {:^" + str(max_value_len + max_key_len + 3
+                                 + extra_len) + "} |\n").format(title)
         status += div_line
         for k, v in status_info:
             func = None
             if status_display_info is not None and v in status_display_info.keys():
                 func = status_display_info.get(v)
             extra_len = len(Output.make_yellow(""))
-            status += ("| {:" + str(27 + extra_len) + "}: ").format(k)
+            status += ("| {:" + str(max_key_len + extra_len - 1) + "}: ").format(k)
             if func is not None:
-                status += ("{:<" + str(max_len + 2 + len(func(""))) + "} |\n").format(func(v))
+                status += ("{:<" + str(max_value_len + 2 + len(func(""))) + "} |\n").format(func(v))
             else:
-                status += ("{:<" + str(max_len + 2) + "} |\n").format(v)
+                status += ("{:<" + str(max_value_len + 2) + "} |\n").format(v)
+
         status += div_line
         return status
 

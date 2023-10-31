@@ -801,6 +801,12 @@ Status PgApiImpl::ReserveOids(const PgOid database_oid,
   return Status::OK();
 }
 
+Status PgApiImpl::GetNewObjectId(PgOid db_oid, PgOid* new_oid) {
+  auto result = VERIFY_RESULT(pg_client_.GetNewObjectId(db_oid));
+  *new_oid = result;
+  return Status::OK();
+}
+
 Status PgApiImpl::GetCatalogMasterVersion(uint64_t *version) {
   return pg_session_->GetCatalogMasterVersion(version);
 }
@@ -1408,11 +1414,12 @@ Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_cou
 // Insert ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewInsert(const PgObjectId& table_id,
-                            bool is_single_row_txn,
                             bool is_region_local,
-                            PgStatement **handle) {
+                            PgStatement **handle,
+                            YBCPgTransactionSetting transaction_setting) {
   *handle = nullptr;
-  auto stmt = std::make_unique<PgInsert>(pg_session_, table_id, is_single_row_txn, is_region_local);
+  auto stmt = std::make_unique<PgInsert>(
+      pg_session_, table_id, is_region_local, transaction_setting);
   RETURN_NOT_OK(stmt->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1457,11 +1464,12 @@ Status PgApiImpl::InsertStmtSetIsBackfill(PgStatement *handle, const bool is_bac
 // Update ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewUpdate(const PgObjectId& table_id,
-                            bool is_single_row_txn,
                             bool is_region_local,
-                            PgStatement **handle) {
+                            PgStatement **handle,
+                            YBCPgTransactionSetting transaction_setting) {
   *handle = nullptr;
-  auto stmt = std::make_unique<PgUpdate>(pg_session_, table_id, is_single_row_txn, is_region_local);
+  auto stmt = std::make_unique<PgUpdate>(
+      pg_session_, table_id, is_region_local, transaction_setting);
   RETURN_NOT_OK(stmt->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1478,11 +1486,12 @@ Status PgApiImpl::ExecUpdate(PgStatement *handle) {
 // Delete ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewDelete(const PgObjectId& table_id,
-                            bool is_single_row_txn,
                             bool is_region_local,
-                            PgStatement **handle) {
+                            PgStatement **handle,
+                            YBCPgTransactionSetting transaction_setting) {
   *handle = nullptr;
-  auto stmt = std::make_unique<PgDelete>(pg_session_, table_id, is_single_row_txn, is_region_local);
+  auto stmt = std::make_unique<PgDelete>(
+      pg_session_, table_id, is_region_local, transaction_setting);
   RETURN_NOT_OK(stmt->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1555,12 +1564,12 @@ Status PgApiImpl::DeleteStmtSetIsPersistNeeded(PgStatement *handle, const bool i
 // Colocated Truncate ------------------------------------------------------------------------------
 
 Status PgApiImpl::NewTruncateColocated(const PgObjectId& table_id,
-                                       bool is_single_row_txn,
                                        bool is_region_local,
-                                       PgStatement **handle) {
+                                       PgStatement **handle,
+                                       YBCPgTransactionSetting transaction_setting) {
   *handle = nullptr;
   auto stmt = std::make_unique<PgTruncateColocated>(
-      pg_session_, table_id, is_single_row_txn, is_region_local);
+      pg_session_, table_id, is_region_local, transaction_setting);
   RETURN_NOT_OK(stmt->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1885,9 +1894,9 @@ Status PgApiImpl::NewTupleExpr(
 }
 
 // Transaction Control -----------------------------------------------------------------------------
-Status PgApiImpl::BeginTransaction() {
+Status PgApiImpl::BeginTransaction(int64_t start_time) {
   pg_session_->InvalidateForeignKeyReferenceCache();
-  return pg_txn_manager_->BeginTransaction();
+  return pg_txn_manager_->BeginTransaction(start_time);
 }
 
 Status PgApiImpl::RecreateTransaction() {
@@ -2124,6 +2133,45 @@ Result<boost::container::small_vector<RefCntSlice, 2>> PgApiImpl::GetTableKeyRan
   return pg_session_->GetTableKeyRanges(
       table_id, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
       max_key_length);
+}
+
+//--------------------------------------------------------------------------------------------------
+
+Status PgApiImpl::NewCreateReplicationSlot(const char *slot_name,
+                                           const PgOid database_oid,
+                                           PgStatement **handle) {
+  auto stmt = std::make_unique<PgCreateReplicationSlot>(pg_session_, slot_name, database_oid);
+  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
+  return Status::OK();
+}
+
+Status PgApiImpl::ExecCreateReplicationSlot(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_REPLICATION_SLOT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  PgCreateReplicationSlot *pg_stmt = down_cast<PgCreateReplicationSlot*>(handle);
+  return pg_stmt->Exec();
+}
+
+Result<tserver::PgListReplicationSlotsResponsePB> PgApiImpl::ListReplicationSlots() {
+  return pg_session_->ListReplicationSlots();
+}
+
+Status PgApiImpl::NewDropReplicationSlot(const char *slot_name,
+                                         PgStatement **handle) {
+  auto stmt = std::make_unique<PgDropReplicationSlot>(pg_session_, slot_name);
+  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
+  return Status::OK();
+}
+
+Status PgApiImpl::ExecDropReplicationSlot(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_REPLICATION_SLOT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  PgDropReplicationSlot *pg_stmt = down_cast<PgDropReplicationSlot*>(handle);
+  return pg_stmt->Exec();
 }
 
 } // namespace pggate

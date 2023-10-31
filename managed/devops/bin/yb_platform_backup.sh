@@ -382,7 +382,7 @@ create_backup() {
       version=$(basename $(realpath /opt/yugabyte/software/active))
       metadata_regex="**/${version}/**/yugaware/conf/${VERSION_METADATA}"
     fi
-    version_path=$(find ${data_dir} -wholename ${metadata_regex})
+    version_path=$(docker_aware_cmd "yugaware" "find ${data_dir} -wholename ${metadata_regex}")
 
     # At least keep some default as a worst case.
     if [ ! -f ${version_path} ] || [ -z ${version_path} ]; then
@@ -467,10 +467,7 @@ restore_backup() {
   ybdb="${14}"
   ysqlsh_path="${15}"
   ybai_data_dir="${16}"
-  prometheus_dir_regex="^${PROMETHEUS_SNAPSHOT_DIR}/$"
-  if [[ "${yba_installer}" = true ]]; then
-    prometheus_dir_regex="${PROMETHEUS_SNAPSHOT_DIR}"
-  fi
+  prometheus_dir_regex="\.\/${PROMETHEUS_SNAPSHOT_DIR}\/[[:digit:]]{8}T[[:digit:]]{6}Z-[[:alnum:]]{16}\/$"
 
   current_metadata_path=""
 
@@ -550,22 +547,21 @@ restore_backup() {
   if [ "$disable_version_check" != true ]; then
     command="cat ${current_metadata_path}"
 
-    version_cmd="import json, sys; print(json.load(sys.stdin)[\"version_number\"])"
-
-    build_cmd="import json, sys; print(json.load(sys.stdin)[\"build_number\"])"
+    version_cmd='import json, sys; print(json.load(sys.stdin)["version_number"])'
+    build_cmd='import json, sys; print(json.load(sys.stdin)["build_number"])'
 
     version=$(docker_aware_cmd "yugaware" "${command}" | ${PYTHON_EXECUTABLE} -c "${version_cmd}")
     build=$(docker_aware_cmd "yugaware" "${command}" | ${PYTHON_EXECUTABLE} -c "${build_cmd}")
 
     curr_platform_version=${version}-${build}
 
-    backup_metadata_path=$(tar -tzf ${input_path} | grep ${VERSION_METADATA_BACKUP})
+    backup_metadata_path=$(tar -tzf ${input_path} | grep ${VERSION_METADATA_BACKUP} | head -1)
     tar -xzf ${input_path} ${backup_metadata_path}
     # The version_metadata.json file is always present in a release package, and it would have
     # been stored during create_backup(), so we don't need to check if the file exists before
     # restoring it from the restore path.
-    backup_yba_version="cat ${backup_metadata_path} | ${PYTHON_EXECUTABLE} -c ${version_cmd}"
-    backup_yba_build="cat ${backup_metadata_path} | ${PYTHON_EXECUTABLE} -c ${build_cmd}"
+    backup_yba_version=$(cat "${backup_metadata_path}" | ${PYTHON_EXECUTABLE} -c "${version_cmd}")
+    backup_yba_build=$(cat "${backup_metadata_path}" | ${PYTHON_EXECUTABLE} -c "${build_cmd}")
     back_plat_version=${backup_yba_version}-${backup_yba_build}
 
     if [ ${curr_platform_version} != ${back_plat_version} ]
@@ -630,14 +626,18 @@ restore_backup() {
   fi
 
   # Restore prometheus data.
-  if tar -tf "${input_path}" | grep $prometheus_dir_regex; then
+  set +e
+  prom_snapshot=$(tar -tf "${input_path}" | grep -E $prometheus_dir_regex)
+  set -e
+  if [[ -n "$prom_snapshot" ]]; then
     echo "Restoring prometheus snapshot..."
     set_prometheus_data_dir "${prometheus_host}" "${prometheus_port}" "${data_dir}"
     modify_service prometheus stop
+    # Find snapshot directory in backup
     run_sudo_cmd "rm -rf ${PROMETHEUS_DATA_DIR}/*"
+    # snapshot_dir="${destination}/'${prom_snapshot:2}'*"
+    run_sudo_cmd "mv ${destination}/'${prom_snapshot:2}'* ${PROMETHEUS_DATA_DIR}"
     if [[ "${yba_installer}" = true ]] && [[ "${migration}" = true ]]; then
-      run_sudo_cmd "mv ${yugabackup}/${PROMETHEUS_SNAPSHOT_DIR}/*/* \
-      ${PROMETHEUS_DATA_DIR}"
       backup_targets=$(find "${yugabackup}" -name swamper_targets -type d)
       if  [[ "$backup_targets" != "" ]] && [[ -d "$backup_targets" ]]; then
         run_sudo_cmd "cp -Tr ${backup_targets} ${destination}/data/prometheus/swamper_targets"
@@ -648,19 +648,20 @@ restore_backup() {
       fi
       run_sudo_cmd "chown -R ${yba_user}:${yba_user} ${destination}/data/prometheus"
     elif [[ "${yba_installer}" = true ]]; then
-      run_sudo_cmd "mv ${destination}/${PROMETHEUS_SNAPSHOT_DIR}/*/* ${PROMETHEUS_DATA_DIR}"
-      run_sudo_cmd "rm -rf ${destination}/${PROMETHEUS_SNAPSHOT_DIR}"
       run_sudo_cmd "chown -R ${yba_user}:${yba_user} ${destination}/data/prometheus"
-    else
-      run_sudo_cmd "mv ${destination}/${PROMETHEUS_SNAPSHOT_DIR}/* ${PROMETHEUS_DATA_DIR}"
     fi
     if [[ "$SERVICE_BASED" = true ]]; then
       run_sudo_cmd "chown -R ${prometheus_user}:${prometheus_user} ${PROMETHEUS_DATA_DIR}"
     else
       run_sudo_cmd "chown -R ${NOBODY_UID}:${NOBODY_UID} ${PROMETHEUS_DATA_DIR}"
     fi
+    # Clean up snapshot after restore
+    run_sudo_cmd "rm -rf ${destination}/${PROMETHEUS_SNAPSHOT_DIR}"
     # Manually execute so postgres TRAP executes.
     modify_service prometheus restart
+    if [[ "$DOCKER_BASED" = true ]]; then
+      run_sudo_cmd "docker restart prometheus"
+    fi
   fi
   # Create following directory if it wasn't created yet so restore will succeed.
   if [[ "${yba_installer}" = false ]]; then

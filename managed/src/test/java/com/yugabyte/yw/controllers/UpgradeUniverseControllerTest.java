@@ -39,6 +39,7 @@ import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
@@ -212,7 +213,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
   @Test
   public void testRestartUniverseRolling() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.RestartUniverse);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
 
@@ -242,7 +243,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
   @Test
   public void testRestartUniverseNonRolling() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.RestartUniverse);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
 
@@ -293,7 +294,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
   @Test
   public void testSoftwareUpgradeWithValidParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareUpgrade);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
 
@@ -325,7 +326,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
   @Test
   public void testSoftwareUpgradeNonRolling() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareUpgrade);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
 
@@ -360,7 +361,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
   @Test
   public void testSoftwareUpgradeWithKubernetesUniverse() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.UpgradeKubernetesUniverse);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Universe universe = createUniverse("Test Universe", customer.getId(), CloudType.kubernetes);
     Map<String, String> universeConfig = new HashMap<>();
@@ -524,7 +525,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
   @Test
   public void testGFlagsUpgradeWithValidParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
 
@@ -566,7 +567,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
   @Test
   public void testGFlagsUpgradeWithTrimParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
 
@@ -602,7 +603,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
   @Test
   public void testGFlagsUpgradeNonRolling() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
 
@@ -638,7 +639,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
   @Test
   public void testGFlagsUpgradeWithKubernetesUniverse() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsKubernetesUpgrade);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Universe universe = createUniverse("Test Universe", customer.getId(), CloudType.kubernetes);
     Map<String, String> universeConfig = new HashMap<>();
@@ -703,7 +704,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
   @Test
   public void testCertsRotate() throws IOException, NoSuchAlgorithmException {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotate);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = prepareUniverseForCertsRotate(false);
 
@@ -742,7 +743,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
   @Test
   public void testCertsRotateByTlsConfigUpdate() throws IOException, NoSuchAlgorithmException {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotate);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = prepareUniverseForCertsRotate(false);
     String url =
@@ -788,7 +789,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
   @Test
   public void testCertsRotateWithOnPremUniverse() throws IOException, NoSuchAlgorithmException {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotate);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = prepareUniverseForCertsRotate(true);
 
@@ -951,7 +952,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
   @Test
   public void testTlsToggleWithValidParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.TlsToggle);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = prepareUniverseForTlsToggle(false, false, null);
 
@@ -1078,7 +1079,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
   @Test
   public void testVMImageUpgradeValidParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.VMImageUpgrade);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Provider provider = ModelFactory.awsProvider(customer);
     Universe universe = prepareUniverseForVMImageUpgrade(provider, "c5.xlarge");
@@ -1120,7 +1121,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
   @Test
   public void testRebootUniverse() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.RebootUniverse);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
 

@@ -31,7 +31,8 @@ import { handleServerError } from '../../../utils/errorHandlingUtils';
 import { AddTableModal } from './addTable/AddTableModal';
 
 import { TableType, TableTypeLabel, YBTable } from '../../../redesign/helpers/dtos';
-import { XClusterConfig, XClusterTable } from '../XClusterTypes';
+import { XClusterTable } from '../XClusterTypes';
+import { XClusterConfig } from '../dtos';
 
 import styles from './ReplicationTables.module.scss';
 
@@ -161,9 +162,7 @@ export function ReplicationTables({ xClusterConfig, isDrConfig = false }: props)
               Table Type
             </TableHeaderColumn>
           )}
-          <TableHeaderColumn dataField="keySpace">
-            {isDrConfig ? 'Database' : 'Keyspace'}
-          </TableHeaderColumn>
+          <TableHeaderColumn dataField="keySpace">Database</TableHeaderColumn>
           <TableHeaderColumn dataField="sizeBytes" dataFormat={(cell) => formatBytes(cell)}>
             Size
           </TableHeaderColumn>

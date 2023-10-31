@@ -35,7 +35,7 @@ The valid *arguments* for export schema are described in the following table:
 | --oracle-db-sid <SID> | Oracle System Identifier you can use while exporting data from Oracle instances. Oracle migrations only.|
 | --oracle-home <path> | Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Oracle migrations only.|
 | [--oracle-tns-alias](../../yb-voyager-cli/#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
-| --send-diagnostics | Sends diagnostics information to Yugabyte. (default: true)|
+| --send-diagnostics | Sends [diagnostics](../../../diagnostics-report/) information to Yugabyte. (default: true)|
 | --source-db-host <hostname> | Domain name or IP address of the machine on which the source database server is running. |
 | --source-db-name <name> | Source database name. |
 | --source-db-password <password>| Source database password. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. Alternatively, you can also specify the password by setting the environment variable `SOURCE_DB_PASSWORD`. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |

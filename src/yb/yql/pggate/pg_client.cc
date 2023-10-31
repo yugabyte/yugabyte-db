@@ -522,6 +522,17 @@ class PgClient::Impl {
     return std::pair<PgOid, PgOid>(resp.begin_oid(), resp.end_oid());
   }
 
+  Result<PgOid> GetNewObjectId(PgOid db_oid) {
+    tserver::PgGetNewObjectIdRequestPB req;
+    req.set_db_oid(db_oid);
+
+    tserver::PgGetNewObjectIdResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->GetNewObjectId(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.new_oid();
+  }
+
   Result<bool> IsInitDbDone() {
     tserver::PgIsInitDbDoneRequestPB req;
     tserver::PgIsInitDbDoneResponsePB resp;
@@ -795,6 +806,15 @@ class PgClient::Impl {
     return ResponseStatus(resp);
   }
 
+  Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots() {
+    tserver::PgListReplicationSlotsRequestPB req;
+    tserver::PgListReplicationSlotsResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->ListReplicationSlots(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
  private:
   std::string LogPrefix() const {
     return Format("Session id $0: ", session_id_);
@@ -878,6 +898,10 @@ Result<master::GetNamespaceInfoResponsePB> PgClient::GetDatabaseInfo(uint32_t oi
 Result<std::pair<PgOid, PgOid>> PgClient::ReserveOids(
     PgOid database_oid, PgOid next_oid, uint32_t count) {
   return impl_->ReserveOids(database_oid, next_oid, count);
+}
+
+Result<PgOid> PgClient::GetNewObjectId(PgOid db_oid) {
+  return impl_->GetNewObjectId(db_oid);
 }
 
 Result<bool> PgClient::IsInitDbDone() {
@@ -1043,6 +1067,10 @@ BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_SIMPLE_METHOD_DEFINE, ~, YB_PG_CLIENT_SIMPLE_
 
 Status PgClient::CancelTransaction(const unsigned char* transaction_id) {
   return impl_->CancelTransaction(transaction_id);
+}
+
+Result<tserver::PgListReplicationSlotsResponsePB> PgClient::ListReplicationSlots() {
+  return impl_->ListReplicationSlots();
 }
 
 }  // namespace pggate

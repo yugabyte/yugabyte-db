@@ -19,6 +19,8 @@ public class ChangeInstanceType extends NodeTaskBase {
 
   public static class Params extends NodeTaskParams {
     public boolean force = false;
+    // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)
+    public int cgroupSize = 0;
   }
 
   @Override

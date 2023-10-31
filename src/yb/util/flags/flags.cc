@@ -394,10 +394,7 @@ void ShowVersionAndExit() {
 void DumpAutoFlagsJSONAndExit() {
   // Promote all AutoFlags to ensure the target value passes any flag validation functions. Its ok
   // if the current values change as we don't print them out.
-  auto status = PromoteAllAutoFlags();
-  if (!status.ok()) {
-    LOG(FATAL) << "Failed to promote all AutoFlags: " << status.ToString();
-  }
+  PromoteAllAutoFlags();
 
   cout << AutoFlagsUtil::DumpAutoFlagsToJSON(GetStaticProgramName());
   exit(0);
@@ -479,7 +476,7 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
   }
 
   if (FLAGS_TEST_promote_all_auto_flags) {
-    CHECK_OK(PromoteAllAutoFlags());
+    PromoteAllAutoFlags();
   }
 
   if (FLAGS_helpxml) {
@@ -517,7 +514,7 @@ bool RefreshFlagsFile(const std::string& filename) {
   }
 
   if (FLAGS_TEST_promote_all_auto_flags) {
-    CHECK_OK(PromoteAllAutoFlags());
+    PromoteAllAutoFlags();
   }
 
   return true;
