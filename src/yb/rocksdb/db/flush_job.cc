@@ -141,7 +141,7 @@ Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
   // Save the contents of the earliest memtable as a new Table
   FileMetaData meta;
   autovector<MemTable*> mems;
-  cfd_->imm()->PickMemtablesToFlush(&mems, mem_table_flush_filter_);
+  cfd_->imm()->PickMemtablesToFlush(&mems, mem_table_flush_filter_, &mutable_cf_options_);
   if (mems.empty()) {
     // A temporary workaround for repeated "Nothing in memtable to flush" messages in a
     // transactional workload due to the flush filter preventing us from flushing any memtables in

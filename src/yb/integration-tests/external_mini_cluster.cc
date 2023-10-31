@@ -1306,6 +1306,10 @@ Status ExternalMiniCluster::WaitForInitDb() {
         }
         continue;
       }
+      LOG_IF(INFO, !status.ok()) << "IsInitDbDone failed: " << status;
+      if (!opts_.allow_crashes_during_init_db && !status.ok() && !masters_[i]->IsProcessAlive()) {
+        return STATUS_FORMAT(RuntimeError, "Master $0 crashed during initdb", i);
+      }
       if (resp.has_error() &&
           resp.error().code() != master::MasterErrorPB::NOT_THE_LEADER) {
 

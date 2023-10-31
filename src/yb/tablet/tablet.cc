@@ -646,7 +646,7 @@ auto MakeMaxFileSizeWithTableTTLFunction(const F& f) {
   return std::make_shared<MaxFileSizeWithTableTTLFunction>(f);
 }
 
-Result<bool> Tablet::IntentsDbFlushFilter(const rocksdb::MemTable& memtable) {
+Result<bool> Tablet::IntentsDbFlushFilter(const rocksdb::MemTable& memtable, bool write_blocked) {
   VLOG_WITH_PREFIX(4) << __func__;
 
   auto frontiers = memtable.Frontiers();
@@ -681,7 +681,7 @@ Result<bool> Tablet::IntentsDbFlushFilter(const rocksdb::MemTable& memtable) {
   // Force flush of regular DB if we were not able to flush for too long.
   auto timeout = std::chrono::milliseconds(FLAGS_intents_flush_max_delay_ms);
   if (flush_intention != rocksdb::FlushAbility::kAlreadyFlushing &&
-      (shutdown_requested_.load(std::memory_order_acquire) ||
+      (shutdown_requested_.load(std::memory_order_acquire) || write_blocked ||
        std::chrono::steady_clock::now() > memtable.FlushStartTime() + timeout)) {
     VLOG_WITH_PREFIX(2) << __func__ << ", force flush";
 
@@ -814,7 +814,7 @@ Status Tablet::OpenKeyValueTablet() {
     docdb::SetLogPrefix(&intents_rocksdb_options, LogPrefix(docdb::StorageDbType::kIntents));
 
     intents_rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
-      return std::bind(&Tablet::IntentsDbFlushFilter, this, _1);
+      return std::bind(&Tablet::IntentsDbFlushFilter, this, _1, _2);
     });
 
     intents_rocksdb_options.compaction_filter_factory =

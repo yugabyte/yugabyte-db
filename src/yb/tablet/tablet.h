@@ -1089,7 +1089,7 @@ class Tablet : public AbstractTablet,
   Result<HybridTime> DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;
 
-  Result<bool> IntentsDbFlushFilter(const rocksdb::MemTable& memtable);
+  Result<bool> IntentsDbFlushFilter(const rocksdb::MemTable& memtable, bool write_blocked);
 
   template <class Ids>
   Status RemoveIntentsImpl(const RemoveIntentsData& data, RemoveReason reason, const Ids& ids);
