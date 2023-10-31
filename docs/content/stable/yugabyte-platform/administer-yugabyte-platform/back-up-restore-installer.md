@@ -50,7 +50,7 @@ To back up your YugabyteDB Anywhere installation, perform the following steps:
 1. Run the `createbackup` command, as follows:
 
     ```sh
-    yba-ctl createBackup <output_path> [flags]
+    sudo yba-ctl createBackup <output_path> [flags]
     ```
 
     The `createBackup` command executes the `yb_platform_backup.sh` script to create a backup of your YugabyteDB Anywhere instance. Specify the `output_path` where you want the backup `.tar.gz` file to be stored.
@@ -60,7 +60,8 @@ To back up your YugabyteDB Anywhere installation, perform the following steps:
     | Flag | Description |
     | :--- | :---------- |
     | --data_dir string | Data directory to be backed up. (default: "/opt/yugabyte") |
-    | --exclude_releases | Exclude Prometheus metric data from backup. (default: false) |
+    | --exclude_prometheus | Exclude Prometheus metric data from backup. (default: false) |
+    | --exclude_releases | Exclude YugabyteDB releases from backup. (default: false) |
     | -h, --help | Help for `createBackup`. (default: false) |
     | --skip_restart | Don't restart processes during execution. (default: false) |
     | --verbose | Display extra information in the output. (default: false) |
@@ -80,7 +81,7 @@ To restore the YugabyteDB Anywhere content from your saved backup, perform the f
 1. Run the `restoreBackup` command as follows:
 
     ```sh
-    yba-ctl restoreBackup <input_path> [flags]
+    sudo yba-ctl restoreBackup <input_path> [flags]
     ```
 
     The `restoreBackup` command executes the `yb_platform_backup.sh` script to restore from a previously taken backup of your YugabyteDB Anywhere instance. Specify the `input_path` to the backup `.tar.gz` file as the only argument.
