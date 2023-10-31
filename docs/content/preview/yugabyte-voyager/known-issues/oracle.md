@@ -13,7 +13,7 @@ rightNav:
   hideH3: true
 ---
 
-This page documents known issues you may encounter and suggested workarounds when migrating data from Oracle to YugabyteDB.
+Review and explore the suggested workarounds for multiple areas when migrating data from Oracle to YugabyteDB.
 
 {{< warning >}}
 Cluster, Domain, Bitmap join, IOT indexes, and reverse indexes are not exported.

@@ -43,7 +43,7 @@ The valid *arguments* for fall-forward synchronize are described in the followin
 | [--target-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--target-ssl-mode](../../yb-voyager-cli/#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--target-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| --verbose | Display extra information in the output. (default: false) <br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --verbose | Display extra information in the output. (default: false)<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes| Answer yes to all prompts during migration. (default: false) |
 
 ## Example

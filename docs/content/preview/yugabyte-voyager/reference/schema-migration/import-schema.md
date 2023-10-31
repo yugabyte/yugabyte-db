@@ -33,17 +33,17 @@ The valid *arguments* for import schema are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| --continue-on-error | Continues the import of all the exported schema even during an error and outputs all the erroneous DDLs in the `failed.sql` file under the `export-dir/schema` directory. (default: false) <br> Usage to set it: `yb-voyager import schema ... --continue-on-error`  |
+| --continue-on-error | Continues the import of all the exported schema even during an error and outputs all the erroneous DDLs in the `failed.sql` file under the `export-dir/schema` directory. (default: false) <br> Usage to set it: `yb-voyager import schema ... --continue-on-error true`<br> Accepted parameters: true, false, yes, no, 0, 1  |
 | --enable-orafce | Enables Orafce extension on target (if source database type is Oracle). (default: true) |
 | --exclude-object-type-list <objectTypes> | Comma-separated list of schema object types (object types are case-insensitive) to exclude while importing schema (ignored if --object-type-list is used).<br> Example: `--exclude-object-type-list 'FUNCTION,PROCEDURE'` |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file. |
 | -h, --help | Command line help. |
-| --ignore-exist | Ignore if an object already exists on the target database. (default: false)<br>Usage to set it: `yb-voyager import schema ... --ignore-exist` |
+| --ignore-exist | Ignore if an object already exists on the target database. (default: false)<br>Usage to set it: `yb-voyager import schema ... --ignore-exist true` <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --object-type-list <objectTypes> | Comma-separated list of schema object types (object types are case-insensitive) to include while importing schema.<br>Example: `--object-type-list 'TABLE,VIEW,MVIEW'` |
-| --post-import-data | Imports indexes and triggers in the YugabyteDB database after data import is complete. This argument assumes that data import is already done and imports only indexes and triggers in the YugabyteDB database. (default: false) |
-| --refresh-mviews | Refreshes the materialized views on target during the post-import-data phase (default: false) |
+| --post-import-data | Imports indexes and triggers in the YugabyteDB database after data import is complete. This argument assumes that data import is already done and imports only indexes and triggers in the YugabyteDB database. (default: false)<br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --refresh-mviews | Refreshes the materialized views on target during the post-import-data phase (default: false)<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --send-diagnostics| Send [diagnostics](../../../diagnostics-report/) information to Yugabyte. (default: true)<br> Accepted parameters: true, false, yes, no, 0, 1|
-| --start-clean | Starts a fresh schema import on the target yugabyteDB database for the schema present in the `schema` directory. |
+| --start-clean | Starts a fresh schema import on the target yugabyteDB database for the schema present in the `schema` directory. <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --straight-order | Imports the schema objects in the order specified via the `--object-type-list` flag (default: false)<br> Usage to set it: `yb-voyager import schema ... --object-type-list 'TYPE,TABLE,VIEW...'  --straight-order` |
 | --target-db-host <hostname> | Domain name or IP address of the machine on which target database server is running. (default: 127.0.0.1)|
 | --target-db-name <name> | Target database name. (default: yugabyte) |
@@ -56,7 +56,7 @@ The valid *arguments* for import schema are described in the following table:
 | [--target-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--target-ssl-mode](../../yb-voyager-cli/#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--target-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| --verbose | Display extra information in the output. (default: false) |
+| --verbose | Display extra information in the output. (default: false)<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes | Answer yes to all prompts during the export schema operation. (default: false) |
 
 ## Examples
@@ -80,6 +80,6 @@ yb-voyager import schema --export-dir /dir/export-dir \
         --target-db-password 'password' \
         --target-db-name target_db \
         --target-db-schema target_schema
-        --post-import-data
-        --refresh-mviews
+        --post-import-data false
+        --refresh-mviews false
 ```

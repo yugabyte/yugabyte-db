@@ -35,7 +35,7 @@ The valid *arguments* for export data are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| --disable-pb | Use this argument to not display progress bars. For live migration, `--disable-pb` can also be used to hide metrics for export data. (default: false) |
+| --disable-pb | Use this argument to not display progress bars. For live migration, `--disable-pb` can also be used to hide metrics for export data. (default: false)<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --table-list | Comma-separated list of the tables for which data needs to be exported. Table names in the list are by default, case-insensitive. To make it case-sensitive, enclose each name in double quotes("").<br>Table names can also be glob patterns containing wildcard characters such as an asterisk (*) (matches zero or more characters), and a question mark (?) (matches one character). If a glob pattern for tables or case-sensitive table name is to be provided in table-list/exclude-table-list, enclose the list in single quotes('').<br> For example,  `--table-list '"Products", order*'`.<br> This argument is unsupported for live migration. |
 | --table-list-file-path | Path of the file containing the list of table names (comma-separated or line-separated) to export data. Table names follow a similar convention as `--table-list`. |
 | --exclude-table-list <tableNames> | Comma-separated list of the tables for which data needs to be excluded during export. Table names in the list are by default, case-insensitive. To make it case-sensitive, enclose each name in double quotes("").<br> Table names can also be glob patterns containing wildcard characters such as an asterisk (*) (matches zero or more characters), and a question mark (?) (matches one character). If a glob pattern for tables or case-sensitive table name is to be provided in table-list/exclude-table-list, enclose the list in single quotes('').<br> For example, `--table-list '"Order*", products, '`. <br> This argument is unsupported for live migration. |
@@ -50,7 +50,7 @@ The valid *arguments* for export data are described in the following table:
 | --oracle-home <path> | Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Not applicable during import phases or analyze schema. Oracle migrations only.|
 | [--oracle-tns-alias](../../yb-voyager-cli/#ssl-connectivity) <alias> | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
 | --parallel-jobs <connectionCount> | Number of parallel jobs to extract data from source database. (default: 4; exports 4 tables at a time by default.) If you use [BETA_FAST_DATA_EXPORT](../../../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle) to accelerate data export, yb-voyager exports only one table at a time and the --parallel-jobs argument is ignored. |
-| --send-diagnostics | Send [diagnostics](../../../diagnostics-report/) information to Yugabyte. (default: true)<br> Accepted parameters: true, false, yes, no, 0, 1|
+| --send-diagnostics | Send [diagnostics](../../../diagnostics-report/) information to Yugabyte. (default: true) <br> Accepted parameters: true, false, yes, no, 0, 1|
 | --source-db-host <hostname> | Domain name or IP address of the machine on which the source database server is running. |
 | --source-db-name <name> | Source database name. |
 | --source-db-password <password>| Source database password. If you don't provide a password via the CLI during any migration phase, yb-voyager will prompt you at runtime for a password. Alternatively, you can also specify the password by setting the environment variable `SOURCE_DB_PASSWORD`. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
@@ -63,8 +63,8 @@ The valid *arguments* for export data are described in the following table:
 | [--source-ssl-crl](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--source-ssl-mode](../../yb-voyager-cli/#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--source-ssl-root-cert](../../yb-voyager-cli/#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| --start-clean | Starts a fresh data export after clearing all data from the `data` directory. |
-| --verbose | Display extra information in the output. (default: false) |
+| --start-clean | Starts a fresh data export after clearing all data from the `data` directory. <br> Accepted parameters: true, false, yes, no, 0, 1 |
+| --verbose | Display extra information in the output. (default: false)<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -y, --yes | Answer yes to all prompts during the export schema operation. (default: false) |
 
 ### Example

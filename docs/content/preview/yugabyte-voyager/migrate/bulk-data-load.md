@@ -31,7 +31,7 @@ yb-voyager import data file --export-dir <EXPORT_DIR> \
        --target-db-name <TARGET_DB_NAME> \
        --target-db-schema <TARGET_DB_SCHEMA> \
        --data-dir </path/to/files/dir/> \
-       --file-table-map <filename1:table1,filename2:table2> \
+       --file-table-map <filename1>:<table1>,<filename2>:<table2> \
        --format csv|text \ # default csv
        # Optional arguments as per data format
        --delimiter <DELIMITER> \ # default ',' for csv and '\t' for text

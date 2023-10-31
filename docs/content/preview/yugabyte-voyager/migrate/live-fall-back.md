@@ -392,7 +392,7 @@ Perform the following steps as part of the cutover process:
             --target-db-name <TARGET_DB_NAME> \
             --target-db-user <TARGET_DB_USER> \
             --target-db-schema <TARGET_DB_SCHEMA> \
-            --post-import-data
+            --post-import-data <BOOLEAN_VALUE>
     ```
 
     Refer to [import schema](../../reference/schema-migration/import-schema/) for details about the arguments.

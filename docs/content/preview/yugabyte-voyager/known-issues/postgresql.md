@@ -13,7 +13,7 @@ rightNav:
   hideH3: true
 ---
 
-This page documents known issues you may encounter and suggested workarounds when migrating data from PostgreSQL to YugabyteDB.
+Review and explore the suggested workarounds for multiple areas when migrating data from PostgreSQL to YugabyteDB.
 
 ## Contents
 
