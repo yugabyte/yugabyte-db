@@ -1,4 +1,0 @@
-#### do
-
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="278" height="35" viewbox="0 0 278 35"><path class="connector" d="M0 22h15m38 0h10m23 0h10m134 0h10m23 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="38" height="25" rx="7"/><text class="text" x="25" y="22">DO</text><rect class="literal" x="63" y="5" width="23" height="25" rx="7"/><text class="text" x="73" y="22">&apos;</text><a xlink:href="../../../syntax_resources/grammar_diagrams#plpgsql-block-stmt"><rect class="rule" x="96" y="5" width="134" height="25"/><text class="text" x="106" y="22">plpgsql_block_stmt</text></a><rect class="literal" x="240" y="5" width="23" height="25" rx="7"/><text class="text" x="250" y="22">&apos;</text><polygon points="274,29 278,29 278,15 274,15" style="fill:black;stroke-width:0"/></svg>
-
