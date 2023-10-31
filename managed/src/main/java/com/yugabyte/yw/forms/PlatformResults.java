@@ -19,7 +19,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.password.RedactingService;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.List;
@@ -43,7 +44,7 @@ public class PlatformResults {
   }
 
   private static Result redactedResult(JsonNode dataObj) {
-    return Results.ok(RedactingService.filterSecretFields(dataObj));
+    return Results.ok(RedactingService.filterSecretFields(dataObj, RedactionTarget.APIS));
   }
 
   /**

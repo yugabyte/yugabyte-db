@@ -17,10 +17,11 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DrainableMap;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShutdownHookHandler;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
-import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ScheduleTask;
@@ -463,7 +464,8 @@ public class TaskExecutor {
     // Create a new task info object.
     TaskInfo taskInfo = new TaskInfo(taskType);
     // Set the task details.
-    taskInfo.setDetails(RedactingService.filterSecretFields(task.getTaskDetails()));
+    taskInfo.setDetails(
+        RedactingService.filterSecretFields(task.getTaskDetails(), RedactionTarget.APIS));
     // Set the owner info.
     taskInfo.setOwner(taskOwner);
     return taskInfo;
@@ -536,7 +538,8 @@ public class TaskExecutor {
       int subTaskCount = getSubTaskCount();
       log.info("Adding task #{}: {}", subTaskCount, subTask.getName());
       if (log.isDebugEnabled()) {
-        JsonNode redactedTask = RedactingService.filterSecretFields(subTask.getTaskDetails());
+        JsonNode redactedTask =
+            RedactingService.filterSecretFields(subTask.getTaskDetails(), RedactionTarget.LOGS);
         log.debug(
             "Details for task #{}: {} details= {}", subTaskCount, subTask.getName(), redactedTask);
       }

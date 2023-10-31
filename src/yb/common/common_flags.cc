@@ -34,9 +34,8 @@ TAG_FLAG(ysql_disable_index_backfill, advanced);
 
 DEFINE_NON_RUNTIME_bool(
     enable_pg_savepoints, true,
-    "Set to false to disable savepoints in YugaByte PostgreSQL API. "
-    "This needs to be set to false when using xcluster replication for now.");
-TAG_FLAG(enable_pg_savepoints, evolving);
+    "Set to false to disable savepoints in YugaByte PostgreSQL API.");
+TAG_FLAG(enable_pg_savepoints, stable);
 TAG_FLAG(enable_pg_savepoints, advanced);
 
 DEFINE_RUNTIME_AUTO_bool(enable_automatic_tablet_splitting, kNewInstallsOnly, false, true,
