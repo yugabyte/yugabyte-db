@@ -23,7 +23,7 @@ A fall-back approach allows you to test the system end-to-end. This workflow is 
 
 ![fall-back](/images/migrate/live-fall-back.png)
 
-At cutover, applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, YB Voyager keeps the source database synchronized with changes from the target Yugabyte DB as shown in the following illustration:
+At cutover, applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, YB Voyager keeps the source database synchronized with changes from the target YugabyteDB as shown in the following illustration:
 
 ![cutover](/images/migrate/cutover.png)
 
@@ -358,7 +358,7 @@ Perform the following steps as part of the cutover process:
 1. Perform a cutover after the exported events rate ("ingestion rate" in the metrics table) drops to 0 using the following command:
 
     ```sh
-    yb-voyager cutover initiate --export-dir <EXPORT_DIR> --prepare-for-fall-back
+    yb-voyager cutover initiate --export-dir <EXPORT_DIR> --prepare-for-fall-back true
     ```
 
     Refer to [cutover initiate](../../reference/cutover-archive/cutover/#cutover-initiate) for details about the arguments.

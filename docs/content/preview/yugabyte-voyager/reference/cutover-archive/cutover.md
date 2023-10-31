@@ -34,6 +34,7 @@ The valid *arguments* for cutover initiate are described in the following table:
 | :------- | :------------------------ |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for cutover initiate. |
+| --prepare-for-fall-back | <to add> |
 
 #### Example
 

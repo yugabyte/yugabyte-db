@@ -26,7 +26,7 @@ The valid *arguments* for export schema are described in the following table:
 
 | Argument | Description/valid options |
 | :------- | :------------------------ |
-| --comments-on-objects | Enable export of comments associated with database objects. (default: false) |
+| --comments-on-objects | Enable export of comments associated with database objects. (default: false)<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | -e, --export-dir <path> | Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
 | -h, --help | Command line help for schema. |
 |  --object-type-list | Comma-separated list of object types to export schema for. |
