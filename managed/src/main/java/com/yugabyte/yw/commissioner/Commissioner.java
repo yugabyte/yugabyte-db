@@ -16,11 +16,12 @@ import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
@@ -126,7 +127,8 @@ public class Commissioner {
       if (runtimeConfGetter.getGlobalConf(
           GlobalConfKeys.enableTaskAndFailedRequestDetailedLogging)) {
         JsonNode taskParamsJson = Json.toJson(taskParams);
-        JsonNode redactedJson = RedactingService.filterSecretFields(taskParamsJson);
+        JsonNode redactedJson =
+            RedactingService.filterSecretFields(taskParamsJson, RedactionTarget.LOGS);
         log.debug(
             "Executing TaskType {} with params {}", taskType.toString(), redactedJson.toString());
       }

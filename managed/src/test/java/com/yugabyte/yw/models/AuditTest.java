@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.models;
 
-import static com.yugabyte.yw.common.audit.AuditService.SECRET_REPLACEMENT;
+import static com.yugabyte.yw.common.RedactingService.SECRET_REPLACEMENT;
 import static com.yugabyte.yw.models.Users.Role;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
