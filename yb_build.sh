@@ -271,6 +271,9 @@ Test options:
     Build|Do not build fuzz targets. By default - do not build.
   --(with|no)-odyssey
     Specify whether to build Odyssey (PostgreSQL connection pooler). Not building by default.
+  --enable-ysql-conn-mgr-test
+    Use YSQL Connection Manager as an endpoint when running unit tests. Could also be set using
+    the YB_ENABLE_YSQL_CONN_MGR_IN_TESTS env variable.
 
   --validate-args-only
     Only validate command-line arguments and exit immediately. Suppress all unnecessary output.
@@ -1434,6 +1437,9 @@ while [[ $# -gt 0 ]]; do
       # We use this variable indirectly via propagate_bool_var_to_cmake.
       # shellcheck disable=SC2034
       build_odyssey=true
+    ;;
+    --enable-ysql-conn-mgr-test)
+      export YB_ENABLE_YSQL_CONN_MGR_IN_TESTS=true
     ;;
     --cmake-unit-tests)
       run_cmake_unit_tests=true
