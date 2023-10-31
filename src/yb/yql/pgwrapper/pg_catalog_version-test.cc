@@ -38,6 +38,14 @@ class PgCatalogVersionTest : public LibPqTestBase {
   using MasterCatalogVersionMap = std::unordered_map<Oid, CatalogVersion>;
   using ShmCatalogVersionMap = std::unordered_map<Oid, Version>;
 
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    LibPqTestBase::UpdateMiniClusterOptions(options);
+    options->extra_master_flags.push_back(
+        "--allowed_preview_flags_csv=ysql_enable_db_catalog_version_mode");
+    options->extra_tserver_flags.push_back(
+        "--allowed_preview_flags_csv=ysql_enable_db_catalog_version_mode");
+  }
+
   // Prepare the table pg_yb_catalog_version according to 'per_database_mode':
   // * if 'per_database_mode' is true, we prepare table pg_yb_catalog_version
   //   for per-database catalog version mode by updating the table to have one
@@ -61,10 +69,10 @@ class PgCatalogVersionTest : public LibPqTestBase {
   void RestartClusterSetDBCatalogVersionMode(
       bool enabled, const std::vector<string>& extra_tserver_flags) {
     LOG(INFO) << "Restart the cluster and turn "
-              << (enabled ? "on" : "off") << " --TEST_enable_db_catalog_version_mode";
+              << (enabled ? "on" : "off") << " --ysql_enable_db_catalog_version_mode";
     cluster_->Shutdown();
     const string db_catalog_version_gflag =
-      Format("--TEST_enable_db_catalog_version_mode=$0", enabled ? "true" : "false");
+      Format("--ysql_enable_db_catalog_version_mode=$0", enabled ? "true" : "false");
     for (size_t i = 0; i != cluster_->num_masters(); ++i) {
       cluster_->master(i)->mutable_flags()->push_back(db_catalog_version_gflag);
     }
@@ -490,7 +498,7 @@ TEST_F(PgCatalogVersionTest, DBCatalogVersion) {
   ASSERT_OK(conn_test.ExecuteFormat("DROP TABLE t"));
 
   WaitForCatalogVersionToPropagate();
-  // Under --TEST_enable_db_catalog_version_mode=true, only the row for 'new_db_oid' is updated.
+  // Under --ysql_enable_db_catalog_version_mode=true, only the row for 'new_db_oid' is updated.
   expected_versions[new_db_oid] = {2, 1};
   ASSERT_OK(CheckMatch(expected_versions,
                        ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte))));
@@ -501,7 +509,7 @@ TEST_F(PgCatalogVersionTest, DBCatalogVersion) {
   ASSERT_OK(conn_test.Execute("REVOKE ALL ON SCHEMA public FROM public"));
 
   WaitForCatalogVersionToPropagate();
-  // Under --TEST_enable_db_catalog_version_mode=true, only the row for 'new_db_oid' is updated.
+  // Under --ysql_enable_db_catalog_version_mode=true, only the row for 'new_db_oid' is updated.
   // We should have incremented the row for 'new_db_oid', including both the current version
   // and the last breaking version because REVOKE is a DDL statement that causes a breaking
   // catalog change.
@@ -731,7 +739,7 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   auto conn_yugabyte = ASSERT_RESULT(ConnectToDB("yugabyte"));
   // Prepare the table pg_yb_catalog_version for global catalog version mode.
   // Note that this is not a supported scenario where the table pg_yb_catalog_version
-  // shrinks while the gflag --TEST_enable_db_catalog_version_mode is still on.
+  // shrinks while the gflag --ysql_enable_db_catalog_version_mode is still on.
   // The correct order is to turn off the gflag first and then shrink the table.
   // Nevertheless we test that this order violation will not cause unexpected
   // yb-master/yb-tserver crashes and we can go back to per-database mode by
@@ -773,7 +781,7 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   CHECK_EQ(versions.size(), 1);
   ASSERT_OK(CheckMatch(versions.begin()->second, kNewCatalogVersion));
 
-  // For a new connection, although --TEST_enable_db_catalog_version_mode is still
+  // For a new connection, although --ysql_enable_db_catalog_version_mode is still
   // true, the fact that the table pg_yb_catalog_version has only one row prevents
   // a new connection to enter per-database catalog version mode. Verify that we
   // can make a new connection to database "yugabyte".
@@ -946,7 +954,7 @@ class PgCatalogVersionFailOnConflictTest : public PgCatalogVersionTest {
 };
 
 // This is a sanity test for manual downgrade from per database catalog version mode to
-// global catalog version mode. First the gflag --TEST_enable_db_catalog_version_mode is
+// global catalog version mode. First the gflag --ysql_enable_db_catalog_version_mode is
 // turned off and cluster is restarted. After that, the cluster will be running in
 // global catalog version mode despite the fact that pg_yb_catalog_version still has
 // multiple rows. At this time, we test that concurrently running DML transactions
