@@ -132,11 +132,13 @@ class DeleteTableTest : public ExternalMiniClusterITestBase {
 
   void WaitForTabletTombstonedOnTS(size_t index,
                                    const string& tablet_id,
-                                   IsCMetaExpected is_cmeta_expected);
+                                   IsCMetaExpected is_cmeta_expected,
+                                   MonoDelta timeout = MonoDelta::FromSeconds(60));
 
   void WaitForTabletDeletedOnTS(size_t index,
                                 const string& tablet_id,
-                                IsSuperBlockExpected is_superblock_expected);
+                                IsSuperBlockExpected is_superblock_expected,
+                                MonoDelta timeout = MonoDelta::FromSeconds(60));
 
   void WaitForAllTSToCrash();
   void WaitUntilTabletRunning(size_t index, const std::string& tablet_id);
@@ -223,26 +225,24 @@ Status DeleteTableTest::CheckTabletDeletedOnTS(size_t index,
 
 void DeleteTableTest::WaitForTabletTombstonedOnTS(size_t index,
                                                   const string& tablet_id,
-                                                  IsCMetaExpected is_cmeta_expected) {
-  Status s;
-  for (int i = 0; i < 6000; i++) {
-    s = CheckTabletTombstonedOnTS(index, tablet_id, is_cmeta_expected);
-    if (s.ok()) return;
-    SleepFor(MonoDelta::FromMilliseconds(10));
-  }
-  ASSERT_OK(s);
+                                                  IsCMetaExpected is_cmeta_expected,
+                                                  yb::MonoDelta timeout) {
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    Status s = CheckTabletTombstonedOnTS(index, tablet_id, is_cmeta_expected);
+    LOG_IF(ERROR, !s.ok()) << s;
+    return s.ok();
+  }, timeout, Format("Wait for tablet-$0 to be tombstoned", tablet_id)));
 }
 
 void DeleteTableTest::WaitForTabletDeletedOnTS(size_t index,
                                                const string& tablet_id,
-                                               IsSuperBlockExpected is_superblock_expected) {
-  Status s;
-  for (int i = 0; i < 6000; i++) {
-    s = CheckTabletDeletedOnTS(index, tablet_id, is_superblock_expected);
-    if (s.ok()) return;
-    SleepFor(MonoDelta::FromMilliseconds(10));
-  }
-  ASSERT_OK(s);
+                                               IsSuperBlockExpected is_superblock_expected,
+                                               yb::MonoDelta timeout) {
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    Status s = CheckTabletDeletedOnTS(index, tablet_id, is_superblock_expected);
+    LOG_IF(ERROR, !s.ok()) << s;
+    return s.ok();
+  }, timeout, Format("Wait for tablet-$0 to be Deleted", tablet_id)));
 }
 
 void DeleteTableTest::WaitForAllTSToCrash() {
@@ -392,7 +392,7 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
   // Delete it and wait for the replicas to get deleted.
   ASSERT_NO_FATALS(DeleteTable(TestWorkloadOptions::kDefaultTableName));
   for (int i = 0; i < 3; i++) {
-    ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(i, tablet_id, SUPERBLOCK_EXPECTED));
+    ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(i, tablet_id, SUPERBLOCK_NOT_EXPECTED));
   }
 
   // Restart the cluster, the superblocks should be deleted on startup.
@@ -519,10 +519,10 @@ TEST_F(DeleteTableTest, TestAtomicDeleteTablet) {
                                 &error_code));
   ASSERT_OK(inspect_->CheckTabletDataStateOnTS(kTsIndex, tablet_id, TABLET_DATA_TOMBSTONED));
 
-  // Same with TOMBSTONED -> DELETED.
+  // With TABLET_DATA_DELETED type, tablet's metadata superblock will be deleted.
   ASSERT_OK(itest::DeleteTablet(ts, tablet_id, TABLET_DATA_DELETED, -9999, timeout,
                                 &error_code));
-  ASSERT_OK(inspect_->CheckTabletDataStateOnTS(kTsIndex, tablet_id, TABLET_DATA_DELETED));
+  ASSERT_OK(CheckTabletDeletedOnTS(kTsIndex, tablet_id, SUPERBLOCK_NOT_EXPECTED));
 }
 
 TEST_F(DeleteTableTest, TestDeleteTableWithConcurrentWrites) {
@@ -551,7 +551,7 @@ TEST_F(DeleteTableTest, TestDeleteTableWithConcurrentWrites) {
     // Delete it and wait for the replicas to get deleted.
     ASSERT_NO_FATALS(DeleteTable(workload.table_name()));
     for (int i = 0; i < 3; i++) {
-      ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(i, tablet_id, SUPERBLOCK_EXPECTED));
+      ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(i, tablet_id, SUPERBLOCK_NOT_EXPECTED));
     }
 
     // Sleep just a little longer to make sure client threads send
@@ -591,7 +591,7 @@ TEST_F(DeleteTableTest, DeleteTableWithConcurrentWritesNoRestarts) {
 
     ASSERT_NO_FATALS(DeleteTable(workload.table_name()));
     for (size_t ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ts_idx++) {
-      ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(ts_idx, tablet_id, SUPERBLOCK_EXPECTED));
+      ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(ts_idx, tablet_id, SUPERBLOCK_NOT_EXPECTED));
     }
 
     workload.StopAndJoin();
@@ -662,6 +662,46 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {
   cluster_->tablet_server(kTsIndex)->Shutdown();
   ASSERT_OK(cluster_->tablet_server(kTsIndex)->Restart());
   ASSERT_NO_FATALS(WaitForTabletTombstonedOnTS(kTsIndex, tablet_id, CMETA_NOT_EXPECTED));
+}
+
+TEST_F(DeleteTableTest, TestDeleteTabletFollowerFirst) {
+  std::vector<std::string> ts_flags, master_flags;
+  master_flags.push_back("--replication_factor=2");
+  ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, 2));
+  TestWorkload(cluster_.get()).Setup();
+
+  ASSERT_OK(inspect_->WaitForReplicaCount(2));
+  std::vector<std::string> tablets = inspect_->ListTabletsOnTS(1);
+  ASSERT_EQ(1, tablets.size());
+  const std::string& tablet_id = tablets[0];
+
+  const auto kLeaderIdx = cluster_->tablet_server_index_by_uuid(
+      GetLeaderUUID(cluster_->tablet_server(1)->uuid(), tablet_id));
+  const auto kFollowerIdx = (kLeaderIdx == 0) ? 1 : 0;
+
+  auto leader_ts = cluster_->tablet_server(kLeaderIdx);
+
+  // We delete follower tablet 3 seconds before deleting leader tablet.
+  // During this 3 seconds, leader will RBS the missing follower, then follower will be deleted
+  // by Master again. RBS and DeleteTablet might happen multiple times on the follower.
+  ASSERT_OK(cluster_->SetFlag(leader_ts, "TEST_pause_delete_tablet", "true"));
+  // Simulate large tablet with long running RBS.
+  ASSERT_OK(cluster_->SetFlag(leader_ts, "TEST_inject_latency_before_fetch_data_secs", "1"));
+
+  std::thread delete_table_thread([&]() {
+    ASSERT_NO_FATALS(DeleteTable(TestWorkloadOptions::kDefaultTableName));
+  });
+  ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(kFollowerIdx, tablet_id, SUPERBLOCK_NOT_EXPECTED));
+
+  SleepFor(MonoDelta::FromSeconds(3));
+  ASSERT_OK(cluster_->SetFlag(leader_ts, "TEST_pause_delete_tablet", "false"));
+
+  // After unblocking leader DeleteTablet, leader and follower tablets should quickly be deleted.
+  ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(
+      kLeaderIdx, tablet_id, SUPERBLOCK_NOT_EXPECTED, 5s * kTimeMultiplier));
+  ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(
+      kFollowerIdx, tablet_id, SUPERBLOCK_NOT_EXPECTED, 5s * kTimeMultiplier));
+  delete_table_thread.join();
 }
 
 // Test that a tablet replica automatically tombstones itself if the remote
@@ -1213,7 +1253,7 @@ TEST_F(DeleteTableTest, TestRemoveUnknownTablets) {
   // Delete the table now and wait for the replicas to get deleted.
   ASSERT_NO_FATALS(DeleteTable(TestWorkloadOptions::kDefaultTableName));
   for (int i = 1; i < 3; i++) {
-    ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(i, tablet_id, SUPERBLOCK_EXPECTED));
+    ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(i, tablet_id, SUPERBLOCK_NOT_EXPECTED));
   }
   // Verify that the table is deleted completely.
   bool deleted = ASSERT_RESULT(VerifyTableCompletelyDeleted(
@@ -1224,10 +1264,9 @@ TEST_F(DeleteTableTest, TestRemoveUnknownTablets) {
   // Failover the master leader for the table to be removed from in-memory maps.
   ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
 
-  // Now restart the TServer and wait for the replica to be deleted.
   ASSERT_OK(cluster_->tablet_server(0)->Restart());
 
-  ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(0, tablet_id, SUPERBLOCK_EXPECTED));
+  ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(0, tablet_id, SUPERBLOCK_NOT_EXPECTED));
 }
 
 TEST_F(DeleteTableTest, DeleteWithDeadTS) {
@@ -1270,7 +1309,7 @@ TEST_F(DeleteTableTest, DeleteWithDeadTS) {
   // Delete the table now and wait for the replicas to get deleted.
   ASSERT_NO_FATALS(DeleteTable(TestWorkloadOptions::kDefaultTableName));
   for (int i = 1; i < 3; i++) {
-    ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(i, tablet_id, SUPERBLOCK_EXPECTED));
+    ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(i, tablet_id, SUPERBLOCK_NOT_EXPECTED));
   }
 
   // Check that the table is deleted completely.
@@ -1279,10 +1318,9 @@ TEST_F(DeleteTableTest, DeleteWithDeadTS) {
   ASSERT_EQ(deleted, true);
   LOG(INFO) << "Table deleted successfully";
 
-  // Now restart the TServer and wait for the replica to be deleted.
   ASSERT_OK(cluster_->tablet_server(0)->Restart());
 
-  ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(0, tablet_id, SUPERBLOCK_EXPECTED));
+  ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(0, tablet_id, SUPERBLOCK_NOT_EXPECTED));
 }
 
 // Parameterized test case for TABLET_DATA_DELETED deletions.
@@ -1470,7 +1508,7 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
     // We need retries here, since some of the tablets may still be
     // bootstrapping after being restarted above.
     ASSERT_NO_FATALS(DeleteTabletWithRetries(ts, tablet_id, TABLET_DATA_DELETED, timeout));
-    ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(kTsIndex, tablet_id, SUPERBLOCK_EXPECTED));
+    ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(kTsIndex, tablet_id, SUPERBLOCK_NOT_EXPECTED));
   }
 
   // Restart the TS, the superblock should be deleted on startup.

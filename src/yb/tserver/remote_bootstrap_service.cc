@@ -37,7 +37,6 @@
 #include <vector>
 
 #include <gflags/gflags.h>
-#include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
 
@@ -54,6 +53,7 @@
 #include "yb/util/crc.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
@@ -95,6 +95,9 @@ DEFINE_test_flag(uint64, inject_latency_before_change_role_secs, 0,
 DEFINE_test_flag(bool, skip_change_role, false,
                  "When set, we don't call ChangeRole after successfully finishing a remote "
                  "bootstrap.");
+
+DEFINE_test_flag(uint64, inject_latency_before_fetch_data_secs, 0,
+                 "Number of seconds to sleep before we call FetchData.");
 
 DEFINE_test_flag(double, fault_crash_leader_before_changing_role, 0.0,
                  "The leader will crash before changing the role (from PRE_VOTER or PRE_OBSERVER "
@@ -232,6 +235,11 @@ void RemoteBootstrapServiceImpl::CheckSessionActive(
 void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
                                            FetchDataResponsePB* resp,
                                            rpc::RpcContext context) {
+  if (PREDICT_FALSE(FLAGS_TEST_inject_latency_before_fetch_data_secs)) {
+    LOG(INFO) << "Injecting FetchData latency for test";
+    SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_inject_latency_before_fetch_data_secs));
+  }
+
   const string& session_id = req->session_id();
 
   // Look up and validate remote bootstrap session.

@@ -248,6 +248,9 @@ DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
 DEFINE_bool(enable_restart_transaction_status_tablets_first, true,
             "Set to true to prioritize bootstrapping transaction status tablets first.");
 
+DEFINE_test_flag(bool, pause_delete_tablet, false,
+                 "Make DeletTablet stuck.");
+
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 
 namespace yb::tserver {
@@ -1280,6 +1283,7 @@ Status TSTabletManager::DeleteTablet(
     const boost::optional<int64_t>& cas_config_opid_index_less_or_equal,
     bool hide_only,
     boost::optional<TabletServerErrorPB::Code>* error_code) {
+  TEST_PAUSE_IF_FLAG(TEST_pause_delete_tablet);
 
   if (delete_type != TABLET_DATA_DELETED && delete_type != TABLET_DATA_TOMBSTONED) {
     return STATUS(InvalidArgument, "DeleteTablet() requires an argument that is one of "
@@ -2224,14 +2228,6 @@ Status TSTabletManager::HandleNonReadyTabletOnStartup(
     RETURN_NOT_OK(DeleteTabletData(meta, data_state, fs_manager_->uuid(), yb::OpId()));
   }
 
-  // We only delete the actual superblock of a TABLET_DATA_DELETED tablet on startup.
-  // TODO: Consider doing this after a fixed delay, instead of waiting for a restart.
-  // See KUDU-941.
-  if (data_state == TABLET_DATA_DELETED) {
-    LOG(INFO) << kLogPrefix << "Deleting tablet superblock";
-    return meta->DeleteSuperBlock();
-  }
-
   // Register TOMBSTONED tablets so that they get reported to the Master, which
   // allows us to permanently delete replica tombstones when a table gets deleted.
   if (data_state == TABLET_DATA_TOMBSTONED) {
@@ -2640,8 +2636,7 @@ Status DeleteTabletData(const RaftGroupMetadataPtr& meta,
   // Only TABLET_DATA_DELETED tablets get this far.
   RETURN_NOT_OK(ConsensusMetadata::DeleteOnDiskData(meta->fs_manager(), meta->raft_group_id()));
   MAYBE_FAULT(FLAGS_TEST_fault_crash_after_cmeta_deleted);
-
-  return Status::OK();
+  return meta->DeleteSuperBlock();
 }
 
 void LogAndTombstone(const RaftGroupMetadataPtr& meta,
