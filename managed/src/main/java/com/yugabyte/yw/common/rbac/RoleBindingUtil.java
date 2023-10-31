@@ -306,6 +306,38 @@ public class RoleBindingUtil {
   }
 
   /**
+   * Helpre method to expand a resource definition of a particular resource type. This is helpful
+   * when editing existing roles to include generic resource types. If given a resource definition,
+   * it expands it in place, or else creates a new one and returns it.
+   *
+   * @param customerUUID
+   * @param resourceType
+   * @param resourceDefinitionToExpand
+   * @return the expanded resource definition
+   */
+  public static ResourceDefinition expandResourceDefinition(
+      UUID customerUUID, ResourceType resourceType, ResourceDefinition resourceDefinitionToExpand) {
+    if (resourceDefinitionToExpand == null) {
+      resourceDefinitionToExpand = ResourceDefinition.builder().resourceType(resourceType).build();
+    }
+    switch (resourceType) {
+      case OTHER:
+        // For "OTHER" resource type, ensure allowAll is false and resource UUID set has only
+        // the customer UUID.
+        resourceDefinitionToExpand.setAllowAll(false);
+        resourceDefinitionToExpand.setResourceUUIDSet(new HashSet<>(Arrays.asList(customerUUID)));
+        break;
+      default:
+        // For the rest of the resource types, ensure allowAll is true and empty resource UUID
+        // set.
+        resourceDefinitionToExpand.setAllowAll(true);
+        resourceDefinitionToExpand.setResourceUUIDSet(new HashSet<>());
+        break;
+    }
+    return resourceDefinitionToExpand;
+  }
+
+  /**
    * This method goes through all existing role bindings with the given role and expands all the
    * resource definitions to allow access to all the resources which have the given generic resource
    * types.
@@ -318,24 +350,22 @@ public class RoleBindingUtil {
       UUID customerUUID, Role role, Set<ResourceType> genericResourceTypesToExpand) {
     List<RoleBinding> roleBindingsWithRole = RoleBinding.getAllWithRole(role.getRoleUUID());
     for (RoleBinding roleBinding : roleBindingsWithRole) {
-      for (ResourceDefinition resourceDefinition :
-          roleBinding.getResourceGroup().getResourceDefinitionSet()) {
-        if (genericResourceTypesToExpand.contains(resourceDefinition.getResourceType())) {
-          ResourceDefinition oldResourceDefinition = resourceDefinition.clone();
-          switch (resourceDefinition.getResourceType()) {
-            case OTHER:
-              // For "OTHER" resource type, ensure allowAll is false and resource UUID set has only
-              // the customer UUID.
-              resourceDefinition.setAllowAll(false);
-              resourceDefinition.setResourceUUIDSet(new HashSet<>(Arrays.asList(customerUUID)));
-              break;
-            default:
-              // For the rest of the resource types, ensure allowAll is true and empty resource UUID
-              // set.
-              resourceDefinition.setAllowAll(true);
-              resourceDefinition.setResourceUUIDSet(new HashSet<>());
-              break;
-          }
+      for (ResourceType resourceTypeToExpand : genericResourceTypesToExpand) {
+        // Get all the resource definitions in the existing resource group, with the particular
+        // resource to expand.
+        List<ResourceDefinition> resourceDefinitions =
+            roleBinding.getResourceGroup().getResourceDefinitionSet().stream()
+                .filter(rd -> resourceTypeToExpand.equals(rd.getResourceType()))
+                .collect(Collectors.toList());
+
+        if (resourceDefinitions.isEmpty()) {
+          // Case when there is no existing resource definition with this particular resource type
+          // to expand. Create a new resource definition in this case, and add it to the existing
+          // resource group.
+          ResourceGroup resourceGroup = roleBinding.getResourceGroup();
+          ResourceDefinition expandedResourceDefinition =
+              expandResourceDefinition(customerUUID, resourceTypeToExpand, null);
+          resourceGroup.getResourceDefinitionSet().add(expandedResourceDefinition);
           log.info(
               "Expanded {} RoleBinding '{}' with user UUID '{}', role UUID '{}', from "
                   + "old resource definition '{}' to new resource definition '{}'.",
@@ -343,8 +373,27 @@ public class RoleBindingUtil {
               roleBinding.getUuid(),
               roleBinding.getUser().getUuid(),
               roleBinding.getRole().getRoleUUID(),
-              oldResourceDefinition,
-              resourceDefinition);
+              null,
+              expandedResourceDefinition);
+        } else {
+          // Case when there is atleast 1 existing resource definition with that particular resource
+          // type to expand.
+          for (ResourceDefinition resourceDefinition : resourceDefinitions) {
+            // Traverse each existing resource definition in the resource group, with a particular
+            // resource type, and expand the definitions in place.
+            ResourceDefinition oldResourceDefinition = resourceDefinition.clone();
+            expandResourceDefinition(
+                customerUUID, resourceDefinition.getResourceType(), resourceDefinition);
+            log.info(
+                "Expanded {} RoleBinding '{}' with user UUID '{}', role UUID '{}', from "
+                    + "old resource definition '{}' to new resource definition '{}'.",
+                roleBinding.getType(),
+                roleBinding.getUuid(),
+                roleBinding.getUser().getUuid(),
+                roleBinding.getRole().getRoleUUID(),
+                oldResourceDefinition,
+                resourceDefinition);
+          }
         }
       }
       roleBinding.update();
