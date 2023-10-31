@@ -18,13 +18,13 @@ SELECT * FROM pg_create_logical_replication_slot('testslot2', 'yboutput', false)
 (1 row)
 
 -- Cannot do SELECT * since yb_stream_id changes across runs.
-SELECT slot_name, plugin, slot_type, datoid, database, temporary, active,
+SELECT slot_name, plugin, slot_type, database, temporary, active,
     active_pid, xmin, catalog_xmin, restart_lsn, confirmed_flush_lsn
 FROM pg_replication_slots;
- slot_name |  plugin  | slot_type | datoid | database | temporary | active | active_pid | xmin | catalog_xmin | restart_lsn | confirmed_flush_lsn
------------+----------+-----------+--------+----------+-----------+--------+------------+------+--------------+-------------+---------------------
- testslot2 | yboutput | logical   |  13301 | yugabyte | f         | f      |            |      |              |             |                     
- testslot1 | yboutput | logical   |  13301 | yugabyte | f         | f      |            |      |              |             |                     
+ slot_name |  plugin  | slot_type | database | temporary | active | active_pid | xmin | catalog_xmin | restart_lsn | confirmed_flush_lsn
+-----------+----------+-----------+----------+-----------+--------+------------+------+--------------+-------------+---------------------
+ testslot2 | yboutput | logical   | yugabyte | f         | f      |            |      |              |             |
+ testslot1 | yboutput | logical   | yugabyte | f         | f      |            |      |              |             |
 (2 rows)
 
 -- drop the replication slot and create with same name again.
@@ -86,11 +86,11 @@ SELECT * FROM pg_drop_replication_slot('testslot3');
 
 (1 row)
 
-SELECT slot_name, plugin, slot_type, datoid, database, temporary, active,
+SELECT slot_name, plugin, slot_type, database, temporary, active,
     active_pid, xmin, catalog_xmin, restart_lsn, confirmed_flush_lsn
 FROM pg_replication_slots;
- slot_name | plugin | slot_type | datoid | database | temporary | active | active_pid | xmin | catalog_xmin | restart_lsn | confirmed_flush_lsn
------------+--------+-----------+--------+----------+-----------+--------+------------+------+--------------+-------------+---------------------
+ slot_name | plugin | slot_type | database | temporary | active | active_pid | xmin | catalog_xmin | restart_lsn | confirmed_flush_lsn
+-----------+--------+-----------+----------+-----------+--------+------------+------+--------------+-------------+---------------------
 (0 rows)
 
 -- drop non-existent replication slot

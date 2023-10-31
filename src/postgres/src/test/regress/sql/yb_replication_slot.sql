@@ -11,7 +11,7 @@ SELECT * FROM pg_create_logical_replication_slot('testslot1', 'yboutput', false)
 SELECT * FROM pg_create_logical_replication_slot('testslot2', 'yboutput', false);
 
 -- Cannot do SELECT * since yb_stream_id changes across runs.
-SELECT slot_name, plugin, slot_type, datoid, database, temporary, active,
+SELECT slot_name, plugin, slot_type, database, temporary, active,
     active_pid, xmin, catalog_xmin, restart_lsn, confirmed_flush_lsn
 FROM pg_replication_slots;
 
@@ -42,7 +42,7 @@ RESET ROLE;
 SELECT * FROM pg_drop_replication_slot('testslot1');
 SELECT * FROM pg_drop_replication_slot('testslot2');
 SELECT * FROM pg_drop_replication_slot('testslot3');
-SELECT slot_name, plugin, slot_type, datoid, database, temporary, active,
+SELECT slot_name, plugin, slot_type, database, temporary, active,
     active_pid, xmin, catalog_xmin, restart_lsn, confirmed_flush_lsn
 FROM pg_replication_slots;
 
