@@ -27,7 +27,7 @@ If the universe uses encryption in transit, to connect you need to first downloa
 
 1. Find the certificate for your universe in the list and click **Actions** and download the certificate.
 
-For more information on encryption in transit, refer to [Encryption in transit](../../security/enable-encryption-in-transit/).
+For more information on connecting to TLS-enabled universes, refer to [Connect to clusters](../../security/enable-encryption-in-transit/#connect-to-clusters).
 
 ## Connect to a universe node
 
@@ -383,7 +383,7 @@ You should stop the sample application.
 
 ### Examine data
 
-You can connect to the YCQL service by executing the following command:
+Connect to the YCQL service by executing the following command:
 
 ```sh
 /home/yugabyte/tserver/bin/ycqlsh <ip_address_of_the_node>
@@ -393,7 +393,9 @@ You can view the table schema and the data, as follows:
 
 ```sql
 ycqlsh> DESCRIBE ybdemo_keyspace.cassandrakeyvalue;
+```
 
+```output.cql
 CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (
   k text PRIMARY KEY,
   v blob
