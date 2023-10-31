@@ -115,7 +115,7 @@ namespace yb::pgwrapper {
 namespace {
 
 Result<int64_t> GetCatalogVersion(PGConn* conn) {
-  if (FLAGS_TEST_enable_db_catalog_version_mode) {
+  if (FLAGS_ysql_enable_db_catalog_version_mode) {
     const auto db_oid = VERIFY_RESULT(conn->FetchValue<int32>(Format(
         "SELECT oid FROM pg_database WHERE datname = '$0'", PQdb(conn->get()))));
     return conn->FetchValue<PGUint64>(

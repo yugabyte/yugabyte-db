@@ -55,7 +55,7 @@ class BackendsCatalogVersionTS;
 //   local tserver, then that tserver (client) sends request to master.
 // - tserver polling local postgres is by spawning a postgres connection using unix domain socket
 //   then querying yb_pg_stat_activity which contains database oid and catalog version information.
-// - Regardless of whether per-db catalog version mode (FLAGS_TEST_enable_db_catalog_version_mode)
+// - Regardless of whether per-db catalog version mode (FLAGS_ysql_enable_db_catalog_version_mode)
 //   is on, we only care about the backends of the requested database.  This is because,
 //   practically, the supported online schema change DDLs (only CREATE INDEX at the time of writing)
 //   don't care about the catalog version on other databases.

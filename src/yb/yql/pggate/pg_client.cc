@@ -57,7 +57,7 @@ DEFINE_NON_RUNTIME_int32(pg_client_extra_timeout_ms, 2000,
    "and report it.");
 
 DECLARE_bool(TEST_index_read_multiple_partitions);
-DECLARE_bool(TEST_enable_db_catalog_version_mode);
+DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 extern int yb_locks_min_txn_age;
 extern int yb_locks_max_transactions;
@@ -306,7 +306,7 @@ class PgClient::Impl {
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     if (is_db_catalog_version_mode) {
-      DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+      DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
       req.set_ysql_db_catalog_version(ysql_catalog_version);
     } else {
       req.set_ysql_catalog_version(ysql_catalog_version);
@@ -333,7 +333,7 @@ class PgClient::Impl {
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     if (is_db_catalog_version_mode) {
-      DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+      DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
       req.set_ysql_db_catalog_version(ysql_catalog_version);
     } else {
       req.set_ysql_catalog_version(ysql_catalog_version);
@@ -367,7 +367,7 @@ class PgClient::Impl {
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     if (is_db_catalog_version_mode) {
-      DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+      DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
       req.set_ysql_db_catalog_version(ysql_catalog_version);
     } else {
       req.set_ysql_catalog_version(ysql_catalog_version);
@@ -394,7 +394,7 @@ class PgClient::Impl {
     req.set_db_oid(db_oid);
     req.set_seq_oid(seq_oid);
     if (is_db_catalog_version_mode) {
-      DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+      DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
       req.set_ysql_db_catalog_version(ysql_catalog_version);
     } else {
       req.set_ysql_catalog_version(ysql_catalog_version);

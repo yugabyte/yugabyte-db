@@ -10062,7 +10062,7 @@ Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap*
 // Note: versions and fingerprint are outputs.
 Status CatalogManager::GetYsqlAllDBCatalogVersions(
     bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint) {
-  DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+  DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
   if (use_cache) {
     SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
     // We expect that the only caller uses this cache is the heartbeat service.
@@ -13533,7 +13533,7 @@ void CatalogManager::StartPgCatalogVersionsBgTaskIfStopped() {
   // In per-database catalog version mode, if heartbeat PG catalog versions
   // cache is enabled, start a background task to periodically read the
   // pg_yb_catalog_version table and cache the result.
-  if (FLAGS_TEST_enable_db_catalog_version_mode &&
+  if (FLAGS_ysql_enable_db_catalog_version_mode &&
       FLAGS_enable_heartbeat_pg_catalog_versions_cache) {
     const bool is_task_running = pg_catalog_versions_bg_task_running_.exchange(true);
     if (is_task_running) {
@@ -13568,7 +13568,7 @@ void CatalogManager::ResetCachedCatalogVersions() {
 }
 
 void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
-  DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+  DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
   DCHECK(FLAGS_enable_heartbeat_pg_catalog_versions_cache);
   DCHECK(pg_catalog_versions_bg_task_running_);
 

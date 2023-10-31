@@ -225,7 +225,7 @@ METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader
                            yb::MetricUnit::kOperations,
                            "Number of split operations added to the leader's Raft log.");
 
-DECLARE_bool(TEST_enable_db_catalog_version_mode);
+DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 DEFINE_test_flag(bool, skip_aborting_active_transactions_during_schema_change, false,
                  "Skip aborting active transactions during schema change");
@@ -1843,7 +1843,7 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
       [catalog_version, database_oid, this, &ts_catalog_version]() -> Result<bool> {
         // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make
         // sure to handle that case if initdb ever goes through this codepath.
-        if (FLAGS_TEST_enable_db_catalog_version_mode) {
+        if (FLAGS_ysql_enable_db_catalog_version_mode) {
           server_->get_ysql_db_catalog_version(
               database_oid, &ts_catalog_version, nullptr /* last_breaking_catalog_version */);
         } else {
