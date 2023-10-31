@@ -15,6 +15,7 @@
 
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/to_stream.h"
 
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
@@ -289,9 +290,10 @@ TEST_F_EX(PgRowLockTest, SystemTableTxnTest, PgMiniTestNoTxnRetry) {
     }
   }
   LOG(INFO) << "Test stats: "
-            << EXPR_VALUE_FOR_LOG(commit1_fail_count) << ", "
-            << EXPR_VALUE_FOR_LOG(insert2_fail_count) << ", "
-            << EXPR_VALUE_FOR_LOG(commit2_fail_count);
+            << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
+                commit1_fail_count,
+                insert2_fail_count,
+                commit2_fail_count);
   ASSERT_GE(commit1_fail_count, iterations / 4);
   ASSERT_GE(insert2_fail_count, iterations / 4);
   ASSERT_EQ(commit2_fail_count, 0);
