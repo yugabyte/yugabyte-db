@@ -104,7 +104,7 @@ To run a shell from a universe node, do the following:
 
 ### Connect using a client shell
 
-Use the ysqlsh, psql, and ycqlsh shells to connect to and interact with YuagbyteDB using the YSQL and YCQL APIs.
+Use the ysqlsh, ycqlsh, and psql shells to connect to and interact with YugabyteDB using the YSQL and YCQL APIs.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -147,7 +147,7 @@ Replace the following:
 - `yugabyte` with the database name, if you're connecting to a database other than the default (yugabyte).
 - `<ROOT_CERT_PATH>` with the path to the root certificate on your computer.
 
-To load sample data and explore an example using ysqlsh, follow the instructions in [Install the Retail Analytics sample database](../../../sample-data/retail-analytics/).
+To load sample data and explore an example using ysqlsh, follow the instructions in [Install the Retail Analytics sample database](../../../sample-data/retail-analytics/#install-the-retail-analytics-sample-database).
 
   </div>
 
@@ -207,7 +207,7 @@ To connect, follow the client's configuration steps for PostgreSQL or Cassandra,
 
 Your client may also require the use of the [universe certificate](#download-the-universe-certificate).
 
-For information on using popular third party tools with YugabyteDB, see [Third party tools](../../../tools/).
+For information on using popular third-party tools with YugabyteDB, see [Third party tools](../../../tools/).
 
 ## Run workloads
 
@@ -221,7 +221,7 @@ To run sample applications on your universe, do the following:
 
     ![Run sample apps](/images/yp/multi-zone-universe-sample-apps-1.png)
 
-1. Run the command in your SSH session on the node.
+1. Run the suggested Docker command in your SSH session on the node.
 
 <!--
 
