@@ -200,15 +200,16 @@
 #include "yb/util/semaphore.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
-#include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/to_stream.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
@@ -4728,9 +4729,11 @@ Status CatalogManager::CreateGlobalTransactionStatusTableIfNeededForNewTable(
         "Error while creating transaction status table");
   } else {
     VLOG(1) << "Not attempting to create a transaction status table:\n"
-            << "  " << EXPR_VALUE_FOR_LOG(is_transactional) << "\n "
-            << "  " << EXPR_VALUE_FOR_LOG(is_pg_catalog_table) << "\n "
-            << "  " << EXPR_VALUE_FOR_LOG(FLAGS_create_initial_sys_catalog_snapshot);
+            << YB_EXPR_TO_STREAM_ONE_PER_LINE(
+                kTwoSpaceIndent,
+                is_transactional,
+                is_pg_catalog_table,
+                FLAGS_create_initial_sys_catalog_snapshot);
   }
   return Status::OK();
 }
@@ -11678,12 +11681,12 @@ Status CatalogManager::MaybeCreateLocalTransactionTable(
         RETURN_NOT_OK(CreateLocalTransactionStatusTableIfNeeded(rpc, tablespace_id, epoch));
       } else {
         VLOG(1) << "Not attempting to create a local transaction status table: "
-                << "tablespace " << EXPR_VALUE_FOR_LOG(tablespace_id) << " has no placement\n";
+                << "tablespace " << YB_EXPR_TO_STREAM(tablespace_id) << " has no placement";
       }
     } else {
       VLOG(1) << "Not attempting to create a local transaction status table:\n"
-              << "  " << EXPR_VALUE_FOR_LOG(is_transactional) << "\n "
-              << "  " << EXPR_VALUE_FOR_LOG(request.has_tablespace_id());
+              << YB_EXPR_TO_STREAM_ONE_PER_LINE(
+                  kTwoSpaceIndent, is_transactional, request.has_tablespace_id());
     }
   }
   return Status::OK();
