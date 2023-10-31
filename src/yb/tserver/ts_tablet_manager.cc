@@ -259,6 +259,9 @@ DEFINE_RUNTIME_int32(bg_superblock_flush_interval_secs, 60,
     "thread. Applicable only when lazily_flush_superblock is enabled. 0 indicates that the "
     "background task is fully disabled.");
 
+DEFINE_test_flag(bool, pause_delete_tablet, false,
+                 "Make DeletTablet stuck.");
+
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(lazily_flush_superblock);
 
@@ -1356,6 +1359,7 @@ Status TSTabletManager::DeleteTablet(
     bool hide_only,
     bool keep_data,
     boost::optional<TabletServerErrorPB::Code>* error_code) {
+  TEST_PAUSE_IF_FLAG(TEST_pause_delete_tablet);
 
   if (delete_type != TABLET_DATA_DELETED && delete_type != TABLET_DATA_TOMBSTONED) {
     return STATUS(InvalidArgument, "DeleteTablet() requires an argument that is one of "
@@ -2368,14 +2372,6 @@ Status TSTabletManager::HandleNonReadyTabletOnStartup(
     RETURN_NOT_OK(DeleteTabletData(meta, data_state, fs_manager_->uuid(), yb::OpId()));
   }
 
-  // We only delete the actual superblock of a TABLET_DATA_DELETED tablet on startup.
-  // TODO: Consider doing this after a fixed delay, instead of waiting for a restart.
-  // See KUDU-941.
-  if (data_state == TABLET_DATA_DELETED) {
-    LOG(INFO) << kLogPrefix << "Deleting tablet superblock";
-    return meta->DeleteSuperBlock();
-  }
-
   // Register TOMBSTONED tablets so that they get reported to the Master, which
   // allows us to permanently delete replica tombstones when a table gets deleted.
   if (data_state == TABLET_DATA_TOMBSTONED) {
@@ -2840,8 +2836,7 @@ Status DeleteTabletData(const RaftGroupMetadataPtr& meta,
   // Only TABLET_DATA_DELETED tablets get this far.
   RETURN_NOT_OK(ConsensusMetadata::DeleteOnDiskData(meta->fs_manager(), meta->raft_group_id()));
   MAYBE_FAULT(FLAGS_TEST_fault_crash_after_cmeta_deleted);
-
-  return Status::OK();
+  return meta->DeleteSuperBlock();
 }
 
 void LogAndTombstone(const RaftGroupMetadataPtr& meta,
