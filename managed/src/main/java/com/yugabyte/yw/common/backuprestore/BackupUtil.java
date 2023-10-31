@@ -3,7 +3,6 @@
 package com.yugabyte.yw.common.backuprestore;
 
 import static com.cronutils.model.CronType.UNIX;
-import static java.lang.Math.abs;
 import static java.lang.Math.max;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.PRECONDITION_FAILED;
@@ -48,7 +47,6 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.ApiModelProperty;
-import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -398,50 +396,47 @@ public class BackupUtil {
     return backupChain.stream().map(BackupUtil::getCommonBackupInfo).collect(Collectors.toList());
   }
 
-  // For creating new backup we would set the storage location based on
-  // universe UUID and backup UUID.
-  // univ-<univ_uuid>/backup-<timestamp>-<something_to_disambiguate_from_yugaware>/table-keyspace
-  // .table_name.table_uuid
+  /**
+   * Generates YBA metadata based suffix for Backup. The format will be: {@code
+   * univ-<univ_uuid>/backup-<base_backup_uuid>-<timestamp>/
+   * multi-table-<keyspace>_<subtask_param_uuid>}
+   *
+   * @param params The backup subtask BackupTableParams object
+   * @param isYbc If the backup is YBC based
+   * @param version Backup version(V1 or V2)
+   * @return The suffix generated using metadata
+   */
   public static String formatStorageLocation(
-      BackupTableParams params, boolean isYbc, BackupVersion version) {
-    SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+      BackupTableParams params, boolean isYbc, BackupVersion version, String backupLocationTS) {
     String updatedLocation;
     String backupLabel = isYbc ? YBC_BACKUP_IDENTIFIER : "backup";
+    String fullOrIncrementalLabel =
+        params.backupUuid.equals(params.baseBackupUUID) ? "full" : "incremental";
+    String backupSubDir =
+        String.format(
+            "%s-%s/%s/%s",
+            backupLabel,
+            params.baseBackupUUID.toString().replace("-", ""),
+            fullOrIncrementalLabel,
+            backupLocationTS);
+    String universeSubDir = String.format("univ-%s", params.getUniverseUUID());
+    String prefix = String.format("%s/%s", universeSubDir, backupSubDir);
     if (params.tableUUIDList != null) {
-      updatedLocation =
-          String.format(
-              "univ-%s/%s-%s-%d/multi-table-%s",
-              params.getUniverseUUID(),
-              backupLabel,
-              tsFormat.format(new Date()),
-              abs(params.backupUuid.hashCode()),
-              params.getKeyspace());
+      updatedLocation = String.format("%s/multi-table-%s", prefix, params.getKeyspace());
     } else if (params.getTableName() == null && params.getKeyspace() != null) {
-      updatedLocation =
-          String.format(
-              "univ-%s/%s-%s-%d/keyspace-%s",
-              params.getUniverseUUID(),
-              backupLabel,
-              tsFormat.format(new Date()),
-              abs(params.backupUuid.hashCode()),
-              params.getKeyspace());
+      updatedLocation = String.format("%s/keyspace-%s", prefix, params.getKeyspace());
     } else {
       updatedLocation =
-          String.format(
-              "univ-%s/%s-%s-%d/table-%s.%s",
-              params.getUniverseUUID(),
-              backupLabel,
-              tsFormat.format(new Date()),
-              abs(params.backupUuid.hashCode()),
-              params.getKeyspace(),
-              params.getTableName());
+          String.format("%s/table-%s.%s", prefix, params.getKeyspace(), params.getTableName());
       if (params.tableUUID != null) {
         updatedLocation =
             String.format("%s-%s", updatedLocation, params.tableUUID.toString().replace("-", ""));
       }
     }
     if (version.equals(BackupVersion.V2)) {
-      updatedLocation = String.format("%s_%s", updatedLocation, params.backupParamsIdentifier);
+      updatedLocation =
+          String.format(
+              "%s_%s", updatedLocation, params.backupParamsIdentifier.toString().replace("-", ""));
     }
     return updatedLocation;
   }
@@ -468,10 +463,14 @@ public class BackupUtil {
   }
 
   public static void updateDefaultStorageLocation(
-      BackupTableParams params, UUID customerUUID, BackupCategory category, BackupVersion version) {
+      BackupTableParams params,
+      UUID customerUUID,
+      BackupCategory category,
+      BackupVersion version,
+      String backupLocationTS) {
     CustomerConfig customerConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
     boolean isYbc = category.equals(BackupCategory.YB_CONTROLLER);
-    params.storageLocation = formatStorageLocation(params, isYbc, version);
+    params.storageLocation = formatStorageLocation(params, isYbc, version, backupLocationTS);
     if (customerConfig != null) {
       String backupLocation = null;
       if (customerConfig.getName().equals(Util.NFS)) {
