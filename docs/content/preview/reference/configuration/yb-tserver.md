@@ -636,7 +636,17 @@ Default: Uses the YSQL display format.
 
 Specifies the maximum number of concurrent YSQL connections.
 
-Default: 300 for superusers. Non-superuser roles see only the connections available for use, while superusers see all connections, including those reserved for superusers.
+Superusers can access all connections. Non-superusers see only connections that are not reserved for superusers as set by the `superuser_reserved_connections` flag; that is, connections available to non-superusers is equal to `ysql_max_connections - superuser_reserved_connections`.
+
+Default: 300.
+
+##### --superuser_reserved_connections
+
+Specifies the number of concurrent YSQL connections that are reserved for connections by superusers.
+
+When the number of active concurrent connections is at least `ysql_max_connections` minus `superuser_reserved_connections`, new connections will be accepted only for superusers.
+
+Default: 3.
 
 ##### --ysql_default_transaction_isolation
 
@@ -1071,7 +1081,7 @@ Number of records fetched in a single batch of snapshot operation of CDC.
 
 Default: `250`
 
-##### --cdc_min_replicated_index_considered_stale_seconds
+##### --cdc_min_replicated_index_considered_stale_secs
 
 If `cdc_min_replicated_index` hasn't been replicated in this amount of time, we reset its value to max int64 to avoid retaining any logs.
 

@@ -508,6 +508,14 @@ public class Universe extends Model {
     return getUniverseDetails().nodeDetailsSet;
   }
 
+  /** Returns the list of nodes based on the placement/cluster uuid for this universe. */
+  @JsonIgnore
+  public List<NodeDetails> getNodesByCluster(UUID placementUuid) {
+    return getNodes().stream()
+        .filter(n -> n.placementUuid.equals(placementUuid))
+        .collect(Collectors.toList());
+  }
+
   /**
    * Checks if all nodes in universe have the node state 'Live'
    *

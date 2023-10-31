@@ -315,6 +315,7 @@ class SpecialEnv : public EnvWrapper {
       yb::IOPriority GetIOPriority() override {
         return base_->GetIOPriority();
       }
+      const std::string& filename() const override { return base_->filename(); }
     };
     class ManifestFile : public WritableFile {
      public:
@@ -339,6 +340,7 @@ class SpecialEnv : public EnvWrapper {
         }
       }
       uint64_t GetFileSize() override { return base_->GetFileSize(); }
+      const std::string& filename() const override { return base_->filename(); }
 
      private:
       SpecialEnv* env_;
@@ -378,6 +380,7 @@ class SpecialEnv : public EnvWrapper {
       bool IsSyncThreadSafe() const override {
         return env_->is_wal_sync_thread_safe_.load();
       }
+      const std::string& filename() const override { return base_->filename(); }
 
      private:
       SpecialEnv* env_;

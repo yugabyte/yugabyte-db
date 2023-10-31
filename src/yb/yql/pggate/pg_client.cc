@@ -522,6 +522,17 @@ class PgClient::Impl {
     return std::pair<PgOid, PgOid>(resp.begin_oid(), resp.end_oid());
   }
 
+  Result<PgOid> GetNewObjectId(PgOid db_oid) {
+    tserver::PgGetNewObjectIdRequestPB req;
+    req.set_db_oid(db_oid);
+
+    tserver::PgGetNewObjectIdResponsePB resp;
+
+    RETURN_NOT_OK(proxy_->GetNewObjectId(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp.new_oid();
+  }
+
   Result<bool> IsInitDbDone() {
     tserver::PgIsInitDbDoneRequestPB req;
     tserver::PgIsInitDbDoneResponsePB resp;
@@ -887,6 +898,10 @@ Result<master::GetNamespaceInfoResponsePB> PgClient::GetDatabaseInfo(uint32_t oi
 Result<std::pair<PgOid, PgOid>> PgClient::ReserveOids(
     PgOid database_oid, PgOid next_oid, uint32_t count) {
   return impl_->ReserveOids(database_oid, next_oid, count);
+}
+
+Result<PgOid> PgClient::GetNewObjectId(PgOid db_oid) {
+  return impl_->GetNewObjectId(db_oid);
 }
 
 Result<bool> PgClient::IsInitDbDone() {

@@ -108,6 +108,7 @@ class PosixWritableFile : public WritableFile {
   Status RangeSync(uint64_t offset, uint64_t nbytes) override;
   size_t GetUniqueId(char* id) const override;
 #endif
+  const std::string& filename() const override { return filename_; }
 };
 
 } // namespace rocksdb

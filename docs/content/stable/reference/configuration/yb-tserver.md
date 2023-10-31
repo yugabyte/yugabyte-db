@@ -399,7 +399,7 @@ Default: `16`
 
 ##### --automatic_compaction_extra_priority
 
-Assigns an extra priority to automatic (minor) compactions when automatic tablet splitting is enabled. This deprioritizes post-split compactions and ensures that smaller compactions are not starved. Suggested values are between 0 and 50.
+Assigns an extra priority to automatic (minor) compactions when automatic tablet splitting is enabled. This de-prioritizes post-split compactions and ensures that smaller compactions are not starved. Suggested values are between 0 and 50.
 
 Default: `50`
 
@@ -465,7 +465,7 @@ Default: `true`
 
 ## xCluster flags
 
-Settings related to managing xClusters.
+Settings related to managing xCluster deployments.
 
 ##### --xcluster_svc_queue_size
 
@@ -579,7 +579,17 @@ Default: Uses the YSQL display format.
 
 Specifies the maximum number of concurrent YSQL connections.
 
-Default: 300 for superusers. Non-superuser roles see only the connections available for use, while superusers see all connections, including those reserved for superusers.
+Superusers can access all connections. Non-superusers see only connections that are not reserved for superusers as set by the `superuser_reserved_connections` flag; that is, connections available to non-superusers is equal to `ysql_max_connections - superuser_reserved_connections`.
+
+Default: 300.
+
+##### --superuser_reserved_connections
+
+Specifies the number of concurrent YSQL connections that are reserved for connections by superusers.
+
+When the number of active concurrent connections is at least `ysql_max_connections` minus `superuser_reserved_connections`, new connections will be accepted only for superusers.
+
+Default: 3.
 
 ##### --ysql_default_transaction_isolation
 
@@ -625,7 +635,7 @@ Default: `100`
 
 Specifies the types of YSQL statements that should be logged.
 
-Valid values: `none` (off), `ddl` (only data definition queries, such as create/alter/drop), `mod` (all modifying/write statements, includes DDLs plus insert/update/delete/trunctate, etc), and `all` (all statements).
+Valid values: `none` (off), `ddl` (only data definition queries, such as create/alter/drop), `mod` (all modifying/write statements, includes DDLs plus insert/update/delete/truncate, etc), and `all` (all statements).
 
 Default: `none`
 
@@ -991,7 +1001,7 @@ Number of records fetched in a single batch of snapshot operation of CDC.
 
 Default: `250`
 
-##### --cdc_min_replicated_index_considered_stale_seconds
+##### --cdc_min_replicated_index_considered_stale_secs
 
 If `cdc_min_replicated_index` hasn't been replicated in this amount of time, we reset its value to max int64 to avoid retaining any logs.
 
