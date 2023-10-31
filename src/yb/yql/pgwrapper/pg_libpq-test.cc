@@ -771,6 +771,7 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation, const bool colo
 class PgLibPqFailoverDuringInitDb : public LibPqTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // Use small clock skew, to decrease number of read restarts.
+    options->allow_crashes_during_init_db = true;
     options->extra_master_flags.push_back("--TEST_fail_initdb_after_snapshot_restore=true");
   }
 

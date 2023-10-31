@@ -822,7 +822,7 @@ struct ColumnFamilyOptions {
   void Dump(Logger* log) const;
 };
 
-typedef std::function<yb::Result<bool>(const MemTable&)> MemTableFilter;
+using MemTableFilter = std::function<yb::Result<bool>(const MemTable&, bool)>;
 
 using IteratorReplacer =
     std::function<InternalIterator*(InternalIterator*, Arena*, Slice)>;

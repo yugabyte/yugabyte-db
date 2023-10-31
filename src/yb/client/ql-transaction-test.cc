@@ -69,9 +69,11 @@ DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_bool(enable_ondisk_compression);
 DECLARE_int32(TEST_delay_init_tablet_peer_ms);
 DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(remote_bootstrap_max_chunk_size);
 DECLARE_int64(transaction_rpc_timeout_ms);
 DECLARE_int64(db_block_cache_size_bytes);
+DECLARE_int64(db_write_buffer_size);
 DECLARE_uint64(TEST_transaction_delay_status_reply_usec_in_tests);
 DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_uint64(max_clock_skew_usec);
@@ -1787,6 +1789,31 @@ TEST_F(QLTransactionTest, DeleteTableDuringWrite) {
   ASSERT_OK(WaitFor([this] {
     return !HasTransactions();
   }, 10s * kTimeMultiplier, "Cleanup transactions from coordinator"));
+}
+
+class QLTransactionTestSmallWriteBuffer :
+    public TransactionCustomLogSegmentSizeTest<64_KB, QLTransactionTest> {
+ public:
+  void SetUp() override {
+    FLAGS_db_write_buffer_size = 4_KB;
+    QLTransactionTest::SetUp();
+  }
+
+  int NumTablets() override {
+    return 1;
+  }
+};
+
+TEST_F_EX(QLTransactionTest, FlushBecauseOfWriteStop, QLTransactionTestSmallWriteBuffer) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_intents_flush_max_delay_ms) = 5000;
+  auto session = CreateSession();
+  session->SetTimeout(2s);
+  for (int txn_idx = 0; txn_idx != 300; ++txn_idx) {
+    YBTransactionPtr write_txn = CreateTransaction();
+    session->SetTransaction(write_txn);
+    ASSERT_OK(WriteRows(session, txn_idx++));
+    ASSERT_OK(write_txn->CommitFuture().get());
+  }
 }
 
 } // namespace client
