@@ -79,8 +79,8 @@ func CreateReplicatedBackupScript(output, dataDir, pgUser, pgPort string, verbos
 	}
 
 	args := []string{"create", "--output", output, "--data_dir", dataDir, "--exclude_prometheus",
-									 "--exclude_releases", "--db_username", pgUser, "--db_host", "localhost",
-									 "--db_port", pgPort}
+									 "--exclude_releases", "--disable_version_check", "--db_username", pgUser,
+									 "--db_host", "localhost", "--db_port", pgPort}
 
 	if verbose {
 		args = append(args, "--verbose")
@@ -89,7 +89,7 @@ func CreateReplicatedBackupScript(output, dataDir, pgUser, pgPort string, verbos
 	log.Info("Creating a backup of your Replicated YBA Installation.")
 	out := shell.Run(fileName, args...)
 	if !out.SucceededOrLog() {
-		log.Warn(out.Error.Error())
+		log.Fatal(out.Error.Error())
 	}
 
 }
