@@ -625,7 +625,6 @@ SELECT * FROM cypher('type_coercion', $$
 	RETURN true
 $$) AS (i int);
 
---Invalid String Format
 SELECT * FROM cypher('type_coercion', $$
 	RETURN '1.0'
 $$) AS (i bigint);
@@ -3077,6 +3076,20 @@ SELECT * FROM agtype('{"a": 1, "b": 2}'::agtype -> 'a'::text);
 
 -- Text BoolExpr expression node types
 SELECT * FROM bool(true AND false);
+
+-- Issue 1329
+-- returns 1
+SELECT agtype_to_int2(bool('true'));
+SELECT agtype_to_int4(bool('true'));
+SELECT agtype_to_int8(bool('true'));
+-- returns 0
+SELECT agtype_to_int2(bool('false'));
+SELECT agtype_to_int4(bool('false'));
+SELECT agtype_to_int8(bool('false'));
+-- should error
+SELECT agtype_to_int2(bool('neither'));
+SELECT agtype_to_int4(bool('neither'));
+SELECT agtype_to_int8(bool('neither'));
 
 --
 -- Cleanup

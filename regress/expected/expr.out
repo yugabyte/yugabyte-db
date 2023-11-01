@@ -1336,11 +1336,14 @@ $$) AS (i int);
  1
 (1 row)
 
---Invalid String Format
 SELECT * FROM cypher('type_coercion', $$
 	RETURN '1.0'
 $$) AS (i bigint);
-ERROR:  invalid input syntax for type bigint: "1.0"
+ i 
+---
+ 1
+(1 row)
+
 -- Casting to ints that will cause overflow
 SELECT * FROM cypher('type_coercion', $$
 	RETURN 10000000000000000000
@@ -7559,6 +7562,58 @@ SELECT * FROM bool(true AND false);
  f
 (1 row)
 
+-- Issue 1329
+-- returns 1
+SELECT agtype_to_int2(bool('true'));
+ agtype_to_int2 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int4(bool('true'));
+ agtype_to_int4 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int8(bool('true'));
+ agtype_to_int8 
+----------------
+              1
+(1 row)
+
+-- returns 0
+SELECT agtype_to_int2(bool('false'));
+ agtype_to_int2 
+----------------
+              0
+(1 row)
+
+SELECT agtype_to_int4(bool('false'));
+ agtype_to_int4 
+----------------
+              0
+(1 row)
+
+SELECT agtype_to_int8(bool('false'));
+ agtype_to_int8 
+----------------
+              0
+(1 row)
+
+-- should error
+SELECT agtype_to_int2(bool('neither'));
+ERROR:  invalid input syntax for type boolean: "neither"
+LINE 1: SELECT agtype_to_int2(bool('neither'));
+                                   ^
+SELECT agtype_to_int4(bool('neither'));
+ERROR:  invalid input syntax for type boolean: "neither"
+LINE 1: SELECT agtype_to_int4(bool('neither'));
+                                   ^
+SELECT agtype_to_int8(bool('neither'));
+ERROR:  invalid input syntax for type boolean: "neither"
+LINE 1: SELECT agtype_to_int8(bool('neither'));
+                                   ^
 --
 -- Cleanup
 --

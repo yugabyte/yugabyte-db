@@ -674,16 +674,33 @@ SELECT bool_to_agtype(true) <> bool_to_agtype(false);
 --
 SELECT agtype_to_int8(agtype_in('true'));
 SELECT agtype_to_int8(agtype_in('false'));
+-- should return SQL NULL
+SELECT agtype_to_int8(agtype_in('null'));
+SELECT agtype_to_int8(NULL);
+-- non agtype input
+SELECT agtype_to_int8(1);
+SELECT agtype_to_int8(3.14);
+SELECT agtype_to_int8(3.14::numeric);
+SELECT agtype_to_int8('3');
+SELECT agtype_to_int8(true);
+SELECT agtype_to_int8(false);
+SELECT agtype_to_int8('3.14');
+SELECT agtype_to_int8('true');
+SELECT agtype_to_int8('false');
+-- should fail
+SELECT agtype_to_int8('neither');
+SELECT agtype_to_int8('NaN');
+SELECT agtype_to_int8('Inf');
+SELECT agtype_to_int8(NaN);
+SELECT agtype_to_int8(Inf);
 
 --
 -- Test boolean to integer cast
 --
 SELECT agtype_to_int4(agtype_in('true'));
 SELECT agtype_to_int4(agtype_in('false'));
-SELECT agtype_to_int4(agtype_in('null'));
-
 --
--- Test agtype to integer cast
+-- Test agtype to integer4 cast
 --
 SELECT agtype_to_int4(agtype_in('1'));
 SELECT agtype_to_int4(agtype_in('1.45'));
@@ -692,6 +709,60 @@ SELECT agtype_to_int4(agtype_in('1.444::numeric'));
 SELECT agtype_to_int4(agtype_in('"string"'));
 SELECT agtype_to_int4(agtype_in('[1, 2, 3]'));
 SELECT agtype_to_int4(agtype_in('{"int":1}'));
+-- should return SQL NULL
+SELECT agtype_to_int4(agtype_in('null'));
+SELECT agtype_to_int4(NULL);
+-- non agtype input
+SELECT agtype_to_int4(1);
+SELECT agtype_to_int4(3.14);
+SELECT agtype_to_int4(3.14::numeric);
+SELECT agtype_to_int4('3');
+SELECT agtype_to_int4(true);
+SELECT agtype_to_int4(false);
+SELECT agtype_to_int4('3.14');
+SELECT agtype_to_int4('true');
+SELECT agtype_to_int4('false');
+-- should error
+SELECT agtype_to_int4('neither');
+SELECT agtype_to_int4('NaN');
+SELECT agtype_to_int4('Inf');
+SELECT agtype_to_int4(NaN);
+SELECT agtype_to_int4(Inf);
+
+--
+-- Test boolean to integer2 cast
+--
+SELECT agtype_to_int2(agtype_in('true'));
+SELECT agtype_to_int2(agtype_in('false'));
+--
+-- Test agtype to integer2 cast
+--
+SELECT agtype_to_int2(agtype_in('1'));
+SELECT agtype_to_int2(agtype_in('1.45'));
+SELECT agtype_to_int2(agtype_in('1.444::numeric'));
+-- These should all fail
+SELECT agtype_to_int2(agtype_in('"string"'));
+SELECT agtype_to_int2(agtype_in('[1, 2, 3]'));
+SELECT agtype_to_int2(agtype_in('{"int":1}'));
+-- should return SQL NULL
+SELECT agtype_to_int2(agtype_in('null'));
+SELECT agtype_to_int2(NULL);
+-- non agtype input
+SELECT agtype_to_int2(1);
+SELECT agtype_to_int2(3.14);
+SELECT agtype_to_int2(3.14::numeric);
+SELECT agtype_to_int2('3');
+SELECT agtype_to_int2(true);
+SELECT agtype_to_int2(false);
+SELECT agtype_to_int2('3.14');
+SELECT agtype_to_int2('true');
+SELECT agtype_to_int2('false');
+-- should error
+SELECT agtype_to_int2('neither');
+SELECT agtype_to_int2('NaN');
+SELECT agtype_to_int2('Inf');
+SELECT agtype_to_int2(NaN);
+SELECT agtype_to_int2(Inf);
 
 --
 -- Test agtype to int[]
@@ -699,6 +770,11 @@ SELECT agtype_to_int4(agtype_in('{"int":1}'));
 SELECT agtype_to_int4_array(agtype_in('[1,2,3]'));
 SELECT agtype_to_int4_array(agtype_in('[1.6,2.3,3.66]'));
 SELECT agtype_to_int4_array(agtype_in('["6","7",3.66]'));
+-- should error
+SELECT agtype_to_int4_array(bool('true'));
+SELECT agtype_to_int4_array((1,2,3,4,5));
+-- should return SQL NULL
+SELECT agtype_to_int4_array(NULL);
 
 --
 -- Map Literal

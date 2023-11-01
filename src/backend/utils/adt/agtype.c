@@ -104,6 +104,7 @@ typedef enum /* type categories for datum_to_agtype */
 } agt_type_category;
 
 static inline Datum agtype_from_cstring(char *str, int len);
+static inline agtype_value *agtype_value_from_cstring(char *str, int len);
 size_t check_string_length(size_t len);
 static void agtype_in_agtype_annotation(void *pstate, char *annotation);
 static void agtype_in_object_start(void *pstate);
@@ -361,13 +362,14 @@ Datum agtype_out(PG_FUNCTION_ARGS)
 }
 
 /*
- * agtype_from_cstring
+ * agtype_value_from_cstring
  *
- * Turns agtype string into an agtype Datum.
+ * Helper function to turn an agtype string into an agtype_value.
  *
  * Uses the agtype parser (with hooks) to construct an agtype.
  */
-static inline Datum agtype_from_cstring(char *str, int len)
+
+static inline agtype_value *agtype_value_from_cstring(char *str, int len)
 {
     agtype_lex_context *lex;
     agtype_in_state state;
@@ -391,7 +393,21 @@ static inline Datum agtype_from_cstring(char *str, int len)
     parse_agtype(lex, &sem);
 
     /* after parsing, the item member has the composed agtype structure */
-    PG_RETURN_POINTER(agtype_value_to_agtype(state.res));
+    return state.res;
+}
+
+/*
+ * agtype_from_cstring
+ *
+ * Turns agtype string into a Datum of agtype.
+ *
+ * Calls helper function
+ */
+static inline Datum agtype_from_cstring(char *str, int len)
+{
+    agtype_value *agtv = agtype_value_from_cstring(str, len);
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(agtv));
 }
 
 size_t check_string_length(size_t len)
@@ -2609,17 +2625,20 @@ PG_FUNCTION_INFO_V1(agtype_to_int8);
  */
 Datum agtype_to_int8(PG_FUNCTION_ARGS)
 {
-    agtype *agtype_in = AG_GET_ARG_AGTYPE_P(0);
     agtype_value agtv;
+    agtype_value *agtv_p = NULL;
+    agtype_value *container = NULL;
     int64 result = 0x0;
-    agtype *arg_agt;
+    agtype *arg_agt = NULL;
 
     /* get the agtype equivalence of any convertable input type */
     arg_agt = get_one_agtype_from_variadic_args(fcinfo, 0, 1);
 
     /* Return null if arg_agt is null. This covers SQL and Agtype NULLS */
     if (arg_agt == NULL)
+    {
         PG_RETURN_NULL();
+    }
 
     if (!agtype_extract_scalar(&arg_agt->root, &agtv) ||
         (agtv.type != AGTV_FLOAT &&
@@ -2627,26 +2646,78 @@ Datum agtype_to_int8(PG_FUNCTION_ARGS)
          agtv.type != AGTV_NUMERIC &&
          agtv.type != AGTV_STRING &&
          agtv.type != AGTV_BOOL))
+    {
         cannot_cast_agtype_value(agtv.type, "int");
+    }
 
-    PG_FREE_IF_COPY(agtype_in, 0);
+    agtv_p = &agtv;
 
-    if (agtv.type == AGTV_INTEGER)
-        result = agtv.val.int_value;
-    else if (agtv.type == AGTV_FLOAT)
+    /*
+     * If it is an agtype string, we need to convert the string component first.
+     * We need to do this because the string could be any type of value. Fx,
+     * integer, float, boolean, numeric, object, or array. Once converted, we
+     * need to remember scalar values are returned as a scalar array. We only
+     * care about scalar arrays.
+     */
+    if (agtv_p->type == AGTV_STRING)
+    {
+        agtype_value *temp = NULL;
+
+        /* convert the string to an agtype_value */
+        temp = agtype_value_from_cstring(agtv_p->val.string.val,
+                                         agtv_p->val.string.len);
+
+        if (temp->type != AGTV_ARRAY ||
+            !temp->val.array.raw_scalar)
+        {
+            elog(ERROR, "invalid agtype type: %d", (int)agtv_p->type);
+        }
+
+        /* save the top agtype_value */
+        container = temp;
+        /* get the wrapped agtype_value */
+        temp = &temp->val.array.elems[0];
+
+        if (temp->type == AGTV_FLOAT ||
+            temp->type == AGTV_INTEGER ||
+            temp->type == AGTV_NUMERIC ||
+            temp->type == AGTV_BOOL)
+        {
+            agtv_p = temp;
+        }
+    }
+
+    /* now check the rest */
+    if (agtv_p->type == AGTV_INTEGER)
+    {
+        result = agtv_p->val.int_value;
+    }
+    else if (agtv_p->type == AGTV_FLOAT)
+    {
         result = DatumGetInt64(DirectFunctionCall1(dtoi8,
-                                Float8GetDatum(agtv.val.float_value)));
-    else if (agtv.type == AGTV_NUMERIC)
+                     Float8GetDatum(agtv_p->val.float_value)));
+    }
+    else if (agtv_p->type == AGTV_NUMERIC)
+    {
         result = DatumGetInt64(DirectFunctionCall1(numeric_int8,
-                     NumericGetDatum(agtv.val.numeric)));
-    else if (agtv.type == AGTV_STRING)
-        result = DatumGetInt64(DirectFunctionCall1(int8in,
-                           CStringGetDatum(agtv.val.string.val)));
-    else if(agtv.type == AGTV_BOOL)
-        result = DatumGetInt64(DirectFunctionCall1(bool_int4,
-                      BoolGetDatum(agtv.val.boolean)));
+                     NumericGetDatum(agtv_p->val.numeric)));
+    }
+    else if(agtv_p->type == AGTV_BOOL)
+    {
+        result = (agtv_p->val.boolean) ? 1 : 0;
+    }
     else
-        elog(ERROR, "invalid agtype type: %d", (int)agtv.type);
+    {
+        elog(ERROR, "invalid agtype type: %d", (int)agtv_p->type);
+    }
+
+    /* free the container, if it was used */
+    if (container)
+    {
+        pfree(container);
+    }
+
+    PG_FREE_IF_COPY(arg_agt, 0);
 
     PG_RETURN_INT64(result);
 }
@@ -2658,10 +2729,11 @@ PG_FUNCTION_INFO_V1(agtype_to_int4);
  */
 Datum agtype_to_int4(PG_FUNCTION_ARGS)
 {
-    agtype *agtype_in = AG_GET_ARG_AGTYPE_P(0);
     agtype_value agtv;
+    agtype_value *agtv_p = NULL;
+    agtype_value *container = NULL;
     int32 result = 0x0;
-    agtype *arg_agt;
+    agtype *arg_agt = NULL;
 
     /* get the agtype equivalence of any convertable input type */
     arg_agt = get_one_agtype_from_variadic_args(fcinfo, 0, 1);
@@ -2682,37 +2754,80 @@ Datum agtype_to_int4(PG_FUNCTION_ARGS)
         cannot_cast_agtype_value(agtv.type, "int");
     }
 
-    PG_FREE_IF_COPY(agtype_in, 0);
+    agtv_p = &agtv;
 
-    if (agtv.type == AGTV_INTEGER)
+    /*
+     * If it is an agtype string, we need to convert the string component first.
+     * We need to do this because the string could be any type of value. Fx,
+     * integer, float, boolean, numeric, object, or array. Once converted, we
+     * need to remember scalar values are returned as a scalar array. We only
+     * care about scalar arrays.
+     */
+    if (agtv_p->type == AGTV_STRING)
+    {
+        agtype_value *temp = NULL;
+
+        /* convert the string to an agtype_value */
+        temp = agtype_value_from_cstring(agtv_p->val.string.val,
+                                         agtv_p->val.string.len);
+
+        if (temp->type != AGTV_ARRAY ||
+            !temp->val.array.raw_scalar)
+        {
+            elog(ERROR, "invalid agtype type: %d", (int)agtv_p->type);
+        }
+
+        /* save the top agtype_value */
+        container = temp;
+        /* get the wrapped agtype_value */
+        temp = &temp->val.array.elems[0];
+
+        if (temp->type == AGTV_FLOAT ||
+            temp->type == AGTV_INTEGER ||
+            temp->type == AGTV_NUMERIC ||
+            temp->type == AGTV_BOOL)
+        {
+            agtv_p = temp;
+        }
+    }
+
+    /* now check the rest */
+    if (agtv_p->type == AGTV_INTEGER)
     {
         result = DatumGetInt32(DirectFunctionCall1(int84,
-                    Int64GetDatum(agtv.val.int_value)));
+                     Int64GetDatum(agtv_p->val.int_value)));
     }
-    else if (agtv.type == AGTV_FLOAT)
+    else if (agtv_p->type == AGTV_FLOAT)
     {
         result = DatumGetInt32(DirectFunctionCall1(dtoi4,
-                                Float8GetDatum(agtv.val.float_value)));
+                     Float8GetDatum(agtv_p->val.float_value)));
     }
-    else if (agtv.type == AGTV_NUMERIC)
+    else if (agtv_p->type == AGTV_NUMERIC)
     {
         result = DatumGetInt32(DirectFunctionCall1(numeric_int4,
-                     NumericGetDatum(agtv.val.numeric)));
+                     NumericGetDatum(agtv_p->val.numeric)));
     }
-    else if (agtv.type == AGTV_STRING)
+    else if (agtv_p->type == AGTV_STRING)
     {
         result = DatumGetInt32(DirectFunctionCall1(int4in,
-                           CStringGetDatum(agtv.val.string.val)));
+                     CStringGetDatum(agtv_p->val.string.val)));
     }
-    else if (agtv.type == AGTV_BOOL)
+    else if (agtv_p->type == AGTV_BOOL)
     {
-        result = DatumGetInt64(DirectFunctionCall1(bool_int4,
-                    BoolGetDatum(agtv.val.boolean)));
+        result = (agtv_p->val.boolean) ? 1 : 0;
     }
     else
     {
-        elog(ERROR, "invalid agtype type: %d", (int)agtv.type);
+        elog(ERROR, "invalid agtype type: %d", (int)agtv_p->type);
     }
+
+    /* free the container, if it was used */
+    if (container)
+    {
+        pfree(container);
+    }
+
+    PG_FREE_IF_COPY(arg_agt, 0);
 
     PG_RETURN_INT32(result);
 }
@@ -2724,41 +2839,105 @@ PG_FUNCTION_INFO_V1(agtype_to_int2);
  */
 Datum agtype_to_int2(PG_FUNCTION_ARGS)
 {
-    agtype *agtype_in = AG_GET_ARG_AGTYPE_P(0);
     agtype_value agtv;
+    agtype_value *agtv_p = NULL;
+    agtype_value *container = NULL;
     int16 result = 0x0;
-    agtype *arg_agt;
+    agtype *arg_agt = NULL;
 
     /* get the agtype equivalence of any convertable input type */
     arg_agt = get_one_agtype_from_variadic_args(fcinfo, 0, 1);
 
     /* Return null if arg_agt is null. This covers SQL and Agtype NULLS */
     if (arg_agt == NULL)
+    {
         PG_RETURN_NULL();
+    }
 
     if (!agtype_extract_scalar(&arg_agt->root, &agtv) ||
         (agtv.type != AGTV_FLOAT &&
          agtv.type != AGTV_INTEGER &&
          agtv.type != AGTV_NUMERIC &&
-         agtv.type != AGTV_STRING))
+         agtv.type != AGTV_STRING &&
+         agtv.type != AGTV_BOOL))
+    {
         cannot_cast_agtype_value(agtv.type, "int");
+    }
 
-    PG_FREE_IF_COPY(agtype_in, 0);
+    agtv_p = &agtv;
 
-    if (agtv.type == AGTV_INTEGER)
+    /*
+     * If it is an agtype string, we need to convert the string component first.
+     * We need to do this because the string could be any type of value. Fx,
+     * integer, float, boolean, numeric, object, or array. Once converted, we
+     * need to remember scalar values are returned as a scalar array. We only
+     * care about scalar arrays.
+     */
+    if (agtv_p->type == AGTV_STRING)
+    {
+        agtype_value *temp = NULL;
+
+        /* convert the string to an agtype_value */
+        temp = agtype_value_from_cstring(agtv_p->val.string.val,
+                                         agtv_p->val.string.len);
+
+        if (temp->type != AGTV_ARRAY ||
+            !temp->val.array.raw_scalar)
+        {
+            elog(ERROR, "invalid agtype type: %d", (int)agtv_p->type);
+        }
+
+        /* save the top agtype_value */
+        container = temp;
+        /* get the wrapped agtype_value */
+        temp = &temp->val.array.elems[0];
+
+        if (temp->type == AGTV_FLOAT ||
+            temp->type == AGTV_INTEGER ||
+            temp->type == AGTV_NUMERIC ||
+            temp->type == AGTV_BOOL)
+        {
+            agtv_p = temp;
+        }
+    }
+
+    /* now check the rest */
+    if (agtv_p->type == AGTV_INTEGER)
+    {
         result = DatumGetInt16(DirectFunctionCall1(int82,
-                    Int64GetDatum(agtv.val.int_value)));
-    else if (agtv.type == AGTV_FLOAT)
-        result = DatumGetInt32(DirectFunctionCall1(dtoi2,
-                                Float8GetDatum(agtv.val.float_value)));
-    else if (agtv.type == AGTV_NUMERIC)
+                     Int64GetDatum(agtv_p->val.int_value)));
+    }
+    else if (agtv_p->type == AGTV_FLOAT)
+    {
+        result = DatumGetInt16(DirectFunctionCall1(dtoi2,
+                     Float8GetDatum(agtv_p->val.float_value)));
+    }
+    else if (agtv_p->type == AGTV_NUMERIC)
+    {
         result = DatumGetInt16(DirectFunctionCall1(numeric_int2,
-                     NumericGetDatum(agtv.val.numeric)));
-    else if (agtv.type == AGTV_STRING)
+                     NumericGetDatum(agtv_p->val.numeric)));
+    }
+    else if (agtv_p->type == AGTV_STRING)
+    {
         result = DatumGetInt16(DirectFunctionCall1(int2in,
-                           CStringGetDatum(agtv.val.string.val)));
+                     CStringGetDatum(agtv_p->val.string.val)));
+    }
+    else if (agtv_p->type == AGTV_BOOL)
+    {
+        result = (agtv_p->val.boolean) ? 1 : 0;
+    }
     else
-        elog(ERROR, "invalid agtype type: %d", (int)agtv.type);
+    {
+        elog(ERROR, "invalid agtype type: %d", (int)agtv_p->type);
+    }
+
+    /* free the container, if it was used */
+    if (container)
+    {
+        pfree(container);
+    }
+
+    PG_FREE_IF_COPY(arg_agt, 0);
 
     PG_RETURN_INT16(result);
 }
@@ -2896,18 +3075,41 @@ PG_FUNCTION_INFO_V1(agtype_to_int4_array);
 
 /*
  * Cast agtype to int4[].
+ *
+ * TODO:
+ *
+ * We either need to change the function definition in age--x.x.x.sql
+ * to something like agtype[] or we need to make this function work
+ * for "any" type input. Right now it only works for an agtype array but
+ * it takes "any" input. Hence the additional code added to block anything
+ * other than agtype.
  */
 Datum agtype_to_int4_array(PG_FUNCTION_ARGS)
 {
-    agtype *agtype_in = AG_GET_ARG_AGTYPE_P(0);
+    agtype_iterator *agtype_iterator = NULL;
+    agtype *agtype_in = NULL;
     agtype_value agtv;
     agtype_iterator_token agtv_token;
     Datum *array_value;
     ArrayType *result;
+    Oid arg_type = InvalidOid;
     int element_size;
     int i;
 
-    agtype_iterator *agtype_iterator = agtype_iterator_init(&agtype_in->root);
+    /* get the input data type */
+    arg_type = get_fn_expr_argtype(fcinfo->flinfo, 0);
+
+    /* verify the input is agtype */
+    if (arg_type != AGTYPEOID)
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("argument must resolve to agtype")));
+    }
+
+    agtype_in = AG_GET_ARG_AGTYPE_P(0);
+
+    agtype_iterator = agtype_iterator_init(&agtype_in->root);
     agtv_token = agtype_iterator_next(&agtype_iterator, &agtv, false);
 
     if (agtv.type != AGTV_ARRAY)
@@ -9450,8 +9652,8 @@ agtype_value *alter_properties(agtype_value *original_properties,
  * extract_variadic_args.
  */
 agtype *get_one_agtype_from_variadic_args(FunctionCallInfo fcinfo,
-                                                 int variadic_offset,
-                                                 int expected_nargs)
+                                          int variadic_offset,
+                                          int expected_nargs)
 {
     int nargs;
     Datum *args = NULL;

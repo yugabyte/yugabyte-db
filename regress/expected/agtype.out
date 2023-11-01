@@ -2744,6 +2744,91 @@ SELECT agtype_to_int8(agtype_in('false'));
               0
 (1 row)
 
+-- should return SQL NULL
+SELECT agtype_to_int8(agtype_in('null'));
+ agtype_to_int8 
+----------------
+               
+(1 row)
+
+SELECT agtype_to_int8(NULL);
+ agtype_to_int8 
+----------------
+               
+(1 row)
+
+-- non agtype input
+SELECT agtype_to_int8(1);
+ agtype_to_int8 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int8(3.14);
+ agtype_to_int8 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int8(3.14::numeric);
+ agtype_to_int8 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int8('3');
+ agtype_to_int8 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int8(true);
+ agtype_to_int8 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int8(false);
+ agtype_to_int8 
+----------------
+              0
+(1 row)
+
+SELECT agtype_to_int8('3.14');
+ agtype_to_int8 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int8('true');
+ agtype_to_int8 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int8('false');
+ agtype_to_int8 
+----------------
+              0
+(1 row)
+
+-- should fail
+SELECT agtype_to_int8('neither');
+ERROR:  invalid input syntax for type agtype
+DETAIL:  Expected agtype value, but found "neither".
+CONTEXT:  agtype data, line 1: neither
+SELECT agtype_to_int8('NaN');
+ERROR:  bigint out of range
+SELECT agtype_to_int8('Inf');
+ERROR:  bigint out of range
+SELECT agtype_to_int8(NaN);
+ERROR:  column "nan" does not exist
+LINE 1: SELECT agtype_to_int8(NaN);
+                              ^
+SELECT agtype_to_int8(Inf);
+ERROR:  column "inf" does not exist
+LINE 1: SELECT agtype_to_int8(Inf);
+                              ^
 --
 -- Test boolean to integer cast
 --
@@ -2759,14 +2844,8 @@ SELECT agtype_to_int4(agtype_in('false'));
               0
 (1 row)
 
-SELECT agtype_to_int4(agtype_in('null'));
- agtype_to_int4 
-----------------
-               
-(1 row)
-
 --
--- Test agtype to integer cast
+-- Test agtype to integer4 cast
 --
 SELECT agtype_to_int4(agtype_in('1'));
  agtype_to_int4 
@@ -2788,11 +2867,228 @@ SELECT agtype_to_int4(agtype_in('1.444::numeric'));
 
 -- These should all fail
 SELECT agtype_to_int4(agtype_in('"string"'));
-ERROR:  invalid input syntax for type integer: "string"
+ERROR:  invalid input syntax for type agtype
+DETAIL:  Expected agtype value, but found "string".
+CONTEXT:  agtype data, line 1: string
 SELECT agtype_to_int4(agtype_in('[1, 2, 3]'));
 ERROR:  cannot cast agtype array to type int
 SELECT agtype_to_int4(agtype_in('{"int":1}'));
 ERROR:  cannot cast agtype object to type int
+-- should return SQL NULL
+SELECT agtype_to_int4(agtype_in('null'));
+ agtype_to_int4 
+----------------
+               
+(1 row)
+
+SELECT agtype_to_int4(NULL);
+ agtype_to_int4 
+----------------
+               
+(1 row)
+
+-- non agtype input
+SELECT agtype_to_int4(1);
+ agtype_to_int4 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int4(3.14);
+ agtype_to_int4 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int4(3.14::numeric);
+ agtype_to_int4 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int4('3');
+ agtype_to_int4 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int4(true);
+ agtype_to_int4 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int4(false);
+ agtype_to_int4 
+----------------
+              0
+(1 row)
+
+SELECT agtype_to_int4('3.14');
+ agtype_to_int4 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int4('true');
+ agtype_to_int4 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int4('false');
+ agtype_to_int4 
+----------------
+              0
+(1 row)
+
+-- should error
+SELECT agtype_to_int4('neither');
+ERROR:  invalid input syntax for type agtype
+DETAIL:  Expected agtype value, but found "neither".
+CONTEXT:  agtype data, line 1: neither
+SELECT agtype_to_int4('NaN');
+ERROR:  integer out of range
+SELECT agtype_to_int4('Inf');
+ERROR:  integer out of range
+SELECT agtype_to_int4(NaN);
+ERROR:  column "nan" does not exist
+LINE 1: SELECT agtype_to_int4(NaN);
+                              ^
+SELECT agtype_to_int4(Inf);
+ERROR:  column "inf" does not exist
+LINE 1: SELECT agtype_to_int4(Inf);
+                              ^
+--
+-- Test boolean to integer2 cast
+--
+SELECT agtype_to_int2(agtype_in('true'));
+ agtype_to_int2 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int2(agtype_in('false'));
+ agtype_to_int2 
+----------------
+              0
+(1 row)
+
+--
+-- Test agtype to integer2 cast
+--
+SELECT agtype_to_int2(agtype_in('1'));
+ agtype_to_int2 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int2(agtype_in('1.45'));
+ agtype_to_int2 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int2(agtype_in('1.444::numeric'));
+ agtype_to_int2 
+----------------
+              1
+(1 row)
+
+-- These should all fail
+SELECT agtype_to_int2(agtype_in('"string"'));
+ERROR:  invalid input syntax for type agtype
+DETAIL:  Expected agtype value, but found "string".
+CONTEXT:  agtype data, line 1: string
+SELECT agtype_to_int2(agtype_in('[1, 2, 3]'));
+ERROR:  cannot cast agtype array to type int
+SELECT agtype_to_int2(agtype_in('{"int":1}'));
+ERROR:  cannot cast agtype object to type int
+-- should return SQL NULL
+SELECT agtype_to_int2(agtype_in('null'));
+ agtype_to_int2 
+----------------
+               
+(1 row)
+
+SELECT agtype_to_int2(NULL);
+ agtype_to_int2 
+----------------
+               
+(1 row)
+
+-- non agtype input
+SELECT agtype_to_int2(1);
+ agtype_to_int2 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int2(3.14);
+ agtype_to_int2 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int2(3.14::numeric);
+ agtype_to_int2 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int2('3');
+ agtype_to_int2 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int2(true);
+ agtype_to_int2 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int2(false);
+ agtype_to_int2 
+----------------
+              0
+(1 row)
+
+SELECT agtype_to_int2('3.14');
+ agtype_to_int2 
+----------------
+              3
+(1 row)
+
+SELECT agtype_to_int2('true');
+ agtype_to_int2 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int2('false');
+ agtype_to_int2 
+----------------
+              0
+(1 row)
+
+-- should error
+SELECT agtype_to_int2('neither');
+ERROR:  invalid input syntax for type agtype
+DETAIL:  Expected agtype value, but found "neither".
+CONTEXT:  agtype data, line 1: neither
+SELECT agtype_to_int2('NaN');
+ERROR:  smallint out of range
+SELECT agtype_to_int2('Inf');
+ERROR:  smallint out of range
+SELECT agtype_to_int2(NaN);
+ERROR:  column "nan" does not exist
+LINE 1: SELECT agtype_to_int2(NaN);
+                              ^
+SELECT agtype_to_int2(Inf);
+ERROR:  column "inf" does not exist
+LINE 1: SELECT agtype_to_int2(Inf);
+                              ^
 --
 -- Test agtype to int[]
 --
@@ -2812,6 +3108,18 @@ SELECT agtype_to_int4_array(agtype_in('["6","7",3.66]'));
  agtype_to_int4_array 
 ----------------------
  {6,7,4}
+(1 row)
+
+-- should error
+SELECT agtype_to_int4_array(bool('true'));
+ERROR:  argument must resolve to agtype
+SELECT agtype_to_int4_array((1,2,3,4,5));
+ERROR:  argument must resolve to agtype
+-- should return SQL NULL
+SELECT agtype_to_int4_array(NULL);
+ agtype_to_int4_array 
+----------------------
+ 
 (1 row)
 
 --
