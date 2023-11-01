@@ -2531,6 +2531,14 @@ TEST_F_EX(PgLibPqTest,
   auto conn2 = ASSERT_RESULT(Connect());
   ASSERT_NOK(conn1.FetchFormat("SELECT pg_stat_statements_reset()"));
   ASSERT_NOK(conn2.FetchFormat("SELECT 1"));
+
+  // validate that this query is added to yb_terminated_queries
+  auto conn3 = ASSERT_RESULT(Connect());
+  const string get_yb_terminated_queries =
+    "SELECT query_text, termination_reason FROM yb_pg_stat_get_queries(NULL)";
+  auto row_str = ASSERT_RESULT(conn3.FetchAllAsString(get_yb_terminated_queries));
+  LOG(INFO) << "Result string: " << row_str;
+  ASSERT_EQ(row_str, "SELECT pg_stat_statements_reset(), Terminated by SIGKILL");
 }
 
 #ifdef __linux__
