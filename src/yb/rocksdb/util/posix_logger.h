@@ -39,12 +39,15 @@
 #endif
 #endif
 
-#include "yb/rocksdb/port/sys_time.h"
-
 #include "yb/rocksdb/env.h"
 
-#include "yb/util/stats/iostats_context_imp.h"
+#include "yb/rocksdb/port/sys_time.h"
+
+#include "yb/rocksdb/util/io_posix.h"
+
 #include "yb/util/sync_point.h"
+
+#include "yb/util/stats/iostats_context_imp.h"
 
 namespace rocksdb {
 
@@ -60,8 +63,9 @@ class PosixLogger : public Logger {
   std::atomic_uint_fast64_t last_flush_micros_;
   Env* env_;
   std::atomic<bool> flush_pending_;
+  std::string fname_;
  public:
-  PosixLogger(FILE* f, uint64_t (*gettid)(), Env* env,
+  PosixLogger(const std::string& fname, FILE* f, uint64_t (*gettid)(), Env* env,
               const InfoLogLevel log_level = InfoLogLevel::ERROR_LEVEL)
       : Logger(log_level),
         file_(f),
@@ -70,7 +74,8 @@ class PosixLogger : public Logger {
         fd_(fileno(f)),
         last_flush_micros_(0),
         env_(env),
-        flush_pending_(false) {}
+        flush_pending_(false),
+        fname_(fname) {}
   virtual ~PosixLogger() {
     fclose(file_);
   }
@@ -155,14 +160,17 @@ class PosixLogger : public Logger {
       // allocations from filesystem allocsize options.
       const size_t log_size = log_size_;
       const size_t last_allocation_chunk =
-        ((kDebugLogChunkSize - 1 + log_size) / kDebugLogChunkSize);
+          ((kDebugLogChunkSize - 1 + log_size) / kDebugLogChunkSize);
       const size_t desired_allocation_chunk =
-        ((kDebugLogChunkSize - 1 + log_size + write_size) /
-           kDebugLogChunkSize);
+          ((kDebugLogChunkSize - 1 + log_size + write_size) / kDebugLogChunkSize);
       if (last_allocation_chunk != desired_allocation_chunk) {
-        fallocate(
-            fd_, FALLOC_FL_KEEP_SIZE, 0,
-            static_cast<off_t>(desired_allocation_chunk * kDebugLogChunkSize));
+        if (fallocate(
+                fd_, FALLOC_FL_KEEP_SIZE, 0,
+                static_cast<off_t>(desired_allocation_chunk * kDebugLogChunkSize)) != 0) {
+          LOG(ERROR) << STATUS_IO_ERROR(fname_, errno)
+                     << " desired_allocation_chunk: " << desired_allocation_chunk
+                     << " kDebugLogChunkSize: " << kDebugLogChunkSize;
+        }
       }
 #endif
 
