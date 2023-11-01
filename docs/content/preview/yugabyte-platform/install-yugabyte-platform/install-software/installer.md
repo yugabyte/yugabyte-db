@@ -44,7 +44,9 @@ Note: For higher availability, one or more additional YBA instances can be separ
 
 </ul>
 
-Use YBA Installer to install YBA on a host, either online or airgapped. YBA Installer performs preflight checks to validate the workspace is ready to run YBA. YBA Installer also provides basic functionality for managing installations, including backup and restore of an installation, upgrading, basic licensing, and uninstalling the software.
+Use YBA Installer to install YBA on a host, either online or airgapped. YBA Installer performs preflight checks to validate the workspace is ready to run YBA.
+
+YBA Installer also provides basic functionality for managing installations, including backup and restore of an installation, upgrading, basic licensing, and uninstalling the software.
 
 {{< warning >}}
 You can use YBA Installer only if you are about to perform a new install. Currently, you cannot switch your existing YBA software installed via Replicated to be installed using YBA Installer.
@@ -53,7 +55,36 @@ You can use YBA Installer only if you are about to perform a new install. Curren
 ## Prerequisites
 
 - Ensure your machine satisfies the [minimum requirements](../../prerequisites/installer/).
-- For production deployments, root privileges (or equivalent sudo access) are required for some YBA Installer commands. (You can use YBA Installer without root access, but this is not recommended for production; refer to [Non-root installation](#non-root-installation).)
+- For production deployments, sudo permissions are required for some YBA Installer commands. (You can use YBA Installer without sudo access, but this is not recommended for production; refer to [Non-sudo installation](#non-sudo-installation).)
+
+## Quick start
+
+To install YugabyteDB Anywhere using YBA Installer, do the following:
+
+1. Obtain your license from Yugabyte Support.
+1. Download and extract the YBA Installer by entering the following commands:
+
+    ```sh
+    $ wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+    $ tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+    $ cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
+    ```
+
+1. Run a preflight check to ensure your environment satisfies the requirements. Respond with `y` when prompted to create a default configuration.
+
+    ```sh
+    $ sudo ./yba-ctl preflight
+    ```
+
+1. If there are no issues, install the software, providing your license.
+
+    ```sh
+    $ sudo ./yba-ctl install -l /path/to/license
+    ```
+
+After the install succeeds, you can immediately start using YBA.
+
+For more detailed installation instructions and information on how to use YBA Installer to manage your installation, refer to the following sections.
 
 ## Download and configure YBA Installer
 
@@ -311,13 +342,13 @@ $ sudo ./yba-ctl createBackup ~/backup.tgz
 FATAL[2023-04-25T00:14:57Z] createBackup must be run from the installed yba-ctl
 ```
 
-## Non-root installation
+## Non-sudo installation
 
-YBA Installer also supports a non-root installation, where sudo access is not required for any step of the installation. Note that this is not recommended for production use cases.
+YBA Installer also supports a non-sudo installation, where sudo access is not required for any step of the installation. Note that this is not recommended for production use cases.
 
-To facilitate a non-root install, YBA Installer will not create any additional users or set up services in systemd. The install will also be rooted in the home directory by default, instead of /opt, ensuring YBA Installer has write access to the base install directory. Instead of using systemd to manage services, basic cron jobs are used to start the services on bootup with basic management scripts used to restart the services after a crash.
+To facilitate a non-sudo install, YBA Installer will not create any additional users or set up services in systemd. The install will also be rooted in the home directory by default, instead of /opt, ensuring YBA Installer has write access to the base install directory. Instead of using systemd to manage services, basic cron jobs are used to start the services on bootup with basic management scripts used to restart the services after a crash.
 
-To perform a non-root installation, run any of the preceding commands without root access. You can't switch between a root and non-root installation, and yba-ctl will return an error if sudo is not used when operating in a root installation.
+To perform a non-sudo installation, run any of the preceding commands without sudo access. You can't switch between a sudo and non-sudo access installation, and yba-ctl will return an error if sudo is not used when operating in an installation where sud access was used.
 
 ## Configuration options
 

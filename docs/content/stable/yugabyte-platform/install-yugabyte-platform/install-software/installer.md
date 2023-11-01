@@ -49,7 +49,7 @@ You can use YBA Installer only if you are about to perform a new install. Curren
 ## Prerequisites
 
 - Ensure your machine satisfies the [minimum requirements](../../prerequisites/installer/).
-- For production deployments, root privileges (or equivalent sudo access) are required for some YBA Installer commands. (You can use YBA Installer without root access, but this is not recommended for production; refer to [Non-root installation](#non-root-installation).)
+- For production deployments, sudo permissions are required for some YBA Installer commands. (You can use YBA Installer without sudo access, but this is not recommended for production; refer to [Non-sudo installation](#non-sudo-installation).)
 
 ## Download and configure YBA Installer
 
@@ -307,13 +307,13 @@ $ sudo ./yba-ctl createBackup ~/backup.tgz
 FATAL[2023-04-25T00:14:57Z] createBackup must be run from the installed yba-ctl
 ```
 
-## Non-root installation
+## Non-sudo installation
 
-YBA Installer also supports a non-root installation, where sudo access is not required for any step of the installation. Note that this is not recommended for production use cases.
+YBA Installer also supports a non-sudo installation, where sudo access is not required for any step of the installation. Note that this is not recommended for production use cases.
 
-To facilitate a non-root install, YBA Installer will not create any additional users or set up services in systemd. The install will also be rooted in the home directory by default, instead of /opt, ensuring YBA Installer has write access to the base install directory. Instead of using systemd to manage services, basic cron jobs are used to start the services on bootup with basic management scripts used to restart the services after a crash.
+To facilitate a non-sudo install, YBA Installer will not create any additional users or set up services in systemd. The install will also be rooted in the home directory by default, instead of /opt, ensuring YBA Installer has write access to the base install directory. Instead of using systemd to manage services, basic cron jobs are used to start the services on bootup with basic management scripts used to restart the services after a crash.
 
-To perform a non-root installation, run any of the preceding commands without root access. You can't switch between a root and non-root installation, and yba-ctl will return an error if sudo is not used when operating in a root installation.
+To perform a non-sudo installation, run any of the preceding commands without sudo access. You can't switch between a sudo and non-sudo access installation, and yba-ctl will return an error if sudo is not used when operating in an installation where sud access was used.
 
 ## Configuration options
 
