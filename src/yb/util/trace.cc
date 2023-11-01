@@ -88,6 +88,17 @@ __thread Trace* Trace::threadlocal_trace_;
 namespace {
 
 const char* kNestedChildPrefix = "..  ";
+const size_t kNestedChildPrefixLen = strlen(kNestedChildPrefix);
+const char* kMultiLineNestedPrefix = "..  ";
+
+std::string GetNestingPrefix(int tracing_depth) {
+  std::string nesting_prefix;
+  nesting_prefix.reserve(kNestedChildPrefixLen * tracing_depth);
+  for (int i = 0; i < tracing_depth; i++) {
+    nesting_prefix += kNestedChildPrefix;
+  }
+  return nesting_prefix;
+}
 
 // Get the part of filepath after the last path separator.
 // (Doesn't modify filepath, contrary to basename() in libgen.h.)
@@ -103,10 +114,9 @@ void DumpChildren(
   if (tracing_depth > GetAtomicFlag(&FLAGS_print_nesting_levels)) {
     return;
   }
+  const auto nesting_prefix = GetNestingPrefix(tracing_depth);
   for (auto &child_trace : *children) {
-    for (int i = 0; i < tracing_depth; i++) {
-      *out << kNestedChildPrefix;
-    }
+    *out << nesting_prefix;
     *out << "Related trace:" << std::endl;
     *out << (child_trace ? child_trace->DumpToString(tracing_depth, include_time_deltas)
                          : "Not collected");
@@ -130,6 +140,8 @@ void DumpEntries(
   auto time_usec = MonoDelta(entries.begin()->timestamp.time_since_epoch()).ToMicroseconds();
   const int64_t time_correction_usec = start - time_usec;
   int64_t prev_usecs = time_usec;
+  const auto nesting_prefix = GetNestingPrefix(tracing_depth);
+
   for (const auto& e : entries) {
     time_usec = MonoDelta(e.timestamp.time_since_epoch()).ToMicroseconds();
     const int64_t usecs_since_prev = time_usec - prev_usecs;
@@ -141,9 +153,7 @@ void DumpEntries(
     struct tm tm_time;
     localtime_r(&secs_since_epoch, &tm_time);
 
-    for (int i = 0; i < tracing_depth; i++) {
-      *out << kNestedChildPrefix;
-    }
+    *out << nesting_prefix;
     // Log format borrowed from glog/logging.cc
     using std::setw;
     out->fill('0');
@@ -159,7 +169,7 @@ void DumpEntries(
       out->fill(' ');
       *out << "(+" << setw(6) << usecs_since_prev << "us) ";
     }
-    e.Dump(out);
+    e.Dump(out, nesting_prefix);
     *out << std::endl;
   }
 }
@@ -243,10 +253,28 @@ struct TraceEntry {
   TraceEntry* next;
   char message[0];
 
-  void Dump(std::ostream* out) const {
+  void Dump(std::ostream* out, const std::string& nesting_prefix = "") const {
     *out << const_basename(file_path) << ':' << line_number
          << "] ";
-    out->write(message, message_len);
+    // Split a multi-line message and prepend the desired nesting_prefix.
+    size_t start = 0;
+    while (start < message_len) {
+      if (start != 0) {
+        *out << nesting_prefix;
+        // Add additional indentation for split-up lines.
+        *out << kMultiLineNestedPrefix;
+      }
+
+      std::string_view piece(message + start, message_len - start);
+      auto single_line_length = piece.find('\n');
+      if (single_line_length == std::string_view::npos) {
+        *out << piece;
+        break;
+      }
+
+      *out << std::string_view(message + start, single_line_length) << '\n';
+      start += single_line_length + 1;
+    }
   }
 };
 
@@ -515,7 +543,8 @@ std::string PlainTrace::DumpToString(int32_t tracing_depth, bool include_time_de
   return s.str();
 }
 
-void PlainTrace::Entry::Dump(std::ostream *out) const {
+void PlainTrace::Entry::Dump(
+    std::ostream* out, const std::string& /* ignored */ nesting_prefix) const {
   *out << const_basename(file_path) << ':' << line_number << "] " << message;
 }
 
