@@ -21,6 +21,6 @@ cascade:
 
 For end-of-life releases, see [Releases at end of life](../release-notes/#eol-releases).
 
-For information on release support policy, see [Releases](../).
+For information on release support policy, see [Release support policy](../#release-support-policy).
 
 For information on release versioning, see [Versioning](../versioning/).
