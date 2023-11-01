@@ -195,7 +195,7 @@ Status YBInboundConnectionContext::HandleCall(
   return Status::OK();
 }
 
-void YBInboundConnectionContext::Connected(const ConnectionPtr& connection) {
+Status YBInboundConnectionContext::Connected(const ConnectionPtr& connection) {
   DCHECK_EQ(connection->direction(), Connection::Direction::SERVER);
 
   state_ = RpcConnectionPB::NEGOTIATING;
@@ -208,6 +208,7 @@ void YBInboundConnectionContext::Connected(const ConnectionPtr& connection) {
         YBInboundConnectionContext, &YBInboundConnectionContext::HandleTimeout>(this);
     timer_.Start(HeartbeatPeriod());
   }
+  return Status::OK();
 }
 
 void YBInboundConnectionContext::UpdateLastWrite(const ConnectionPtr& connection) {
@@ -452,7 +453,7 @@ Status YBOutboundConnectionContext::HandleCall(
   return connection->HandleCallResponse(call_data);
 }
 
-void YBOutboundConnectionContext::Connected(const ConnectionPtr& connection) {
+Status YBOutboundConnectionContext::Connected(const ConnectionPtr& connection) {
   DCHECK_EQ(connection->direction(), Connection::Direction::CLIENT);
   connection_ = connection;
   last_read_time_ = connection->reactor()->cur_time();
@@ -462,6 +463,7 @@ void YBOutboundConnectionContext::Connected(const ConnectionPtr& connection) {
         YBOutboundConnectionContext, &YBOutboundConnectionContext::HandleTimeout>(this);
     timer_.Start(Timeout());
   }
+  return Status::OK();
 }
 
 Status YBOutboundConnectionContext::AssignConnection(const ConnectionPtr& connection) {

@@ -241,7 +241,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   void Destroy(const Status& status) ON_REACTOR_THREAD override;
   Result<size_t> ProcessReceived(ReadBufferFull read_buffer_full)
       ON_REACTOR_THREAD override;
-  void Connected() override;
+  Status Connected() override;
   StreamReadBuffer& ReadBuffer() override;
 
   void CleanupExpirationQueue(CoarseTimePoint now) ON_REACTOR_THREAD;
