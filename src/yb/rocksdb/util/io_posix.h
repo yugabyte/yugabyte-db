@@ -67,6 +67,8 @@ class PosixWritableFile : public WritableFile {
   virtual bool IsSyncThreadSafe() const override;
   virtual uint64_t GetFileSize() override;
   virtual Status InvalidateCache(size_t offset, size_t length) override;
+  const std::string& filename() const override { return filename_; }
+
 #ifdef ROCKSDB_FALLOCATE_PRESENT
   virtual Status Allocate(uint64_t offset, uint64_t len) override;
   virtual Status RangeSync(uint64_t offset, uint64_t nbytes) override;
@@ -122,6 +124,8 @@ class PosixMmapFile : public WritableFile {
   Status MapNewRegion();
   Status UnmapCurrentRegion();
   Status Msync();
+
+  const std::string& filename() const override { return filename_; }
 
  public:
   PosixMmapFile(const std::string& fname, int fd, size_t page_size,

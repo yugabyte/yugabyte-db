@@ -575,6 +575,9 @@ class WritableFile : public yb::FileWithUniqueId {
   // pre-allocation.
   void PrepareWrite(size_t offset, size_t len);
 
+  // Returns the filename provided when the WritableFile was constructed.
+  virtual const std::string& filename() const = 0;
+
  protected:
   /*
    * Pre-allocate space for a file.
@@ -921,6 +924,8 @@ class WritableFileWrapper : public WritableFile {
     return target_->GetUniqueId(id);
   }
   Status InvalidateCache(size_t offset, size_t length) override;
+
+  const std::string& filename() const override { return target_->filename(); }
 
  protected:
   Status Allocate(uint64_t offset, uint64_t len) override;

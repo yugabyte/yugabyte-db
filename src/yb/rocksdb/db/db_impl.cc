@@ -1901,7 +1901,7 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
             snapshots_.GetAll(&earliest_write_conflict_snapshot);
 
         s = BuildTable(dbname_,
-                       env_,
+                       db_options_,
                        *cfd->ioptions(),
                        env_options_,
                        cfd->table_cache(),
@@ -1916,7 +1916,6 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
                        cfd->ioptions()->compression_opts,
                        paranoid_file_checks,
                        cfd->internal_stats(),
-                       db_options_.boundary_extractor.get(),
                        Env::IO_HIGH,
                        &info.table_properties);
         LogFlush(db_options_.info_log);

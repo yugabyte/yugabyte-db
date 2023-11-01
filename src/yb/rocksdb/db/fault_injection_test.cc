@@ -158,6 +158,7 @@ class TestWritableFile : public WritableFile {
   Status Flush() override;
   Status Sync() override;
   bool IsSyncThreadSafe() const override { return true; }
+  const std::string& filename() const override { return target_->filename(); }
 
  private:
   FileState state_;

@@ -1763,7 +1763,9 @@ TEST_F_EX(QLTabletTest, CorruptData, QLTabletRf1Test) {
       LOG(INFO) << "Found SST file: " << AsString(sst_file);
       const auto path_to_corrupt = sst_file.DataFilePath();
       LOG(INFO) << "Corrupting file: " << path_to_corrupt;
-      ASSERT_OK(CorruptFile(path_to_corrupt, /* offset = */ -1024, /* bytes_to_corrupt = */ 512));
+      ASSERT_OK(CorruptFile(
+          path_to_corrupt, /* offset = */ -1024, /* bytes_to_corrupt = */ 512,
+          CorruptionType::kXor55));
     }
   }
 
