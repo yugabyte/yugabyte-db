@@ -72,7 +72,7 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
-#include "yb/master/xcluster/xcluster_manager.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/server/webserver.h"
 #include "yb/server/webui_util.h"
 
@@ -2852,8 +2852,7 @@ void MasterPathHandlers::HandleGetClusterConfigJSON(
 
 Status MasterPathHandlers::GetClusterAndXClusterConfigStatus(
     SysXClusterConfigEntryPB* xcluster_config, SysClusterConfigEntryPB* cluster_config) {
-  RETURN_NOT_OK(
-      master_->catalog_manager()->GetXClusterManager()->GetXClusterConfigEntryPB(xcluster_config));
+  RETURN_NOT_OK(master_->xcluster_manager()->GetXClusterConfigEntryPB(xcluster_config));
   return master_->catalog_manager()->GetClusterConfig(cluster_config);
 }
 

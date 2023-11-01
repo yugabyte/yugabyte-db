@@ -85,6 +85,7 @@ class TSDescriptor;
 class TSManager;
 class UDTypeInfo;
 class XClusterManager;
+class XClusterManagerIf;
 class YQLPartitionsVTable;
 class YQLVirtualTable;
 class YsqlBackendsManager;

@@ -15,16 +15,17 @@
 
 #include <string>
 
+#include "yb/common/hybrid_time.h"
 #include "yb/consensus/consensus_util.h"
-#include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager-internal.h"
-#include "yb/master/catalog_manager.h"
+
 #include "yb/master/master.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/xcluster/xcluster_config.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
+
 #include "yb/rpc/rpc_context.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 
@@ -44,8 +45,6 @@ void XClusterManager::Shutdown() {
   }
 }
 
-void XClusterManager::ClearState() { xcluster_config_->ClearState(); }
-
 Status XClusterManager::Init() {
   DCHECK(!xcluster_safe_time_service_);
   xcluster_safe_time_service_ = std::make_unique<XClusterSafeTimeService>(
@@ -55,19 +54,82 @@ Status XClusterManager::Init() {
   return Status::OK();
 }
 
-void XClusterManager::LoadXClusterConfig(const SysXClusterConfigEntryPB& metadata) {
-  xcluster_config_->Load(metadata);
+Status XClusterManager::RunLoaders() {
+  xcluster_config_->ClearState();
+  xcluster_safe_time_info_.Clear();
+
+  RETURN_NOT_OK(Load<XClusterConfigLoader>("XCluster safe time", *xcluster_config_));
+  RETURN_NOT_OK(Load<XClusterSafeTimeLoader>("xcluster configuration", xcluster_safe_time_info_));
+
+  return Status::OK();
+}
+
+template <template <class> class Loader, typename CatalogEntityWrapper>
+Status XClusterManager::Load(
+    const std::string& title, CatalogEntityWrapper& catalog_entity_wrapper) {
+  Loader<CatalogEntityWrapper> loader(catalog_entity_wrapper);
+  LOG_WITH_FUNC(INFO) << __func__ << ": Loading " << title << " into memory.";
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Visit(&loader), "Failed while visiting " + title + " in sys catalog");
+  return Status::OK();
 }
 
 void XClusterManager::SysCatalogLoaded(const SysCatalogLoadingState& state) {
   xcluster_safe_time_service_->ScheduleTaskIfNeeded();
 }
 
-void XClusterManager::CreateXClusterSafeTimeTableAndStartService() {
-  auto status = xcluster_safe_time_service_->CreateXClusterSafeTimeTableIfNotFound();
-  if (!status.ok()) {
-    LOG(WARNING) << "Creation of XClusterSafeTime table failed :" << status;
+void XClusterManager::DumpState(std::ostream* out, bool on_disk_dump) const {
+  if (on_disk_dump) {
+    auto l = xcluster_safe_time_info_.LockForRead();
+    if (!l->pb.safe_time_map().empty()) {
+      *out << "XCluster Safe Time: " << l->pb.ShortDebugString() << "\n";
+    }
+
+    xcluster_config_->DumpState(out);
   }
+}
+
+Result<XClusterNamespaceToSafeTimeMap> XClusterManager::GetXClusterNamespaceToSafeTimeMap() const {
+  XClusterNamespaceToSafeTimeMap result;
+  auto l = xcluster_safe_time_info_.LockForRead();
+
+  for (auto& [namespace_id, hybrid_time] : l->pb.safe_time_map()) {
+    result[namespace_id] = HybridTime(hybrid_time);
+  }
+  return result;
+}
+
+Status XClusterManager::SetXClusterNamespaceToSafeTimeMap(
+    const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& safe_time_map) {
+  auto l = xcluster_safe_time_info_.LockForWrite();
+  auto& safe_time_map_pb = *l.mutable_data()->pb.mutable_safe_time_map();
+  safe_time_map_pb.clear();
+  for (auto& [namespace_id, hybrid_time] : safe_time_map) {
+    safe_time_map_pb[namespace_id] = hybrid_time.ToUint64();
+  }
+
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Upsert(leader_term, &xcluster_safe_time_info_),
+      "Updating XCluster safe time in sys-catalog");
+
+  l.Commit();
+
+  return Status::OK();
+}
+
+Result<HybridTime> XClusterManager::GetXClusterSafeTime(const NamespaceId& namespace_id) const {
+  auto l = xcluster_safe_time_info_.LockForRead();
+  SCHECK(
+      l->pb.safe_time_map().count(namespace_id), NotFound,
+      "XCluster safe time not found for namespace $0", namespace_id);
+
+  return HybridTime(l->pb.safe_time_map().at(namespace_id));
+}
+
+void XClusterManager::CreateXClusterSafeTimeTableAndStartService() {
+  WARN_NOT_OK(
+      xcluster_safe_time_service_->CreateXClusterSafeTimeTableIfNotFound(),
+      "Creation of XClusterSafeTime table failed");
 
   xcluster_safe_time_service_->ScheduleTaskIfNeeded();
 }
@@ -75,23 +137,27 @@ void XClusterManager::CreateXClusterSafeTimeTableAndStartService() {
 Status XClusterManager::GetXClusterSafeTime(
     const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp,
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
-  const auto status = xcluster_safe_time_service_->GetXClusterSafeTimeInfoFromMap(epoch, resp);
-  if (!status.ok()) {
-    return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, status);
-  }
+  RETURN_NOT_OK_SET_CODE(
+      xcluster_safe_time_service_->GetXClusterSafeTimeInfoFromMap(epoch, resp),
+      MasterError(MasterErrorPB::INTERNAL_ERROR));
 
   // Also fill out the namespace_name for each entry.
   if (resp->namespace_safe_times_size()) {
     for (auto& safe_time_info : *resp->mutable_namespace_safe_times()) {
-      const auto result = catalog_manager_->FindNamespaceById(safe_time_info.namespace_id());
-      if (!result) {
-        return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, result.status());
-      }
-      safe_time_info.set_namespace_name(result.get()->name());
+      const auto namespace_info = VERIFY_RESULT_OR_SET_CODE(
+          catalog_manager_->FindNamespaceById(safe_time_info.namespace_id()),
+          MasterError(MasterErrorPB::INTERNAL_ERROR));
+
+      safe_time_info.set_namespace_name(namespace_info->name());
     }
   }
 
   return Status::OK();
+}
+
+Result<XClusterNamespaceToSafeTimeMap> XClusterManager::RefreshAndGetXClusterNamespaceToSafeTimeMap(
+    const LeaderEpoch& epoch) {
+  return xcluster_safe_time_service_->RefreshAndGetXClusterNamespaceToSafeTimeMap(epoch);
 }
 
 Status XClusterManager::PrepareDefaultXClusterConfig(int64_t term, bool recreate) {
@@ -113,6 +179,13 @@ Result<uint32_t> XClusterManager::GetXClusterConfigVersion() const {
 
 Status XClusterManager::FillHeartbeatResponse(
     const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp) const {
+  {
+    auto l = xcluster_safe_time_info_.LockForRead();
+    if (!l->pb.safe_time_map().empty()) {
+      *resp->mutable_xcluster_namespace_to_safe_time() = l->pb.safe_time_map();
+    }
+  }
+
   return xcluster_config_->FillHeartbeatResponse(req, resp);
 }
 
