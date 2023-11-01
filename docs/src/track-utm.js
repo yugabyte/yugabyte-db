@@ -6,27 +6,16 @@
    * return string
    */
   function getCookie(cname) {
-    const cookieName = `${cname}=`;
-    const decodedCookie = decodeURIComponent(document.cookie);
-    const splittedCookie = decodedCookie.split(';');
+    const splittedCookie = document.cookie.split(';');
     const splittedLength = splittedCookie.length;
 
-    let checkCookie = '';
     let fetchCookie = 0;
     let matchedCookie = '';
 
     while (fetchCookie < splittedLength) {
-      checkCookie = splittedCookie[fetchCookie];
-      while (checkCookie.charAt(0)) {
-        if (checkCookie.charAt(0) === ' ') {
-          checkCookie = checkCookie.substring(1);
-        } else {
-          break;
-        }
-      }
-
-      if (checkCookie.indexOf(cookieName) === 0) {
-        matchedCookie = checkCookie.substring(cookieName.length, checkCookie.length);
+      const cookiePair = splittedCookie[fetchCookie].split('=');
+      if (cname === cookiePair[0].trim() && cookiePair[1].trim() !== '') {
+        matchedCookie = decodeURIComponent(cookiePair[1]);
         break;
       }
 
@@ -71,7 +60,7 @@
     }
 
     cookie += `; max-age=${(saveFor * 30 * (24 * 60 * 60))}`;
-    if (location.hostname === 'docs.yugabyte.com') {
+    if (window.location.hostname.indexOf('.yugabyte.com') !== -1) {
       cookie += '; domain=.yugabyte.com';
     }
 
@@ -93,11 +82,9 @@
 
     // Create Cookie for UTM parameters.
     Object.keys(keyValuePairs).forEach((property) => {
-      if (keyValuePairs[property] !== '') {
-        if (property === 'utm_medium' || property === 'utm_source' || property === 'utm_campaign' || property === 'utm_term' || property === 'utm_content') {
-          setCookie(property, keyValuePairs[property], 1);
-          setUTMs = true;
-        }
+      if (property.indexOf('utm_') === 0 && keyValuePairs[property] !== '') {
+        setCookie(property, keyValuePairs[property], 1);
+        setUTMs = true;
       }
     });
 
@@ -112,44 +99,23 @@
   const utmTerm = getCookie('utm_term');
   const utmContent = getCookie('utm_content');
 
-  // Fill Form Values.
-  if (utmMedium && utmMedium !== '') {
-    if (document.querySelector('li.utm_medium input')) {
-      document.querySelector('li.utm_medium input').value = utmMedium;
-    }
-
+  if (utmMedium) {
     availableUTMs.utm_medium = utmMedium;
   }
 
-  if (utmSource && utmSource !== '') {
-    if (document.querySelector('li.utm_source input')) {
-      document.querySelector('li.utm_source input').value = utmSource;
-    }
-
+  if (utmSource) {
     availableUTMs.utm_source = utmSource;
   }
 
-  if (utmCampaign && utmCampaign !== '') {
-    if (document.querySelector('li.utm_campaign input')) {
-      document.querySelector('li.utm_campaign input').value = utmCampaign;
-    }
-
+  if (utmCampaign) {
     availableUTMs.utm_campaign = utmCampaign;
   }
 
-  if (utmTerm && utmTerm !== '') {
-    if (document.querySelector('li.utm_term input')) {
-      document.querySelector('li.utm_term input').value = utmTerm;
-    }
-
+  if (utmTerm) {
     availableUTMs.utm_term = utmTerm;
   }
 
-  if (utmContent && utmContent !== '') {
-    if (document.querySelector('li.utm_content input')) {
-      document.querySelector('li.utm_content input').value = utmContent;
-    }
-
+  if (utmContent) {
     availableUTMs.utm_content = utmContent;
   }
 
@@ -169,7 +135,7 @@
 
       const anchorParams = getQueryParams(anchorUrl);
       Object.keys(anchorParams).forEach((key) => {
-        if (!key.startsWith('utm_')) {
+        if (key.indexOf('utm_') !== 0) {
           currentParams[key] = anchorParams[key];
         } else if (!availableUTMs[key]) {
           currentParams[key] = anchorParams[key];
