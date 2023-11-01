@@ -23,6 +23,10 @@ cascade:
 Starting with v2.16, the [release notes for YugabyteDB Anywhere](../yba-releases/) have moved to their own page.
 {{< /tip >}}
 
+For information on release support policy, see [Release support policy](../#release-support-policy).
+
+For information on release versioning, see [Versioning](../versioning/).
+
 ## Releases at end of life (EOL) {#eol-releases}
 
 {{<note title="Archived docs available">}}
