@@ -56,7 +56,7 @@ TEST_F(ColocatedDBTest, MasterFailoverRetryAddTableToTablet) {
   auto conn2 = ASSERT_RESULT(ConnectToDB(db_name));
   ASSERT_NOK(WaitFor(
       [&]() {
-        auto s = conn2.FetchFormat("SELECT * FROM test_tbl1");
+        auto s = conn2.Fetch("SELECT * FROM test_tbl1");
         return s.ok();
       },
       MonoDelta::FromSeconds(10),

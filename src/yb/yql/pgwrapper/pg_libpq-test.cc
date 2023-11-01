@@ -3300,8 +3300,8 @@ TEST_F_EX(PgLibPqTest,
           PgLibPqYSQLBackendCrash) {
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
-  ASSERT_NOK(conn1.FetchFormat("SELECT pg_stat_statements_reset()"));
-  ASSERT_NOK(conn2.FetchFormat("SELECT 1"));
+  ASSERT_NOK(conn1.Fetch("SELECT pg_stat_statements_reset()"));
+  ASSERT_NOK(conn2.Fetch("SELECT 1"));
 
   // validate that this query is added to yb_terminated_queries
   auto conn3 = ASSERT_RESULT(Connect());
