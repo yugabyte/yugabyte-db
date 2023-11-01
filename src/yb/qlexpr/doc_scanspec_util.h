@@ -22,14 +22,16 @@
 namespace yb::qlexpr {
 
 // Get the scanspec for range key components.
+// If the inclusivities is not null, then all range components are considered independent.
+// So they are filled even if previous range component is not specified or non-inclusive.
 dockv::KeyEntryValues GetRangeKeyScanSpec(
     const Schema& schema,
     const dockv::KeyEntryValues* prefixed_range_components,
     const QLScanRange* scan_range,
-    std::vector<bool> *inclusivities,
+    std::vector<bool>* inclusivities,
     bool lower_bound,
     bool include_static_columns = false,
-    bool use_strictness = true);
+    bool* trivial = nullptr);
 
 // Gets the lower/upper bound value of the given range
 dockv::KeyEntryValue GetQLRangeBoundAsPVal(const QLScanRange::QLRange& ql_range,

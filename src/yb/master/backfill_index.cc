@@ -176,8 +176,8 @@ Result<bool> GetPgIndexStatus(
                                  empty_key_components,
                                  empty_key_components,
                                  &cond,
-                                 boost::none /* hash_code */,
-                                 boost::none /* max_hash_code */);
+                                 std::nullopt /* hash_code */,
+                                 std::nullopt /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
