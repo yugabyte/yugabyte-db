@@ -155,4 +155,9 @@ extern const bool kTestOnlyUseOSDefaultCollation;
  */
 extern bool YBColocateDatabaseByDefault();
 
+/**
+ * Returns true if Active Session History should be enabled.
+ */
+extern bool YBEnableAsh();
+
 #endif /* PG_YB_COMMON_H */
