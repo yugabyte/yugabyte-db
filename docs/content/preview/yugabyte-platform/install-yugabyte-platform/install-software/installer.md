@@ -70,19 +70,21 @@ To install YugabyteDB Anywhere using YBA Installer, do the following:
     $ cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
     ```
 
-1. Run a preflight check to ensure your environment satisfies the requirements. Respond with `y` when prompted to create a default configuration.
+1. Using sudo, run a preflight check to ensure your environment satisfies the requirements. Respond with `y` when prompted to create a default configuration.
 
     ```sh
     $ sudo ./yba-ctl preflight
     ```
 
-1. If there are no issues, install the software, providing your license.
+1. If there are no issues, using sudo, install the software, providing your license.
 
     ```sh
     $ sudo ./yba-ctl install -l /path/to/license
     ```
 
-After the install succeeds, you can immediately start using YBA.
+After the installation succeeds, you can immediately start using YBA.
+
+If the installation fails due to permissions or lack of sudo privileges, you can re-try after running `yba-ctl clean all` to remove all traces of the previous attempt.
 
 For more detailed installation instructions and information on how to use YBA Installer to manage your installation, refer to the following sections.
 
