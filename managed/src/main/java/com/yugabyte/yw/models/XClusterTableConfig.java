@@ -172,9 +172,9 @@ public class XClusterTableConfig extends Model {
     this.setReplicationSetupDone(false);
     this.setStreamId(null);
     this.setBootstrapCreateTime(null);
-    this.setBackup(null);
-    this.setRestore(null);
     this.setRestoreTime(null);
+    // We intentionally do not reset backup and restore objects in the xCluster config because
+    // restart parent task sets these attributes and its subtasks use this method.
   }
 
   /** This class is the primary key for XClusterTableConfig. */
