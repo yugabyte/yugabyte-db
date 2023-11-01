@@ -23,6 +23,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
+#include "yb/util/thread.h"
 
 DEFINE_bool(dump_transactions, false, "Dump transactions data in debug binary format");
 // The output dir is tried in the following order (first existing and non empty is taken):
@@ -52,9 +53,8 @@ DumpEntry* GetNext(DumpEntry* entry) {
 class Dumper {
  public:
   Dumper() {
-    writer_ = std::thread([this] {
-      this->Execute();
-    });
+    CHECK_OK(Thread::Create(
+        "transaction_Dump", "writer_thread", &Dumper::Execute, this, &writer_thread_));
   }
 
   ~Dumper() {
@@ -63,7 +63,9 @@ class Dumper {
       stop_.store(true, std::memory_order_release);
     }
     cond_.notify_one();
-    writer_.join();
+    if (writer_thread_) {
+      writer_thread_->Join();
+    }
     while (auto* entry = queue_.Pop()) {
       free(entry);
     }
@@ -135,7 +137,7 @@ class Dumper {
   }
 
   std::unique_ptr<WritableFile> file_;
-  std::thread writer_;
+  scoped_refptr<Thread> writer_thread_;
   std::atomic<bool> stop_{false};
   MPSCQueue<DumpEntry> queue_;
   std::mutex mutex_;

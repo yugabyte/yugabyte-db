@@ -27,6 +27,7 @@ namespace yb {
 
 class OneWayBitmap;
 class RWOperationCounter;
+class Thread;
 
 namespace tablet {
 
@@ -92,7 +93,7 @@ class TransactionLoader {
   TransactionId last_loaded_ GUARDED_BY(mutex_) = TransactionId::Nil();
   Status load_status_ GUARDED_BY(mutex_);
   std::atomic<TransactionLoaderState> state_{TransactionLoaderState::kLoadNotFinished};
-  std::thread load_thread_;
+  scoped_refptr<Thread> load_thread_;
 };
 
 } // namespace tablet

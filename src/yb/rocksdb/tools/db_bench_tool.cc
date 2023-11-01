@@ -80,6 +80,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_log.h"
+#include "yb/util/thread.h"
 
 #ifdef OS_WIN
 #include <io.h>  // open/close
@@ -1095,7 +1096,8 @@ class ReporterAgent {
       abort();
     }
 
-    reporting_thread_ = std::thread([&]() { SleepAndReport(); });
+    CHECK_OK(yb::Thread::Create(
+        "reporter_agent", "reporter", &ReporterAgent::SleepAndReport, this, &reporting_thread_));
   }
 
   ~ReporterAgent() {
@@ -1104,7 +1106,9 @@ class ReporterAgent {
       stop_ = true;
       stop_cv_.notify_all();
     }
-    reporting_thread_.join();
+    if (reporting_thread_) {
+      reporting_thread_->Join();
+    }
   }
 
   // thread safe
@@ -1155,7 +1159,7 @@ class ReporterAgent {
   std::atomic<int64_t> total_ops_done_;
   int64_t last_report_;
   const uint64_t report_interval_secs_;
-  std::thread reporting_thread_;
+  scoped_refptr<yb::Thread> reporting_thread_;
   std::mutex mutex_;
   // will notify on stop
   std::condition_variable stop_cv_;

@@ -63,13 +63,15 @@ AsyncClientInitialiser::AsyncClientInitialiser(
 
 AsyncClientInitialiser::~AsyncClientInitialiser() {
   Shutdown();
-  if (init_client_thread_.joinable()) {
-    init_client_thread_.join();
+  if (init_client_thread_) {
+    init_client_thread_->Join();
   }
 }
 
 void AsyncClientInitialiser::Start(const server::ClockPtr& clock) {
-  init_client_thread_ = std::thread(std::bind(&AsyncClientInitialiser::InitClient, this, clock));
+  CHECK_OK(Thread::Create(
+      "async_client_initialiser", "init_client", &AsyncClientInitialiser::InitClient, this, clock,
+      &init_client_thread_));
 }
 
 YBClient* AsyncClientInitialiser::client() const {
@@ -77,8 +79,6 @@ YBClient* AsyncClientInitialiser::client() const {
 }
 
 void AsyncClientInitialiser::InitClient(const server::ClockPtr& clock) {
-  CDSAttacher attacher;
-
   LOG(INFO) << "Starting to init ybclient";
   while (!stopping_) {
     auto result = client_builder_->Build(messenger_, clock);

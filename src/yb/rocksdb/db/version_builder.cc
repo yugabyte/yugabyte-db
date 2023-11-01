@@ -22,6 +22,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/db/version_builder.h"
+#include "yb/util/thread.h"
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
@@ -336,13 +337,14 @@ class VersionBuilder::Rep {
     if (max_threads <= 1) {
       load_handlers_func();
     } else {
-      std::vector<std::thread> threads;
+      std::vector<scoped_refptr<yb::Thread>> threads(max_threads);
       for (int i = 0; i < max_threads; i++) {
-        threads.emplace_back(load_handlers_func);
+        CHECK_OK(
+            yb::Thread::Create("load_table_handlers", "handler", load_handlers_func, &threads[i]));
       }
 
-      for (auto& t : threads) {
-        t.join();
+      for (auto& thread : threads) {
+        thread->Join();
       }
     }
   }

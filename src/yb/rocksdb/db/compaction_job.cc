@@ -77,6 +77,7 @@
 #include "yb/util/stats/perf_step_timer.h"
 #include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/string_util.h"
+#include "yb/util/thread.h"
 
 using std::unique_ptr;
 
@@ -453,13 +454,16 @@ Result<FileNumbersHolder> CompactionJob::Run() {
   const uint64_t start_micros = env_->NowMicros();
 
   // Launch a thread for each of subcompactions 1...num_threads-1
-  std::vector<std::thread> thread_pool;
+  std::vector<scoped_refptr<yb::Thread>> thread_pool;
   thread_pool.reserve(num_threads - 1);
   FileNumbersHolder file_numbers_holder(file_numbers_provider_->CreateHolder());
   file_numbers_holder.Reserve(num_threads);
   for (size_t i = 1; i < compact_->sub_compact_states.size(); i++) {
-    thread_pool.emplace_back(&CompactionJob::ProcessKeyValueCompaction, this, &file_numbers_holder,
-                             &compact_->sub_compact_states[i]);
+    scoped_refptr<yb::Thread> thread;
+    RETURN_NOT_OK(yb::Thread::Create(
+        "rocksdb", "subcompaction", &CompactionJob::ProcessKeyValueCompaction, this,
+        &file_numbers_holder, &compact_->sub_compact_states[i], &thread));
+    thread_pool.emplace_back(std::move(thread));
   }
 
   // Always schedule the first subcompaction (whether or not there are also
@@ -468,7 +472,7 @@ Result<FileNumbersHolder> CompactionJob::Run() {
 
   // Wait for all other threads (if there are any) to finish execution
   for (auto& thread : thread_pool) {
-    thread.join();
+    RETURN_NOT_OK(yb::ThreadJoiner(thread.get()).Join());
   }
 
   if (output_directory_ && !db_options_.disableDataSync) {
