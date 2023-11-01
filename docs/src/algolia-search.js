@@ -23,11 +23,11 @@ import algoliasearch from 'algoliasearch';
     if (history.pushState) {
       let addQueryParams = '';
       if (searchText && searchText.trim().length > 0) {
-        document.getElementById('search-query').classList.add('have-text');
+        searchInput.classList.add('have-text');
         addQueryParams = `?query=${searchText.trim()}`;
       } else {
         addQueryParams = '/search/';
-        document.getElementById('search-query').classList.remove('have-text');
+        searchInput.classList.remove('have-text');
       }
 
       if (document.querySelector('body').classList.contains('td-searchpage')) {
@@ -38,6 +38,28 @@ import algoliasearch from 'algoliasearch';
         window.history.pushState({}, '', addQueryParams);
       }
     }
+  }
+
+  /**
+   * Generate Heading ID based on the heading text.
+   */
+  function generateHeadingIDs(headingText) {
+    let headingHash = '';
+    let headingId = '';
+
+    headingId = headingText.toLowerCase().trim();
+    if (headingId !== '') {
+      headingId = headingId.replace(/<em>|<\/em>/g, '')
+        .replace(/[^a-zA-Z0-9]/g, '-')
+        .replace(/[-]+/g, '-')
+        .replace(/^[-]|[-]$/g, '');
+
+      if (headingId !== '') {
+        headingHash = `#${headingId}`;
+      }
+    }
+
+    return headingHash;
   }
 
   /**
@@ -82,14 +104,10 @@ import algoliasearch from 'algoliasearch';
           hit._highlightResult.headers.every(pageHeader => {
             if (pageHeader.matchLevel) {
               if (pageHeader.matchLevel === 'full') {
-                pageHash = `#${pageHeader.value.toLowerCase().trim()}`;
-                pageHash = pageHash.replace(/<em>|<\/em>/g, '').replace(/\s+|_/g, '-');
-              } else if (pageHeader.matchLevel === 'partial') {
-                if (pageHeader.matchedWords.length > partialHeaderMatched) {
-                  partialHeaderMatched = pageHeader.matchedWords.length;
-                  pageHash = `#${pageHeader.value.toLowerCase().trim()}`;
-                  pageHash = pageHash.replace(/<em>|<\/em>/g, '').replace(/\s+|_/g, '-');
-                }
+                pageHash = generateHeadingIDs(pageHeader.value);
+              } else if (pageHeader.matchLevel === 'partial' && pageHeader.matchedWords.length > partialHeaderMatched) {
+                partialHeaderMatched = pageHeader.matchedWords.length;
+                pageHash = generateHeadingIDs(pageHeader.value);
               }
 
               if (pageHeader.matchLevel === 'full') {
@@ -218,6 +236,9 @@ import algoliasearch from 'algoliasearch';
     const searchValue = searchInput.value.trim();
     if (searchValue.length > 0) {
       document.querySelector('.search-result').style.display = 'block';
+      setTimeout(() => {
+        document.querySelector('.search-result').style.display = 'block';
+      }, 800);
     } else {
       emptySearch();
       return;
