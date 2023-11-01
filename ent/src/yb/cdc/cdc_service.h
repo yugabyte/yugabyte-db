@@ -39,6 +39,8 @@
 
 namespace yb {
 
+class Thread;
+
 namespace client {
 
 class TableHandle;
@@ -428,7 +430,7 @@ class CDCServiceImpl : public CDCServiceIf {
   // TODO(hector): It would be better to do this update only when a local peer becomes a leader.
   //
   // Periodically update lag metrics (FLAGS_update_metrics_interval_ms).
-  std::unique_ptr<std::thread> update_peers_and_metrics_thread_;
+  scoped_refptr<Thread> update_peers_and_metrics_thread_;
 
   // True when this service is stopped. Used to inform
   // get_minimum_checkpoints_and_update_peers_thread_ that it should exit.

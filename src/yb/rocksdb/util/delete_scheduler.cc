@@ -29,6 +29,8 @@
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/sync_point.h"
 
+#include "yb/util/thread.h"
+
 namespace rocksdb {
 
 DeleteScheduler::DeleteScheduler(Env* env, const std::string& trash_dir,
@@ -42,12 +44,9 @@ DeleteScheduler::DeleteScheduler(Env* env, const std::string& trash_dir,
       cv_(&mu_),
       info_log_(info_log),
       sst_file_manager_(sst_file_manager) {
-  if (rate_bytes_per_sec_ <= 0) {
-    // Rate limiting is disabled
-    bg_thread_.reset();
-  } else {
-    bg_thread_.reset(
-        new std::thread(&DeleteScheduler::BackgroundEmptyTrash, this));
+  if (rate_bytes_per_sec_ > 0) {
+    CHECK_OK(yb::Thread::Create(
+        "rocksdb", "empty_trash", &DeleteScheduler::BackgroundEmptyTrash, this, &bg_thread_));
   }
 }
 
@@ -58,7 +57,7 @@ DeleteScheduler::~DeleteScheduler() {
     cv_.SignalAll();
   }
   if (bg_thread_) {
-    bg_thread_->join();
+    bg_thread_->Join();
   }
 }
 

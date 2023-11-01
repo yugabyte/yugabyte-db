@@ -244,8 +244,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Used to forward redis pub/sub messages to the redis pub/sub handler
   yb::AtomicUniquePtr<rpc::Publisher> publish_service_ptr_;
 
-  std::thread fetch_universe_key_thread_;
-
   // Thread responsible for heartbeating to the master.
   std::unique_ptr<Heartbeater> heartbeater_;
 

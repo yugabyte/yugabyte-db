@@ -54,7 +54,9 @@ struct TrackedOperationComparer {
 // operations.
 class LongOperationTrackerHelper {
  public:
-  LongOperationTrackerHelper() : thread_(std::bind(&LongOperationTrackerHelper::Execute, this)) {
+  LongOperationTrackerHelper() {
+    CHECK_OK(Thread::Create(
+        "long_operation_tracker", "tracker", &LongOperationTrackerHelper::Execute, this, &thread_));
   }
 
   LongOperationTrackerHelper(const LongOperationTrackerHelper&) = delete;
@@ -66,7 +68,9 @@ class LongOperationTrackerHelper {
       stop_ = true;
     }
     cond_.notify_one();
-    thread_.join();
+    if (thread_) {
+      thread_->Join();
+    }
   }
 
   static LongOperationTrackerHelper& Instance() {
@@ -130,7 +134,7 @@ class LongOperationTrackerHelper {
   std::mutex mutex_;
   std::condition_variable cond_;
   bool stop_;
-  std::thread thread_;
+  scoped_refptr<Thread> thread_;
 };
 
 } // namespace
