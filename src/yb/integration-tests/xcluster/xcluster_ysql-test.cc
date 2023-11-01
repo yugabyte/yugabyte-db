@@ -669,7 +669,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsWithUpdates) {
         "INSERT INTO account_balance VALUES($0, 'user$0', 1000000)", i));
   }
 
-  auto result = ASSERT_RESULT(producer_conn.FetchFormat("select sum(salary) from account_balance"));
+  auto result = ASSERT_RESULT(producer_conn.Fetch("select sum(salary) from account_balance"));
   ASSERT_EQ(PQntuples(result.get()), 1);
   auto total_salary = ASSERT_RESULT(GetValue<int64_t>(result.get(), 0, 0));
 
@@ -697,7 +697,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsWithUpdates) {
     while (CoarseMonoClock::Now() < now + MonoDelta::FromSeconds(30)) {
       auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
       auto result =
-          ASSERT_RESULT(consumer_conn.FetchFormat("select sum(salary) from account_balance"));
+          ASSERT_RESULT(consumer_conn.Fetch("select sum(salary) from account_balance"));
       ASSERT_EQ(PQntuples(result.get()), 1);
       Result<int64_t> current_salary_result = GetValue<int64_t>(result.get(), 0, 0);
       if (!current_salary_result.ok()) {
