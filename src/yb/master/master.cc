@@ -607,6 +607,14 @@ CatalogManagerIf* Master::catalog_manager() const {
   return catalog_manager_.get();
 }
 
+XClusterManagerIf* Master::xcluster_manager() const {
+  return catalog_manager_->GetXClusterManager();
+}
+
+XClusterManager* Master::xcluster_manager_impl() const {
+  return catalog_manager_->GetXClusterManagerImpl();
+}
+
 SysCatalogTable& Master::sys_catalog() const {
   return *catalog_manager_->sys_catalog();
 }

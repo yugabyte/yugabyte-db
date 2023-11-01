@@ -25,6 +25,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 
 #include "yb/util/atomic.h"
@@ -601,7 +602,7 @@ Result<bool> XClusterSafeTimeService::CreateTableRequired() {
 
 Result<XClusterNamespaceToSafeTimeMap>
 XClusterSafeTimeService::GetXClusterNamespaceToSafeTimeMap() {
-  return catalog_manager_->GetXClusterNamespaceToSafeTimeMap();
+  return master_->xcluster_manager()->GetXClusterNamespaceToSafeTimeMap();
 }
 
 Status XClusterSafeTimeService::SetXClusterSafeTime(
@@ -613,7 +614,8 @@ Status XClusterSafeTimeService::SetXClusterSafeTime(
     }
   }
 
-  return catalog_manager_->SetXClusterNamespaceToSafeTimeMap(leader_term, new_safe_time_map);
+  return master_->xcluster_manager()->SetXClusterNamespaceToSafeTimeMap(
+      leader_term, new_safe_time_map);
 }
 
 Status XClusterSafeTimeService::CleanupEntriesFromTable(

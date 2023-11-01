@@ -238,7 +238,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
   Result<uint64_t> GetXClusterSafeTimeLagFromMetrics(const NamespaceId& namespace_id) {
     auto& cm = VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
     const auto metrics =
-        cm.GetXClusterManager()->TEST_xcluster_safe_time_service()->TEST_GetMetricsForNamespace(
+        cm.GetXClusterManagerImpl()->TEST_xcluster_safe_time_service()->TEST_GetMetricsForNamespace(
             namespace_id);
     const auto safe_time_lag = metrics->consumer_safe_time_lag->value();
     const auto safe_time_skew = metrics->consumer_safe_time_skew->value();

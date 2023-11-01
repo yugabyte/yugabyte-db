@@ -42,7 +42,6 @@
 #include "yb/master/master_util.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/snapshot_transfer_manager.h"
-#include "yb/master/sys_catalog-internal.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 
@@ -286,7 +285,6 @@ void CatalogManager::ClearXReplState() {
   // Clear CDC stream map.
   cdc_stream_map_.clear();
 
-  xcluster_manager_->ClearState();
   xcluster_producer_tables_to_stream_map_.clear();
 
   // Clear CDCSDK stream map.
@@ -6429,11 +6427,6 @@ Status CatalogManager::FillHeartbeatResponseCDC(
     resp->set_xcluster_enabled_on_producer(true);
   }
   if (cluster_config.has_consumer_registry()) {
-    {
-      auto l = xcluster_safe_time_info_.LockForRead();
-      *resp->mutable_xcluster_namespace_to_safe_time() = l->pb.safe_time_map();
-    }
-
     if (req->cluster_config_version() < cluster_config.version()) {
       const auto& consumer_registry = cluster_config.consumer_registry();
       resp->set_cluster_config_version(cluster_config.version());
