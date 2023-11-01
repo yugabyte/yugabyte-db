@@ -222,7 +222,7 @@ class CorruptionTest : public RocksDBTest {
       }
     }
 
-    ASSERT_OK(yb::CorruptFile(fname, offset, bytes_to_corrupt));
+    ASSERT_OK(yb::CorruptFile(fname, offset, bytes_to_corrupt, yb::CorruptionType::kXor55));
   }
 
   void Corrupt(FileType filetype, int offset, int bytes_to_corrupt) {

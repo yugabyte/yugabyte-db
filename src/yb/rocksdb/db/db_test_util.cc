@@ -92,9 +92,11 @@ DBHolder::DBHolder(const std::string path, bool encryption_enabled)
 
 DBHolder::~DBHolder() {
   Env::Default()->CleanupFile(kKeyFile);
+#ifndef NDEBUG
   rocksdb::SyncPoint::GetInstance()->DisableProcessing();
   rocksdb::SyncPoint::GetInstance()->LoadDependency({});
   rocksdb::SyncPoint::GetInstance()->ClearAllCallBacks();
+#endif // NDEBUG
   Close();
   Options options;
   options.db_paths.emplace_back(dbname_, 0);

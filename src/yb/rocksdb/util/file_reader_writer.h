@@ -207,6 +207,14 @@ class WritableFileWriter {
 extern Status NewWritableFile(Env* env, const std::string& fname,
                               unique_ptr<WritableFile>* result,
                               const EnvOptions& options);
+
+// Returns an error if file ends with check_size zeros. If check_size is larger than file size it is
+// automatically reset to file size.
+// Returns an error if check_size == 0.
+// Returned error contains size of contiguous zeroed array placed at the end of the file.
+Status CheckFileTailForZeros(
+    Env* env, const EnvOptions& env_options, const std::string& file_path, size_t check_size);
+
 }  // namespace rocksdb
 
 #endif // YB_ROCKSDB_UTIL_FILE_READER_WRITER_H

@@ -156,6 +156,8 @@ class MemFile {
     return modified_time_;
   }
 
+  const std::string& filename() const { return fn_; }
+
  private:
   uint64_t Now() {
     int64_t unix_time;
@@ -293,6 +295,8 @@ class MockWritableFile : public WritableFile {
   Status Sync() override { return file_->Fsync(); }
 
   uint64_t GetFileSize() override { return file_->Size(); }
+
+  const std::string& filename() const override { return file_->filename(); }
 
  private:
   inline size_t RequestToken(size_t bytes) {

@@ -79,6 +79,8 @@
 #include "yb/util/string_util.h"
 #include "yb/util/thread.h"
 
+DECLARE_uint64(rocksdb_check_sst_file_tail_for_zeros);
+
 namespace rocksdb {
 
 // Maintains state for each sub-compaction
@@ -796,7 +798,6 @@ void CompactionJob::CloseFile(Status* status, std::unique_ptr<WritableFileWriter
     *status = (*writer)->Close();
   }
   writer->reset();
-
 }
 
 Status CompactionJob::FinishCompactionOutputFile(
@@ -844,6 +845,16 @@ Status CompactionJob::FinishCompactionOutputFile(
     CloseFile(&s, &sub_compact->data_outfile);
   }
   CloseFile(&s, &sub_compact->base_outfile);
+
+  const auto rocksdb_check_sst_file_tail_for_zeros =
+      FLAGS_rocksdb_check_sst_file_tail_for_zeros;
+  if (s.ok() && PREDICT_FALSE(rocksdb_check_sst_file_tail_for_zeros > 0)) {
+    const auto base_fname = TableFileName(
+        db_options_.db_paths, meta.fd.GetNumber(), sub_compact->compaction->output_path_id());
+    s = CheckSstTailForZeros(
+        db_options_, env_options_, is_split_sst ? TableBaseToDataFileName(base_fname) : base_fname,
+        rocksdb_check_sst_file_tail_for_zeros);
+  }
 
   if (s.ok() && current_entries > 0) {
     // Verify that the table is usable

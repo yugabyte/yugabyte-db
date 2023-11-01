@@ -41,6 +41,7 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
+#include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
 #include "yb/util/port_picker.h"
@@ -283,10 +284,14 @@ class StopOnFailure {
   std::atomic<bool>& stop_;
 };
 
+YB_DEFINE_ENUM(CorruptionType, (kZero)(kXor55));
+
 // Corrupt bytes_to_corrupt bytes at specified offset. If offset is negative, treats it as
 // an offset relative to the end of file. Also fixes specified region to not exceed the file before
 // corrupting data.
-Status CorruptFile(const std::string& file_path, int64_t offset, size_t bytes_to_corrupt);
+Status CorruptFile(
+    const std::string& file_path, int64_t offset, size_t bytes_to_corrupt,
+    CorruptionType corruption_type);
 
 } // namespace yb
 
