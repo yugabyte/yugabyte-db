@@ -19,18 +19,7 @@ This section describes the release support policy, versioning, and feature avail
 
 -> For information on YugabyteDB Voyager releases, refer to the [YugabyteDB Voyager release notes](../yugabyte-voyager/release-notes/).
 
-## Recommended release series for projects
-
-To ensure that your production go-live uses the most up-to-date stable release, follow this guideline.
-
-| Production go-live | Recommended release series |
-| :----------------- | :------------------------- |
-| Less than 3 months | [{{<yb-version version="stable" format="displayName">}}](release-notes/{{<yb-version version="stable" format="series">}}/) |
-| More than 3 months | [{{<yb-version version="preview" format="displayName">}}](release-notes/{{<yb-version version="preview" format="series">}}/) |
-
-If your production go-live is more than three months from now, start your development and testing with the preview release series. By the time your production is ready to go live, the current stable release series (which is based on the preview release series you used for development and testing) will be available. By following this guideline, you ensure that your application is developed with the latest available features, enhancements, and fixes.
-
-## Current supported releases
+## Current supported and preview releases
 
 <ul class="nav yb-pills">
   <li>
@@ -45,10 +34,9 @@ If your production go-live is more than three months from now, start your develo
   </li>
 </ul>
 
-The supported release series for YugabyteDB and YugabyteDB Anywhere include:
+The supported release series for YugabyteDB and YugabyteDB Anywhere include Long-term support (LTS) and standard-term support (STS).
 
-* Long-term support (LTS) and standard-term support (STS): Supported for production deployments.
-* Preview: Supported for development and testing only.
+Preview releases, which include features under active development, are also available. Preview releases are recommended for development and testing only.
 
 For details about the differences between the release series, see [Release versioning](versioning/).
 
@@ -82,4 +70,15 @@ For information on key features planned for the upcoming releases, visit [Curren
 
 | Release series | Planned release |
 | :------------- | :-------------- |
-| v2.20 (LTS) | Late 2023 |
+| v2.20 (LTS)    | Late 2023       |
+
+## Recommended release series for projects
+
+To ensure that your production go-live uses the most up-to-date stable release, follow this guideline.
+
+| Production go-live | Recommended release series |
+| :----------------- | :------------------------- |
+| Less than 3 months | [{{<yb-version version="stable" format="displayName">}}](release-notes/{{<yb-version version="stable" format="series">}}/) |
+| More than 3 months | [{{<yb-version version="preview" format="displayName">}}](release-notes/{{<yb-version version="preview" format="series">}}/) |
+
+If your production go-live is more than three months from now, start your development and testing with the preview release series. By the time your production is ready to go live, the current stable release series (which is based on the preview release series you used for development and testing) will be available. By following this guideline, you ensure that your application is developed with the latest available features, enhancements, and fixes.

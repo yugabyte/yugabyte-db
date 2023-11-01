@@ -12,7 +12,7 @@ aliases:
 type: docs
 ---
 
-Starting with v2.16, YugabyteDB follows a new release versioning convention for stable (production-ready) and preview (development) releases. There are three release types: long-term stable (LTS), standard-term stable (STS), and preview.
+Starting with v2.16, YugabyteDB follows a new release versioning convention for stable (production-ready) and preview (development) releases. There are three release types: long-term support (LTS), standard-term support (STS), and preview.
 
 Individual features may also be made available as tech previews or early access, which have different documentation and support standards than general availability features.
 
@@ -110,9 +110,9 @@ Documentation for EA features is marked as such.
 
 A feature in General Availability (GA) is enabled by default for all customers.
 
-GA features are supported by Yugabyte Support, and issues are addressed according to your Customer Agreement.
+GA features are supported by Yugabyte Support, and issues are addressed according to the [release support policy](../#release-support-policy).
 
-Documentation for GA features is not marked.
+Any feature not marked Tech Preview or Early Access should be considered GA.
 
 ### Deprecation
 
