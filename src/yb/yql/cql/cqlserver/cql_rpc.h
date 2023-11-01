@@ -72,7 +72,7 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
   static std::string Name() { return "CQL"; }
 
  private:
-  void Connected(const rpc::ConnectionPtr& connection) override {}
+  Status Connected(const rpc::ConnectionPtr& connection) override { return Status::OK(); }
 
   rpc::RpcConnectionPB::StateType State() override {
     return rpc::RpcConnectionPB::OPEN;

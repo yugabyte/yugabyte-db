@@ -662,8 +662,8 @@ Status Connection::Start(ev::loop_ref* loop) {
   return context_->AssignConnection(self);
 }
 
-void Connection::Connected() {
-  context_->Connected(shared_from_this());
+Status Connection::Connected() {
+  return context_->Connected(shared_from_this());
 }
 
 StreamReadBuffer& Connection::ReadBuffer() {
