@@ -853,7 +853,6 @@ static PlannedStmt *
 pgsm_planner_hook(Query *parse, const char *query_string, int cursorOptions, ParamListInfo boundParams)
 {
 	PlannedStmt *result;
-	pgsmEntry  *entry = NULL;
 
 
 	/*
@@ -868,13 +867,11 @@ pgsm_planner_hook(Query *parse, const char *query_string, int cursorOptions, Par
 	 * So testing the planner nesting level only is not enough to detect real
 	 * top level planner call.
 	 */
-	if (MemoryContextIsValid(MessageContext))
-		entry = pgsm_get_entry_for_query(parse->queryId, NULL, query_string, strlen(query_string), true);
-
 
 	if (pgsm_enabled(plan_nested_level + exec_nested_level) &&
 		pgsm_track_planning && query_string && parse->queryId != UINT64CONST(0))
 	{
+		pgsmEntry  *entry = NULL;
 		instr_time	start;
 		instr_time	duration;
 		BufferUsage bufusage_start;
@@ -891,6 +888,9 @@ pgsm_planner_hook(Query *parse, const char *query_string, int cursorOptions, Par
 		 */
 		walusage_start = pgWalUsage;
 		INSTR_TIME_SET_CURRENT(start);
+
+		if (MemoryContextIsValid(MessageContext))
+			entry = pgsm_get_entry_for_query(parse->queryId, NULL, query_string, strlen(query_string), true);
 
 		plan_nested_level++;
 		PG_TRY();
