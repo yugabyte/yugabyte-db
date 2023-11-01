@@ -634,19 +634,15 @@ Default: Uses the YSQL display format.
 
 ##### --ysql_max_connections
 
-Specifies the maximum number of concurrent YSQL connections.
+Specifies the maximum number of concurrent YSQL connections per node.
 
-Superusers can access all connections. Non-superusers see only connections that are not reserved for superusers as set by the `superuser_reserved_connections` flag; that is, connections available to non-superusers is equal to `ysql_max_connections - superuser_reserved_connections`.
+This is a maximum per server, so a 3-node cluster will have a default of 900 available connections, globally.
 
-Default: 300.
+Any active, idle in transaction, or idle in session connection counts toward the connection limit.
 
-##### --superuser_reserved_connections
+Some connections are reserved for superusers. The total number of superuser connections is determined by the `superuser_reserved_connections` [PostgreSQL server parameter](#postgresql-server-options). Connections available to non-superusers is equal to `ysql_max_connections` - `superuser_reserved_connections`.
 
-Specifies the number of concurrent YSQL connections that are reserved for connections by superusers.
-
-When the number of active concurrent connections is at least `ysql_max_connections` minus `superuser_reserved_connections`, new connections will be accepted only for superusers.
-
-Default: 3.
+Default: If ysql_max_connections is not set, the database startup process will determine the highest number of connections the system can support, from a minimum of 50 to a maximum of 300 (per node).
 
 ##### --ysql_default_transaction_isolation
 
