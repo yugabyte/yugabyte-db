@@ -59,6 +59,7 @@
 
 #include "yb/server/server_fwd.h"
 
+#include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_types.pb.h"
 
@@ -450,7 +451,7 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   Status FlushTabletsOnSingleTServer(
       ExternalTabletServer* ts, const std::vector<yb::TabletId> tablet_ids,
-      bool is_compaction);
+      tserver::FlushTabletsRequestPB_Operation operation);
 
   Status WaitForTSToCrash(const ExternalTabletServer* ts,
                           const MonoDelta& timeout = MonoDelta::FromSeconds(60));
