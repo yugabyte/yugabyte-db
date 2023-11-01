@@ -932,6 +932,7 @@ class ReportFileOpEnv : public EnvWrapper {
       Status Close() override { return target_->Close(); }
       Status Flush() override { return target_->Flush(); }
       Status Sync() override { return target_->Sync(); }
+      const std::string& filename() const override { return target_->filename(); }
     };
 
     Status s = target()->NewWritableFile(f, r, soptions);

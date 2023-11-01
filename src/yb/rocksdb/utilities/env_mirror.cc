@@ -222,6 +222,8 @@ class WritableFileMirror : public WritableFile {
     return as;
   }
 
+  const std::string& filename() const override { return fname; }
+
  protected:
   Status Allocate(uint64_t offset, uint64_t length) override {
     Status as = a_->Allocate(offset, length);

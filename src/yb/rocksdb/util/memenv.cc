@@ -74,6 +74,10 @@ class WritableFileImpl : public WritableFile {
   Status Flush() override { return Status::OK(); }
   Status Sync() override { return Status::OK(); }
 
+  const std::string& filename() const override {
+    return file_->filename();
+  }
+
  private:
   std::shared_ptr<InMemoryFileState> file_;
 };

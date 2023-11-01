@@ -90,6 +90,8 @@ class PosixMmapFile : public WritableFile {
   Status UnmapCurrentRegion();
   Status Msync();
 
+  const std::string& filename() const override { return filename_; }
+
  public:
   PosixMmapFile(const std::string& fname, int fd, size_t page_size,
                 const EnvOptions& options);

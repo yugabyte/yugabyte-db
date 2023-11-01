@@ -99,6 +99,5 @@ SpacesInSquareBrackets: false
 Standard:        Auto
 TabWidth:        8
 UseTab:          Never
-ColumnLimit: 100
 FixNamespaceComments: true
 ...

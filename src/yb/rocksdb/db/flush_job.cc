@@ -281,7 +281,7 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
       TEST_SYNC_POINT_CALLBACK("FlushJob::WriteLevel0Table:output_compression",
                                &output_compression_);
       s = BuildTable(dbname_,
-                     db_options_.env,
+                     db_options_,
                      *cfd_->ioptions(),
                      env_options_,
                      cfd_->table_cache(),
@@ -296,7 +296,6 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
                      cfd_->ioptions()->compression_opts,
                      mutable_cf_options_.paranoid_file_checks,
                      cfd_->internal_stats(),
-                     db_options_.boundary_extractor.get(),
                      yb::IOPriority::kHigh,
                      &table_properties_);
       info.table_properties = table_properties_;

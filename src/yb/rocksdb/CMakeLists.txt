@@ -211,15 +211,12 @@ macro(ADD_YB_ROCKSDB_TOOL tool)
 endmacro()
 
 set(ROCKSDB_TEST_UTIL_SRCS
+  db/db_test_util.cc
   table/mock_table.cc
   util/mock_env.cc
   util/testharness.cc
   util/testutil.cc
 )
-
-if (NOT "${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
-  set(ROCKSDB_TEST_UTIL_SRCS ${ROCKSDB_TEST_UTIL_SRCS} db/db_test_util.cc)
-endif()
 
 add_library(rocksdb_test_util ${ROCKSDB_TEST_UTIL_SRCS})
 target_link_libraries(rocksdb_test_util gmock gtest rocksdb yb_rocksutil)
@@ -239,6 +236,7 @@ set(YB_TEST_LINK_LIBS rocksdb_test_util rocksdb ${YB_MIN_TEST_LIBS} rocksdb_tool
 ADD_YB_TEST(db/compaction_job_test)
 ADD_YB_TEST(db/compaction_picker_test)
 ADD_YB_TEST(db/comparator_db_test)
+ADD_YB_TEST(db/db_perf_test)
 ADD_YB_TEST(db/dbformat_test)
 ADD_YB_TEST(db/file_indexer_test)
 ADD_YB_TEST(db/filename_test)
@@ -282,8 +280,9 @@ ADD_YB_TEST(util/memenv_test)
 ADD_YB_TEST(util/mock_env_test)
 ADD_YB_TEST(util/options_test)
 ADD_YB_TEST(util/rate_limiter_test)
-
+ADD_YB_TEST(util/file_reader_writer_test)
 ADD_YB_TEST(util/slice_transform_test)
+
 if (BUILD_TESTS AND
     COMPILER_FAMILY STREQUAL "gcc" AND
     "${COMPILER_VERSION}" MATCHES "^(10|11)[.].*$")

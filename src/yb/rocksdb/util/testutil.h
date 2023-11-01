@@ -239,6 +239,11 @@ class StringSink: public WritableFile {
     }
   }
 
+  const std::string& filename() const override {
+    static const std::string kFilename = "StringSink";
+    return kFilename;
+  }
+
  private:
   Slice* reader_contents_;
   size_t last_flush_;
@@ -470,6 +475,11 @@ class StringEnv : public EnvWrapper {
     virtual Status Append(const Slice& slice) override {
       contents_->append(slice.cdata(), slice.size());
       return Status::OK();
+    }
+
+    const std::string& filename() const override {
+      static const std::string kFilename = "StringSink";
+      return kFilename;
     }
 
    private:
