@@ -43,6 +43,7 @@
 
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/util/flags.h"
 
 DECLARE_bool(use_node_hostname_for_local_tserver);
@@ -145,7 +146,8 @@ class PgClient::Impl {
   Status Start(rpc::ProxyCache* proxy_cache,
                rpc::Scheduler* scheduler,
                const tserver::TServerSharedObject& tserver_shared_object,
-               std::optional<uint64_t> session_id) {
+               std::optional<uint64_t> session_id,
+               const YBCAshMetadata* ash_metadata) {
     CHECK_NOTNULL(&tserver_shared_object);
     MonoDelta resolve_cache_timeout;
     const auto& tserver_shared_data_ = *tserver_shared_object;
@@ -168,6 +170,10 @@ class PgClient::Impl {
     }
     LOG_WITH_PREFIX(INFO) << "Session id acquired. Postgres backend pid: " << getpid();
     heartbeat_poller_.Start(scheduler, FLAGS_pg_client_heartbeat_interval_ms * 1ms);
+
+    ash_metadata_ = ash_metadata;
+    memcpy(local_tserver_uuid_, tserver_shared_data_.tserver_uuid(), 16);
+
     return Status::OK();
   }
 
@@ -441,6 +447,17 @@ class PgClient::Impl {
       const PerformCallback& callback) {
     auto& arena = operations->front()->arena();
     tserver::LWPgPerformRequestPB req(&arena);
+
+    if (FLAGS_TEST_yb_enable_ash) {
+      // Don't send ASH metadata if it's not set
+      if (ash_metadata_->is_set) {
+        auto* ash_metadata = options->mutable_ash_metadata();
+        ash_metadata->set_yql_endpoint_tserver_uuid(local_tserver_uuid_, 16);
+        ash_metadata->set_root_request_id(ash_metadata_->root_request_id, 16);
+        ash_metadata->set_query_id(ash_metadata_->query_id);
+      }
+    }
+
     req.set_session_id(session_id_);
     *req.mutable_options() = std::move(*options);
     PrepareOperations(&req, operations);
@@ -892,6 +909,9 @@ class PgClient::Impl {
   std::promise<Result<uint64_t>> create_session_promise_;
   std::array<int, 2> tablet_server_count_cache_;
   MonoDelta timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
+
+  const YBCAshMetadata* ash_metadata_;
+  unsigned char local_tserver_uuid_[16];
 };
 
 std::string DdlMode::ToString() const {
@@ -911,8 +931,9 @@ PgClient::~PgClient() {
 Status PgClient::Start(
     rpc::ProxyCache* proxy_cache, rpc::Scheduler* scheduler,
     const tserver::TServerSharedObject& tserver_shared_object,
-    std::optional<uint64_t> session_id) {
-  return impl_->Start(proxy_cache, scheduler, tserver_shared_object, session_id);
+    std::optional<uint64_t> session_id, const YBCAshMetadata* ash_metadata) {
+  return impl_->Start(proxy_cache, scheduler, tserver_shared_object, session_id,
+                      ash_metadata);
 }
 
 void PgClient::Shutdown() {

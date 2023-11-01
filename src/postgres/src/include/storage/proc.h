@@ -22,6 +22,9 @@
 #include "storage/pg_sema.h"
 #include "storage/proclist_types.h"
 
+/* YB includes */
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 /*
  * Each backend advertises up to PGPROC_MAX_CACHED_SUBXIDS TransactionIds
  * for non-aborted subtransactions of its current top transaction.  These
@@ -224,6 +227,13 @@ struct PGPROC
 	 * how to clean up after it. Restart the postmaster in those cases.
 	 */
 	bool		ybTerminationStarted;
+
+	/*
+	 * yb_ash_metadata is protected by yb_ash_metadata_lock instead of
+	 * backendLock.
+	 */
+	LWLock		yb_ash_metadata_lock;
+	YBCAshMetadata yb_ash_metadata;
 };
 
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */

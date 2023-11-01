@@ -545,6 +545,38 @@ typedef struct PgReplicationSlotDescriptor {
   bool active;
 } YBCReplicationSlotDescriptor;
 
+// Active Session History metadata struct.
+// yql_endpoint_tserver_uuid is not stored here as it's going to be the same for all the
+// PG backends of a given node. It's stored in the shared tserver object.
+// rpc_request_id is same as the last 8 bytes of root_request_id in PG, so it's not stored
+// here.
+typedef struct AshMetadata {
+  // A unique id corresponding to a YSQL query in bytes.
+  unsigned char root_request_id[16];
+
+  // Query id as seen on pg_stat_statements to identify identical
+  // normalized queries. There might be many queries with different
+  // root_request_id but with the same query_id.
+  uint64_t query_id;
+
+  // If addr_family is AF_INET (ipv4) or AF_INET6 (ipv6), client_addr stores
+  // the ipv4/ipv6 address and client_port stores the port of the PG process
+  // where the YSQL query originated. In case of AF_INET, the first 4 bytes
+  // of client_addr is used to store the ipv4 address as raw bytes.
+  // In case of AF_INET6, all the 16 bytes is used to store the ipv6 address
+  // as raw bytes.
+  // If addr_family is AF_UNIX, client_addr and client_port do not store
+  // anything meaningful.
+  unsigned char client_addr[16];
+  uint16_t client_port;
+  uint8_t addr_family;
+
+  // We don't set metadata for catalog requests yet, so this is used to decide
+  // whether we have set the metadata and should we send it with Perform RPCs.
+  // TODO: remove this once we start tracking catalog requests
+  bool is_set;
+} YBCAshMetadata;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

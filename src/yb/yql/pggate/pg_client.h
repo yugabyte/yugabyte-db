@@ -83,7 +83,8 @@ class PgClient {
   Status Start(rpc::ProxyCache* proxy_cache,
                rpc::Scheduler* scheduler,
                const tserver::TServerSharedObject& tserver_shared_object,
-               std::optional<uint64_t> session_id);
+               std::optional<uint64_t> session_id, const YBCAshMetadata* ash_metadata);
+
   void Shutdown();
 
   void SetTimeout(MonoDelta timeout);

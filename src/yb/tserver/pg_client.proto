@@ -524,6 +524,8 @@ message PgPerformOptionsPB {
   bool trace_requested = 19;
   bool yb_non_ddl_txn_for_sys_tables_allowed = 21;
   int64 pg_txn_start_us = 22;
+
+  AshMetadataPB ash_metadata = 23;
 }
 
 message PgPerformRequestPB {
