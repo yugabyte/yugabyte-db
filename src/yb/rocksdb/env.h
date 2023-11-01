@@ -290,7 +290,8 @@ class Env {
   virtual Status DeleteFile(const std::string& fname) = 0;
 
   // Delete file, print warning on failure.
-  void CleanupFile(const std::string& fname);
+  // Returns true iff file has been deleted.
+  bool CleanupFile(const std::string& fname, const std::string& log_prefix = "");
 
   // Create the specified directory. Returns error if directory exists.
   virtual Status CreateDir(const std::string& dirname) = 0;
