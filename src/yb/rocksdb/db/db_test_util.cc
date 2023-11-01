@@ -95,9 +95,11 @@ DBHolder::DBHolder(const std::string path, bool encryption_enabled)
 
 DBHolder::~DBHolder() {
   Env::Default()->CleanupFile(kKeyFile);
+#ifndef NDEBUG
   yb::SyncPoint::GetInstance()->DisableProcessing();
   yb::SyncPoint::GetInstance()->LoadDependency({});
   yb::SyncPoint::GetInstance()->ClearAllCallBacks();
+#endif // NDEBUG
   Close();
   Options options;
   options.db_paths.emplace_back(dbname_, 0);

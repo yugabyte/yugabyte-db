@@ -46,6 +46,11 @@ DEFINE_UNKNOWN_bool(allow_preempting_compactions, true,
 DEFINE_UNKNOWN_int32(rocksdb_file_starting_buffer_size, 8192,
              "Starting buffer size for writable files, grows by 2x every new allocation.");
 
+DECLARE_uint64(rocksdb_check_sst_file_tail_for_zeros);
+
+DEFINE_test_flag(bool, simulate_fully_zeroed_file, false,
+                 "Simulates fully zeroed file for CheckFileTailForZeros function");
+
 namespace rocksdb {
 
 Status SequentialFileReader::Read(size_t n, Slice* result, uint8_t* scratch) {
@@ -184,12 +189,20 @@ Status WritableFileWriter::Close() {
   // In unbuffered mode we write whole pages so
   // we need to let the file know where data ends.
   Status interim = writable_file_->Truncate(filesize_);
+  if (FLAGS_rocksdb_check_sst_file_tail_for_zeros > 0) {
+    LOG(INFO) << "Truncated " << writable_file_->filename() << " to " << filesize_
+              << " interim: " << interim << " status: " << s;
+  }
   if (!interim.ok() && s.ok()) {
     s = interim;
   }
 
   TEST_KILL_RANDOM("WritableFileWriter::Close:0", test_kill_odds);
   interim = writable_file_->Close();
+  if (FLAGS_rocksdb_check_sst_file_tail_for_zeros > 0) {
+    LOG(INFO) << "Closed " << writable_file_->filename() << " last_sync_size_: " << last_sync_size_
+              << " filesize_: " << filesize_ << " interim: " << interim << " status: " << s;
+  }
   if (!interim.ok() && s.ok()) {
     s = interim;
   }
@@ -522,6 +535,76 @@ Status NewWritableFile(Env* env, const std::string& fname,
   Status s = env->NewWritableFile(fname, result, options);
   TEST_KILL_RANDOM("NewWritableFile:0", test_kill_odds * REDUCE_ODDS2);
   return s;
+}
+
+Status CheckFileTailForZeros(
+    Env* env, const EnvOptions& env_options, const std::string& file_path,
+    const size_t check_tail_size) {
+  constexpr auto kBufferSize = 1024;
+
+  // TODO - do we want to update stats and metrics as we do with usual file reads?
+
+  std::unique_ptr<RandomAccessFile> file;
+  RETURN_NOT_OK(env->NewRandomAccessFile(file_path, &file, env_options));
+  const auto file_size = VERIFY_RESULT(file->Size());
+
+  uint8_t buffer[kBufferSize];
+
+  size_t left_to_check = std::min<size_t>(check_tail_size, file_size);
+  size_t left_in_file = file_size;
+  size_t offset = file_size;
+  size_t zero_tail_size = file_size;
+
+  while (left_in_file > 0) {
+    const auto chunk_size_bytes = std::min<size_t>(kBufferSize, left_in_file);
+    offset -= chunk_size_bytes;
+
+    auto* chunk_end = buffer + chunk_size_bytes - 1;
+    const auto* check_start =
+        left_to_check < chunk_size_bytes ? chunk_end - left_to_check + 1 : buffer;
+
+    Slice slice;
+    RETURN_NOT_OK(file->Read(offset, chunk_size_bytes, &slice, pointer_cast<uint8_t*>(buffer)));
+    SCHECK_EQ(chunk_size_bytes, slice.size(), IllegalState, "Read unexpected number of bytes");
+
+    auto* p = chunk_end;
+    // Check based on check_tail_size and return OK if not all check_tail_size are zeros.
+    // Note that by-byte comparison is optimized by clang much better than trying to optimize
+    // by comparing 32-bit/64-bit words using custom code.
+    for (; p >= check_start; --p) {
+      if (*p != 0 && PREDICT_TRUE(!FLAGS_TEST_simulate_fully_zeroed_file)) {
+        return Status::OK();
+      }
+    }
+    bool found_all_tail_zeros = false;
+    // After we've confirmed end of the file contains at least check_tail_size zero bytes, we need
+    // to calculate how many zeros we actually have at the end of the file because it could be more,
+    // and we want to log that for further analysis.
+    for (; p >= buffer; --p) {
+      if (*p != 0 && PREDICT_TRUE(!FLAGS_TEST_simulate_fully_zeroed_file)) {
+        // Zeros found before current while iteration.
+        zero_tail_size = file_size - left_in_file;
+        // Zeros found by this for loop.
+        zero_tail_size += chunk_end - p;
+        found_all_tail_zeros = true;
+        break;
+      }
+    }
+
+    if (found_all_tail_zeros) {
+      break;
+    }
+
+    left_in_file -= chunk_size_bytes;
+    if (left_to_check > chunk_size_bytes) {
+      left_to_check -= chunk_size_bytes;
+    } else {
+      left_to_check = 0;
+    }
+  }
+
+  return STATUS_FORMAT(
+      IOError, "$2: last $0 of $1 bytes are all zeros", zero_tail_size, file_size, file_path);
 }
 
 }  // namespace rocksdb
