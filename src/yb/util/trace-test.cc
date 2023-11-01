@@ -247,12 +247,14 @@ TEST_F(TraceTest, TestChildTrace) {
   TRACE("hello from traceA");
   {
     ADOPT_TRACE(traceB.get());
-    TRACE("hello from traceB");
+    TRACE("hello from traceB\nhello again from traceB");
   }
-  EXPECT_EQ("XXXX XX:XX:XX.XXXXXX trace-test.cc:XXX] hello from traceA\n"
-            "..  Related trace:\n"
-            "..  XXXX XX:XX:XX.XXXXXX trace-test.cc:XXX] hello from traceB\n",
-            XOutDigits(traceA->DumpToString(false)));
+  EXPECT_EQ(
+      "XXXX XX:XX:XX.XXXXXX trace-test.cc:XXX] hello from traceA\n"
+      "..  Related trace:\n"
+      "..  XXXX XX:XX:XX.XXXXXX trace-test.cc:XXX] hello from traceB\n"
+      "..  ..  hello again from traceB\n",
+      XOutDigits(traceA->DumpToString(false)));
 }
 
 static void GenerateTraceEvents(int thread_id,
