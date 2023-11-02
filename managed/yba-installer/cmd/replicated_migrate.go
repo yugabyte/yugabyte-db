@@ -21,12 +21,21 @@ import (
 var baseReplicatedMigration = &cobra.Command{
 	Use:   "replicated-migrate",
 	Short: "Commands to handle migrating from replicated to a YBA-Installer instance.",
+	Long: `replicated-migrate subcommands provide a workflow to move from a replicated based install
+to one managed by YBA Installer. The general workflow should follow:
+1. [Optional] config: Generate the yba-ctl.yml from replicated config
+2. start: Start the migration. If the config has not been created, it will happen now.
+3. finish: Complete the migration
+
+Rollback is also available to move back to a replicated install if and only if 'finish' has not been
+run.
+`,
 }
 
 var replicatedMigrationStart = &cobra.Command{
 	Use:   "start",
 	Short: "start the replicated migration process.",
-	Long: "Start the process to migrat from replicated to YBA-Installer. This will migrate all data" +
+	Long: "Start the process to migrate from replicated to YBA-Installer. This will migrate all data" +
 		" and configs from the replicated YugabyteDB Anywhere install to one managed by YBA-Installer." +
 		" The migration will stop, but not delete, all replicated app instances.",
 	Run: func(cmd *cobra.Command, args []string) {
