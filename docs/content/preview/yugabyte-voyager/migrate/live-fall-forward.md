@@ -180,18 +180,40 @@ Perform the following steps to prepare your fall-forward database:
             num_deletes NUMBER(19),
             PRIMARY KEY (migration_uuid, table_name, channel_no)
         );
+    ```
 
-    // Grant all privileges on ybvoyager_metadata schema table to user ybvoyager
+1. Create a writer role for fall-forward schema in the fall forward database as follows:
+
+    ```sql
+    CREATE ROLE <SCHEMA_NAME>_writer_role;
+
+    BEGIN
+        FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type ='TABLE' MINUS SELECT owner, table_name from all_nested_tables where owner = UPPER('<SCHEMA_NAME>'))
+        LOOP
+           EXECUTE IMMEDIATE 'GRANT SELECT, INSERT, UPDATE, DELETE, ALTER on '||R.owner||'."'||R.object_name||'" to  <SCHEMA_NAME>_writer_role';
+        END LOOP;
+    END;
+    /
 
     DECLARE
        v_sql VARCHAR2(4000);
     BEGIN
-       FOR table_rec IN (SELECT table_name FROM all_tables WHERE owner = 'YBVOYAGER_METADATA') LOOP
-          v_sql := 'GRANT ALL PRIVILEGES ON YBVOYAGER_METADATA.' || table_rec.table_name || ' TO YBVOYAGER';
+        FOR table_rec IN (SELECT table_name FROM all_tables WHERE owner = 'YBVOYAGER_METADATA') LOOP
+         v_sql := 'GRANT ALL PRIVILEGES ON YBVOYAGER_METADATA.' || table_rec.table_name || ' TO <SCHEMA_NAME>_writer_role';
           EXECUTE IMMEDIATE v_sql;
-       END LOOP;
+        END LOOP;
     END;
     /
+
+    GRANT CREATE ANY SEQUENCE, SELECT ANY SEQUENCE, ALTER ANY SEQUENCE TO <SCHEMA_NAME>_writer_role;
+    ```
+
+1. Create a user and grant the preceding writer role to the user as follows:
+
+    ```sql
+    CREATE USER YBVOYAGER_FF IDENTIFIED BY password;
+    GRANT CONNECT TO YBVOYAGER_FF;
+    GRANT <SCHEMA_NAME>_writer_role TO YBVOYAGER_FF;
     ```
 
 1. Set the following variables on the client machine on where yb-voyager is running (Only if yb-voyager is installed on Ubuntu / RHEL) :
