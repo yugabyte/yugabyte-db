@@ -241,7 +241,7 @@ Status MasterTestXRepl::SetupUniverseReplication(
   SetupUniverseReplicationRequestPB req;
   SetupUniverseReplicationResponsePB resp;
 
-  req.set_producer_id(producer_id);
+  req.set_replication_group_id(producer_id);
   req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_master_addrs.size()));
   for (const auto& addr : producer_master_addrs) {
     std::vector<std::string> hp;
@@ -267,7 +267,7 @@ Result<GetUniverseReplicationResponsePB> MasterTestXRepl::GetUniverseReplication
     const std::string& producer_id) {
   GetUniverseReplicationRequestPB req;
   GetUniverseReplicationResponsePB resp;
-  req.set_producer_id(producer_id);
+  req.set_replication_group_id(producer_id);
 
   RETURN_NOT_OK(proxy_replication_->GetUniverseReplication(req, &resp, ResetAndGetController()));
   return resp;
@@ -276,7 +276,7 @@ Result<GetUniverseReplicationResponsePB> MasterTestXRepl::GetUniverseReplication
 Status MasterTestXRepl::DeleteUniverseReplication(const std::string& producer_id) {
   DeleteUniverseReplicationRequestPB req;
   DeleteUniverseReplicationResponsePB resp;
-  req.set_producer_id(producer_id);
+  req.set_replication_group_id(producer_id);
 
   RETURN_NOT_OK(proxy_replication_->DeleteUniverseReplication(req, &resp, ResetAndGetController()));
   if (resp.has_error()) {
@@ -711,7 +711,7 @@ TEST_F(MasterTestXRepl, TestSetupUniverseReplication) {
   ASSERT_NOK(SetupUniverseReplication(producer_id, producer_masters, tables));
 
   auto resp = ASSERT_RESULT(GetUniverseReplication(producer_id));
-  ASSERT_EQ(resp.entry().producer_id(), producer_id);
+  ASSERT_EQ(resp.entry().replication_group_id(), producer_id);
 
   ASSERT_EQ(resp.entry().producer_master_addresses_size(), 1);
   std::string addr;
@@ -732,7 +732,7 @@ TEST_F(MasterTestXRepl, TestDeleteUniverseReplication) {
 
   // Verify that universe was created.
   auto resp = ASSERT_RESULT(GetUniverseReplication(producer_id));
-  ASSERT_EQ(resp.entry().producer_id(), producer_id);
+  ASSERT_EQ(resp.entry().replication_group_id(), producer_id);
 
   ASSERT_OK(DeleteUniverseReplication(producer_id));
 

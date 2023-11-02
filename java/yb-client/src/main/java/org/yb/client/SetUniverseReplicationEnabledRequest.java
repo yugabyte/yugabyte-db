@@ -39,7 +39,7 @@ public class SetUniverseReplicationEnabledRequest
 
     final MasterReplicationOuterClass.SetUniverseReplicationEnabledRequestPB.Builder builder =
       MasterReplicationOuterClass.SetUniverseReplicationEnabledRequestPB.newBuilder()
-        .setProducerId(replicationGroupName)
+        .setReplicationGroupId(replicationGroupName)
         .setIsEnabled(enabled);
 
     return toChannelBuffer(header, builder.build());

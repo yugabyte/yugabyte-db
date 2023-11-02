@@ -1710,7 +1710,7 @@ Status YBClient::UpdateConsumerOnProducerSplit(
   SCHECK(stream_id, InvalidArgument, "Stream id is required.");
 
   UpdateConsumerOnProducerSplitRequestPB req;
-  req.set_producer_id(replication_group_id.ToString());
+  req.set_replication_group_id(replication_group_id.ToString());
   req.set_stream_id(stream_id.ToString());
   req.mutable_producer_split_tablet_info()->CopyFrom(split_info);
 
@@ -1732,7 +1732,7 @@ Status YBClient::UpdateConsumerOnProducerMetadata(
   SCHECK(resp != nullptr, InvalidArgument, "Response pointer is required.");
 
   master::UpdateConsumerOnProducerMetadataRequestPB req;
-  req.set_producer_id(replication_group_id.ToString());
+  req.set_replication_group_id(replication_group_id.ToString());
   req.set_stream_id(stream_id.ToString());
   req.set_colocation_id(colocation_id);
   req.set_producer_schema_version(producer_schema_version);

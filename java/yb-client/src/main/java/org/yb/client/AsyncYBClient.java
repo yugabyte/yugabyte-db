@@ -1189,12 +1189,12 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   public Deferred<IsSetupUniverseReplicationDoneResponse> isSetupUniverseReplicationDone(
-    String producerId) {
+    String replicationGroupId) {
     checkIsClosed();
     IsSetupUniverseReplicationDoneRequest request =
       new IsSetupUniverseReplicationDoneRequest(
         this.masterTable,
-        producerId);
+        replicationGroupId);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }
