@@ -51,7 +51,7 @@ As YugabyteDB Anywhere was formerly called Yugabyte Platform, you might see the 
 
 Before you install YugabyteDB Anywhere on an OpenShift cluster, you need to prepare the environment, as described in [Prepare the OpenShift environment](../../../install-yugabyte-platform/prepare-environment/openshift/).
 
-Configure the OpenShift command-line interface (CLI) `oc` by logging in to the OpenShift Container Platform (OCP) web console with your user account. For more information and specific instructions, see [Getting Started with the CLI](https://docs.openshift.com/container-platform/4.2/cli_reference/openshift_cli/getting-started-cli.html) in the Red Hat documentation.
+Configure the OpenShift command-line interface (CLI) `oc` by logging in to the OpenShift Container Platform (OCP) web console with your user account. For more information and specific instructions, see [Getting Started with the CLI](https://docs.openshift.com/container-platform/4.13/cli_reference/openshift_cli/getting-started-cli.html) in the Red Hat documentation.
 
 Unless otherwise specified, you can use a user account for executing the steps described in this document. Using an admin account for all the steps should work as well.
 
@@ -105,7 +105,7 @@ Installing the YugabyteDB Anywhere [Red Hat certified Helm chart](https://catalo
 
 - [Installing YugabyteDB Anywhere using certified Helm chart](#install-yugabytedb-anywhere-using-certified-helm-chart)
 - [Finding the availability zone labels](#find-the-availability-zone-labels)
-- [Accessing and configuring YugabyteDB Anywhere](#access-and-configure-yugabyte-platform)
+- [Accessing and configuring YugabyteDB Anywhere](#access-and-configure-yugabytedb-anywhere)
 
 ### Install YugabyteDB Anywhere using certified Helm chart
 
@@ -280,7 +280,7 @@ You start by logging in to the OCP web console as an admin user, and then perfor
 
 Alternatively, you can find the availability zone codes using the oc CLI.
 
-You start by configuring oc with an admin account (kube:admin) and following the procedure described in [Configure oc with the OCP Cluster](#configure-oc-with-the-ocp-cluster).
+You start by configuring oc with an admin account (kube:admin) and following the procedure described in [Getting Started with the CLI](https://docs.openshift.com/container-platform/4.13/cli_reference/openshift_cli/getting-started-cli.html) from the Red Hat documentation.
 
 To find the region and zone labels, execute the following command:
 
@@ -391,7 +391,7 @@ After the installation is complete, the message shown in the following illustrat
 
 #### Use the command line
 
-Alternatively, you can install the operator via the command line. You start by configuring oc with an admin account (kube:admin) and following the procedure described in [Configure oc with the OCP Cluster](#configure-the-cli-with-the-ocp-cluster).
+Alternatively, you can install the operator via the command line. You start by configuring oc with an admin account (kube:admin) and following the procedure described in [Getting Started with the CLI](https://docs.openshift.com/container-platform/4.13/cli_reference/openshift_cli/getting-started-cli.html) from the Red Hat documentation.
 
 To install the YugabyteDB Anywhere Operator, execute the following command:
 
