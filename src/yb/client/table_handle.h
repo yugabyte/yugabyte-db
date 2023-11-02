@@ -56,6 +56,10 @@ class TableRange;
 
 #define TABLE_HANDLE_TYPE_DECLARATIONS(i, data, entry) TABLE_HANDLE_TYPE_DECLARATIONS_IMPL entry
 
+void UpdateMapUpsertKeyValue(
+    QLWriteRequestPB* req, const int32_t column_id, const std::string& entry_key,
+    const std::string& entry_value);
+
 QLMapValuePB* AddMapColumn(QLWriteRequestPB* req, const int32_t& column_id);
 
 void AddMapEntryToColumn(
