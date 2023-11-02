@@ -836,6 +836,7 @@ class PgClientServiceImpl::Impl {
     dump_req.set_include_traces(false);
     dump_req.set_get_wait_state(true);
     dump_req.set_dump_timed_out(false);
+    dump_req.set_get_local_calls(messenger_type == yb::util::MessengerType::kTserver);
 
     auto messenger = tablet_server_.GetMessenger(messenger_type);
     if (!messenger) {
@@ -863,6 +864,20 @@ class PgClientServiceImpl::Impl {
         } else {
           resp->add_cql_wait_states()->CopyFrom(call.wait_state());
         }
+      }
+    }
+    if (dump_resp.has_local_calls()) {
+      for (auto call : dump_resp.local_calls().calls_in_flight()) {
+        if (!call.has_wait_state() || (call.wait_state().has_aux_info()
+            && call.wait_state().aux_info().has_method()
+            && call.wait_state().aux_info().method() == "ActiveUniverseHistory")) {
+          ignored_calls++;
+          if (!call.has_wait_state()) {
+            ignored_calls_no_wait_state++;
+          }
+          continue;
+        }
+        resp->add_tserver_wait_states()->CopyFrom(call.wait_state());
       }
     }
     LOG_IF(INFO, VLOG_IS_ON(1) || ignored_calls > 1)

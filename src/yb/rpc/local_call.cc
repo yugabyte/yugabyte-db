@@ -60,6 +60,7 @@ const std::shared_ptr<LocalYBInboundCall>& LocalOutboundCall::CreateLocalInbound
   const MonoDelta timeout = controller()->timeout();
   const CoarseTimePoint deadline =
       timeout.Initialized() ? start_ + timeout : CoarseTimePoint::max();
+
   auto outbound_call = std::static_pointer_cast<LocalOutboundCall>(shared_from(this));
   inbound_call_ = InboundCall::Create<LocalYBInboundCall>(
       &rpc_metrics(), remote_method(), outbound_call, deadline);
@@ -115,6 +116,7 @@ void LocalYBInboundCall::Respond(AnyMessageConstPtr resp, bool is_success) {
     auto status = STATUS(RemoteError, "Local call error", error->message());
     call->SetFailed(std::move(status), std::move(error));
   }
+  NotifyTransferred(Status::OK(), /* ConnectionPtr */ nullptr);
 }
 
 Status LocalYBInboundCall::ParseParam(RpcCallParams* params) {
@@ -127,6 +129,39 @@ Result<size_t> LocalYBInboundCall::ParseRequest(Slice param, const RefCntBuffer&
 
 AnyMessageConstPtr LocalYBInboundCall::SerializableResponse() {
   return outbound_call()->response();
+}
+
+void LocalYBInboundCallTracker::CallProcessed(InboundCall* call) {
+  std::lock_guard<simple_spinlock> lg(lock_);
+  calls_being_handled_.erase(call);
+}
+
+
+void LocalYBInboundCallTracker::Enqueue(InboundCall* call, InboundCallWeakPtr call_ptr) {
+  std::lock_guard<simple_spinlock> lg(lock_);
+  calls_being_handled_.emplace(call, call_ptr);
+}
+
+Status LocalYBInboundCallTracker::DumpRunningRpcs(
+    const DumpRunningRpcsRequestPB& req, DumpRunningRpcsResponsePB* resp) {
+  std::vector<InboundCallPtr> active_calls;
+  {
+    std::lock_guard<simple_spinlock> lg(lock_);
+    active_calls.reserve(calls_being_handled_.size());
+    for (auto& entry: calls_being_handled_) {
+      InboundCallPtr ptr = entry.second.lock();
+      if (ptr) {
+        active_calls.push_back(std::move(ptr));
+      }
+    }
+  }
+  auto* local_calls = resp->mutable_local_calls();
+  local_calls->set_remote_ip("local calls");
+  local_calls->set_state(RpcConnectionPB::StateType::RpcConnectionPB_StateType_OPEN);
+  for (auto call_ptr: active_calls) {
+    call_ptr->DumpPB(req, local_calls->add_calls_in_flight());
+  }
+  return Status::OK();
 }
 
 } // namespace rpc

@@ -81,8 +81,20 @@ void WaitStateInfo::unfreeze() {
   freeze_ = false;
 }
 
+WaitStateCode WaitStateInfo::get_current_state() const {
+  return code_;
+}
+
 WaitStateCode WaitStateInfo::get_frozen_state() const {
   return frozen_state_code_;
+}
+
+WaitStateCode WaitStateInfo::get_state() const {
+  auto ret =  get_frozen_state();
+  if (ret == WaitStateCode::Unused) {
+    ret = code_;
+  }
+  return ret;
 }
 
 void WaitStateInfo::push_state(WaitStateCode c) {
@@ -180,14 +192,6 @@ void WaitStateInfo::set_state(WaitStateCode c) {
   }
   num_updates_++;
   #endif
-}
-
-WaitStateCode WaitStateInfo::get_state() const {
-  auto ret =  get_frozen_state();
-  if (ret == WaitStateCode::Unused) {
-    ret = code_;
-  }
-  return ret;
 }
 
 std::string WaitStateInfo::ToString() const {
@@ -346,7 +350,7 @@ std::unordered_map<util::WaitStateCode, std::atomic_bool> WaitStateInfo::does_wa
 void WaitStateInfo::AssertIOAllowed() {
   auto wait_state = CurrentWaitState();
   if (wait_state) {
-    auto state = wait_state->get_state();
+    auto state = wait_state->get_current_state();
     bool inserted = false;
     {
       std::lock_guard<simple_spinlock> l(does_io_lock_);
@@ -362,7 +366,7 @@ void WaitStateInfo::AssertIOAllowed() {
 void WaitStateInfo::AssertWaitAllowed() {
   auto wait_state = CurrentWaitState();
   if (wait_state) {
-    auto state = wait_state->get_state();
+    auto state = wait_state->get_current_state();
     bool inserted = false;
     {
       std::lock_guard<simple_spinlock> l(does_wait_lock_);

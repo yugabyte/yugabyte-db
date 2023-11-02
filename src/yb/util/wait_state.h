@@ -320,6 +320,7 @@ class WaitStateInfo {
   void set_state_if(WaitStateCode prev, WaitStateCode c);
   WaitStateCode get_state() const;
   WaitStateCode get_frozen_state() const;
+  WaitStateCode get_current_state() const;
   void push_state(WaitStateCode c);
   void pop_state(WaitStateCode c);
 

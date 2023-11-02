@@ -485,6 +485,13 @@ void Messenger::Handle(InboundCallPtr call, Queue queue) {
     call->RespondFailure(ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN, MoveStatus(op));
     return;
   }
+
+  if (call->IsLocalCall()) {
+    InboundCallWeakPtr weak_call_ptr(call);
+    call->SetCallProcessedListener(&local_call_tracker_);
+    local_call_tracker_.Enqueue(call.get(), weak_call_ptr);
+  }
+
   auto it = rpc_endpoints_.find(call->serialized_remote_method());
   if (it == rpc_endpoints_.end()) {
     auto remote_method = ParseRemoteMethod(call->serialized_remote_method());
@@ -513,6 +520,7 @@ void Messenger::Handle(InboundCallPtr call, Queue queue) {
 
   // The RpcService will respond to the client on success or failure.
   call->set_method_index(it->second.second);
+  
   it->second.first->QueueInboundCall(std::move(call));
 }
 
@@ -621,9 +629,14 @@ Status Messenger::Init(const MessengerBuilder &bld) {
 
 Status Messenger::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                                   DumpRunningRpcsResponsePB* resp) {
-  PerCpuRwSharedLock guard(lock_);
-  for (const auto& reactor : reactors_) {
-    RETURN_NOT_OK(reactor->DumpRunningRpcs(req, resp));
+  {
+    PerCpuRwSharedLock guard(lock_);
+    for (const auto& reactor : reactors_) {
+      RETURN_NOT_OK(reactor->DumpRunningRpcs(req, resp));
+    }
+  }
+  if (req.get_local_calls()) {
+    RETURN_NOT_OK(local_call_tracker_.DumpRunningRpcs(req, resp));
   }
   return Status::OK();
 }
