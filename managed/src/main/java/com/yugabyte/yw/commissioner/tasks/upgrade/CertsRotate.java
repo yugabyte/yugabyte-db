@@ -205,7 +205,7 @@ public class CertsRotate extends UpgradeTaskBase {
     if (isCertReloadable(universe)) {
       // cert reload can be performed
       log.info("adding cert rotate via reload task ...");
-      createCertReloadTask(nodes, universe.getUniverseUUID(), userTaskUUID);
+      createCertReloadTask(nodes, universe.getUniverseUUID(), getUserTaskUUID());
 
     } else {
       // Do a restart to rotate certificate

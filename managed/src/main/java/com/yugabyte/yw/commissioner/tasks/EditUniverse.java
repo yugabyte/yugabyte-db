@@ -525,7 +525,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       params.gflags = cluster.userIntent.tserverGFlags;
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       subTaskGroup.addSubTask(task);
       getRunnableTask().addSubTaskGroup(subTaskGroup);
 

@@ -51,10 +51,10 @@ public abstract class AbstractTaskBase implements ITask {
   protected ITaskParams taskParams;
 
   // The UUID of this task.
-  protected UUID taskUUID;
+  private UUID taskUUID;
 
   // The UUID of the top-level user-facing task at the top of Task tree. Eg. CreateUniverse, etc.
-  protected UUID userTaskUUID;
+  private UUID userTaskUUID;
 
   // A field used to send additional information with prometheus metric associated with this task
   public String taskInfo = "";

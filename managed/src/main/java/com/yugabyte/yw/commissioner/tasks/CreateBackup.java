@@ -167,8 +167,8 @@ public class CreateBackup extends UniverseTaskBase {
         metricService.setOkStatusMetric(
             buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
       } catch (CancellationException ce) {
-        log.error("Aborting backups for task: {}", userTaskUUID);
-        Backup.fetchAllBackupsByTaskUUID(userTaskUUID)
+        log.error("Aborting backups for task: {}", getUserTaskUUID());
+        Backup.fetchAllBackupsByTaskUUID(getUserTaskUUID())
             .forEach(
                 bkp -> {
                   bkp.transitionState(BackupState.Stopped);
@@ -183,7 +183,7 @@ public class CreateBackup extends UniverseTaskBase {
     } catch (Throwable t) {
       try {
         log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-        List<Backup> backupList = Backup.fetchAllBackupsByTaskUUID(userTaskUUID);
+        List<Backup> backupList = Backup.fetchAllBackupsByTaskUUID(getUserTaskUUID());
         handleFailedBackupAndRestore(backupList, null, isAbort, params().alterLoadBalancer);
         BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(

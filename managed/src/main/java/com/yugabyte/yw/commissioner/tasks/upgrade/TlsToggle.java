@@ -259,7 +259,7 @@ public class TlsToggle extends UpgradeTaskBase {
     params.nodeToNodeChange = getNodeToNodeChange();
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
-    task.setUserTaskUUID(userTaskUUID);
+    task.setUserTaskUUID(getUserTaskUUID());
     return task;
   }
 
@@ -279,7 +279,7 @@ public class TlsToggle extends UpgradeTaskBase {
     params.nodeToNodeChange = getNodeToNodeChange();
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
-    task.setUserTaskUUID(userTaskUUID);
+    task.setUserTaskUUID(getUserTaskUUID());
     return task;
   }
 

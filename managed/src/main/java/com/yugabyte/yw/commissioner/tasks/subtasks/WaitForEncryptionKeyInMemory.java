@@ -12,7 +12,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.Universe;
@@ -26,9 +25,8 @@ public class WaitForEncryptionKeyInMemory extends NodeTaskBase {
   public static final int KEY_IN_MEMORY_TIMEOUT = 5000;
 
   @Inject
-  protected WaitForEncryptionKeyInMemory(
-      BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected WaitForEncryptionKeyInMemory(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   public static class Params extends NodeTaskParams {

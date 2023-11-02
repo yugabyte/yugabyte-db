@@ -85,7 +85,7 @@ public class RestoreBackup extends UniverseTaskBase {
         getRunnableTask().runSubTasks();
         unlockUniverseForUpdate();
         if (restore != null) {
-          restore.update(taskUUID, Restore.State.Completed);
+          restore.update(getTaskUUID(), Restore.State.Completed);
         }
 
       } catch (CancellationException ce) {
@@ -93,7 +93,7 @@ public class RestoreBackup extends UniverseTaskBase {
         isAbort = true;
         // Aborted
         if (restore != null) {
-          restore.update(taskUUID, Restore.State.Aborted);
+          restore.update(getTaskUUID(), Restore.State.Aborted);
           RestoreKeyspace.update(restore, TaskInfo.State.Aborted);
         }
         kubernetesStatus.updateRestoreJobStatus("Aborted Restore task", getUserTaskUUID());
