@@ -32,8 +32,11 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/client/auto_flags_manager.h"
+
 #include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/version_info.h"
 
 DECLARE_bool(TEST_auto_flags_initialized);
 DECLARE_bool(TEST_auto_flags_new_install);
@@ -563,6 +566,25 @@ TEST_F(AutoFlagsMiniClusterTest, DemoteFlagBeforeBackfillFlagInfos) {
   // flag_infos should still not be set
   ASSERT_EQ(config.promoted_flags(0).flag_infos_size(), 0);
   ASSERT_EQ(config.promoted_flags(1).flag_infos_size(), 0);
+}
+
+TEST_F(AutoFlagsMiniClusterTest, CheckMissingFlag) {
+  ASSERT_OK(RunSetUp());
+  ASSERT_OK(ValidateConfig());
+
+  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto auto_flags_manager = leader_master->master()->auto_flags_manager();
+
+  auto config = auto_flags_manager->GetConfig();
+  for (auto& promoted_flags : *config.mutable_promoted_flags()) {
+    promoted_flags.add_flags("missing_flag");
+  }
+  config.set_config_version(config.config_version() + 1);
+
+  auto s = auto_flags_manager->LoadFromConfig(config, ApplyNonRuntimeAutoFlags::kFalse);
+  ASSERT_NOK(s);
+  ASSERT_TRUE(s.ToString().find("missing_flag") != std::string::npos) << s;
+  ASSERT_TRUE(s.ToString().find(VersionInfo::GetShortVersionString()) != std::string::npos) << s;
 }
 
 class AutoFlagsExternalMiniClusterTest : public ExternalMiniClusterITestBase {
