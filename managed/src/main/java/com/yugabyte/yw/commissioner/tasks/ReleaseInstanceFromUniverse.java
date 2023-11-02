@@ -66,9 +66,8 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
         throw new RuntimeException(msg);
       }
 
-      if (isFirstTry()) {
-        currentNode.validateActionOnState(NodeActionType.RELEASE);
-      }
+      currentNode.validateActionOnState(NodeActionType.RELEASE);
+
       preTaskActions();
 
       // Update Node State to BeingDecommissioned.
