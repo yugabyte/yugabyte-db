@@ -265,9 +265,9 @@ Status XClusterSafeTimeService::CreateXClusterSafeTimeTableIfNotFound() {
   req.set_table_type(TableType::YQL_TABLE_TYPE);
 
   // Schema:
-  // universe_id string (HASH), tablet_id string (HASH), safe_time int64
+  // replication_group_id string (HASH), tablet_id string (HASH), safe_time int64
   client::YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn(kXCUniverseId)->HashPrimaryKey()->Type(DataType::STRING);
+  schema_builder.AddColumn(kXCReplicationGroupId)->HashPrimaryKey()->Type(DataType::STRING);
   schema_builder.AddColumn(kXCProducerTabletId)->HashPrimaryKey()->Type(DataType::STRING);
   schema_builder.AddColumn(kXCSafeTime)->Type(DataType::INT64);
 
@@ -518,7 +518,7 @@ XClusterSafeTimeService::GetSafeTimeFromTable() {
   };
 
   for (const auto& row : client::TableRange(*safe_time_table_, options)) {
-    auto universe_id = row.column(kXCUniverseIdIdx).string_value();
+    auto replication_group_id = row.column(kXCReplicationGroupIdIdx).string_value();
     auto tablet_id = row.column(kXCProducerTabletIdIdx).string_value();
     auto safe_time = row.column(kXCSafeTimeIdx).int64_value();
     HybridTime safe_ht;
@@ -526,9 +526,9 @@ XClusterSafeTimeService::GetSafeTimeFromTable() {
         safe_ht.FromUint64(static_cast<uint64_t>(safe_time)),
         Format(
             "Invalid safe time set in $0 table. universe_uuid:$1, tablet_id:$2",
-            kSafeTimeTableName.table_name(), universe_id, tablet_id));
+            kSafeTimeTableName.table_name(), replication_group_id, tablet_id));
 
-    tablet_safe_time[{universe_id, tablet_id}] = safe_ht;
+    tablet_safe_time[{replication_group_id, tablet_id}] = safe_ht;
   }
 
   RETURN_NOT_OK_PREPEND(

@@ -130,7 +130,7 @@ void AddTableToXClusterTask::AddTableToReplicationGroup(
                                  << " and bootstrap_time " << bootstrap_time_;
   AlterUniverseReplicationRequestPB alter_universe_req;
   AlterUniverseReplicationResponsePB alter_universe_resp;
-  alter_universe_req.set_producer_id(replication_group_id_.ToString());
+  alter_universe_req.set_replication_group_id(replication_group_id_.ToString());
   alter_universe_req.add_producer_table_ids_to_add(producer_table_id);
   alter_universe_req.add_producer_bootstrap_ids_to_add(bootstrap_id);
   FAIL_TASK_AND_RETURN_IF_NOT_OK(catalog_manager_->AlterUniverseReplication(
@@ -149,7 +149,7 @@ void AddTableToXClusterTask::AddTableToReplicationGroup(
 void AddTableToXClusterTask::WaitForSetupUniverseReplicationToFinish() {
   IsSetupUniverseReplicationDoneRequestPB check_req;
   IsSetupUniverseReplicationDoneResponsePB check_resp;
-  check_req.set_producer_id(replication_group_id_.ToString());
+  check_req.set_replication_group_id(replication_group_id_.ToString());
   auto status = catalog_manager_->IsSetupUniverseReplicationDone(
       &check_req, &check_resp, /* RpcContext */ nullptr);
   if (status.ok() && check_resp.has_error()) {

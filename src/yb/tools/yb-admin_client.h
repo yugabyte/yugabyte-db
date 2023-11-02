@@ -405,34 +405,31 @@ class ClusterAdminClient {
                                   const TypedNamespaceName& ns,
                                   bool transactional);
 
-  Status SetupUniverseReplication(const std::string& producer_uuid,
+  Status SetupUniverseReplication(const std::string& replication_group_id,
                                   const std::vector<std::string>& producer_addresses,
                                   const std::vector<TableId>& tables,
                                   const std::vector<std::string>& producer_bootstrap_ids,
                                   bool transactional);
 
-  Status DeleteUniverseReplication(const std::string& producer_id,
+  Status DeleteUniverseReplication(const std::string& replication_group_id,
                                    bool ignore_errors = false);
 
   Status AlterUniverseReplication(
-      const std::string& producer_uuid,
-      const std::vector<std::string>& producer_addresses,
-      const std::vector<TableId>& add_tables,
-      const std::vector<TableId>& remove_tables,
+      const std::string& replication_group_id, const std::vector<std::string>& producer_addresses,
+      const std::vector<TableId>& add_tables, const std::vector<TableId>& remove_tables,
       const std::vector<std::string>& producer_bootstrap_ids_to_add,
-      const std::string& new_producer_universe_id,
-      bool remove_table_ignore_errors = false);
+      const std::string& new_replication_group_id, bool remove_table_ignore_errors = false);
 
   Status RenameUniverseReplication(const std::string& old_universe_name,
                                    const std::string& new_universe_name);
 
   Status WaitForReplicationBootstrapToFinish(const std::string& replication_id);
 
-  Status WaitForSetupUniverseReplicationToFinish(const std::string& producer_uuid);
+  Status WaitForSetupUniverseReplicationToFinish(const std::string& replication_group_id);
 
   Status ChangeXClusterRole(cdc::XClusterRole role);
 
-  Status SetUniverseReplicationEnabled(const std::string& producer_id,
+  Status SetUniverseReplicationEnabled(const std::string& replication_group_id,
                                        bool is_enabled);
 
   Status PauseResumeXClusterProducerStreams(
@@ -443,11 +440,11 @@ class ClusterAdminClient {
   Status WaitForReplicationDrain(
       const std::vector<xrepl::StreamId>& stream_ids, const std::string& target_time);
 
-  Status SetupNSUniverseReplication(const std::string& producer_uuid,
+  Status SetupNSUniverseReplication(const std::string& replication_group_id,
                                     const std::vector<std::string>& producer_addresses,
                                     const TypedNamespaceName& producer_namespace);
 
-  Status GetReplicationInfo(const std::string& universe_uuid);
+  Status GetReplicationInfo(const std::string& replication_group_id);
 
   Result<rapidjson::Document> GetXClusterSafeTime(bool include_lag_and_skew = false);
 
@@ -596,7 +593,7 @@ class ClusterAdminClient {
   Result<HostPort> GetFirstRpcAddressForTS();
 
   void CleanupEnvironmentOnSetupUniverseReplicationFailure(
-    const std::string& producer_uuid, const Status& failure_status);
+    const std::string& replication_group_id, const Status& failure_status);
 
   Status DisableTabletSplitsDuringRestore(CoarseTimePoint deadline);
 
