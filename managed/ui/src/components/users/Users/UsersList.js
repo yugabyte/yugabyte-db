@@ -14,8 +14,8 @@ import { EditRoleModal } from './modals/EditRoleModal';
 import { YBConfirmModal } from '../../modals';
 import { isNonAvailable, isNotHidden, isDisabled } from '../../../utils/LayoutUtils';
 import { timeFormatter } from '../../../utils/TableFormatters';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 export const UsersList = (props) => {
   const [userForModal, setUserModal] = useState(null);
@@ -107,7 +107,7 @@ export const UsersList = (props) => {
           {isNotHidden(customer.data.features, 'universe.create') && (
             <RbacValidator
               isControl
-              accessRequiredOn={UserPermissionMap.createUser}
+              accessRequiredOn={ApiPermissionMap.CREATE_USER}
             >
               <YBButton
                 btnClass="add-user-btn btn btn-lg btn-orange"

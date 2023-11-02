@@ -14,8 +14,8 @@ import * as Yup from 'yup';
 import _ from 'lodash';
 import { isNonEmptyObject, isNonEmptyArray } from '../../utils/ObjectUtils';
 import { getPromiseState } from '../../utils/PromiseUtils';
-import { RbacValidator } from '../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 
 // TODO set predefined defaults another way not to share defaults this way
 const MILLISECONDS_IN_MINUTE = 60000;
@@ -366,20 +366,18 @@ export default class AlertProfileForm extends Component {
                 <div className="form-action-button-container">
                   <Col sm={12}>
                     <RbacValidator
-                    accessRequiredOn={{
-                      ...UserPermissionMap.editAlertsConfig
-                    }}
-                    overrideStyle={{
-                      float: 'right'
-                    }}
-                    isControl
+                      accessRequiredOn={ApiPermissionMap.MODIFY_CUSTOMER}
+                      overrideStyle={{
+                        float: 'right'
+                      }}
+                      isControl
                     >
-                    <YBButton
-                      btnText="Save"
-                      btnType="submit"
-                      disabled={isSubmitting}
-                      btnClass="btn btn-orange pull-right"
-                    />
+                      <YBButton
+                        btnText="Save"
+                        btnType="submit"
+                        disabled={isSubmitting}
+                        btnClass="btn btn-orange pull-right"
+                      />
                     </RbacValidator>
                   </Col>
                 </div>

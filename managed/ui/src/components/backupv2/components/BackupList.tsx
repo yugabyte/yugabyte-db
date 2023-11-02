@@ -47,9 +47,10 @@ import BackupRestoreNewModal from './restore/BackupRestoreNewModal';
 import {
   RbacValidator,
   hasNecessaryPerm
-} from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+} from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+
 import './BackupList.scss';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const reactWidgets = require('react-widgets');
@@ -250,24 +251,18 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
   };
 
   const canCreateBackup = hasNecessaryPerm({
-    onResource: universeUUID,
-    ...UserPermissionMap.createBackup
+    ...ApiPermissionMap.CREATE_BACKUP,
+    onResource: universeUUID ?? ''
   });
 
-  const canDeleteBackup = hasNecessaryPerm({
-    onResource: 'CUSTOMER_ID',
-    ...UserPermissionMap.deleteBackup
-  });
+  const canDeleteBackup = hasNecessaryPerm(ApiPermissionMap.DELETE_BACKUP);
 
   const canRestoreBackup = hasNecessaryPerm({
-    onResource: universeUUID,
-    ...UserPermissionMap.restoreBackup
+    ...ApiPermissionMap.RESTORE_BACKUP,
+    onResource: universeUUID ?? ''
   });
 
-  const canChangeRetentionPeriod = hasNecessaryPerm({
-    onResource: 'CUSTOMER_ID',
-    ...UserPermissionMap.changeRetentionPeriod
-  });
+  const canChangeRetentionPeriod = hasNecessaryPerm(ApiPermissionMap.EDIT_BACKUP);
 
   const getActions = (row: IBackup) => {
     if (row.commonBackupInfo.state === Backup_States.DELETED) {
@@ -298,7 +293,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         <RbacValidator
           accessRequiredOn={{
             onResource: universeUUID,
-            ...UserPermissionMap.restoreBackup
+            ...ApiPermissionMap.RESTORE_BACKUP,
           }}
           isControl
           overrideStyle={{ display: 'block' }}
@@ -327,10 +322,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           </MenuItem>
         </RbacValidator>
         <RbacValidator
-          accessRequiredOn={{
-            onResource: 'CUSTOMER_ID',
-            ...UserPermissionMap.deleteBackup
-          }}
+          accessRequiredOn={ApiPermissionMap.DELETE_BACKUP}
           isControl
           overrideStyle={{ display: 'block' }}
         >
@@ -348,10 +340,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           </MenuItem>
         </RbacValidator>
         <RbacValidator
-          accessRequiredOn={{
-            onResource: 'CUSTOMER_ID',
-            ...UserPermissionMap.editBackup
-          }}
+          accessRequiredOn={ApiPermissionMap.EDIT_BACKUP}
           isControl
           overrideStyle={{ display: 'block' }}
         >
@@ -513,10 +502,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
             maxMenuHeight={300}
           ></Select>
           <RbacValidator
-            accessRequiredOn={{
-              onResource: 'CUSTOMER_ID',
-              ...UserPermissionMap.deleteBackup
-            }}
+            accessRequiredOn={ApiPermissionMap.DELETE_BACKUP}
             isControl
           >
             <YBButton
@@ -531,7 +517,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
               <RbacValidator
                 accessRequiredOn={{
                   onResource: universeUUID,
-                  ...UserPermissionMap.createBackup
+                  ...ApiPermissionMap.CREATE_BACKUP
                 }}
                 isControl
               >

@@ -16,11 +16,9 @@ import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { YBPanelItem } from '../../panels';
 
 import { StorageConfigDeleteModal } from './StorageConfigDeleteModal';
-import {
-  RbacValidator,
-  hasNecessaryPerm
-} from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+
 
 /**
  * This method is used to return the current in-use status
@@ -54,10 +52,7 @@ const header = (currTab, onCreateBackup) => (
     <FlexContainer className="pull-right">
       <FlexShrink>
         <RbacValidator
-          accessRequiredOn={{
-            onResource: 'CUSTOMER_ID',
-            ...UserPermissionMap.createStorageConfiguration
-          }}
+          accessRequiredOn={ApiPermissionMap.CREATE_CUSTOMER_CONFIG}
           isControl
         >
           <Button bsClass="btn btn-orange btn-config" onClick={onCreateBackup}>
@@ -100,10 +95,7 @@ export const BackupList = (props) => {
           pullRight
         >
           <RbacValidator
-            accessRequiredOn={{
-              onResource: 'CUSTOMER_ID',
-              ...UserPermissionMap.editStorageConfiguration
-            }}
+            accessRequiredOn={ApiPermissionMap.EDIT_CUSTOMER_CONFIG}
             isControl
             overrideStyle={{ display: 'block' }}
           >
@@ -118,33 +110,19 @@ export const BackupList = (props) => {
           </RbacValidator>
           <MenuItem
             onClick={(e) => {
-              if (
-                !hasNecessaryPerm({
-                  onResource: 'CUSTOMER_ID',
-                  ...UserPermissionMap.listBackup
-                })
-              ) {
+              if (!hasNecessaryPerm(ApiPermissionMap.GET_BACKUP)) {
                 return;
               }
               e.stopPropagation();
               setShowAssociatedBackups(true);
               setConfigData({ configUUID, configName });
             }}
-            disabled={
-              !hasNecessaryPerm({
-                onResource: 'CUSTOMER_ID',
-                ...UserPermissionMap.listBackup
-              })
-            }
-            data-testid={`${currTab}-BackupList-ShowAssociatedBackups`}
+            disabled={!hasNecessaryPerm(ApiPermissionMap.GET_BACKUP)}
           >
             Show associated backups
           </MenuItem>
           <RbacValidator
-            accessRequiredOn={{
-              onResource: 'CUSTOMER_ID',
-              ...UserPermissionMap.deleteStorageConfiguration
-            }}
+            accessRequiredOn={ApiPermissionMap.DELETE_CUSTOMER_CONFIG}
             isControl
             overrideStyle={{ display: 'block' }}
           >

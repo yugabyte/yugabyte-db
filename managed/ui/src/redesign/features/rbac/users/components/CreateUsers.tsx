@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { FormProvider, useForm } from 'react-hook-form';
 import { Box, FormHelperText, makeStyles } from '@material-ui/core';
 import Container from '../../common/Container';
+import { isSSOEnabled } from '../../../../../config';
 import { RolesAndResourceMapping } from '../../policy/RolesAndResourceMapping';
 import { YBInputField, YBPasswordField } from '../../../../components';
 import { createUser } from '../../api';
@@ -133,20 +134,25 @@ const CreateUsersForm = forwardRef((_, forwardRef) => {
             placeholder={t('form.emailPlaceholder')}
             fullWidth
           />
-          <YBPasswordField
-            name="password"
-            control={methods.control}
-            label={t('form.password')}
-            placeholder={t('form.password')}
-            fullWidth
-          />
-          <YBPasswordField
-            name="confirmPassword"
-            control={methods.control}
-            label={t('form.confirmPassword')}
-            placeholder={t('form.confirmPassword')}
-            fullWidth
-          />
+          {!isSSOEnabled() && (
+            <>
+              <YBPasswordField
+                name="password"
+                control={methods.control}
+                label={t('form.password')}
+                placeholder={t('form.password')}
+                fullWidth
+              />
+              <YBPasswordField
+                name="confirmPassword"
+                control={methods.control}
+                label={t('form.confirmPassword')}
+                placeholder={t('form.confirmPassword')}
+                fullWidth
+              />
+            </>
+          )}
+
           <RolesAndResourceMapping />
           {errors.roleResourceDefinitions?.message && (
             <FormHelperText required error>

@@ -5,10 +5,10 @@
 // This file will hold all the configuration list of alerts.
 
 import { useEffect, useRef, useState } from 'react';
+import { find } from 'lodash';
 import { Col, DropdownButton, MenuItem, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
-import { getPromiseState } from '../../../utils/PromiseUtils';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
@@ -29,8 +29,10 @@ import {
   NO_DESTINATION
 } from './AlertsFilter';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
-import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator, customPermValidateFunction, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { Action, Resource } from '../../../redesign/features/rbac';
+import { ControlComp } from '../../../redesign/features/rbac/common/validator/ValidatorUtils';
 
 /**
  * This is the header for YB Panel Item.
@@ -47,9 +49,7 @@ const header = (
   updateFilters,
   clearAllFilters
 ) => {
-  const canCreatePolicy = hasNecessaryPerm({
-    ...UserPermissionMap.createAlertsConfig
-  });
+  const canCreatePolicy = hasNecessaryPerm(ApiPermissionMap.CREATE_ALERT_CONFIGURATIONS);
   return (
     <>
       <Row className="pills-container">
@@ -356,6 +356,11 @@ export const AlertsList = (props) => {
 
   const formatAlertTargets = (cell) => {
     if (cell.all) return 'All';
+    if (!customPermValidateFunction((userPermissions) => {
+      return find(userPermissions, { resourceType: Resource.UNIVERSE, actions: Action.READ }) !== undefined;
+    })) {
+      return ControlComp({ children: <span>No Universe Perm</span> });
+    }
     const targetUniverse = cell.uuids
       .map((uuid) => {
         return universes.data.find((destination) => destination.universeUUID === uuid);
@@ -457,12 +462,8 @@ export const AlertsList = (props) => {
   const editActionLabel = isReadOnly ? 'Alert Details' : 'Edit Alert';
   const formatConfigActions = (cell, row, rowIndex, sizePerPage, totalRecords, currentPage) => {
 
-    const canEditAlerts = hasNecessaryPerm({
-      ...UserPermissionMap.editAlertsConfig
-    });
-    const canDeleteAlerts = hasNecessaryPerm({
-      ...UserPermissionMap.deleteAlertsConfig
-    });
+    const canEditAlerts = hasNecessaryPerm(ApiPermissionMap.MODIFY_ALERT_CONFIGURATIONS);
+    const canDeleteAlerts = hasNecessaryPerm(ApiPermissionMap.DELETE_ALERT_CONFIGURATIONS);
 
     return (
       <>
@@ -475,9 +476,7 @@ export const AlertsList = (props) => {
           pullRight
         >
           <RbacValidator
-            accessRequiredOn={{
-              ...UserPermissionMap.editAlertsConfig
-            }}
+            accessRequiredOn={ApiPermissionMap.MODIFY_ALERT_CONFIGURATIONS}
             isControl
             overrideStyle={{ display: 'block' }}
           >
@@ -495,9 +494,7 @@ export const AlertsList = (props) => {
 
           {!row.active && !isReadOnly ? (
             <RbacValidator
-              accessRequiredOn={{
-                ...UserPermissionMap.editAlertsConfig
-              }}
+              accessRequiredOn={ApiPermissionMap.MODIFY_ALERT_CONFIGURATIONS}
               isControl
               overrideStyle={{ display: 'block' }}
             >
@@ -513,9 +510,7 @@ export const AlertsList = (props) => {
 
           {row.active && !isReadOnly ? (
             <RbacValidator
-              accessRequiredOn={{
-                ...UserPermissionMap.editAlertsConfig
-              }}
+              accessRequiredOn={ApiPermissionMap.MODIFY_ALERT_CONFIGURATIONS}
               isControl
               overrideStyle={{ display: 'block' }}
             >
@@ -533,9 +528,7 @@ export const AlertsList = (props) => {
 
           {!isReadOnly ? (
             <RbacValidator
-              accessRequiredOn={{
-                ...UserPermissionMap.deleteAlertsConfig
-              }}
+              accessRequiredOn={ApiPermissionMap.DELETE_ALERT_CONFIGURATIONS}
               isControl
               overrideStyle={{ display: 'block' }}
             >
@@ -550,9 +543,7 @@ export const AlertsList = (props) => {
 
           {!isReadOnly ? (
             <RbacValidator
-              accessRequiredOn={{
-                ...UserPermissionMap.sendTestAlert
-              }}
+              accessRequiredOn={ApiPermissionMap.SEND_TEST_ALERT}
               isControl
               overrideStyle={{ display: 'block' }}
             >
@@ -692,9 +683,9 @@ export const AlertsList = (props) => {
     });
   }, [filters]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!getPromiseState(universes).isSuccess() && !getPromiseState(universes).isEmpty()) {
-    return <YBLoading />;
-  }
+  // if (!getPromiseState(universes).isSuccess() && !getPromiseState(universes).isEmpty()) {
+  //   return <YBLoading />;
+  // }
 
   const clearAllFilters = () => {
     setFilters({});
@@ -702,9 +693,7 @@ export const AlertsList = (props) => {
 
   return (
     <RbacValidator
-      accessRequiredOn={{
-        ...UserPermissionMap.readAlertsConfig
-      }}
+      accessRequiredOn={ApiPermissionMap.GET_ALERT_CONFIGURATIONS}
     >
       <YBPanelItem
         header={header(

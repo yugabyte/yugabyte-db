@@ -11,8 +11,8 @@ import { Formik, Form, Field } from 'formik';
 import { YBFormInput, YBButton, YBModal, YBToggle, YBFormSelect } from '../../common/forms/fields';
 import { LDAPMappingModal } from './LDAPGroups';
 import { getLDAPRoleMapping, setLDAPRoleMapping } from '../../../actions/customers';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import { YUGABYTE_TITLE } from '../../../config';
@@ -370,353 +370,121 @@ export const LDAPAuth = (props) => {
   }, [configEntries, setToggleVisible, setLDAP]);
 
   return (
-    <div className="bottom-bar-padding">
-      {dialog && (
-        <YBModal
-          title="Disable LDAP"
-          visible={dialog}
-          showCancelButton={true}
-          submitLabel="Disable LDAP"
-          cancelLabel="Cancel"
-          cancelBtnProps={{
-            className: 'btn btn-default pull-left ldap-cancel-btn'
-          }}
-          onHide={handleDialogClose}
-          onFormSubmit={handleDialogSubmit}
-        >
-          <div className="ldap-modal-c">
-            <div className="ldap-modal-c-icon">
-              <WarningIcon />
+    <RbacValidator
+      accessRequiredOn={ApiPermissionMap.GET_LDAP_MAPPINGS}
+    >
+      <div className="bottom-bar-padding">
+        {dialog && (
+          <YBModal
+            title="Disable LDAP"
+            visible={dialog}
+            showCancelButton={true}
+            submitLabel="Disable LDAP"
+            cancelLabel="Cancel"
+            cancelBtnProps={{
+              className: 'btn btn-default pull-left ldap-cancel-btn'
+            }}
+            onHide={handleDialogClose}
+            onFormSubmit={handleDialogSubmit}
+          >
+            <div className="ldap-modal-c">
+              <div className="ldap-modal-c-icon">
+                <WarningIcon />
+              </div>
+              <div className="ldap-modal-c-content">
+                <b>Note!</b> Users authenticated via LDAP will no longer be able to login if you
+                disable LDAP. Are you sure?
+              </div>
             </div>
-            <div className="ldap-modal-c-content">
-              <b>Note!</b> Users authenticated via LDAP will no longer be able to login if you
-              disable LDAP. Are you sure?
-            </div>
-          </div>
-        </YBModal>
-      )}
-      <Col>
-        <Formik
-          validationSchema={VALIDATION_SCHEMA}
-          initialValues={initializeFormValues()}
-          enableReinitialize
-          onSubmit={(values, { setSubmitting, resetForm }) => {
-            saveLDAPConfigs(values);
-            setSubmitting(false);
-            resetForm(values);
-          }}
-        >
-          {({ handleSubmit, isSubmitting, errors, dirty, values, setFieldValue }) => {
-            const isDisabled = !ldapEnabled && showToggle;
-            const isSaveEnabled = dirty || !isEqual(initMappingValue.current, mappingData);
-            const showServiceAccToggle =
-              values.use_search_and_bind === 'false' &&
-              values.ldap_group_use_role_mapping === false;
-            const showServAccFields = values.use_service_account || !showServiceAccToggle;
+          </YBModal>
+        )}
+        <Col>
+          <Formik
+            validationSchema={VALIDATION_SCHEMA}
+            initialValues={initializeFormValues()}
+            enableReinitialize
+            onSubmit={(values, { setSubmitting, resetForm }) => {
+              saveLDAPConfigs(values);
+              setSubmitting(false);
+              resetForm(values);
+            }}
+          >
+            {({ handleSubmit, isSubmitting, errors, dirty, values, setFieldValue }) => {
+              const isDisabled = !ldapEnabled && showToggle;
+              const isSaveEnabled = dirty || !isEqual(initMappingValue.current, mappingData);
+              const showServiceAccToggle =
+                values.use_search_and_bind === 'false' &&
+                values.ldap_group_use_role_mapping === false;
+              const showServAccFields = values.use_service_account || !showServiceAccToggle;
 
-            const LDAPToggle = () => (
-              <YBToggle
-                onToggle={handleToggle}
-                name="use_ldap"
-                input={{
-                  value: ldapEnabled,
-                  onChange: () => { }
-                }}
-                isReadOnly={!showToggle}
-              />
-            );
+              const LDAPToggle = () => (
+                <YBToggle
+                  onToggle={handleToggle}
+                  name="use_ldap"
+                  input={{
+                    value: ldapEnabled,
+                    onChange: () => { }
+                  }}
+                  isReadOnly={!showToggle}
+                />
+              );
 
-            const LDAPToggleTooltip = () => (
-              <OverlayTrigger
-                placement="top"
-                overlay={
-                  <Tooltip className="high-index" id="ldap-toggle-tooltip">
-                    To enable LDAP you need to provide and save the required configurations
-                  </Tooltip>
-                }
-              >
-                <div>
-                  <LDAPToggle />
-                </div>
-              </OverlayTrigger>
-            );
+              const LDAPToggleTooltip = () => (
+                <OverlayTrigger
+                  placement="top"
+                  overlay={
+                    <Tooltip className="high-index" id="ldap-toggle-tooltip">
+                      To enable LDAP you need to provide and save the required configurations
+                    </Tooltip>
+                  }
+                >
+                  <div>
+                    <LDAPToggle />
+                  </div>
+                </OverlayTrigger>
+              );
 
-            return (
-              <Form name="LDAPConfigForm" onSubmit={handleSubmit}>
-                <Row className="ua-field-row">
-                  <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
-                    <Row className="ua-field-row">
-                      <Col className="ua-label-c ua-title-c">
-                        <h5>LDAP Configuration</h5>
-                      </Col>
+              return (
+                <Form name="LDAPConfigForm" onSubmit={handleSubmit}>
+                  <Row className="ua-field-row">
+                    <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
+                      <Row className="ua-field-row">
+                        <Col className="ua-label-c ua-title-c">
+                          <h5>LDAP Configuration</h5>
+                        </Col>
 
-                      <Col className="ua-toggle-c">
-                        <>
-                          <Col className="ua-toggle-label-c">
-                            LDAP Enabled &nbsp;
-                            <YBInfoTip
-                              title="LDAP Enabled"
-                              content="Enable or Disable LDAP Authentication"
-                            >
-                              <i className="fa fa-info-circle" />
-                            </YBInfoTip>
-                          </Col>
-
-                          {showToggle ? <LDAPToggle /> : <LDAPToggleTooltip />}
-                        </>
-                      </Col>
-                    </Row>
-                  </Col>
-                </Row>
-
-                {/* LDAP CONFIG */}
-                <Row>
-                  <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c ldap-config">
-                    <div className="ua-box-c">
-                      <Row key="ldap_url">
-                        <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
-                          <Row className="ua-field-row">
-                            <Col className="ua-label-c">
-                              <div>
-                                LDAP URL &nbsp;
-                                <YBInfoTip
-                                  title="LDAP URL"
-                                  content="LDAP URL must be a valid URL with port number, Ex:- 0.0.0.0:0000"
-                                >
-                                  <i className="fa fa-info-circle" />
-                                </YBInfoTip>
-                              </div>
+                        <Col className="ua-toggle-c">
+                          <>
+                            <Col className="ua-toggle-label-c">
+                              LDAP Enabled &nbsp;
+                              <YBInfoTip
+                                title="LDAP Enabled"
+                                content="Enable or Disable LDAP Authentication"
+                              >
+                                <i className="fa fa-info-circle" />
+                              </YBInfoTip>
                             </Col>
-                            <Col lg={12} className="ua-field">
-                              <Field
-                                name="ldap_url"
-                                component={YBFormInput}
-                                disabled={isDisabled}
-                                className="ua-form-field"
-                              />
-                            </Col>
-                          </Row>
+
+                            {showToggle ? <LDAPToggle /> : <LDAPToggleTooltip />}
+                          </>
                         </Col>
                       </Row>
+                    </Col>
+                  </Row>
 
-                      <Row key="connection_security">
-                        <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
-                          <Row className="ua-field-row">
-                            <Col className="ua-label-c">
-                              <div>
-                                Security Protocol &nbsp;
-                                <YBInfoTip
-                                  customClass="ldap-info-popover"
-                                  title="Security Protocol"
-                                  content="Configure the LDAP server connection to use LDAPS (SSL) or LDAP with StartTLS (TLS) encryption"
-                                >
-                                  <i className="fa fa-info-circle" />
-                                </YBInfoTip>
-                              </div>
-                            </Col>
-                            <Col lg={12} className="ua-field ua-radio-c">
-                              <Row className="ua-radio-field-c">
-                                {SECURITY_OPTIONS.map(({ label, value }) => (
-                                  <Col key={`security-${value}`} className="ua-auth-radio-field">
-                                    <Field
-                                      name={'ldap_security'}
-                                      type="radio"
-                                      component="input"
-                                      value={value}
-                                      checked={`${value}` === `${values['ldap_security']}`}
-                                      disabled={isDisabled}
-                                    />
-                                    &nbsp;&nbsp;{label}
-                                  </Col>
-                                ))}
-                              </Row>
-                              <Row className="has-error">
-                                {errors.ldap_security && (
-                                  <div className="help-block standard-error">
-                                    <span>{errors.ldap_security}</span>
-                                  </div>
-                                )}
-                              </Row>
-                            </Col>
-                          </Row>
-                        </Col>
-                      </Row>
-
-                      {['enable_ldap_start_tls', 'enable_ldaps'].includes(
-                        values?.ldap_security
-                      ) && (
-                          <Row key="tls_protocol">
-                            <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
-                              <Row className="ua-field-row">
-                                <Col className="ua-label-c">
-                                  <div>
-                                    TLS Version &nbsp;
-                                    <YBInfoTip
-                                      customClass="ldap-info-popover"
-                                      title="TLS Protocol Version"
-                                      content="Configure the TLS Protocol Version to be used in case of StartTLS or LDAPS"
-                                    >
-                                      <i className="fa fa-info-circle" />
-                                    </YBInfoTip>
-                                  </div>
-                                </Col>
-                                <Col lg={12} className="ua-field ua-radio-c">
-                                  <Row className="ua-radio-field-c">
-                                    {TLS_VERSIONS.map(({ label, value }) => (
-                                      <Col key={`tls-${value}`} className="ua-radio-field">
-                                        <Field
-                                          name={'ldap_tls_protocol'}
-                                          type="radio"
-                                          component="input"
-                                          value={value}
-                                          checked={`${value}` === `${values['ldap_tls_protocol']}`}
-                                          disabled={isDisabled}
-                                        />
-                                        &nbsp;&nbsp;{label}
-                                      </Col>
-                                    ))}
-                                  </Row>
-                                  <Row className="has-error">
-                                    {errors.ldap_security && (
-                                      <div className="help-block standard-error">
-                                        <span>{errors.ldap_security}</span>
-                                      </div>
-                                    )}
-                                  </Row>
-                                </Col>
-                              </Row>
-                            </Col>
-                          </Row>
-                        )}
-
-                      <Row key="ldap_basedn">
-                        <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
-                          <Row className="ua-field-row">
-                            <Col className="ua-label-c">
-                              <div>
-                                LDAP Base DN <br />
-                                (Optional) &nbsp;
-                                <YBInfoTip
-                                  customClass="ldap-info-popover"
-                                  title="LDAP Base DN"
-                                  content="Base of the DN for LDAP queries. Will be appended to the user name at login time to query the LDAP server"
-                                >
-                                  <i className="fa fa-info-circle" />
-                                </YBInfoTip>
-                              </div>
-                            </Col>
-                            <Col lg={12} className="ua-field">
-                              <Field
-                                name="ldap_basedn"
-                                component={YBFormInput}
-                                disabled={isDisabled}
-                                className="ua-form-field"
-                              />
-                            </Col>
-                          </Row>
-                        </Col>
-                      </Row>
-
-                      <Row key="ldap_dn_prefix">
-                        <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
-                          <Row className="ua-field-row">
-                            <Col className="ua-label-c">
-                              <div>
-                                LDAP DN Prefix <br />
-                                (Optional)&nbsp;
-                                <YBInfoTip
-                                  title="LDAP DN Prefix"
-                                  content="LDAP DN Prefix will be set to CN= by default if not provided"
-                                >
-                                  <i className="fa fa-info-circle" />
-                                </YBInfoTip>
-                              </div>
-                            </Col>
-                            <Col lg={12} className="ua-field">
-                              <Field
-                                name="ldap_dn_prefix"
-                                component={YBFormInput}
-                                disabled={isDisabled}
-                                className="ua-form-field"
-                              />
-                            </Col>
-                          </Row>
-                        </Col>
-                      </Row>
-
-                      <Row key="ldap_customeruuid">
-                        <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
-                          <Row className="ua-field-row">
-                            <Col className="ua-label-c">
-                              <div>
-                                LDAP Customer UUID <br />
-                                (Optional) &nbsp;
-                                <YBInfoTip
-                                  title="LDAP Customer UUID"
-                                  content="Unique ID of the customer in case of multi-tenant platform"
-                                >
-                                  <i className="fa fa-info-circle" />
-                                </YBInfoTip>
-                              </div>
-                            </Col>
-                            <Col lg={12} className="ua-field">
-                              <Field
-                                name="ldap_customeruuid"
-                                component={YBFormInput}
-                                disabled={isDisabled}
-                                className="ua-form-field"
-                              />
-                            </Col>
-                          </Row>
-                        </Col>
-                      </Row>
-
-                      <Row key="auth_mode">
-                        <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
-                          <Row className="ua-field-row">
-                            <Col className="ua-label-c">
-                              <div>
-                                Binding Mechanism &nbsp;
-                                <YBInfoTip
-                                  customClass="ldap-info-popover"
-                                  title="Binding Mechanism"
-                                  content="Mechanism used to bind to the LDAP server"
-                                >
-                                  <i className="fa fa-info-circle" />
-                                </YBInfoTip>
-                              </div>
-                            </Col>
-                            <Col lg={12} className="ua-field ua-radio-c">
-                              <Row className="ua-radio-field-c">
-                                {AUTH_MODES.map(({ label, value }) => (
-                                  <Col key={`auth-mode-${value}`} className="ua-auth-radio-field">
-                                    <Field
-                                      name={'use_search_and_bind'}
-                                      type="radio"
-                                      component="input"
-                                      value={value}
-                                      checked={`${value}` === `${values['use_search_and_bind']}`}
-                                      disabled={isDisabled}
-                                    />
-                                    &nbsp;&nbsp;{label}
-                                  </Col>
-                                ))}
-                              </Row>
-                            </Col>
-                          </Row>
-                        </Col>
-                      </Row>
-
-                      {values?.use_search_and_bind === 'true' && (
-                        <Row key="ldap_search_attribute">
+                  {/* LDAP CONFIG */}
+                  <Row>
+                    <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c ldap-config">
+                      <div className="ua-box-c">
+                        <Row key="ldap_url">
                           <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
                             <Row className="ua-field-row">
                               <Col className="ua-label-c">
                                 <div>
-                                  Search Attribute &nbsp;
+                                  LDAP URL &nbsp;
                                   <YBInfoTip
-                                    title="Search Attribute"
-                                    content="Attribute that will be used to search for the user in the LDAP server"
+                                    title="LDAP URL"
+                                    content="LDAP URL must be a valid URL with port number, Ex:- 0.0.0.0:0000"
                                   >
                                     <i className="fa fa-info-circle" />
                                   </YBInfoTip>
@@ -724,7 +492,7 @@ export const LDAPAuth = (props) => {
                               </Col>
                               <Col lg={12} className="ua-field">
                                 <Field
-                                  name="ldap_search_attribute"
+                                  name="ldap_url"
                                   component={YBFormInput}
                                   disabled={isDisabled}
                                   className="ua-form-field"
@@ -733,402 +501,244 @@ export const LDAPAuth = (props) => {
                             </Row>
                           </Col>
                         </Row>
-                      )}
-                      <br />
-                      <Row key="footer_banner-1">
-                        <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
-                          <Row className="ua-field-row">
-                            <div className="footer-msg">
-                              <Col>
-                                <img alt="--" src={Bulb} width="24" />
-                              </Col>
-                              &nbsp;
-                              <Col>
-                                <Row>
-                                  <b>Note!</b> {YUGABYTE_TITLE} will use the Service Account{' '}
-                                  {`{{Bind DN}}`} to connect to your LDAP server and perform the
-                                  search.
-                                </Row>
-                              </Col>
-                            </div>
-                          </Row>
-                        </Col>
-                      </Row>
-                    </div>
-                  </Col>
-                </Row>
-                {/* LDAP CONFIG */}
 
-                {/* ROLE SETTINGS */}
-                {enableLDAPRoleMapping && (
-                  <Row className="ldap-sec-container ">
-                    <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c adv-settings">
-                      <Row className="ua-field-row">
-                        <Col lg={9} className=" ua-title-c">
-                          <h5>Role Settings</h5>
-                        </Col>
-                      </Row>
-
-                      <div>
-                        <div className="default-ldap-role-c">
-                          <div className="ua-box-c default-ldap-role-b">
+                        <Row key="connection_security">
+                          <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
                             <Row className="ua-field-row">
                               <Col className="ua-label-c">
-                                <div>User&apos;s default role &nbsp;</div>
+                                <div>
+                                  Security Protocol &nbsp;
+                                  <YBInfoTip
+                                    customClass="ldap-info-popover"
+                                    title="Security Protocol"
+                                    content="Configure the LDAP server connection to use LDAPS (SSL) or LDAP with StartTLS (TLS) encryption"
+                                  >
+                                    <i className="fa fa-info-circle" />
+                                  </YBInfoTip>
+                                </div>
                               </Col>
                               <Col lg={12} className="ua-field ua-radio-c">
                                 <Row className="ua-radio-field-c">
-                                  {YBA_ROLES.filter((role) => role.showInDefault).map(
-                                    ({ label, value }) => (
-                                      <Col
-                                        key={`ldap_default_value-${value}`}
-                                        className="ua-auth-radio-field"
-                                      >
-                                        <Field
-                                          name={'ldap_default_role'}
-                                          type="radio"
-                                          component="input"
-                                          value={value}
-                                          checked={`${value}` === `${values['ldap_default_role']}`}
-                                          disabled={isDisabled}
-                                        />
-                                        &nbsp;&nbsp;{label}&nbsp;
-                                        {value === 'ConnectOnly' && (
-                                          <YBInfoTip
-                                            customClass="ldap-info-popover"
-                                            title="ConnectOnly role"
-                                            content="Users with ConnectOnly role cannot see any information other than their own profile information"
-                                          >
-                                            <i className="fa fa-info-circle" />
-                                          </YBInfoTip>
-                                        )}
-                                      </Col>
-                                    )
+                                  {SECURITY_OPTIONS.map(({ label, value }) => (
+                                    <Col key={`security-${value}`} className="ua-auth-radio-field">
+                                      <Field
+                                        name={'ldap_security'}
+                                        type="radio"
+                                        component="input"
+                                        value={value}
+                                        checked={`${value}` === `${values['ldap_security']}`}
+                                        disabled={isDisabled}
+                                      />
+                                      &nbsp;&nbsp;{label}
+                                    </Col>
+                                  ))}
+                                </Row>
+                                <Row className="has-error">
+                                  {errors.ldap_security && (
+                                    <div className="help-block standard-error">
+                                      <span>{errors.ldap_security}</span>
+                                    </div>
                                   )}
                                 </Row>
                               </Col>
                             </Row>
-                          </div>
-                        </div>
-                        <div className="ua-box-c ">
-                          <Row
-                            key="ldap_use_role_mapping"
-                            className="role-mapping-c mapping-toggle"
-                          >
-                            <Col xs={10} sm={9} md={8} lg={4} className="ua-field-row-c">
-                              <YBToggle
-                                name="ldap_group_use_role_mapping"
-                                input={{
-                                  value: values.ldap_group_use_role_mapping,
-                                  onChange: (e) => {
-                                    setFieldValue('ldap_group_use_role_mapping', e.target.checked);
-                                    if (isUndefined(values.ldap_group_use_query))
-                                      setFieldValue('ldap_group_use_query', 'false');
-                                  }
-                                }}
-                              />{' '}
-                              &nbsp; Map YugabyteDB Anywhere built-in roles to your existing LDAP
-                              groups
-                            </Col>
-                          </Row>
-                          {`true` === `${values.ldap_group_use_role_mapping}` && (
-                            <>
-                              <div className="box-title">1. Configure membership lookup</div>
+                          </Col>
+                        </Row>
 
-                              <div className="box-content config-membership">
-                                <Row className="ua-radio-field-c">
-                                  <Col className="ua-auth-radio-field box-content-row">
-                                    <Field
-                                      name={'ldap_group_use_query'}
-                                      type="radio"
-                                      component="input"
-                                      value={'false'}
-                                      checked={`false` === `${values['ldap_group_use_query']}`}
-                                      disabled={isDisabled}
-                                    />
-                                    &nbsp;&nbsp;{'User Attribute'}
-                                  </Col>
-
-                                  <Col className="ua-auth-radio-field box-content-row">
-                                    <Field
-                                      name={'ldap_group_use_query'}
-                                      type="radio"
-                                      component="input"
-                                      value={'true'}
-                                      checked={`true` === `${values['ldap_group_use_query']}`}
-                                      disabled={isDisabled}
-                                    />
-                                    &nbsp;&nbsp;{'Group Search Filter'}
-                                  </Col>
-                                </Row>
-
-                                {`false` === `${values.ldap_group_use_query}` ? (
-                                  <Row key="ldap_group_member_of_attribute">
-                                    <Col xs={10} sm={9} md={8} lg={4} className="ua-field-row-c ">
-                                      <Row className="ua-field-row attrib-name">
-                                        <Field
-                                          name="ldap_group_member_of_attribute"
-                                          label=" Attribute that will be used to find the list of groups that is a
-                                        member of"
-                                          component={YBFormInput}
-                                          disabled={isDisabled}
-                                          className="ua-form-field"
-                                          placeholder="memberOf"
-                                          defaultValue="memberOf"
-                                        />
-                                      </Row>
-                                    </Col>
-                                  </Row>
-                                ) : (
-                                  <>
-                                    <Row key="ldap_group_search_filter" className="filter_query">
-                                      <Col className="ua-field-row-c ">
-                                        <Row className="ua-field-row filter_query">
-                                          <Field
-                                            name="ldap_group_search_filter"
-                                            label="Filter to find all groups that a user belongs to"
-                                            component={YBFormInput}
-                                            disabled={isDisabled}
-                                            className="ua-form-field"
-                                            placeholder="(&(objectClass=group)(member=CN={username},OU=Users,DC=yugabyte,DC=com)"
-                                          />
-                                        </Row>
-                                        <Row className="helper-text helper-text-1">{`Use {username} to refer to the the YBA username`}</Row>
-                                        <Row className="helper-text helper-text-2">
-                                          {`Example: (&(objectClass=group)(member=CN={username},OU=Users,DC=yugabyte,DC=com)`}
-                                        </Row>
-                                      </Col>
-                                    </Row>
-                                    <br />
-                                    <Row key="ldap_group_search_base_dn" className="filter_query">
-                                      <Col className="ua-field-row-c ">
-                                        <Row className="ua-field-row filter_query">
-                                          <Field
-                                            name="ldap_group_search_base_dn"
-                                            label={
-                                              <>
-                                                Group Search Base DN&nbsp;
-                                                <YBInfoTip
-                                                  customClass="ldap-info-popover"
-                                                  title="Group Search Base DN"
-                                                  content="Base DN used to search for user group membership."
-                                                >
-                                                  <i className="fa fa-info-circle" />
-                                                </YBInfoTip>
-                                              </>
-                                            }
-                                            component={YBFormInput}
-                                            disabled={isDisabled}
-                                            className="ua-form-field"
-                                            placeholder="Example:- OU=Groups,DC=yugabyte,DC=com"
-                                          />
-                                        </Row>
-                                      </Col>
-                                    </Row>
-                                    <br />
-                                    <Row key="ldap_group_search_scope" className="scope-selector">
-                                      <Col className="ua-field-row-c ">
-                                        <Row className="ua-field-row scope-selector">
-                                          <Field
-                                            name="ldap_group_search_scope"
-                                            label="Select Scope"
-                                            component={YBFormSelect}
-                                            options={LDAP_SCOPES}
-                                            isDisabled={isDisabled}
-                                            value={DEFAULT_SCOPE}
-                                            defaultValue={DEFAULT_SCOPE}
-                                          />
-                                        </Row>
-                                      </Col>
-                                    </Row>
-                                  </>
-                                )}
-                              </div>
-
-                              <div className="box-title">2. Define Role to Group Mapping</div>
-                              <div className="box-content map-roles">
-                                <div className="ua-box-c">
-                                  {!mappingData.length && (
-                                    <Col className="ua-field-row-c ">
-                                      <Row className="ua-field-row create-map-c">
-                                        <YBButton
-                                          className="ldap-btn"
-                                          btnText={
-                                            <>
-                                              <Mapping />
-                                              <>Create Mappings</>
-                                            </>
-                                          }
-                                          onClick={() => {
-                                            setLDAPMapping(true);
-                                          }}
-                                        />
-                                      </Row>
-                                    </Col>
-                                  )}
-                                  {mappingData.length > 0 && (
-                                    <Col className="ua-field-row-c ">
-                                      <Row className="ua-field-row edit-map-c">
-                                        <YBButton
-                                          className="ldap-btn edit-roles-btn"
-                                          btnText={
-                                            <>
-                                              <Pencil />
-                                              <>Edit </>
-                                            </>
-                                          }
-                                          onClick={() => {
-                                            setLDAPMapping(true);
-                                          }}
-                                        />
-                                      </Row>
-                                    </Col>
-                                  )}
-                                </div>
-
-                                {mappingData.length > 0 && (
-                                  <div className="ua-box-c">
-                                    <Col className="ua-field-row-c ">
-                                      <Row className="ua-field-row">
-                                        <BootstrapTable
-                                          data={mappingData}
-                                          className="ua-table"
-                                          trClassName="ua-table-row"
-                                          tableHeaderClass="ua-table-header"
-                                        >
-                                          <TableHeaderColumn
-                                            dataField="id"
-                                            isKey={true}
-                                            hidden={true}
-                                          />
-                                          <TableHeaderColumn
-                                            dataField="ybaRole"
-                                            dataSort
-                                            width="170px"
-                                          >
-                                            ROLE
-                                          </TableHeaderColumn>
-                                          <TableHeaderColumn dataField="distinguishedName">
-                                            DN NAME
-                                          </TableHeaderColumn>
-                                        </BootstrapTable>
-                                      </Row>
-                                    </Col>
-                                  </div>
-                                )}
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </Col>
-                  </Row>
-                )}
-                {/* ROLE SETTINGS */}
-
-                {/* SERVICE ACCOUNT */}
-                <Row className="ldap-sec-container">
-                  <Row className="ua-field-row">
-                    <Col lg={9} className=" ua-title-c">
-                      <h5>Service Account Details</h5>
-                    </Col>
-                  </Row>
-
-                  <Row
-                    key="ldap_service_account_details"
-                    className="ldap-service-account ua-flex-box"
-                  >
-                    <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
-                      <div className="ua-box-c">
-                        {showServiceAccToggle ? (
-                          <Row key="ldap_use_service_account">
-                            <Col
-                              xs={10}
-                              sm={9}
-                              md={8}
-                              lg={4}
-                              className="ua-field-row-c serv-acc-toggle"
-                            >
-                              <YBToggle
-                                name="use_service_account"
-                                input={{
-                                  value: values.use_service_account,
-                                  onChange: (e) => {
-                                    setFieldValue('use_service_account', e.target.checked);
-                                  }
-                                }}
-                              />{' '}
-                              &nbsp; Add Service Account Details
-                            </Col>
-                          </Row>
-                        ) : (
-                          <Row key="ldap_use_service_account-2">
-                            <div className="box-title add-serv-acc-no-toggle">
-                              Add Service Account Details
-                            </div>
-                          </Row>
-                        )}
-                        {showServAccFields && (
-                          <>
-                            <Row key="ldap_service_account_distinguished_name">
-                              <Col xs={10} sm={9} md={8} lg={4} className="ua-field-row-c">
+                        {['enable_ldap_start_tls', 'enable_ldaps'].includes(
+                          values?.ldap_security
+                        ) && (
+                            <Row key="tls_protocol">
+                              <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
                                 <Row className="ua-field-row">
                                   <Col className="ua-label-c">
                                     <div>
-                                      Bind DN &nbsp;
+                                      TLS Version &nbsp;
                                       <YBInfoTip
                                         customClass="ldap-info-popover"
-                                        title="Bind DN"
-                                        content="Bind DN will be used to login to the service account"
+                                        title="TLS Protocol Version"
+                                        content="Configure the TLS Protocol Version to be used in case of StartTLS or LDAPS"
                                       >
                                         <i className="fa fa-info-circle" />
                                       </YBInfoTip>
                                     </div>
                                   </Col>
-                                  <Col lg={12} className="ua-field">
-                                    <Field
-                                      name="ldap_service_account_distinguished_name"
-                                      component={YBFormInput}
-                                      disabled={isDisabled}
-                                      className="ua-form-field"
-                                    />
+                                  <Col lg={12} className="ua-field ua-radio-c">
+                                    <Row className="ua-radio-field-c">
+                                      {TLS_VERSIONS.map(({ label, value }) => (
+                                        <Col key={`tls-${value}`} className="ua-radio-field">
+                                          <Field
+                                            name={'ldap_tls_protocol'}
+                                            type="radio"
+                                            component="input"
+                                            value={value}
+                                            checked={`${value}` === `${values['ldap_tls_protocol']}`}
+                                            disabled={isDisabled}
+                                          />
+                                          &nbsp;&nbsp;{label}
+                                        </Col>
+                                      ))}
+                                    </Row>
+                                    <Row className="has-error">
+                                      {errors.ldap_security && (
+                                        <div className="help-block standard-error">
+                                          <span>{errors.ldap_security}</span>
+                                        </div>
+                                      )}
+                                    </Row>
                                   </Col>
                                 </Row>
                               </Col>
                             </Row>
+                          )}
 
-                            <Row key="ldap_service_account_password">
-                              <Col xs={10} sm={9} md={8} lg={4} className="ua-field-row-c">
-                                <Row className="ua-field-row">
-                                  <Col className="ua-label-c">
-                                    <div>
-                                      Password&nbsp;
-                                      <YBInfoTip
-                                        title="Password"
-                                        content="Password for Service Account"
-                                      >
-                                        <i className="fa fa-info-circle" />
-                                      </YBInfoTip>
-                                    </div>
-                                  </Col>
-                                  <Col lg={12} className="ua-field">
-                                    <Field
-                                      name="ldap_service_account_password"
-                                      component={YBFormInput}
-                                      disabled={isDisabled}
-                                      className="ua-form-field"
-                                      type="password"
-                                      autoComplete="new-password"
-                                    />
-                                  </Col>
+                        <Row key="ldap_basedn">
+                          <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
+                            <Row className="ua-field-row">
+                              <Col className="ua-label-c">
+                                <div>
+                                  LDAP Base DN <br />
+                                  (Optional) &nbsp;
+                                  <YBInfoTip
+                                    customClass="ldap-info-popover"
+                                    title="LDAP Base DN"
+                                    content="Base of the DN for LDAP queries. Will be appended to the user name at login time to query the LDAP server"
+                                  >
+                                    <i className="fa fa-info-circle" />
+                                  </YBInfoTip>
+                                </div>
+                              </Col>
+                              <Col lg={12} className="ua-field">
+                                <Field
+                                  name="ldap_basedn"
+                                  component={YBFormInput}
+                                  disabled={isDisabled}
+                                  className="ua-form-field"
+                                />
+                              </Col>
+                            </Row>
+                          </Col>
+                        </Row>
+
+                        <Row key="ldap_dn_prefix">
+                          <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
+                            <Row className="ua-field-row">
+                              <Col className="ua-label-c">
+                                <div>
+                                  LDAP DN Prefix <br />
+                                  (Optional)&nbsp;
+                                  <YBInfoTip
+                                    title="LDAP DN Prefix"
+                                    content="LDAP DN Prefix will be set to CN= by default if not provided"
+                                  >
+                                    <i className="fa fa-info-circle" />
+                                  </YBInfoTip>
+                                </div>
+                              </Col>
+                              <Col lg={12} className="ua-field">
+                                <Field
+                                  name="ldap_dn_prefix"
+                                  component={YBFormInput}
+                                  disabled={isDisabled}
+                                  className="ua-form-field"
+                                />
+                              </Col>
+                            </Row>
+                          </Col>
+                        </Row>
+
+                        <Row key="ldap_customeruuid">
+                          <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
+                            <Row className="ua-field-row">
+                              <Col className="ua-label-c">
+                                <div>
+                                  LDAP Customer UUID <br />
+                                  (Optional) &nbsp;
+                                  <YBInfoTip
+                                    title="LDAP Customer UUID"
+                                    content="Unique ID of the customer in case of multi-tenant platform"
+                                  >
+                                    <i className="fa fa-info-circle" />
+                                  </YBInfoTip>
+                                </div>
+                              </Col>
+                              <Col lg={12} className="ua-field">
+                                <Field
+                                  name="ldap_customeruuid"
+                                  component={YBFormInput}
+                                  disabled={isDisabled}
+                                  className="ua-form-field"
+                                />
+                              </Col>
+                            </Row>
+                          </Col>
+                        </Row>
+
+                        <Row key="auth_mode">
+                          <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
+                            <Row className="ua-field-row">
+                              <Col className="ua-label-c">
+                                <div>
+                                  Binding Mechanism &nbsp;
+                                  <YBInfoTip
+                                    customClass="ldap-info-popover"
+                                    title="Binding Mechanism"
+                                    content="Mechanism used to bind to the LDAP server"
+                                  >
+                                    <i className="fa fa-info-circle" />
+                                  </YBInfoTip>
+                                </div>
+                              </Col>
+                              <Col lg={12} className="ua-field ua-radio-c">
+                                <Row className="ua-radio-field-c">
+                                  {AUTH_MODES.map(({ label, value }) => (
+                                    <Col key={`auth-mode-${value}`} className="ua-auth-radio-field">
+                                      <Field
+                                        name={'use_search_and_bind'}
+                                        type="radio"
+                                        component="input"
+                                        value={value}
+                                        checked={`${value}` === `${values['use_search_and_bind']}`}
+                                        disabled={isDisabled}
+                                      />
+                                      &nbsp;&nbsp;{label}
+                                    </Col>
+                                  ))}
                                 </Row>
                               </Col>
                             </Row>
-                          </>
+                          </Col>
+                        </Row>
+
+                        {values?.use_search_and_bind === 'true' && (
+                          <Row key="ldap_search_attribute">
+                            <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
+                              <Row className="ua-field-row">
+                                <Col className="ua-label-c">
+                                  <div>
+                                    Search Attribute &nbsp;
+                                    <YBInfoTip
+                                      title="Search Attribute"
+                                      content="Attribute that will be used to search for the user in the LDAP server"
+                                    >
+                                      <i className="fa fa-info-circle" />
+                                    </YBInfoTip>
+                                  </div>
+                                </Col>
+                                <Col lg={12} className="ua-field">
+                                  <Field
+                                    name="ldap_search_attribute"
+                                    component={YBFormInput}
+                                    disabled={isDisabled}
+                                    className="ua-form-field"
+                                  />
+                                </Col>
+                              </Row>
+                            </Col>
+                          </Row>
                         )}
-
                         <br />
-                        <Row key="footer_banner-2">
+                        <Row key="footer_banner-1">
                           <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
                             <Row className="ua-field-row">
                               <div className="footer-msg">
@@ -1150,41 +760,435 @@ export const LDAPAuth = (props) => {
                       </div>
                     </Col>
                   </Row>
-                </Row>
-                {/* SERVICE ACCOUNT */}
+                  {/* LDAP CONFIG */}
 
-                {LDAPMapping && (
-                  <LDAPMappingModal
-                    open={LDAPMapping}
-                    values={mappingData}
-                    onClose={() => setLDAPMapping(false)}
-                    onSubmit={(values) => {
-                      setLDAPMapping(false);
-                      setMappingData(values);
-                    }}
-                  />
-                )}
+                  {/* ROLE SETTINGS */}
+                  {enableLDAPRoleMapping && (
+                    <Row className="ldap-sec-container ">
+                      <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c adv-settings">
+                        <Row className="ua-field-row">
+                          <Col lg={9} className=" ua-title-c">
+                            <h5>Role Settings</h5>
+                          </Col>
+                        </Row>
 
-                <Row key="ldap_submit">
-                  <RbacValidator
-                    accessRequiredOn={UserPermissionMap.updateLDAP}
-                    isControl
-                  >
-                    <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c ua-action-c">
-                      <YBButton
-                        btnText="Save"
-                        btnType="submit"
-                        disabled={(isSubmitting || isDisabled || !isSaveEnabled) && !isRbacEnabled()}
-                        btnClass="btn btn-orange pull-right"
-                      />
-                    </Col>
-                  </RbacValidator>
-                </Row>
-              </Form>
-            );
-          }}
-        </Formik>
-      </Col>
-    </div >
+                        <div>
+                          <div className="default-ldap-role-c">
+                            <div className="ua-box-c default-ldap-role-b">
+                              <Row className="ua-field-row">
+                                <Col className="ua-label-c">
+                                  <div>User&apos;s default role &nbsp;</div>
+                                </Col>
+                                <Col lg={12} className="ua-field ua-radio-c">
+                                  <Row className="ua-radio-field-c">
+                                    {YBA_ROLES.filter((role) => role.showInDefault).map(
+                                      ({ label, value }) => (
+                                        <Col
+                                          key={`ldap_default_value-${value}`}
+                                          className="ua-auth-radio-field"
+                                        >
+                                          <Field
+                                            name={'ldap_default_role'}
+                                            type="radio"
+                                            component="input"
+                                            value={value}
+                                            checked={`${value}` === `${values['ldap_default_role']}`}
+                                            disabled={isDisabled}
+                                          />
+                                          &nbsp;&nbsp;{label}&nbsp;
+                                          {value === 'ConnectOnly' && (
+                                            <YBInfoTip
+                                              customClass="ldap-info-popover"
+                                              title="ConnectOnly role"
+                                              content="Users with ConnectOnly role cannot see any information other than their own profile information"
+                                            >
+                                              <i className="fa fa-info-circle" />
+                                            </YBInfoTip>
+                                          )}
+                                        </Col>
+                                      )
+                                    )}
+                                  </Row>
+                                </Col>
+                              </Row>
+                            </div>
+                          </div>
+                          <div className="ua-box-c ">
+                            <Row
+                              key="ldap_use_role_mapping"
+                              className="role-mapping-c mapping-toggle"
+                            >
+                              <Col xs={10} sm={9} md={8} lg={4} className="ua-field-row-c">
+                                <YBToggle
+                                  name="ldap_group_use_role_mapping"
+                                  input={{
+                                    value: values.ldap_group_use_role_mapping,
+                                    onChange: (e) => {
+                                      setFieldValue('ldap_group_use_role_mapping', e.target.checked);
+                                      if (isUndefined(values.ldap_group_use_query))
+                                        setFieldValue('ldap_group_use_query', 'false');
+                                    }
+                                  }}
+                                />{' '}
+                                &nbsp; Map YugabyteDB Anywhere built-in roles to your existing LDAP
+                                groups
+                              </Col>
+                            </Row>
+                            {`true` === `${values.ldap_group_use_role_mapping}` && (
+                              <>
+                                <div className="box-title">1. Configure membership lookup</div>
+
+                                <div className="box-content config-membership">
+                                  <Row className="ua-radio-field-c">
+                                    <Col className="ua-auth-radio-field box-content-row">
+                                      <Field
+                                        name={'ldap_group_use_query'}
+                                        type="radio"
+                                        component="input"
+                                        value={'false'}
+                                        checked={`false` === `${values['ldap_group_use_query']}`}
+                                        disabled={isDisabled}
+                                      />
+                                      &nbsp;&nbsp;{'User Attribute'}
+                                    </Col>
+
+                                    <Col className="ua-auth-radio-field box-content-row">
+                                      <Field
+                                        name={'ldap_group_use_query'}
+                                        type="radio"
+                                        component="input"
+                                        value={'true'}
+                                        checked={`true` === `${values['ldap_group_use_query']}`}
+                                        disabled={isDisabled}
+                                      />
+                                      &nbsp;&nbsp;{'Group Search Filter'}
+                                    </Col>
+                                  </Row>
+
+                                  {`false` === `${values.ldap_group_use_query}` ? (
+                                    <Row key="ldap_group_member_of_attribute">
+                                      <Col xs={10} sm={9} md={8} lg={4} className="ua-field-row-c ">
+                                        <Row className="ua-field-row attrib-name">
+                                          <Field
+                                            name="ldap_group_member_of_attribute"
+                                            label=" Attribute that will be used to find the list of groups that is a
+                                        member of"
+                                            component={YBFormInput}
+                                            disabled={isDisabled}
+                                            className="ua-form-field"
+                                            placeholder="memberOf"
+                                            defaultValue="memberOf"
+                                          />
+                                        </Row>
+                                      </Col>
+                                    </Row>
+                                  ) : (
+                                    <>
+                                      <Row key="ldap_group_search_filter" className="filter_query">
+                                        <Col className="ua-field-row-c ">
+                                          <Row className="ua-field-row filter_query">
+                                            <Field
+                                              name="ldap_group_search_filter"
+                                              label="Filter to find all groups that a user belongs to"
+                                              component={YBFormInput}
+                                              disabled={isDisabled}
+                                              className="ua-form-field"
+                                              placeholder="(&(objectClass=group)(member=CN={username},OU=Users,DC=yugabyte,DC=com)"
+                                            />
+                                          </Row>
+                                          <Row className="helper-text helper-text-1">{`Use {username} to refer to the the YBA username`}</Row>
+                                          <Row className="helper-text helper-text-2">
+                                            {`Example: (&(objectClass=group)(member=CN={username},OU=Users,DC=yugabyte,DC=com)`}
+                                          </Row>
+                                        </Col>
+                                      </Row>
+                                      <br />
+                                      <Row key="ldap_group_search_base_dn" className="filter_query">
+                                        <Col className="ua-field-row-c ">
+                                          <Row className="ua-field-row filter_query">
+                                            <Field
+                                              name="ldap_group_search_base_dn"
+                                              label={
+                                                <>
+                                                  Group Search Base DN&nbsp;
+                                                  <YBInfoTip
+                                                    customClass="ldap-info-popover"
+                                                    title="Group Search Base DN"
+                                                    content="Base DN used to search for user group membership."
+                                                  >
+                                                    <i className="fa fa-info-circle" />
+                                                  </YBInfoTip>
+                                                </>
+                                              }
+                                              component={YBFormInput}
+                                              disabled={isDisabled}
+                                              className="ua-form-field"
+                                              placeholder="Example:- OU=Groups,DC=yugabyte,DC=com"
+                                            />
+                                          </Row>
+                                        </Col>
+                                      </Row>
+                                      <br />
+                                      <Row key="ldap_group_search_scope" className="scope-selector">
+                                        <Col className="ua-field-row-c ">
+                                          <Row className="ua-field-row scope-selector">
+                                            <Field
+                                              name="ldap_group_search_scope"
+                                              label="Select Scope"
+                                              component={YBFormSelect}
+                                              options={LDAP_SCOPES}
+                                              isDisabled={isDisabled}
+                                              value={DEFAULT_SCOPE}
+                                              defaultValue={DEFAULT_SCOPE}
+                                            />
+                                          </Row>
+                                        </Col>
+                                      </Row>
+                                    </>
+                                  )}
+                                </div>
+
+                                <div className="box-title">2. Define Role to Group Mapping</div>
+                                <div className="box-content map-roles">
+                                  <div className="ua-box-c">
+                                    {!mappingData.length && (
+                                      <Col className="ua-field-row-c ">
+                                        <Row className="ua-field-row create-map-c">
+                                          <YBButton
+                                            className="ldap-btn"
+                                            btnText={
+                                              <>
+                                                <Mapping />
+                                                <>Create Mappings</>
+                                              </>
+                                            }
+                                            onClick={() => {
+                                              setLDAPMapping(true);
+                                            }}
+                                          />
+                                        </Row>
+                                      </Col>
+                                    )}
+                                    {mappingData.length > 0 && (
+                                      <Col className="ua-field-row-c ">
+                                        <Row className="ua-field-row edit-map-c">
+                                          <YBButton
+                                            className="ldap-btn edit-roles-btn"
+                                            btnText={
+                                              <>
+                                                <Pencil />
+                                                <>Edit </>
+                                              </>
+                                            }
+                                            onClick={() => {
+                                              setLDAPMapping(true);
+                                            }}
+                                          />
+                                        </Row>
+                                      </Col>
+                                    )}
+                                  </div>
+
+                                  {mappingData.length > 0 && (
+                                    <div className="ua-box-c">
+                                      <Col className="ua-field-row-c ">
+                                        <Row className="ua-field-row">
+                                          <BootstrapTable
+                                            data={mappingData}
+                                            className="ua-table"
+                                            trClassName="ua-table-row"
+                                            tableHeaderClass="ua-table-header"
+                                          >
+                                            <TableHeaderColumn
+                                              dataField="id"
+                                              isKey={true}
+                                              hidden={true}
+                                            />
+                                            <TableHeaderColumn
+                                              dataField="ybaRole"
+                                              dataSort
+                                              width="170px"
+                                            >
+                                              ROLE
+                                            </TableHeaderColumn>
+                                            <TableHeaderColumn dataField="distinguishedName">
+                                              DN NAME
+                                            </TableHeaderColumn>
+                                          </BootstrapTable>
+                                        </Row>
+                                      </Col>
+                                    </div>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </Col>
+                    </Row>
+                  )}
+                  {/* ROLE SETTINGS */}
+
+                  {/* SERVICE ACCOUNT */}
+                  <Row className="ldap-sec-container">
+                    <Row className="ua-field-row">
+                      <Col lg={9} className=" ua-title-c">
+                        <h5>Service Account Details</h5>
+                      </Col>
+                    </Row>
+
+                    <Row
+                      key="ldap_service_account_details"
+                      className="ldap-service-account ua-flex-box"
+                    >
+                      <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
+                        <div className="ua-box-c">
+                          {showServiceAccToggle ? (
+                            <Row key="ldap_use_service_account">
+                              <Col
+                                xs={10}
+                                sm={9}
+                                md={8}
+                                lg={4}
+                                className="ua-field-row-c serv-acc-toggle"
+                              >
+                                <YBToggle
+                                  name="use_service_account"
+                                  input={{
+                                    value: values.use_service_account,
+                                    onChange: (e) => {
+                                      setFieldValue('use_service_account', e.target.checked);
+                                    }
+                                  }}
+                                />{' '}
+                                &nbsp; Add Service Account Details
+                              </Col>
+                            </Row>
+                          ) : (
+                            <Row key="ldap_use_service_account-2">
+                              <div className="box-title add-serv-acc-no-toggle">
+                                Add Service Account Details
+                              </div>
+                            </Row>
+                          )}
+                          {showServAccFields && (
+                            <>
+                              <Row key="ldap_service_account_distinguished_name">
+                                <Col xs={10} sm={9} md={8} lg={4} className="ua-field-row-c">
+                                  <Row className="ua-field-row">
+                                    <Col className="ua-label-c">
+                                      <div>
+                                        Bind DN &nbsp;
+                                        <YBInfoTip
+                                          customClass="ldap-info-popover"
+                                          title="Bind DN"
+                                          content="Bind DN will be used to login to the service account"
+                                        >
+                                          <i className="fa fa-info-circle" />
+                                        </YBInfoTip>
+                                      </div>
+                                    </Col>
+                                    <Col lg={12} className="ua-field">
+                                      <Field
+                                        name="ldap_service_account_distinguished_name"
+                                        component={YBFormInput}
+                                        disabled={isDisabled}
+                                        className="ua-form-field"
+                                      />
+                                    </Col>
+                                  </Row>
+                                </Col>
+                              </Row>
+
+                              <Row key="ldap_service_account_password">
+                                <Col xs={10} sm={9} md={8} lg={4} className="ua-field-row-c">
+                                  <Row className="ua-field-row">
+                                    <Col className="ua-label-c">
+                                      <div>
+                                        Password&nbsp;
+                                        <YBInfoTip
+                                          title="Password"
+                                          content="Password for Service Account"
+                                        >
+                                          <i className="fa fa-info-circle" />
+                                        </YBInfoTip>
+                                      </div>
+                                    </Col>
+                                    <Col lg={12} className="ua-field">
+                                      <Field
+                                        name="ldap_service_account_password"
+                                        component={YBFormInput}
+                                        disabled={isDisabled}
+                                        className="ua-form-field"
+                                        type="password"
+                                        autoComplete="new-password"
+                                      />
+                                    </Col>
+                                  </Row>
+                                </Col>
+                              </Row>
+                            </>
+                          )}
+
+                          <br />
+                          <Row key="footer_banner-2">
+                            <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
+                              <Row className="ua-field-row">
+                                <div className="footer-msg">
+                                  <Col>
+                                    <img alt="--" src={Bulb} width="24" />
+                                  </Col>
+                                  &nbsp;
+                                  <Col>
+                                    <Row>
+                                      <b>Note!</b> {YUGABYTE_TITLE} will use the Service Account{' '}
+                                      {`{{Bind DN}}`} to connect to your LDAP server and perform the
+                                      search.
+                                    </Row>
+                                  </Col>
+                                </div>
+                              </Row>
+                            </Col>
+                          </Row>
+                        </div>
+                      </Col>
+                    </Row>
+                  </Row>
+                  {/* SERVICE ACCOUNT */}
+
+                  {LDAPMapping && (
+                    <LDAPMappingModal
+                      open={LDAPMapping}
+                      values={mappingData}
+                      onClose={() => setLDAPMapping(false)}
+                      onSubmit={(values) => {
+                        setLDAPMapping(false);
+                        setMappingData(values);
+                      }}
+                    />
+                  )}
+
+                  <Row key="ldap_submit">
+                    <RbacValidator
+                      accessRequiredOn={ApiPermissionMap.UPDATE_LDAP_MAPPING}
+                      isControl
+                    >
+                      <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c ua-action-c">
+                        <YBButton
+                          btnText="Save"
+                          btnType="submit"
+                          disabled={(isSubmitting || isDisabled || !isSaveEnabled) && !isRbacEnabled()}
+                          btnClass="btn btn-orange pull-right"
+                        />
+                      </Col>
+                    </RbacValidator>
+                  </Row>
+                </Form>
+              );
+            }}
+          </Formik>
+        </Col>
+      </div >
+    </RbacValidator>
   );
 };

@@ -10,6 +10,7 @@
 import * as yup from 'yup';
 import { TFunction } from 'i18next';
 import { isEqual, uniq, uniqWith } from 'lodash';
+import { isSSOEnabled } from '../../../../../config';
 import { RbacUserWithResources } from '../interface/Users';
 import { RoleType } from '../../roles';
 
@@ -50,18 +51,23 @@ const getRoleResourceDefinitionsSchema = (t: TFunction) => {
 };
 
 export const getUserValidationSchema = (t: TFunction) => {
-  const validationSchema = yup.object({
+  let validationSchema = yup.object({
     email: yup
       .string()
       .required(t('form.validationMsg.emailRequired'))
       .email(t('form.validationMsg.invalidEmail')),
-    password: yup.string().required(t('form.validationMsg.passwordRequired')),
-    confirmPassword: yup
-      .string()
-      .required(t('form.validationMsg.confirmPasswordRequired'))
-      .oneOf([yup.ref('password')], t('form.validationMsg.confirmPasswordMatch')),
     ...getRoleResourceDefinitionsSchema(t)
   });
+
+  if (!isSSOEnabled()) {
+    validationSchema = validationSchema.shape({
+      password: yup.string().required(t('form.validationMsg.passwordRequired')),
+      confirmPassword: yup
+        .string()
+        .required(t('form.validationMsg.confirmPasswordRequired'))
+        .oneOf([yup.ref('password')], t('form.validationMsg.confirmPasswordMatch'))
+    });
+  }
 
   return validationSchema;
 };
