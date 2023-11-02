@@ -745,11 +745,10 @@ class PgClient::Impl {
     return resp;
   }
 
-  Result<tserver::PgTableIDMetadataResponsePB>TableIDMetadata() {
+  Result<tserver::PgTableIDMetadataResponsePB> TableIDMetadata() {
     tserver::PgTableIDMetadataRequestPB req; 
     tserver::PgTableIDMetadataResponsePB resp;
     RETURN_NOT_OK(proxy_->TableIDMetadata(req, &resp, PrepareController()));
-    //std::vector<master::ListTablesResponsePB::TableInfo> result(resp.tables().begin(), resp.tables().end());
     return resp;
   }
 
