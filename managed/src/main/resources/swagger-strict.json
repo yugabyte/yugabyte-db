@@ -6495,130 +6495,17 @@
     "MetricQueryParams" : {
       "description" : "Metrics request data",
       "properties" : {
-        "availabilityZones" : {
-          "description" : "Availability zone code",
-          "items" : {
-            "type" : "string"
-          },
-          "type" : "array"
-        },
-        "clusterUuids" : {
-          "description" : "Cluster UUIDs",
-          "items" : {
-            "format" : "uuid",
-            "type" : "string"
-          },
-          "type" : "array"
-        },
-        "end" : {
-          "description" : "End time",
-          "format" : "int64",
-          "type" : "integer"
-        },
-        "isRecharts" : {
-          "description" : "Is Recharts",
-          "type" : "boolean"
-        },
-        "metrics" : {
-          "description" : "Metrics",
-          "items" : {
-            "type" : "string"
-          },
-          "type" : "array"
-        },
-        "metricsWithSettings" : {
-          "description" : "List of metrics with custom settings",
-          "items" : {
-            "$ref" : "#/definitions/MetricSettings"
-          },
-          "type" : "array"
-        },
-        "nodeNames" : {
-          "description" : "Node names",
-          "items" : {
-            "type" : "string"
-          },
-          "type" : "array"
-        },
-        "nodePrefix" : {
-          "description" : "Node prefix",
-          "type" : "string"
-        },
-        "regionCodes" : {
-          "description" : "Region code",
-          "items" : {
-            "type" : "string"
-          },
-          "type" : "array"
-        },
-        "serverType" : {
-          "description" : "Server type",
-          "enum" : [ "MASTER", "TSERVER", "CONTROLLER", "YQLSERVER", "YSQLSERVER", "REDISSERVER", "EITHER" ],
-          "type" : "string"
-        },
-        "start" : {
-          "description" : "Start time",
-          "format" : "int64",
-          "type" : "integer"
-        },
-        "streamId" : {
-          "description" : "Stream id",
-          "type" : "string"
-        },
-        "tableId" : {
-          "description" : "Table id",
-          "type" : "string"
-        },
-        "tableName" : {
-          "description" : "Table name",
-          "type" : "string"
-        },
         "xclusterConfigUuid" : {
           "format" : "uuid",
           "type" : "string"
         }
       },
-      "required" : [ "start", "xclusterConfigUuid" ],
+      "required" : [ "xclusterConfigUuid" ],
       "type" : "object"
     },
     "MetricSettings" : {
       "description" : "Settings, selected for particular metric",
-      "properties" : {
-        "metric" : {
-          "description" : "Metric name",
-          "type" : "string"
-        },
-        "nodeAggregation" : {
-          "description" : "Way of metrics aggregation across nodes",
-          "enum" : [ "DEFAULT", "MIN", "MAX", "AVG", "SUM" ],
-          "type" : "string"
-        },
-        "returnAggregatedValue" : {
-          "description" : "Defines if we return 'mean' line with node lines in case we split nodes",
-          "type" : "boolean"
-        },
-        "splitCount" : {
-          "description" : "Defines how many node lines we return in case we split by nodes/tables/etc.",
-          "format" : "int32",
-          "type" : "integer"
-        },
-        "splitMode" : {
-          "description" : "Controls if we split nodes, tables, etc. into own lines OR aggregate  and how we select lines in case of split query",
-          "enum" : [ "NONE", "TOP", "BOTTOM" ],
-          "type" : "string"
-        },
-        "splitType" : {
-          "description" : "Defines set of labels, which we use for a split query",
-          "enum" : [ "NONE", "NODE", "TABLE", "NAMESPACE" ],
-          "type" : "string"
-        },
-        "timeAggregation" : {
-          "description" : "Way of metrics aggregation over time",
-          "enum" : [ "DEFAULT", "MIN", "MAX", "AVG" ],
-          "type" : "string"
-        }
-      },
-      "required" : [ "metric" ],
+      "properties" : { },
       "type" : "object"
     },
     "MetricValue" : {
@@ -18356,53 +18243,6 @@
         } ],
         "summary" : "Update maintenance window",
         "tags" : [ "Maintenance windows" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/metrics" : {
-      "post" : {
-        "description" : "",
-        "operationId" : "metrics",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "Metrics to be added",
-          "in" : "body",
-          "name" : "Metrics",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/MetricQueryParams"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "additionalProperties" : {
-                "type" : "object"
-              },
-              "type" : "object"
-            }
-          },
-          "400" : {
-            "description" : "When request fails validations.",
-            "schema" : {
-              "$ref" : "#/definitions/YBPError"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Add metrics to a customer",
-        "tags" : [ "Customer management" ]
       }
     },
     "/api/v1/customers/{cUUID}/node_agents" : {

@@ -112,7 +112,8 @@ public class MetricConfigTest extends FakeDBApplication {
         allOf(
             notNullValue(),
             equalTo(
-                "((avg(irate(test_usage{pod_name=~\"yb-tserver-(.*)\"}[60s])))/(avg(test_request{pod_name=~\"yb-tserver-(.*)\"})))*100")));
+                "((avg(irate(test_usage{pod_name=~\"yb-tserver-(.*)\"}[60s]))) / "
+                    + "(avg(test_request{pod_name=~\"yb-tserver-(.*)\"}))) * 100")));
   }
 
   @Test
