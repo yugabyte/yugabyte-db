@@ -13,6 +13,7 @@ public class ShellResponse {
   // Some known error codes for shell process.
   private static final String RUN_COMMAND_OUTPUT_PREFIX = "Command output:";
   public static final int ERROR_CODE_SUCCESS = 0;
+  public static final String ERROR_OUTPUT_PREFIX = "ERROR:";
   public static final int ERROR_CODE_GENERIC_ERROR = -1;
   public static final int ERROR_CODE_EXECUTION_CANCELLED = -2;
 
@@ -59,6 +60,10 @@ public class ShellResponse {
       }
     }
     return this;
+  }
+
+  public static String cleanedUpErrorMessage(String message) {
+    return message.substring(Math.max(message.indexOf(ERROR_OUTPUT_PREFIX), 0));
   }
 
   public String extractRunCommandOutput() {

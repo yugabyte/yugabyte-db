@@ -151,10 +151,16 @@ public class YsqlQueryExecutor {
     String queryString =
         queryType.equals("SELECT") ? wrapJsonAgg(queryParams.query) : queryParams.query;
 
-    ShellResponse shellResponse =
-        nodeUniverseManager
-            .runYsqlCommand(node, universe, queryParams.db_name, queryString)
-            .processErrors("Ysql Query Execution Error");
+    ShellResponse shellResponse = new ShellResponse();
+    try {
+      shellResponse =
+          nodeUniverseManager
+              .runYsqlCommand(node, universe, queryParams.db_name, queryString)
+              .processErrors("Ysql Query Execution Error");
+    } catch (RuntimeException e) {
+      response.put("error", ShellResponse.cleanedUpErrorMessage(e.getMessage()));
+      return response;
+    }
     try {
       ObjectMapper objectMapper = new ObjectMapper();
       if (queryType.equals("SELECT")) {
