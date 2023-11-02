@@ -113,7 +113,6 @@ SELECT * FROM single_row_decimal ORDER BY k;
 insert into t2 values (4), (5), (6);
 delete from t2 where id > 2 returning id, name;
 
--- YB_TODO: There's some issue with drop table
 -- COPY FROM
 CREATE TABLE myemp (id int primary key, name text);
 COPY myemp FROM stdin;
@@ -181,6 +180,7 @@ create table fastpath (a int, b text, c numeric);
 insert into fastpath select y.x, 'b' || (y.x/10)::text, 100 from (select generate_series(1,10000) as x) y;
 select md5(string_agg(a::text, b order by a, b asc)) from fastpath
 	where a >= 1000 and a < 2000 and b > 'b1' and b < 'b3';
+
 -- Index scan test row comparison expressions
 CREATE TABLE pk_range_int_asc (r1 INT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 asc, r2 asc, r3 asc));
 INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_series(1, 125) AS i;
@@ -202,3 +202,7 @@ ANALYZE tlateral1, tlateral2;
 -- YB_TODO: pg15 used merge join, whereas hash join is expected.
 -- EXPLAIN (COSTS FALSE) SELECT * FROM tlateral1 t1 LEFT JOIN LATERAL (SELECT t2.a AS t2a, t2.c AS t2c, t2.b AS t2b, t3.b AS t3b, least(t1.a,t2.a,t3.b) FROM tlateral1 t2 JOIN tlateral2 t3 ON (t2.a = t3.b AND t2.c = t3.c)) ss ON t1.a = ss.t2a WHERE t1.b = 0 ORDER BY t1.a;
 SELECT * FROM tlateral1 t1 LEFT JOIN LATERAL (SELECT t2.a AS t2a, t2.c AS t2c, t2.b AS t2b, t3.b AS t3b, least(t1.a,t2.a,t3.b) FROM tlateral1 t2 JOIN tlateral2 t3 ON (t2.a = t3.b AND t2.c = t3.c)) ss ON t1.a = ss.t2a WHERE t1.b = 0 ORDER BY t1.a;
+-- Cleanup
+DROP TABLE IF EXISTS address, address2, emp, emp2, emp_par1, emp_par1_1_100, emp_par2, emp_par3,
+  fastpath, myemp, myemp2, myemp2_101_200, myemp2_1_100, p1, p2, pk_range_int_asc,
+  single_row_decimal, t1, t2, test, test2, serial_test, tlateral1, tlateral2 CASCADE;
