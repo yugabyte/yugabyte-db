@@ -27,7 +27,7 @@ Before starting a [live migration](../live-migrate/#live-migration-workflow), yo
 
 ![After fall-forward setup](/images/migrate/after-fall-forward-setup.png)
 
-At [cutover](#cut-over-to-the-target), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, YB Voyager keeps the fall-forward database synchronized with changes from the target Yugabyte DB as shown in the following illustration:
+At [cutover](#cutover-to-the-target), applications stop writing to the source database and start writing to the target YugabyteDB database. After the cutover process is complete, YB Voyager keeps the fall-forward database synchronized with changes from the target Yugabyte DB as shown in the following illustration:
 
 ![After cutover](/images/migrate/after-cutover.png)
 
@@ -49,7 +49,7 @@ Before proceeding with migration, ensure that you have completed the following s
 
 ## Prepare the source database
 
-Prepare your source database by creating a new database user, and provide it with READ access to all the resources which need to be migrated.
+Create a new database user, and assign the necessary user permissions.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
@@ -263,9 +263,7 @@ To learn more about modelling strategies using YugabyteDB, refer to [Data modeli
 
 {{< note title="Manual schema changes" >}}
 
-- `CREATE INDEX CONCURRENTLY` is not currently supported in YugabyteDB. You should remove the `CONCURRENTLY` clause before trying to import the schema.
-
-- Include the primary key definition in the `CREATE TABLE` statement. Primary Key cannot be added to a partitioned table using the `ALTER TABLE` statement.
+Include the primary key definition in the `CREATE TABLE` statement. Primary Key cannot be added to a partitioned table using the `ALTER TABLE` statement.
 
 {{< /note >}}
 
@@ -450,7 +448,7 @@ Refer to [archive changes](../../reference/cutover-archive/archive-changes/) for
 Make sure to run the archive changes command only after completing [fall-forward setup](#fall-forward-setup). If you run the command before, you may archive some changes before they have been imported to the fall-forward database.
 {{< /note >}}
 
-### Cut over to the target
+### Cutover to the target
 
 Cutover is the last phase, where you switch your application over from the source database to the target YugabyteDB database.
 
@@ -535,7 +533,7 @@ Perform the following steps as part of the switchover process:
 
     Refer to [fall-forward status](../../reference/fall-forward/fall-forward-switchover/#fall-forward-status) for details about the arguments.
 
-1. Setup indexes and triggers to the fall-forward database manually.
+1. Setup indexes and triggers to the fall-forward database manually. Also, re-enable the foreign key and check constraints.
 
 1. Verify your migration. After the schema and data import is complete, the automated part of the database migration process is considered complete. You should manually run validation queries on both the source and fall-forward databases to ensure that the data is correctly migrated. A sample query to validate the databases can include checking the row count of each table.
 

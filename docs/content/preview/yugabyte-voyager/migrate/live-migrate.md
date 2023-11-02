@@ -21,7 +21,7 @@ This page describes the steps to perform and verify a successful live migration 
 
 The following workflows illustrate how you can perform data migration including changes happening on the source simultaneously. With the export data command, you can first export a snapshot and then start continuously capturing changes occurring on the source to an event queue on the disk. Using the import data command, you similarly import the snapshot first, and then continuously apply the exported change events on the target.
 
-Eventually, the migration process reaches a steady state where you can [cut over to the target database](#cut-over-to-the-target). You can stop your applications from pointing to your source database, let all the remaining changes be applied on the target YugabyteDB database, and then restart your applications pointing to YugabyteDB.
+Eventually, the migration process reaches a steady state where you can [cutover to the target database](#cutover-to-the-target). You can stop your applications from pointing to your source database, let all the remaining changes be applied on the target YugabyteDB database, and then restart your applications pointing to YugabyteDB.
 
 The following illustration describes how the data export and import operations are simultaneously handled by YugabyteDB Voyager.
 
@@ -44,8 +44,8 @@ The following illustration shows the steps in a live migration using YugabyteDB 
 | [Export data](#export-data) | The export data command first exports a snapshot and then starts continuously capturing changes from the source.|
 | [Import data](#import-data) | The import data command first imports the snapshot, and then continuously applies the exported change events on the target. |
 | [Archive changes](#archive-changes) | Continuously archive migration changes to limit disk utilization. |
-| [Initiate cutover](#cut-over-to-the-target) | Perform a cutover (stop streaming changes) when the migration process reaches a steady state where you can stop your applications from pointing to your source database, allow all the remaining changes to be applied on the target YugabyteDB database, and then restart your applications pointing to YugabyteDB. |
-| [Wait for cutover to complete](#cut-over-to-the-target) | Monitor the wait status using the [cutover status](../../reference/cutover-archive/cutover/#cutover-status) command. |
+| [Initiate cutover](#cutover-to-the-target) | Perform a cutover (stop streaming changes) when the migration process reaches a steady state where you can stop your applications from pointing to your source database, allow all the remaining changes to be applied on the target YugabyteDB database, and then restart your applications pointing to YugabyteDB. |
+| [Wait for cutover to complete](#cutover-to-the-target) | Monitor the wait status using the [cutover status](../../reference/cutover-archive/cutover/#cutover-status) command. |
 | [Import&nbsp;indexes&nbsp;and triggers](#import-indexes-and-triggers) | Import indexes and triggers to the target YugabyteDB database using the `yb-voyager import schema` command with an additional `--post-import-data` flag. |
 | [Verify migration](#verify-migration) | Check if the live migration is successful. |
 
@@ -59,7 +59,7 @@ Before proceeding with migration, ensure that you have completed the following s
 
 ## Prepare the source database
 
-Prepare your source database by creating a new database user, and provide it with READ access to all the resources which need to be migrated.
+Create a new database user, and assign the necessary user permissions.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
@@ -220,9 +220,7 @@ To learn more about modelling strategies using YugabyteDB, refer to [Data modeli
 
 {{< note title="Manual schema changes" >}}
 
-- `CREATE INDEX CONCURRENTLY` is not currently supported in YugabyteDB. You should remove the `CONCURRENTLY` clause before trying to import the schema.
-
-- Include the primary key definition in the `CREATE TABLE` statement. Primary Key cannot be added to a partitioned table using the `ALTER TABLE` statement.
+Include the primary key definition in the `CREATE TABLE` statement. Primary Key cannot be added to a partitioned table using the `ALTER TABLE` statement.
 
 {{< /note >}}
 
@@ -296,9 +294,15 @@ Additionally, the CDC phase is restartable. So, if yb-voyager terminates when da
 - For Oracle where sequences are not attached to a column, resume value generation is unsupported.
 - `--parallel-jobs` argument (specifies the number of tables to be exported in parallel from the source database at a time) has no effect on live migration.
 
-Refer to [export data](../../reference/data-migration/export-data/) for details about the arguments, and [export data status](../../reference/data-migration/export-data/#export-data-status) to track the status of an export operation.
+Refer to [export data](../../reference/data-migration/export-data/) for details about the arguments of an export operation.
 
 The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma-separated list of table names in the `--table-list` argument.
+
+#### Export data status
+
+Run the `yb-voyager export data status --export-dir <EXPORT_DIR>` command to get an overall progress of the export data operation.
+
+Refer to [export data status](../../reference/data-migration/export-data/#export-data-status) for details about the arguments.
 
 ### Import data
 
@@ -354,17 +358,17 @@ If the `yb-voyager import data` command terminates before completing the data in
 
 Run the `yb-voyager import data status --export-dir <EXPORT_DIR>` command to get an overall progress of the data import operation.
 
-### Archive changes
+### Archive changes (Optional)
 
-As the migration continuously exports changes on the source database to the `EXPORT-DIR`, the disk utilization continues to grow indefinitely over time. To limit usage of all the disk space, you can use the `archive changes` command as follows:
+As the migration continuously exports changes on the source database to the `EXPORT-DIR`, the disk utilization continues to grow indefinitely over time. To limit usage of all the disk space, optionally, you can use the `archive changes` command as follows:
 
 ```sh
 yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR> --delete
 ```
 
-Refer to [archive changes](../../reference/cutover-archive/archive-changes/) for details about the arguments.
+Refer to [archive changes](../../reference/cutover-archive/archive-changes-optional/) for details about the arguments.
 
-### Cut over to the target
+### Cutover to the target
 
 Cutover is the last phase, where you switch your application over from the source database to the target YugabyteDB database.
 
@@ -434,6 +438,7 @@ After migration verification, stop [archiving changes](#archive-changes).
 - Schema changes on the source Oracle database will not be recognized during the live migration.
 - Tables without primary key are not supported.
 - Truncating a table on the source database is not taken into account; you need to manually truncate tables on your YugabyteDB cluster.
-- Some Oracle datatypes are unsupported - NCHAR, NVARCHAR, VARRAY, BLOB, CLOB, and NCLOB.
-- Case-sensitive table names or column names are partially supported. yb-voyager converts them to case-insensitive names. For example, an "Accounts" table in a source Oracle database is migrated as `accounts` (case-insensitive) to a YugabyteDB database.
-- Reserved keywords such as table name, or column names are unsupported.
+- Some Oracle datatypes are unsupported - User Defined Types (UDT), NCHAR, NVARCHAR, VARRAY, BLOB, CLOB, and NCLOB.
+- Case-sensitive table names or column names are partially supported. YugabyteDB Voyager converts them to case-insensitive names. For example, an "Accounts" table in a source Oracle database is migrated as `accounts` (case-insensitive) to a YugabyteDB database.
+- Reserved keywords such as "group", "user", and so on, as table names, or column names are unsupported.
+- Tables or column names having more than 30 characters are not supported.
