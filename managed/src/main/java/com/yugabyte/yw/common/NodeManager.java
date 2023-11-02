@@ -137,6 +137,7 @@ public class NodeManager extends DevopsBase {
   public static final Pattern YBC_PACKAGE_PATTERN = Pattern.compile(YBC_PACKAGE_REGEX);
   public static final String SPECIAL_CHARACTERS = "[^a-zA-Z0-9_-]+";
   public static final Pattern SPECIAL_CHARACTERS_PATTERN = Pattern.compile(SPECIAL_CHARACTERS);
+  public static final long PRECHECK_NODE_DETACHED_DEFAULT_TIMEOUT_SECS = 300;
 
   public static final String YUGABYTE_USER = "yugabyte";
 
@@ -1479,6 +1480,7 @@ public class NodeManager extends DevopsBase {
             .commandArgs(commandArgs)
             .cloudArgs(cloudArgs)
             .redactedVals(redactedVals)
+            .timeoutSecs(PRECHECK_NODE_DETACHED_DEFAULT_TIMEOUT_SECS)
             .build());
   }
 
