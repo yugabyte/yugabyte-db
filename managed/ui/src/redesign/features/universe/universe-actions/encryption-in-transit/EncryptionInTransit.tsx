@@ -3,7 +3,7 @@ import clsx from 'clsx';
 import { useMutation, useQuery } from 'react-query';
 import { useForm, FormProvider } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import { Box, Typography, Tabs, Tab } from '@material-ui/core';
+import { Box, Typography, Tabs, Tab, useTheme } from '@material-ui/core';
 import { toast } from 'react-toastify';
 import { YBAlert, YBModal, YBToggleField, YBTooltip, AlertVariant } from '../../../../components';
 import {
@@ -23,7 +23,7 @@ import {
   USE_SAME_CERTS_FIELD_NAME
 } from './EncryptionInTransitUtils';
 import { api, QUERY_KEY } from '../../../../utils/api';
-import { Universe, Certificate } from '../../universe-form/utils/dto';
+import { Certificate } from '../../universe-form/utils/dto';
 import { CertificateAuthority } from './components/CertificateAuthority';
 import { RotateServerCerts } from './components/RotateServerCerts';
 import { RollingUpgrade } from './components/RollingUpgrade';
@@ -31,6 +31,8 @@ import { YBLoading } from '../../../../../components/common/indicators';
 import { RBAC_ERR_MSG_NO_PERM, hasNecessaryPerm } from '../../../rbac/common/RbacValidator';
 import { UserPermissionMap } from '../../../rbac/UserPermPathMapping';
 import { createErrorMessage } from '../../universe-form/utils/helpers';
+import { getXClusterConfigUuids } from '../../../../../components/xcluster/ReplicationUtils';
+import { Universe } from '../../../../helpers/dtos';
 
 //EAR Component
 interface EncryptionInTransitProps {
@@ -62,7 +64,7 @@ const NonRollingBanner: FC = () => {
 export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClose, universe }) => {
   const { t } = useTranslation();
   const classes = useEITStyles();
-
+  const theme = useTheme();
   //universe current status
   const { universeDetails } = universe;
   const universeId = universe.universeUUID;
@@ -219,6 +221,10 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
       setTab(disableServerCertRotation ? EitTabs.CACert : EitTabs.ServerCert);
   }, [isLoading, disableServerCertRotation, setTab, currentTab]);
 
+  const isNodeToNodeCaCertChange = rootCA != INITIAL_VALUES.rootCA;
+  const { sourceXClusterConfigs, targetXClusterConfigs } = getXClusterConfigUuids(universe);
+  const universeHasXClusterConfig =
+    sourceXClusterConfigs.length > 0 || targetXClusterConfigs.length > 0;
   return (
     <YBModal
       open={open}
@@ -327,7 +333,21 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
                 {!tlsToggled && <RollingUpgrade />}
               </Box>
             )}
-            {tlsToggled && <NonRollingBanner />}
+            <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)} marginTop={2}>
+              {tlsToggled && <NonRollingBanner />}
+              {((universeHasXClusterConfig && tlsToggled) ||
+                (isNodeToNodeCaCertChange && sourceXClusterConfigs.length > 0)) && (
+                <YBAlert
+                  text={t(
+                    `universeActions.encryptionInTransit.${
+                      tlsToggled ? 'xClusterToggleEncryptionWarning' : 'xClusterRotateCaWarning'
+                    }`
+                  )}
+                  variant={AlertVariant.Warning}
+                  open={true}
+                />
+              )}
+            </Box>
           </Box>
         </FormProvider>
       )}
