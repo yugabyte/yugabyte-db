@@ -38,7 +38,6 @@
 #include <vector>
 
 #include <boost/range/adaptor/indirected.hpp>
-#include <glog/logging.h>
 
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/gutil/strings/substitute.h"
@@ -387,26 +386,34 @@ void Trace::DumpToLogInfo(bool include_time_deltas) const {
   size_t start = 0;
   size_t max_to_print = std::min(trace_buffer.size(), kMaxDumpSize);
   const size_t kMaxLogMessageLen = google::LogMessage::kMaxLogMessageLen;
+  const string kContinuationMarker("\ntrace continues ...");
+  // An upper bound on the overhead due to printing the file name/timestamp etc + continuation
+  // marker.
+  const size_t kMaxOverhead = 100;
   bool skip_newline = false;
   do {
-    size_t len = max_to_print - start;
-    if (len > google::LogMessage::kMaxLogMessageLen) {
+    size_t length_to_print = max_to_print - start;
+    bool has_more = false;
+    if (length_to_print > kMaxLogMessageLen) {
       // Try to split a line by \n starting a search from the end of the printable interval till
       // the middle of that interval to not shrink too much.
-      auto last_end_of_line_pos =
-          std::string_view(
-              trace_buffer.c_str() + start + (kMaxLogMessageLen / 2), kMaxLogMessageLen)
-              .rfind('\n');
-      // If we have a really long line, we have no option but to only print a part of it.
+      auto last_end_of_line_pos = std::string_view(
+                                      trace_buffer.c_str() + start + (kMaxLogMessageLen / 2),
+                                      (kMaxLogMessageLen / 2) - kMaxOverhead)
+                                      .rfind('\n');
+      // If we have a really long line, we will just split it.
       if (last_end_of_line_pos == string::npos) {
-        len = kMaxLogMessageLen;
+        length_to_print = kMaxLogMessageLen - kMaxOverhead;
+        skip_newline = false;
       } else {
-        len = last_end_of_line_pos;
+        length_to_print = (kMaxLogMessageLen / 2) + last_end_of_line_pos;
         skip_newline = true;
       }
+      has_more = true;
     }
-    LOG(INFO) << std::string_view(trace_buffer.c_str() + start, len);
-    start += len;
+    LOG(INFO) << std::string_view(trace_buffer.c_str() + start, length_to_print)
+              << (has_more ? kContinuationMarker : "");
+    start += length_to_print;
     // Skip the newline character which would otherwise be at the begining of the next part.
     start += static_cast<size_t>(skip_newline);
   } while (start < max_to_print);

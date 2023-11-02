@@ -90,14 +90,18 @@ TEST_F(TraceTest, TestBasic) {
             result);
 }
 
-TEST_F(TraceTest, TestDumpLargeTrace) {
-  scoped_refptr<Trace> t(new Trace);
-  constexpr int kNumLines = 100;
-  const string kLongLine(1000, 'x');
-  for (int i = 1; i <= kNumLines; i++) {
-    TRACE_TO(t, "Line $0 : $1", i, kLongLine);
+std::string GetLongString(size_t size) {
+  std::stringstream out;
+  std::string_view repeated_string("0123456789");
+  while (size > 0) {
+    size_t prefix_len = std::min(repeated_string.length(), size);
+    out << repeated_string.substr(0, prefix_len);
+    size -= prefix_len;
   }
-  size_t kTraceDumpSize = t->DumpToString(true).size();
+  return out.str();
+}
+
+TEST_F(TraceTest, TestDumpLargeTrace) {
   const size_t kGlogMessageSizeLimit = google::LogMessage::kMaxLogMessageLen;
 
   class LogSink : public google::LogSink {
@@ -118,6 +122,50 @@ TEST_F(TraceTest, TestDumpLargeTrace) {
   size_t size_before_logging;
   size_t size_after_logging;
 
+  // Glog has a weird behavior of eating up the ending `\n` when sending the
+  // message to LogSink
+  string message_no_newline = "xy";
+  size_before_logging = log_sink.logged_bytes();
+  LOG(INFO) << message_no_newline;
+  size_after_logging = log_sink.logged_bytes();
+  ASSERT_EQ(size_after_logging - size_before_logging, message_no_newline.length());
+
+  string small_message_with_newline = "x\n";
+  size_before_logging = log_sink.logged_bytes();
+  LOG(INFO) << small_message_with_newline;
+  size_after_logging = log_sink.logged_bytes();
+  // GLog eats up the last '\n' while passing the message to the LogSink.
+  // This needs to be accounted for while calculating the expected size.
+  ASSERT_EQ(size_after_logging - size_before_logging, small_message_with_newline.length() - 1);
+
+  scoped_refptr<Trace> tsmall(new Trace);
+  TRACE_TO(tsmall, "A very small line");
+  const string kSmallTraceDump = tsmall->DumpToString(true);
+  size_t kSmallTraceDumpSize = kSmallTraceDump.size();
+  // DumpToString has a '\n' at the end
+  ASSERT_EQ(kSmallTraceDump[kSmallTraceDumpSize - 1], '\n');
+  size_before_logging = log_sink.logged_bytes();
+  LOG(INFO) << kSmallTraceDump;
+  size_after_logging = log_sink.logged_bytes();
+  // GLog eats up the last '\n' while passing the message to the LogSink.
+  // This needs to be accounted for while calculating the expected size.
+  ASSERT_EQ(size_after_logging - size_before_logging, kSmallTraceDumpSize - 1);
+
+  scoped_refptr<Trace> t(new Trace);
+  constexpr int kNumLines = 100;
+  const string kLongLine = GetLongString(1000);
+  const string kVeryLongLine = GetLongString(40000);
+  for (int i = 1; i <= kNumLines; i++) {
+    TRACE_TO(t, "Line $0 : $1", i, kLongLine);
+  }
+  TRACE_TO(t, "A very long line : $0", kVeryLongLine);
+
+  const string kContinuationMarker("\ntrace continues ...");
+  const string kTraceDump = t->DumpToString(true);
+  size_t kTraceDumpSize = kTraceDump.size();
+  // DumpToString has a '\n' at the end
+  ASSERT_EQ(kTraceDump[kTraceDumpSize - 1], '\n');
+
   LOG(INFO) << "Dumping DumpToString may result in the trace getting truncated after ~30 lines";
   size_before_logging = log_sink.logged_bytes();
   LOG(INFO) << t->DumpToString(true);
@@ -131,8 +179,16 @@ TEST_F(TraceTest, TestDumpLargeTrace) {
   t->DumpToLogInfo(true);
   size_after_logging = log_sink.logged_bytes();
   ASSERT_GT(size_after_logging - size_before_logging, kGlogMessageSizeLimit);
-  // We expect the output to be split into 4 lines. 4 newlines will be removed while printing.
-  ASSERT_EQ(size_after_logging - size_before_logging, kTraceDumpSize - 4);
+  constexpr size_t kNumExpectedParts = 6;
+  constexpr size_t kNumNewLinesRemovedByDumpToLogInfo = 4;
+  // We expect the output to be split into kNumExpectedParts lines.
+  // kNumNewLinesRemovedByDumpToLogInfo newlines will be removed while printing.
+  // the last newline will be eaten up by LogSink/glog.
+  // (kNumExpectedParts - 1) continuation markers added.
+  ASSERT_EQ(
+      size_after_logging - size_before_logging,
+      kTraceDumpSize - 1 + (kNumExpectedParts - 1) * kContinuationMarker.size() -
+          kNumNewLinesRemovedByDumpToLogInfo);
 
   LOG(INFO) << "with trace_max_dump_size=30000 DumpToLogInfo should be truncated";
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_trace_max_dump_size) = 30000;
@@ -148,8 +204,14 @@ TEST_F(TraceTest, TestDumpLargeTrace) {
   t->DumpToLogInfo(true);
   size_after_logging = log_sink.logged_bytes();
   ASSERT_GT(size_after_logging - size_before_logging, kGlogMessageSizeLimit);
-  // We expect the output to be split into 4 lines. 4 newlines will be removed while printing.
-  ASSERT_EQ(size_after_logging - size_before_logging, kTraceDumpSize - 4);
+  // We expect the output to be split into kNumExpectedParts lines.
+  // kNumNewLinesRemovedByDumpToLogInfo newlines will be removed while printing.
+  // the last newline will be eaten up by LogSink/glog.
+  // (kNumExpectedParts - 1) continuation markers added.
+  ASSERT_EQ(
+      size_after_logging - size_before_logging,
+      kTraceDumpSize - 1 + (kNumExpectedParts - 1) * kContinuationMarker.size() -
+          kNumNewLinesRemovedByDumpToLogInfo);
 
   google::RemoveLogSink(&log_sink);
 }
