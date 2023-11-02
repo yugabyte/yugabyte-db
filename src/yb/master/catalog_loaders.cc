@@ -36,7 +36,6 @@
 #include "yb/common/constants.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/master_util.h"
-#include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 #include "yb/master/ysql_transaction_ddl.h"
 
@@ -575,17 +574,6 @@ Status ClusterConfigLoader::Visit(
 }
 
 ////////////////////////////////////////////////////////////
-// XCluster Config Loader
-////////////////////////////////////////////////////////////
-
-Status XClusterConfigLoader::Visit(
-    const std::string& unused_id, const SysXClusterConfigEntryPB& metadata) {
-  catalog_manager_->GetXClusterManager()->LoadXClusterConfig(metadata);
-
-  return Status::OK();
-}
-
-////////////////////////////////////////////////////////////
 // Redis Config Loader
 ////////////////////////////////////////////////////////////
 
@@ -650,24 +638,6 @@ Status SysConfigLoader::Visit(const string& config_type, const SysConfigEntryPB&
   }
 
   LOG(INFO) << "Loaded sys config type " << config_type;
-  return Status::OK();
-}
-
-////////////////////////////////////////////////////////////
-// XClusterSafeTime Loader
-////////////////////////////////////////////////////////////
-
-Status XClusterSafeTimeLoader::Visit(
-    const std::string& unused_id, const XClusterSafeTimePB& metadata) {
-  // Debug confirm that there is no xcluster_safe_time_info_ set. This also ensures that this does
-  // not visit multiple rows.
-  auto l = catalog_manager_->xcluster_safe_time_info_.LockForWrite();
-  DCHECK(l->pb.safe_time_map().empty()) << "Already have XCluster Safe Time data!";
-
-  VLOG_WITH_FUNC(2) << "Loading XCluster Safe Time data: " << metadata.DebugString();
-  l.mutable_data()->pb.CopyFrom(metadata);
-  l.Commit();
-
   return Status::OK();
 }
 

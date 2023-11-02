@@ -316,7 +316,7 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       master_config_index_(0) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
-  if (FLAGS_TEST_enable_db_catalog_version_mode) {
+  if (FLAGS_ysql_enable_db_catalog_version_mode) {
     ysql_db_catalog_version_index_used_ =
       std::make_unique<std::array<bool, TServerSharedData::kMaxNumDbCatalogVersions>>();
     ysql_db_catalog_version_index_used_->fill(false);

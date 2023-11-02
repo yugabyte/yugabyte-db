@@ -175,13 +175,9 @@ void ScanChoicesTest::InitializeScanChoicesInstance(
   dockv::KeyEntryValues empty_components;
   DocPgsqlScanSpec spec(
       schema, rocksdb::kDefaultQueryId, empty_components, empty_components, &cond,
-      boost::none, boost::none, DocKey(), true);
-  const auto &lower_bound = spec.LowerBound();
-  EXPECT_OK(lower_bound);
-  const auto &upper_bound = spec.UpperBound();
-  EXPECT_OK(upper_bound);
-  auto base_choices =
-      ScanChoices::Create(schema, spec, lower_bound.get(), upper_bound.get()).release();
+      std::nullopt /* hash_code */, std::nullopt /* max_hash_code */, DocKey(), true);
+  const auto& bounds = spec.bounds();
+  auto base_choices = ScanChoices::Create(schema, spec, bounds).release();
 
   choices_ = std::unique_ptr<HybridScanChoices>(down_cast<HybridScanChoices *>(base_choices));
 }

@@ -49,5 +49,8 @@
   },
   "main": {
     "stats": "hidden"
+  },
+  "profile": {
+    "profileInfo": "disabled"
   }
 }

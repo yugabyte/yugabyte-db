@@ -28,18 +28,20 @@
 #endif
 
 #include <inttypes.h>
-#include <stdint.h>
 
 #include <algorithm>
 #include <cmath>
 #include <functional>
-#include <list>
 #include <memory>
-#include <set>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
+
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/perf_level.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/table.h"
 
 #include "yb/rocksdb/db/builder.h"
 #include "yb/rocksdb/db/compaction_context.h"
@@ -47,41 +49,29 @@
 #include "yb/rocksdb/db/event_helpers.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/file_numbers.h"
-#include "yb/rocksdb/db/log_reader.h"
-#include "yb/rocksdb/db/log_writer.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db/memtable_list.h"
 #include "yb/rocksdb/db/merge_helper.h"
 #include "yb/rocksdb/db/version_set.h"
-#include "yb/rocksdb/port/likely.h"
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/db.h"
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/status.h"
-#include "yb/rocksdb/table.h"
+
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/table_builder.h"
-#include "yb/rocksdb/util/coding.h"
+
 #include "yb/rocksdb/util/file_reader_writer.h"
+#include "yb/rocksdb/util/file_util.h"
 #include "yb/rocksdb/util/log_buffer.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/sst_file_manager_impl.h"
-#include "yb/rocksdb/util/mutexlock.h"
-#include "yb/rocksdb/perf_level.h"
-#include "yb/rocksdb/util/stop_watch.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
-#include "yb/util/stats/perf_step_timer.h"
 #include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/string_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/sync_point.h"
 
-using std::unique_ptr;
-
 DECLARE_uint64(rocksdb_check_sst_file_tail_for_zeros);
+DECLARE_uint64(rocksdb_max_sst_write_retries);
 
 namespace rocksdb {
 
@@ -108,6 +98,9 @@ struct CompactionJob::SubcompactionState : public CompactionFeed {
 
   // State kept for output being generated
   std::vector<Output> outputs;
+
+  // Current output:
+  FileNumber output_file_number;
   std::unique_ptr<WritableFileWriter> base_outfile;
   std::unique_ptr<WritableFileWriter> data_outfile;
   std::unique_ptr<TableBuilder> builder;
@@ -607,112 +600,157 @@ void CompactionJob::ProcessKeyValueCompaction(
     prev_prepare_write_nanos = IOSTATS(prepare_write_nanos);
   }
 
-  ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
-  auto compaction_filter = cfd->ioptions()->compaction_filter;
+  const auto* const cfd = sub_compact->compaction->column_family_data();
+  auto* compaction_filter = cfd->ioptions()->compaction_filter;
+
   std::unique_ptr<CompactionFilter> compaction_filter_from_factory = nullptr;
-  if (compaction_filter == nullptr) {
-    compaction_filter_from_factory =
-        sub_compact->compaction->CreateCompactionFilter();
-    compaction_filter = compaction_filter_from_factory.get();
-  }
-
-  MergeHelper merge(
-      env_, cfd->user_comparator(), cfd->ioptions()->merge_operator,
-      compaction_filter, db_options_.info_log.get(),
-      cfd->ioptions()->min_partial_merge_operands,
-      false /* internal key corruption is expected */,
-      existing_snapshots_.empty() ? 0 : existing_snapshots_.back(),
-      compact_->compaction->level(), db_options_.statistics.get());
-
-  DEBUG_ONLY_TEST_SYNC_POINT("CompactionJob::Run():Inprogress");
-
-  Slice* start = sub_compact->start;
-  Slice* end = sub_compact->end;
-  if (start != nullptr) {
-    IterKey start_iter;
-    start_iter.SetInternalKey(*start, kMaxSequenceNumber, kValueTypeForSeek);
-    input->Seek(start_iter.GetKey());
-  } else {
-    input->SeekToFirst();
-  }
-
-  if (db_options_.compaction_context_factory) {
-    auto context = CompactionContextOptions {
-      .level0_inputs = *compact_->compaction->inputs(0),
-      .boundary_extractor = sub_compact->boundary_extractor,
-    };
-    sub_compact->context = (*db_options_.compaction_context_factory)(sub_compact, context);
-    sub_compact->feed = sub_compact->context->Feed();
-  } else {
-    sub_compact->feed = sub_compact;
-  }
-
   Status status;
-  sub_compact->c_iter = std::make_unique<CompactionIterator>(
-      input.get(), cfd->user_comparator(), &merge, versions_->LastSequence(),
-      &existing_snapshots_, earliest_write_conflict_snapshot_, false,
-      sub_compact->compaction, compaction_filter);
 
-  if (sub_compact->context) {
-    sub_compact->c_iter->AddLiveRanges(sub_compact->context->GetLiveRanges());
-  }
+  // Clear, so it will be set by using file_numbers_provider_ later.
+  sub_compact->output_file_number = 0;
 
-  sub_compact->open_compaction_output_file = [this, holder, sub_compact]() {
-    return OpenCompactionOutputFile(holder, sub_compact);
-  };
+  auto num_retries_left = FLAGS_rocksdb_max_sst_write_retries;
+  for(;;) {
+    status = Status::OK();
+    // We want to remove output file in case of detected corruption if we are going to retry write.
+    const auto retries_allowed =
+        [&num_retries_left, &outputs = sub_compact->outputs] {
+          // Only support retrying compaction if the first output file has been corrupted.
+          // As of 2023-11-01 yugabyte-db always generated single output file as a result of
+          // compaction.
+          return outputs.size() == 1 && num_retries_left > 0;
+        };
 
-  auto c_iter = sub_compact->c_iter.get();
-  c_iter->SeekToFirst();
-  const auto& c_iter_stats = c_iter->iter_stats();
-  // TODO(noetzli): check whether we could check !shutting_down_->... only
-  // only occasionally (see diff D42687)
-  while (status.ok() && !shutting_down_->load(std::memory_order_acquire) &&
-         !cfd->IsDropped() && c_iter->Valid()) {
-    // Invariant: c_iter.status() is guaranteed to be OK if c_iter->Valid()
-    // returns true.
-    const Slice& key = c_iter->key();
-    const Slice& value = c_iter->value();
+    if (compaction_filter == nullptr) {
+      compaction_filter_from_factory = sub_compact->compaction->CreateCompactionFilter();
+      compaction_filter = compaction_filter_from_factory.get();
+    }
 
-    // If an end key (exclusive) is specified, check if the current key is
-    // >= than it and exit if it is because the iterator is out of its range
-    if (end != nullptr &&
-        cfd->user_comparator()->Compare(c_iter->user_key(), *end) >= 0) {
-      break;
-    } else if (sub_compact->compaction->ShouldStopBefore(key) &&
-               sub_compact->builder != nullptr) {
-      status = FinishCompactionOutputFile(input->status(), sub_compact);
+    MergeHelper merge(
+        env_, cfd->user_comparator(), cfd->ioptions()->merge_operator, compaction_filter,
+        db_options_.info_log.get(), cfd->ioptions()->min_partial_merge_operands,
+        false /* internal key corruption is expected */,
+        existing_snapshots_.empty() ? 0 : existing_snapshots_.back(), compact_->compaction->level(),
+        db_options_.statistics.get());
+
+    DEBUG_ONLY_TEST_SYNC_POINT("CompactionJob::Run():Inprogress");
+
+    Slice* start = sub_compact->start;
+    Slice* end = sub_compact->end;
+    if (start != nullptr) {
+      IterKey start_iter;
+      start_iter.SetInternalKey(*start, kMaxSequenceNumber, kValueTypeForSeek);
+      input->Seek(start_iter.GetKey());
+    } else {
+      input->SeekToFirst();
+    }
+
+    if (db_options_.compaction_context_factory) {
+      auto context = CompactionContextOptions{
+          .level0_inputs = *compact_->compaction->inputs(0),
+          .boundary_extractor = sub_compact->boundary_extractor,
+      };
+      sub_compact->context = (*db_options_.compaction_context_factory)(sub_compact, context);
+      sub_compact->feed = sub_compact->context->Feed();
+    } else {
+      sub_compact->feed = sub_compact;
+    }
+
+    sub_compact->c_iter = std::make_unique<CompactionIterator>(
+        input.get(), cfd->user_comparator(), &merge, versions_->LastSequence(),
+        &existing_snapshots_, earliest_write_conflict_snapshot_, false, sub_compact->compaction,
+        compaction_filter);
+
+    if (sub_compact->context) {
+      sub_compact->c_iter->AddLiveRanges(sub_compact->context->GetLiveRanges());
+    }
+
+    sub_compact->open_compaction_output_file = [this, holder, sub_compact]() {
+      if (sub_compact->output_file_number == 0) {
+        // This is a first attempt - generate file number.
+        sub_compact->output_file_number = file_numbers_provider_->NewFileNumber(holder);
+      }
+      return OpenCompactionOutputFile(sub_compact->output_file_number, sub_compact);
+    };
+
+    auto c_iter = sub_compact->c_iter.get();
+    c_iter->SeekToFirst();
+    const auto& c_iter_stats = c_iter->iter_stats();
+
+    // TODO(noetzli): check whether we could check !shutting_down_->... only
+    // only occasionally (see diff D42687)
+    while (status.ok() && !shutting_down_->load(std::memory_order_acquire) && !cfd->IsDropped() &&
+           c_iter->Valid()) {
+      // Invariant: c_iter.status() is guaranteed to be OK if c_iter->Valid()
+      // returns true.
+      const Slice& key = c_iter->key();
+      const Slice& value = c_iter->value();
+
+      // If an end key (exclusive) is specified, check if the current key is
+      // >= than it and exit if it is because the iterator is out of its range
+      if (end != nullptr && cfd->user_comparator()->Compare(c_iter->user_key(), *end) >= 0) {
+        break;
+      } else if (
+          sub_compact->compaction->ShouldStopBefore(key) && sub_compact->builder != nullptr) {
+        status = FinishCompactionOutputFile(
+            input->status(), sub_compact, ShouldDeleteCorruptedFile{retries_allowed()});
+        if (!status.ok()) {
+          break;
+        }
+      }
+
+      if (c_iter_stats.num_input_records % kRecordStatsEvery == kRecordStatsEvery - 1) {
+        RecordDroppedKeys(c_iter_stats, &sub_compact->compaction_job_stats);
+        c_iter->ResetRecordCounts();
+        RecordCompactionIOStats();
+      }
+
+      status = sub_compact->feed->Feed(key, value);
       if (!status.ok()) {
         break;
       }
+
+      // Close output file if it is big enough
+      // TODO(aekmekji): determine if file should be closed earlier than this
+      // during subcompactions (i.e. if output size, estimated by input size, is
+      // going to be 1.2MB and max_output_file_size = 1MB, prefer to have 0.6MB
+      // and 0.6MB instead of 1MB and 0.2MB)
+      if (sub_compact->builder && sub_compact->builder->TotalFileSize() >=
+                                      sub_compact->compaction->max_output_file_size()) {
+        status = FinishCompactionOutputFile(
+            input->status(), sub_compact, ShouldDeleteCorruptedFile{retries_allowed()});
+      }
+
+      c_iter->Next();
     }
 
-    if (c_iter_stats.num_input_records % kRecordStatsEvery ==
-        kRecordStatsEvery - 1) {
-      RecordDroppedKeys(c_iter_stats, &sub_compact->compaction_job_stats);
-      c_iter->ResetRecordCounts();
-      RecordCompactionIOStats();
+    if (status.ok()) {
+      status = sub_compact->feed->Flush();
     }
 
-    status = sub_compact->feed->Feed(key, value);
-    if (!status.ok()) {
-      break;
+    if (status.ok() &&
+        (shutting_down_->load(std::memory_order_acquire) || cfd->IsDropped())) {
+      status = STATUS(ShutdownInProgress,
+                      "Database shutdown or Column family drop during compaction");
+    }
+    if (status.ok() && sub_compact->builder != nullptr) {
+      status = FinishCompactionOutputFile(
+          input->status(), sub_compact, ShouldDeleteCorruptedFile{retries_allowed()});
     }
 
-    // Close output file if it is big enough
-    // TODO(aekmekji): determine if file should be closed earlier than this
-    // during subcompactions (i.e. if output size, estimated by input size, is
-    // going to be 1.2MB and max_output_file_size = 1MB, prefer to have 0.6MB
-    // and 0.6MB instead of 1MB and 0.2MB)
-    if (sub_compact->builder &&
-        sub_compact->builder->TotalFileSize() >= sub_compact->compaction->max_output_file_size()) {
-      status = FinishCompactionOutputFile(input->status(), sub_compact);
+    if (status.IsTryAgain() && num_retries_left > 0) {
+      if (sub_compact->outputs.size() != 0) {
+        LOG(DFATAL) << "Retries are not supported when first sub-compaction file is not "
+                       "corrupted, sub_compact->outputs.size(): "
+                    << sub_compact->outputs.size();
+        break;
+      }
+      RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log, "Retrying compaction");
+      --num_retries_left;
+      continue;
     }
 
-    c_iter->Next();
-  }
-
-  if (status.ok()) {
-    status = sub_compact->feed->Flush();
+    break;
   }
 
   // This is used to persist the history cutoff hybrid time chosen for the DocDB compaction
@@ -720,6 +758,8 @@ void CompactionJob::ProcessKeyValueCompaction(
   if (sub_compact->context) {
     largest_user_frontier_ = sub_compact->context->GetLargestUserFrontier();
   }
+
+  const auto& c_iter_stats = sub_compact->c_iter->iter_stats();
 
   sub_compact->num_input_records = c_iter_stats.num_input_records;
   sub_compact->compaction_job_stats.num_input_deletion_records =
@@ -734,14 +774,6 @@ void CompactionJob::ProcessKeyValueCompaction(
   RecordDroppedKeys(c_iter_stats, &sub_compact->compaction_job_stats);
   RecordCompactionIOStats();
 
-  if (status.ok() &&
-      (shutting_down_->load(std::memory_order_acquire) || cfd->IsDropped())) {
-    status = STATUS(ShutdownInProgress,
-        "Database shutdown or Column family drop during compaction");
-  }
-  if (status.ok() && sub_compact->builder != nullptr) {
-    status = FinishCompactionOutputFile(input->status(), sub_compact);
-  }
   if (status.ok()) {
     status = input->status();
   }
@@ -803,8 +835,50 @@ void CompactionJob::CloseFile(Status* status, std::unique_ptr<WritableFileWriter
   writer->reset();
 }
 
+Status CompactionJob::CheckOutputFile(SubcompactionState* sub_compact) {
+  const auto is_split_sst = sub_compact->compaction->column_family_data()
+                                ->ioptions()
+                                ->table_factory->IsSplitSstForWriteSupported();
+  const auto& meta = sub_compact->current_output()->meta;
+
+  const auto output_number = sub_compact->current_output()->meta.fd.GetNumber();
+  DCHECK_NE(output_number, 0);
+
+  const auto rocksdb_check_sst_file_tail_for_zeros =
+      FLAGS_rocksdb_check_sst_file_tail_for_zeros;
+  if (PREDICT_FALSE(rocksdb_check_sst_file_tail_for_zeros > 0)) {
+    const auto base_fname = TableFileName(
+        db_options_.db_paths, meta.fd.GetNumber(), sub_compact->compaction->output_path_id());
+    RETURN_NOT_OK(CheckSstTailForZeros(
+        db_options_, env_options_, is_split_sst ? TableBaseToDataFileName(base_fname) : base_fname,
+        rocksdb_check_sst_file_tail_for_zeros));
+  }
+
+  if (sub_compact->builder->NumEntries() == 0) {
+    return Status::OK();
+  }
+
+  // Verify that the table is usable
+  ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
+  {
+    std::unique_ptr<InternalIterator> iter(cfd->table_cache()->NewIterator(
+        ReadOptions(), env_options_, cfd->internal_comparator(), meta.fd, meta.UserFilter(),
+        nullptr, cfd->internal_stats()->GetFileReadHist(compact_->compaction->output_level()),
+        false));
+    RETURN_NOT_OK(iter->status());
+
+    if (paranoid_file_checks_) {
+      for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {}
+      RETURN_NOT_OK(iter->status());
+    }
+  }
+
+  return Status::OK();
+}
+
 Status CompactionJob::FinishCompactionOutputFile(
-    const Status& input_status, SubcompactionState* sub_compact) {
+    const Status& input_status, SubcompactionState* sub_compact,
+    ShouldDeleteCorruptedFile should_delete_corrupted_file) {
   assert(sub_compact != nullptr);
   assert(sub_compact->base_outfile);
   const bool is_split_sst = sub_compact->compaction->column_family_data()->ioptions()
@@ -824,15 +898,15 @@ Status CompactionJob::FinishCompactionOutputFile(
 
   TableProperties table_properties;
   // Check for iterator errors
-  Status s = input_status;
+  Status status = input_status;
   auto& meta = sub_compact->current_output()->meta;
   const uint64_t current_entries = sub_compact->builder->NumEntries();
   meta.marked_for_compaction = sub_compact->builder->NeedCompact();
-  if (s.ok() && sub_compact->context) {
-    s = sub_compact->context->UpdateMeta(&meta);
+  if (status.ok() && sub_compact->context) {
+    status = sub_compact->context->UpdateMeta(&meta);
   }
-  if (s.ok()) {
-    s = sub_compact->builder->Finish();
+  if (status.ok()) {
+    status = sub_compact->builder->Finish();
   } else {
     sub_compact->builder->Abandon();
   }
@@ -845,84 +919,87 @@ Status CompactionJob::FinishCompactionOutputFile(
 
   // Finish and check for file errors
   if (sub_compact->data_outfile) {
-    CloseFile(&s, &sub_compact->data_outfile);
+    CloseFile(&status, &sub_compact->data_outfile);
   }
-  CloseFile(&s, &sub_compact->base_outfile);
+  CloseFile(&status, &sub_compact->base_outfile);
 
-  const auto rocksdb_check_sst_file_tail_for_zeros =
-      FLAGS_rocksdb_check_sst_file_tail_for_zeros;
-  if (s.ok() && PREDICT_FALSE(rocksdb_check_sst_file_tail_for_zeros > 0)) {
-    const auto base_fname = TableFileName(
-        db_options_.db_paths, meta.fd.GetNumber(), sub_compact->compaction->output_path_id());
-    s = CheckSstTailForZeros(
-        db_options_, env_options_, is_split_sst ? TableBaseToDataFileName(base_fname) : base_fname,
-        rocksdb_check_sst_file_tail_for_zeros);
-  }
+  auto* cfd = sub_compact->compaction->column_family_data();
+  const auto base_file_path =
+      TableFileName(cfd->ioptions()->db_paths, meta.fd.GetNumber(), meta.fd.GetPathId());
+  const auto data_file_path = TableBaseToDataFileName(base_file_path);
 
-  if (s.ok() && current_entries > 0) {
-    // Verify that the table is usable
-    ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
-    InternalIterator* iter = cfd->table_cache()->NewIterator(
-        ReadOptions(), env_options_, cfd->internal_comparator(), meta.fd, meta.UserFilter(),
-        nullptr, cfd->internal_stats()->GetFileReadHist(
-                     compact_->compaction->output_level()),
-        false);
-    s = iter->status();
+  bool has_base_file = true;
+  bool has_data_file = is_split_sst;
 
-    if (s.ok() && paranoid_file_checks_) {
-      for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {}
-      s = iter->status();
+  if (status.ok()) {
+    status = CheckOutputFile(sub_compact);
+    if (!status.ok() && should_delete_corrupted_file) {
+      auto deleted = env_->CleanupFile(base_file_path, db_options_.log_prefix);
+      if (deleted) {
+        has_base_file = false;
+        if (has_data_file) {
+          deleted = env_->CleanupFile(data_file_path, db_options_.log_prefix);
+          has_data_file = !deleted;
+        }
+      }
+
+      if (deleted) {
+        sub_compact->outputs.pop_back();
+        // Allow retries at higher level.
+        status = status.CloneAndReplaceCode(Status::Code::kTryAgain);
+      }
     }
+  }
 
-    delete iter;
-    if (s.ok()) {
+  if (status.ok()) {
+    // Don't reuse output file number in case we are continuing compaction to a new file.
+    sub_compact->output_file_number = 0;
+    if (current_entries > 0) {
       auto tp = sub_compact->builder->GetTableProperties();
-      sub_compact->current_output()->table_properties =
-          std::make_shared<TableProperties>(tp);
+      sub_compact->current_output()->table_properties = std::make_shared<TableProperties>(tp);
       TableFileCreationInfo info(std::move(tp));
       info.db_name = dbname_;
       info.cf_name = cfd->GetName();
-      info.file_path =
-          TableFileName(cfd->ioptions()->db_paths, meta.fd.GetNumber(),
-                        meta.fd.GetPathId());
+      info.file_path = base_file_path;
       info.file_size = meta.fd.GetTotalFileSize();
       info.job_id = job_id_;
       RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
-          "[%s] [JOB %d] Generated table #%" PRIu64 ": %" PRIu64
-          " keys, %" PRIu64 " bytes %s %s",
-          cfd->GetName().c_str(), job_id_, output_number, current_entries,
-          current_total_bytes,
-          meta.marked_for_compaction ? "(need compaction)" : ToString(compaction_reason).c_str(),
-          meta.FrontiersToString().c_str());
+           "[%s] [JOB %d] Generated table #%" PRIu64 ": %" PRIu64
+           " keys, %" PRIu64 " bytes %s %s",
+           cfd->GetName().c_str(), job_id_, output_number, current_entries,
+           current_total_bytes,
+           meta.marked_for_compaction ? "(need compaction)" : ToString(compaction_reason).c_str(),
+           meta.FrontiersToString().c_str());
       EventHelpers::LogAndNotifyTableFileCreation(
           event_logger_, cfd->ioptions()->listeners, meta.fd, info);
     }
   }
 
-  // Report new file to SstFileManagerImpl
-  auto sfm =
-      static_cast<SstFileManagerImpl*>(db_options_.sst_file_manager.get());
-  if (sfm && meta.fd.GetPathId() == 0) {
-    ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
-    auto fn = TableFileName(cfd->ioptions()->db_paths, meta.fd.GetNumber(),
-                            meta.fd.GetPathId());
-    RETURN_NOT_OK(sfm->OnAddFile(fn));
-    if (is_split_sst) {
-      RETURN_NOT_OK(sfm->OnAddFile(TableBaseToDataFileName(fn)));
-    }
-    if (sfm->IsMaxAllowedSpaceReached()) {
-      InstrumentedMutexLock l(db_mutex_);
-      if (db_bg_error_->ok()) {
-        s = STATUS(IOError, "Max allowed space was reached");
-        *db_bg_error_ = s;
-        DEBUG_ONLY_TEST_SYNC_POINT(
-            "CompactionJob::FinishCompactionOutputFile:MaxAllowedSpaceReached");
+  {
+    // Report new file to SstFileManagerImpl
+    auto sfm =
+        static_cast<SstFileManagerImpl*>(db_options_.sst_file_manager.get());
+    if (sfm && meta.fd.GetPathId() == 0) {
+      if (has_base_file) {
+        RETURN_NOT_OK(sfm->OnAddFile(base_file_path));
+      }
+      if (has_data_file) {
+        RETURN_NOT_OK(sfm->OnAddFile(data_file_path));
+      }
+      if (sfm->IsMaxAllowedSpaceReached()) {
+        InstrumentedMutexLock l(db_mutex_);
+        if (db_bg_error_->ok()) {
+          status = STATUS(IOError, "Max allowed space was reached");
+          *db_bg_error_ = status;
+          DEBUG_ONLY_TEST_SYNC_POINT(
+              "CompactionJob::FinishCompactionOutputFile:MaxAllowedSpaceReached");
+        }
       }
     }
   }
 
   sub_compact->builder.reset();
-  return s;
+  return status;
 }
 
 Status CompactionJob::InstallCompactionResults(
@@ -991,21 +1068,25 @@ Status CompactionJob::OpenFile(const std::string table_name, uint64_t file_numbe
 }
 
 Status CompactionJob::OpenCompactionOutputFile(
-    FileNumbersHolder* holder, SubcompactionState* sub_compact) {
+    FileNumber file_number, SubcompactionState* sub_compact) {
   RSTATUS_DCHECK(sub_compact != nullptr, InternalError, "sub_compact is NULL");
   RSTATUS_DCHECK(sub_compact->builder == nullptr, InternalError,
                  "Sub compact builder already present");
-  FileNumber file_number = file_numbers_provider_->NewFileNumber(holder);
+
+  const auto* cfd = sub_compact->compaction->column_family_data();
+  const bool is_split_sst = cfd->ioptions()->table_factory->IsSplitSstForWriteSupported();
 
   // Make the output file
-  unique_ptr<WritableFile> base_writable_file;
-  unique_ptr<WritableFile> data_writable_file;
-  const std::string base_fname = TableFileName(db_options_.db_paths, file_number,
+  std::unique_ptr<WritableFile> base_writable_file;
+  std::unique_ptr<WritableFile> data_writable_file;
+  const auto table_name = sub_compact->compaction->column_family_data()->GetName();
+  const auto base_fname = TableFileName(db_options_.db_paths, file_number,
                                     sub_compact->compaction->output_path_id());
-  const std::string data_fname = TableBaseToDataFileName(base_fname);
-  const std::string table_name = sub_compact->compaction->column_family_data()->GetName();
   RETURN_NOT_OK(OpenFile(table_name, file_number, "base", base_fname, &base_writable_file));
-  RETURN_NOT_OK(OpenFile(table_name, file_number, "data", data_fname, &data_writable_file));
+  if (is_split_sst) {
+    const auto data_fname = TableBaseToDataFileName(base_fname);
+    RETURN_NOT_OK(OpenFile(table_name, file_number, "data", data_fname, &data_writable_file));
+  }
 
   SubcompactionState::Output out;
   out.meta.fd =
@@ -1025,8 +1106,6 @@ Status CompactionJob::OpenCompactionOutputFile(
 
   sub_compact->outputs.push_back(out);
 
-  ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
-
   {
     auto setup_outfile = [this, sub_compact] (
         size_t preallocation_block_size, std::unique_ptr<WritableFile>* writable_file,
@@ -1039,7 +1118,6 @@ Status CompactionJob::OpenCompactionOutputFile(
           std::move(*writable_file), env_options_, sub_compact->compaction->suspender()));
     };
 
-    const bool is_split_sst = cfd->ioptions()->table_factory->IsSplitSstForWriteSupported();
     const size_t preallocation_data_block_size = static_cast<size_t>(
         sub_compact->compaction->OutputFilePreallocationSize());
     // if we don't have separate data file - preallocate size for base file

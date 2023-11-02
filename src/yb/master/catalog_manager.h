@@ -57,7 +57,6 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/thread_annotations.h"
 
-#include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/cdc_split_driver.h"
@@ -144,7 +143,6 @@ namespace master {
 struct DeferredAssignmentActions;
 struct SysCatalogLoadingState;
 struct KeyRange;
-class XClusterManager;
 
 using PlacementId = std::string;
 
@@ -158,9 +156,6 @@ typedef std::unordered_map<TablespaceId, boost::optional<ReplicationInfoPB>>
 typedef std::unordered_map<TableId, boost::optional<TablespaceId>> TableToTablespaceIdMap;
 
 typedef std::unordered_map<TableId, std::vector<scoped_refptr<TabletInfo>>> TableToTabletInfos;
-
-// Map[NamespaceId]:xClusterSafeTime
-typedef std::unordered_map<NamespaceId, HybridTime> XClusterNamespaceToSafeTimeMap;
 
 typedef std::unordered_map<TableId, xrepl::StreamId> TableBootstrapIdsMap;
 
@@ -681,7 +676,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   TabletSplitManager* tablet_split_manager() override { return &tablet_split_manager_; }
 
-  XClusterManager* GetXClusterManager() override { return xcluster_manager_.get(); }
+  XClusterManagerIf* GetXClusterManager() override;
+  XClusterManager* GetXClusterManagerImpl() override { return xcluster_manager_.get(); }
 
   // Dump all of the current state about tables and tablets to the
   // given output stream. This is verbose, meant for debugging.
@@ -1118,10 +1114,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const scoped_refptr<TableInfo>& table) REQUIRES_SHARED(mutex_);
 
   Result<std::optional<cdc::ConsumerRegistryPB>> GetConsumerRegistry();
-  Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap();
-  Result<HybridTime> GetXClusterSafeTime(const NamespaceId& namespace_id) const;
-  Status SetXClusterNamespaceToSafeTimeMap(
-      const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& safe_time_map);
 
   Status SubmitToSysCatalog(std::unique_ptr<tablet::Operation> operation);
 
@@ -1477,13 +1469,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   friend class RoleLoader;
   friend class RedisConfigLoader;
   friend class SysConfigLoader;
-  friend class XClusterSafeTimeLoader;
   friend class ::yb::master::ScopedLeaderSharedLock;
   friend class PermissionsManager;
   friend class MultiStageAlterTable;
   friend class BackfillTable;
   friend class BackfillTablet;
-  friend class XClusterConfigLoader;
   friend class YsqlBackendsManager;
   friend class BackendsCatalogVersionJob;
   friend class AddTableToXClusterTask;
@@ -2313,9 +2303,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   std::unordered_set<TableId> pending_backfill_tables_ GUARDED_BY(backfill_mutex_);
 
   std::unique_ptr<XClusterManager> xcluster_manager_;
-
-  // XCluster Safe Time information.
-  XClusterSafeTimeInfo xcluster_safe_time_info_;
 
   void StartElectionIfReady(
       const consensus::ConsensusStatePB& cstate, const LeaderEpoch& epoch, TabletInfo* tablet);

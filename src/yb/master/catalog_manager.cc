@@ -200,15 +200,16 @@
 #include "yb/util/semaphore.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
-#include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/to_stream.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
@@ -1065,6 +1066,10 @@ Status CatalogManager::Init() {
   return Status::OK();
 }
 
+XClusterManagerIf* CatalogManager::GetXClusterManager() {
+  return xcluster_manager_.get();
+}
+
 Status CatalogManager::ElectedAsLeaderCb() {
   time_elected_leader_.store(MonoTime::Now());
   return leader_initialization_pool_->SubmitClosure(
@@ -1431,8 +1436,6 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
 
   ClearXReplState();
 
-  xcluster_safe_time_info_.Clear();
-
   std::vector<std::shared_ptr<TSDescriptor>> descs;
   master_->ts_manager()->GetAllDescriptors(&descs);
   for (const auto& ts_desc : descs) {
@@ -1456,8 +1459,6 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(Load<UDTypeLoader>("user-defined types", state));
   RETURN_NOT_OK(Load<ClusterConfigLoader>("cluster configuration", state));
   RETURN_NOT_OK(Load<RedisConfigLoader>("Redis config", state));
-  RETURN_NOT_OK(Load<XClusterSafeTimeLoader>("XCluster safe time", state));
-  RETURN_NOT_OK(Load<XClusterConfigLoader>("xcluster configuration", state));
 
   if (!transaction_tables_config_) {
     RETURN_NOT_OK(InitializeTransactionTablesConfig(state->epoch.leader_term));
@@ -1474,6 +1475,8 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(LoadXReplStream());
   RETURN_NOT_OK(LoadUniverseReplication());
   RETURN_NOT_OK(LoadUniverseReplicationBootstrap());
+
+  RETURN_NOT_OK(xcluster_manager_->RunLoaders());
 
   return Status::OK();
 }
@@ -4728,9 +4731,11 @@ Status CatalogManager::CreateGlobalTransactionStatusTableIfNeededForNewTable(
         "Error while creating transaction status table");
   } else {
     VLOG(1) << "Not attempting to create a transaction status table:\n"
-            << "  " << EXPR_VALUE_FOR_LOG(is_transactional) << "\n "
-            << "  " << EXPR_VALUE_FOR_LOG(is_pg_catalog_table) << "\n "
-            << "  " << EXPR_VALUE_FOR_LOG(FLAGS_create_initial_sys_catalog_snapshot);
+            << YB_EXPR_TO_STREAM_ONE_PER_LINE(
+                kTwoSpaceIndent,
+                is_transactional,
+                is_pg_catalog_table,
+                FLAGS_create_initial_sys_catalog_snapshot);
   }
   return Status::OK();
 }
@@ -10044,7 +10049,7 @@ Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap*
 // Note: versions and fingerprint are outputs.
 Status CatalogManager::GetYsqlAllDBCatalogVersions(
     bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint) {
-  DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+  DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
   if (use_cache) {
     SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
     // We expect that the only caller uses this cache is the heartbeat service.
@@ -11678,12 +11683,12 @@ Status CatalogManager::MaybeCreateLocalTransactionTable(
         RETURN_NOT_OK(CreateLocalTransactionStatusTableIfNeeded(rpc, tablespace_id, epoch));
       } else {
         VLOG(1) << "Not attempting to create a local transaction status table: "
-                << "tablespace " << EXPR_VALUE_FOR_LOG(tablespace_id) << " has no placement\n";
+                << "tablespace " << YB_EXPR_TO_STREAM(tablespace_id) << " has no placement";
       }
     } else {
       VLOG(1) << "Not attempting to create a local transaction status table:\n"
-              << "  " << EXPR_VALUE_FOR_LOG(is_transactional) << "\n "
-              << "  " << EXPR_VALUE_FOR_LOG(request.has_tablespace_id());
+              << YB_EXPR_TO_STREAM_ONE_PER_LINE(
+                  kTwoSpaceIndent, is_transactional, request.has_tablespace_id());
     }
   }
   return Status::OK();
@@ -12055,14 +12060,9 @@ void CatalogManager::DumpState(std::ostream* out, bool on_disk_dump) const {
       auto l = cluster_config->LockForRead();
       *out << "Cluster config: " << l->pb.ShortDebugString() << "\n";
     }
-
-    {
-      auto l = xcluster_safe_time_info_.LockForRead();
-      if (!l->pb.safe_time_map().empty()) {
-        *out << "XCluster Safe Time: " << l->pb.ShortDebugString() << "\n";
-      }
-    }
   }
+
+  xcluster_manager_->DumpState(out, on_disk_dump);
 }
 
 Status CatalogManager::PeerStateDump(const vector<RaftPeerPB>& peers,
@@ -13087,49 +13087,6 @@ Result<std::optional<cdc::ConsumerRegistryPB>> CatalogManager::GetConsumerRegist
   return std::nullopt;
 }
 
-Result<XClusterNamespaceToSafeTimeMap> CatalogManager::GetXClusterNamespaceToSafeTimeMap() {
-  google::protobuf::Map<std::string, google::protobuf::uint64> map_pb;
-
-  {
-    auto l = xcluster_safe_time_info_.LockForRead();
-    map_pb = l->pb.safe_time_map();
-  }
-
-  XClusterNamespaceToSafeTimeMap result;
-  for (auto& entry : map_pb) {
-    result[entry.first] = HybridTime(entry.second);
-  }
-  return result;
-}
-
-Result<HybridTime> CatalogManager::GetXClusterSafeTime(const NamespaceId& namespace_id) const {
-  auto l = xcluster_safe_time_info_.LockForRead();
-  SCHECK(
-      l->pb.safe_time_map().count(namespace_id), NotFound,
-      "XCluster safe time not found for namspace $0", namespace_id);
-
-  return HybridTime(l->pb.safe_time_map().at(namespace_id));
-}
-
-Status CatalogManager::SetXClusterNamespaceToSafeTimeMap(
-    const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& safe_time_map) {
-  google::protobuf::Map<std::string, google::protobuf::uint64> map_pb;
-  for (auto& entry : safe_time_map) {
-    map_pb[entry.first] = entry.second.ToUint64();
-  }
-
-  auto l = xcluster_safe_time_info_.LockForWrite();
-  *l.mutable_data()->pb.mutable_safe_time_map() = std::move(map_pb);
-
-  RETURN_NOT_OK_PREPEND(
-      sys_catalog_->Upsert(leader_term, &xcluster_safe_time_info_),
-      "Updating XCluster safe time in sys-catalog");
-
-  l.Commit();
-
-  return Status::OK();
-}
-
 AsyncTaskThrottlerBase* CatalogManager::GetDeleteReplicaTaskThrottler(
     const string& ts_uuid) {
 
@@ -13493,7 +13450,7 @@ void CatalogManager::StartPgCatalogVersionsBgTaskIfStopped() {
   // In per-database catalog version mode, if heartbeat PG catalog versions
   // cache is enabled, start a background task to periodically read the
   // pg_yb_catalog_version table and cache the result.
-  if (FLAGS_TEST_enable_db_catalog_version_mode &&
+  if (FLAGS_ysql_enable_db_catalog_version_mode &&
       FLAGS_enable_heartbeat_pg_catalog_versions_cache) {
     const bool is_task_running = pg_catalog_versions_bg_task_running_.exchange(true);
     if (is_task_running) {
@@ -13528,7 +13485,7 @@ void CatalogManager::ResetCachedCatalogVersions() {
 }
 
 void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
-  DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+  DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
   DCHECK(FLAGS_enable_heartbeat_pg_catalog_versions_cache);
   DCHECK(pg_catalog_versions_bg_task_running_);
 

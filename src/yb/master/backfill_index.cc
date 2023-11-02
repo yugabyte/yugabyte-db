@@ -56,6 +56,7 @@
 #include "yb/master/master_error.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -175,8 +176,8 @@ Result<bool> GetPgIndexStatus(
                                  empty_key_components,
                                  empty_key_components,
                                  &cond,
-                                 boost::none /* hash_code */,
-                                 boost::none /* max_hash_code */);
+                                 std::nullopt /* hash_code */,
+                                 std::nullopt /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -774,7 +775,7 @@ Status BackfillTable::LaunchComputeSafeTimeForRead() {
   RSTATUS_DCHECK(!timestamp_chosen(), IllegalState, "Backfill timestamp already set");
 
   if (master_->catalog_manager_impl()->IsTableXClusterConsumer(*indexed_table_)) {
-    auto res = master_->catalog_manager_impl()->GetXClusterSafeTime(indexed_table_->namespace_id());
+    auto res = master_->xcluster_manager()->GetXClusterSafeTime(indexed_table_->namespace_id());
     if (res.ok()) {
       SCHECK(!res->is_special(), InvalidArgument, "Invalid xCluster safe time for namespace ",
              indexed_table_->namespace_id());

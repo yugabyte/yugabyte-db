@@ -529,8 +529,10 @@ public class TabletClient extends ReplayingDecoder<Void> {
       code == WireProtocol.AppStatusPB.ErrorCode.ABORTED ||
       error.getCode() == CdcService.CDCErrorPB.Code.NOT_LEADER) {
       ybClient.handleNotLeader(rpc, ex, this);
+    } else {
+      return ex;
     }
-    return ex;
+    return null;
   }
 
   /**

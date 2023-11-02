@@ -29,6 +29,9 @@
 #include "yb/util/status.h"
 
 namespace yb {
+
+int TEST_scan_trivial_expectation = -1;
+
 namespace docdb {
 
 using dockv::DocKey;
@@ -739,9 +742,9 @@ Result<bool> HybridScanChoices::DoneWithCurrentTarget() {
   // if this is a forward scan it doesn't matter what we do
   // if this is a backwards scan then don't clear current_scan_target and we
   // stay live
-  VLOG_WITH_FUNC(2) << "Current_scan_target_ is "
-                    << DocKey::DebugSliceToString(current_scan_target_);
-  VLOG_WITH_FUNC(2) << "Moving on to next target";
+  VLOG_WITH_FUNC(2)
+      << "Current_scan_target_ is " << DocKey::DebugSliceToString(current_scan_target_)
+      << ", result: " << result;
 
   DCHECK(!finished_);
 
@@ -869,8 +872,7 @@ class EmptyScanChoices : public ScanChoices {
 };
 
 ScanChoicesPtr ScanChoices::Create(
-    const Schema& schema, const qlexpr::YQLScanSpec& doc_spec, const KeyBytes& lower_doc_key,
-    const KeyBytes& upper_doc_key) {
+    const Schema& schema, const qlexpr::YQLScanSpec& doc_spec, const qlexpr::ScanBounds& bounds) {
   auto prefixlen = doc_spec.prefix_length();
   auto num_hash_cols = schema.num_hash_key_columns();
   auto num_key_cols = schema.num_key_columns();
@@ -883,8 +885,17 @@ ScanChoicesPtr ScanChoices::Create(
     LOG(WARNING) << "Prefix length: " << prefixlen << " is invalid for schema: "
                   << "num_hash_cols: " << num_hash_cols << ", num_key_cols: " << num_key_cols;
   }
-  if (doc_spec.options() || doc_spec.range_bounds() || valid_prefixlen) {
-    return std::make_unique<HybridScanChoices>(schema, doc_spec, lower_doc_key, upper_doc_key);
+
+  auto test_scan_trivial_expectation = ANNOTATE_UNPROTECTED_READ(TEST_scan_trivial_expectation);
+  if (test_scan_trivial_expectation >= 0 &&
+      schema.num_key_columns() == 3 && schema.num_columns() == 3) {
+    CHECK_EQ(bounds.trivial, test_scan_trivial_expectation != 0);
+  }
+
+  // bounds.trivial means that we just need lower and upper bounds for the scan.
+  // So could use empty scan choices in case of the trivial range scan.
+  if (doc_spec.options() || (doc_spec.range_bounds() && !bounds.trivial) || valid_prefixlen) {
+    return std::make_unique<HybridScanChoices>(schema, doc_spec, bounds.lower, bounds.upper);
   }
 
   return CreateEmpty();

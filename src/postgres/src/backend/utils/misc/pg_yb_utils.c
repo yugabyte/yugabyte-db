@@ -477,12 +477,12 @@ YBSavepointsEnabled()
 /*
  * Return true if we are in per-database catalog version mode. In order to
  * use per-database catalog version mode, two conditions must be met:
- *   * --FLAGS_TEST_enable_db_catalog_version_mode=true
+ *   * --FLAGS_ysql_enable_db_catalog_version_mode=true
  *   * the table pg_yb_catalog_version has one row per database.
  * This function takes care of the YSQL upgrade from global catalog version
  * mode to per-database catalog version mode when the default value of
- * --FLAGS_TEST_enable_db_catalog_version_mode is changed to true. In this
- * upgrade procedure --FLAGS_TEST_enable_db_catalog_version_mode is set to
+ * --FLAGS_ysql_enable_db_catalog_version_mode is changed to true. In this
+ * upgrade procedure --FLAGS_ysql_enable_db_catalog_version_mode is set to
  * true before the table pg_yb_catalog_version is updated to have one row per
  * database.
  * This function does not consider going from per-database catalog version
@@ -500,7 +500,7 @@ YBIsDBCatalogVersionMode()
 	if (cached_gflag == -1)
 	{
 		cached_gflag = YBCIsEnvVarTrueWithDefault(
-			"FLAGS_TEST_enable_db_catalog_version_mode", false);
+			"FLAGS_ysql_enable_db_catalog_version_mode", false);
 	}
 
 	/*
@@ -522,7 +522,7 @@ YBIsDBCatalogVersionMode()
 	}
 
 	/*
-	 * At this point, we know that FLAGS_TEST_enable_db_catalog_version_mode is
+	 * At this point, we know that FLAGS_ysql_enable_db_catalog_version_mode is
 	 * turned on. However in case of YSQL upgrade we may not be ready to enable
 	 * per-db catalog version mode yet. Note that we only provide support where
 	 * we go from global catalog version mode to per-db catalog version mode,
@@ -590,7 +590,7 @@ static bool
 YBCanEnableDBCatalogVersionMode()
 {
 	/*
-	 * Even when FLAGS_TEST_enable_db_catalog_version_mode is turned on we
+	 * Even when FLAGS_ysql_enable_db_catalog_version_mode is turned on we
 	 * cannot simply enable per-database catalog mode if the table
 	 * pg_yb_catalog_version does not have one row for each database.
 	 * Consider YSQL upgrade, it happens after cluster software upgrade and

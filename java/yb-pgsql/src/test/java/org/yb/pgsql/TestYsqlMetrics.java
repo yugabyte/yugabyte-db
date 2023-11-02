@@ -18,6 +18,7 @@ import static org.yb.AssertionWrappers.*;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Arrays;
 
 import org.apache.commons.lang3.time.StopWatch;
 import org.junit.Test;
@@ -438,7 +439,8 @@ public class TestYsqlMetrics extends BasePgSQLTest {
    * This test does memory stats verification in EXPLAIN ANALYZE's output.
    * First, it does a rough validation on the stats by comparing queries that consume different
    * amounts of memory and validating their max memory outputs.
-   * Second, it does a more accurate validation on the stats against the sorting memory, to validate
+   * Second, it runs a query many times, checking for consistency on the max memory output.
+   * Third, it does a more accurate validation on the stats against the sorting memory, to validate
    * that max memory is slightly higher than sorting's memory.
    * It also does basic tests to ensure the newly added cutomized logic
    * for memory stats doesn't break existing EXPLAIN ANALYZE's execution for DDLs.
@@ -479,40 +481,30 @@ public class TestYsqlMetrics extends BasePgSQLTest {
       // If the tracking logic is not accurate and has errors, it will accumulate and shows in the
       // output.
       {
-        final int N_WARMUP_RUNS = 5;
+        final int N_INITIAL_RUNS = 10;
         final int N_UNMEASURED_RUNS = 80;
-        final int N_MEASURED_RUNS = 20;
-        final int N_ALLOWABLE_FAILURES = 4;
+        final int N_FINAL_RUNS = 10;
+        final int N_TOTAL_RUNS = N_INITIAL_RUNS + N_UNMEASURED_RUNS + N_FINAL_RUNS;
         final int LIMIT = 1000;
 
-        // The first few runs have a higher max memory - we want to use a the lowest value.
-        long maxMemSimpleStart = Long.MAX_VALUE;
-        for (int i = 0; i < N_WARMUP_RUNS; i++) {
-          long maxMem = runExplainAnalyze(statement, LIMIT);
-          if (maxMem < maxMemSimpleStart)
-            maxMemSimpleStart = maxMem;
+        long[] max_memories = new long[N_TOTAL_RUNS];
+        for (int i = 0; i < N_TOTAL_RUNS; i++) {
+          max_memories[i] = runExplainAnalyze(statement, LIMIT);
         }
 
-        // Run the query to allow for any potential memory leak to accumulate.
-        for (int i = 0; i < N_UNMEASURED_RUNS; i++) {
-          runExplainAnalyze(statement, LIMIT);
-        }
+        String max_memory_str = Arrays.toString(max_memories);
 
-        // There is some slight variation to the counter, but we expect the max memory to be
-        // consistent in most runs.
-        int numberOfFailures = 0;
-        for (int i = 0; i < N_MEASURED_RUNS; i++) {
-          final long maxMemCurrent = runExplainAnalyze(statement, LIMIT);
-          if (maxMemCurrent != maxMemSimpleStart) {
-            numberOfFailures++;
-            LOG.info(String.format(
-              "[Run %d]: expected %d (current max mem) to be equal to %d (starting max mem)",
-              i, maxMemCurrent, maxMemSimpleStart));
-          }
-        }
+        // Sort the first chunk and last chunk to get their medians.
+        Arrays.sort(max_memories, 0, N_INITIAL_RUNS);
+        long initial_median_memory = max_memories[N_INITIAL_RUNS / 2];
 
-        assertLessThanOrEqualTo("Too many runs had an unexpected max memory.",
-                                numberOfFailures, N_ALLOWABLE_FAILURES);
+        Arrays.sort(max_memories, N_TOTAL_RUNS - N_FINAL_RUNS, N_TOTAL_RUNS);
+        long final_median_memory = max_memories[N_TOTAL_RUNS - (N_FINAL_RUNS / 2)];
+
+        assertEquals(String.format("Expected median memory to be consistent between first %d runs" +
+                                   " and last %d runs. Got measurements %s", N_INITIAL_RUNS,
+                                   N_FINAL_RUNS, max_memory_str),
+                     initial_median_memory, final_median_memory);
       }
 
       // Run an accurate max-memory validation by including a single memory consumption operator
