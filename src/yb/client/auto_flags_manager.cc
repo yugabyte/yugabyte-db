@@ -21,6 +21,7 @@
 #include "yb/server/secure.h"
 #include "yb/util/auto_flags.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/version_info.h"
 
 using std::string;
 
@@ -278,10 +279,11 @@ Status AutoFlagsManager::ApplyConfig(ApplyNonRuntimeAutoFlags apply_non_runtime)
     auto desc = GetAutoFlagDescription(flag_name);
     // This will fail if the node is running a old version of the code that does not support the
     // flag.
-    RSTATUS_DCHECK(
-        desc, NotSupported,
-        "AutoFlag '$0' is not supported. Upgrade the process to a version that supports this flag.",
-        flag_name);
+    SCHECK(
+        desc, NotFound,
+        "AutoFlag '$0' is not found. Upgrade the process to a version that contains this AutoFlag. "
+        "Current version: $1",
+        flag_name, VersionInfo::GetShortVersionString());
 
     gflags::CommandLineFlagInfo flag_info;
     // All AutoFlags are gFlags, so this cannot fail.
