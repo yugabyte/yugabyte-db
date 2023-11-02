@@ -269,12 +269,21 @@ count by (node_prefix) (label_replace(max_over_time(up{export_type=~"master_expo
 ybp_universe_inactive_cron_nodes{universe_uuid = "$uuid"} > 0
 ```
 
-### DB node disk usage
+### DB node data disk usage
 
-Node disk usage for universe `'$universe_name'` is more than 70% on `$value` nodes.
+Node data disk usage for universe `'$universe_name'` is above `$threshold%` on `$value` node(s).
 
 ```expression
-count by (node_prefix) (100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~"/mnt/.*", node_prefix="$node_prefix"}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~"/mnt/.*", node_prefix="$node_prefix"}) * 100) > 70)
+count by (universe_uuid) (count by (universe_uuid, node_name) (100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~"__mountPoints__",universe_uuid="__universeUuid__", fstype!="rootfs"}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~"__mountPoints__",
+universe_uuid="__universeUuid__", fstype!="rootfs"}) * 100) {{ query_condition }} {{ query_threshold }}))
+```
+
+### DB node system disk usage
+
+Node system disk usage for universe `'$universe_name'` is above `$threshold%` on `$value` node(s).
+
+```expression
+count by (universe_uuid) (count by (universe_uuid, node_name) (100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~"__systemMountPoints__",universe_uuid="__universeUuid__", fstype!="rootfs"}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~"__systemMountPoints__",universe_uuid="__universeUuid__", fstype!="rootfs"}) * 100) {{ query_condition }} {{ query_threshold }}))
 ```
 
 ### Clock skew
@@ -291,6 +300,197 @@ The tablet leader is missing for more than 5 minutes for `$value` tablets in uni
 
 ```expression
 max by (node_prefix) (count by (node_prefix, exported_instance) (max_over_time(yb_node_leaderless_tablet{node_prefix="$node_prefix"}[5m])) > 0)
+```
+
+### Backup Deletion failure
+
+Failed to delete `$value` backups for customer `'yugabyte support'` in last GC run. Check logs for more details.
+
+```expression
+last_over_time(ybp_delete_backup_failure{customer_uuid = "__customerUuid__"}[1d]) {{ query_condition }} 0
+```
+
+### DB drive failure
+
+TServer detected `$value` drive failure for universe `'$universe_name'`.
+
+```expression
+count by (universe_uuid) (drive_fault{universe_uuid="__universeUuid__",
+export_type="tserver_export"}) {{ query_condition }} {{ query_threshold }}createForNewCustomer: true
+```
+
+### DB error logs
+
+Error logs detected for universe `'$universe_name'` on `$value` Master/TServer instance(s).
+
+```expression
+sum by (universe_uuid) ((ybp_health_check_node_master_error_logs{universe_uuid="__universeUuid__"} < bool 1) * ignoring (saved_name) (ybp_health_check_node_master_fatal_logs{universe_uuid="__universeUuid__"} == bool 1)) + sum by (universe_uuid) ((ybp_health_check_node_tserver_error_logs{universe_uuid="__universeUuid__"} < bool 1) * ignoring (saved_name) (ybp_health_check_node_tserver_fatal_logs{universe_uuid="__universeUuid__"} == bool 1)) {{ query_condition }} {{ query_threshold }}
+```
+
+### DB YSQLSH connection
+
+YSQLSH connection failure detected for universe `'$universe_name'` on `$value` TServer instance(s).
+
+```expression
+count by (universe_uuid) (yb_node_ysql_connect{universe_uuid="__universeUuid__"} < 1 {{ query_condition }} {{ query_threshold }}
+```
+
+### Number of YSQL connections is high
+
+Number of YSQL connections for universe `'$universe_name'` is above `$threshold`. Current value is `$value`.
+
+```expression
+max by (universe_uuid) (max_over_time(yb_node_ysql_connections_count{universe_uuid="__universeUuid__"}[5m])) {{ query_condition }} {{ query_threshold }}
+```
+
+### Number of YCQL connections is high
+
+Number of YCQL connections for universe `'$universe_name'` is above `$threshold`. Current value is `$value`.
+
+```expression
+max by (universe_uuid) (max_over_time(rpc_connections_alive{universe_uuid="__universeUuid__",export_type="cql_export"}[5m])) {{ query_condition }} {{ query_threshold }}
+```
+
+### Number of YEDIS connections is high
+
+Number of YEDIS connections for universe `'$universe_name'` is above `$threshold`. Current value is `$value`.
+
+```expression
+max by (universe_uuid) (max_over_time(rpc_connections_alive{universe_uuid="__universeUuid__",export_type="cql_export"}[5m])) {{ query_condition }} {{ query_threshold }}
+```
+
+### Memory Consumption
+
+Average memory usage for universe `'$universe_name'` nodes is above `$threshold%`. Maximum value is `$value`.
+
+```expression
+max by (universe_uuid) ((avg_over_time(node_memory_MemTotal_bytes{universe_uuid="__universeUuid__"}[10m])
+      - ignoring (saved_name) (avg_over_time(node_memory_Buffers_bytes{universe_uuid="__universeUuid__"}[10m]))
+      - ignoring (saved_name) (avg_over_time(node_memory_Cached_bytes{universe_uuid="__universeUuid__"}[10m]))
+      - ignoring (saved_name) (avg_over_time(node_memory_MemFree_bytes{universe_uuid="__universeUuid__"}[10m]))
+      - ignoring (saved_name) (avg_over_time(node_memory_Slab_bytes{universe_uuid="__universeUuid__"}[10m])))
+      / ignoring (saved_name) (avg_over_time(node_memory_MemTotal_bytes{universe_uuid="__universeUuid__"}[10m])))
+      * 100 {{ query_condition }} {{ query_threshold }}
+```
+
+### Under-replicated master
+
+Master is missing from raft group or has follower lag higher than `$threshold` seconds for universe `'$universe_name'`.
+
+```expression
+(min_over_time((ybp_universe_replication_factor{universe_uuid='{{ $labels.universe_uuid }}'} - on(universe_uuid) count by(universe_uuid) (count by (universe_uuid, exported_instance) (follower_lag_ms{export_type="master_export", universe_uuid='{{ $labels.universe_uuid }}'})))[{{query_threshold }}s:]) > 0 or (max by(universe_uuid) (follower_lag_ms{export_type="master_export", universe_uuid='{{ $labels.universe_uuid }}'}) {{ query_condition }} ({{ query_threshold }} * 1000)))
+```
+
+### New YSQL Tables Added
+
+New YSQL tables are added to the source universe `'$universe_name'` in the database with an existing xCluster configuration, but not added to the xCluster replication.
+
+```expression
+((count by (namespace_name, universe_uuid)(count by(namespace_name, table_id, universe_uuid)(rocksdb_current_version_sst_files_size{universe_uuid="__universeUuid__",table_type="PGSQL_TABLE_TYPE"}))) - count by(namespace_name, universe_uuid)(count by(namespace_name, universe_uuid, table_id)(async_replication_sent_lag_micros{universe_uuid="__universeUuid__",table_type="PGSQL_TABLE_TYPE"}))) {{ query_condition }} {{ query_threshold }}
+```
+
+### PITR Config Failure
+
+Last Snapshot task for universe `'$universe_name'` failed. To retry, check PITR Configuration task result for more details.
+
+```expression
+min(ybp_pitr_config_status{universe_uuid = "__universeUuid__"}) {{ query_condition }} 1
+```
+
+### Private access key permission status
+
+Invalid Permissions of private access key file for universe `'$universe_name'`. You need to check YugabyteDB Anywhere logs for details or contact {{% support-platform %}}.
+
+```expression
+last_over_time(ybp_universe_private_access_key_status{universe_uuid = "__universeUuid__"}[1d]) {{ query_condition }} 1
+```
+
+### Replication Lag
+
+Average replication lag for universe `'$universe_name'` is above `$threshold` milliseconds. Current value is `$value` milliseconds.
+
+```expression
+max by (universe_uuid) (avg_over_time(async_replication_committed_lag_micros{universe_uuid="__universeUuid__"}[10m]) or avg_over_time(async_replication_sent_lag_micros{universe_uuid="__universeUuid__"}[10m])) / 1000 {{ query_condition }} {{ query_threshold }}
+```
+
+### SSH Key Rotation Failure
+
+Last SSH Key Rotation task for universe `'$universe_name'` failed. To retry, check SSH Key Rotation task result.
+
+```expression
+last_over_time(ybp_ssh_key_rotation_status{universe_uuid = "__universeUuid__"}[1d]) {{ query_condition }} 1
+```
+
+### SSH Key expiry
+
+SSH Key for universe `'$universe_name'` will expire in `$value` days.
+
+```expression
+ybp_universe_ssh_key_expiry_day{universe_uuid="__universeUuid__"} {{ query_condition }} {{ query_threshold }}
+```
+
+### Metric Collection Failure
+
+Failed to collect metric for universe `'$universe_name'`. You need to check YugabyteDB Anywhere logs for details or contact {{% support-platform %}}.
+
+```expression
+last_over_time(ybp_universe_metric_collection_status{universe_uuid = "__universeUuid__"}[1d]) {{ query_condition }} 1
+```
+
+### YSQL P99 latency is high
+
+YSQL P99 latency for universe `'$universe_name'` is above `$threshold` milliseconds. Current value is `$value` milliseconds.
+
+```expression
+max by (universe_uuid) (rpc_latency{universe_uuid="__universeUuid__",server_type="yb_ysqlserver",service_type="SQLProcessor", service_method=~"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transactions",quantile="p99"}) {{ query_condition }} {{ query_threshold }}
+```
+
+### YSQL average latency is high
+
+Average YSQL operations latency for universe `'$universe_name'` is above `$threshold` milliseconds. Current value is `$value` milliseconds.
+
+```expression
+(sum by (universe_uuid, service_method)(rate(rpc_latency_sum{universe_uuid="__universeUuid__",export_type="ysql_export",server_type="yb_ysqlserver",service_type="SQLProcessor",service_method=~"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|Transactions"}[5m])) / sum by (universe_uuid, service_method)(rate(rpc_latency_count{universe_uuid="__universeUuid__",export_type="ysql_export",server_type="yb_ysqlserver", service_type="SQLProcessor",service_method=~"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|Transactions"}[5m]))) {{ query_condition }} {{ query_threshold }}
+```
+
+### YSQL throughput is high
+
+Maximum throughput for YSQL operations for universe `'$universe_name'` is above `$threshold` milliseconds. Current value is `$value` milliseconds.
+
+```expression
+sum by (service_method)(rate(rpc_latency_count{universe_uuid="__universeUuid__",export_type="ysql_export",server_type="yb_ysqlserver", service_type="SQLProcessor",service_method=~"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|Transactions"}[5m])) {{ query_condition }} {{ query_threshold }}
+```
+
+### YCQL average latency is high
+
+Average YSQL operations latency for universe `'$universe_name'` is above `$threshold` milliseconds. Current value is `$value` milliseconds.
+
+```expression
+(sum by (service_method)(rate(rpc_latency_sum{universe_uuid="__universeUuid__",export_type="cql_export",server_type="yb_cqlserver", service_type="SQLProcessor",service_method=~"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|Transaction"}[5m])) / sum by (service_method)(rate(rpc_latency_count{universe_uuid="__universeUuid__",export_type="cql_export",server_type="yb_cqlserver", service_type="SQLProcessor",service_method=~"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|Transaction"}[5m]))) {{ query_condition }} {{ query_threshold }}
+```
+
+### YCQL P99 latency is high
+
+YCQL P99 latency for universe `'$universe_name'` is above `$threshold` milliseconds. Current value is `$value` milliseconds.
+
+```expression
+max by (universe_uuid)(rpc_latency{universe_uuid="__universeUuid__",server_type="yb_cqlserver", service_type="SQLProcessor",service_method=~"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts|Transaction",quantile="p99"}) {{ query_condition }} {{ query_threshold }}
+```
+
+### YCQL throughput is high
+
+Maximum throughput for YCQL operations for universe `'$universe_name'` is above `$threshold` milliseconds. Current value is `$value` milliseconds.
+
+```expression
+sum by (universe_uuid, service_method) (rate(rpc_latency_count{universe_uuid="__universeUuid__",export_type="cql_export",server_type="yb_cqlserver", service_type="SQLProcessor",service_method=~"SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|Transaction"}[5m])) {{ query_condition }} {{ query_threshold }}
+```
+
+### Universe OS outdated
+
+More recent OS version is recommended for this universe. Consider running VM image upgrade for the nodes to incorporate security patches and address vulnerabilities.
+
+```expression
+ybp_universe_os_update_required{universe_uuid="__universeUuid__"} {{ query_condition }} {{ query_threshold }}
 ```
 
 <!--
