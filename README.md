@@ -106,11 +106,11 @@ Review detailed architecture in our [Docs](https://docs.yugabyte.com/preview/arc
 
 * Please use [GitHub issues](https://github.com/yugabyte/yugabyte-db/issues) to report issues or request new features.
 
-* To Troubleshoot YugabyteDB, cluser/node level isssues, Please refer to [Troubleshooting documentation](https://docs.yugabyte.com/preview/troubleshoot/)
+* To Troubleshoot YugabyteDB, cluser/node level issues, Please refer to [Troubleshooting documentation](https://docs.yugabyte.com/preview/troubleshoot/)
 
 # Contribute
 
-As an an open-source project with a strong focus on the user community, we welcome contributions as GitHub pull requests. See our [Contributor Guides](https://docs.yugabyte.com/preview/contribute/) to get going. Discussions and RFCs for features happen on the design discussions section of our [Forum](https://forum.yugabyte.com).
+As an open-source project with a strong focus on the user community, we welcome contributions as GitHub pull requests. See our [Contributor Guides](https://docs.yugabyte.com/preview/contribute/) to get going. Discussions and RFCs for features happen on the design discussions section of our [Forum](https://forum.yugabyte.com).
 
 # License
 
