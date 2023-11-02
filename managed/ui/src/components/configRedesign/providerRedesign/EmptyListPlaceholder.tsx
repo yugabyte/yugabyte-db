@@ -9,8 +9,8 @@ import clsx from 'clsx';
 import { YBButton } from '../../../redesign/components';
 
 import styles from './EmptyListPlaceholder.module.scss';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 interface EmptyListPlaceholderProps {
   actionButtonText: string;
@@ -34,10 +34,7 @@ export const EmptyListPlaceholder = ({
   <div className={clsx(styles.emptyListContainer, className)}>
     {PLUS_ICON}
     <RbacValidator
-      accessRequiredOn={{
-        onResource: "CUSTOMER_ID",
-        ...UserPermissionMap.createProvider
-      }}
+      accessRequiredOn={ApiPermissionMap.CREATE_PROVIDERS}
       isControl
     >
       <YBButton

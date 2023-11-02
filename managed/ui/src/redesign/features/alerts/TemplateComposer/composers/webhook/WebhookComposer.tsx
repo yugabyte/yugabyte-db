@@ -43,8 +43,8 @@ import { HTMLSerializer } from '../../../../../components/YBEditor/serializers';
 import { convertHTMLToText } from '../../../../../components/YBEditor/transformers/HTMLToTextTransform';
 import { createErrorMessage } from '../../../../universe/universe-form/utils/helpers';
 import { Info } from '@material-ui/icons';
-import { RbacValidator } from '../../../../rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../../rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../rbac/ApiAndUserPermMapping';
 
 const useStyles = makeStyles((theme) => ({
   composers: {
@@ -92,7 +92,7 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
 
     const createTemplate = useMutation(
       async ({ textTemplate }: { textTemplate: string }) => {
-        let invalidVariables = findInvalidVariables(textTemplate, alertVariables!.data);
+        const invalidVariables = findInvalidVariables(textTemplate, alertVariables!.data);
 
         if (invalidVariables.length > 0) {
           return Promise.reject({
@@ -245,7 +245,7 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
             justifyContent="space-between"
           >
             <RbacValidator
-              accessRequiredOn={UserPermissionMap.editAlertsConfig}
+              accessRequiredOn={ApiPermissionMap.PREVIEW_ALERT_NOTIFICATION}
               isControl
             >
               <YBButton
@@ -269,9 +269,7 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
                 {t('common.cancel')}
               </YBButton>
               <RbacValidator
-                accessRequiredOn={{
-                  ...UserPermissionMap.createAlertsConfig
-                }}
+                accessRequiredOn={ApiPermissionMap.CREATE_ALERT_CHANNEL_TEMPLATE}
                 isControl
               >
                 <YBButton

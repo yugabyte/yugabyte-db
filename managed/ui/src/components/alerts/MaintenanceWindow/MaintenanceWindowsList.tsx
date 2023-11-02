@@ -19,9 +19,9 @@ import { YBButton, YBCheckBox } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
 
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import './MaintenanceWindowsList.scss';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 /**
  * Extend time frame options in minutes
@@ -118,9 +118,7 @@ const GetMaintenanceWindowActions = ({
         >
           {Object.keys(extendTimeframes).map((timeframe) => (
             <RbacValidator
-              accessRequiredOn={{
-                ...UserPermissionMap.editMaintenanceWindow
-              }}
+              accessRequiredOn={ApiPermissionMap.MODIFY_MAINTENANCE_WINDOW}
               isControl
               overrideStyle={{ display: 'block' }}
             >
@@ -149,9 +147,7 @@ const GetMaintenanceWindowActions = ({
       >
         {currentWindow.state === MaintenanceWindowState.ACTIVE && (
           <RbacValidator
-            accessRequiredOn={{
-              ...UserPermissionMap.editMaintenanceWindow
-            }}
+            accessRequiredOn={ApiPermissionMap.MODIFY_MAINTENANCE_WINDOW}
             isControl
             overrideStyle={{ display: 'block' }}
           >
@@ -162,9 +158,7 @@ const GetMaintenanceWindowActions = ({
         )}
         {currentWindow.state !== MaintenanceWindowState.FINISHED && (
           <RbacValidator
-            accessRequiredOn={{
-              ...UserPermissionMap.editMaintenanceWindow
-            }}
+            accessRequiredOn={ApiPermissionMap.MODIFY_MAINTENANCE_WINDOW}
             isControl
             overrideStyle={{ display: 'block' }}
           >
@@ -178,9 +172,7 @@ const GetMaintenanceWindowActions = ({
           </RbacValidator>
         )}
         <RbacValidator
-          accessRequiredOn={{
-            ...UserPermissionMap.deleteMaintenanceWindow
-          }}
+          accessRequiredOn={ApiPermissionMap.DELETE_MAINTENANCE_WINDOW}
           isControl
           overrideStyle={{ display: 'block' }}
         >
@@ -267,9 +259,7 @@ export const MaintenanceWindowsList: FC<MaintenanceWindowsListProps> = ({
         </Col>
         <Col lg={2}>
           <RbacValidator
-            accessRequiredOn={{
-              ...UserPermissionMap.createMaintenenceWindow
-            }}
+            accessRequiredOn={ApiPermissionMap.CREATE_MAINTENANCE_WINDOW}
             isControl
           >
             <YBButton

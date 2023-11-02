@@ -11,11 +11,9 @@ import { ybFormatDate, YBTimeFormats } from '../../../../redesign/helpers/DateUt
 import { formatBytes } from '../../../xcluster/ReplicationUtils';
 
 import {
-  hasNecessaryPerm,
   RbacValidator
-} from '../../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../../redesign/features/rbac/UserPermPathMapping';
-import { Action, Resource } from '../../../../redesign/features/rbac';
+} from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './ThirdStep.scss';
 
 const statusElementsIcons = {
@@ -68,17 +66,7 @@ const getActions = (
         {isReady && (
           <RbacValidator
             isControl
-            accessRequiredOn={UserPermissionMap.downloadSupportBundle}
-            customValidateFunction={() => {
-              return (
-                hasNecessaryPerm(UserPermissionMap.downloadSupportBundle) &&
-                hasNecessaryPerm({
-                  onResource: universeUUID,
-                  resourceType: Resource.UNIVERSE,
-                  permissionRequired: [Action.READ]
-                })
-              );
-            }}
+            accessRequiredOn={{ ...ApiPermissionMap.DOWNLOAD_SUPPORT_BUNDLE, onResource: { "UNIVERSE": universeUUID } }}
             popOverOverrides={{ zIndex: 100000 }}
           >
             <MenuItem
@@ -103,17 +91,7 @@ const getActions = (
         )}
         <RbacValidator
           isControl
-          accessRequiredOn={UserPermissionMap.deleteSupportBundle}
-          customValidateFunction={() => {
-            return (
-              hasNecessaryPerm(UserPermissionMap.deleteSupportBundle) &&
-              hasNecessaryPerm({
-                onResource: universeUUID,
-                resourceType: Resource.UNIVERSE,
-                permissionRequired: [Action.READ]
-              })
-            );
-          }}
+          accessRequiredOn={{ ...ApiPermissionMap.DELETE_SUPPORT_BUNDLE, onResource: { "UNIVERSE": universeUUID } }}
           overrideStyle={{ display: 'block' }}
           popOverOverrides={{ zIndex: 100000 }}
         >
@@ -164,8 +142,8 @@ export const ThirdStep = withRouter(
   }) => {
     const [creatingBundle, setCreatingBundle] = useState(
       supportBundles &&
-        Array.isArray(supportBundles) &&
-        supportBundles.find((supportBundle) => supportBundle.status === 'Running') !== undefined
+      Array.isArray(supportBundles) &&
+      supportBundles.find((supportBundle) => supportBundle.status === 'Running') !== undefined
     );
     const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
     const [deleteBundleObj, setDeleteBundleObj] = useState({});
@@ -211,17 +189,7 @@ export const ThirdStep = withRouter(
           <div className="create-bundle">
             <RbacValidator
               isControl
-              accessRequiredOn={UserPermissionMap.createSupportBundle}
-              customValidateFunction={() => {
-                return (
-                  hasNecessaryPerm(UserPermissionMap.createSupportBundle) &&
-                  hasNecessaryPerm({
-                    onResource: universeUUID,
-                    resourceType: Resource.UNIVERSE,
-                    permissionRequired: [Action.READ]
-                  })
-                );
-              }}
+              accessRequiredOn={{ ...ApiPermissionMap.CREATE_SUPPORT_BUNDLE, onResource: { "UNIVERSE": universeUUID } }}
               popOverOverrides={{ zIndex: 100000 }}
             >
               <YBButton

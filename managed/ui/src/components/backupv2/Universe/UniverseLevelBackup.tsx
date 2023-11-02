@@ -19,9 +19,10 @@ import { PointInTimeRecovery } from '../pitr/PointInTimeRecovery';
 import { isYbcInstalledInUniverse, getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { BackupThrottleParameters } from '../components/BackupThrottleParameters';
 import { BackupAdvancedRestore } from '../components/BackupAdvancedRestore';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+
 import './UniverseLevelBackup.scss';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 interface UniverseBackupProps {
   params: {
@@ -73,7 +74,8 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
       )}
       <RbacValidator
         accessRequiredOn={{
-          ...UserPermissionMap.listBackup
+          ...ApiPermissionMap.GET_BACKUPS_BY_PAGE,
+          onResource: uuid
         }}
       >
         <YBTabsPanel id="backup-tab-panel" defaultTab="backupList">
@@ -114,7 +116,7 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
                   isControl
                   accessRequiredOn={{
                     onResource: uuid,
-                    ...UserPermissionMap.restoreBackup
+                    ...ApiPermissionMap.RESTORE_BACKUP
                   }}
                 >
                   <MenuItem
@@ -134,7 +136,7 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
                     isControl
                     accessRequiredOn={{
                       onResource: uuid,
-                      ...UserPermissionMap.createBackup
+                      ...ApiPermissionMap.MODIFY_BACKUP_THROTTLE_PARAMS
                     }}
                   >
                     <MenuItem

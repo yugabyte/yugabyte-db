@@ -10,8 +10,8 @@ import { NodeOverridesModal } from '../UniverseForm/HelmOverrides';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { downloadLogs } from '../../../actions/universe';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 export default class NodeAction extends Component {
   constructor() {
@@ -133,6 +133,18 @@ export default class NodeAction extends Component {
     return <YBLabelWithIcon icon={btnIcon}>{btnLabel}</YBLabelWithIcon>;
   }
 
+  getPermission = (actionType, universeId) => {
+    switch (actionType) {
+      case 'CONNECT':
+      case 'DOWNLOAD_LOGS':
+      case 'LIVE_QUERIES':
+      case 'SLOW_QUERIES':
+        return hasNecessaryPerm({ ...ApiPermissionMap.GET_UNIVERSES_BY_ID, onResource: { UNIVERSE: universeId } });
+      default:
+        return hasNecessaryPerm({ ...ApiPermissionMap.MODIFY_UNIVERSE, onResource: { UNIVERSE: universeId } });
+    }
+  }
+
   handleLiveQueryClick() {
     const { currentRow } = this.props;
     const path = browserHistory.getCurrentLocation().pathname;
@@ -187,35 +199,29 @@ export default class NodeAction extends Component {
           return (
             <Fragment>
               <RbacValidator
+                accessRequiredOn={{ ...ApiPermissionMap.GET_LIVE_QUERIES, onResource: { UNIVERSE: universeUUID } }}
+                overrideStyle={{ display: 'block' }}
                 isControl
-                accessRequiredOn={{
-                  onResource: universeUUID,
-                  ...UserPermissionMap.readUniverse
-                }}
               >
                 <MenuItem
                   key="live_queries_action_btn"
                   eventKey="live_queries_action_btn"
                   disabled={disabled}
                   onClick={this.handleLiveQueryClick}
-                  data-testid={'NodeAction-LIVE_QUERIES'}
                 >
                   {this.getLabel('LIVE_QUERIES', currentRow.dedicatedTo)}
                 </MenuItem>
               </RbacValidator>
               <RbacValidator
+                accessRequiredOn={{ ...ApiPermissionMap.GET_SLOW_QUERIES, onResource: { UNIVERSE: universeUUID } }}
+                overrideStyle={{ display: 'block' }}
                 isControl
-                accessRequiredOn={{
-                  onResource: universeUUID,
-                  ...UserPermissionMap.readUniverse
-                }}
               >
                 <MenuItem
                   key="slow_queries_action_btn"
                   eventKey="slow_queries_action_btn"
                   disabled={disabled}
                   onClick={this.handleSlowQueryClick}
-                  data-testid={'NodeAction-SLOW_QUERIES'}
                 >
                   {this.getLabel('SLOW_QUERIES', currentRow.dedicatedTo)}
                 </MenuItem>
@@ -228,19 +234,15 @@ export default class NodeAction extends Component {
       if (!NodeAction.getCaption(actionType, currentRow.dedicatedTo)) return null;
       return (
         <RbacValidator
-          isControl
-          accessRequiredOn={{
-            onResource: universeUUID,
-            ...UserPermissionMap.editUniverse
-          }}
+          customValidateFunction={() => this.getPermission(actionType, universeUUID)}
           overrideStyle={{ display: 'block' }}
+          isControl
         >
           <MenuItem
-            key={`${btnId}${actionType}`}
-            eventKey={`${btnId}`}
+            key={btnId}
+            eventKey={btnId}
             disabled={isDisabled}
             onClick={() => isDisabled || this.openModal(actionType)}
-            data-testid={`NodeAction-${actionType}`}
           >
             {this.getLabel(actionType, currentRow.dedicatedTo)}
           </MenuItem>
@@ -252,11 +254,9 @@ export default class NodeAction extends Component {
     const btnId = _.uniqueId('node_action_btn_');
     actionButtons.push(
       <RbacValidator
+        accessRequiredOn={{ ...ApiPermissionMap.DOWNLOAD_UNIVERSE_NODE_LOGS, onResource: { UNIVERSE: universeUUID } }}
+        overrideStyle={{ display: 'block' }}
         isControl
-        accessRequiredOn={{
-          onResource: universeUUID,
-          ...UserPermissionMap.editUniverse
-        }}
       >
         <MenuItem
           key={btnId}
@@ -274,11 +274,9 @@ export default class NodeAction extends Component {
       const nodeOverridesID = _.uniqueId('k8s_override_action_');
       actionButtons.push(
         <RbacValidator
+          accessRequiredOn={{ ...ApiPermissionMap.MODIFY_UNIVERSE, onResource: { UNIVERSE: universeUUID } }}
+          overrideStyle={{ display: 'block' }}
           isControl
-          accessRequiredOn={{
-            onResource: universeUUID,
-            ...UserPermissionMap.editUniverse
-          }}
         >
           <MenuItem
             key={nodeOverridesID}

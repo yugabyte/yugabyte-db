@@ -52,6 +52,8 @@ import {
   OnPremRegionMutation,
   YBProviderMutation
 } from '../../types';
+import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 interface OnPremProviderEditFormProps {
   editProvider: EditProvider;
@@ -207,15 +209,20 @@ export const OnPremProviderEditForm = ({
               heading="Regions"
               headerAccessories={
                 regions.length > 0 ? (
-                  <YBButton
-                    btnIcon="fa fa-plus"
-                    btnText="Add Region"
-                    btnClass="btn btn-default"
-                    btnType="button"
-                    onClick={showAddRegionFormModal}
-                    disabled={isFormDisabled}
-                    data-testid={`${FORM_NAME}-AddRegionButton`}
-                  />
+                  <RbacValidator
+                    accessRequiredOn={ApiPermissionMap.MODIFY_REGION_BY_PROVIDER}
+                    isControl
+                  >
+                    <YBButton
+                      btnIcon="fa fa-plus"
+                      btnText="Add Region"
+                      btnClass="btn btn-default"
+                      btnType="button"
+                      onClick={showAddRegionFormModal}
+                      disabled={isFormDisabled}
+                      data-testid={`${FORM_NAME}-AddRegionButton`}
+                    />
+                  </RbacValidator>
                 ) : null
               }
             >
@@ -512,9 +519,9 @@ const constructProviderPayload = async (
               return {
                 ...(existingZone
                   ? {
-                      active: existingZone.active,
-                      uuid: existingZone.uuid
-                    }
+                    active: existingZone.active,
+                    uuid: existingZone.uuid
+                  }
                   : { active: true }),
                 code: azFormValues.code,
                 name: azFormValues.code
