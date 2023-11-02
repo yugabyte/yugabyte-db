@@ -268,12 +268,20 @@ public class Commissioner {
       }
     }
     responseJson.put("retryable", retryable);
-    if (pauseLatches.containsKey(taskInfo.getTaskUUID())) {
+    if (isTaskPaused(taskInfo.getTaskUUID())) {
       // Set this only if it is true. The thread is just parking. From the task state
       // perspective, it is still running.
       responseJson.put("paused", true);
     }
     return Optional.of(responseJson);
+  }
+
+  public boolean isTaskPaused(UUID taskUuid) {
+    return pauseLatches.containsKey(taskUuid);
+  }
+
+  public boolean isTaskRunning(UUID taskUuid) {
+    return taskExecutor.isTaskRunning(taskUuid);
   }
 
   public Optional<ObjectNode> mayGetStatus(UUID taskUUID) {
@@ -385,6 +393,12 @@ public class Commissioner {
               try {
                 // Insert if absent and get the latch.
                 pauseLatches.computeIfAbsent(subTaskUUID, k -> new CountDownLatch(1)).await();
+                // Resume can set a new listener.
+                RunnableTask runnableTask = runningTasks.get(taskInfo.getParentUuid());
+                TaskExecutionListener listener = runnableTask.getTaskExecutionListener();
+                if (listener != null) {
+                  listener.beforeTask(taskInfo);
+                }
               } catch (InterruptedException e) {
                 throw new CancellationException("Subtask cancelled: " + e.getMessage());
               } finally {

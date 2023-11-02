@@ -687,7 +687,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           }
           // Persist the updated information about the universe. Mark it as being not edited.
           universeDetails.updateInProgress = false;
-          universeDetails.errorString = err;
+          universeDetails.setErrorString(error);
           if (universeDetails.updateSucceeded && updateTaskDetails) {
             // Clear the task UUIDs only if the update succeeded.
             universeDetails.updatingTaskUUID = null;

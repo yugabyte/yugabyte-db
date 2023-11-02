@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
@@ -53,14 +54,22 @@ import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
+import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import kamon.instrumentation.play.GuiceModule;
+import org.jboss.logging.MDC;
 import org.junit.Before;
 import org.mockito.Mockito;
 import org.pac4j.play.CallbackController;
@@ -129,11 +138,13 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected CloudAPI.Factory mockCloudAPIFactory;
 
   protected Commissioner commissioner;
+  protected CustomerTaskManager customerTaskManager;
 
   @Before
   public void setUp() {
     mockConfig = spy(app.config());
     commissioner = app.injector().instanceOf(Commissioner.class);
+    customerTaskManager = app.injector().instanceOf(CustomerTaskManager.class);
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
@@ -289,7 +300,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       // inside the get() request. We are not afraid of such exception as the next
       // request will succeeded.
       try {
-        TaskInfo taskInfo = TaskInfo.get(taskUUID);
+        TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
         if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
           // Also, ensure task details are set before returning.
           if (taskInfo.getDetails() != null) {
@@ -302,6 +313,155 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       numRetries++;
     }
     throw new RuntimeException(
-        "WaitFor task exceeded maxRetries! Task state is " + TaskInfo.get(taskUUID).getTaskState());
+        "WaitFor task exceeded maxRetries! Task state is "
+            + TaskInfo.getOrBadRequest(taskUUID).getTaskState());
+  }
+
+  public void waitForTaskPaused(UUID taskUuid) throws InterruptedException {
+    int numRetries = 0;
+    while (numRetries < MAX_RETRY_COUNT) {
+      if (!commissioner.isTaskRunning(taskUuid)) {
+        throw new RuntimeException(String.format("Task %s is not running", taskUuid));
+      }
+      if (commissioner.isTaskPaused(taskUuid)) {
+        return;
+      }
+      Thread.sleep(100);
+      numRetries++;
+    }
+    throw new RuntimeException(
+        "WaitFor task exceeded maxRetries! Task state is "
+            + TaskInfo.getOrBadRequest(taskUuid).getTaskState());
+  }
+
+  private void setAbortPosition(int abortPosition) {
+    MDC.remove(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY);
+    MDC.put(Commissioner.SUBTASK_ABORT_POSITION_PROPERTY, String.valueOf(abortPosition));
+  }
+
+  private void setPausePosition(int pausePosition) {
+    MDC.remove(Commissioner.SUBTASK_ABORT_POSITION_PROPERTY);
+    MDC.put(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY, String.valueOf(pausePosition));
+  }
+
+  private void clearAbortOrPausePositions() {
+    MDC.remove(Commissioner.SUBTASK_ABORT_POSITION_PROPERTY);
+    MDC.remove(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY);
+  }
+
+  /**
+   * This method aborts before every sub-task starting from position 0 and retries to make sure no
+   * pending subtasks from the first attempt are skipped on every retry. This mainly verifies that
+   * conditional blocks (e.g if isMaster) on an enclosing subtask outcome (e.g isMaster = true) do
+   * not skip any sub-tasks.
+   */
+  public void verifyTaskRetries(
+      Customer customer,
+      CustomerTask.TaskType customerTaskType,
+      TargetType targetType,
+      UUID targetUuid,
+      TaskType taskType,
+      ITaskParams taskParams) {
+    try {
+      // Pause at the beginning to capture the sub-tasks to be executed.
+      setPausePosition(0);
+      UUID taskUuid = commissioner.submit(taskType, taskParams);
+      CustomerTask.create(
+          customer, targetUuid, taskUuid, targetType, customerTaskType, "fake-name");
+      waitForTaskPaused(taskUuid);
+      TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUuid);
+      // Fetch the original list of sub-tasks to be executed before any retry.
+      Map<Integer, List<TaskInfo>> expectedSubTaskMap =
+          taskInfo.getSubTasks().stream()
+              .collect(
+                  Collectors.groupingBy(
+                      TaskInfo::getPosition, () -> new TreeMap<>(), Collectors.toList()));
+      List<TaskType> expectedSubTaskTypes =
+          expectedSubTaskMap.values().stream()
+              .map(l -> l.get(0).getTaskType())
+              .collect(Collectors.toList());
+      // Number of sub-tasks to be executed on any run.
+      int totalSubTaskCount = expectedSubTaskMap.size();
+      int pendingSubTaskCount = totalSubTaskCount;
+      int retryCount = 0;
+      while (pendingSubTaskCount > 0) {
+        // Abort starts from the first sub-task until there is no more sub-task left.
+        int abortPosition = totalSubTaskCount - pendingSubTaskCount;
+        if (pendingSubTaskCount > 1) {
+          setAbortPosition(abortPosition);
+        } else {
+          // Let the last sub-task complete.
+          clearAbortOrPausePositions();
+        }
+        // Resume task will resume and abort it if any abort position is set.
+        commissioner.resumeTask(taskUuid);
+        // Wait for the task to abort.
+        taskInfo = waitForTask(taskUuid);
+        if (pendingSubTaskCount <= 1) {
+          assertEquals(State.Success, taskInfo.getTaskState());
+        } else {
+          // Before retry, set the pause position to capture the list of subtasks
+          // for the next abort in the next iteration.
+          setPausePosition(0);
+          CustomerTask customerTask =
+              customerTaskManager.retryCustomerTask(customer.getUuid(), taskUuid);
+          retryCount++;
+          // New task UUID for the retry.
+          taskUuid = customerTask.getTaskUUID();
+          waitForTaskPaused(taskUuid);
+          // Get the task and sub-tasks that are to be executed on retry.
+          taskInfo = TaskInfo.getOrBadRequest(taskUuid);
+          Map<Integer, List<TaskInfo>> retrySubTaskMap =
+              taskInfo.getSubTasks().stream()
+                  .collect(
+                      Collectors.groupingBy(
+                          TaskInfo::getPosition, () -> new TreeMap<>(), Collectors.toList()));
+          List<TaskType> retryTaskTypes =
+              retrySubTaskMap.values().stream()
+                  .map(l -> l.get(0).getTaskType())
+                  .collect(Collectors.toList());
+          // Get the tail-end of the sub-tasks with size equal to the pending sub-task count.
+          List<TaskType> expectedTailTaskTypes =
+              expectedSubTaskTypes.subList(
+                  expectedSubTaskTypes.size() - pendingSubTaskCount, expectedSubTaskTypes.size());
+          // The number of sub-tasks to be executed must be at least the pending sub-tasks as some
+          // sub-tasks can be re-executed.
+          if (retryTaskTypes.size() < pendingSubTaskCount) {
+            throw new RuntimeException(
+                String.format(
+                    "Some subtasks are skipped on retry %d. At least %d sub-tasks are expected, "
+                        + "but only %d are found. Expected(at least): %s, found: %s",
+                    retryCount,
+                    pendingSubTaskCount,
+                    retryTaskTypes.size(),
+                    expectedTailTaskTypes,
+                    retryTaskTypes));
+          }
+          List<TaskType> tailTaskTypes =
+              retryTaskTypes.subList(
+                  retryTaskTypes.size() - pendingSubTaskCount, retryTaskTypes.size());
+          // The tail sublist of sub-subtasks must be exactly equal.
+          if (!expectedTailTaskTypes.equals(tailTaskTypes)) {
+            throw new RuntimeException(
+                String.format(
+                    "Mismatched order detected in subtasks (pending %d/%d) on retry %d. "
+                        + "Expected: %s, found: %s",
+                    retryCount,
+                    pendingSubTaskCount,
+                    expectedSubTaskTypes.size(),
+                    expectedTailTaskTypes,
+                    tailTaskTypes));
+          }
+          totalSubTaskCount = retryTaskTypes.size();
+        }
+        pendingSubTaskCount--;
+      }
+    } catch (RuntimeException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    } finally {
+      clearAbortOrPausePositions();
+    }
   }
 }

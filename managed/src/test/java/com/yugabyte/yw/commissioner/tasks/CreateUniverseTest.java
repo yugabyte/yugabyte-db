@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -312,5 +313,39 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
                 .filter(t -> t.has("command") && t.get("command").asText().equals("start"))
                 .count();
     assertEquals(taskParams.getPrimaryCluster().userIntent.numNodes + 1, tserversStarted);
+  }
+
+  @Test
+  public void testCreateUniverseRetries() {
+    UniverseDefinitionTaskParams taskParams = getTaskParams(true);
+    UniverseDefinitionTaskParams.UserIntent intent =
+        taskParams.getPrimaryCluster().userIntent.clone();
+    intent.replicationFactor = 1;
+    intent.numNodes = 1;
+    PlacementInfo placementInfo =
+        PlacementInfoUtil.getPlacementInfo(
+            UniverseDefinitionTaskParams.ClusterType.ASYNC,
+            intent,
+            1,
+            null,
+            Collections.emptyList());
+    Universe updated =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdaterWithReadReplica(intent, placementInfo));
+    taskParams.clusters.add(updated.getUniverseDetails().getReadOnlyClusters().get(0));
+    taskParams.nodeDetailsSet = updated.getUniverseDetails().nodeDetailsSet;
+    taskParams.nodeDetailsSet.forEach(
+        node -> {
+          node.nodeName = null;
+          node.state = NodeDetails.NodeState.ToBeAdded;
+        });
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.Create,
+        CustomerTask.TargetType.Universe,
+        updated.getUniverseUUID(),
+        TaskType.CreateUniverse,
+        taskParams);
   }
 }
