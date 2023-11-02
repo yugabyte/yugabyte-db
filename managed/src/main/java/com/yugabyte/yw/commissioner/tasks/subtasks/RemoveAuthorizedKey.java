@@ -13,9 +13,8 @@ import lombok.extern.slf4j.Slf4j;
 public class RemoveAuthorizedKey extends NodeTaskBase {
 
   @Inject
-  protected RemoveAuthorizedKey(
-      BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected RemoveAuthorizedKey(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   @Override

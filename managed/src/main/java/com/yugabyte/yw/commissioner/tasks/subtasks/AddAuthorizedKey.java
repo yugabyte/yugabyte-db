@@ -13,8 +13,8 @@ import lombok.extern.slf4j.Slf4j;
 public class AddAuthorizedKey extends NodeTaskBase {
 
   @Inject
-  protected AddAuthorizedKey(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected AddAuthorizedKey(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   @Override

@@ -820,7 +820,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       paramsCustomizer.accept(params);
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       subTaskGroup.addSubTask(task);
     }
 
@@ -1224,7 +1224,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Create the Ansible task to get the server info.
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       // Add it to the task list.
       subTaskGroup.addSubTask(task);
     }
@@ -1256,7 +1256,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Create the Ansible task to get the server info.
       AnsibleUpdateNodeInfo ansibleFindCloudHost = createTask(AnsibleUpdateNodeInfo.class);
       ansibleFindCloudHost.initialize(params);
-      ansibleFindCloudHost.setUserTaskUUID(userTaskUUID);
+      ansibleFindCloudHost.setUserTaskUUID(getUserTaskUUID());
       // Add it to the task list.
       subTaskGroup.addSubTask(ansibleFindCloudHost);
     }
@@ -1459,7 +1459,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               userIntent, node, certRotateAction, rootCARotationType, clientRootCARotationType);
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       subTaskGroup.addSubTask(task);
     }
     subTaskGroup.setSubTaskGroupType(subTaskGroupType);
@@ -1479,7 +1479,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           createUpdateCertDirParams(userIntent, node, ServerType.CONTROLLER);
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       subTaskGroup.addSubTask(task);
     }
     subTaskGroup.setSubTaskGroupType(subTaskGroupType);
@@ -1499,7 +1499,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           createUpdateCertDirParams(userIntent, node, serverType);
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       subTaskGroup.addSubTask(task);
     }
     subTaskGroup.setSubTaskGroupType(subTaskGroupType);
@@ -1756,7 +1756,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   /** Sets the task params from the DB. */
   public void fetchTaskDetailsFromDB() {
-    TaskInfo taskInfo = TaskInfo.getOrBadRequest(userTaskUUID);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(getUserTaskUUID());
     taskParams = Json.fromJson(taskInfo.getDetails(), UniverseDefinitionTaskParams.class);
   }
 
@@ -2378,7 +2378,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
-    task.setUserTaskUUID(userTaskUUID);
+    task.setUserTaskUUID(getUserTaskUUID());
     return task;
   }
 
@@ -2452,7 +2452,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.clusters = Collections.singletonList(cluster);
     UpdateUniverseIntent task = createTask(UpdateUniverseIntent.class);
     task.initialize(params);
-    task.setUserTaskUUID(userTaskUUID);
+    task.setUserTaskUUID(getUserTaskUUID());
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
@@ -2501,7 +2501,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     UpdateNodeDetails updateNodeTask = createTask(UpdateNodeDetails.class);
     updateNodeTask.initialize(updateNodeDetailsParams);
-    updateNodeTask.setUserTaskUUID(userTaskUUID);
+    updateNodeTask.setUserTaskUUID(getUserTaskUUID());
     subTaskGroup.addSubTask(updateNodeTask);
 
     getRunnableTask().addSubTaskGroup(subTaskGroup);

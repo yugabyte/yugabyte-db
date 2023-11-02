@@ -26,8 +26,8 @@ import lombok.extern.slf4j.Slf4j;
 public class AnsibleSetupServer extends NodeTaskBase {
 
   @Inject
-  protected AnsibleSetupServer(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected AnsibleSetupServer(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   // Additional parameters for this task.

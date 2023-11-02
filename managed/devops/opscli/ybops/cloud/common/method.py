@@ -416,10 +416,10 @@ class VerifySSHConnection(AbstractInstancesMethod):
                       "whereas old key does not")
                 return
             else:
-                raise YBOpsRuntimeError("SSH connection verification failed! " +
-                                        "Could not connect with old or new " +
-                                        "SSH key for instance: '{0}'".format(
-                                            args.search_pattern))
+                raise YBOpsRecoverableError("SSH connection verification failed! " +
+                                            "Could not connect with old or new " +
+                                            "SSH key for instance: '{0}'".format(
+                                                args.search_pattern))
 
 
 class AddAuthorizedKey(AbstractInstancesMethod):
@@ -480,10 +480,10 @@ class AddAuthorizedKey(AbstractInstancesMethod):
         if newKeyConnects:
             print("Add access key successful")
         else:
-            raise YBOpsRuntimeError("Add authorized key failed! " +
-                                    "Could not connect with given " +
-                                    "SSH key for instance: '{0}'".format(
-                                        args.search_pattern))
+            raise YBOpsRecoverableError("Add authorized key failed! " +
+                                        "Could not connect with given " +
+                                        "SSH key for instance: '{0}'".format(
+                                            args.search_pattern))
 
 
 class RemoveAuthorizedKey(AbstractInstancesMethod):
@@ -700,11 +700,11 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         connected = wait_for_server(self.extra_vars)
         if not connected:
             host_port_user = get_host_port_user(self.extra_vars)
-            raise YBOpsRuntimeError("Connection({}) to host {} by user {} failed at port {}"
-                                    .format(host_port_user["connection_type"],
-                                            host_port_user["host"],
-                                            host_port_user["user"],
-                                            host_port_user["port"]))
+            raise YBOpsRecoverableError("Connection({}) to host {} by user {} failed at port {}"
+                                        .format(host_port_user["connection_type"],
+                                                host_port_user["host"],
+                                                host_port_user["user"],
+                                                host_port_user["port"]))
 
         if args.boot_script:
             logging.info(
@@ -2043,8 +2043,8 @@ class WaitForConnection(AbstractInstancesMethod):
         connected = wait_for_server(self.extra_vars)
         if not connected:
             host_port_user = get_host_port_user(self.extra_vars)
-            raise YBOpsRuntimeError("Connection({}) to host {} by user {} failed at port {}"
-                                    .format(host_port_user["connection_type"],
-                                            host_port_user["host"],
-                                            host_port_user["user"],
-                                            host_port_user["port"]))
+            raise YBOpsRecoverableError("Connection({}) to host {} by user {} failed at port {}"
+                                        .format(host_port_user["connection_type"],
+                                                host_port_user["host"],
+                                                host_port_user["user"],
+                                                host_port_user["port"]))
