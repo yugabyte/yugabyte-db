@@ -226,6 +226,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
       ImageBundle bundle,
       ImageBundle existingBundle,
       boolean enableVMOSPatching) {
+    bundle.setProvider(provider);
     if (bundle.isUpdateNeeded(existingBundle)) {
       imageBundleHandler.doEdit(provider, bundle.getUuid(), bundle, true);
     }
