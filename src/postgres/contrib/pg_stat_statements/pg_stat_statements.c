@@ -376,8 +376,7 @@ static void pgss_store(const char *query, uint64 queryId,
 		   int query_location, int query_len,
 		   double total_time, uint64 rows,
 		   const BufferUsage *bufusage,
-		   pgssJumbleState *jstate,
-		   Query *queryObj);
+		   pgssJumbleState *jstate);
 static void pg_stat_statements_internal(FunctionCallInfo fcinfo,
 							pgssVersion api_version,
 							bool showtext);
@@ -1244,8 +1243,7 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 				   0,
 				   0,
 				   NULL,
-				   &jstate,
-				   query);
+				   &jstate);
 }
 
 /*
@@ -1352,7 +1350,7 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 				   queryDesc->totaltime->total * 1000.0,	/* convert to msec */
 				   queryDesc->estate->es_processed,
 				   &queryDesc->totaltime->bufusage,
-				   NULL, NULL);
+				   NULL);
 	}
 
 	if (prev_ExecutorEnd)
@@ -1463,7 +1461,7 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 				   INSTR_TIME_GET_MILLISEC(duration),
 				   rows,
 				   &bufusage,
-				   NULL, NULL);
+				   NULL);
 	}
 	else
 	{
@@ -1505,8 +1503,7 @@ pgss_store(const char *query, uint64 queryId,
 		   int query_location, int query_len,
 		   double total_time, uint64 rows,
 		   const BufferUsage *bufusage,
-		   pgssJumbleState *jstate,
-		   Query *queryObj)
+		   pgssJumbleState *jstate)
 {
 	pgssHashKey key;
 	pgssEntry  *entry;
@@ -1562,11 +1559,7 @@ pgss_store(const char *query, uint64 queryId,
 	 * For utility statements, we just hash the query string to get an ID.
 	 */
 	if (queryId == UINT64CONST(0))
-	{
 		queryId = pgss_hash_string(redacted_query, redacted_query_len);
-		if (queryObj)
-			queryObj->queryId = queryId;
-	}
 
 	/* Set up key for hashtable search */
 	key.userid = GetUserId();
