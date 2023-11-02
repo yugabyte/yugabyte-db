@@ -434,15 +434,15 @@ Additionally, when you run the `fall-forward setup` command, the [import data st
 yb-voyager import data status --export-dir <EXPORT_DIR> --ff-db-password <password>
 ```
 
-### Archive changes
+### Archive changes (Optional)
 
-As the migration continuously exports changes on the source database to the `EXPORT-DIR`, the disk utilization continues to grow indefinitely over time. To limit usage of all the disk space, you can use the `archive changes` command as follows:
+As the migration continuously exports changes on the source database to the `EXPORT-DIR`, the disk utilization continues to grow indefinitely over time. To limit usage of all the disk space, optionally, you can use the `archive changes` command as follows:
 
 ```sh
 yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR> --delete
 ```
 
-Refer to [archive changes](../../reference/cutover-archive/archive-changes/) for details about the arguments.
+Refer to [archive changes](../../reference/cutover-archive/archive-changes-optional/) for details about the arguments.
 
 {{< note title = "Note" >}}
 Make sure to run the archive changes command only after completing [fall-forward setup](#fall-forward-setup). If you run the command before, you may archive some changes before they have been imported to the fall-forward database.
@@ -504,7 +504,7 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
     {{< /warning >}}
 
-1. Stop [archive changes](#archive-changes).
+1. Stop [archive changes](#archive-changes-optional).
 
 ### Switch over to the fall forward (Optional)
 
@@ -551,7 +551,7 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
     {{< /warning >}}
 
-1. Stop [archive changes](#archive-changes).
+1. Stop [archive changes](#archive-changes-optional).
 
 {{< note >}}
 During `fall-forward synchronize`, yb-voyager creates a CDC stream ID on the target YugabyteDB database to fetch the new changes from the target database which is displayed as part of the `fall-forward synchronize` output. You need to manually delete the stream ID after `fall forward switchover` is completed.
