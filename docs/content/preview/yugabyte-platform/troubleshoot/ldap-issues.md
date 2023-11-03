@@ -7,7 +7,7 @@ menu:
   preview_yugabyte-platform:
     identifier: ldap-issues
     parent: troubleshoot-yp
-    weight: 10
+    weight: 40
 type: docs
 ---
 
