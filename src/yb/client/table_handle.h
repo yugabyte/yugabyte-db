@@ -60,6 +60,9 @@ void UpdateMapUpsertKeyValue(
     QLWriteRequestPB* req, const int32_t column_id, const std::string& entry_key,
     const std::string& entry_value);
 
+void UpdateMapRemoveKey(
+    QLWriteRequestPB* req, const int32_t column_id, const std::string& entry_key);
+
 QLMapValuePB* AddMapColumn(QLWriteRequestPB* req, const int32_t& column_id);
 
 void AddMapEntryToColumn(
