@@ -644,6 +644,9 @@ class YBClient {
       const master::ReplicationInfoPB* replication_info = nullptr);
 
   Result<master::ListTablesResponsePB> ListTableInfo();
+
+  Result<master::ListTablesResponsePB> ListTableInfoCall(master::ListTablesRequestPB req, master::ListTablesResponsePB resp);
+  
   Result<std::vector<YBTabletServer>> ListTabletServers();
 
   Result<TabletServersInfo> ListLiveTabletServers(bool primary_only = false);

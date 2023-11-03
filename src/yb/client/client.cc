@@ -2295,10 +2295,15 @@ Result<bool> YBClient::CheckIfPitrActive() {
   return data_->CheckIfPitrActive(deadline);
 }
 
+Result<ListTablesResponsePB> YBClient::ListTableInfoCall(ListTablesRequestPB req, ListTablesResponsePB resp) {
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTables);
+  return resp;
+}
+
 Result<ListTablesResponsePB> YBClient::ListTableInfo() {
   ListTablesRequestPB req;
   ListTablesResponsePB resp;
-  CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTables);
+  resp = VERIFY_RESULT(ListTableInfoCall(req, resp));
   return resp;
 }
 
@@ -2310,8 +2315,7 @@ Result<std::vector<YBTableName>> YBClient::ListTables(const std::string& filter,
   if (!filter.empty()) {
     req.set_name_filter(filter);
   }
-
-  CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListTables);
+  resp = VERIFY_RESULT(ListTableInfoCall(req, resp));
   std::vector<YBTableName> result;
   result.reserve(resp.tables_size());
 
