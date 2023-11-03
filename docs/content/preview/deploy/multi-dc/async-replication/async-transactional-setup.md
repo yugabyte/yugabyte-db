@@ -12,15 +12,34 @@ menu:
 type: docs
 ---
 
-The following assumes you have set up source and target universes. Refer to [Set up universes](../async-deployment/#set-up-universes).
+The following assumes you have set up Primary and Standby universes. Refer to [Set up universes](../async-deployment/#set-up-universes).
 
-## Manual setup
+## Set up replication
 
-Set up unidirectional transactional replication as follows:
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+  <li>
+    <a href="#local" class="nav-link active" id="local-tab" data-toggle="tab"
+      role="tab" aria-controls="local" aria-selected="true">
+      <img src="/icons/database.svg" alt="Server Icon">
+      Local
+    </a>
+  </li>
+  <li>
+    <a href="#anywhere" class="nav-link" id="anywhere-tab" data-toggle="tab"
+      role="tab" aria-controls="anywhere" aria-selected="false">
+      <img src="/icons/server.svg" alt="Server Icon">
+      YugabyteDB Anywhere
+    </a>
+  </li>
+</ul>
+<div class="tab-content">
+  <div id="local" class="tab-pane fade show active" role="tabpanel" aria-labelledby="local-tab">
 
-1. Create a new database on the source and target universes with the same name.
+To set up unidirectional transactional replication manually, do the following:
 
-1. Create the following tables and indexes on both source and target; the schema must match between the databases, including the number of tablets per table.
+1. Create a new database on the Primary and Standby universes with the same name.
+
+1. Create the following tables and indexes on both Primary and Standby; the schema must match between the databases, including the number of tablets per table.
 
     ```sql
     create table ordering_test (id int) split into 8 tablets;
@@ -60,7 +79,7 @@ Set up unidirectional transactional replication as follows:
     split into 8 tablets;
     ```
 
-1. Enable point in time restore (PITR) on the target database:
+1. Enable point in time restore (PITR) on the Standby database:
 
     ```sh
     ./bin/yb-admin \
@@ -70,7 +89,7 @@ Set up unidirectional transactional replication as follows:
 
 1. If the source universe already has data, then follow the bootstrap process described in [Bootstrap a target universe](../async-replication/#bootstrap-a-target-universe) before setting up replication with the transactional flag.
 
-1. Set up xCluster replication from ACTIVE (source) to STANDBY (target) using yb-admin as follows:
+1. Set up xCluster replication from Primary to Standby (target) using yb-admin as follows:
 
     ```sh
     ./bin/yb-admin \
@@ -83,7 +102,7 @@ Set up unidirectional transactional replication as follows:
         <comma_separated_source_bootstrap_ids> transactional
     ```
 
-1. Set the role of the target universe to STANDBY:
+1. Set the role of the Standby universe to `STANDBY`:
 
     ```sh
     ./bin/yb-admin \
@@ -92,32 +111,13 @@ Set up unidirectional transactional replication as follows:
         change_xcluster_role STANDBY
     ```
 
-1. On the target, verify `xcluster_safe_time` is progressing. This is the indicator of data flow from source to target.
+  </div>
 
-    ```sh
-    ./bin/yb-admin \
-        -master_addresses <target_master_addresses>
-        -certs_dir_name <dir_name> 
-        get_xcluster_safe_time
-    ```
+  <div id="anywhere" class="tab-pane fade" role="tabpanel" aria-labelledby="cloud-tab">
 
-    ```output.json
-    $ ./tserver/bin/yb-admin -master_addresses 172.150.21.61:7100,172.150.44.121:7100,172.151.23.23:7100 get_xcluster_safe_time
-    [
-        {
-            "namespace_id": "00004000000030008000000000000000",
-            "namespace_name": "dr_db",
-            "safe_time": "2023-06-07 16:31:17.601527",
-            "safe_time_epoch": "1686155477601527"
-        }
-    ]
-    ```
+To set up unidirectional transactional replication using YugabyteDB Anywhere, do the following:
 
-## Setup using YugabyteDB Anywhere
-
-On the source universe (with and without data), do the following:
-
-1. Create a fresh database. Don't create these objects in the default `yugabyte` database.
+1. On the Primary universe (with and without data), create a fresh database. Don't create these objects in the default `yugabyte` database.
 
 1. Create the following tables and indexes:
 
@@ -136,49 +136,85 @@ On the source universe (with and without data), do the following:
     create table if not exists account_sum ( sum int );
     ```
 
-1. On Standby, create a fresh database with the same name (with and without data).
+1. On the Standby, create a fresh database with the same name (with and without data).
 
-    During initial replication setup, you don't need to create objects on the target cluster. xCluster bootstrap auto-creates tables and objects and restores data on the Standby from the Primary cluster.
+    During initial replication setup, you don't need to create objects on the Standby cluster. xCluster bootstrap auto-creates tables and objects and restores data on the Standby from the Primary cluster.
 
-1. In YugabyteDB Anywhere, enable PITR on both Primary and Standby universes.
-Backups > point-in-time-recovery.
+1. In YugabyteDB Anywhere, enable point-in-time recovery for the Primary and Standby universes as follows:
 
-1. Set up xCluster Replication from PRIMARY to STANDBY universe using YBA UI.
+    - Navigate to the universe, **Backups > Point-in-time Recovery**, and click **Enable Point-in-Time Recovery**.
 
-    If there is data in the databases then YBA will walk you through the backup & restore process.
+        ![Enable PITR](/images/yp/create-deployments/xcluster/deploy-xcluster-tran-pitr1.png)
 
-    **Note**: If there are any connections open against the target (standby) databases and replication is being set up for a Primary database that already has some data, then the set up replication with bootstrap flow will fail with an expected error. This is because setting up replication requires backing up the primary database and restoring the backup to the target database after cleaning up any pre-existing data on the target side. Please close any connections to the target(standby) database and retry the setup replication operation.
+    - Choose the API, select your database, and specify the retention period, then click **Enable**.
+
+        ![Enable PITR](/images/yp/create-deployments/xcluster/deploy-xcluster-tran-pitr2.png)
+
+1. Set up xCluster Replication from Primary to Standby as follows:
+
+    - Navigate to your primary universe, select the **Replication** tab, and click **Configure Replication**.
+
+    - Enter a name for the replication, set the target universe to the Standby, and click **Next: Select Tables**.
+
+    - Select the **Enable transactional atomicity** option.
+
+    - Select your database and click **Validate Table Selection**.
+
+        If there is data in the databases, then YBA will walk you through the backup and restore process.
+
+    - Click **Next: Configure Bootstrap**.
+
+    - Choose the storage config to use for backup and click **Bootstrap and Enable Replication**.
+
+    **Note**: If there are any connections open against the Standby databases and replication is being set up for a Primary database that already has some data, then Bootstrap and Enable Replication will fail with the following error:
 
     ```output
     Error ERROR:  database "database_name" is being accessed by other users
     DETAIL:  There is 1 other session using the database.
     ```
 
+    This is because setting up replication requires backing up the Primary database and restoring the backup to the Standby database after cleaning up any pre-existing data on the standby. Close any connections to the Standby database and retry the replication setup operation.
+
     **Note**: When you add a new database to an existing replication stream:
 
-    - You need to create the same objects on the Standby. If Source and Target objects do not match, then the database will not be allowed to be added to the replication.
-    - If the WALs are GC-ed from Primary then the database will need to be bootstrapped. The bootstrap process is handled by YBA. Only single database is bootstrapped, not all the databases involved in the existing replication.
+    - You need to create the same objects on the Standby. If Primary and Standby objects don't match, the database won't be allowed to be added to the replication.
+    - If the WALs are garbage collected from Primary, then the database will need to be bootstrapped. The bootstrap process is handled by YBA. Only single database is bootstrapped, not all the databases involved in the existing replication.
 
-1. On the Standby, verify [xCluster safe time](../../../../architecture/docdb-replication/async-replication/#transactional-replication) is progressing. This is the indicator of data flow from Primary to Standby.
+  </div>
 
-    ```sh
-    yb-admin \
-    -master_addresses <Standby_master_ips>
-    -certs_dir_name <dir_name> 
+</div>
+
+## Verify replication
+
+To verify the replication is working, on the Standby, check that [xCluster safe time](../../../../architecture/docdb-replication/async-replication/#transactional-replication) is progressing. This is the indicator of data flow from Primary to Standby.
+
+Use the `get_xcluster_safe_time` command:
+
+```sh
+yb-admin \
+-master_addresses <Standby_master_ips> \
+-certs_dir_name <dir_name> \
+get_xcluster_safe_time
+```
+
+For example:
+
+```sh
+./tserver/bin/yb-admin -master_addresses 172.150.21.61:7100,172.150.44.121:7100,172.151.23.23:7100 \
     get_xcluster_safe_time
+```
 
-    $ ./tserver/bin/yb-admin -master_addresses 172.150.21.61:7100,172.150.44.121:7100,172.151.23.23:7100 get_xcluster_safe_time
-    ```
+You should see output similar to the following:
 
-    ```output
-    [
-        {
-            "namespace_id": "00004000000030008000000000000000",
-            "namespace_name": "dr_db",
-            "safe_time": "2023-06-07 16:31:17.601527",
-            "safe_time_epoch": "1686155477601527"
-        }
-    ]
-    ```
+```output.json
+[
+    {
+        "namespace_id": "00004000000030008000000000000000",
+        "namespace_name": "dr_db",
+        "safe_time": "2023-06-07 16:31:17.601527",
+        "safe_time_epoch": "1686155477601527"
+    }
+]
+```
 
-**Note**: Default time reported in xCluster safe time is year 2112. You need to wait until the xCluster safe time on the Standby advances beyond setup replication clock time.
+Default time reported in xCluster safe time is year 2112. You need to wait until the xCluster safe time on the Standby advances beyond setup replication clock time.

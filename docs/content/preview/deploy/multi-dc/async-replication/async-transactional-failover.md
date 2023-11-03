@@ -14,17 +14,21 @@ type: docs
 
 Unplanned failover is the process of switching application traffic to the target (standby) universe in case the source (active) universe becomes unavailable. One of the common reasons for such a scenario is an outage of the source universe region.
 
-## Manual failover
+## Performing failover
 
-Assuming universe A is the current source (active) universe and B is the current target (standby) universe, use the following steps to perform an unplanned failover on to B and resume applications from B:
+Assuming universe A is the Primary and universe B is the Standby, use the following procedure to perform an unplanned failover and resume applications on B.
 
-1. When A is terminated, stop the application traffic to ensure no more updates are attempted.
+### Pause replication and get the safe time
 
-1. Pause replication on B. This step is required to avoid unexpected updates arriving through replication, which can happen if A comes back up before the failover process is completed.
+If the Primary is Terminated for some reason, do the following:
+
+1. Stop the application traffic to ensure no more updates are attempted.
+
+1. Pause replication on the Standby (B). This step is required to avoid unexpected updates arriving through replication, which can happen if the Primary comes back up before the failover process is completed.
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <B_master_addresses> 
+        -master_addresses <standby_master_addresses> \
         -certs_dir_name <cert_dir> \
         set_universe_replication_enabled <replication_name> 0
     ```
@@ -35,16 +39,16 @@ Assuming universe A is the current source (active) universe and B is the current
     Replication disabled successfully
     ```
 
-1. Get the latest consistent time on B. The `get_xcluster_safe_time` command provides an approximate value for the data loss expected to occur when the unplanned failover process finishes, and the consistent timestamp on the Standby universe.
+1. Get the latest consistent time on Standby (B). The `get_xcluster_safe_time` command provides an approximate value for the data loss expected to occur when the unplanned failover process finishes, and the consistent timestamp on the Standby universe.
 
     ```sh
-    ./bin/yb-admin \
-        -master_addresses <B_master_addresses> 
-        -certs_dir_name <cert_dir> \
-        get_xcluster_safe_time include_lag_and_skew
+    yb-admin \
+    -master_addresses <standby_master_addresses> \
+    -certs_dir_name <cert_dir> \
+    get_xcluster_safe_time include_lag_and_skew
     ```
 
-    Expect output similar to the following:
+    Example Output:
 
     ```output.json
     [
@@ -59,15 +63,44 @@ Assuming universe A is the current source (active) universe and B is the current
     ]
     ```
 
-1. Determine if the estimated data loss and the `safe_time` to which the system will be reset are acceptable.
+    `safe_time_lag_sec` is the time elapsed in microseconds between the physical time and safe time. Safe time is when data has been replicated to all the tablets on the target cluster.
 
-1. Use PITR to restore the universe to a consistent state that cuts off any partially replicated transactions. Use the xCluster safe time obtained in the previous step as the Restore time in the following restore step.
+    `safe_time_skew_sec` is the time elapsed in microseconds for replication between the first and the last tablet replica on the target cluster.
 
-    Find the Snapshot Schedule name for this database:
+    Determine if the estimated data loss and the safe time to which the system will be reset are acceptable.
+
+### Restore the cluster to a consistent state
+
+Use PITR to restore the cluster to a consistent state that cuts off any partially replicated transactions. Use the xCluster `safe_time` obtained in the previous step as the restore time.
+
+If there are multiple databases in the same cluster, do PITR on all the databases sequentially (one after the other).
+
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+  <li>
+    <a href="#local" class="nav-link active" id="local-tab" data-toggle="tab"
+      role="tab" aria-controls="local" aria-selected="true">
+      <img src="/icons/database.svg" alt="Server Icon">
+      Local
+    </a>
+  </li>
+  <li>
+    <a href="#anywhere" class="nav-link" id="anywhere-tab" data-toggle="tab"
+      role="tab" aria-controls="anywhere" aria-selected="false">
+      <img src="/icons/server.svg" alt="Server Icon">
+      YugabyteDB Anywhere
+    </a>
+  </li>
+</ul>
+<div class="tab-content">
+  <div id="local" class="tab-pane fade show active" role="tabpanel" aria-labelledby="local-tab">
+
+To do a PITR on a database:
+
+1. On Standby (B), find the Snapshot Schedule name for this database:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <B_master_addresses> \
+        -master_addresses <standby_master_addresses> \
         -certs_dir_name <cert_dir> \
         list_snapshot_schedules 
     ```
@@ -95,11 +128,11 @@ Assuming universe A is the current source (active) universe and B is the current
     }
     ```
 
-    Restore B to the minimum latest consistent time using PITR.
+1. Restore Standby (B) to the minimum latest consistent time using PITR.
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <B_master_addresses> \
+        -master_addresses <standby_master_addresses> \
         -certs_dir_name <cert_dir> \
         restore_snapshot_schedule <schedule_id> "<safe_time>"
     ```
@@ -117,7 +150,7 @@ Assuming universe A is the current source (active) universe and B is the current
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <B_master_addresses> \
+        -master_addresses <standby_master_addresses> \
         -certs_dir_name <cert_dir> \
         list_snapshot_restorations
     ```
@@ -135,11 +168,11 @@ Assuming universe A is the current source (active) universe and B is the current
         ]
     }
 
-1. Promote B to the active role:
+1. Promote Standby (B) to the active role:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <B_master_addresses> \
+        -master_addresses <standby_master_addresses> \
         -certs_dir_name <cert_dir> \
         change_xcluster_role ACTIVE
     ```
@@ -148,73 +181,23 @@ Assuming universe A is the current source (active) universe and B is the current
     Changed role successfully
     ```
 
-1. Delete the replication from A to B:
+1. Delete the replication from the former Primary (A):
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <B_master_addresses> \
-        delete_universe_replication <A_universe_uuid>_<replication_name>
+        -master_addresses <standby_master_addresses> \
+        delete_universe_replication <primary_universe_uuid>_<replication_name>
     ```
 
-1. Resume the application traffic on B.
+1. Resume the application traffic on the new Primary (B).
 
-After completing the preceding steps, universe B becomes the new source (active) universe. There is no target (standby) until A comes back up and is restored to the correct state.
+  </div>
 
-When A comes back up, to bring A into sync with B and set up replication in the opposite direction (from B to A), the database on A will need to be dropped and recreated from a backup of B (Bootstrap).
-
-## Failover using YugabyteDB Anywhere
-
-### Promote B as PRIMARY
-
-Assuming cluster A is the PRIMARY Universe and cluster B is the STANDBY Universe, use the following procedure to perform an unplanned failover and resume applications from B.
-
-#### Obtain the xCluster safe time
-
-If the Primary is Terminated for some reason, do the following:
-
-1. Stop the application traffic to ensure no more updates are attempted.
-
-1. Get the latest consistent time on Standby (B). This API provides an approximate value for the data loss expected to occur when the unplanned failover process finishes and the consistent timestamp on the Standby universe.
-
-    ```sh
-    yb-admin 
-    -master_addresses <standby_master_ips> 
-    -certs_dir_name <cert_dir> \
-    get_xcluster_safe_time include_lag_and_skew
-    ```
-
-    Example Output:
-
-    ```output.json
-    [
-        {
-            "namespace_id": "00004000000030008000000000000000",
-            "namespace_name": "dr_db3",
-            "safe_time": "2023-06-08 23:12:51.651318",
-            "safe_time_epoch": "1686265971651318",
-            "safe_time_lag_sec": "24.87",
-            "safe_time_skew_sec": "1.16"
-        }
-    ]
-    ```
-
-    `safe_time_lag_sec` is the time elapsed in microseconds between the physical time and safe time. Safe time is when data has been replicated to all the tablets on the target cluster.
-
-    `safe_time_skew_sec` is the time elapsed in microseconds for replication between the first and the last tablet replica on the target cluster.
-
-    Determine if the estimated data loss and the safe time to which the system will be reset are acceptable.
-
-#### Restore the cluster to a consistent state
-
-Use PITR to restore the cluster to a consistent state that cuts off any partially replicated transactions. Use the xCluster `safe_time` obtained in the previous step as the restore time.
-
-If there are multiple databases in the same cluster, do PITR on all the databases sequentially (one after the other).
-
-YBA only supports minute-level granularity.
+  <div id="anywhere" class="tab-pane fade" role="tabpanel" aria-labelledby="cloud-tab">
 
 To do a PITR on a database:
 
-1. In YugabyteDB Anywhere, navigate to universe B and choose **Backups > Point-in-time Recovery**.
+1. In YugabyteDB Anywhere, navigate to Standby (B) and choose **Backups > Point-in-time Recovery**.
 
 1. For the database or keyspace, click **...** and choose **Recover to a Point in Time**.
 
@@ -224,17 +207,15 @@ To do a PITR on a database:
 
     Alternatively, you can configure YBA to use UTC time (always) by changing the Preferred Timezone to UTC in the **User > Profile** settings.
 
+    Note that YBA only supports minute-level granularity.
+
 1. Click **Recover**.
 
-#### Promote B and delete the replication
-
-Do the following:
-
-1. Promote B to an Active Role as follows:
+1. Promote Standby (B) to ACTIVE as follows:
 
     ```sh
     yb-admin \
-    -master_addresses <standby_master_ips> \
+    -master_addresses <standby_master_addresses> \
     -certs_dir_name <cert_dir> \
     change_xcluster_role ACTIVE
     ```
@@ -243,27 +224,33 @@ Do the following:
     Changed role successfully
     ```
 
-1. In YugabyteDB Anywhere, to delete the replication from A to B, navigate to universe B, choose **Replication**, and select the replication.
+    The former Standby (B) is now the new Primary.
+
+1. In YugabyteDB Anywhere, navigate to the new Primary (B), choose **Replication**, and select the replication.
 
 1. Click **Actions > Delete Replication**.
 
-1. If the old ACTIVE universe (A) is completely down and not reachable, select the **Ignore errors and force delete** option.
+1. If the former Primary (A) is completely down and not reachable, select the **Ignore errors and force delete** option.
 
-1. Click **Delete Replication**
+1. Click **Delete Replication**.
 
-    If the old ACTIVE universe (A) is unreachable, it takes longer to show the replication page on the UI. In this case, a page like the following shows up and it allows you to either pause or delete the replication configuration.
+    If the old Primary (A) is unreachable, it takes longer to show the replication page on the UI. In this case, an error similar to the following is displayed. You can either pause or delete the replication configuration.
 
-1. Resume the application traffic on B.
+    ![Primary unreachable](/images/yp/create-deployments/xcluster/deploy-xcluster-tran-unreachable.png)
 
-After completing the preceding steps, cluster B becomes the new primary cluster.
+1. Resume the application traffic on the new Primary (B).
 
-There is no secondary cluster until A is brought back up and is restored to the correct state.
+  </div>
 
-### Set up reverse replication (from B to A)
+</div>
 
-If A doesn't come back and you end up creating a new cluster in place of A, follow the [steps for a fresh replication setup](../async-transactional-setup/).
+After completing the preceding steps, the former Standby (B) is the new Primary (active) universe. There is no target (standby) until the former Primary (A) comes back up and is restored to the correct state.
 
-If cluster A is brought back, to bring A into sync with B and set up replication in the opposite direction (B->A), the database on A needs to be dropped and recreated from a backup of B (Bootstrap).
+## Set up reverse replication
+
+If the former Primary universe (A) doesn't come back and you end up creating a new cluster in place of A, follow the [steps for a fresh replication setup](../async-transactional-setup/).
+
+If universe A is brought back, to bring A into sync with B and set up replication in the opposite direction (B->A), the database on A needs to be dropped and recreated from a backup of B (Bootstrap).
 
 Do the following:
 
@@ -285,8 +272,8 @@ Do the following:
 
         ```sh
         yb-admin \
-        -master_addresses <A_master_ips>
-        -certs_dir_name <dir_name>
+        -master_addresses <A_master_ips> \
+        -certs_dir_name <dir_name> \
         list_cdc_streams
         ```
 
@@ -294,8 +281,8 @@ Do the following:
 
         ```sh
         yb-admin \
-        -master_addresses <A_master_ips>
-        -certs_dir_name <dir_name>
+        -master_addresses <A_master_ips> \
+        -certs_dir_name <dir_name> \
         delete_cdc_stream <streamID>
         ```
 
@@ -311,15 +298,15 @@ Do the following:
 
     ```sh
     yb-admin \
-    -master_addresses <standby_master_ips>
-    -certs_dir_name <dir_name> 
+    -master_addresses <standby_master_ips> \
+    -certs_dir_name <dir_name> \
     get_xcluster_safe_time
     ```
 
     For example:
 
     ```sh
-    $ ./yb-admin -master_addresses 172.150.21.61:7100,172.150.44.121:7100,172.151.23.23:7100 get_xcluster_safe_time
+    ./yb-admin -master_addresses 172.150.21.61:7100,172.150.44.121:7100,172.151.23.23:7100 get_xcluster_safe_time
     ```
 
     ```output.json
