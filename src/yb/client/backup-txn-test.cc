@@ -44,10 +44,12 @@ DECLARE_int32(TEST_inject_status_resolver_complete_delay_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_int32(unresponsive_ts_rpc_timeout_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
+DECLARE_bool(allow_encryption_at_rest);
 
 namespace yb {
 namespace client {
@@ -58,7 +60,8 @@ using ImportedSnapshotData = google::protobuf::RepeatedPtrField<
 class BackupTxnTest : public TransactionTestBase<MiniCluster> {
  protected:
   void SetUp() override {
-    FLAGS_enable_history_cutoff_propagation = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_history_cutoff_propagation) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
     SetIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
     mini_cluster_opt_.num_masters = 3;
     TransactionTestBase::SetUp();
@@ -69,7 +72,7 @@ class BackupTxnTest : public TransactionTestBase<MiniCluster> {
 
   void DoBeforeTearDown() override {
     if (!testing::Test::HasFailure()) {
-      FLAGS_flush_rocksdb_on_shutdown = false;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
       ASSERT_OK(cluster_->RestartSync());
     }
 
@@ -82,7 +85,7 @@ class BackupTxnTest : public TransactionTestBase<MiniCluster> {
     return WaitFor([this]() -> Result<bool> {
       auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
       for (const auto& peer : peers) {
-        auto db = peer->tablet()->doc_db().regular;
+        auto db = peer->tablet()->regular_db();
         if (!db) {
           continue;
         }
@@ -106,6 +109,7 @@ class BackupTxnTest : public TransactionTestBase<MiniCluster> {
   }
 
   void TestDeleteTable(bool restart_masters);
+  void TestDeleteSnapshot(bool compact_and_restart);
 
   std::unique_ptr<SnapshotTestUtil> snapshot_util_;
 };
@@ -217,7 +221,9 @@ TEST_F(BackupTxnTest, PointInTimeRestoreBeforeHistoryCutoff) {
       if (read_operation.ok()) {
         auto policy = peer->tablet()->RetentionPolicy();
         LOG(INFO) << "Pending history cutoff, tablet: " << peer->tablet_id()
-                  << ", current: " << policy->GetRetentionDirective().history_cutoff
+                  << ", current: "
+                  << policy->GetRetentionDirective().history_cutoff
+                                                    .primary_cutoff_ht
                   << ", desired: " << hybrid_time;
         return false;
       }
@@ -270,17 +276,35 @@ TEST_F(BackupTxnTest, Persistence) {
                                            table_.table()->GetPartitionCount()));
 }
 
-TEST_F(BackupTxnTest, Delete) {
+void BackupTxnTest::TestDeleteSnapshot(bool compact_and_restart) {
   ASSERT_NO_FATALS(WriteData());
   auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
   ASSERT_OK(snapshot_util_->VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE,
                                            table_.table()->GetPartitionCount()));
   ASSERT_OK(snapshot_util_->DeleteSnapshot(snapshot_id));
+  if (compact_and_restart) {
+    for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+      ASSERT_OK(cluster_->mini_master(i)->tablet_peer()->tablet()->ForceManualRocksDBCompact());
+    }
+    ASSERT_OK(cluster_->RestartSync());
+  }
   ASSERT_OK(snapshot_util_->WaitAllSnapshotsDeleted());
 
   SetAtomicFlag(1000, &FLAGS_snapshot_coordinator_cleanup_delay_ms);
 
   ASSERT_OK(snapshot_util_->WaitAllSnapshotsCleaned());
+}
+
+TEST_F(BackupTxnTest, Delete) {
+  TestDeleteSnapshot(/* compact_and_restart= */ false);
+}
+
+TEST_F(BackupTxnTest, DeleteWithCompaction) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_history_cutoff_propagation) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) = 0;
+
+  TestDeleteSnapshot(/* compact_and_restart= */ true);
 }
 
 TEST_F(BackupTxnTest, CleanupAfterRestart) {
@@ -307,12 +331,14 @@ TEST_F(BackupTxnTest, ImportMeta) {
   ASSERT_OK(snapshot_util_->VerifySnapshot(snapshot_id, SysSnapshotEntryPB::COMPLETE,
                                            table_.table()->GetPartitionCount()));
 
-  ASSERT_OK(client_->DeleteTable(kTableName));
-  ASSERT_OK(client_->DeleteNamespace(kTableName.namespace_name()));
-
   auto snapshots = ASSERT_RESULT(snapshot_util_->ListSnapshots(
       snapshot_id, ListDeleted::kFalse, PrepareForBackup::kTrue));
   ASSERT_EQ(snapshots.size(), 1);
+
+  ASSERT_OK(snapshot_util_->DeleteSnapshot(snapshot_id));
+  ASSERT_OK(snapshot_util_->WaitAllSnapshotsDeleted());
+  ASSERT_OK(client_->DeleteTable(kTableName));
+  ASSERT_OK(client_->DeleteNamespace(kTableName.namespace_name()));
 
   auto import_data = ASSERT_RESULT(snapshot_util_->StartImportSnapshot(snapshots[0]));
 
@@ -326,8 +352,8 @@ TEST_F(BackupTxnTest, ImportMeta) {
 }
 
 TEST_F(BackupTxnTest, Retry) {
-  FLAGS_unresponsive_ts_rpc_timeout_ms = 1000;
-  FLAGS_snapshot_coordinator_poll_interval_ms = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_unresponsive_ts_rpc_timeout_ms) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 1000;
 
   ASSERT_NO_FATALS(WriteData());
 
@@ -355,8 +381,8 @@ TEST_F(BackupTxnTest, Retry) {
 }
 
 TEST_F(BackupTxnTest, Failure) {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
-  FLAGS_history_cutoff_propagation_interval_ms = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
 
   ASSERT_NO_FATALS(WriteData());
 
@@ -383,8 +409,8 @@ TEST_F(BackupTxnTest, Restart) {
   FLAGS_timestamp_history_retention_interval_sec =
       std::chrono::duration_cast<std::chrono::seconds>(kWaitTimeout).count() *
       kTimeMultiplier;
-  FLAGS_history_cutoff_propagation_interval_ms = 1;
-  FLAGS_flush_rocksdb_on_shutdown = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
 
   ASSERT_NO_FATALS(WriteData());
   auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
@@ -427,7 +453,7 @@ TEST_F(BackupTxnTest, FlushSysCatalogAndDelete) {
   ShutdownAllTServers(cluster_.get());
   ASSERT_OK(snapshot_util_->DeleteSnapshot(snapshot_id));
 
-  FLAGS_flush_rocksdb_on_shutdown = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
   ShutdownAllMasters(cluster_.get());
 
   LOG(INFO) << "Start masters";
@@ -444,7 +470,7 @@ TEST_F(BackupTxnTest, Consistency) {
   constexpr int kThreads = 5;
   constexpr int kKeys = 10;
 
-  FLAGS_TEST_inject_status_resolver_complete_delay_ms = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_status_resolver_complete_delay_ms) = 100;
 
   TestThreadHolder thread_holder;
   std::atomic<int> value(0);
@@ -466,7 +492,8 @@ TEST_F(BackupTxnTest, Consistency) {
         if (!status.ok()) {
           TransactionError txn_error(status);
           ASSERT_TRUE(txn_error == TransactionErrorCode::kConflict ||
-                      txn_error == TransactionErrorCode::kAborted) << status;
+                      txn_error == TransactionErrorCode::kAborted ||
+                      status.IsCombined()) << status;
         } else {
           LOG(INFO) << "Committed: " << txn->id() << ", written: " << v;
         }
@@ -500,8 +527,8 @@ TEST_F(BackupTxnTest, Consistency) {
 }
 
 void BackupTxnTest::TestDeleteTable(bool restart_masters) {
-  FLAGS_unresponsive_ts_rpc_timeout_ms = 1000;
-  FLAGS_snapshot_coordinator_poll_interval_ms = 2500 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_unresponsive_ts_rpc_timeout_ms) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 2500 * kTimeMultiplier;
 
   ASSERT_NO_FATALS(WriteData());
 

@@ -17,10 +17,6 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.UUID;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -28,12 +24,13 @@ import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.KeyType;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.models.KmsConfig;
-
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import play.libs.Json;
 
 public class VaultEARServiceUtilTest extends FakeDBApplication {
@@ -56,6 +53,7 @@ public class VaultEARServiceUtilTest extends FakeDBApplication {
   public static final String vaultToken = "s.fj4WtEMQ1MV1fnxQkpXA9ytV";
   public static final String sEngine = "transit";
   public static final String mountPath = "qa_transit/";
+  public static final String keyName = "key_yugabyte";
 
   public static final String jsonString =
       "{"
@@ -75,6 +73,10 @@ public class VaultEARServiceUtilTest extends FakeDBApplication {
           + HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH
           + "\":\""
           + mountPath
+          + "\",\""
+          + HashicorpVaultConfigParams.HC_VAULT_KEY_NAME
+          + "\":\""
+          + keyName
           + "\""
           + "}";
 
@@ -89,16 +91,16 @@ public class VaultEARServiceUtilTest extends FakeDBApplication {
   public void setUp() {
     LOCAL_MOCK_RUN = MOCK_RUN;
     config = new KmsConfig();
-    config.authConfig = (ObjectNode) Json.parse(jsonString);
-    config.customerUUID = customerID;
-    config.configUUID = testConfigID;
+    config.setAuthConfig((ObjectNode) Json.parse(jsonString));
+    config.setCustomerUUID(customerID);
+    config.setConfigUUID(testConfigID);
   }
 
   @Test
   public void testGetVaultSecretEngine() {
     String key = "key1";
     byte[] data = "TestData".getBytes();
-    ObjectNode cfg = config.authConfig;
+    ObjectNode cfg = config.getAuthConfig();
 
     try {
       VaultSecretEngineBase transitEngine;
@@ -128,7 +130,7 @@ public class VaultEARServiceUtilTest extends FakeDBApplication {
 
     VaultAccessor vAccessor;
     VaultSecretEngineBase transitEngine;
-    ObjectNode cfg = config.authConfig.deepCopy();
+    ObjectNode cfg = config.getAuthConfig().deepCopy();
 
     if (LOCAL_MOCK_RUN) {
       vAccessor = mock(VaultAccessor.class);
@@ -138,7 +140,7 @@ public class VaultEARServiceUtilTest extends FakeDBApplication {
       transitEngine = HashicorpEARServiceUtil.getVaultSecretEngine(cfg);
     }
 
-    HashicorpEARServiceUtil.updateAuthConfigObj(testUniverseID, testConfigID, transitEngine, cfg);
+    HashicorpEARServiceUtil.updateAuthConfigObj(testConfigID, transitEngine, cfg);
 
     JsonNode ttl = cfg.get(HashicorpVaultConfigParams.HC_VAULT_TTL);
     JsonNode ttlExpiry = cfg.get(HashicorpVaultConfigParams.HC_VAULT_TTL_EXPIRY);
@@ -152,13 +154,13 @@ public class VaultEARServiceUtilTest extends FakeDBApplication {
 
     VaultAccessor vAccessor;
     VaultSecretEngineBase transitEngine;
-    ObjectNode cfg = config.authConfig.deepCopy();
+    ObjectNode cfg = config.getAuthConfig().deepCopy();
     if (!LOCAL_MOCK_RUN) return;
 
     vAccessor = mock(VaultAccessor.class);
     when(vAccessor.getTokenExpiryFromVault()).thenThrow(NullPointerException.class);
     transitEngine = new VaultTransit(vAccessor, mountPath, KeyType.CMK);
-    HashicorpEARServiceUtil.updateAuthConfigObj(testUniverseID, testConfigID, transitEngine, cfg);
+    HashicorpEARServiceUtil.updateAuthConfigObj(testConfigID, transitEngine, cfg);
     JsonNode ttl = cfg.get(HashicorpVaultConfigParams.HC_VAULT_TTL);
     JsonNode ttlExpiry = cfg.get(HashicorpVaultConfigParams.HC_VAULT_TTL_EXPIRY);
     assertNull(ttl);

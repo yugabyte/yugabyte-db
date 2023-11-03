@@ -23,14 +23,14 @@ This section covers deployment for a single region or data center in a multi-zon
 ## Example scenario
 
 - Create a 6-node cluster with replication factor of 3.
-  - YB-TServer server should on all the six nodes, and the YB-Master server should run on only three of these nodes.
-  - Assume the three YB-Master private IP addresses are `172.151.17.130`, `172.151.17.220` and `172.151.17.140`.
-  - Cloud will be `aws`, region will be `us-west`, and the 3 AZs will be `us-west-2a`, `us-west-2b`, and `us-west-2c`. Two nodes will be placed in each AZ in such a way that 1 replica for each tablet (aka shard) gets placed in any 1 node for each AZ.
-- Multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`
+  - YB-TServer server should run on all six nodes, and the YB-Master server should run on only three nodes.
+  - Assume the three YB-Master private IP addresses are `172.151.17.130`, `172.151.17.220`, and `172.151.17.140`.
+  - Cloud is AWS, region us-west, and the three availability zones us-west-2a, us-west-2b, and us-west-2c. Two nodes will be placed in each AZ in such a way that 1 replica for each tablet (aka shard) gets placed in any 1 node for each AZ.
+- Multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`.
 
 ## Run YB-TServer with command line flags
 
-Run the `yb-tserver` server on each of the six nodes as shown below. Note that all of the master addresses have to be provided using the `--tserver_master_addrs` flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-tserver/#rpc-bind-addresses) value with the private IP address of the host as well as the set the `placement_cloud`,`placement_region` and `placement_zone` values appropriately. For single zone deployment, use the same value for the `--placement_zone` flag.
+Run the `yb-tserver` server on each of the six nodes as follows. Note that all of the master addresses have to be provided using the `--tserver_master_addrs` flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-tserver/#rpc-bind-addresses) value with the private IP address of the host, and set the `placement_cloud`, `placement_region`, and `placement_zone` values appropriately. For single zone deployment, use the same value for the `--placement_zone` flag.
 
 ```sh
 $ ./bin/yb-tserver \
@@ -50,13 +50,13 @@ For the full list of configuration flags, see the [YB-TServer reference](../../.
 
 {{< note title="Note" >}}
 
-The number of comma-separated values in the [`--tserver_master_addrs`](../../../reference/configuration/yb-tserver/#tserver-master-addrs)) flag should match the total number of YB-Master servers (or the replication factor).
+The number of comma-separated values in the [`--tserver_master_addrs`](../../../reference/configuration/yb-tserver/#tserver-master-addrs) flag should match the total number of YB-Master servers (or the replication factor).
 
 {{< /note >}}
 
 ## Run YB-TServer with configuration file
 
-Alternatively, you can also create a `tserver.conf` file with the following flags and then run the `yb-tserver` with the [`--flagfile`](../../../reference/configuration/yb-tserver/#flagfile)) flag as shown here. For each YB-TServer server, replace the RPC bind address flags with the private IP address of the host running the YB-TServer server.
+Alternatively, you can also create a `tserver.conf` file with the following flags and then run the `yb-tserver` with the [`--flagfile`](../../../reference/configuration/yb-tserver/#flagfile)) flag. For each YB-TServer server, replace the RPC bind address flags with the private IP address of the host running the YB-TServer server.
 
 ```sh
 --tserver_master_addrs=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
@@ -99,7 +99,7 @@ Verify by running the following.
 $ curl -s http://<any-master-ip>:7000/cluster-config
 ```
 
-And confirm that the output looks similar to what is shown below with `min_num_replicas` set to `1` for each AZ.
+Confirm that the output looks similar to the following, with `min_num_replicas` set to `1` for each AZ.
 
 ```output.json
 replication_info {
@@ -135,15 +135,15 @@ replication_info {
 
 ## Verify health
 
-Make sure all YB-TServer servers are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the [`--fs_data_dirs`](../../../reference/configuration/yb-tserver/#fs-data-dirs) flag.
+Make sure all YB-TServer servers are working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the [`--fs_data_dirs`](../../../reference/configuration/yb-tserver/#fs-data-dirs) flag.
 
-You can do this as shown below.
+You can do this as follows:
 
 ```sh
 $ cat /home/centos/disk1/yb-data/tserver/logs/yb-tserver.INFO
 ```
 
-In each of the four YB-TServer logs, you should see log messages similar to the following.
+In each of the four YB-TServer logs, you should see log messages similar to the following:
 
 ```output
 I0912 16:27:18.296516  8168 heartbeater.cc:305] Connected to a leader master server at 172.151.17.140:7100
@@ -158,7 +158,7 @@ I0912 16:27:18.311748  8142 rpc_server.cc:158] RPC server started. Bound to: 0.0
 I0912 16:27:18.311828  8142 tablet_server_main.cc:128] CQL server successfully started
 ```
 
-In the current YB-Master leader log, you should see log messages similar to the following.
+In the current YB-Master leader log, you should see log messages similar to the following:
 
 ```output
 I0912 22:26:32.832296  3162 ts_manager.cc:97] Registered new tablet server { permanent_uuid: "766ec935738f4ae89e5ff3ae26c66651" instance_seqno: 1505255192814357 } with Master
@@ -171,3 +171,7 @@ I0912 22:26:41.055996  3162 ts_manager.cc:97] Registered new tablet server { per
 Remember to add the command you used to start the YB-TServer to a `cron` job to restart it if it goes down.
 
 {{< /tip >}}
+
+## Grow the cluster
+
+To grow the cluster, add additional YB-TServer nodes just as you do when creating the cluster.

@@ -22,10 +22,12 @@
 namespace yb {
 
 PrometheusWriter::PrometheusWriter(std::stringstream* output,
+                                   ExportHelpAndType export_help_and_type,
                                    AggregationMetricLevel aggregation_Level)
     : output_(output),
       timestamp_(std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::system_clock::now().time_since_epoch()).count()),
+      export_help_and_type_(export_help_and_type),
       aggregation_level_(aggregation_Level) {}
 
 PrometheusWriter::~PrometheusWriter() {}
@@ -39,6 +41,10 @@ Status PrometheusWriter::FlushAggregatedValues(
       continue;
     }
     for (const auto& [id, value] : map) {
+      auto it = metric_help_and_type_.find(metric);
+      if (it != metric_help_and_type_.end()) {
+        FlushHelpAndType(metric, it->second.type, it->second.help);
+      }
       RETURN_NOT_OK(FlushSingleEntry(aggregated_attributes_[id], metric, value));
     }
     if (++counter >= max_tables_metrics_breakdowns) {
@@ -46,6 +52,13 @@ Status PrometheusWriter::FlushAggregatedValues(
     }
   }
   return Status::OK();
+}
+
+
+void PrometheusWriter::FlushHelpAndType(
+    const std::string& name, const char* type, const char* description) {
+  *output_ << "# HELP " << name << " " << description << std::endl;
+  *output_ << "# TYPE " << name << " " << type << std::endl;
 }
 
 Status PrometheusWriter::FlushSingleEntry(
@@ -75,7 +88,12 @@ void PrometheusWriter::InvalidAggregationFunction(AggregationFunction aggregatio
 
 void PrometheusWriter::AddAggregatedEntry(
     const std::string& entity_id, const MetricEntity::AttributeMap& attr,
-    const std::string& metric_name, int64_t value, AggregationFunction aggregation_function) {
+    const std::string& metric_name, int64_t value, AggregationFunction aggregation_function,
+    const char* type, const char* description) {
+  // For #TYPE and #HELP.
+  if (export_help_and_type_) {
+    metric_help_and_type_.try_emplace(metric_name, MetricHelpAndType{type, description});
+  }
   // For tablet level metrics, we roll up on the table level.
   auto it = aggregated_attributes_.find(entity_id);
   if (it == aggregated_attributes_.end()) {
@@ -102,9 +120,13 @@ void PrometheusWriter::AddAggregatedEntry(
 
 Status PrometheusWriter::WriteSingleEntry(
     const MetricEntity::AttributeMap& attr, const std::string& name, int64_t value,
-    AggregationFunction aggregation_function) {
+    AggregationFunction aggregation_function, const char* type,
+    const char* description) {
   auto it = attr.find("table_id");
   if (it == attr.end()) {
+    if (export_help_and_type_) {
+      FlushHelpAndType(name, type, description);
+    }
     return FlushSingleEntry(attr, name, value);
   }
   switch (aggregation_level_) {
@@ -113,28 +135,30 @@ Status PrometheusWriter::WriteSingleEntry(
     MetricEntity::AttributeMap new_attr = attr;
     new_attr.erase("table_id");
     new_attr.erase("table_name");
+    new_attr.erase("table_type");
     new_attr.erase("namespace_name");
-    AddAggregatedEntry("", new_attr, name, value, aggregation_function);
+    AddAggregatedEntry("", new_attr, name, value, aggregation_function, type, description);
     break;
   }
   case AggregationMetricLevel::kStream:
   {
-    MetricEntity::AttributeMap new_attr = attr;
-    new_attr.erase("table_id");
-    new_attr.erase("table_name");
-    AddAggregatedEntry(attr.find("stream_id")->second, new_attr, name, value, aggregation_function);
+    if (attr.find("stream_id") != attr.end()) {
+        AddAggregatedEntry(attr.find("stream_id")->second, attr, name, value,
+            aggregation_function, type, description);
+    }
     break;
   }
   case AggregationMetricLevel::kTable:
-    AddAggregatedEntry(it->second, attr, name, value, aggregation_function);
+    AddAggregatedEntry(it->second, attr, name, value, aggregation_function, type, description);
     break;
   }
   return Status::OK();
 }
 
+// Currently there is no need to export # HELP and # TYPE to system table.
 NMSWriter::NMSWriter(EntityMetricsMap* table_metrics, MetricsMap* server_metrics)
-    : PrometheusWriter(nullptr), table_metrics_(*table_metrics),
-      server_metrics_(*server_metrics) {}
+    : PrometheusWriter(nullptr, ExportHelpAndType::kFalse), table_metrics_(*table_metrics),
+    server_metrics_(*server_metrics) {}
 
 Status NMSWriter::FlushSingleEntry(
     const MetricEntity::AttributeMap& attr, const std::string& name, const int64_t value) {

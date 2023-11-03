@@ -1,13 +1,22 @@
 import { cloneDeep, isEqual, map, sortBy } from 'lodash';
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Col, Row } from 'react-bootstrap';
-import { Link, withRouter } from 'react-router';
+import { browserHistory, Link, withRouter } from 'react-router';
 import { Field, reduxForm } from 'redux-form';
-import { isDefinedNotNull, isNonEmptyArray, isNonEmptyObject, pickArray } from '../../../utils/ObjectUtils';
+import {
+  isDefinedNotNull,
+  isNonEmptyArray,
+  isNonEmptyObject,
+  pickArray
+} from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { DescriptionList } from '../../common/descriptors';
 import { YBButton, YBControlledSelectWithLabel } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
+import {
+  ProviderCode,
+  PROVIDER_ROUTE_PREFIX
+} from '../../configRedesign/providerRedesign/constants';
 import { RegionMap, YBMapLegend } from '../../maps';
 import { YBConfirmModal } from '../../modals';
 import OnPremNodesListContainer from './OnPremNodesListContainer';
@@ -15,7 +24,6 @@ import OnPremNodesListContainer from './OnPremNodesListContainer';
 const PROVIDER_TYPE = 'onprem';
 
 class NewOnPremSuccess extends Component {
-
   constructor(props) {
     super(props);
     this.state = {
@@ -31,21 +39,24 @@ class NewOnPremSuccess extends Component {
     const { currentProvider } = this.state;
     await this.props.deleteProviderConfig(currentProvider.uuid);
     window.location.reload();
-  }
+  };
   handleManageNodesClick = () => {
     this.setState({ manageInstances: true });
   };
 
   async fetchInstanceAndNodeList(currentProviderFromProps) {
     const { currentProvider } = this.state;
-    if(!currentProvider && !currentProviderFromProps) return;
-    await this.props.fetchConfiguredNodeList(currentProviderFromProps ? currentProviderFromProps.uuid : currentProvider.uuid);
-    await this.props.fetchInstanceTypeList(currentProviderFromProps ? currentProviderFromProps.uuid : currentProvider.uuid);
+    if (!currentProvider && !currentProviderFromProps) return;
+    await this.props.fetchConfiguredNodeList(
+      currentProviderFromProps ? currentProviderFromProps.uuid : currentProvider.uuid
+    );
+    await this.props.fetchInstanceTypeList(
+      currentProviderFromProps ? currentProviderFromProps.uuid : currentProvider.uuid
+    );
     this.updateJSONStore();
   }
 
   updateJSONStore() {
-
     const { currentProvider } = this.state;
 
     const {
@@ -54,8 +65,8 @@ class NewOnPremSuccess extends Component {
       configuredRegions,
       selectedProviderUUID
     } = this.props;
-    
-    if(!currentProvider) return;
+
+    if (!currentProvider) return;
 
     const onPremRegions = configuredRegions.data.filter(
       (configuredRegion) => configuredRegion.provider.uuid === selectedProviderUUID
@@ -124,37 +135,43 @@ class NewOnPremSuccess extends Component {
   }
 
   componentDidMount() {
-
     const { configuredProviders, selectedProviderUUID, universeList } = this.props;
-    const currentProvider = configuredProviders.data.find((provider) => provider.uuid === selectedProviderUUID);
+    const currentProvider = configuredProviders.data.find(
+      (provider) => provider.uuid === selectedProviderUUID
+    );
     this.props.setSelectedProvider(currentProvider.uuid);
     this.setState({ currentProvider }, () => {
       this.fetchInstanceAndNodeList();
     });
-    if(!this.getReadyState(universeList)){
+    if (!this.getReadyState(universeList)) {
       this.props.fetchUniverseList();
     }
   }
 
   componentDidUpdate(prevProps) {
-    const { configuredProviders, configuredRegions, cloudBootstrap: {
-      data: { type, response },
-    },
-    cloud: { nodeInstanceList, instanceTypes }
-
+    const {
+      configuredProviders,
+      configuredRegions,
+      cloudBootstrap: {
+        data: { type, response }
+      },
+      cloud: { nodeInstanceList, instanceTypes }
     } = this.props;
-    const {isLoading} = this.state;
+    const { isLoading } = this.state;
 
     if (
-      (this.props.selectedProviderUUID !== prevProps.selectedProviderUUID && this.props.selectedProviderUUID !== undefined)
-      || !isEqual(configuredRegions.data, prevProps.configuredRegions.data)
+      (this.props.selectedProviderUUID !== prevProps.selectedProviderUUID &&
+        this.props.selectedProviderUUID !== undefined) ||
+      !isEqual(configuredRegions.data, prevProps.configuredRegions.data)
     ) {
-      const currentProvider = configuredProviders.data.find((provider) => provider.uuid === this.props.selectedProviderUUID);
+      const currentProvider = configuredProviders.data.find(
+        (provider) => provider.uuid === this.props.selectedProviderUUID
+      );
       this.setState({ currentProvider, isLoading: true });
       this.fetchInstanceAndNodeList(currentProvider);
       // this.updateJSONStore()
     }
-    
+
     if (
       prevProps.cloudBootstrap !== this.props.cloudBootstrap &&
       type === 'cleanup' &&
@@ -164,21 +181,20 @@ class NewOnPremSuccess extends Component {
       this.props.fetchCloudMetadata();
     }
 
-    if(isLoading){
-      if(this.getReadyState(instanceTypes) && this.getReadyState(nodeInstanceList)){
-        this.setState({isLoading: false}, ()=> {
+    if (isLoading) {
+      if (this.getReadyState(instanceTypes) && this.getReadyState(nodeInstanceList)) {
+        this.setState({ isLoading: false }, () => {
           this.updateJSONStore();
         });
       }
     }
-
   }
   getReadyState = (dataObject) => {
     return getPromiseState(dataObject).isSuccess() || getPromiseState(dataObject).isEmpty();
   };
   setSelectedProvider = (e) => {
     this.props.setSelectedProvider(e.target.value);
-  }
+  };
   render() {
     const {
       configuredRegions,
@@ -189,9 +205,9 @@ class NewOnPremSuccess extends Component {
       selectedProviderUUID,
       cloud: { nodeInstanceList }
     } = this.props;
-    const {isLoading} = this.state;
-    
-    if(isLoading){
+    const { isLoading } = this.state;
+
+    if (isLoading) {
       return <YBLoading />;
     }
 
@@ -225,8 +241,7 @@ class NewOnPremSuccess extends Component {
     );
     onPremRegions.forEach((region) => {
       region.zones.forEach((zone) => {
-        zone.nodes =
-          (nodesByRegionAndZone[region.name] && nodesByRegionAndZone[region.name][zone.name]) || [];
+        zone.nodes = nodesByRegionAndZone?.[region.name]?.[zone.name] || [];
       });
     });
 
@@ -244,7 +259,7 @@ class NewOnPremSuccess extends Component {
       (universe) =>
         universe?.universeDetails?.clusters[0]?.userIntent.provider === currentProvider.uuid
     );
-    
+
     const buttons = (
       <span className="buttons pull-right">
         <YBButton
@@ -268,6 +283,18 @@ class NewOnPremSuccess extends Component {
           btnClass={'btn btn-default yb-button'}
           onClick={this.handleManageNodesClick}
         />
+        {this.props.isRedesign && (
+          <YBButton
+            btnText="View Details"
+            btnIcon="fa fa-info"
+            btnClass="btn btn-default yb-button"
+            onClick={() =>
+              browserHistory.push(
+                `/${PROVIDER_ROUTE_PREFIX}/${ProviderCode.ON_PREM}/${selectedProviderUUID}`
+              )
+            }
+          />
+        )}
         <YBConfirmModal
           name="delete-aws-provider"
           title={'Confirm Delete'}
@@ -324,7 +351,8 @@ class NewOnPremSuccess extends Component {
       { name: 'SSH Key', data: keyPairName },
       { name: 'Instances', data: nodeItemObject }
     ];
-    const currentCloudProviders = configuredProviders?.data?.filter?.((provider) => provider.code === PROVIDER_TYPE) || [];
+    const currentCloudProviders =
+      configuredProviders?.data?.filter?.((provider) => provider.code === PROVIDER_TYPE) || [];
     return (
       <div className="provider-config-container">
         <Row className="provider-row-flex" data-testid="change-or-add-provider">

@@ -35,7 +35,7 @@ namespace client {
 //
 // Sample usage:
 //   YBTableAlterer* alterer = client->NewTableAlterer("table-name");
-//   alterer->AddColumn("foo")->Type(INT32)->NotNull();
+//   alterer->AddColumn("foo")->Type(DataType::INT32)->NotNull();
 //   Status s = alterer->Alter();
 //   delete alterer;
 class YBTableAlterer {

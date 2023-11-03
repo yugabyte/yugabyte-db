@@ -13,9 +13,12 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_admin.service.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_service.h"
 #include "yb/master/master_service_base.h"
 #include "yb/master/master_service_base-internal.h"
+#include "yb/master/test_async_rpc_manager.h"
+#include "yb/master/ysql_backends_manager.h"
 
 #include "yb/util/flags.h"
 
@@ -43,6 +46,7 @@ class MasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
       (AddTransactionStatusTablet)
       (CheckIfPitrActive)
       (CompactSysCatalog)
+      (GetCompactionStatus)
       (CreateTransactionStatusTable)
       (DdlLog)
       (DeleteNotServingTablet)
@@ -56,6 +60,16 @@ class MasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
       FlushManager,
       (FlushTables)
       (IsFlushTablesDone)
+  )
+
+  MASTER_SERVICE_IMPL_ON_ALL_MASTERS(
+      YsqlBackendsManager,
+      (AccessYsqlBackendsManagerTestRegister)
+  )
+
+  MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK(
+      YsqlBackendsManager,
+      (WaitForYsqlBackendsCatalogVersion)
   )
 };
 

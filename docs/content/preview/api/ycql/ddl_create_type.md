@@ -84,4 +84,4 @@ ycqlsh:example> SELECT * FROM employees;
 ## See also
 
 - [`CREATE TABLE`](../ddl_create_table)
-- [`DROP TYPE`](../ddl_drop_keyspace)
+- [`DROP TYPE`](../ddl_drop_type)

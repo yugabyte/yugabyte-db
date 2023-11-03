@@ -11,9 +11,9 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -47,7 +47,7 @@ public class DeleteNodeFromUniverse extends UniverseTaskBase {
       log.info(
           "Delete Node with name {} from universe {}",
           taskParams().nodeName,
-          taskParams().universeUUID);
+          taskParams().getUniverseUUID());
 
       preTaskActions();
 
@@ -55,7 +55,7 @@ public class DeleteNodeFromUniverse extends UniverseTaskBase {
       if (currentNode == null) {
         String msg =
             String.format(
-                "No node %s is found in universe %s", taskParams().nodeName, universe.name);
+                "No node %s is found in universe %s", taskParams().nodeName, universe.getName());
         log.error(msg);
         throw new RuntimeException(msg);
       }
@@ -65,7 +65,7 @@ public class DeleteNodeFromUniverse extends UniverseTaskBase {
         String msg =
             String.format(
                 "Node %s with state %s is not removable from universe %s",
-                currentNode.nodeName, currentNode.state, universe.name);
+                currentNode.nodeName, currentNode.state, universe.getName());
         log.error(msg);
         throw new IllegalStateException(msg);
       }

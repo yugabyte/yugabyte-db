@@ -29,15 +29,15 @@ YQLAuthRolesVTable::YQLAuthRolesVTable(const TableName& table_name,
     : YQLVirtualTable(table_name, namespace_name, master, CreateSchema()) {
 }
 
-Result<std::shared_ptr<QLRowBlock>> YQLAuthRolesVTable::RetrieveData(
+Result<VTableDataPtr> YQLAuthRolesVTable::RetrieveData(
     const QLReadRequestPB& request) const {
-  auto vtable = std::make_shared<QLRowBlock>(schema());
+  auto vtable = std::make_shared<qlexpr::QLRowBlock>(schema());
   std::vector<scoped_refptr<RoleInfo>> roles;
   catalog_manager().permissions_manager()->GetAllRoles(&roles);
   for (const auto& role : roles) {
     auto l = role->LockForRead();
     const auto& pb = l->pb;
-    QLRow& row = vtable->Extend();
+    auto& row = vtable->Extend();
     RETURN_NOT_OK(SetColumnValue(kRole, pb.role(), &row));
     RETURN_NOT_OK(SetColumnValue(kCanLogin, pb.can_login(), &row));
     RETURN_NOT_OK(SetColumnValue(kIsSuperuser, pb.is_superuser(), &row));

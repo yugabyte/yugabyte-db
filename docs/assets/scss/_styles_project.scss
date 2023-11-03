@@ -1,22 +1,24 @@
-@import "./_header_menu.scss";
-@import "./_left_nav.scss";
-@import "./_right_nav.scss";
 @import "./_yb_headings.scss";
 @import "./_yb_bullets-and-number-list.scss";
-@import "./_version_dropdown.scss";
+@import "./_dropdown_list.scss";
 @import "./_contribute_list.scss";
 @import "./_admonition.scss";
 @import "./_code_block.scss";
+@import "./_yb_badge.scss";
 @import "./_yb_pills.scss";
 @import "./_yb_tabs.scss";
 @import "./_tables.scss";
-@import "./_search.scss";
 @import "./_footer.scss";
 @import "./_yb_image.scss";
 @import "./_yb_buttons.scss";
 @import "./_yb_page_style.scss";
 @import "./_yb_resources.scss";
+@import "./_yb_tags.scss";
 @import "./_yb_container.scss";
+
+html {
+  padding: 0 !important;
+}
 
 * body {
   background: #fff;
@@ -95,13 +97,14 @@
   }
 }
 
-@media (min-width: 768px) {
+@media (min-width: 992px) {
   .td-main main {
-    padding-top: 9.5rem;
-    padding-top: 129px;
+    padding-top: 116px;
     margin-top: 32px;
   }
+}
 
+@media (min-width: 768px) {
   .pl-md-5,
   .px-md-5 {
     padding-left: 1.5rem !important;
@@ -371,6 +374,17 @@ body:not(.td-home) .td-main main {
 
   .main-heading-with-version {
     margin-top: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    @media (max-width: 991px) {
+      margin-top: 0;
+    }
+
+    @media (min-width: 991px) {
+      margin: 20px 0;
+    }
   }
 }
 
@@ -392,11 +406,15 @@ body:not(.td-home) .td-main main {
 }
 
 @media (max-width: 767px) {
-  .main-heading-with-version {
+  .td-content .main-heading-with-version {
     display: flex;
     align-items: flex-start;
     justify-content: flex-start;
     flex-flow: column;
+
+    .heading-content {
+      width: 100%;
+    }
   }
 
   .heading-image {

@@ -41,9 +41,8 @@
 
 #include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/common/transaction.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_admin.fwd.h"
@@ -54,6 +53,7 @@
 #include "yb/server/server_base_options.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
@@ -131,10 +131,13 @@ class YBClient::Data {
                                  bool *create_in_progress);
 
   // Take one of table id or name.
-  Status WaitForCreateTableToFinish(YBClient* client,
-                                    const YBTableName& table_name,
-                                    const std::string& table_id,
-                                    CoarseTimePoint deadline);
+  Status WaitForCreateTableToFinish(
+      YBClient* client,
+      const YBTableName& table_name,
+      const std::string& table_id,
+      CoarseTimePoint deadline,
+      const uint32_t max_jitter_ms = CoarseBackoffWaiter::kDefaultMaxJitterMs,
+      const uint32_t init_exponent = CoarseBackoffWaiter::kDefaultInitExponent);
 
   // Take one of table id or name.
   Status DeleteTable(YBClient* client,
@@ -174,11 +177,13 @@ class YBClient::Data {
                           const std::string& namespace_name,
                           const std::string& namespace_id,
                           const std::string& tablegroup_id,
-                          const std::string& tablespace_id);
+                          const std::string& tablespace_id,
+                          const TransactionMetadata* txn);
 
   Status DeleteTablegroup(YBClient* client,
                           CoarseTimePoint deadline,
-                          const std::string& tablegroup_id);
+                          const std::string& tablegroup_id,
+                          const TransactionMetadata* txn);
 
   Status BackfillIndex(YBClient* client,
                        const YBTableName& table_name,
@@ -232,6 +237,9 @@ class YBClient::Data {
                                    const FlushRequestId& flush_id,
                                    const CoarseTimePoint deadline);
 
+  Result<TableCompactionStatus> GetCompactionStatus(
+      const YBTableName& table_name, bool show_tablets, const CoarseTimePoint deadline);
+
   Status GetTableSchema(YBClient* client,
                         const YBTableName& table_name,
                         CoarseTimePoint deadline,
@@ -245,12 +253,14 @@ class YBClient::Data {
                         const YBTableName& table_name,
                         CoarseTimePoint deadline,
                         std::shared_ptr<YBTableInfo> info,
-                        StatusCallback callback);
-  Status GetTableSchemaById(YBClient* client,
-                            const TableId& table_id,
-                            CoarseTimePoint deadline,
-                            std::shared_ptr<YBTableInfo> info,
-                            StatusCallback callback);
+                        StatusCallback callback,
+                        master::GetTableSchemaResponsePB* resp_ignored = nullptr);
+  Status GetTableSchema(YBClient* client,
+                        const TableId& table_id,
+                        CoarseTimePoint deadline,
+                        std::shared_ptr<YBTableInfo> info,
+                        StatusCallback callback,
+                        master::GetTableSchemaResponsePB* resp = nullptr);
   Status GetTablegroupSchemaById(YBClient* client,
                                  const TablegroupId& tablegroup_id,
                                  CoarseTimePoint deadline,
@@ -291,13 +301,24 @@ class YBClient::Data {
   void CreateCDCStream(YBClient* client,
                        const TableId& table_id,
                        const std::unordered_map<std::string, std::string>& options,
+                       cdc::StreamModeTransactional transactional,
                        CoarseTimePoint deadline,
                        CreateCDCStreamCallback callback);
 
-  void DeleteCDCStream(YBClient* client,
-                       const CDCStreamId& stream_id,
-                       CoarseTimePoint deadline,
-                       StatusCallback callback);
+  void DeleteCDCStream(
+      YBClient* client,
+      const xrepl::StreamId& stream_id,
+      CoarseTimePoint deadline,
+      StatusCallback callback);
+
+  Status BootstrapProducer(
+      YBClient* client,
+      const YQLDatabase& db_type,
+      const NamespaceName& namespace_name,
+      const std::vector<PgSchemaName>& pg_schema_names,
+      const std::vector<TableName>& table_names,
+      CoarseTimePoint deadline,
+      BootstrapProducerCallback callback);
 
   void GetCDCDBStreamInfo(YBClient *client,
     const std::string &db_stream_id,
@@ -305,12 +326,13 @@ class YBClient::Data {
     CoarseTimePoint deadline,
     StdStatusCallback callback);
 
-  void GetCDCStream(YBClient* client,
-                    const CDCStreamId& stream_id,
-                    std::shared_ptr<TableId> table_id,
-                    std::shared_ptr<std::unordered_map<std::string, std::string>> options,
-                    CoarseTimePoint deadline,
-                    StdStatusCallback callback);
+  void GetCDCStream(
+      YBClient* client,
+      const xrepl::StreamId& stream_id,
+      std::shared_ptr<TableId> table_id,
+      std::shared_ptr<std::unordered_map<std::string, std::string>> options,
+      CoarseTimePoint deadline,
+      StdStatusCallback callback);
 
   void DeleteNotServingTablet(
       YBClient* client, const TabletId& tablet_id, CoarseTimePoint deadline,
@@ -318,10 +340,14 @@ class YBClient::Data {
 
   void GetTableLocations(
       YBClient* client, const TableId& table_id, int32_t max_tablets,
-      RequireTabletsRunning require_tablets_running, CoarseTimePoint deadline,
-      GetTableLocationsCallback callback);
+      RequireTabletsRunning require_tablets_running, PartitionsOnly partitions_only,
+      CoarseTimePoint deadline, GetTableLocationsCallback callback);
 
   bool IsTabletServerLocal(const internal::RemoteTabletServer& rts) const;
+
+  Status CreateSnapshot(
+    YBClient* client, const std::vector<YBTableName>& tables, CoarseTimePoint deadline,
+    CreateSnapshotCallback callback);
 
   // Returns a non-failed replica of the specified tablet based on the provided selection criteria
   // and tablet server blacklist.
@@ -370,11 +396,14 @@ class YBClient::Data {
                               bool wait_for_leader_election = true);
 
   std::shared_ptr<master::MasterAdminProxy> master_admin_proxy() const;
+  std::shared_ptr<master::MasterBackupProxy> master_backup_proxy() const;
   std::shared_ptr<master::MasterClientProxy> master_client_proxy() const;
   std::shared_ptr<master::MasterClusterProxy> master_cluster_proxy() const;
   std::shared_ptr<master::MasterDclProxy> master_dcl_proxy() const;
   std::shared_ptr<master::MasterDdlProxy> master_ddl_proxy() const;
   std::shared_ptr<master::MasterReplicationProxy> master_replication_proxy() const;
+  std::shared_ptr<master::MasterEncryptionProxy> master_encryption_proxy() const;
+  std::shared_ptr<master::MasterTestProxy> master_test_proxy() const;
 
   HostPort leader_master_hostport() const;
 
@@ -404,6 +433,10 @@ class YBClient::Data {
   // Get disk size of table, calculated as WAL + SST file size.
   // It does not take replication factor into account
   Result<TableSizeInfo> GetTableDiskSize(const TableId& table_id, CoarseTimePoint deadline);
+
+  // Provide the status of the transaction to YB-Master.
+  Status ReportYsqlDdlTxnStatus(
+      const TransactionMetadata& txn, bool is_committed, const CoarseTimePoint& deadline);
 
   Result<bool> CheckIfPitrActive(CoarseTimePoint deadline);
 
@@ -478,11 +511,14 @@ class YBClient::Data {
 
   // Proxy to the leader master.
   std::shared_ptr<master::MasterAdminProxy> master_admin_proxy_;
+  std::shared_ptr<master::MasterBackupProxy> master_backup_proxy_;
   std::shared_ptr<master::MasterClientProxy> master_client_proxy_;
   std::shared_ptr<master::MasterClusterProxy> master_cluster_proxy_;
   std::shared_ptr<master::MasterDclProxy> master_dcl_proxy_;
   std::shared_ptr<master::MasterDdlProxy> master_ddl_proxy_;
   std::shared_ptr<master::MasterReplicationProxy> master_replication_proxy_;
+  std::shared_ptr<master::MasterEncryptionProxy> master_encryption_proxy_;
+  std::shared_ptr<master::MasterTestProxy> master_test_proxy_;
 
   // Ref-counted RPC instance: since 'SetMasterServerProxyAsync' call
   // is asynchronous, we need to hold a reference in this class
@@ -514,6 +550,7 @@ class YBClient::Data {
   bool use_threadpool_for_callbacks_;
   std::unique_ptr<ThreadPool> threadpool_;
 
+  server::ClockPtr clock_;
   const ClientId id_;
   const std::string log_prefix_;
 

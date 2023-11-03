@@ -1,22 +1,25 @@
 {{ if not (eq ($.Scratch.Get "docVersion") "preview") }}
+  {{ $docVersion := $.Scratch.Get "docVersion" }}
   {{ $urlArray := split (urls.Parse .Permalink).Path "/" }}
   {{ $previewUrl := path.Join "preview" (after 2 $urlArray) }}
   {{ $previewUrl = add (add "/" $previewUrl) "/" }}
   {{ $previewVersion := "" }}
 
-  {{ if .Site.Params.yb.preview_version }}
+  {{- if .Site.Params.yb.preview_version -}}
     {{ $previewVersion = printf "(%s)" .Site.Params.yb.preview_version }}
-  {{ end }}
+  {{- end -}}
 
-  {{ if eq ($.Scratch.Get "docVersion") "stable" }}
-  <div class="admonition warning">
-    <p class="admonition-title">Attention</p>
-    <p>This page documents the stable (production) version. For testing and development with the latest features, use <a href="{{ $previewUrl }}">the preview {{ $previewVersion }} version.</a></p>
-  </div>
-  {{ else }}
-  <div class="admonition warning">
-    <p class="admonition-title">Attention</p>
-    <p>This page documents an earlier version. <a href="{{ $previewUrl }}">Go to the preview {{ $previewVersion }} version.</a></p>
-  </div>
-  {{ end }}
+  {{ range .Site.Data.currentVersions.dbVersions }}
+    {{- if or (eq $docVersion .series) (eq $docVersion .alias)  -}}
+      <div class="admonition note">
+        {{- if or (eq .isLTS true) (eq .isSTS true) -}}
+<!--          <p class="admonition-title">Attention</p> -->
+          <p>This page documents a stable (production) version. For testing and development with the latest features, use the <a href="{{ $previewUrl }}">preview {{ $previewVersion }} version.</a></p>
+        {{- else -}}
+<!--          <p class="admonition-title">Attention</p> -->
+          <p>This page documents an earlier version. <a href="{{ $previewUrl }}">Go to the preview {{ $previewVersion }} version.</a></p>
+        {{- end -}}
+      </div>
+    {{- end -}}
+  {{- end -}}
 {{ end }}

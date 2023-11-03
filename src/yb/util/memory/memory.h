@@ -54,7 +54,7 @@
 
 #include <boost/mpl/if.hpp>
 #include <boost/type_traits/is_const.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/logging-inl.h"
@@ -1018,6 +1018,12 @@ template <class U>
 std::shared_ptr<U> FakeSharedPtr(U* u) {
   return std::shared_ptr<U>(std::shared_ptr<U>(), u);
 }
+
+class LazySharedPtrFactory {
+ public:
+  template <class T>
+  operator std::shared_ptr<T>() const { return std::make_shared<T>(); }
+};
 
 // Returns empty string if TCMalloc is not enabled.
 std::string TcMallocStats();

@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import React, { FC, useRef } from 'react';
+import { FC, useRef } from 'react';
 import './Input.scss';
 
 interface CustomInputProps {

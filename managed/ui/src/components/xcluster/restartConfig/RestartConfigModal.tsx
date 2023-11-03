@@ -1,24 +1,27 @@
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { FormikActions, FormikErrors, FormikProps } from 'formik';
 import { toast } from 'react-toastify';
+import { AxiosError } from 'axios';
 
 import { YBModalForm } from '../../common/forms';
-import { PARALLEL_THREADS_RANGE } from '../../backupv2/common/BackupUtils';
+import { ParallelThreads } from '../../backupv2/common/BackupUtils';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import { TableTypeLabel, Universe } from '../../../redesign/helpers/dtos';
-import { api } from '../../../redesign/helpers/api';
+import { api, universeQueryKey, xClusterQueryKey } from '../../../redesign/helpers/api';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 import {
   fetchTaskUntilItCompletes,
   restartXClusterConfig
 } from '../../../actions/xClusterReplication';
-import { assertUnreachableCase } from '../../../utils/ErrorUtils';
-import { ConfigTableSelect } from '../common/tableSelect/ConfigTableSelect';
+import { assertUnreachableCase, handleServerError } from '../../../utils/errorHandlingUtils';
+import { ConfigTableSelect } from '../sharedComponents/tableSelect/ConfigTableSelect';
+import { XClusterConfigStatus } from '../constants';
 
-import { XClusterConfig, XClusterTableType } from '../XClusterTypes';
+import { XClusterTableType } from '../XClusterTypes';
+import { XClusterConfig } from '../dtos';
 
 import styles from './RestartConfigModal.module.scss';
 
@@ -54,14 +57,14 @@ export const FormStep = {
   SELECT_TABLES: 'selectTables',
   CONFIGURE_BOOTSTRAP: 'configureBootstrap'
 } as const;
+// eslint-disable-next-line no-redeclare
 export type FormStep = typeof FormStep[keyof typeof FormStep];
 
 const MODAL_TITLE = 'Restart Replication';
-const FIRST_FORM_STEP = FormStep.SELECT_TABLES;
 const INITIAL_VALUES: Partial<RestartXClusterConfigFormValues> = {
   tableUUIDs: [],
   // Bootstrap fields
-  parallelThreads: PARALLEL_THREADS_RANGE.MIN
+  parallelThreads: ParallelThreads.XCLUSTER_DEFAULT
 };
 
 export const RestartConfigModal = ({
@@ -70,7 +73,15 @@ export const RestartConfigModal = ({
   onHide,
   xClusterConfig
 }: RestartConfigModalProps) => {
-  const [currentStep, setCurrentStep] = useState<FormStep>(FIRST_FORM_STEP);
+  // If xCluster config is in failed or initialized state, then we should restart the whole xCluster config.
+  // Allowing partial restarts when the xCluster config is in intialized status is not expected behaviour.
+  // Thus, we skip table selection for the xCluster config setup failed scenario.
+  const firstFormStep =
+    xClusterConfig.status === XClusterConfigStatus.FAILED ||
+    xClusterConfig.status === XClusterConfigStatus.INITIALIZED
+      ? FormStep.CONFIGURE_BOOTSTRAP
+      : FormStep.SELECT_TABLES;
+  const [currentStep, setCurrentStep] = useState<FormStep>(firstFormStep);
   const [formWarnings, setFormWarnings] = useState<RestartXClusterConfigFormWarnings>();
 
   // Need to store this to support navigating between pages
@@ -80,14 +91,12 @@ export const RestartConfigModal = ({
   const formik = useRef({} as FormikProps<RestartXClusterConfigFormValues>);
 
   const sourceUniverseQuery = useQuery<Universe>(
-    ['universe', xClusterConfig.sourceUniverseUUID],
+    universeQueryKey.detail(xClusterConfig.sourceUniverseUUID),
     () => api.fetchUniverse(xClusterConfig.sourceUniverseUUID)
   );
 
   const restartConfigMutation = useMutation(
     (values: RestartXClusterConfigFormValues) => {
-      // Currently backend only supports restart replication for the
-      // entire config. Table level restart support is coming soon.
       const tables: string[] = values.tableUUIDs;
       return restartXClusterConfig(xClusterConfig.uuid, tables, {
         backupRequestParams: {
@@ -103,45 +112,35 @@ export const RestartConfigModal = ({
         closeModal();
 
         fetchTaskUntilItCompletes(
-          response.data.taskUUID,
+          response.taskUUID,
           (err: boolean) => {
             if (err) {
               toast.error(
                 <span className={styles.alertMsg}>
                   <i className="fa fa-exclamation-circle" />
-                  <span>Replication restart failed.</span>
-                  <a
-                    href={`/tasks/${response.data.taskUUID}`}
-                    rel="noopener noreferrer"
-                    target="_blank"
-                  >
+                  <span>{`Failed to restart replication: ${xClusterConfig.name}`}</span>
+                  <a href={`/tasks/${response.taskUUID}`} rel="noopener noreferrer" target="_blank">
                     View Details
                   </a>
                 </span>
               );
             }
-            queryClient.invalidateQueries(['Xcluster', xClusterConfig.uuid]);
+            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
           },
           // Invalidate the cached data for current xCluster config. The xCluster config status should change to
           // 'in progress' once the restart config task starts.
           () => {
-            queryClient.invalidateQueries(['Xcluster', xClusterConfig.uuid]);
+            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
           }
         );
       },
-      onError: (error: any) => {
-        toast.error(
-          <span className={styles.alertMsg}>
-            <i className="fa fa-exclamation-circle" />
-            <span>{error.message}</span>
-          </span>
-        );
-      }
+      onError: (error: Error | AxiosError) =>
+        handleServerError(error, { customErrorLabel: 'Restart replication request failed' })
     }
   );
 
   const resetModalState = () => {
-    setCurrentStep(FIRST_FORM_STEP);
+    setCurrentStep(firstFormStep);
     setFormWarnings({});
     setSelectedKeyspaces([]);
   };
@@ -216,8 +215,9 @@ export const RestartConfigModal = ({
       render={(formikProps: FormikProps<RestartXClusterConfigFormValues>) => {
         // workaround for outdated version of Formik to access form methods outside of <Formik>
         formik.current = formikProps;
+
         switch (currentStep) {
-          case FormStep.SELECT_TABLES:
+          case FormStep.SELECT_TABLES: {
             // Casting because FormikValues and FormikError have different types.
             const errors = formik.current.errors as FormikErrors<RestartXClusterConfigFormErrors>;
             return (
@@ -240,13 +240,15 @@ export const RestartConfigModal = ({
                 />
               </>
             );
-          case FormStep.CONFIGURE_BOOTSTRAP:
+          }
+          case FormStep.CONFIGURE_BOOTSTRAP: {
             return (
               <>
                 <div className={styles.formInstruction}>2. Configure bootstrap</div>
                 <ConfigureBootstrapStep formik={formik} />
               </>
             );
+          }
           default:
             return assertUnreachableCase(currentStep);
         }
@@ -282,13 +284,10 @@ const validateForm = async (
       }
       const shouldValidateParallelThread =
         values.parallelThreads && isYbcEnabledUniverse(currentUniverse?.universeDetails);
-      if (shouldValidateParallelThread && values.parallelThreads > PARALLEL_THREADS_RANGE.MAX) {
-        errors.parallelThreads = `Parallel threads must be less than or equal to ${PARALLEL_THREADS_RANGE.MAX}`;
-      } else if (
-        shouldValidateParallelThread &&
-        values.parallelThreads < PARALLEL_THREADS_RANGE.MIN
-      ) {
-        errors.parallelThreads = `Parallel threads must be greater than or equal to ${PARALLEL_THREADS_RANGE.MIN}`;
+      if (shouldValidateParallelThread && values.parallelThreads > ParallelThreads.MAX) {
+        errors.parallelThreads = `Parallel threads must be less than or equal to ${ParallelThreads.MAX}`;
+      } else if (shouldValidateParallelThread && values.parallelThreads < ParallelThreads.MIN) {
+        errors.parallelThreads = `Parallel threads must be greater than or equal to ${ParallelThreads.MIN}`;
       }
 
       throw errors;

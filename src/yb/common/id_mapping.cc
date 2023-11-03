@@ -36,19 +36,16 @@
 
 #include "yb/util/malloc.h"
 
+namespace yb {
+
 namespace {
 
 size_t NumKeys(const std::vector<std::pair<int, int>>& entries) {
-  return std::count_if(entries.begin(),
-                       entries.end(),
-                       [](const auto& p) { return p.first != yb::IdMapping::kNoEntry; });
+  return std::count_if(entries.begin(), entries.end(),
+                       [](const auto& p) { return p.first != IdMapping::kNoEntry; });
 }
 
 } // namespace
-
-namespace yb {
-
-const int IdMapping::kNoEntry = -1;
 
 size_t IdMapping::memory_footprint_excluding_this() const {
   if (entries_.capacity() > 0) {

@@ -34,7 +34,7 @@ export function fetchTaskProgressResponse(result) {
   };
 }
 
-export function resetTaskProgress(error) {
+export function resetTaskProgress() {
   return {
     type: RESET_TASK_PROGRESS
   };

@@ -19,7 +19,7 @@ In some cases, depending on the node's status, YugabyteDB Anywhere allows you to
 
 - Open the **Nodes** tab.
 
-- Find a node with a Decommissioned status and click its corresponding **Actions > Add Node**, as per the following illustration:<br><br>
+- Find a node with a Decommissioned status and click its corresponding **Actions > Add Node**, as per the following illustration:<br>
 
   ![Add Node Actions](/images/ee/node-actions-add-node.png)
 

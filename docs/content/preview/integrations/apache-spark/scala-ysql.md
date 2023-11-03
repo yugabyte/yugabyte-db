@@ -1,10 +1,10 @@
 ---
-title: Build a Scala application using Apache Spark and YugabyteDB
+title: Build Scala applications using Apache Spark and YugabyteDB YSQL
+headerTitle: Build a Scala application using Apache Spark and YugabyteDB 
 linkTitle: YSQL
-description: Build a Scala application using Apache Spark and YugabyteDB
-aliases:
+description: Learn how to build a Scala application using Apache Spark and YugabyteDB YSQL
 menu:
-  preview:
+  preview_integrations:
     identifier: apache-spark-1-scala-ysql
     parent: apache-spark
     weight: 577
@@ -137,11 +137,11 @@ scala> val test_Df = spark.read.jdbc(jdbcUrl, "test", connectionProperties)
 
 ### Use SQL queries
 
-A;ternatively, you can use SQL queries to create a DataFrame which pushes down the queries to YugabyteDB through the JDBC connector to fetch the rows, and create a DataFrame for that result.
+Alternatively, you can use SQL queries to create a DataFrame which pushes down the queries to YugabyteDB through the JDBC connector to fetch the rows, and create a DataFrame for that result.
 
-scala
-la> val test_Df = spark.read.jdbc(jdbcUrl, table="(select * from test) test_alias", connectionProperties)
-
+```scala
+scala> val test_Df = spark.read.jdbc(jdbcUrl, table="(select * from test) test_alias", connectionProperties)
+```
 
 Output the schema of the DataFrame created as follows:
 

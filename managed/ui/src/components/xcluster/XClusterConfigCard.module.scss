@@ -1,39 +1,47 @@
-@import '../../_style/colors.scss';
+@use '../../_style/colors.scss';
+@use '../../_style/mixins.scss';
 
 .configCard {
-  background: $YB_BG_WHITE_3;
-  box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
+  background: colors.$YB_BG_WHITE_3;
+  box-shadow: 0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05),
+    0 0.5em 10px rgba(colors.$YB_DARK_GRAY_2, 0.07);
   border-radius: 6px;
-  color: $YB_TEXT_COLOR !important;
+  color: colors.$YB_TEXT_COLOR !important;
 
   a {
     color: unset;
   }
 
   a:hover .configName {
-    color: $YB_ORANGE !important;
-    @include transition(0.125s);
+    color: colors.$YB_ORANGE !important;
+    @include mixins.transition(0.125s);
   }
 
   .headerSection {
-    display: flex;
     align-items: center;
+    display: flex;
+    gap: 8px;
     justify-content: flex-start;
 
     padding: 12px 20px;
 
-    .configName {
-      margin-top: 6px;
+    .configNameContainer {
+      align-items: center;
+      display: flex;
+      gap: 8px;
+
       width: 40%;
 
-      font-size: 18px;
-      font-weight: 500;
-      word-break: break-all;
-      color: $YB_VIOLET_TEXT;
-      @include transition(0.35s);
-      a:hover {
-        color: $YB_ORANGE !important;
-        @include transition(0.125s);
+      .configName {
+        color: colors.$YB_VIOLET_TEXT;
+        font-size: 18px;
+        font-weight: 500;
+        word-break: break-all;
+        @include mixins.transition(0.35s);
+        a:hover {
+          color: colors.$YB_ORANGE !important;
+          @include mixins.transition(0.125s);
+        }
       }
     }
 
@@ -70,7 +78,7 @@
 
     padding: 12px 20px;
 
-    border-top: 1px solid $YB_GRAY_HOVER;
+    border-top: 1px solid colors.$YB_GRAY_HOVER;
     font-size: 12px;
 
     .replicationGraph {
@@ -127,11 +135,11 @@
       font-size: 12px;
 
       a {
-        color: $YB_VIOLET_TEXT;
+        color: colors.$YB_VIOLET_TEXT;
         text-decoration: underline;
 
         &:hover {
-          color: $YB_ORANGE_HOVER;
+          color: colors.$YB_ORANGE_HOVER;
         }
       }
     }

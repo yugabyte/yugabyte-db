@@ -40,7 +40,7 @@ class TruncateOperation : public OperationBase<OperationType::kTruncate, LWTrunc
   explicit TruncateOperation(Args&&... args)
       : OperationBase(std::forward<Args>(args)...) {}
 
-  Status Prepare() override { return Status::OK(); }
+  Status Prepare(IsLeaderSide is_leader_side) override { return Status::OK(); }
 
  private:
   // Starts the TruncateOperation by assigning it a timestamp.

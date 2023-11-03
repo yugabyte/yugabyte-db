@@ -9,24 +9,10 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
@@ -51,29 +37,15 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.TaskType;
-import io.ebean.Ebean;
+import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.*;
+import io.ebean.DB;
 import io.ebean.SqlUpdate;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.naming.TestCaseName;
@@ -87,10 +59,7 @@ import org.mockito.InjectMocks;
 import org.mockito.MockitoAnnotations;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.IsServerReadyResponse;
-import org.yb.client.ListMastersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.*;
 import org.yb.master.CatalogEntityInfo.SysClusterConfigEntryPB;
 import play.libs.Json;
 
@@ -189,7 +158,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     try {
       CertificateInfo.create(
           certUUID,
-          defaultCustomer.uuid,
+          defaultCustomer.getUuid(),
           "test",
           date,
           date,
@@ -204,16 +173,16 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = "old-version";
     userIntent.accessKeyCode = "demo-access";
-    userIntent.regionList = ImmutableList.of(region.uuid);
-    defaultUniverse = createUniverse(defaultCustomer.getCustomerId(), certUUID);
+    userIntent.regionList = ImmutableList.of(region.getUuid());
+    defaultUniverse = createUniverse(defaultCustomer.getId(), certUUID);
     PlacementInfo pi = new PlacementInfo();
-    PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 1, false);
-    PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, true);
-    PlacementInfoUtil.addPlacementZone(az3.uuid, pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az2.getUuid(), pi, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi, 1, 1, false);
 
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, pi, true));
+            defaultUniverse.getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent, pi, true));
 
     // Setup mocks
     mockClient = mock(YBClient.class);
@@ -222,9 +191,15 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           .thenAnswer(
               i -> {
                 SysClusterConfigEntryPB.Builder configBuilder =
-                    SysClusterConfigEntryPB.newBuilder().setVersion(defaultUniverse.version);
+                    SysClusterConfigEntryPB.newBuilder().setVersion(defaultUniverse.getVersion());
                 return new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
               });
+      UpgradeYsqlResponse mockUpgradeYsqlResponse = new UpgradeYsqlResponse(1000, "", null);
+      when(mockClient.upgradeYsql(any(HostAndPort.class), anyBoolean()))
+          .thenReturn(mockUpgradeYsqlResponse);
+      IsInitDbDoneResponse mockIsInitDbDoneResponse =
+          new IsInitDbDoneResponse(1000, "", true, true, null, null);
+      when(mockClient.getIsInitDbDone()).thenReturn(mockIsInitDbDoneResponse);
     } catch (Exception ignored) {
       fail();
     }
@@ -251,6 +226,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     successResponse.message = "YSQL successfully upgraded to the latest version";
     when(mockNodeUniverseManager.runYbAdminCommand(any(), any(), any(), anyList(), anyLong()))
         .thenReturn(successResponse);
+
+    setFollowerLagMock();
   }
 
   private TaskInfo submitTask(UpgradeUniverse.Params taskParams, UpgradeTaskType taskType) {
@@ -259,7 +236,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   private TaskInfo submitTask(
       UpgradeUniverse.Params taskParams, UpgradeTaskType taskType, int expectedVersion) {
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.taskType = taskType;
     taskParams.expectedUniverseVersion = expectedVersion;
     // Need not sleep for default 3min in tests.
@@ -436,6 +413,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.ChangeMasterConfig,
+          TaskType.CheckFollowerLag,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.SetNodeState);
@@ -905,9 +883,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   private void assertNodeSubTask(List<TaskInfo> subTasks, Map<String, Object> assertValues) {
     List<String> nodeNames =
-        subTasks
-            .stream()
-            .map(t -> t.getTaskDetails().get("nodeName").textValue())
+        subTasks.stream()
+            .map(t -> t.getDetails().get("nodeName").textValue())
             .collect(Collectors.toList());
     int nodeCount = (int) assertValues.getOrDefault("nodeCount", 1);
     assertEquals(nodeCount, nodeNames.size());
@@ -920,13 +897,12 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     }
 
     List<JsonNode> subTaskDetails =
-        subTasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
+        subTasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
     assertValues.forEach(
         (expectedKey, expectedValue) -> {
           if (!ImmutableList.of("nodeName", "nodeNames", "nodeCount").contains(expectedKey)) {
             List<Object> values =
-                subTaskDetails
-                    .stream()
+                subTaskDetails.stream()
                     .map(
                         t -> {
                           JsonNode data =
@@ -944,12 +920,6 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         });
   }
 
-  private TaskType assertTaskType(List<TaskInfo> tasks, TaskType expectedTaskType) {
-    TaskType taskType = tasks.get(0).getTaskType();
-    assertEquals(expectedTaskType, taskType);
-    return taskType;
-  }
-
   public void testResizeNodeUpgrade(int rf, int numInvocations) {
     String intendedInstanceType = "c5.2xlarge";
     int intendedVolumeSize = 300;
@@ -961,17 +931,14 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
             + "instance_type_details )"
             + "VALUES ("
             + ":providerUUID, :typeCode, true, :numCores, :memSize, :details)";
-    SqlUpdate update = Ebean.createSqlUpdate(updateQuery);
-    update.setParameter("providerUUID", defaultProvider.uuid);
+    SqlUpdate update = DB.sqlUpdate(updateQuery);
+    update.setParameter("providerUUID", defaultProvider.getUuid());
     update.setParameter("typeCode", intendedInstanceType);
     update.setParameter("numCores", 8);
     update.setParameter("memSize", 16);
     update.setParameter("details", "{\"volumeDetailsList\":[],\"tenancy\":\"Shared\"}");
-    int modifiedCount = Ebean.execute(update);
+    int modifiedCount = DB.getDefault().execute(update);
     assertEquals(1, modifiedCount);
-
-    when(mockConfigHelper.getAWSInstancePrefixesSupported())
-        .thenReturn(ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3."));
 
     Region secondRegion = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
     AvailabilityZone.createOrThrow(secondRegion, "az-4", "AZ 4", "subnet-4");
@@ -982,7 +949,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           Cluster primaryCluster = universeDetails.getPrimaryCluster();
           UserIntent userIntent = primaryCluster.userIntent;
           userIntent.providerType = Common.CloudType.aws;
-          userIntent.provider = defaultProvider.uuid.toString();
+          userIntent.provider = defaultProvider.getUuid().toString();
           if (rf == 1) {
             userIntent.numNodes = 1;
             userIntent.replicationFactor = 1;
@@ -1009,7 +976,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
               node.isMaster = false;
               node.isTserver = true;
               node.cloudInfo = new CloudSpecificInfo();
-              node.cloudInfo.instance_type = userIntent.instanceType;
+              node.cloudInfo.instance_type = userIntent.getInstanceTypeForNode(node);
               node.cloudInfo.private_ip = "1.2.3." + idx;
               universeDetails.nodeDetailsSet.add(node);
             }
@@ -1021,7 +988,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           userIntent.numNodes += 2;
           universe.setUniverseDetails(universeDetails);
         };
-    defaultUniverse = Universe.saveDetails(defaultUniverse.universeUUID, updater);
+    defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
 
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.upgradeOption = UpgradeParams.UpgradeOption.ROLLING_UPGRADE;
@@ -1031,7 +998,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     deviceInfo.volumeSize = intendedVolumeSize;
     taskParams.getPrimaryCluster().userIntent.deviceInfo = deviceInfo;
     taskParams.getPrimaryCluster().userIntent.instanceType = intendedInstanceType;
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskType.ResizeNode, defaultUniverse.version);
+    TaskInfo taskInfo =
+        submitTask(taskParams, UpgradeTaskType.ResizeNode, defaultUniverse.getVersion());
     verify(mockNodeManager, times(numInvocations)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -1048,7 +1016,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     changeDiskSize.forEach(
         task -> {
-          JsonNode details = task.getTaskDetails();
+          JsonNode details = task.getDetails();
           assertEquals(intendedVolumeSize, details.get("deviceInfo").get("volumeSize").asInt());
           assertEquals(1, details.get("deviceInfo").get("numVolumes").asInt());
           assertNotNull(details.get("instanceType"));
@@ -1066,7 +1034,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       List<TaskInfo> tasks = subTasksByPosition.get(j);
       assertEquals(1, tasks.size());
 
-      JsonNode nodeNameJson = tasks.get(0).getTaskDetails().get("nodeName");
+      JsonNode nodeNameJson = tasks.get(0).getDetails().get("nodeName");
       if (nodeNameJson == null) {
         continue;
       }
@@ -1094,6 +1062,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           if (rf == 1) {
             // Don't change master config for RF1
             if (RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER.get(j) == TaskType.ChangeMasterConfig
+                || RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER.get(j) == TaskType.CheckFollowerLag
                 || RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER.get(j)
                     == TaskType.WaitForMasterLeader) {
               continue;
@@ -1106,7 +1075,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType taskType = task.getTaskType();
           assertEquals(RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER.get(j), taskType);
           if (taskType == TaskType.ChangeInstanceType) {
-            JsonNode details = task.getTaskDetails();
+            JsonNode details = task.getDetails();
             assertNotNull(details.get("instanceType").asText().equals(intendedInstanceType));
           }
 
@@ -1125,7 +1094,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType taskType = task.getTaskType();
           assertEquals(RESIZE_NODE_UPGRADE_TASK_SEQUENCE_NO_MASTER.get(j), taskType);
           if (taskType == TaskType.ChangeInstanceType) {
-            JsonNode details = task.getTaskDetails();
+            JsonNode details = task.getDetails();
             assertNotNull(details.get("instanceType").asText().equals(intendedInstanceType));
           }
 
@@ -1146,6 +1115,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testResizeNodeUpgradeRF3() {
+    UniverseModifyBaseTest.mockGetMasterRegistrationResponses(
+        mockClient, ImmutableList.of("10.0.0.1", "10.0.0.2", "10.0.0.3"));
     testResizeNodeUpgrade(3, 29);
   }
 
@@ -1164,11 +1135,11 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
           Cluster primaryCluster = universeDetails.getPrimaryCluster();
           UserIntent userIntent = primaryCluster.userIntent;
-          userIntent.regionList = ImmutableList.of(region.uuid, secondRegion.uuid);
-          userIntent.provider = defaultProvider.uuid.toString();
+          userIntent.regionList = ImmutableList.of(region.getUuid(), secondRegion.getUuid());
+          userIntent.provider = defaultProvider.getUuid().toString();
 
           PlacementInfo pi = primaryCluster.placementInfo;
-          PlacementInfoUtil.addPlacementZone(az4.uuid, pi, 1, 2, false);
+          PlacementInfoUtil.addPlacementZone(az4.getUuid(), pi, 1, 2, false);
           universe.setUniverseDetails(universeDetails);
 
           for (int idx = userIntent.numNodes + 1; idx <= userIntent.numNodes + 2; idx++) {
@@ -1180,8 +1151,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
             node.isTserver = true;
             node.cloudInfo = new CloudSpecificInfo();
             node.cloudInfo.private_ip = "1.2.3." + idx;
-            node.cloudInfo.az = az4.code;
-            node.azUuid = az4.uuid;
+            node.cloudInfo.az = az4.getCode();
+            node.azUuid = az4.getUuid();
             universeDetails.nodeDetailsSet.add(node);
           }
 
@@ -1192,40 +1163,53 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           userIntent.numNodes += 2;
         };
 
-    defaultUniverse = Universe.saveDetails(defaultUniverse.universeUUID, updater);
+    defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
 
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
-    taskParams.machineImages.put(region.uuid, "test-vm-image-1");
-    taskParams.machineImages.put(secondRegion.uuid, "test-vm-image-2");
+    taskParams.machineImages.put(region.getUuid(), "test-vm-image-1");
+    taskParams.machineImages.put(secondRegion.getUuid(), "test-vm-image-2");
 
     // expect a CreateRootVolume for each AZ
     final int expectedRootVolumeCreationTasks = 4;
 
     Map<UUID, List<String>> createVolumeOutput =
-        Arrays.asList(az1, az2, az3)
-            .stream()
+        Arrays.asList(az1, az2, az3).stream()
             .collect(
                 Collectors.toMap(
-                    az -> az.uuid,
-                    az -> Collections.singletonList(String.format("root-volume-%s", az.code))));
+                    az -> az.getUuid(),
+                    az ->
+                        Collections.singletonList(String.format("root-volume-%s", az.getCode()))));
     // AZ 4 has 2 nodes so return 2 volumes here
-    createVolumeOutput.put(az4.uuid, Arrays.asList("root-volume-4", "root-volume-5"));
+    createVolumeOutput.put(az4.getUuid(), Arrays.asList("root-volume-4", "root-volume-5"));
+
+    // Use output for verification and response is the raw string that parses into output.
+    Map<UUID, String> createVolumeOutputResponse =
+        Stream.of(az1, az2, az3)
+            .collect(
+                Collectors.toMap(
+                    az -> az.getUuid(),
+                    az ->
+                        String.format(
+                            "{\"boot_disks_per_zone\":[\"root-volume-%s\"], "
+                                + "\"root_device_name\":\"/dev/sda1\"}",
+                            az.getCode())));
+    createVolumeOutputResponse.put(
+        az4.getUuid(),
+        "{\"boot_disks_per_zone\":[\"root-volume-4\", \"root-volume-5\"], "
+            + "\"root_device_name\":\"/dev/sda1\"}");
 
     ObjectMapper om = new ObjectMapper();
-    for (Map.Entry<UUID, List<String>> e : createVolumeOutput.entrySet()) {
-      try {
-        when(mockNodeManager.nodeCommand(
-                eq(NodeCommandType.Create_Root_Volumes),
-                argThat(new CreateRootVolumesMatcher(e.getKey()))))
-            .thenReturn(ShellResponse.create(0, om.writeValueAsString(e.getValue())));
-      } catch (JsonProcessingException ex) {
-        throw new RuntimeException(ex);
-      }
+    for (Map.Entry<UUID, String> e : createVolumeOutputResponse.entrySet()) {
+      when(mockNodeManager.nodeCommand(
+              eq(NodeCommandType.Create_Root_Volumes),
+              argThat(new CreateRootVolumesMatcher(e.getKey()))))
+          .thenReturn(ShellResponse.create(0, e.getValue()));
     }
 
     TaskInfo taskInfo =
-        submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.VMImage, defaultUniverse.version);
+        submitTask(
+            taskParams, UpgradeTaskParams.UpgradeTaskType.VMImage, defaultUniverse.getVersion());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -1238,15 +1222,15 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     createRootVolumeTasks.forEach(
         task -> {
-          JsonNode details = task.getTaskDetails();
+          JsonNode details = task.getDetails();
           UUID azUuid = UUID.fromString(details.get("azUuid").asText());
           AvailabilityZone zone =
               AvailabilityZone.find.query().fetch("region").where().idEq(azUuid).findOne();
           String machineImage = details.get("machineImage").asText();
-          assertEquals(taskParams.machineImages.get(zone.region.uuid), machineImage);
+          assertEquals(taskParams.machineImages.get(zone.getRegion().getUuid()), machineImage);
 
           String azUUID = details.get("azUuid").asText();
-          if (azUUID.equals(az4.uuid.toString())) {
+          if (azUUID.equals(az4.getUuid().toString())) {
             assertEquals(2, details.get("numVolumes").asInt());
           }
         });
@@ -1276,7 +1260,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
         }
 
         if (taskType == TaskType.ReplaceRootVolume) {
-          JsonNode details = task.getTaskDetails();
+          JsonNode details = task.getDetails();
           UUID az = UUID.fromString(details.get("azUuid").asText());
           replaceRootVolumeParams.compute(az, (k, v) -> v == null ? 1 : v + 1);
         }
@@ -1301,7 +1285,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
-    assertEquals(2, defaultUniverse.version);
+    assertEquals(2, defaultUniverse.getVersion());
     // In case of an exception, no task should be queued.
     assertEquals(0, taskInfo.getSubTasks().size());
   }
@@ -1313,7 +1297,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
-    assertEquals(2, defaultUniverse.version);
+    assertEquals(2, defaultUniverse.getVersion());
     // In case of an exception, no task should be queued.
     assertEquals(0, taskInfo.getSubTasks().size());
   }
@@ -1327,23 +1311,24 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     userIntent.replicationFactor = 3;
     userIntent.ybSoftwareVersion = "old-version";
     userIntent.accessKeyCode = "demo-access";
-    userIntent.regionList = ImmutableList.of(region.uuid);
+    userIntent.regionList = ImmutableList.of(region.getUuid());
 
     PlacementInfo pi = new PlacementInfo();
-    PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 2, false);
-    PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, true);
-    PlacementInfoUtil.addPlacementZone(az3.uuid, pi, 1, 2, false);
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 2, false);
+    PlacementInfoUtil.addPlacementZone(az2.getUuid(), pi, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi, 1, 2, false);
 
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(
                 userIntent, "host", true /* setMasters */, false /* updateInProgress */, pi));
 
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.ybSoftwareVersion = "new-version";
     TaskInfo taskInfo =
-        submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.Software, defaultUniverse.version);
+        submitTask(
+            taskParams, UpgradeTaskParams.UpgradeTaskType.Software, defaultUniverse.getVersion());
     verify(mockNodeManager, times(33)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -1375,16 +1360,16 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     userIntent.replicationFactor = 3;
     userIntent.ybSoftwareVersion = "old-version";
     userIntent.accessKeyCode = "demo-access";
-    userIntent.regionList = ImmutableList.of(region.uuid);
+    userIntent.regionList = ImmutableList.of(region.getUuid());
 
     PlacementInfo pi = new PlacementInfo();
-    PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 2, false);
-    PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, true);
-    PlacementInfoUtil.addPlacementZone(az3.uuid, pi, 1, 2, false);
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 2, false);
+    PlacementInfoUtil.addPlacementZone(az2.getUuid(), pi, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi, 1, 2, false);
 
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(
                 userIntent, "host", true /* setMasters */, false /* updateInProgress */, pi));
 
@@ -1394,21 +1379,22 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     AvailabilityZone az6 = AvailabilityZone.createOrThrow(region, "az-6", "AZ 6", "subnet-3");
 
     // Currently read replica zones are always affinitized.
-    PlacementInfoUtil.addPlacementZone(az4.uuid, pi, 1, 1, false);
-    PlacementInfoUtil.addPlacementZone(az5.uuid, pi, 1, 1, true);
-    PlacementInfoUtil.addPlacementZone(az6.uuid, pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az4.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az5.getUuid(), pi, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az6.getUuid(), pi, 1, 1, false);
 
     userIntent.numNodes = 3;
 
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
 
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
     taskParams.ybSoftwareVersion = "new-version";
     TaskInfo taskInfo =
-        submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.Software, defaultUniverse.version);
+        submitTask(
+            taskParams, UpgradeTaskParams.UpgradeTaskType.Software, defaultUniverse.getVersion());
     verify(mockNodeManager, times(45)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -1610,7 +1596,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
-    assertEquals(2, defaultUniverse.version);
+    assertEquals(2, defaultUniverse.getVersion());
     // In case of an exception, no task should be queued.
     assertEquals(0, taskInfo.getSubTasks().size());
   }
@@ -1636,7 +1622,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           userIntent.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
           universe.setUniverseDetails(universeDetails);
         };
-    Universe.saveDetails(defaultUniverse.universeUUID, updater);
+    Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
 
     // Upgrade with same master flags but different tserver flags should not run master tasks.
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
@@ -1685,7 +1671,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           userIntent.tserverGFlags = tserverFlags;
           universe.setUniverseDetails(universeDetails);
         };
-    Universe.saveDetails(defaultUniverse.universeUUID, updater);
+    Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
 
     // Upgrade with same master flags but different tserver flags should not run master tasks.
     UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
@@ -1747,7 +1733,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
             userIntent.tserverGFlags = tserverFlags;
             universe.setUniverseDetails(universeDetails);
           };
-      Universe.saveDetails(defaultUniverse.universeUUID, updater);
+      Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
 
       UpgradeUniverse.Params taskParams = new UpgradeUniverse.Params();
       // This is a delete operation on the master flags.
@@ -1805,7 +1791,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           userIntent.tserverGFlags = tserverFlags;
           universe.setUniverseDetails(universeDetails);
         };
-    Universe.saveDetails(defaultUniverse.universeUUID, updater);
+    Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
 
     // SetFlagResponse response = new SetFlagResponse(0, "", null);
     when(mockClient.setFlag(any(), any(), any(), anyBoolean())).thenReturn(true);
@@ -1866,7 +1852,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     try {
       CertificateInfo.create(
           certUUID,
-          defaultCustomer.uuid,
+          defaultCustomer.getUuid(),
           "test2",
           date,
           date,
@@ -1909,7 +1895,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     try {
       CertificateInfo.create(
           certUUID,
-          defaultCustomer.uuid,
+          defaultCustomer.getUuid(),
           "test2",
           date,
           date,
@@ -1952,7 +1938,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     try {
       CertificateInfo.create(
           certUUID,
-          defaultCustomer.uuid,
+          defaultCustomer.getUuid(),
           "test2",
           date,
           date,
@@ -1966,7 +1952,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
-    assertEquals(2, defaultUniverse.version);
+    assertEquals(2, defaultUniverse.getVersion());
     // In case of an exception, no task should be queued.
     assertEquals(0, taskInfo.getSubTasks().size());
   }
@@ -1993,7 +1979,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     CertificateInfo.create(
         rootCA,
-        defaultCustomer.uuid,
+        defaultCustomer.getUuid(),
         "test1",
         new Date(),
         new Date(),
@@ -2004,7 +1990,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     if (!rootAndClientRootCASame && !rootCA.equals(clientRootCA)) {
       CertificateInfo.create(
           clientRootCA,
-          defaultCustomer.uuid,
+          defaultCustomer.getUuid(),
           "test1",
           new Date(),
           new Date(),
@@ -2015,7 +2001,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             universe -> {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
               PlacementInfo placementInfo = universeDetails.getPrimaryCluster().placementInfo;
@@ -2028,7 +2014,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
                 universeDetails.rootCA = rootCA;
               }
               if (clientToNode) {
-                universeDetails.clientRootCA = clientRootCA;
+                universeDetails.setClientRootCA(clientRootCA);
               }
               if (nodeToNode || clientToNode) {
                 universeDetails.allowInsecure = false;
@@ -2052,7 +2038,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     taskParams.enableClientToNodeEncrypt = clientToNode;
     taskParams.rootAndClientRootCASame = rootAndClientRootCASame;
     taskParams.rootCA = rootCA;
-    taskParams.clientRootCA = clientRootCA;
+    taskParams.setClientRootCA(clientRootCA);
     return taskParams;
   }
 
@@ -2155,9 +2141,9 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   @Test
   @Parameters({
-    "true, true, false, false, true, true",
+    //    "true, true, false, false, true, true",//both cannot be same, when rootCA is disabled
     "true, true, false, false, false, true",
-    "true, false, false, false, true, true",
+    //    "true, false, false, false, true, true",//both cannot be same, when root CA is disabled
     "true, false, false, false, false, true",
     "false, true, false, true, true, true",
     "false, true, false, true, false, true",
@@ -2166,10 +2152,10 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     "true, true, false, true, false, true",
     "true, false, false, true, true, true",
     "false, true, false, false, false, true",
-    "false, false, false, false, true, true",
-    "true, true, true, false, true, true",
+    //    "false, false, false, false, true, true",//both cannot be same when rootCA is disabled
+    //    "true, true, true, false, true, true",//both cannot be same when rootCA is disabled
     "true, true, true, false, false, true",
-    "true, false, true, false, true, true",
+    //    "true, false, true, false, true, true",//both cannot be same when rootCA is disabled
     "true, false, true, false, false, true",
     "false, true, true, true, true, true",
     "false, true, true, true, false, true",
@@ -2178,7 +2164,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     "true, true, true, true, false, true",
     "true, false, true, true, true, true",
     "false, true, true, false, false, true",
-    "false, false, true, false, true, true",
+    //    "false, false, true, false, true, true",//both cannot be same when rootCA is disabled
     "true, true, true, false, true, false",
     "true, true, true, false, false, false",
     "true, false, true, false, true, false",
@@ -2216,6 +2202,12 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       boolean clientToNode,
       boolean rootAndClientRootCASame)
       throws IOException, NoSuchAlgorithmException {
+
+    if (rootAndClientRootCASame && (!nodeToNode || !clientToNode)) {
+      // bothCASame cannot be true when either one of nodeToNode or clientToNode is disabled
+      rootAndClientRootCASame = false;
+    }
+
     UUID rootCA = UUID.randomUUID();
     UUID clientRootCA = UUID.randomUUID();
     prepareUniverseForToggleTls(
@@ -2266,11 +2258,11 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     if (nodeToNode || (rootAndClientRootCASame && clientToNode))
-      assertEquals(rootCA, universe.getUniverseDetails().rootCA);
+      assertEquals(taskParams.rootCA, universe.getUniverseDetails().rootCA);
     else assertNull(universe.getUniverseDetails().rootCA);
-    if (!rootAndClientRootCASame && clientToNode)
-      assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
-    else assertNull(universe.getUniverseDetails().clientRootCA);
+    if (clientToNode)
+      assertEquals(taskParams.getClientRootCA(), universe.getUniverseDetails().getClientRootCA());
+    else assertNull(universe.getUniverseDetails().getClientRootCA());
     assertEquals(
         nodeToNode,
         universe.getUniverseDetails().getPrimaryCluster().userIntent.enableNodeToNodeEncrypt);
@@ -2283,9 +2275,9 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   @Test
   @Parameters({
-    "true, true, false, false, true, true",
+    //    "true, true, false, false, true, true",//both cannot be same when rootCA is disabled
     "true, true, false, false, false, true",
-    "true, false, false, false, true, true",
+    //    "true, false, false, false, true, true",//both cannot be same when rootCA is disabled
     "true, false, false, false, false, true",
     "false, true, false, true, true, true",
     "false, true, false, true, false, true",
@@ -2294,10 +2286,10 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     "true, true, false, true, false, true",
     "true, false, false, true, true, true",
     "false, true, false, false, false, true",
-    "false, false, false, false, true, true",
-    "true, true, true, false, true, true",
+    //    "false, false, false, false, true, true",//both cannot be same when rootCA is disabled
+    //    "true, true, true, false, true, true",//both cannot be same when rootCA is disabled
     "true, true, true, false, false, true",
-    "true, false, true, false, true, true",
+    //    "true, false, true, false, true, true",//both cannot be same when rootCA is disabled
     "true, false, true, false, false, true",
     "false, true, true, true, true, true",
     "false, true, true, true, false, true",
@@ -2306,7 +2298,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     "true, true, true, true, false, true",
     "true, false, true, true, true, true",
     "false, true, true, false, false, true",
-    "false, false, true, false, true, true",
+    //    "false, false, true, false, true, true",//both cannot be same when rootCA is disabled
     "true, true, true, false, true, false",
     "true, true, true, false, false, false",
     "true, false, true, false, true, false",
@@ -2344,6 +2336,11 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
       boolean clientToNode,
       boolean rootAndClientRootCASame)
       throws IOException, NoSuchAlgorithmException {
+
+    if (rootAndClientRootCASame && (!nodeToNode || !clientToNode)) {
+      // bothCASame cannot be true when either of nodeToNode or clientToNode are false
+      rootAndClientRootCASame = false;
+    }
     UUID rootCA = UUID.randomUUID();
     UUID clientRootCA = UUID.randomUUID();
     prepareUniverseForToggleTls(
@@ -2354,7 +2351,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
             clientToNode,
             rootAndClientRootCASame,
             rootCA,
-            clientRootCA,
+            rootAndClientRootCASame ? rootCA : clientRootCA,
             UpgradeParams.UpgradeOption.ROLLING_UPGRADE);
 
     int nodeToNodeChange = getNodeToNodeChangeForToggleTls(nodeToNode);
@@ -2401,9 +2398,9 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     if (nodeToNode || (rootAndClientRootCASame && clientToNode))
       assertEquals(rootCA, universe.getUniverseDetails().rootCA);
     else assertNull(universe.getUniverseDetails().rootCA);
-    if (!rootAndClientRootCASame && clientToNode)
-      assertEquals(clientRootCA, universe.getUniverseDetails().clientRootCA);
-    else assertNull(universe.getUniverseDetails().clientRootCA);
+    if (clientToNode)
+      assertEquals(taskParams.getClientRootCA(), universe.getUniverseDetails().getClientRootCA());
+    else assertNull(universe.getUniverseDetails().getClientRootCA());
     assertEquals(
         nodeToNode,
         universe.getUniverseDetails().getPrimaryCluster().userIntent.enableNodeToNodeEncrypt);

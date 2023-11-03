@@ -53,17 +53,13 @@
 
 #include "yb/util/countdown_latch.h"
 
-using yb::consensus::RaftPeerPB;
 using yb::consensus::PeerMemberType;
 using yb::itest::TServerDetails;
 using yb::tablet::TABLET_DATA_READY;
 using yb::tablet::TABLET_DATA_TOMBSTONED;
 using yb::tserver::ListTabletsResponsePB;
-using std::shared_ptr;
 using std::string;
-using std::unordered_map;
 using std::vector;
-using strings::Substitute;
 
 namespace yb {
 

@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <utility>
 
+#include "yb/common/pg_system_attr.h"
 #include "yb/common/row_mark.h"
 
 #include "yb/gutil/casts.h"
@@ -33,6 +34,7 @@
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 using std::string;
 
@@ -117,6 +119,31 @@ auto BuildRowOrders(const LWPgsqlResponsePB& response,
   return orders;
 }
 
+// Helper function to determine the type of relation that the given Pgsql operation is being
+// performed on. This function classifies the operation into one of three buckets: system catalog,
+// secondary index or user table requests.
+TableType ResolveRelationType(const PgsqlOp& op, const PgTable& table) {
+  if (table->schema().table_properties().is_ysql_catalog_table()) {
+    // We don't distinguish between table reads and index reads for a catalog table.
+    return TableType::SYSTEM;
+  }
+
+  // Check if we're making an index request.
+  // Any request that lands on a secondary index table is treated as an index request, while
+  // primary key lookups on the main table are treated as user table requests. No such distinction
+  // is made for system catalog tables.
+  // We make use of the following info to make this decision:
+  // read_request().has_index_request() : is true for colocated secondary index requests.
+  // table->isIndex() : is true for all secondary index writes and non-colocated secondary index
+  //                    reads.
+  if ((op.is_read() && down_cast<const PgsqlReadOp &>(op).read_request().has_index_request()) ||
+      table->IsIndex()) {
+    return TableType::INDEX;
+  }
+
+  return TableType::USER;
+}
+
 } // namespace
 
 PgDocResult::PgDocResult(rpc::SidecarHolder data, std::vector<int64_t>&& row_orders)
@@ -130,22 +157,14 @@ int64_t PgDocResult::NextRowOrder() {
   return current_row_order_ != row_orders_.end() ? *current_row_order_ : -1;
 }
 
-Status PgDocResult::WritePgTuple(const std::vector<PgExpr*>& targets, PgTuple *pg_tuple,
+Status PgDocResult::WritePgTuple(const std::vector<PgFetchedTarget*>& targets, PgTuple *pg_tuple,
                                  int64_t *row_order) {
-  int attr_num = 0;
-  for (const PgExpr *target : targets) {
-    if (!target->is_colref() && !target->is_aggregate()) {
-      return STATUS(InternalError,
-                    "Unexpected expression, only column refs or aggregates supported here");
-    }
-    if (target->opcode() == PgColumnRef::Opcode::PG_EXPR_COLREF) {
-      attr_num = static_cast<const PgColumnRef *>(target)->attr_num();
+  for (auto* target : targets) {
+    if (PgDocData::ReadHeaderIsNull(&row_iterator_)) {
+      target->SetNull(pg_tuple);
     } else {
-      attr_num++;
+      target->SetValue(&row_iterator_, pg_tuple);
     }
-
-    PgWireDataHeader header = PgDocData::ReadDataHeader(&row_iterator_);
-    target->TranslateData(&row_iterator_, header, attr_num - 1, pg_tuple);
   }
 
   *row_order = current_row_order_ != row_orders_.end() ? *current_row_order_++ : -1;
@@ -159,12 +178,10 @@ Status PgDocResult::ProcessSystemColumns() {
   syscol_processed_ = true;
 
   for (int i = 0; i < row_count_; i++) {
-    PgWireDataHeader header = PgDocData::ReadDataHeader(&row_iterator_);
-    SCHECK(!header.is_null(), InternalError, "System column ybctid cannot be NULL");
+    SCHECK(!PgDocData::ReadHeaderIsNull(&row_iterator_), InternalError,
+           "System column ybctid cannot be NULL");
 
-    int64_t data_size;
-    size_t read_size = PgDocData::ReadNumber(&row_iterator_, &data_size);
-    row_iterator_.remove_prefix(read_size);
+    auto data_size = PgDocData::ReadNumber<int64_t>(&row_iterator_);
 
     ybctids_.emplace_back(row_iterator_.data(), data_size);
     row_iterator_.remove_prefix(data_size);
@@ -180,17 +197,13 @@ Status PgDocResult::ProcessSparseSystemColumns(std::string *reservoir) {
   // ybctids.
   for (int i = 0; i < row_count_; i++) {
     // Read index column
-    PgWireDataHeader header = PgDocData::ReadDataHeader(&row_iterator_);
-    SCHECK(!header.is_null(), InternalError, "Reservoir index cannot be NULL");
-    int32_t index;
-    size_t read_size = PgDocData::ReadNumber(&row_iterator_, &index);
-    row_iterator_.remove_prefix(read_size);
+    SCHECK(!PgDocData::ReadHeaderIsNull(&row_iterator_), InternalError,
+           "Reservoir index cannot be NULL");
+    auto index = PgDocData::ReadNumber<int32_t>(&row_iterator_);
     // Read ybctid column
-    header = PgDocData::ReadDataHeader(&row_iterator_);
-    SCHECK(!header.is_null(), InternalError, "System column ybctid cannot be NULL");
-    int64_t data_size;
-    read_size = PgDocData::ReadNumber(&row_iterator_, &data_size);
-    row_iterator_.remove_prefix(read_size);
+    SCHECK(!PgDocData::ReadHeaderIsNull(&row_iterator_), InternalError,
+           "System column ybctid cannot be NULL");
+    auto data_size = PgDocData::ReadNumber<int64_t>(&row_iterator_);
 
     // Copy ybctid data to the reservoir
     reservoir[index].assign(reinterpret_cast<const char *>(row_iterator_.data()), data_size);
@@ -201,23 +214,23 @@ Status PgDocResult::ProcessSparseSystemColumns(std::string *reservoir) {
 
 //--------------------------------------------------------------------------------------------------
 
-PgDocResponse::PgDocResponse(PerformFuture future, uint64_t in_txn_limit)
-    : holder_(PerformInfo{.future = std::move(future), .in_txn_limit = in_txn_limit}) {}
+PgDocResponse::PgDocResponse(PerformFuture future)
+    : holder_(std::move(future)) {}
 
 PgDocResponse::PgDocResponse(ProviderPtr provider)
     : holder_(std::move(provider)) {}
 
 bool PgDocResponse::Valid() const {
-  return std::holds_alternative<PerformInfo>(holder_)
-      ? std::get<PerformInfo>(holder_).future.Valid()
+  return std::holds_alternative<PerformFuture>(holder_)
+      ? std::get<PerformFuture>(holder_).Valid()
       : static_cast<bool>(std::get<ProviderPtr>(holder_));
 }
 
-Result<PgDocResponse::Data> PgDocResponse::Get(MonoDelta* wait_time) {
-  if (std::holds_alternative<PerformInfo>(holder_)) {
-    auto& info = std::get<PerformInfo>(holder_);
-    return Data(VERIFY_RESULT(info.future.Get(wait_time)), info.in_txn_limit);
+Result<PgDocResponse::Data> PgDocResponse::Get() {
+  if (std::holds_alternative<PerformFuture>(holder_)) {
+    return std::get<PerformFuture>(holder_).Get();
   }
+
   // Detach provider pointer after first usage to make PgDocResponse::Valid return false.
   ProviderPtr provider;
   std::get<ProviderPtr>(holder_).swap(provider);
@@ -257,14 +270,28 @@ Result<std::list<PgDocResult>> PgDocOp::GetResult() {
   // If the execution has error, return without reading any rows.
   RETURN_NOT_OK(exec_status_);
   std::list<PgDocResult> result;
+
   if (!end_of_data_) {
     // Send request now in case prefetching was suppressed.
     if (suppress_next_result_prefetching_ && !response_.Valid()) {
       RETURN_NOT_OK(SendRequest());
     }
 
-    DCHECK(response_.Valid());
-    result = VERIFY_RESULT(ProcessResponse(response_.Get(&read_rpc_wait_time_)));
+    uint64_t wait_time = 0;
+    auto result_data = VERIFY_RESULT(pg_session_->metrics().CallWithDuration(
+        [&response = response_] { return response.Get(); }, &wait_time));
+
+    // Update session stats instrumentation only for read requests. Reads are executed
+    // synchronously with respect to Postgres query execution, and thus it is possible to
+    // correlate wait/execution times directly with the request. We update instrumentation for
+    // reads exactly once, upon receiving a success response from the underlying storage layer.
+    if (!IsWrite()) {
+      pg_session_->metrics().ReadRequest(
+          ResolveRelationType(*pgsql_ops_.front(), table_), wait_time);
+    }
+
+    result = VERIFY_RESULT(ProcessResponse(result_data));
+
     // In case ProcessResponse doesn't fail with an error
     // it should return non empty rows and/or set end_of_data_.
     DCHECK(!result.empty() || end_of_data_);
@@ -294,7 +321,6 @@ Status PgDocOp::SendRequest(ForceNonBufferable force_non_bufferable) {
   DCHECK(exec_status_.ok());
   DCHECK(!response_.Valid());
   exec_status_ = SendRequestImpl(force_non_bufferable);
-  ++read_rpc_count_;
   return exec_status_;
 }
 
@@ -313,16 +339,37 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   size_t send_count = std::min(parallelism_level_, active_op_count_);
   VLOG(1) << "Number of operations to send: " << send_count;
   response_ = VERIFY_RESULT(sender_(
-      pg_session_.get(), pgsql_ops_.data(), send_count,
-      *table_, GetInTxnLimit(), force_non_bufferable));
+      pg_session_.get(), pgsql_ops_.data(), send_count, *table_,
+      HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable));
+
+  // Update session stats instrumentation for write requests only. Writes are buffered and flushed
+  // asynchronously, and thus it is not possible to correlate wait/execution times directly with
+  // the request. We update instrumentation for writes sexactly once, after successfully sending an
+  // RPC request to the underlying storage layer.
+  if (IsWrite()) {
+    pg_session_->metrics().WriteRequest(ResolveRelationType(*pgsql_ops_.front(), table_));
+  }
   return Status::OK();
 }
 
+void PgDocOp::RecordRequestMetrics() {
+  auto& metrics = pg_session_->metrics();
+  for (const auto& op : pgsql_ops_) {
+    auto* response = op->response();
+    if (response && response->has_metrics()) {
+      metrics.RecordRequestMetrics(op->response()->metrics());
+    }
+  }
+}
+
 Result<std::list<PgDocResult>> PgDocOp::ProcessResponse(
-    const Result<PgDocResponse::Data>& response) {
+  const Result<PgDocResponse::Data>& response) {
   VLOG(1) << __PRETTY_FUNCTION__ << ": Received response for request " << this;
   // Check operation status.
   DCHECK(exec_status_.ok());
+
+  RecordRequestMetrics();
+
   auto result = ProcessResponseImpl(response);
   if (result.ok()) {
     return result;
@@ -338,7 +385,12 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponseImpl(
   }
   const auto& data = *response;
   auto result = VERIFY_RESULT(ProcessCallResponse(*data.response));
-  GetInTxnLimit() = data.in_txn_limit;
+
+  if (data.used_in_txn_limit) {
+    VLOG(5) << "Received used_in_txn_limit_ht in resp=" << data.used_in_txn_limit
+            << ", existing in_txn_limit_ht: " << GetInTxnLimitHt();
+    GetInTxnLimitHt() = data.used_in_txn_limit.ToUint64();
+  }
   RETURN_NOT_OK(CompleteProcessResponse());
   return result;
 }
@@ -356,6 +408,11 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessCallResponse(const rpc::CallRespo
     if (!op_response) {
       continue;
     }
+
+    if (op_response->has_partition_list_version()) {
+      table_->SetLatestKnownPartitionListVersion(op_response->partition_list_version());
+    }
+
     rows_affected_count_ += op_response->rows_affected_count();
     if (!op_response->has_rows_data_sidecar()) {
       continue;
@@ -390,9 +447,10 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessCallResponse(const rpc::CallRespo
   return result;
 }
 
-uint64_t& PgDocOp::GetInTxnLimit() {
-  return exec_params_.statement_in_txn_limit ? *exec_params_.statement_in_txn_limit
-                                             : in_txn_limit_;
+uint64_t& PgDocOp::GetInTxnLimitHt() {
+  return !IsWrite() && exec_params_.stmt_in_txn_limit_ht_for_reads
+      ? *exec_params_.stmt_in_txn_limit_ht_for_reads
+      : in_txn_limit_ht_;
 }
 
 Status PgDocOp::CreateRequests() {
@@ -419,10 +477,9 @@ Status PgDocOp::CompleteRequests() {
 
 Result<PgDocResponse> PgDocOp::DefaultSender(
     PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-    uint64_t in_txn_limit, ForceNonBufferable force_non_bufferable) {
-  auto result = VERIFY_RESULT(session->RunAsync(
-      ops, ops_count, table, &in_txn_limit, force_non_bufferable));
-  return PgDocResponse(std::move(result), in_txn_limit);
+    HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable) {
+  return PgDocResponse(VERIFY_RESULT(session->RunAsync(
+      ops, ops_count, table, in_txn_limit, force_non_bufferable)));
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -445,13 +502,7 @@ Status PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
   RETURN_NOT_OK(PgDocOp::ExecuteInit(exec_params));
 
   read_op_->read_request().set_return_paging_state(true);
-  // TODO(10696): This is probably the only place in pg_doc_op where pg_session is being
-  // used as a source of truth. All other uses treat it as stateless. Refactor to move this
-  // state elsewhere.
-  if (pg_session_->ShouldUseFollowerReads()) {
-    read_op_->set_read_from_followers();
-  }
-  SetRequestPrefetchLimit();
+  RETURN_NOT_OK(SetRequestPrefetchLimit());
   SetBackfillSpec();
   SetRowMark();
   SetReadTimeForBackfill();
@@ -486,11 +537,8 @@ Result<bool> PgDocReadOp::DoCreateRequests() {
   // table. Such scan is able to return rows ordered, and that order may be relied upon by upper
   // plan nodes, but parallel execution messes the order up. Here where we are preparing the
   // requests, we do not know if the query relies on the row order, we even may not be able to tell,
-  // if we are doing sequential or primary key scan, hence we should not parallelize scans on range
-  // partitioned tables. In the past neither aggregates nor where clause pushdown was supported by
-  // the index scan, so the same criteria worked and only sequential scans over range tables were
-  // parallelized. As of today, IndexScan still does not support aggregate pushdown, so we allow
-  // parallel execution of requests with aggregates, but this implicit criteria is not reliable.
+  // if we are doing sequential or primary key scan, hence we should not parallelize non-aggregate
+  // scans on range partitioned tables.
   // TODO(GHI 13737): as explained above, explicitly indicate, if operation should return ordered
   // results.
   } else if (req.is_aggregate() ||
@@ -500,7 +548,10 @@ Result<bool> PgDocReadOp::DoCreateRequests() {
   } else {
     // No optimization.
     if (exec_params_.partition_key != nullptr) {
-      RETURN_NOT_OK(SetScanPartitionBoundary());
+      if (!VERIFY_RESULT(SetScanPartitionBoundary())) {
+        // Target partition boundaries do not intersect with request boundaries, no results
+        return false;
+      }
     }
     pgsql_ops_.emplace_back(read_op_);
     pgsql_ops_.back()->set_active(true);
@@ -560,13 +611,22 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
     // Remember the order number for each request.
     batch_row_orders_.emplace_back(pgsql_ops_[partition], batch_row_ordering_counter_++);
 
-    read_op.set_active(true);
-    read_req.set_is_forward_scan(true);
+    // We must set "ybctid_column_value" in the request for the sake of rolling upgrades.
+    // Servers before 2.15 will read only "ybctid_column_value" as they are not aware
+    // of ybctid-batching.
+    if (!read_req.has_ybctid_column_value() ||
+        arg_value->binary_value() < read_req.ybctid_column_value().value().binary_value()) {
+      read_req.mutable_ybctid_column_value()->mutable_value()
+          ->ref_binary_value(arg_value->binary_value());
+    }
 
     // For every read operation set partition boundary. In case a tablet is split between
     // preparing requests and executing them, DocDB will return a paging state for pggate to
     // continue till the end of current tablet is reached.
-    RETURN_NOT_OK(SetLowerUpperBound(&read_req, partition));
+    if (VERIFY_RESULT(SetLowerUpperBound(&read_req, partition))) {
+      read_op.set_active(true);
+      read_req.set_is_forward_scan(true);
+    }
   }
 
   // Done creating request, but not all partition or operator has arguments (inactive).
@@ -581,41 +641,334 @@ void PgDocReadOp::InitializeYbctidOperators() {
     // To honor the indexing order of ybctid values, for each batch of ybctid-binds, select all rows
     // in the batch and then order them before returning result to Postgres layer.
     wait_for_batch_completion_ = true;
-    ClonePgsqlOps(table_->GetPartitionCount());
+    ClonePgsqlOps(table_->GetPartitionListSize());
   } else {
     // Second and later batches. Reuse all state variables.
     ResetInactivePgsqlOps();
   }
 }
 
-bool PgDocReadOp::PopulateNextHashPermutationOps() {
-  InitializeHashPermutationStates();
-
+LWPgsqlReadRequestPB* PgDocReadOp::PrepareReadReq() {
   // Set the index at the start of inactive operators.
   auto op_count = pgsql_ops_.size();
   auto op_index = active_op_count_;
+  if (op_index >= op_count)
+    return nullptr;
 
-  // Fill inactive operators with new hash permutations.
-  const size_t hash_column_count = table_->num_hash_key_columns();
-  for (; op_index < op_count && next_permutation_idx_ < total_permutation_count_; ++op_index) {
-    auto& read_req = GetReadReq(op_index);
-    pgsql_ops_[op_index]->set_active(true);
+  pgsql_ops_[op_index]->set_active(true);
+  auto& req = GetReadReq(op_index);
+  active_op_count_ = ++op_index;
+  return &req;
+}
 
-    int pos = next_permutation_idx_++;
-    auto it = read_req.mutable_partition_column_values()->end();
-    std::advance(it, hash_column_count - read_req.mutable_partition_column_values()->size());
-    for (int c_idx = narrow_cast<int>(hash_column_count); c_idx-- > 0;) {
-      --it;
-      int sel_idx = pos % partition_exprs_[c_idx].size();
-      // TODO(LW_PERFORM)
-      *it = *partition_exprs_[c_idx][sel_idx];
-      pos /= partition_exprs_[c_idx].size();
+bool PgDocReadOp::HasNextPermutation() const {
+  return next_permutation_idx_ < total_permutation_count_;
+}
+
+bool PgDocReadOp::GetNextPermutation(std::vector<const LWPgsqlExpressionPB *>* permutation) {
+  if (!HasNextPermutation()) {
+    return false;
+  }
+
+  auto pos = next_permutation_idx_++;
+  for (const auto& partition_exprs_it : partition_exprs_) {
+    if (partition_exprs_it.empty()) {
+      continue;
+    }
+
+    auto sel_idx = pos % partition_exprs_it.size();
+    pos /= partition_exprs_it.size();
+    auto expr = partition_exprs_it[sel_idx];
+    permutation->push_back(expr);
+  }
+  return true;
+}
+void PgDocReadOp::BindExprsRegular(
+    LWPgsqlReadRequestPB* read_req,
+    const std::vector<const LWPgsqlExpressionPB*>& hashed_values,
+    const std::vector<const LWPgsqlExpressionPB*>& range_values) {
+  DCHECK(!IsHashBatchingEnabled());
+  size_t index = 0;
+  // Bind all hash column values.
+  for (auto& partition_column : *read_req->mutable_partition_column_values()) {
+    partition_column = *hashed_values[index++];
+  }
+
+  // Deal with any range columns that are in this tuple IN.
+  // Create an equality condition for each column
+  for (auto range_idx : permutation_range_column_indexes_) {
+    auto* pgexpr = range_values[range_idx - table_->num_hash_key_columns()];
+    DCHECK(pgexpr != nullptr);
+
+    read_req->mutable_condition_expr()->mutable_condition()->set_op(QL_OP_AND);
+    auto* op = read_req->mutable_condition_expr()->mutable_condition()->add_operands();
+    auto* pgcond = op->mutable_condition();
+    pgcond->set_op(QL_OP_EQUAL);
+    pgcond->add_operands()->set_column_id(table_.ColumnForIndex(range_idx).id());
+    *pgcond->add_operands() = *pgexpr;
+  }
+}
+
+void PgDocReadOp::BindExprsToBatch(
+    const std::vector<const LWPgsqlExpressionPB*>& hashed_values,
+    const std::vector<const LWPgsqlExpressionPB*>& range_values) {
+  auto partition_key = table_->partition_schema().EncodePgsqlHash(hashed_values);
+  DCHECK(partition_key.ok());
+  auto partition = client::FindPartitionStartIndex(table_->GetPartitionList(), *partition_key);
+
+  if (hash_in_conds_.empty()) {
+    hash_in_conds_.resize(table_->GetPartitionListSize(), nullptr);
+  }
+
+  // Identify the vector to which the key should be added.
+  if (!hash_in_conds_[partition]) {
+    hash_in_conds_[partition] = hash_key_arena_->NewArenaObject<LWPgsqlExpressionPB>();
+    PrepareInitialHashConditionList(partition);
+  }
+
+  DCHECK(hash_in_conds_[partition]->has_condition());
+  auto* op = hash_in_conds_[partition]->mutable_condition()->mutable_operands();
+  auto* rhs_values_list = op->back().mutable_value()->mutable_list_value();
+
+  // Add new hash keys to the end of the array in the format (yb_hash_code, hk1, hk2 .... hkn)
+  auto* tup_elements = rhs_values_list->add_elems()->mutable_tuple_value();
+  auto* new_elem = tup_elements->add_elems();
+  new_elem->set_int32_value(table_->partition_schema().DecodeMultiColumnHashValue(*partition_key));
+  for (auto elem : hashed_values) {
+    auto new_elem = tup_elements->add_elems();
+    if (elem->has_value()) {
+        DCHECK(elem->has_value());
+        *new_elem = elem->value();
     }
   }
-  active_op_count_ = op_index;
 
-  // Stop adding requests if we reach the total number of permutations.
-  return next_permutation_idx_ >= total_permutation_count_;
+  for (auto range_idx : permutation_range_column_indexes_) {
+    auto* elem = range_values[range_idx - table_->num_hash_key_columns()];
+    DCHECK(elem != nullptr);
+    if (elem->has_value()) {
+      auto* new_elem = tup_elements->add_elems();
+      *new_elem = elem->value();
+    }
+  }
+}
+
+bool PgDocReadOp::HasNextBatch() {
+  while (next_batch_partition_ < hash_in_conds_.size() &&
+         hash_in_conds_[next_batch_partition_] == nullptr) {
+    next_batch_partition_++;
+  }
+  return next_batch_partition_ < hash_in_conds_.size();
+}
+
+static bool IsHashInCondition(const LWPgsqlExpressionPB& cond) {
+  if (cond.has_condition() && cond.condition().op() == QL_OP_IN) {
+    auto first_elem = cond.condition().operands().begin();
+    return first_elem->has_tuple() &&
+           first_elem->tuple().elems().begin()->has_column_id() &&
+           first_elem->tuple().elems().begin()->column_id() == kYbHashCodeColId;
+  }
+  return false;
+}
+
+Result<bool> PgDocReadOp::BindNextBatchToRequest(LWPgsqlReadRequestPB* read_req) {
+  DCHECK(read_req != nullptr);
+
+  if (!HasNextBatch()) {
+    return true;
+  }
+
+  auto current_partition = next_batch_partition_;
+
+  auto* cond = hash_in_conds_[current_partition];
+
+  LWPgsqlExpressionPB* cond_bind_expr = nullptr;
+
+  if (!read_req->has_condition_expr()) {
+    read_req->mutable_condition_expr()->mutable_condition()->set_op(QL_OP_AND);
+    cond_bind_expr = read_req->mutable_condition_expr()->mutable_condition()->add_operands();
+  } else {
+    bool hash_in_found = false;
+    for (auto& cond_it :
+         *read_req->mutable_condition_expr()->mutable_condition()->mutable_operands()) {
+      // See if it already has a hash IN condition from a previous binding and clear it.
+      if (IsHashInCondition(cond_it)) {
+        cond_it.clear_condition();
+        cond_bind_expr = &cond_it;
+        hash_in_found = true;
+        break;
+      }
+    }
+
+    if (!hash_in_found) {
+      cond_bind_expr = read_req->mutable_condition_expr()->mutable_condition()->add_operands();
+    }
+  }
+
+  cond_bind_expr->CopyFrom(*cond);
+  read_req->clear_partition_column_values();
+
+  VERIFY_RESULT(SetLowerUpperBound(read_req, current_partition));
+
+  next_batch_partition_++;
+  return false;
+}
+
+bool PgDocReadOp::IsHashBatchingEnabled() {
+  if (PREDICT_FALSE(!is_hash_batched_.has_value())) {
+    is_hash_batched_ = pg_session_->IsHashBatchingEnabled() && total_permutation_count_ > 1;
+  }
+  return *is_hash_batched_;
+}
+
+bool PgDocReadOp::IsBatchFlushRequired() const {
+  return !hash_in_conds_.empty() &&
+      next_permutation_idx_ > 0 &&
+      exec_params_.work_mem >= 0 &&
+      hash_key_arena_->UsedBytes() > (implicit_cast<size_t>(exec_params_.work_mem) * 1024);
+}
+
+void PgDocReadOp::ResetHashBatches() {
+  hash_key_arena_->Reset(ResetMode::kKeepFirst);
+  hash_in_conds_.clear();
+  next_batch_partition_ = 0;
+}
+
+void PgDocReadOp::BindPermutation(const std::vector<const LWPgsqlExpressionPB*>& exprs,
+                                  LWPgsqlReadRequestPB* read_req) {
+  const size_t hash_column_count = table_->num_hash_key_columns();
+  std::vector<const LWPgsqlExpressionPB*> hash_exprs(hash_column_count,
+    nullptr);
+  std::vector<const LWPgsqlExpressionPB*> range_exprs(table_->num_range_key_columns(), nullptr);
+  auto cond_iter = read_op_->read_request().partition_column_values().begin();
+  size_t index = 0;
+  for (auto* expr : exprs) {
+    if (hash_exprs[index]) {
+      continue;
+    }
+
+    if (expr->value().has_tuple_value()) {
+      const auto& lhs_key_cols = *cond_iter->condition().operands().begin();
+      auto val_it = expr->value().tuple_value().elems().begin();
+
+      // Bind all the values for this tuple.
+      for (const auto& lhs_elem : lhs_key_cols.tuple().elems()) {
+        // Get the value for this column in the tuple.
+        size_t tup_c_idx = lhs_elem.column_id() - table_->schema().first_column_id();
+        auto* pgexpr =
+            hash_key_arena_->NewArenaObject<LWPgsqlExpressionPB>();
+        *pgexpr->mutable_value() = *val_it;
+
+        if (tup_c_idx < hash_column_count) {
+          hash_exprs[tup_c_idx] = pgexpr;
+        } else {
+          range_exprs[tup_c_idx - hash_column_count] = pgexpr;
+        }
+        val_it++;
+      }
+    } else {
+      hash_exprs[index] = expr;
+    }
+
+    cond_iter++;
+    index++;
+  }
+
+  if (IsHashBatchingEnabled()) {
+    BindExprsToBatch(hash_exprs, range_exprs);
+  } else {
+    BindExprsRegular(read_req, hash_exprs, range_exprs);
+  }
+}
+
+Result<bool> PgDocReadOp::PopulateNextHashPermutationOps() {
+  InitializeHashPermutationStates();
+
+  std::vector<const LWPgsqlExpressionPB*> current_permutation;
+  current_permutation.reserve(partition_exprs_.size());
+  // Bind new hash permutations.
+
+  while (HasNextPermutation()) {
+    LWPgsqlReadRequestPB* read_req = nullptr;
+    if (!IsHashBatchingEnabled() &&
+        (read_req = PrepareReadReq()) == nullptr) {
+      return false;
+    }
+    current_permutation.clear();
+    GetNextPermutation(&current_permutation);
+
+    // read_req is nullptr if batching is on as we don't want to
+    // bind the permutation to a request yet. We instead want to bind
+    // it to one of the batches we are building up.
+    BindPermutation(current_permutation, read_req);
+
+    // If we run out of memory and have to flush our currently formed
+    // permutations in batched mode, let us do so.
+    if (IsHashBatchingEnabled() &&
+        IsBatchFlushRequired() &&
+        !VERIFY_RESULT(BindBatchesToRequests())) {
+      // We failed to bind all batches to a request, so we return false.
+      return false;
+    }
+  }
+
+  // If batching is enabled, we have built up all our batches and now
+  // we can bind each batch to a request.
+  if (IsHashBatchingEnabled()) {
+    // If we didn't have enough available requests to put our batches into
+    // or we're not done processing all our permutations, return false, signalling
+    // that we are not done creating requests.
+    if (!VERIFY_RESULT(BindBatchesToRequests())) {
+      return false;
+    }
+  }
+
+  MoveInactiveOpsOutside();
+  return true;
+}
+
+Result<bool> PgDocReadOp::BindBatchesToRequests() {
+  DCHECK(IsHashBatchingEnabled());
+  while (HasNextBatch()) {
+    LWPgsqlReadRequestPB* read_req = PrepareReadReq();
+    if (!read_req) {
+      return false;
+    }
+    VERIFY_RESULT(BindNextBatchToRequest(read_req));
+  }
+
+  // Free resources attached to hash batches if we're done binding.
+  ResetHashBatches();
+  return true;
+}
+
+// Add the list of column ids as a tuple. Subsequently every tuple of hash key columns that are
+// added will be in the same order as the column ids.
+void PgDocReadOp::PrepareInitialHashConditionList(size_t partition) {
+  DCHECK(hash_in_conds_[partition] != nullptr);
+  hash_in_conds_[partition]->mutable_condition()->set_op(QL_OP_IN);
+  auto* add_targets =
+    hash_in_conds_[partition]->mutable_condition()->add_operands()->mutable_tuple();
+
+  // YB columns adheres to the following order --> hash key columns and then range key columns
+  // We also follow the same order. However, each hash key tuple also contains the yb_hash_code
+  // as the first element as docDB scans require that. Hence, in order to match that column id
+  // we add the column id of yb_hash_code. However, yb_hash_code has no column id. And hence we
+  // assign kFirstColumnIdRep -1 as the column id for yb_hash_code.
+  auto* yb_hash_code = add_targets->add_elems();
+  yb_hash_code->set_column_id(kYbHashCodeColId);
+  for (size_t i = 0; i < table_->num_hash_key_columns(); i++) {
+    auto& col = table_.ColumnForIndex(i);
+    auto* hash_column = add_targets->add_elems();
+    hash_column->set_column_id(col.id());
+  }
+  for (auto c_idx : permutation_range_column_indexes_) {
+    auto& col = table_.ColumnForIndex(c_idx);
+    auto* range_column = add_targets->add_elems();
+    range_column->set_column_id(col.id());
+  }
+
+  // RHS of IN condition
+  hash_in_conds_[partition]->mutable_condition()->add_operands();
 }
 
 // Collect hash expressions to prepare for generating permutations.
@@ -628,13 +981,27 @@ void PgDocReadOp::InitializeHashPermutationStates() {
   }
 
   // Initialize partition_exprs_.
-  // Reorganize the input arguments from Postgres to prepre for permutation generation.
-  const size_t hash_column_count = table_->num_hash_key_columns();
+  // Reorganize the input arguments from Postgres to prepare for permutation generation.
+  auto hash_column_count = table_->num_hash_key_columns();
   partition_exprs_.resize(hash_column_count);
-  size_t c_idx = 0;
+  auto c_idx = 0;
   for (const auto& col_expr : read_op_->read_request().partition_column_values()) {
     if (col_expr.has_condition()) {
-      auto it = ++col_expr.condition().operands().begin();
+      auto it = col_expr.condition().operands().begin();
+
+      // Populate permutation_range_column_indexes_.
+      if (it->has_tuple()) {
+        for (const auto& lhs_elem : it->tuple().elems()) {
+          // Get the value for this column in the tuple.
+          size_t tup_c_idx = lhs_elem.column_id() - table_->schema().first_column_id();
+
+          if (tup_c_idx >= hash_column_count) {
+            permutation_range_column_indexes_.emplace_back(tup_c_idx);
+          }
+        }
+      }
+
+      ++it;
       for (const auto& expr : it->condition().operands()) {
         partition_exprs_[c_idx].push_back(&expr);
       }
@@ -644,10 +1011,18 @@ void PgDocReadOp::InitializeHashPermutationStates() {
     ++c_idx;
   }
 
+  // Make sure permutation_range_column_indexes_ is ordered.
+  std::sort(permutation_range_column_indexes_.begin(), permutation_range_column_indexes_.end());
+
   // Calculate the total number of permutations to be generated.
   total_permutation_count_ = 1;
-  for (auto& exprs : partition_exprs_) {
-    total_permutation_count_ *= exprs.size();
+  for (const auto& exprs : partition_exprs_) {
+    // If exprs is empty that means this column is part of a
+    // tuple condition that has already been accounted for by a
+    // previous column
+    if (exprs.size() > 0) {
+      total_permutation_count_ *= exprs.size();
+    }
   }
 
   // Create operators, one operation per partition, up to FLAGS_ysql_request_limit.
@@ -655,15 +1030,27 @@ void PgDocReadOp::InitializeHashPermutationStates() {
   // TODO(neil) The control variable "ysql_request_limit" should be applied to ALL statements, but
   // at the moment, the number of operators never exceeds the number of tablets except for hash
   // permutation operation, so the work on this GFLAG can be done when it is necessary.
-  int max_op_count = std::min(total_permutation_count_, FLAGS_ysql_request_limit);
+  auto max_op_count =
+      std::min(total_permutation_count_,
+               implicit_cast<size_t>(FLAGS_ysql_request_limit));
+
+  if (IsHashBatchingEnabled()) {
+    max_op_count = std::min(max_op_count, table_->GetPartitionListSize());
+  }
+
   ClonePgsqlOps(max_op_count);
 
   // Clear the original partition expressions as it will be replaced with hash permutations.
-  for (int op_index = 0; op_index < max_op_count; op_index++) {
+  for (size_t op_index = 0; op_index < max_op_count; ++op_index) {
     auto& read_request = GetReadReq(op_index);
     read_request.mutable_partition_column_values()->clear();
-    for (size_t i = 0; i < hash_column_count; ++i) {
-      read_request.add_partition_column_values();
+    if (IsHashBatchingEnabled()) {
+      read_request.clear_hash_code();
+      read_request.clear_max_hash_code();
+    } else {
+      for (size_t i = 0; i < hash_column_count; ++i) {
+        read_request.add_partition_column_values();
+      }
     }
     pgsql_ops_[op_index]->set_active(false);
   }
@@ -671,6 +1058,9 @@ void PgDocReadOp::InitializeHashPermutationStates() {
   // Initialize counters.
   next_permutation_idx_ = 0;
   active_op_count_ = 0;
+  next_batch_partition_ = 0;
+
+  hash_key_arena_ = std::make_unique<ThreadSafeArena>();
 }
 
 Result<bool> PgDocReadOp::PopulateParallelSelectOps() {
@@ -680,7 +1070,7 @@ Result<bool> PgDocReadOp::PopulateParallelSelectOps() {
   // Create batch operators, one per partition, to execute in parallel.
   // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
   // the following line?
-  ClonePgsqlOps(table_->GetPartitionCount());
+  ClonePgsqlOps(table_->GetPartitionListSize());
   // Set "parallelism_level_" to control how many operators can be sent at one time.
   //
   // TODO(neil) The calculation for this control variable should be applied to ALL operators, but
@@ -698,54 +1088,57 @@ Result<bool> PgDocReadOp::PopulateParallelSelectOps() {
     parallelism_level_ = parallelism_level;
   }
 
-  // Assign partitions to operators.
-  const auto& partition_keys = table_->GetPartitions();
+  // Get table partitions
+  const auto& partition_keys = table_->GetPartitionList();
   SCHECK_EQ(partition_keys.size(), pgsql_ops_.size(), IllegalState,
             "Number of partitions and number of partition keys are not the same");
 
-  for (size_t partition = 0; partition < partition_keys.size(); partition++) {
-    // Construct a new YBPgsqlReadOp.
-    pgsql_ops_[partition]->set_active(true);
-
-    // Use partition index to setup the protobuf to identify the partition that this request
-    // is for. Batcher will use this information to send the request to correct tablet server, and
-    // server uses this information to operate on correct tablet.
-    // - Range partition uses range partition key to identify partition.
-    // - Hash partition uses "next_partition_key" and "max_hash_code" to identify partition.
-    RETURN_NOT_OK(SetLowerUpperBound(&GetReadReq(partition), partition));
+  // Create operations, one per partition, and apply partition boundaries to ther requests.
+  // Activate operation if partition boundaries intersect with boundaries that may be already set.
+  // If boundaries do not intersect the operation won't produce any result.
+  for (size_t partition = 0; partition < partition_keys.size(); ++partition) {
+    if (VERIFY_RESULT(SetLowerUpperBound(&GetReadReq(partition), partition))) {
+      pgsql_ops_[partition]->set_active(true);
+      ++active_op_count_;
+    }
   }
-  active_op_count_ = partition_keys.size();
+  // Got some inactive operations, move them away
+  if (active_op_count_ < pgsql_ops_.size()) {
+    MoveInactiveOpsOutside();
+  }
 
   return true;
 }
 
 Result<bool> PgDocReadOp::PopulateSamplingOps() {
   // Create one PgsqlOp per partition
-  ClonePgsqlOps(table_->GetPartitionCount());
+  ClonePgsqlOps(table_->GetPartitionListSize());
   // Partitions are sampled sequentially, one at a time
   parallelism_level_ = 1;
   // Assign partitions to operators.
-  const auto& partition_keys = table_->GetPartitions();
+  const auto& partition_keys = table_->GetPartitionList();
   SCHECK_EQ(partition_keys.size(), pgsql_ops_.size(), IllegalState,
             "Number of partitions and number of partition keys are not the same");
 
   // Bind requests to partitions
-  for (size_t partition = 0; partition < partition_keys.size(); partition++) {
-    // Construct a new YBPgsqlReadOp.
-    pgsql_ops_[partition]->set_active(true);
-
+  for (size_t partition = 0; partition < partition_keys.size(); ++partition) {
     // Use partition index to setup the protobuf to identify the partition that this request
     // is for. Batcher will use this information to send the request to correct tablet server, and
     // server uses this information to operate on correct tablet.
     // - Range partition uses range partition key to identify partition.
     // - Hash partition uses "next_partition_key" and "max_hash_code" to identify partition.
-    RETURN_NOT_OK(SetLowerUpperBound(&GetReadReq(partition), partition));
+    if (VERIFY_RESULT(SetLowerUpperBound(&GetReadReq(partition), partition))) {
+      // Currently we do not set boundaries on sampling requests other than partition boundaries,
+      // so result is going to be always true, though that may change.
+      pgsql_ops_[partition]->set_active(true);
+      ++active_op_count_;
+    }
   }
-  active_op_count_ = partition_keys.size();
+  // Got some inactive operations, move them away
+  if (active_op_count_ < pgsql_ops_.size()) {
+    MoveInactiveOpsOutside();
+  }
   VLOG(1) << "Number of partitions to sample: " << active_op_count_;
-  // If we have big enough sample after processing some partitions we skip the rest.
-  // By shuffling partitions we randomly select the partition(s) to sample.
-  std::shuffle(pgsql_ops_.begin(), pgsql_ops_.end(), ThreadLocalRandom());
 
   return true;
 }
@@ -764,7 +1157,7 @@ Status PgDocReadOp::GetEstimatedRowCount(double *liverows, double *deadrows) {
 }
 
 // When postgres requests to scan a specific partition, set the partition parameter accordingly.
-Status PgDocReadOp::SetScanPartitionBoundary() {
+Result<bool> PgDocReadOp::SetScanPartitionBoundary() {
   // Boundary to scan from a given key to the end of its associated tablet.
   // - Lower: The given partition key (inclusive).
   // - Upper: Beginning of next tablet (not inclusive).
@@ -773,11 +1166,10 @@ Status PgDocReadOp::SetScanPartitionBoundary() {
   // Seek the tablet of the given key.
   // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
   // the following line?
-  const std::vector<std::string>& partition_keys = table_->GetPartitions();
-  const auto& partition_key = std::find(
-      partition_keys.begin(),
-      partition_keys.end(),
-      a2b_hex(exec_params_.partition_key));
+  const auto& partition_keys = table_->GetPartitionList();
+  const auto& partition_key = std::find(partition_keys.begin(),
+                                        partition_keys.end(),
+                                        a2b_hex(exec_params_.partition_key));
   RSTATUS_DCHECK(
       partition_key != partition_keys.end(), InvalidArgument, "invalid partition key given");
 
@@ -787,20 +1179,26 @@ Status PgDocReadOp::SetScanPartitionBoundary() {
   if (next_partition_key != partition_keys.end()) {
     upper_bound = *next_partition_key;
   }
-  RETURN_NOT_OK(table_->SetScanBoundary(
-      &read_op_->read_request(), *partition_key, true /* lower_bound_is_inclusive */, upper_bound,
-      false /* upper_bound_is_inclusive */));
-  return Status::OK();
+  return table_->SetScanBoundary(&read_op_->read_request(),
+                                 *partition_key,
+                                 true /* lower_bound_is_inclusive */,
+                                 upper_bound,
+                                 false /* upper_bound_is_inclusive */);
 }
 
 Status PgDocReadOp::CompleteProcessResponse() {
   // For each read_op, set up its request for the next batch of data or make it in-active.
   bool has_more_data = false;
   auto send_count = std::min(parallelism_level_, active_op_count_);
+  ::yb::LWPgsqlSamplingStatePB* sampling_state = nullptr;
+
+  // There can be only one op at a time for sampling, since any modifications to the random sampling
+  // state need to be propagated after one op completes to the next.
+  if (read_op_->read_request().has_sampling_state())
+    DCHECK_LE(send_count, 1);
 
   for (size_t op_index = 0; op_index < send_count; op_index++) {
     auto& read_op = GetReadOp(op_index);
-    RETURN_NOT_OK(ReviewResponsePagingState(*table_, &read_op));
 
     // Check for completion.
     bool has_more_arg = false;
@@ -810,7 +1208,7 @@ Status PgDocReadOp::CompleteProcessResponse() {
     // Save the backfill_spec if tablet server wants to return it.
     if (res.is_backfill_batch_done()) {
       out_param_backfill_spec_ = res.backfill_spec().ToBuffer();
-    } else if (PrepareNextRequest(&read_op)) {
+    } else if (VERIFY_RESULT(PrepareNextRequest(*table_, &read_op))) {
       has_more_arg = true;
     }
 
@@ -828,31 +1226,12 @@ Status PgDocReadOp::CompleteProcessResponse() {
     }
 
     if (res.has_sampling_state()) {
-      VLOG(1) << "Received sampling state:"
-              << " samplerows: " << res.sampling_state().samplerows()
-              << " rowstoskip: " << res.sampling_state().rowstoskip()
-              << " rstate_w: " << res.sampling_state().rstate_w()
-              << " rand_state: " << res.sampling_state().rand_state();
-      if (has_more_arg) {
-        // Copy sampling state from the response to the request, to properly continue to sample
-        // the next block.
-        req.ref_sampling_state(res.mutable_sampling_state());
-        res.clear_sampling_state();
-      } else {
-        // Partition sampling is completed.
-        // If samplerows is greater than or equal to targrows the sampling is complete. There are
-        // enough rows selected to calculate stats and we can estimate total number of rows in the
-        // table by extrapolating samplerows to the partitions that have not been scanned.
-        // If samplerows is less than targrows next partition needs to be sampled. Next pgdoc_op
-        // already has sampling state copied from the template_op_, only couple fields need to be
-        // updated: numrows and samplerows. The targrows never changes, and in reservoir population
-        // phase (before samplerows reaches targrows) 1. numrows and samplerows are always equal;
-        // and 2. random numbers never generated, so random state remains the same.
-        // That essentially means the only thing we need to collect from the partition's final
-        // sampling state is the samplerows. We use that number to either estimate liverows, or to
-        // update numrows and samplerows in next partition's sampling state.
-        sample_rows_ = res.sampling_state().samplerows();
-      }
+      VLOG(1) << "Received sampling state: " << res.sampling_state().ShortDebugString();
+      sample_rows_ = res.sampling_state().samplerows();
+
+      // Copy sampling state from the response to propagate in later requests for continuing further
+      // sampling.
+      sampling_state = res.mutable_sampling_state();
     }
 
     if (has_more_arg) {
@@ -873,57 +1252,86 @@ Status PgDocReadOp::CompleteProcessResponse() {
     end_of_data_ = request_population_completed_;
   }
 
-  if (active_op_count_ > 0 && read_op_->read_request().has_sampling_state()) {
+  if (active_op_count_ > 0 && sampling_state != nullptr) {
     auto& read_op = down_cast<PgsqlReadOp&>(*pgsql_ops_[0]);
     auto *req = &read_op.read_request();
-    if (!req->has_paging_state()) {
-      // Current sampling op without paging state means that previous one was completed and moved
-      // outside.
-      auto sampling_state = req->mutable_sampling_state();
-      if (sample_rows_ < sampling_state->targrows()) {
-        // More sample rows are needed, update sampling state and let next partition be scanned
-        VLOG(1) << "Continue sampling next partition from " << sample_rows_;
-        sampling_state->set_numrows(static_cast<int32>(sample_rows_));
-        sampling_state->set_samplerows(sample_rows_);
-      } else {
-        // Have enough of sample rows, estimate total table rows assuming they are evenly
-        // distributed between partitions
-        auto completed_ops = pgsql_ops_.size() - active_op_count_;
-        sample_rows_ = floor((sample_rows_ / completed_ops) * pgsql_ops_.size() + 0.5);
-        VLOG(1) << "Done sampling, prorated rowcount is " << sample_rows_;
-        end_of_data_ = true;
-      }
-    }
+    req->ref_sampling_state(sampling_state);
+    VLOG(1) << "Continue sampling from " << sampling_state->ShortDebugString();
   }
 
   return Status::OK();
 }
 
-void PgDocReadOp::SetRequestPrefetchLimit() {
+Status PgDocReadOp::SetRequestPrefetchLimit() {
   // Predict the maximum prefetch-limit using the associated gflags.
   auto& req = read_op_->read_request();
-  auto predicted_limit = FLAGS_ysql_prefetch_limit;
 
-  // System setting has to be at least 1 while user setting (LIMIT clause) can be anything that
-  // is allowed by SQL semantics.
-  if (predicted_limit < 1) {
-    predicted_limit = 1;
-  }
+  // Limits: 0 means 'unlimited'.
+  uint64_t predicted_row_limit = exec_params_.yb_fetch_row_limit;
+  uint64_t predicted_size_limit = exec_params_.yb_fetch_size_limit;
 
   // Use statement LIMIT(count + offset) if it is smaller than the predicted limit.
-  auto limit = exec_params_.limit_count + exec_params_.limit_offset;
+  auto row_limit = exec_params_.limit_count + exec_params_.limit_offset;
   suppress_next_result_prefetching_ = true;
-  if (exec_params_.limit_use_default || limit > predicted_limit) {
-    limit = predicted_limit;
+
+  // If in any of these cases we determine that the default row/size based batch size is lower
+  // than the actual requested LIMIT, we enable prefetching. If else, we try
+  // to only get the required data in one RPC without prefetching.
+  if (exec_params_.limit_use_default) {
+    row_limit = predicted_row_limit;
     suppress_next_result_prefetching_ = false;
+  } else if (predicted_row_limit > 0 && predicted_row_limit < row_limit) {
+    row_limit = predicted_row_limit;
+    suppress_next_result_prefetching_ = false;
+  } else if (predicted_size_limit > 0) {
+    // Try to estimate the total data size of a LIMIT'd query
+    // Inaccurate in the presence of varlen targets but not possible to fix that without PG stats;
+    size_t row_width = 0;
+    for (const LWPgsqlExpressionPB& target : req.targets()) {
+      // If target is a system column, we it's probably variable size
+      // and we don't have the means to estimate its length.
+      if (target.has_column_id()) {
+        auto column_id = target.column_id();
+        if (column_id < 0) {
+            if (column_id == static_cast<int>(PgSystemAttrNum::kObjectId)) {
+              row_width += GetTypeInfo(DataType::UINT32)->size;
+            } else {
+              // System columns are usually variable length which we are
+              // estimating with the size of a Binary DataType for now.
+              row_width += GetTypeInfo(DataType::BINARY)->size;
+            }
+            continue;
+        }
+        const ColumnSchema &col_schema =
+          VERIFY_RESULT(table_->schema().column_by_id(ColumnId(column_id)));
+
+        // This size is usually the computed sizeof() of the serialized datatype.
+        // Its computation can be found in yb/common/types.h
+        auto size = col_schema.type_info()->size;
+        row_width += size;
+      }
+    }
+
+    // Prefetch if we expect size limit to occur first, so there will
+    // be multiple RPCs until row_limit is reached
+    if (row_width > 0 && (predicted_size_limit / row_width) < row_limit) {
+      suppress_next_result_prefetching_ = false;
+    }
   }
+
+  req.set_limit(row_limit);
+  req.set_size_limit(predicted_size_limit);
+
   VLOG(3) << __func__
           << " exec_params_.limit_count=" << exec_params_.limit_count
           << " exec_params_.limit_offset=" << exec_params_.limit_offset
           << " exec_params_.limit_use_default=" << exec_params_.limit_use_default
-          << " predicted_limit=" << predicted_limit
-          << " limit=" << limit;
-  req.set_limit(limit);
+          << " predicted_row_limit=" << predicted_row_limit
+          << " row_limit=" << row_limit
+          << (row_limit == 0 ? " (Unlimited)" : "")
+          << " size_limit=" << predicted_size_limit
+          << (predicted_size_limit == 0 ? " (Unlimited)" : "");
+  return Status::OK();
 }
 
 void PgDocReadOp::SetRowMark() {
@@ -931,7 +1339,7 @@ void PgDocReadOp::SetRowMark() {
   const auto row_mark_type = GetRowMarkType(&exec_params_);
   if (IsValidRowMarkType(row_mark_type)) {
     req.set_row_mark_type(row_mark_type);
-    req.set_wait_policy(static_cast<yb::WaitPolicy>(exec_params_.wait_policy));
+    req.set_wait_policy(static_cast<yb::WaitPolicy>(exec_params_.docdb_wait_policy));
   } else {
     req.clear_row_mark_type();
   }
@@ -1012,17 +1420,16 @@ LWPgsqlReadRequestPB& PgDocReadOp::GetReadReq(size_t op_index) {
 }
 
 Result<bool> PgDocReadOp::SetLowerUpperBound(LWPgsqlReadRequestPB* request, size_t partition) {
-  const auto& partition_keys = table_->GetPartitions();
+  const auto& partition_keys = table_->GetPartitionList();
   const std::string default_upper_bound;
   const auto& upper_bound = (partition < partition_keys.size() - 1)
       ? partition_keys[partition + 1]
       : default_upper_bound;
-  RETURN_NOT_OK(table_->SetScanBoundary(request,
-                                        partition_keys[partition],
-                                        /* lower_bound_is_inclusive */ true,
-                                        upper_bound,
-                                        /* upper_bound_is_inclusive */ false));
-  return true;
+  return table_->SetScanBoundary(request,
+                                 partition_keys[partition],
+                                 /* lower_bound_is_inclusive */ true,
+                                 upper_bound,
+                                 /* upper_bound_is_inclusive */ false);
 }
 
 void PgDocReadOp::ClonePgsqlOps(size_t op_count) {

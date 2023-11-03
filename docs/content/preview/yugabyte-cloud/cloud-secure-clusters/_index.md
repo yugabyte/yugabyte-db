@@ -18,10 +18,10 @@ YugabyteDB Managed clusters include the following security features:
 | Feature | Description |
 | :--- | :--- |
 | **Network authorization** | Access to YugabyteDB Managed clusters is limited to IP addresses that you explicitly allow using [IP allow lists](add-connections/).<br>You can further enhance security and lower network latencies by deploying clusters in a [virtual private cloud (VPC) network](../cloud-basics/cloud-vpcs/). |
-| **Database authorization** | YugabyteDB uses [role-based access control](cloud-users/) for database authorization. Using the default admin user that is created when a cluster is deployed, you can [add additional roles and users](add-users/) to provide custom access to database resources to other team members and database clients. |
+| **Database authorization** | YugabyteDB uses [role-based access control](cloud-users/) for database authorization. Using the default database admin user that is created when a cluster is deployed, you can [add additional roles and users](add-users/) to provide custom access to database resources to other team members and database clients. |
 | **Encryption in transit** | YugabyteDB Managed uses [encryption-in-transit](cloud-authentication/) for client-server and intra-node connectivity. |
-| **Encryption at rest** | Data at rest, including clusters and backups, is AES-256 encrypted using native cloud provider technologies - S3 and EBS volume encryption for AWS, and server-side and persistent disk encryption for GCP. |
-| **Auditing** | YugabyteDB Managed provides detailed [tracking of activity](cloud-activity/) on your cloud, including cluster creation, changes to clusters, changes to IP allow lists, backup activity, and billing. |
+| **Encryption at rest** | Data at rest, including clusters and backups, is AES-256 encrypted using native cloud provider technologies: S3 and EBS volume encryption for AWS, Azure disk encryption, and server-side and persistent disk encryption for GCP. For additional security, you can [encrypt your clusters](managed-ear/) using keys that you manage yourself. |
+| **Auditing** | YugabyteDB Managed provides detailed [tracking of activity](cloud-activity/) on your account, including cluster creation, changes to clusters, changes to IP allow lists, backup activity, and billing. |
 
 <div class="row">
 
@@ -69,6 +69,18 @@ YugabyteDB Managed clusters include the following security features:
       </div>
       <div class="body">
         YugabyteDB Managed clusters use TLS and digital certificates to secure data in transit.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="managed-ear/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/tls-encryption/connect-to-cluster.png" aria-hidden="true" />
+        <div class="title">Encryption at rest</div>
+      </div>
+      <div class="body">
+        Use your own customer managed key to encrypt your clusters.
       </div>
     </a>
   </div>

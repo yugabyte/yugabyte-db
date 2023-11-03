@@ -8,8 +8,6 @@ menu:
     identifier: advanced-features-collations
     parent: advanced-features
     weight: 240
-aliases:
-  - /preview/explore/ysql-language-features/collations/
 type: docs
 ---
 

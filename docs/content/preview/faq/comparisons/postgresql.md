@@ -29,13 +29,13 @@ Most distributed databases do a quorum read to serve more consistent data but in
 
 ## Distributed ACID transactions
 
-PostgreSQL can be thought of as a single-shard database which means it supports for single row (such as an INSERT statement) and single shard transactions (such as database operations bounded by BEGIN TRANSACTION and END TRANSACTION). The notion of multiple shards is not applicable to PostgreSQL and as a result, multi-shard transactions too are not applicable. On the other hand, YugabyteDB takes inspiration from Google Spanner, Google's globally distributed database, and supports all the 3 flavors of transactions. As described in [Yes We Can! Distributed ACID Transactions with High Performance](https://blog.yugabyte.com/yes-we-can-distributed-acid-transactions-with-high-performance/), it is designed to ensure the single row/shard transactions can be served with lowest latency possible while the distributed transactions can be served with absolute correctness.
+PostgreSQL can be thought of as a single-shard database which means it supports for single row (such as an INSERT statement) and single shard transactions (such as database operations bounded by BEGIN TRANSACTION and END TRANSACTION). The notion of multiple shards is not applicable to PostgreSQL and as a result, multi-shard transactions too are not applicable. On the other hand, YugabyteDB takes inspiration from Google Spanner, Google's globally distributed database, and supports all the 3 flavors of transactions. As described in [Yes We Can! Distributed ACID Transactions with High Performance](https://www.yugabyte.com/blog/yes-we-can-distributed-acid-transactions-with-high-performance/), it is designed to ensure the single row/shard transactions can be served with lowest latency possible while the distributed transactions can be served with absolute correctness.
 
 ## Relevant blog posts
 
 The following posts cover some more details around how YugabyteDB differs from PostgreSQL.
 
-- [Mapping YugabyteDB Concepts to PostgreSQL and MongoDB](https://blog.yugabyte.com/mapping-yugabyte-db-concepts-to-postgresql-and-mongodb/)
-- [YugabyteDB High Availability & Transactions for PostgreSQL & MongoDB Developers](https://blog.yugabyte.com/mapping-yugabyte-db-concepts-to-postgresql-and-mongodb/)
-- [Distributed PostgreSQL on a Google Spanner Architecture – Query Layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-query-layer/)
-- [Distributed PostgreSQL on a Google Spanner Architecture – Storage Layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-storage-layer/)
+- [Mapping YugabyteDB Concepts to PostgreSQL and MongoDB](https://www.yugabyte.com/blog/mapping-yugabyte-db-concepts-to-postgresql-and-mongodb/)
+- [YugabyteDB High Availability & Transactions for PostgreSQL & MongoDB Developers](https://www.yugabyte.com/blog/mapping-yugabyte-db-concepts-to-postgresql-and-mongodb/)
+- [Distributed PostgreSQL on a Google Spanner Architecture – Query Layer](https://www.yugabyte.com/blog/distributed-postgresql-on-a-google-spanner-architecture-query-layer/)
+- [Distributed PostgreSQL on a Google Spanner Architecture – Storage Layer](https://www.yugabyte.com/blog/distributed-postgresql-on-a-google-spanner-architecture-storage-layer/)

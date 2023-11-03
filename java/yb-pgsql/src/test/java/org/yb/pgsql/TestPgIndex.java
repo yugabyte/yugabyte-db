@@ -13,22 +13,25 @@
 
 package org.yb.pgsql;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Arrays;
+import java.util.concurrent.BrokenBarrierException;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.YBTestRunner;
 
-import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertTrue;
-
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestPgIndex extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgIndex.class);
 
@@ -36,27 +39,29 @@ public class TestPgIndex extends BasePgSQLTest {
   public void testConcurrentInsert() throws Exception {
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE TABLE t(value INT NOT NULL UNIQUE, worker_idx INT NOT NULL)");
-      final int recordCount = 500;
-      Worker[] workers = new Worker[3];
+      final int recordCount = 200;
+      final int workerCount = 3;
+      AtomicBoolean fWorkerFailed = new AtomicBoolean(false);
+      CyclicBarrier barrier = new CyclicBarrier(workerCount);
+      Worker[] workers = new Worker[workerCount];
       for (int i = 0; i < workers.length; ++i) {
-        workers[i] = new Worker(getConnectionBuilder(), i, recordCount);
+        workers[i] = new Worker(getConnectionBuilder(), i, recordCount, barrier, fWorkerFailed);
       }
       LOG.info("Starting workers");
       Arrays.stream(workers).forEach(Worker::start);
       LOG.info("Waiting for results");
       int insertedCount = Arrays.stream(workers).mapToInt(w -> w.result()).sum();
 
+      assertFalse(fWorkerFailed.get());
       assertEquals(recordCount, insertedCount);
 
       statement.execute("SELECT worker_idx, COUNT(value) FROM t GROUP BY worker_idx");
       ResultSet groups = statement.getResultSet();
-      int groupCount = 0;
       while (groups.next()) {
         LOG.info("Worker {} inserted {} items", groups.getInt(1), groups.getInt(2));
-        ++groupCount;
+        assertEquals(groups.getInt(2), workers[groups.getInt(1)].result());
       }
 
-      assertTrue(groupCount > 1);
       assertOneRow(statement, "SELECT COUNT(*) FROM t", (long) recordCount);
     }
   }
@@ -67,11 +72,16 @@ public class TestPgIndex extends BasePgSQLTest {
     final private int idx;
     final private int count;
     final private Thread thread = new Thread(this);
+    CyclicBarrier barrier;
+    AtomicBoolean fWorkerFailed;
 
-    Worker(ConnectionBuilder connBldr, int idx, int count) {
+    Worker(ConnectionBuilder connBldr, int idx, int count, CyclicBarrier barrier,
+        AtomicBoolean fWorkerFailed) {
       this.connBldr = connBldr;
       this.idx = idx;
       this.count = count;
+      this.barrier = barrier;
+      this.fWorkerFailed = fWorkerFailed;
     }
 
     void start() {
@@ -94,18 +104,32 @@ public class TestPgIndex extends BasePgSQLTest {
       int insertedCount = 0;
       try (Connection conn = connBldr.connect();
           Statement statement = conn.createStatement()) {
-        for (int i = 0; i < count; ++i) {
+        for (int i = 0; i < count && !fWorkerFailed.get(); ++i) {
           try {
+            barrier.await();
             statement.execute(String.format("INSERT INTO t values(%d, %d)", i, idx));
             ++insertedCount;
-            Thread.sleep(1);
           } catch (SQLException e) {
             LOG.info("Insert by worker#{} expectedly failed due to {}", idx, e.getMessage());
+          } catch (BrokenBarrierException e) {
+            LOG.info("Early exit as some other worker failed. Exception", e);
+            return;
           }
         }
       } catch (Exception e) {
         LOG.error("Exception", e);
+        fWorkerFailed.set(true);
+        try {
+          // Wait with 0 timeout. If we are the last to enter the barrier, then we wake up all the
+          // other threads. They will check for fWorkerFailed and exit. If we are not the last, then
+          // we break the barrier, causing all future calls to await to throw a
+          // BrokenBarrierException.
+          barrier.await(0, TimeUnit.SECONDS);
+        } catch (Exception inner_e) {
+          // Exception is expected here
+        }
       }
+
       this.insertedCount = insertedCount;
     }
   }

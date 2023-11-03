@@ -6,12 +6,11 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <float.h>
+#include <fuzzer/FuzzedDataProvider.h>
 #include <inttypes.h>
 #include <openssl/ossl_typ.h>
 #include <pthread.h>
-#include <setjmp.h>
 #include <stdarg.h>
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -42,6 +41,7 @@
 #include <deque>
 #include <functional>
 #include <future>
+#include <initializer_list>
 #include <iosfwd>
 #include <iostream>
 #include <iterator>
@@ -54,6 +54,7 @@
 #include <new>
 #include <optional>
 #include <ostream>
+#include <queue>
 #include <random>
 #include <regex>
 #include <set>
@@ -68,6 +69,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <boost/algorithm/string/join.hpp>
@@ -89,6 +91,12 @@
 #include <boost/iterator/transform_iterator.hpp>
 #include <boost/mpl/and.hpp>
 #include <boost/mpl/if.hpp>
+#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/mem_fun.hpp>
+#include <boost/multi_index/member.hpp>
+#include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index_container.hpp>
+#include <boost/none.hpp>
 #include <boost/optional.hpp>
 #include <boost/optional/optional.hpp>
 #include <boost/optional/optional_fwd.hpp>
@@ -183,6 +191,7 @@
 #include "yb/util/checked_narrow_cast.h"
 #include "yb/util/clone_ptr.h"
 #include "yb/util/coding_consts.h"
+#include "yb/util/col_group.h"
 #include "yb/util/compare_util.h"
 #include "yb/util/condition_variable.h"
 #include "yb/util/countdown_latch.h"
@@ -207,6 +216,7 @@
 #include "yb/util/io.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/kv_util.h"
+#include "yb/util/lazy_invoke.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
@@ -239,7 +249,6 @@
 #include "yb/util/physical_time.h"
 #include "yb/util/port_picker.h"
 #include "yb/util/priority_thread_pool.h"
-#include "yb/util/random.h"
 #include "yb/util/random_util.h"
 #include "yb/util/redis_util.h"
 #include "yb/util/ref_cnt_buffer.h"
@@ -249,6 +258,7 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
+#include "yb/util/slice_parts.h"
 #include "yb/util/stack_trace.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
@@ -258,7 +268,6 @@
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
 #include "yb/util/stol_utils.h"
-#include "yb/util/string_case.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/striped64.h"
@@ -280,4 +289,6 @@
 #include "yb/util/unique_lock.h"
 #include "yb/util/uuid.h"
 #include "yb/util/varint.h"
+#include "yb/util/write_buffer.h"
 #include "yb/util/yb_partition.h"
+#include "yb/util/yb_pg_errcodes.h"

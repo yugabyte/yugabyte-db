@@ -1,13 +1,13 @@
 ---
 title: SQL vs NoSQL in YugabyteDB
 headerTitle: SQL vs NoSQL
-linkTitle: 1. SQL vs NoSQL
+linkTitle: SQL vs NoSQL
 description: Learn how YugabyteDB brings the best of SQL and NoSQL together into one unified platform to simplify development of scalable cloud services.
 menu:
   preview:
     identifier: sql-nosql
     parent: learn
-    weight: 561
+    weight: 130
 type: docs
 ---
 
@@ -76,7 +76,7 @@ To test the linear scalability of YugabyteDB, we ran some large cluster benchmar
 
 ## High performance
 
-YugabyteDB was built to provide performance in a public cloud environment without sacrificing consistency. YugabyteDB is written in C++ for this very reason. The following chart shows how YugabyteDB compares with Apache Cassandra when running a YCSB benchmark. Read more about the [YCSB benchmark results and what makes YugabyteDB performant](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
+YugabyteDB was built to provide performance in a public cloud environment without sacrificing consistency. YugabyteDB is written in C++ for this very reason. The following chart shows how YugabyteDB compares with Apache Cassandra when running a YCSB benchmark. Read more about the [YCSB benchmark results and what makes YugabyteDB performant](https://www.yugabyte.com/blog/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
 
 The following chart shows the total ops/second when running YBSB benchmark:
 

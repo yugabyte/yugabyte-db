@@ -9,6 +9,7 @@
  */
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -30,10 +31,10 @@ public class AddOnClusterCreate extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
-    log.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
+    log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
 
     try {
-
+      Cluster cluster = taskParams().getAddOnClusters().get(0);
       Universe universe =
           lockUniverseForUpdate(
               taskParams().expectedUniverseVersion,
@@ -48,7 +49,9 @@ public class AddOnClusterCreate extends UniverseDefinitionTaskBase {
                   // Update on-prem node UUIDs.
                   updateOnPremNodeUuidsOnTaskParams();
                   // Set the prepared data to universe in-memory.
-                  setUserIntentToUniverse(u, taskParams(), true);
+                  updateUniverseNodesAndSettings(u, taskParams(), true);
+                  u.getUniverseDetails()
+                      .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
                   // There is a rare possibility that this succeeds and
                   // saving the Universe fails. It is ok because the retry
                   // will just fail.
@@ -56,8 +59,8 @@ public class AddOnClusterCreate extends UniverseDefinitionTaskBase {
                 }
               });
 
-      Cluster cluster = taskParams().getAddOnClusters().get(0);
       Set<NodeDetails> addOnNodes = taskParams().getNodesInCluster(cluster.uuid);
+      boolean ignoreUseCustomImageConfig = !addOnNodes.stream().allMatch(n -> n.ybPrebuiltAmi);
 
       log.debug("Going to create the following addonNodes={}", addOnNodes);
 
@@ -74,7 +77,7 @@ public class AddOnClusterCreate extends UniverseDefinitionTaskBase {
           universe,
           nodesToProvision,
           false /* ignore node status check */,
-          false /* ignoreUseCustomImageConfig */);
+          ignoreUseCustomImageConfig);
 
       // no need to enable tservers.
       // no need to start ybc process.
@@ -99,7 +102,15 @@ public class AddOnClusterCreate extends UniverseDefinitionTaskBase {
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
-      unlockUniverseForUpdate();
+      Universe universe = unlockUniverseForUpdate();
+      if (universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")) {
+        universe.updateConfig(
+            ImmutableMap.of(
+                Universe.USE_CUSTOM_IMAGE,
+                Boolean.toString(
+                    universe.getUniverseDetails().nodeDetailsSet.stream()
+                        .allMatch(n -> n.ybPrebuiltAmi))));
+      }
     }
     log.info("Finished {} task.", getName());
   }

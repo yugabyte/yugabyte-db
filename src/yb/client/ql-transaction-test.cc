@@ -56,7 +56,6 @@
 using namespace std::literals;
 
 using yb::tablet::GetTransactionTimeout;
-using yb::tablet::TabletPeer;
 
 DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
 DECLARE_bool(TEST_fail_in_apply_if_no_metadata);
@@ -67,10 +66,14 @@ DECLARE_bool(enable_load_balancing);
 DECLARE_bool(fail_on_out_of_range_clock_skew);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(rocksdb_disable_compactions);
+DECLARE_bool(enable_ondisk_compression);
 DECLARE_int32(TEST_delay_init_tablet_peer_ms);
 DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(remote_bootstrap_max_chunk_size);
 DECLARE_int64(transaction_rpc_timeout_ms);
+DECLARE_int64(db_block_cache_size_bytes);
+DECLARE_int64(db_write_buffer_size);
 DECLARE_uint64(TEST_transaction_delay_status_reply_usec_in_tests);
 DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_uint64(max_clock_skew_usec);
@@ -126,7 +129,7 @@ TEST_F(QLTransactionTest, Simple) {
 }
 
 TEST_F(QLTransactionTest, LookupTabletFailure) {
-  FLAGS_TEST_master_fail_transactional_tablet_lookups = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_fail_transactional_tablet_lookups) = true;
 
   auto txn = CreateTransaction();
   auto result = WriteRow(CreateSession(txn), 0 /* key */, 1 /* value */);
@@ -135,7 +138,7 @@ TEST_F(QLTransactionTest, LookupTabletFailure) {
 }
 
 TEST_F(QLTransactionTest, ReadWithTimeInFuture) {
-  FLAGS_fail_on_out_of_range_clock_skew = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_fail_on_out_of_range_clock_skew) = false;
 
   WriteData();
   server::SkewedClockDeltaChanger delta_changer(100ms, skewed_clock_);
@@ -224,7 +227,7 @@ TEST_F(QLTransactionTest, ReadRestartWithIntents) {
 }
 
 TEST_F(QLTransactionTest, ReadRestartWithPendingIntents) {
-  FLAGS_TEST_transaction_allow_rerequest_status = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_allow_rerequest_status) = false;
   DisableApplyingIntents();
   TestReadRestart(false /* commit */);
 }
@@ -456,7 +459,7 @@ TEST_F(QLTransactionTest, Expire) {
 }
 
 TEST_F(QLTransactionTest, PreserveLogs) {
-  FLAGS_transaction_rpc_timeout_ms = 60000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_rpc_timeout_ms) = 60000;
   SetDisableHeartbeatInTests(true);
   DisableTransactionTimeout();
   std::vector<std::shared_ptr<YBTransaction>> transactions;
@@ -613,7 +616,7 @@ void QLTransactionTest::TestReadOnlyTablets(IsolationLevel isolation_level,
 }
 
 TEST_F(QLTransactionTest, ReadOnlyTablets) {
-  FLAGS_TEST_fail_in_apply_if_no_metadata = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_in_apply_if_no_metadata) = true;
 
   // In snapshot isolation, tablets only read from will not have metadata written, so applying
   // intents on this tablet would cause the test to fail.
@@ -838,8 +841,8 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
 
 TEST_F(QLTransactionTest, CheckCompactionAbortCleanup) {
   SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
-  FLAGS_TEST_disable_proactive_txn_cleanup_on_abort = true;
-  FLAGS_aborted_intent_cleanup_ms = 1000; // 1 sec
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_proactive_txn_cleanup_on_abort) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000; // 1 sec
 
   // Write { 1 -> 1, 2 -> 2 }.
   {
@@ -884,16 +887,18 @@ TEST_F(QLTransactionTest, CheckCompactionAbortCleanup) {
 class QLTransactionTestWithDisabledCompactions : public QLTransactionTest {
  public:
   void SetUp() override {
-    FLAGS_rocksdb_disable_compactions = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ondisk_compression) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_cache_size_bytes) = -2; // kDbCacheSizeCacheDisabled;
     QLTransactionTest::SetUp();
   }
 };
 
 TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDisabledCompactions) {
   SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
-  FLAGS_TEST_disable_proactive_txn_cleanup_on_abort = true;
-  FLAGS_aborted_intent_cleanup_ms = 1000; // 1 sec
-  FLAGS_delete_intents_sst_files = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_proactive_txn_cleanup_on_abort) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000; // 1 sec
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_delete_intents_sst_files) = false;
 
 #ifndef NDEBUG
   constexpr int kTransactions = 10;
@@ -903,6 +908,9 @@ TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDi
   // Empirically determined constant.
   constexpr int kBytesPerRow = 75;
   constexpr int kRequiredCompactedBytes = kTransactions * kNumRows * kBytesPerRow;
+  LOG(INFO) << "Required compact read bytes: " << kRequiredCompactedBytes
+            << ", num tablets: " << this->table_->GetPartitionCount()
+            << ", num transactions: " << kTransactions;
 
   LOG(INFO) << "Write values";
 
@@ -916,7 +924,7 @@ TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDi
     ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kAsync));
 
     // Need some time for flush to be initiated.
-    std::this_thread::sleep_for(100ms);
+    std::this_thread::sleep_for(1s);
 
     txn->Abort();
   }
@@ -926,22 +934,26 @@ TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDi
   LOG(INFO) << "Shutdown cluster";
   cluster_->Shutdown();
 
-  std::this_thread::sleep_for(FLAGS_aborted_intent_cleanup_ms * 1ms);
+  std::this_thread::sleep_for(1ms * ANNOTATE_UNPROTECTED_READ(FLAGS_aborted_intent_cleanup_ms));
 
-  FLAGS_TEST_delay_init_tablet_peer_ms = 100;
-  FLAGS_rocksdb_disable_compactions = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_init_tablet_peer_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = false;
 
   LOG(INFO) << "Start cluster";
   ASSERT_OK(cluster_->StartSync());
 
-  ASSERT_OK(WaitFor([cluster = cluster_.get()] {
-    auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
-    int64_t bytes = 0;
+  ASSERT_OK(WaitFor([this, counter = 0UL]() mutable {
+    LOG(INFO) << "Wait iteration #" << ++counter;
+    const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), this->table_->id());
+    uint64_t bytes = 0;
     for (const auto& peer : peers) {
-      if (peer->tablet()) {
-        bytes +=
-            peer->tablet()->intentsdb_statistics()->getTickerCount(rocksdb::COMPACT_READ_BYTES);
+      uint64_t read_bytes = 0;
+      const auto tablet = peer->shared_tablet();
+      if (tablet) {
+        read_bytes = tablet->intentsdb_statistics()->getTickerCount(rocksdb::COMPACT_READ_BYTES);
       }
+      bytes += read_bytes;
+      LOG(INFO) << "T " << peer->tablet_id() << ": Compact read bytes: " << read_bytes;
     }
     LOG(INFO) << "Compact read bytes: " << bytes;
 
@@ -1058,7 +1070,7 @@ TEST_F_EX(QLTransactionTest, CorrectStatusRequestBatching, QLTransactionBigLogSe
   constexpr auto kMinReads = 10;
   constexpr size_t kConcurrentReads = RegularBuildVsSanitizers<size_t>(20, 5);
 
-  FLAGS_TEST_transaction_delay_status_reply_usec_in_tests = 200000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_delay_status_reply_usec_in_tests) = 200000;
   SetAtomicFlag(std::chrono::microseconds(kClockSkew).count() * 3, &FLAGS_max_clock_skew_usec);
 
   auto delta_changers = SkewClocks(cluster_.get(), kClockSkew);
@@ -1303,15 +1315,13 @@ TEST_F_EX(QLTransactionTest, WaitRead, QLTransactionBigLogSegmentSizeTest) {
 
   SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
 
-  std::atomic<bool> stop(false);
-  std::vector<std::thread> threads;
+  TestThreadHolder thread_holder;
 
   for (int i = 0; i != kWriteThreads; ++i) {
-    threads.emplace_back([this, i, &stop] {
-      CDSAttacher attacher;
+    thread_holder.AddThreadFunctor([this, i, &stop = thread_holder.stop_flag()] {
       auto session = CreateSession();
       int32_t value = 0;
-      while (!stop) {
+      while (!stop.load()) {
         ASSERT_OK(WriteRow(session, i, ++value));
       }
     });
@@ -1327,7 +1337,7 @@ TEST_F_EX(QLTransactionTest, WaitRead, QLTransactionBigLogSegmentSizeTest) {
   for (size_t i = 0; i != kCycles; ++i) {
     latch.Reset(kConcurrentReads);
     for (size_t j = 0; j != kConcurrentReads; ++j) {
-      values[j].clear();
+      reads[j].clear();
       auto session = CreateSession(CreateTransaction());
       for (int key = 0; key != kWriteThreads; ++key) {
         reads[j].push_back(ReadRow(session, key));
@@ -1359,10 +1369,7 @@ TEST_F_EX(QLTransactionTest, WaitRead, QLTransactionBigLogSegmentSizeTest) {
     }
   }
 
-  stop = true;
-  for (auto& thread : threads) {
-    thread.join();
-  }
+  thread_holder.Stop();
 }
 
 TEST_F(QLTransactionTest, InsertDelete) {
@@ -1417,7 +1424,7 @@ TEST_F_EX(QLTransactionTest, ChangeLeader, QLTransactionBigLogSegmentSizeTest) {
   constexpr auto kTestTime = 5s;
 
   DisableTransactionTimeout();
-  FLAGS_transaction_rpc_timeout_ms = MonoDelta(1min).ToMilliseconds();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_rpc_timeout_ms) = MonoDelta(1min).ToMilliseconds();
 
   std::vector<std::thread> threads;
   std::atomic<bool> stopped{false};
@@ -1449,15 +1456,15 @@ TEST_F_EX(QLTransactionTest, ChangeLeader, QLTransactionBigLogSegmentSizeTest) {
     for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
       auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
       for (const auto& peer : peers) {
-        if (peer->consensus() &&
-            peer->consensus()->GetLeaderStatus() !=
-                consensus::LeaderStatus::NOT_LEADER &&
+        auto consensus_result = peer->GetConsensus();
+        if (consensus_result &&
+            consensus_result.get()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER &&
             peer->tablet()->transaction_coordinator() &&
             peer->tablet()->transaction_coordinator()->test_count_transactions()) {
           consensus::LeaderStepDownRequestPB req;
           req.set_tablet_id(peer->tablet_id());
           consensus::LeaderStepDownResponsePB resp;
-          ASSERT_OK(peer->consensus()->StepDown(&req, &resp));
+          ASSERT_OK(consensus_result.get()->StepDown(&req, &resp));
         }
       }
     }
@@ -1476,8 +1483,8 @@ TEST_F_EX(QLTransactionTest, ChangeLeader, QLTransactionBigLogSegmentSizeTest) {
 class RemoteBootstrapTest : public QLTransactionTest {
  protected:
   void SetUp() override {
-    FLAGS_remote_bootstrap_max_chunk_size = 1_KB;
-    FLAGS_log_min_seconds_to_retain = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_remote_bootstrap_max_chunk_size) = 1_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 1;
     QLTransactionTest::SetUp();
   }
 };
@@ -1536,7 +1543,7 @@ TEST_F_EX(QLTransactionTest, RemoteBootstrap, RemoteBootstrapTest) {
 
   // Start all servers. Cluster verifier should check that all tablets are synchronized.
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
+    ASSERT_OK(cluster_->mini_tablet_server(i)->Start(tserver::WaitTabletsBootstrapped::kFalse));
   }
 
   ASSERT_OK(WaitFor([this] { return CheckAllTabletsRunning(); }, 20s * kTimeMultiplier,
@@ -1544,7 +1551,7 @@ TEST_F_EX(QLTransactionTest, RemoteBootstrap, RemoteBootstrapTest) {
 }
 
 TEST_F(QLTransactionTest, FlushIntents) {
-  FLAGS_flush_rocksdb_on_shutdown = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
 
   WriteData();
   ASSERT_OK(WriteRows(CreateSession(), 1));
@@ -1674,7 +1681,7 @@ TEST_F_EX(QLTransactionTest, DeleteFlushedIntents, QLTransactionTestSingleTablet
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
     size_t total_sst_files = 0;
     for (auto& peer : peers) {
-      auto intents_db = peer->tablet()->TEST_intents_db();
+      auto intents_db = peer->tablet()->intents_db();
       if (!intents_db) {
         continue;
       }
@@ -1782,6 +1789,31 @@ TEST_F(QLTransactionTest, DeleteTableDuringWrite) {
   ASSERT_OK(WaitFor([this] {
     return !HasTransactions();
   }, 10s * kTimeMultiplier, "Cleanup transactions from coordinator"));
+}
+
+class QLTransactionTestSmallWriteBuffer :
+    public TransactionCustomLogSegmentSizeTest<64_KB, QLTransactionTest> {
+ public:
+  void SetUp() override {
+    FLAGS_db_write_buffer_size = 4_KB;
+    QLTransactionTest::SetUp();
+  }
+
+  int NumTablets() override {
+    return 1;
+  }
+};
+
+TEST_F_EX(QLTransactionTest, FlushBecauseOfWriteStop, QLTransactionTestSmallWriteBuffer) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_intents_flush_max_delay_ms) = 5000;
+  auto session = CreateSession();
+  session->SetTimeout(2s);
+  for (int txn_idx = 0; txn_idx != 300; ++txn_idx) {
+    YBTransactionPtr write_txn = CreateTransaction();
+    session->SetTransaction(write_txn);
+    ASSERT_OK(WriteRows(session, txn_idx++));
+    ASSERT_OK(write_txn->CommitFuture().get());
+  }
 }
 
 } // namespace client

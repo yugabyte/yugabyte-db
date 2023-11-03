@@ -15,13 +15,13 @@ package org.yb.pgsql;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.client.TestUtils;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.io.File;
 
 import java.util.Map;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestPgRegressContribPasswordCheck extends BasePgSQLTest {
     @Override
     public int getTestMethodTimeoutSec() {

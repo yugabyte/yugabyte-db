@@ -6,7 +6,8 @@ import CreateKubernetesConfiguration from './CreateKubernetesConfiguration';
 import {
   createProviderResponse,
   createMultiRegionKubernetesProvider,
-  fetchCloudMetadata
+  fetchCloudMetadata,
+  getKubeConfig
 } from '../../../../actions/cloud';
 import { openDialog, closeDialog } from '../../../../actions/modal';
 
@@ -14,7 +15,8 @@ const mapStateToProps = (state) => {
   return {
     modal: state.modal,
     customer: state.customer,
-    providers: state.cloud.providers
+    providers: state.cloud.providers,
+    featureFlags: state.featureFlags
   };
 };
 
@@ -34,8 +36,11 @@ const mapDispatchToProps = (dispatch) => {
           }
         }
       );
-    },
 
+    },
+    fetchKubenetesConfig: () => {
+        return getKubeConfig();
+    },
     showModal: (modalName) => {
       dispatch(openDialog(modalName));
     },

@@ -1,3 +1,3 @@
 ```output.ebnf
-do ::= DO [ LANGUAGE lang_name ] code
+do ::= DO ' plpgsql_block_stmt '
 ```

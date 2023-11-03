@@ -13,7 +13,7 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
@@ -30,8 +30,8 @@
 namespace yb {
 namespace tablet {
 
-class TabletDataIntegrityTest : public TabletTestBase<IntKeyTestSetup<INT32>> {
-  typedef TabletTestBase<IntKeyTestSetup<INT32>> superclass;
+class TabletDataIntegrityTest : public TabletTestBase<IntKeyTestSetup<DataType::INT32>> {
+  typedef TabletTestBase<IntKeyTestSetup<DataType::INT32>> superclass;
  public:
   void SetUp() override {
     superclass::SetUp();

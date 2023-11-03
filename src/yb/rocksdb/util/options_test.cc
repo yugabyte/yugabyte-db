@@ -47,11 +47,11 @@
 #include "yb/util/format.h"
 
 #ifndef GFLAGS
-bool FLAGS_enable_print = false;
+bool ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_print) = false;
 #else
 #include "yb/util/flags.h"
 using GFLAGS::ParseCommandLineFlags;
-DEFINE_UNKNOWN_bool(enable_print, false, "Print options generated to console.");
+DEFINE_NON_RUNTIME_bool(enable_print, false, "Print options generated to console.");
 #endif  // GFLAGS
 
 namespace rocksdb {

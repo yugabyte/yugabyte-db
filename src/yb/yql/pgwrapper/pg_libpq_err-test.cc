@@ -12,6 +12,7 @@
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 using std::string;
 
@@ -21,7 +22,7 @@ namespace pgwrapper {
 class PgLibPqErrTest : public LibPqTestBase {
 };
 
-TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(BeginWithoutCommit)) {
+TEST_F(PgLibPqErrTest, BeginWithoutCommit) {
   constexpr auto kIterations = 10;
 
   // Create table and insert some rows.
@@ -67,7 +68,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(BeginWithoutCommit)) {
   }
 }
 
-TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertWithoutCommit)) {
+TEST_F(PgLibPqErrTest, InsertWithoutCommit) {
   constexpr auto kRetryCount = 3;
   constexpr auto kIterations = 10;
   constexpr auto kRowPerSeed = 100;
@@ -101,7 +102,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertWithoutCommit)) {
               return;
             }
             // Run the statement again as "Try again" was reported.
-            ASSERT_TRUE(HasTryAgain(status)) << status;
+            ASSERT_TRUE(HasTransactionError(status)) << status;
             continue;
           }
 
@@ -115,7 +116,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertWithoutCommit)) {
       for (int rt = 0; rt < kRetryCount; rt++) {
         auto res = connection.Fetch("SELECT * FROM terr");
         if (!res.ok()) {
-          ASSERT_TRUE(HasTryAgain(res.status())) << res.status();
+          ASSERT_TRUE(HasTransactionError(res.status())) << res.status();
           continue;
         }
 
@@ -149,7 +150,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertWithoutCommit)) {
   }
 }
 
-TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertDuplicateWithoutCommit)) {
+TEST_F(PgLibPqErrTest, InsertDuplicateWithoutCommit) {
   constexpr auto kRetryCount = 3;
   constexpr auto kIterations = 10;
   constexpr auto kRowPerSeed = 100;
@@ -182,7 +183,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertDuplicateWithoutCommit)) {
               return;
             }
             // Run the statement again as "Try again" was reported.
-            ASSERT_TRUE(HasTryAgain(status)) << status;
+            ASSERT_TRUE(HasTransactionError(status)) << status;
             continue;
           }
 
@@ -196,7 +197,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertDuplicateWithoutCommit)) {
       for (int rt = 0; rt < kRetryCount; rt++) {
         auto res = connection.Fetch("SELECT * FROM terr");
         if (!res.ok()) {
-          ASSERT_TRUE(HasTryAgain(res.status())) << res.status();
+          ASSERT_TRUE(HasTransactionError(res.status())) << res.status();
           continue;
         }
 
@@ -230,7 +231,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertDuplicateWithoutCommit)) {
   }
 }
 
-TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(UpdateWithoutCommit)) {
+TEST_F(PgLibPqErrTest, UpdateWithoutCommit) {
   constexpr auto kRetryCount = 3;
   constexpr auto kIterations = 10;
   constexpr auto kRowCount = 100;
@@ -266,7 +267,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(UpdateWithoutCommit)) {
               return;
             }
             // Run the statement again as "Try again" was reported.
-            ASSERT_TRUE(HasTryAgain(status)) << status;
+            ASSERT_TRUE(HasTransactionError(status)) << status;
             continue;
           }
         }
@@ -276,7 +277,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(UpdateWithoutCommit)) {
       for (int rt = 0; rt < kRetryCount; rt++) {
         auto res = connection.Fetch("SELECT * FROM terr");
         if (!res.ok()) {
-          ASSERT_TRUE(HasTryAgain(res.status())) << res.status();
+          ASSERT_TRUE(HasTransactionError(res.status())) << res.status();
           continue;
         }
 
@@ -289,7 +290,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(UpdateWithoutCommit)) {
 
         // Check column 'v' vs 'seed'.
         for (int i = 0; i != lines; ++i) {
-          int32_t v = ASSERT_RESULT(GetInt32(res->get(), i, 1));
+          auto v = ASSERT_RESULT(GetValue<int32_t>(res->get(), i, 1));
           ASSERT_EQ(v, seed);
         }
         break;
@@ -316,13 +317,13 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(UpdateWithoutCommit)) {
 
     // Check column 'v' vs original value 'kSeed'.
     for (int i = 0; i != lines; ++i) {
-      int32_t v = ASSERT_RESULT(GetInt32(res.get(), i, 1));
+      auto v = ASSERT_RESULT(GetValue<int32_t>(res.get(), i, 1));
       ASSERT_EQ(v, kSeed);
     }
   }
 }
 
-TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(DeleteWithoutCommit)) {
+TEST_F(PgLibPqErrTest, DeleteWithoutCommit) {
   constexpr auto kRetryCount = 3;
   constexpr auto kIterations = 10;
   constexpr auto kRowCount = 100;
@@ -358,7 +359,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(DeleteWithoutCommit)) {
               return;
             }
             // Run the statement again as "Try again" was reported.
-            ASSERT_TRUE(HasTryAgain(status)) << status;
+            ASSERT_TRUE(HasTransactionError(status)) << status;
             continue;
           }
 
@@ -372,7 +373,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(DeleteWithoutCommit)) {
       for (int rt = 0; rt < kRetryCount; rt++) {
         auto res = connection.Fetch("SELECT * FROM terr");
         if (!res.ok()) {
-          ASSERT_TRUE(HasTryAgain(res.status())) << res.status();
+          ASSERT_TRUE(HasTransactionError(res.status())) << res.status();
           continue;
         }
 
@@ -407,7 +408,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(DeleteWithoutCommit)) {
   }
 }
 
-TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertTransactionAborted)) {
+TEST_F(PgLibPqErrTest, InsertTransactionAborted) {
   constexpr auto kIterations = 10;
   constexpr auto kRowPerSeed = 100;
 

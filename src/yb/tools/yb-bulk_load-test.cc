@@ -25,7 +25,7 @@
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/jsonb.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
@@ -103,7 +103,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     opts.num_tablet_servers = kNumTabletServers;
 
     // Use a high enough initial sequence number.
-    FLAGS_initial_seqno = 1 << 20;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_seqno) = 1 << 20;
 
     cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
@@ -113,15 +113,15 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
         .Build());
 
     YBSchemaBuilder b;
-    b.AddColumn("hash_key")->Type(INT64)->NotNull()->HashPrimaryKey();
-    b.AddColumn("hash_key_timestamp")->Type(TIMESTAMP)->NotNull()->HashPrimaryKey();
-    b.AddColumn("hash_key_string")->Type(STRING)->NotNull()->HashPrimaryKey();
-    b.AddColumn("range_key")->Type(TIMESTAMP)->NotNull()->PrimaryKey();
-    b.AddColumn("v1")->Type(STRING)->NotNull();
-    b.AddColumn("v2")->Type(INT32)->NotNull();
-    b.AddColumn("v3")->Type(FLOAT)->NotNull();
-    b.AddColumn("v4")->Type(DOUBLE)->NotNull();
-    b.AddColumn("v5")->Type(JSONB)->Nullable();
+    b.AddColumn("hash_key")->Type(DataType::INT64)->NotNull()->HashPrimaryKey();
+    b.AddColumn("hash_key_timestamp")->Type(DataType::TIMESTAMP)->NotNull()->HashPrimaryKey();
+    b.AddColumn("hash_key_string")->Type(DataType::STRING)->NotNull()->HashPrimaryKey();
+    b.AddColumn("range_key")->Type(DataType::TIMESTAMP)->NotNull()->PrimaryKey();
+    b.AddColumn("v1")->Type(DataType::STRING)->NotNull();
+    b.AddColumn("v2")->Type(DataType::INT32)->NotNull();
+    b.AddColumn("v3")->Type(DataType::FLOAT)->NotNull();
+    b.AddColumn("v4")->Type(DataType::DOUBLE)->NotNull();
+    b.AddColumn("v5")->Type(DataType::JSONB)->Nullable();
     CHECK_OK(b.Build(&schema_));
 
     client_ = ASSERT_RESULT(cluster_->CreateClient());
@@ -191,7 +191,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     CsvTokenizer tokenizer = Tokenize(row);
     RETURN_NOT_OK(partition_generator_->LookupTabletIdWithTokenizer(
         tokenizer, {}, &tablet_id, &partition_key));
-    uint16_t hash_code = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+    uint16_t hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
     req->set_hash_code(hash_code);
     req->set_max_hash_code(hash_code);
 
@@ -233,7 +233,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
 
-  void ValidateRow(const string& row, const QLRow& ql_row) {
+  void ValidateRow(const string& row, const qlexpr::QLRow& ql_row) {
     // Get individual columns.
     CsvTokenizer tokenizer = Tokenize(row);
     auto it = tokenizer.begin();
@@ -367,7 +367,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
 
   void PerformRead(const tserver::ReadRequestPB& req,
                    tserver::TabletServerServiceProxy* tserver_proxy,
-                   std::unique_ptr<QLRowBlock>* rowblock) {
+                   std::unique_ptr<qlexpr::QLRowBlock>* rowblock) {
     tserver::ReadResponsePB resp;
     rpc::RpcController controller;
     controller.set_timeout(15s);
@@ -381,8 +381,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
 
     // Retrieve row.
     ASSERT_TRUE(controller.finished());
-    std::string rows_data;
-    ASSERT_OK(controller.AssignSidecarTo(ql_resp.rows_data_sidecar(), &rows_data));
+    auto rows_data = ASSERT_RESULT(controller.ExtractSidecar(ql_resp.rows_data_sidecar()));
     auto columns = std::make_shared<std::vector<ColumnSchema>>(schema_.columns());
     ql::RowsResult rowsResult(*table_name_, columns, rows_data);
     *rowblock = rowsResult.GetRowBlock();
@@ -403,7 +402,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
 class YBBulkLoadTestWithoutRebalancing : public YBBulkLoadTest {
  public:
   void SetUp() override {
-    FLAGS_enable_load_balancing = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
     YBBulkLoadTest::SetUp();
   }
 };
@@ -667,12 +666,12 @@ TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
       QLReadRequestPB* ql_req = req.mutable_ql_batch()->Add();
       ASSERT_OK(CreateQLReadRequest(row, ql_req));
 
-      std::unique_ptr<QLRowBlock> rowblock;
+      std::unique_ptr<qlexpr::QLRowBlock> rowblock;
       PerformRead(req, tserver_proxy.get(), &rowblock);
 
       // Validate row.
       ASSERT_EQ(1, rowblock->row_count());
-      const QLRow& ql_row = rowblock->row(0);
+      const auto& ql_row = rowblock->row(0);
       ASSERT_EQ(schema_.num_columns(), ql_row.column_count());
       ValidateRow(row, ql_row);
     }
@@ -702,7 +701,7 @@ TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
       col.type()->ToQLTypePB(rscol_desc->mutable_ql_type());
     }
 
-    std::unique_ptr<QLRowBlock> rowblock;
+    std::unique_ptr<qlexpr::QLRowBlock> rowblock;
     PerformRead(req, tserver_proxy.get(), &rowblock);
     ASSERT_EQ(tabletid_to_line[tablet_id].size(), rowblock->row_count());
 

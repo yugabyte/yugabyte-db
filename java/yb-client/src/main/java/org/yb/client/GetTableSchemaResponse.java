@@ -51,6 +51,8 @@ public class GetTableSchemaResponse extends YRpcResponse {
   private final TableType tableType;
   private final List<IndexInfo> indexes;
 
+  private final boolean colocated;
+
   /**
    * @param ellapsedMillis Time in milliseconds since RPC creation to now
    * @param schema the table's schema
@@ -67,7 +69,8 @@ public class GetTableSchemaResponse extends YRpcResponse {
       PartitionSchema partitionSchema,
       boolean createTableDone,
       TableType tableType,
-      List<IndexInfo> indexes) {
+      List<IndexInfo> indexes,
+      boolean colocated) {
     super(ellapsedMillis, tsUUID);
     this.schema = schema;
     this.partitionSchema = partitionSchema;
@@ -77,6 +80,7 @@ public class GetTableSchemaResponse extends YRpcResponse {
     this.tableId = tableId;
     this.tableType = tableType;
     this.indexes = indexes;
+    this.colocated = colocated;
   }
 
   /**
@@ -117,6 +121,14 @@ public class GetTableSchemaResponse extends YRpcResponse {
    */
   public String getNamespace() {
     return namespace;
+  }
+
+  /**
+   * Get whether table is colocated or not.
+   * @return true if table is colocated, false otherwise
+   */
+  public boolean isColocated() {
+    return this.colocated;
   }
 
   /**

@@ -6,148 +6,250 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
-region_cidr_format: "{}.0.0/16"
-zone_cidr_format: "{}.{}.0/20"
+credential_vars:
+- GOOGLE_APPLICATION_CREDENTIALS
+- GCE_PROJECT
+region_cidr_format: '{}.0.0/16'
 regions:
-  us-central1:
-    cidr_prefix: "10.200"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: ['a', 'b', 'c', 'f']
-  europe-west1:
-    cidr_prefix: "10.201"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: ['b', 'c', 'd']
-  us-west1:
-    cidr_prefix: "10.202"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: ['a', 'b', 'c']
   asia-east1:
-    cidr_prefix: "10.203"
-    image: almalinux-8-v20220719
+    cidr_prefix: '10.203'
+    image: almalinux-8-v20230809
     project: almalinux-cloud
-    zones: ['a', 'b', 'c']
-  us-east1:
-    cidr_prefix: "10.204"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: ['b', 'c', 'd']
-  asia-northeast1:
-    cidr_prefix: "10.205"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: ['a', 'b', 'c']
-  asia-southeast1:
-    cidr_prefix: "10.206"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: ['a', 'b', 'c']
-  us-east4:
-    cidr_prefix: "10.207"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: ['a', 'b', 'c']
-  australia-southeast1:
-    cidr_prefix: "10.208"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: ['a', 'b', 'c']
-  europe-west2:
-    cidr_prefix: "10.209"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: ['a', 'b', 'c']
-  europe-west3:
-    cidr_prefix: "10.210"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: ['a', 'b', 'c']
-  southamerica-east1:
-    cidr_prefix: "10.211"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: ['a', 'b', 'c']
-  asia-south1:
-    cidr_prefix: "10.212"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: ['a', 'b', 'c']
-  northamerica-northeast1:
-    cidr_prefix: "10.213"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: ['a', 'b', 'c']
-  europe-west4:
-    cidr_prefix: "10.214"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: ['a', 'b', 'c']
-  us-west2:
-    cidr_prefix: "10.215"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: [ 'a', 'b', 'c' ]
-  us-west3:
-    cidr_prefix: "10.216"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: [ 'a', 'b', 'c' ]
-  us-west4:
-    cidr_prefix: "10.217"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: [ 'a', 'b', 'c' ]
+    zones:
+    - a
+    - b
+    - c
   asia-east2:
-    cidr_prefix: "10.218"
-    image: almalinux-8-v20220719
+    cidr_prefix: '10.218'
+    image: almalinux-8-v20230809
     project: almalinux-cloud
-    zones: [ 'a', 'b', 'c' ]
+    zones:
+    - a
+    - b
+    - c
+  asia-northeast1:
+    cidr_prefix: '10.205'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
   asia-northeast2:
-    cidr_prefix: "10.219"
-    image: almalinux-8-v20220719
+    cidr_prefix: '10.219'
+    image: almalinux-8-v20230809
     project: almalinux-cloud
-    zones: [ 'a', 'b', 'c' ]
-  asia-southeast2:
-    cidr_prefix: "10.220"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: [ 'a', 'b', 'c' ]
+    zones:
+    - a
+    - b
+    - c
   asia-northeast3:
-    cidr_prefix: "10.221"
-    image: almalinux-8-v20220719
+    cidr_prefix: '10.221'
+    image: almalinux-8-v20230809
     project: almalinux-cloud
-    zones: [ 'a', 'b', 'c' ]
-  australia-southeast2:
-    cidr_prefix: "10.222"
-    image: almalinux-8-v20220719
+    zones:
+    - a
+    - b
+    - c
+  asia-south1:
+    cidr_prefix: '10.212'
+    image: almalinux-8-v20230809
     project: almalinux-cloud
-    zones: [ 'a', 'b', 'c' ]
-  europe-central2:
-    cidr_prefix: "10.223"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: [ 'a', 'b', 'c' ]
-  northamerica-northeast2:
-    cidr_prefix: "10.225"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: [ 'a', 'b', 'c' ]
-  europe-west6:
-    cidr_prefix: "10.226"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: [ 'a', 'b', 'c' ]
-  europe-north1:
-    cidr_prefix: "10.227"
-    image: almalinux-8-v20220719
-    project: almalinux-cloud
-    zones: [ 'a', 'b', 'c' ]
+    zones:
+    - a
+    - b
+    - c
   asia-south2:
-    cidr_prefix: "10.228"
-    image: almalinux-8-v20220719
+    cidr_prefix: '10.228'
+    image: almalinux-8-v20230809
     project: almalinux-cloud
-    zones: [ 'a', 'b', 'c' ]
-
-credential_vars: ['GOOGLE_APPLICATION_CREDENTIALS', 'GCE_PROJECT']
+    zones:
+    - a
+    - b
+    - c
+  asia-southeast1:
+    cidr_prefix: '10.206'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  asia-southeast2:
+    cidr_prefix: '10.220'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  australia-southeast1:
+    cidr_prefix: '10.208'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  australia-southeast2:
+    cidr_prefix: '10.222'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  europe-central2:
+    cidr_prefix: '10.223'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  europe-north1:
+    cidr_prefix: '10.227'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  europe-west1:
+    cidr_prefix: '10.201'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - b
+    - c
+    - d
+  europe-west2:
+    cidr_prefix: '10.209'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  europe-west3:
+    cidr_prefix: '10.210'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  europe-west4:
+    cidr_prefix: '10.214'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  europe-west6:
+    cidr_prefix: '10.226'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  northamerica-northeast1:
+    cidr_prefix: '10.213'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  northamerica-northeast2:
+    cidr_prefix: '10.225'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  southamerica-east1:
+    cidr_prefix: '10.211'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  us-central1:
+    cidr_prefix: '10.200'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+    - f
+  us-east1:
+    cidr_prefix: '10.204'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - b
+    - c
+    - d
+  us-east4:
+    cidr_prefix: '10.207'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  us-east5:
+    cidr_prefix: '10.229'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  us-south1:
+    cidr_prefix: '10.230'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  us-west1:
+    cidr_prefix: '10.202'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  us-west2:
+    cidr_prefix: '10.215'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  us-west3:
+    cidr_prefix: '10.216'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+  us-west4:
+    cidr_prefix: '10.217'
+    image: almalinux-8-v20230809
+    project: almalinux-cloud
+    zones:
+    - a
+    - b
+    - c
+zone_cidr_format: '{}.{}.0/20'

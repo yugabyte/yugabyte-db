@@ -1,15 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 import React, { Component } from 'react';
-import {
-  Button,
-  OverlayTrigger,
-  Tooltip,
-  DropdownButton,
-  MenuItem
-} from 'react-bootstrap';
+import { Button, OverlayTrigger, Tooltip, DropdownButton, MenuItem } from 'react-bootstrap';
 import PropTypes from 'prop-types';
 import _ from 'lodash';
-import moment from 'moment';
+import moment from 'moment-timezone';
 
 import { MetricConsts, MetricMeasure, MetricTypes } from '../../metrics/constants';
 import { METRIC_FONT } from '../MetricsConfig';
@@ -62,15 +56,19 @@ export default class MetricsPanel extends Component {
       operations,
       metricType
     } = this.props;
-    const metric = (metricMeasure === MetricMeasure.OUTLIER || metricType === MetricTypes.OUTLIER_TABLES)
-      ? _.cloneDeep(this.props.metric) : this.props.metric;
+    const metric =
+      metricMeasure === MetricMeasure.OUTLIER || metricType === MetricTypes.OUTLIER_TABLES
+        ? _.cloneDeep(this.props.metric)
+        : this.props.metric;
     if (isNonEmptyObject(metric)) {
       const layoutHeight = this.props.height || DEFAULT_HEIGHT;
       const layoutWidth =
         this.props.width ||
         this.getGraphWidth(this.props.containerWidth || DEFAULT_CONTAINER_WIDTH);
       if (metricOperation || this.props.operations.length) {
-        const matchingMetricOperation = metricOperation ? metricOperation : (this.state.focusedButton ?? operations[0]);
+        const matchingMetricOperation = metricOperation
+          ? metricOperation
+          : this.state.focusedButton ?? operations[0];
         metric.data = metric.data.filter((dataItem) => dataItem.name === matchingMetricOperation);
       }
       metric.data.forEach((dataItem, i) => {
@@ -92,17 +90,20 @@ export default class MetricsPanel extends Component {
         // To avoid the legend overlapping plot, we allow the option to abbreviate trace names if:
         // - received truthy shouldAbbreviateTraceName AND
         // - trace name longer than the max name legnth
-        const shouldAbbreviate = shouldAbbreviateTraceName && dataItem['name'].length > MAX_NAME_LENGTH;
+        const shouldAbbreviate =
+          shouldAbbreviateTraceName && dataItem['name'].length > MAX_NAME_LENGTH;
         if (shouldAbbreviate && !metricMeasure === MetricMeasure.OUTLIER) {
           dataItem['name'] = dataItem['name'].substring(0, MAX_NAME_LENGTH) + '...';
           // Legend name from outlier should be based on instance name in case of outliers
         } else if (metricMeasure === MetricMeasure.OUTLIER) {
           dataItem['name'] = dataItem['instanceName']
-            ? dataItem['instanceName'] + (this.state.isItemInDropdown ? ' (' + dataItem['name'] + ')' : '')
+            ? dataItem['instanceName'] +
+              (this.state.isItemInDropdown ? ' (' + dataItem['name'] + ')' : '')
             : MetricConsts.NODE_AVERAGE;
         } else if (metricType === MetricTypes.OUTLIER_TABLES) {
-          dataItem['name'] = dataItem['namespaceName'] ?
-            `${dataItem['namespaceName']}.${dataItem['tableName']}` : dataItem['tableName'];
+          dataItem['name'] = dataItem['namespaceName']
+            ? `${dataItem['namespaceName']}.${dataItem['tableName']}`
+            : dataItem['tableName'];
         }
         // Only show upto first 8 traces in the legend
         if (i >= 8) {
@@ -133,7 +134,8 @@ export default class MetricsPanel extends Component {
       let max = 0;
       metric.data.forEach(function (data) {
         if (metricType === MetricTypes.OUTLIER_TABLES && data?.namespaceName) {
-          data.hovertemplate = '%{data.namespaceName}.%{data.fullname}: %{y} at %{x} <extra></extra>';
+          data.hovertemplate =
+            '%{data.namespaceName}.%{data.fullname}: %{y} at %{x} <extra></extra>';
         } else {
           data.hovertemplate = '%{data.fullname}: %{y} at %{x} <extra></extra>';
         }
@@ -168,7 +170,7 @@ export default class MetricsPanel extends Component {
         r: 25,
         b: 0,
         t: 70,
-        pad: 14
+        pad: 4
       };
       if (
         isNonEmptyObject(metric.layout.yaxis) &&
@@ -221,6 +223,16 @@ export default class MetricsPanel extends Component {
   }
 
   componentDidUpdate(prevProps) {
+    // Enables user to view granular data based on selected time range within the graph
+    if (this.props.isGranularMetricsEnabled) {
+      const metricKeyContainer = document.getElementById(prevProps.metricKey);
+      metricKeyContainer?.on('plotly_relayout', function (eventData) {
+        const startTime = Math.floor(new Date(eventData['xaxis.range[0]']).getTime() / 1000);
+        const endTime = Math.floor(new Date(eventData['xaxis.range[1]']).getTime() / 1000);
+        prevProps.updateTimestamp(startTime, endTime);
+      });
+    }
+
     if (
       this.props.containerWidth !== prevProps.containerWidth ||
       this.props.width !== prevProps.width
@@ -248,12 +260,15 @@ export default class MetricsPanel extends Component {
   }
 
   loadDataByMetricOperation(metricOperation, isItemInDropdown) {
-    this.setState({
-      focusedButton: metricOperation,
-      isItemInDropdown: isItemInDropdown
-    }, () => {
-      this.plotGraph(metricOperation);
-    });
+    this.setState(
+      {
+        focusedButton: metricOperation,
+        isItemInDropdown: isItemInDropdown
+      },
+      () => {
+        this.plotGraph(metricOperation);
+      }
+    );
   }
 
   getGraphWidth(containerWidth) {
@@ -263,15 +278,15 @@ export default class MetricsPanel extends Component {
   }
 
   getClassName(idx, metricOperationsDisplayedLength, metricOperationsDropdownLength) {
-    let className = "outlier-chart-button";
+    let className = 'outlier-chart-button';
     if (this.props.operations?.length === 1) {
-      className = "outlier-chart-button__only";
+      className = 'outlier-chart-button__only';
     } else if (idx === 0) {
-      className = "outlier-chart-button__first";
+      className = 'outlier-chart-button__first';
     } else if (idx === metricOperationsDisplayedLength - 1 && metricOperationsDropdownLength >= 1) {
-      className = "outlier-chart-button__penultimate";
+      className = 'outlier-chart-button__penultimate';
     } else if (idx === metricOperationsDisplayedLength - 1 && !metricOperationsDropdownLength) {
-      className = "outlier-chart-button__last";
+      className = 'outlier-chart-button__last';
     }
     return className;
   }
@@ -287,7 +302,10 @@ export default class MetricsPanel extends Component {
         Metric graph in Prometheus
       </Tooltip>
     );
-    const getMetricsUrl = (internalUrl) => {
+    const getMetricsUrl = (internalUrl, metricsLinkUseBrowserFqdn) => {
+      if (!metricsLinkUseBrowserFqdn) {
+        return internalUrl;
+      }
       const url = new URL(internalUrl);
       url.hostname = window.location.hostname;
       return url.href;
@@ -298,9 +316,9 @@ export default class MetricsPanel extends Component {
       numButtonsInDropdown = 1;
       if (operations.length === 3) {
         numButtonsInDropdown = 2;
-      } else if (operations.length > 3 && operations.length <= 6) {
+      } else if (operations.length > 3 && operations.length < 6) {
         numButtonsInDropdown = 3;
-      } else if (operations.length >= 7) {
+      } else if (operations.length >= 6) {
         numButtonsInDropdown = 4;
       }
       showDropdown = true;
@@ -324,10 +342,13 @@ export default class MetricsPanel extends Component {
                   )}
                   key={idx}
                   active={operation === focusedButton}
-                  onClick={() => this.loadDataByMetricOperation(operation, false)}>{operation}</Button>);
-            })
-          }
-          {showDropdown && metricOperationsDropdown.length >= 1 &&
+                  onClick={() => this.loadDataByMetricOperation(operation, false)}
+                >
+                  {operation}
+                </Button>
+              );
+            })}
+          {showDropdown && metricOperationsDropdown.length >= 1 && (
             <DropdownButton
               id="outlier-dropdown"
               className="btn btn-default outlier-dropdown"
@@ -335,17 +356,20 @@ export default class MetricsPanel extends Component {
               title="..."
               noCaret
             >
-              {
-                metricOperationsDropdown.map((operation, idx) => {
-                  return (<MenuItem
+              {metricOperationsDropdown.map((operation, idx) => {
+                return (
+                  <MenuItem
                     // className='outlier-button'
                     key={idx}
                     active={operation === focusedButton}
-                    onClick={() => this.loadDataByMetricOperation(operation, true)}>{operation}</MenuItem>);
-                })
-              }
+                    onClick={() => this.loadDataByMetricOperation(operation, true)}
+                  >
+                    {operation}
+                  </MenuItem>
+                );
+              })}
             </DropdownButton>
-          }
+          )}
         </span>
         {prometheusQueryEnabled && isNonEmptyArray(this.props.metric?.directURLs) ? (
           <OverlayTrigger placement="top" overlay={tooltip}>
@@ -353,7 +377,10 @@ export default class MetricsPanel extends Component {
               target="_blank"
               rel="noopener noreferrer"
               className="prometheus-link"
-              href={getMetricsUrl(this.props.metric.directURLs[0])}
+              href={getMetricsUrl(
+                this.props.metric.directURLs[0],
+                this.props.metric.metricsLinkUseBrowserFqdn
+              )}
             >
               <img
                 className="prometheus-link-icon"

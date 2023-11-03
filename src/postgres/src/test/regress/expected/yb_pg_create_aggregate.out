@@ -81,19 +81,16 @@ create aggregate my_rank(VARIADIC "any" ORDER BY VARIADIC "any") (
   finalfunc_extra = true,
   hypothetical
 );
--- TODO(jason): uncomment when issue #2172 is closed or closing.
--- alter aggregate my_percentile_disc(float8 ORDER BY anyelement)
---   rename to test_percentile_disc;
--- alter aggregate my_rank(VARIADIC "any" ORDER BY VARIADIC "any")
---   rename to test_rank;
--- TODO(jason): rename `my_*` to `test_*` when issue #2172 is closed or
--- closing.
-\da my_*
-                                      List of aggregate functions
- Schema |        Name        | Result data type |          Argument data types           | Description
---------+--------------------+------------------+----------------------------------------+-------------
- public | my_percentile_disc | anyelement       | double precision ORDER BY anyelement   |
- public | my_rank            | bigint           | VARIADIC "any" ORDER BY VARIADIC "any" |
+alter aggregate my_percentile_disc(float8 ORDER BY anyelement)
+  rename to test_percentile_disc;
+alter aggregate my_rank(VARIADIC "any" ORDER BY VARIADIC "any")
+  rename to test_rank;
+\da test_*
+                                       List of aggregate functions
+ Schema |         Name         | Result data type |          Argument data types           | Description
+--------+----------------------+------------------+----------------------------------------+-------------
+ public | test_percentile_disc | anyelement       | double precision ORDER BY anyelement   |
+ public | test_rank            | bigint           | VARIADIC "any" ORDER BY VARIADIC "any" |
 (2 rows)
 
 -- moving-aggregate options

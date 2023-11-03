@@ -3,9 +3,6 @@ title: Export and import for YSQL
 headerTitle: Export and import
 linkTitle: Export and import
 description: Export and import for YSQL
-aliases:
-  - /preview/manage/backup-restore/back-up-data/
-  - /preview/manage/backup-restore/restore-data/
 menu:
   preview:
     identifier: export-import-data
@@ -35,6 +32,11 @@ In general, it is recommended to use other means for backups, such as [distribut
 
 Both utilities are thread-safe and always produce a consistent version of the database even if run concurrently with other applications that read and update the data.
 
+For more details and a list of all available options, see the following:
+
+- [ysql_dump reference](../../../admin/ysql-dump/)
+- [ysql_dumpall reference](../../../admin/ysql-dumpall/)
+
 ## Export a single database
 
 To export a single database with all its tables, indexes, and other local artifacts, use the `ysql_dump` utility by executing the following command:
@@ -43,8 +45,8 @@ To export a single database with all its tables, indexes, and other local artifa
 ./postgres/bin/ysql_dump -d <db-name> > <file>
 ```
 
-* *db-name* is the name of the database to be exported.
-* *file* is the path to the resulting SQL script file.
+- *db-name* is the name of the database to be exported.
+- *file* is the path to the resulting SQL script file.
 
 For example, to export the `mydb` database into a file called `mydb-dump.sql` located in the `backup` folder, the command would be as follows:
 
@@ -52,7 +54,23 @@ For example, to export the `mydb` database into a file called `mydb-dump.sql` lo
 ./postgres/bin/ysql_dump -d mydb > backup/mydb-dump.sql
 ```
 
-For more details and a list of all available options, see [ysql_dump reference](../../../admin/ysql-dump/).
+## Export a single table
+
+To export a single database table, use the `ysql_dump` utility by executing the following command:
+
+```sh
+./postgres/bin/ysql_dump -t <table-name> <db-name> -f <file>
+```
+
+- *table-name* is the name of the table to be exported.
+- *db-name* is the name of the database to be exported.
+- *file* is the path to the resulting SQL script file.
+
+For example, to export the `mytable` table of the `mydb` database into a file called `mytable-mydb-dump.sql` located in the `backup` folder, the command would be as follows:
+
+```sh
+./postgres/bin/ysql_dump -t mytable mydb -f backup/mytable-mydb-dump.sql
+```
 
 ## Export all databases
 
@@ -66,10 +84,8 @@ To export all databases, along with the global artifacts such as users, roles, p
 
 The following are two of the script's common command-line options:
 
-* *--roles-only* exports just the roles.
-* *--schema-only* exports all database objects without the data.
-
-For more details and a list of all available options, see [ysql_dumpall reference](../../../admin/ysql-dumpall/).
+- *--roles-only* exports just the roles.
+- *--schema-only* exports all database objects without the data.
 
 ## Import
 
@@ -83,7 +99,7 @@ To import the script, use the `ysqlsh` command line tool, as follows:
 
 *sql_script* is the path to the SQL script to be imported.
 
-You can also use the `\i` command in the `ysqlsh` shell to import an SQL script, as follows:
+You can also use the `\i` meta-command in the `ysqlsh` shell to import a SQL script, as follows:
 
 ```sql
 yugabyte=# \i <sql_script>

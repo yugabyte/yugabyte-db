@@ -6,6 +6,10 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
+import com.yugabyte.yw.common.utils.Pair;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Objects;
@@ -41,6 +45,7 @@ public class DeviceInfo {
   @ApiModelProperty(value = "Storage type used for this instance")
   public PublicCloudConstants.StorageType storageType;
 
+  @Override
   public String toString() {
     StringBuilder sb = new StringBuilder("DeviceInfo: ");
     sb.append("volSize=").append(volumeSize);
@@ -48,10 +53,10 @@ public class DeviceInfo {
     sb.append(", mountPoints=").append(mountPoints);
     if (storageType != null) {
       sb.append(", storageType=").append(storageType);
-      if (storageType.isIopsProvisioning() && diskIops != null) {
+      if (diskIops != null && storageType.isIopsProvisioning()) {
         sb.append(", iops=").append(diskIops);
       }
-      if (storageType.isThroughputProvisioning() && throughput != null) {
+      if (throughput != null && storageType.isThroughputProvisioning()) {
         sb.append(", throughput=").append(throughput);
       }
     }
@@ -95,15 +100,22 @@ public class DeviceInfo {
   }
 
   private void checkVolumeBaseInfo() {
+    RuntimeConfGetter runtimeConfGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+    int maxVolumeCount = runtimeConfGetter.getGlobalConf(GlobalConfKeys.maxVolumeCount);
     if (volumeSize == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Volume size field is mandatory");
     } else if (volumeSize <= 0) {
       throw new PlatformServiceException(BAD_REQUEST, "Volume size should be positive");
     }
+
     if (numVolumes == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Number of volumes field is mandatory");
     } else if (numVolumes <= 0) {
       throw new PlatformServiceException(BAD_REQUEST, "Number of volumes should be positive");
+    } else if (numVolumes > maxVolumeCount) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Volume number should not exceed maximum limit of " + maxVolumeCount);
     }
   }
 
@@ -111,13 +123,19 @@ public class DeviceInfo {
     if (storageType == null) {
       return;
     }
-    if (diskIops == null) {
-      if (storageType.isIopsProvisioning()) {
+    if (storageType.isIopsProvisioning()) {
+      if (diskIops == null) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Disk IOPS is mandatory for " + storageType.name() + " storage");
       }
-    } else if (diskIops <= 0) {
-      throw new PlatformServiceException(BAD_REQUEST, "Disk IOPS should be positive");
+      Pair<Integer, Integer> iopsRange = storageType.getIopsRange();
+      if (diskIops < iopsRange.getFirst() || diskIops > iopsRange.getSecond()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Disk IOPS for storage type %s should be in range [%d, %d]",
+                storageType.name(), iopsRange.getFirst(), iopsRange.getSecond()));
+      }
     }
   }
 
@@ -125,13 +143,19 @@ public class DeviceInfo {
     if (storageType == null) {
       return;
     }
-    if (throughput == null) {
-      if (storageType.isThroughputProvisioning()) {
+    if (storageType.isThroughputProvisioning()) {
+      if (throughput == null) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Disk throughput is mandatory for " + storageType.name() + " storage");
       }
-    } else if (throughput <= 0) {
-      throw new PlatformServiceException(BAD_REQUEST, "Disk throughput should be positive");
+      Pair<Integer, Integer> throughputRange = storageType.getThroughputRange();
+      if (throughput < throughputRange.getFirst() || throughput > throughputRange.getSecond()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Disk throughput for storage type %s should be in range [%d, %d]",
+                storageType.name(), throughputRange.getFirst(), throughputRange.getSecond()));
+      }
     }
   }
 }

@@ -16,6 +16,7 @@
 #include <future>
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/hybrid_time.h"
 
 #include "yb/util/status_fwd.h"
 
@@ -28,6 +29,11 @@ class PgSession;
 
 class PerformFuture {
  public:
+  struct Data {
+    rpc::CallResponsePtr response;
+    HybridTime used_in_txn_limit;
+  };
+
   PerformFuture() = default;
   PerformFuture(std::future<PerformResult> future, PgSession* session, PgObjectIds&& relations);
   PerformFuture(PerformFuture&&) = default;
@@ -36,8 +42,7 @@ class PerformFuture {
 
   bool Valid() const;
   bool Ready() const;
-  Result<rpc::CallResponsePtr> Get();
-  Result<rpc::CallResponsePtr> Get(MonoDelta* wait_time);
+  Result<Data> Get();
 
  private:
   std::future<PerformResult> future_;

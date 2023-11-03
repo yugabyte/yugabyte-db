@@ -21,16 +21,22 @@ public class NodeTaskParams extends UniverseDefinitionTaskParams implements INod
   public String nodeName;
 
   // The UUID of the node that we have selected.
-  // TODO: currently only used for onprem cloud.
   public UUID nodeUuid;
 
   // The UUID of the primary/read-replica cluster to which the node belongs.
   public UUID placementUuid;
 
-  // The type of instance for this node
+  // The type of instance for this node.
   public String instanceType;
 
   public boolean useSystemd;
+  // Using custom ssh user
+
+  public String sshUserOverride;
+
+  public Integer sshPortOverride;
+
+  public Map<String, String> tags;
 
   @JsonIgnore private AvailabilityZone zone;
 

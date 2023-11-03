@@ -16,7 +16,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 import org.yb.client.TestUtils;
 
 import java.sql.ResultSet;
@@ -50,7 +50,7 @@ import static org.yb.AssertionWrappers.*;
 // Index for SELECTing ybctid of the same airport type using RANGE key.
 //   CREATE INDEX airport_type_range_idx ON airports(name ASC, type ASC, ident ASC);
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgRegressSecondaryIndexScan extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgRegressSecondaryIndexScan.class);
 
@@ -66,6 +66,7 @@ public class TestPgRegressSecondaryIndexScan extends BasePgSQLTest {
     // The following queries run index scan on "airport_type_hash_idx" to find ybctid, which is
     // then use to query data from "airports".
     final String rowQuery =
+        "/*+Set(yb_bnl_batch_size 1)*/" +
         "SELECT elevation_ft FROM airports WHERE ident IN " +
         "  (SELECT ident FROM airports WHERE type = '%s' AND iso_country > '0');";
     final String batchQuery =
@@ -99,6 +100,7 @@ public class TestPgRegressSecondaryIndexScan extends BasePgSQLTest {
     // The following queries run index scan on "airport_type_range_idx" to find ybctid, which is
     // then use to query data from "airports".
     final String rowQuery =
+        "/*+Set(yb_bnl_batch_size 1)*/" +
         "SELECT elevation_ft FROM airports WHERE ident IN" +
         "  (SELECT ident FROM airports WHERE type = '%s' AND name > '!');";
     final String batchQuery =

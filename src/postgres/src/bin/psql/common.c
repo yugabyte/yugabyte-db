@@ -228,7 +228,7 @@ psql_error(const char *fmt,...)
 	if (pset.queryFout && pset.queryFout != stdout)
 		fflush(pset.queryFout);
 
-	if (pset.inputfile)
+	if (pset.inputfile && !GetVariable(pset.vars, "YB_DISABLE_ERROR_PREFIX"))
 		fprintf(stderr, "%s:%s:" UINT64_FORMAT ": ", pset.progname, pset.inputfile, pset.lineno);
 	va_start(ap, fmt);
 	vfprintf(stderr, _(fmt), ap);

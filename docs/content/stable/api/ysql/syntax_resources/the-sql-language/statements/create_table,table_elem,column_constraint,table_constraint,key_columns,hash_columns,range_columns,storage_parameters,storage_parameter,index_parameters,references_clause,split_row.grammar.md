@@ -1,10 +1,10 @@
 ```output.ebnf
 create_table ::= CREATE [ TEMPORARY | TEMP ] TABLE [ IF NOT EXISTS ] 
                  table_name ( [ table_elem [ , ... ] ] ) 
-                 [ WITH ( { COLOCATED = { 'true' | 'false' }
+                 [ WITH ( { COLOCATION = { 'true' | 'false' }
                             | storage_parameters } )
                    | WITHOUT OIDS ]  [ TABLESPACE tablespace_name ] 
-                 [ SPLIT { INTO integer TABLETS
+                 [ SPLIT { INTO positive_int_literal TABLETS
                            | AT VALUES ( split_row [ , ... ] ) } ]
 
 table_elem ::= column_name data_type [ column_constraint [ ... ] ]

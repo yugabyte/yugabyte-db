@@ -13,7 +13,6 @@
 # under the License.
 #
 set -euo pipefail
-
 script_name=${0##*/}
 script_name=${script_name%.*}
 
@@ -65,7 +64,7 @@ Build options:
 
   --skip-build, --sb
     Skip all kinds of build (C++, Java)
-  --skip-java-build, --skip-java, --sjb, --sj
+  --skip-java-build, --skip-java, --sjb, --sj, --no-java, --nj
     Do not package and install java source code.
   --skip-cxx-build, --scb
     Skip C++ build. This is useful when repeatedly debugging tests using this tool and not making
@@ -78,6 +77,10 @@ Build options:
     Do not build tests
   --no-tcmalloc
     Do not use tcmalloc.
+  --use-google-tcmalloc, --google-tcmalloc
+    Use Google's implementation of tcmalloc from https://github.com/google/tcmalloc
+  --no-google-tcmalloc, --use-gperftools-tcmalloc, --gperftools-tcmalloc
+    Use the gperftools implementation of tcmalloc
 
   --clean-postgres
     Do a clean build of the PostgreSQL subtree.
@@ -106,7 +109,7 @@ Build options:
   --force-run-cmake, --frcm
     Ensure that we explicitly invoke CMake from this script. CMake may still run as a result of
     changes made to CMakeLists.txt files if we just invoke make on the CMake-generated Makefile.
-  --force-no-run-cmake, --fnrcm
+  --force-no-run-cmake, --fnrcm, --skip-cmake, --no-cmake
     The opposite of --force-run-cmake. Makes sure we do not run CMake.
   --cmake-args
     Additional CMake arguments
@@ -160,6 +163,8 @@ Build options:
     Enable Clang static analyzer
   --clangd-index
     Build a static Clangd index using clangd-indexer.
+  --clangd-index-only, --cio
+    A combination of --clangd-index, --skip-initdb, and --skip-java
   --clangd-index-format <format>
     Clangd index format ("binary" or "yaml"). A YAML index can be moved to another directory.
   --mvn-opts <maven_options>
@@ -169,7 +174,7 @@ Build options:
     https://llvm.org/docs/LinkTimeOptimization.html and https://clang.llvm.org/docs/ThinLTO.html).
     Can also be specified by setting environment variable YB_LINKING_TYPE to thin-lto or full-lto.
     Set YB_LINKING_TYPE to 'dynamic' to disable LTO.
-  --no-initdb
+  --no-initdb, --skip-initdb
     Skip the initdb step. The initdb build step is mostly single-threaded and can be executed on a
     low-CPU build machine even if the majority of the build is being executed on a high-CPU host.
   --skip-test-log-rewrite
@@ -177,6 +182,10 @@ Build options:
   --skip-final-lto-link
     For LTO builds, skip the final linking step for server executables, which could take many
     minutes.
+  --cxx-test-filter-re, --cxx-test-filter-regex
+    Regular expression for filtering C++ tests to build. This regular expression is not anchored
+    on either end, so e.g. you can specify a substring of the test name. Use ^ or $ as needed.
+
 Linting options:
 
   --shellcheck
@@ -210,16 +219,19 @@ Test options:
 
   --collect-java-tests
     Collect the set of Java test methods into a file
-  --java-tests, run-java-tests
-    Run the java unit tests when build is enabled.
+  --java-tests, --run-java-tests
+    Run the Java unit tests.
   --java-test <java_test_name>
     Build and run the given Java test. Test name format is e.g.
     org.yb.loadtester.TestRF1Cluster[#testRF1toRF3].
   --run-java-test-methods-separately, --rjtms
     Run each Java test (test method or a parameterized instantiation of a test method) separately
-    as its own top-level Maven invocation, writing output to a separate file.
+    as its own top-level Maven invocation, writing output to a separate file. This is the default
+    when --java-test specifies a particular test method using the [package.]ClassName#testMethod
+    syntax, and only makes a difference when running the entire test suite.
+
   --java-test-args
-    Extra arguments to pass to mvn when running tests. Used with --java-test.
+    Extra arguments to pass to Maven when running tests. Used with --java-test.
 
   --python-tests
     Run various Python tests (doctest, unit test) and exit.
@@ -227,7 +239,7 @@ Test options:
   --{no,skip}-{test-existence-check,check-test-existence}
     Don't check that all test binaries referenced by CMakeLists.txt files exist.
   --num-repetitions, --num-reps, -n
-    Repeat a C++ test this number of times. This delegates to the repeat_unit_test.sh script.
+    Repeat a C++/Java test this number of times. This delegates to the repeat_unit_test.sh script.
   --test-parallelism, --tp N
     When running tests repeatedly, run up to N instances of the test in parallel. Equivalent to the
     --parallelism argument of repeat_unit_test.sh.
@@ -255,6 +267,13 @@ Test options:
   --extra-daemon-flags, --extra-daemon-args <extra_daemon_flags>
     Extra flags to pass to mini-cluster daemons (master/tserver). Note that bash-style quoting won't
     work here -- they are naively split on spaces.
+  --(with|no)-fuzz-targets
+    Build|Do not build fuzz targets. By default - do not build.
+  --(with|no)-odyssey
+    Specify whether to build Odyssey (PostgreSQL connection pooler). Not building by default.
+
+  --validate-args-only
+    Only validate command-line arguments and exit immediately. Suppress all unnecessary output.
 
 Debug options:
 
@@ -296,7 +315,37 @@ set_cxx_test_name() {
   if [[ -n $cxx_test_name ]]; then
     fatal "Only one C++ test name can be specified (found '$cxx_test_name' and '$1')."
   fi
-  cxx_test_name=$1
+  if [[ $1 == TEST* ]]; then
+    local test_source_path
+    test_source_path=$(
+      ( cd "$YB_SRC_ROOT/src" && git grep "$1" ) | cut -d: -f1 | sort | uniq
+    )
+    if [[ ! -f "$YB_SRC_ROOT/src/$test_source_path" ]]; then
+      fatal "Failed to identify test path based on code substring $cxx_test_name." \
+            "Grep result: $test_source_path"
+    fi
+    cxx_test_name=${test_source_path##*/}
+    cxx_test_name=${cxx_test_name%.cc}
+
+    # A convenience syntax for copying and pasting a line from a C++ test.
+    # E.g. --cxx-test='TEST(FormatTest, Time) {' or even
+    # --cxx-test='TEST_F_EX(ClientTest, CompactionStatusWaitingForHeartbeats, CompactionClientTest)'
+
+    local gtest_filter
+    local identifier='([a-zA-Z_][a-zA-Z_0-9]*)'
+    if [[ $1 =~ ^(TEST_F_EX)\($identifier,\ *$identifier,\ *$identifier\) ||
+          $1 =~ ^(TEST|TEST_F)\($identifier,\ *$identifier\) ]]; then
+      gtest_filter=${BASH_REMATCH[2]}.${BASH_REMATCH[3]}
+    else
+      fatal "Could not determine gtest test filter from source substring $1"
+    fi
+    export YB_GTEST_FILTER=$gtest_filter
+
+    log "Determined C++ test based on source substring:" \
+        "--cxx-test=$cxx_test_name --gtest_filter=$gtest_filter"
+  else
+    cxx_test_name=$1
+  fi
   running_any_tests=true
   build_java=false
 }
@@ -311,6 +360,8 @@ set_java_test_name() {
     fatal "Only one Java test name can be specified (found '$java_test_name' and '$1')."
   fi
   running_any_tests=true
+  run_java_tests=true
+  build_java=true
   java_test_name=$1
 }
 
@@ -329,6 +380,8 @@ print_report_line() {
   printf '%-32s : '"$format_suffix\n" "$@"
 }
 
+# Report the time taken for a particular operation, based on the start and end time variables.
+# If these variables are not set, then no report line is printed.
 report_time() {
   expect_num_args 2 "$@"
   local description=$1
@@ -370,16 +423,14 @@ print_report() {
       if [[ -n $make_targets_str ]]; then
         print_report_line "%s" "Targets" "$make_targets_str"
       fi
-      report_time "CMake" "cmake"
-      report_time "C++ compilation" "make"
-      if [[ ${run_java_tests} == "true" ]]; then
-        report_time "Java compilation and tests" "java_build"
-      else
-        report_time "Java compilation" "java_build"
-      fi
-      report_time "C++ (one test program)" "cxx_test"
-      report_time "ctest (multiple C++ test programs)" "ctest"
-      report_time "Remote tests" "remote_tests"
+      report_time "CMake"                               cmake
+      report_time "C++ compilation"                     make
+      report_time "Java compilation"                    java_build
+      report_time "C++ (one test program)"              cxx_test
+      report_time "ctest (multiple C++ test programs)"  ctest
+      report_time "Collecting Java tests"               collect_java_tests
+      report_time "Java tests"                          java_tests
+      report_time "Remote tests"                        remote_tests
 
       if [[ ${YB_SKIP_BUILD:-} == "1" ]]; then
         echo
@@ -434,7 +485,7 @@ capture_sec_timestamp() {
   eval "${1}_time_sec=$current_timestamp"
 }
 
-run_yugabyted-ui_build() {
+run_yugabyted_ui_build() {
   # This is a standalone build script.  It honors BUILD_ROOT from the env
   "${YB_SRC_ROOT}/yugabyted-ui/build.sh"
 }
@@ -453,11 +504,18 @@ run_cxx_build() {
     if is_mac && [[ "${YB_TARGET_ARCH:-}" == "arm64" ]]; then
       cmake_binary=/opt/homebrew/bin/cmake
     else
+      if ! which cmake &> /dev/null; then
+        echo "Error: cmake not found in PATH" >&2
+        exit 1
+      fi
       cmake_binary=$( which cmake )
     fi
     log "Using cmake binary: $cmake_binary"
+    find "${BUILD_ROOT}" -name "CMake*.log" -exec rm -f {} \;
     log "Running cmake in $PWD"
     capture_sec_timestamp "cmake_start"
+    local cmake_stdout_path=${BUILD_ROOT}/cmake_stdout.txt
+    local cmake_stderr_path=${BUILD_ROOT}/cmake_stderr.txt
     set +e
     (
       # Always disable remote build (running the compiler on a remote worker node) when running the
@@ -470,26 +528,51 @@ run_cxx_build() {
       set -x
       # We are not double-quoting $cmake_extra_args on purpose to allow multiple arguments.
       # shellcheck disable=SC2086
-      "${cmake_binary}" "${cmake_opts[@]}" $cmake_extra_args "${YB_SRC_ROOT}"
+      "${cmake_binary}" "${cmake_opts[@]}" $cmake_extra_args "${YB_SRC_ROOT}" \
+        >"${cmake_stdout_path}" 2>"${cmake_stderr_path}"
     )
     local cmake_exit_code=$?
     set -e
     capture_sec_timestamp "cmake_end"
+
+    # Show the contents of special CMake output files before we show CMake output itself.
     if [[ ${cmake_exit_code} != 0 ]]; then
       log "CMake failed with exit code ${cmake_exit_code}."
       (
         find "${BUILD_ROOT}" -name "CMake*.log" | while read -r cmake_log_path; do
           echo
-          echo "----------------------------------------------------------------------------------"
+          echo "--------------------------------------------------------------------------------"
           echo "Contents of ${cmake_log_path}:"
-          echo "----------------------------------------------------------------------------------"
+          echo "--------------------------------------------------------------------------------"
           echo
           cat "${cmake_log_path}"
           echo
-          echo "----------------------------------------------------------------------------------"
+          echo "--------------------------------------------------------------------------------"
           echo
         done
       ) >&2
+    fi
+
+    if [[ -s ${cmake_stdout_path} ]]; then
+      if [[ ${cmake_exit_code} != 0 ]]; then
+        # Only mark CMake standard output as such in case of an error. Otherwise, just pass it
+        # through.
+        echo "CMake standard output (also saved to ${cmake_stdout_path}):"
+        echo
+      fi
+      cat "${cmake_stdout_path}"
+      if [[ ${cmake_exit_code} != 0 ]]; then
+        echo
+      fi
+    fi
+    if [[ -s ${cmake_stderr_path} ]]; then
+      echo "CMake standard error (also saved to ${cmake_stderr_path}):" >&2
+      echo >&2
+      cat "${cmake_stderr_path}" >&2
+      echo >&2
+    fi
+
+    if [[ ${cmake_exit_code} != 0 ]]; then
       fatal "CMake failed with exit code ${cmake_exit_code}. See additional logging above."
     fi
   fi
@@ -553,7 +636,7 @@ run_cxx_build() {
   fi
 
   # Don't check for test binary existence in case targets are explicitly specified.
-  if "$test_existence_check" && [[ ${#make_targets[@]} -eq 0 ]]; then
+  if [[ $test_existence_check == "true" && ${#make_targets[@]} -eq 0 ]]; then
     (
       cd "$BUILD_ROOT"
       log "Checking if all test binaries referenced by CMakeLists.txt files exist."
@@ -608,7 +691,7 @@ run_ctest() {
 
 run_tests_remotely() {
   ran_tests_remotely=false
-  if ! "$running_any_tests"; then
+  if [[ $running_any_tests == "false" ]]; then
     # Nothing to run remotely.
     return
   fi
@@ -724,6 +807,76 @@ enable_clangd_index_build() {
   export YB_EXPORT_COMPILE_COMMANDS=1
 }
 
+set_cxx_test_filter_regex() {
+  expect_num_args 1 "$@"
+  force_run_cmake=true
+  cmake_opts+=( "-DYB_TEST_FILTER_RE=$1" )
+}
+
+# This function is used to propagate a boolean variable to a CMake variable. For example, if we have
+# a variable named build_tests, we will propagate that variable to a CMake parameter named
+# YB_BUILD_TESTS, and will replace true with ON and false with OFF. This is useful for variables
+# that are used in both build scripts and CMake files.
+propagate_bool_var_to_cmake() {
+  expect_num_args 1 "$@"
+  local var_name=$1
+  # var_name could be something build_tests. We will propagate that variable to a CMake parameter
+  # named e.g. YB_BUILD_TESTS, and will replace true with ON and false with OFF.
+  if [[ -n ${!var_name:-} ]]; then
+    local cmake_var_name
+    cmake_var_name=YB_$( tr '[:lower:]' '[:upper:]' <<<"${var_name}" )
+    local cmake_var_value
+    case "${!var_name}" in
+      true) cmake_var_value=ON ;;
+      false) cmake_var_value=OFF ;;
+      *) fatal "Invalid value of variable ${var_name}: ${!var_name}. Expected 'true' or 'false'."
+    esac
+    cmake_opts+=( "-D${cmake_var_name}=${cmake_var_value}" )
+
+    # CMakeCache.txt will contain something like
+    # YB_BUILD_ODYSSEY:UNINITIALIZED=ON
+    # Only re-run CMake if we want to put a different value of this variable there.
+    local cmake_cache_path="$BUILD_ROOT/CMakeCache.txt"
+    if [[ ${force_no_run_cmake} == "false" ]] && (
+         [[ ! -f $cmake_cache_path ]] ||
+         ! grep -Eq "^${cmake_var_name}:[A-Z]*=${cmake_var_value}$" "$cmake_cache_path"
+       ); then
+      force_run_cmake=true
+    fi
+  fi
+}
+
+use_packaged_targets() {
+  local packaged_targets=()
+  local optional_components_args=()
+  if [[ "${build_odyssey:-}" == "true" ]]; then
+    optional_components_args+=( "--with_odyssey" )
+  else
+    optional_components_args+=( "--no_odyssey" )
+  fi
+  if [[ "${build_yugabyted_ui:-}" == "true" ]]; then
+    optional_components_args+=( "--with_yugabyted_ui" )
+  else
+    optional_components_args+=( "--no_yugabyted_ui" )
+  fi
+  while IFS='' read -r line; do
+    packaged_targets+=( "$line" )
+  done < <(
+    activate_virtualenv &>/dev/null
+    set_pythonpath
+    "$YB_SCRIPT_PATH_LIST_PACKAGED_TARGETS" "${optional_components_args[@]}"
+  )
+  if [[ ${#packaged_targets[@]} -eq 0 ]]; then
+    fatal "Failed to identify the set of targets to build for the release package"
+  fi
+  make_targets+=(
+    "${packaged_targets[@]}"
+    initial_sys_catalog_snapshot
+    update_ysql_conn_mgr_template
+    update_ysql_migrations
+  )
+}
+
 # -------------------------------------------------------------------------------------------------
 # Command line parsing
 # -------------------------------------------------------------------------------------------------
@@ -740,11 +893,14 @@ make_opts=()
 force=false
 build_cxx=true
 build_java=true
-build_yugabyted_ui=false
+
+# We will set this to true if we are running a single Java test or all tests.
 run_java_tests=false
+
 save_log=false
 make_targets=()
 no_tcmalloc=false
+must_use_tcmalloc=false
 cxx_test_name=""
 test_existence_check=true
 object_files_to_delete=()
@@ -770,9 +926,7 @@ clean_postgres=false
 make_ninja_extra_args=""
 java_lint=false
 collect_java_tests=false
-
-# This will be set to true/false based on --no-tests / --with-tests.
-build_tests=""
+should_use_packaged_targets=false
 
 # The default value of this parameter will be set based on whether we're running on Jenkins.
 reduce_log_output=""
@@ -798,6 +952,34 @@ if [[ ${YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT:-} == "1" ]]; then
 fi
 
 export YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT=0
+
+cxx_test_filter_regex=""
+reset_cxx_test_filter=false
+
+use_google_tcmalloc=""
+
+# -------------------------------------------------------------------------------------------------
+# Switches deciding what components or targets to build
+# -------------------------------------------------------------------------------------------------
+
+build_tests=""
+build_fuzz_targets=""
+
+# These will influence what targets to build if invoked with the packaged_targets meta-target.
+build_odyssey=false
+if is_linux; then
+  build_odyssey=true
+fi
+
+build_yugabyted_ui=false
+
+# -------------------------------------------------------------------------------------------------
+
+validate_args_only=false
+
+# -------------------------------------------------------------------------------------------------
+# Actually parsing command-line arguments
+# -------------------------------------------------------------------------------------------------
 
 yb_build_args=( "$@" )
 
@@ -831,7 +1013,7 @@ while [[ $# -gt 0 ]]; do
     --force-run-cmake|--frcm)
       force_run_cmake=true
     ;;
-    --force-no-run-cmake|--fnrcm)
+    --force-no-run-cmake|--fnrcm|--no-cmake|--skip-cmake)
       force_no_run_cmake=true
     ;;
     --cmake-only)
@@ -868,6 +1050,12 @@ while [[ $# -gt 0 ]]; do
     # --clangd-* options have to precede the catch-all --clang* option that specifies compiler type.
     --clangd-index)
       enable_clangd_index_build
+      build_java=false
+    ;;
+    --clangd-index-only|--cio)
+      enable_clangd_index_build
+      build_java=false
+      disable_initdb
     ;;
     --clangd-index-format)
       clangd_index_format=$2
@@ -888,7 +1076,7 @@ while [[ $# -gt 0 ]]; do
         fatal "--gcc / --clang is expected to be followed by compiler major version"
       fi
     ;;
-    --skip-java-build|--skip-java|--sjb|--sj)
+    --skip-java-build|--skip-java|--sjb|--sj|--no-java|--nj)
       build_java=false
     ;;
     --run-java-tests|--java-tests)
@@ -909,6 +1097,15 @@ while [[ $# -gt 0 ]]; do
     ;;
     --no-tcmalloc)
       no_tcmalloc=true
+      use_google_tcmalloc=false
+    ;;
+    --no-google-tcmalloc|--use-gperftools-tcmalloc|--gperftools-tcmalloc)
+      use_google_tcmalloc=false
+      must_use_tcmalloc=true
+    ;;
+    --use-google-tcmalloc|--google-tcmalloc)
+      use_google_tcmalloc=true
+      must_use_tcmalloc=true
     ;;
     --cxx-test|--ct)
       set_cxx_test_name "$2"
@@ -976,8 +1173,11 @@ while [[ $# -gt 0 ]]; do
       build_cxx=false
       java_only=true
     ;;
-    --build-yugabyted-ui)
+    --build-yugabyted-ui|--with-yugabyted-ui)
       build_yugabyted_ui=true
+    ;;
+    --no-yugabyted-ui|--skip-yugabyted-ui)
+      build_yugabyted_ui=false
     ;;
     --num-repetitions|--num-reps|-n)
       ensure_option_has_arg "$@"
@@ -1049,13 +1249,7 @@ while [[ $# -gt 0 ]]; do
       make_targets+=( "yb-master" "yb-tserver" "gen_auto_flags_json" "postgres" "yb-admin" )
     ;;
     packaged|packaged-targets)
-      for packaged_target in $( "$YB_SRC_ROOT"/build-support/list_packaged_targets.py ); do
-        make_targets+=( "$packaged_target" )
-      done
-      if [[ ${#make_targets[@]} -eq 0 ]]; then
-        fatal "Failed to identify the set of targets to build for the release package"
-      fi
-      make_targets+=( "initial_sys_catalog_snapshot" "update_ysql_migrations" )
+      should_use_packaged_targets=true
     ;;
     --skip-build|--sb)
       set_flags_to_skip_build
@@ -1166,6 +1360,7 @@ while [[ $# -gt 0 ]]; do
       # We modify YB_RUN_JAVA_TEST_METHODS_SEPARATELY in a subshell in a few places on purpose.
       # shellcheck disable=SC2031
       export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
+      run_java_tests=true
     ;;
     --rebuild-postgres)
       clean_postgres=true
@@ -1173,6 +1368,15 @@ while [[ $# -gt 0 ]]; do
     ;;
     --sanitizers-enable-coredump)
       export YB_SANITIZERS_ENABLE_COREDUMP=1
+    ;;
+    --valgrind-path)
+      ensure_option_has_arg "$@"
+      valgrind_path=$(realpath "$2")
+      shift
+      if [[ ! -f $valgrind_path ]]; then
+        fatal "Valgrind file doesn't exist: $valgrind_path"
+      fi
+      export YB_VALGRIND_PATH=$valgrind_path
     ;;
     --extra-daemon-flags|--extra-daemon-args)
       ensure_option_has_arg "$@"
@@ -1185,9 +1389,6 @@ while [[ $# -gt 0 ]]; do
     ;;
     --no-latest-symlink)
       export YB_DISABLE_LATEST_SYMLINK=1
-    ;;
-    --static-analyzer)
-      export YB_ENABLE_STATIC_ANALYZER=1
     ;;
     --download-thirdparty|--dltp)
       export YB_DOWNLOAD_THIRDPARTY=1
@@ -1211,7 +1412,28 @@ while [[ $# -gt 0 ]]; do
       build_tests=false
     ;;
     --with-tests)
+      # We use this variable indirectly via propagate_bool_var_to_cmake.
+      # shellcheck disable=SC2034
       build_tests=true
+    ;;
+    --no-fuzz-targets)
+      build_fuzz_targets=false
+    ;;
+    --with-fuzz-targets)
+      # We use this variable indirectly via propagate_bool_var_to_cmake.
+      # shellcheck disable=SC2034
+      build_fuzz_targets=true
+    ;;
+    --no-odyssey)
+      build_odyssey=false
+    ;;
+    --with-odyssey)
+      if is_mac; then
+        fatal "Cannot build Odyssey on macOS"
+      fi
+      # We use this variable indirectly via propagate_bool_var_to_cmake.
+      # shellcheck disable=SC2034
+      build_odyssey=true
     ;;
     --cmake-unit-tests)
       run_cmake_unit_tests=true
@@ -1223,7 +1445,7 @@ while [[ $# -gt 0 ]]; do
       export YB_LINKING_TYPE=full-lto
     ;;
     --lto)
-      if [[ ! $2 =~ ^(thin|full|none) ]]; then
+      if [[ ! $2 =~ ^(thin|full|none)$ ]]; then
         fatal "Invalid LTO type: $2"
       fi
       if [[ $2 == "none" ]]; then
@@ -1258,7 +1480,7 @@ while [[ $# -gt 0 ]]; do
     --no-linuxbrew)
       export YB_USE_LINUXBREW=0
     ;;
-    --no-initdb)
+    --no-initdb|--skip-initdb)
       disable_initdb
     ;;
     --skip-test-log-rewrite)
@@ -1266,6 +1488,16 @@ while [[ $# -gt 0 ]]; do
     ;;
     --skip-final-lto-link)
       export YB_SKIP_FINAL_LTO_LINK=1
+    ;;
+    --cxx-test-filter-re|--cxx-test-filter-regex)
+      cxx_test_filter_regex=$2
+      shift
+    ;;
+    --reset-cxx-test-filter)
+      reset_cxx_test_filter=true
+    ;;
+    --validate-args-only)
+      validate_args_only=true
     ;;
     *)
       if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then
@@ -1325,30 +1557,55 @@ handle_predefined_build_root
 
 # Setting CMake options.
 cmake_opts=()
+
+if is_mac && [[ $should_build_clangd_index == "true" && ${YB_COMPILER_TYPE:-} == "" ]]; then
+  # On macOS, we need to use our custom-built version of Clang to build the clangd index.
+  YB_COMPILER_TYPE=clang16
+fi
+if [[ $validate_args_only == "true" ]]; then
+  yb_set_build_type_quietly=true
+fi
 set_cmake_build_type_and_compiler_type
-if [[ -n ${build_tests} ]]; then
-  force_run_cmake=true
-  # YB_BUILD_TESTS will get stored in CMake cache and take effect on further runs.
-  if [[ ${build_tests} == "true" ]]; then
-    cmake_opts+=( -DYB_BUILD_TESTS=ON )
-  else
-    cmake_opts+=( -DYB_BUILD_TESTS=OFF )
-  fi
+
+if [[ $should_build_clangd_index == "true" && ! ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ ]]; then
+  fatal "Cannot build clangd index with compiler type: ${YB_COMPILER_TYPE}." \
+        "Use a version of Clang that includes clangd-indexer (specify --clang<version>)."
 fi
 
-log "YugabyteDB build is running on host '$HOSTNAME'"
-log "YB_COMPILER_TYPE=$YB_COMPILER_TYPE"
+if [[ -n ${cxx_test_filter_regex} ]]; then
+  if [[ ${reset_cxx_test_filter} == "true" ]]; then
+    fatal "--cxx-test-filter-regex is incompatible with --reset-cxx-filter-regex"
+  fi
+  set_cxx_test_filter_regex "${cxx_test_filter_regex}"
+fi
+if [[ ${reset_cxx_test_filter} == "true" ]]; then
+  set_cxx_test_filter_regex ""
+fi
 
+if [[ $validate_args_only == "false" ]]; then
+  log "YugabyteDB build is running on host '$HOSTNAME'"
+  log "YB_COMPILER_TYPE=$YB_COMPILER_TYPE"
+fi
+
+normalize_build_type
 if [[ ${verbose} == "true" ]]; then
   log "build_type=$build_type, cmake_build_type=$cmake_build_type"
 fi
 export BUILD_TYPE=$build_type
 
+if [[ -z "${use_google_tcmalloc:-}" ]]; then
+  if is_linux && [[ ! ${build_type} =~ ^(asan|tsan)$ ]]; then
+    use_google_tcmalloc=true
+  else
+    use_google_tcmalloc=false
+  fi
+fi
+
 if [[ ${force_run_cmake} == "true" && ${force_no_run_cmake} == "true" ]]; then
   fatal "--force-run-cmake and --force-no-run-cmake are incompatible"
 fi
 
-if "$cmake_only" && [[ $force_no_run_cmake == "true" || $java_only == "true" ]]; then
+if [[ $cmake_only == "true" && ( $force_no_run_cmake == "true" || $java_only == "true" ) ]]; then
   fatal "--cmake-only is incompatible with --force-no-run-cmake or --java-only"
 fi
 
@@ -1361,7 +1618,7 @@ if [[ ${should_run_ctest} == "true" ]]; then
     fatal "--java-test (running one Java test) is mutually exclusive with " \
           "--ctest (running a number of C++ tests)"
   fi
-  if ! "$run_java_tests"; then
+  if [[ $run_java_tests == "false" ]]; then
     build_java=false
   fi
 fi
@@ -1434,6 +1691,24 @@ if [[ $build_type == "prof_use" ]] && [[ $pgo_data_path == "" ]]; then
   fatal "Please set --pgo-data-path path/to/pgo/data"
 fi
 
+if [[ "${should_use_packaged_targets}" == "true" ]]; then
+  use_packaged_targets
+fi
+
+if should_run_java_test_methods_separately && [[ -n $java_test_name && $java_test_name != *\#* ]]
+then
+  fatal "--run-java-test-methods-separately is specified, but the Java test name" \
+        "${java_test_name} does not specify a particular test method to run." \
+        "Please specify a test method using the following format: " \
+        "--java-test <class_name>#testMethodName" \
+        " or remove the --run-java-test-methods-separately flag. " \
+        "To run all Java tests, replace --java-test=<test_name> with --java-tests."
+fi
+
+if [[ $validate_args_only == "true" ]]; then
+  exit
+fi
+
 # End of post-processing and validating command-line arguments.
 
 # -------------------------------------------------------------------------------------------------
@@ -1482,6 +1757,10 @@ fi
 
 # shellcheck disable=SC2119
 set_build_root
+
+propagate_bool_var_to_cmake build_tests
+propagate_bool_var_to_cmake build_fuzz_targets
+propagate_bool_var_to_cmake build_odyssey
 
 # -------------------------------------------------------------------------------------------------
 # Cleaning confirmation
@@ -1536,7 +1815,7 @@ else
   fi
 fi
 
-if "$clean_thirdparty" && using_default_thirdparty_dir; then
+if [[ $clean_thirdparty == "true" ]] && using_default_thirdparty_dir; then
   log "Removing and re-building third-party dependencies (--clean-thirdparty specified)"
   (
     set -x
@@ -1554,6 +1833,11 @@ set_pythonpath
 find_or_download_thirdparty
 detect_toolchain
 find_make_or_ninja_and_update_cmake_opts
+find_compiler_by_type
+cmake_opts+=(
+  "-DYB_RESOLVED_C_COMPILER=${cc_executable}"
+  "-DYB_RESOLVED_CXX_COMPILER=${cxx_executable}"
+)
 
 if ! using_default_thirdparty_dir && [[ ${NO_REBUILD_THIRDPARTY:-0} != "1" ]]; then
   log "YB_THIRDPARTY_DIR ('$YB_THIRDPARTY_DIR') is not what we expect based on the source root " \
@@ -1596,8 +1880,22 @@ if [[ ${no_ccache} == "true" ]]; then
   export YB_NO_CCACHE=1
 fi
 
+if [[ ${no_tcmalloc} == "true" && ${must_use_tcmalloc} == "true" ]]; then
+  fatal "--no-tcmalloc was specified along with one of the options that implies we must use" \
+        "some version of tcmalloc (Google tcmalloc or gperftools tcmalloc)"
+fi
+
 if [[ ${no_tcmalloc} == "true" ]]; then
   cmake_opts+=( -DYB_TCMALLOC_ENABLED=0 )
+elif [[ -n ${YB_TCMALLOC_ENABLED:-} ]]; then
+  cmake_opts+=( "-DYB_TCMALLOC_ENABLED=$YB_TCMALLOC_ENABLED" )
+fi
+
+if [[ ${use_google_tcmalloc} == "true" ]]; then
+  if ! is_linux; then
+    fatal "Google TCMalloc is only supported on linux. is_linux is: '${is_linux}'."
+  fi
+  cmake_opts+=( -DYB_GOOGLE_TCMALLOC=1 )
 fi
 
 if [[ $pgo_data_path != "" ]]; then
@@ -1618,7 +1916,8 @@ create_build_root_file
 
 if [[ ${#make_targets[@]} -eq 0 && -n $java_test_name ]]; then
   # Build only a subset of targets when we're only trying to run a Java test.
-  make_targets+=( yb-master yb-tserver gen_auto_flags_json postgres update_ysql_migrations )
+  make_targets+=( yb-master yb-tserver gen_auto_flags_json postgres update_ysql_conn_mgr_template
+      update_ysql_migrations )
 fi
 
 if [[ $build_type == "compilecmds" ]]; then
@@ -1650,66 +1949,76 @@ if [[ ${build_cxx} == "true" ||
 fi
 
 if [[ ${build_yugabyted_ui} == "true" && ${cmake_only} != "true" ]]; then
-  run_yugabyted-ui_build
+  run_yugabyted_ui_build
 fi
 
 export YB_JAVA_TEST_OFFLINE_MODE=0
 
-# Check if the Java build is needed, and skip Java unit test runs if requested.
+if [[ -n $user_mvn_opts ]]; then
+  # We do not double-quote $user_mvn_opts on purpose to allow multiple options.
+  # shellcheck disable=SC2206
+  java_build_common_opts=( $user_mvn_opts )
+else
+  java_build_common_opts=()
+fi
+# shellcheck disable=SC2206
+user_mvn_opts_for_java_test=( $user_mvn_opts )
+
+java_build_common_opts+=( install -DbinDir="$BUILD_ROOT/bin" )
+
+# Build Java code and prepare for running the tests, if necessary, but do not run them yet.
 if [[ ${build_java} == "true" ]]; then
   # We'll need this for running Java tests.
   set_sanitizer_runtime_options
   set_mvn_parameters
 
-  java_build_opts=( install )
-  java_build_opts+=( -DbinDir="$BUILD_ROOT/bin" )
-
-  if ! "$run_java_tests" || should_run_java_test_methods_separately; then
-    java_build_opts+=( -DskipTests )
+  java_build_opts=(
+    "${java_build_common_opts[@]}"
+    # Build tests but do not run them. We always run tests as a separate step from building the
+    # code.
+    -DskipTests
+  )
+  if [[ $run_java_tests == "true" && -n $java_test_name ]]; then
+    # Assembly jars are jars that contain all dependencies. It takes a long time to build these,
+    # and in general we don't need them when running tests, so skip them in the most common
+    # development workflow when running a single test.
+    java_build_opts+=( -Dassembly.skipAssembly=true )
   fi
 
   if [[ ${resolve_java_dependencies} == "true" ]]; then
     java_build_opts+=( "${MVN_OPTS_TO_DOWNLOAD_ALL_DEPS[@]}" )
   fi
 
-  # We read variables with names ending with _{start,end}_time_sec in report_time.
-  # shellcheck disable=SC2034
-  java_build_start_time_sec=$(date +%s)
-
+  capture_sec_timestamp java_build_start
   for java_project_dir in "${yb_java_project_dirs[@]}"; do
     time (
       cd "$java_project_dir"
-      # We do not double-quote $user_mvn_opts on purpose to allow multiple options.
-      # shellcheck disable=SC2034,SC2086
-      build_yb_java_code $user_mvn_opts "${java_build_opts[@]}"
+      build_yb_java_code "${java_build_opts[@]}"
     )
   done
   unset java_project_dir
+  capture_sec_timestamp java_build_end
 
-  if "$run_java_tests" && should_run_java_test_methods_separately; then
-    if ! run_all_java_test_methods_separately; then
-      log "Some Java tests failed"
-      global_exit_code=1
-    fi
-  elif should_run_java_test_methods_separately || "$collect_java_tests"; then
+  if [[ $collect_java_tests == "true" ]]; then
+    capture_sec_timestamp collect_java_tests_start
     collect_java_tests
+    capture_sec_timestamp collect_java_tests_end
   fi
 
-  # We read variables with names ending with _{start,end}_time_sec in report_time.
-  # shellcheck disable=SC2034
-  java_build_end_time_sec=$(date +%s)
   log "Java build finished, total time information above."
 fi
 
 run_tests_remotely
 
 if [[ ${ran_tests_remotely} != "true" ]]; then
+  ensure_test_tmp_dir_is_set
   if [[ -n $cxx_test_name ]]; then
     capture_sec_timestamp cxx_test_start
     run_cxx_test
     capture_sec_timestamp cxx_test_end
   fi
 
+  capture_sec_timestamp java_test_start
   if [[ -n $java_test_name ]]; then
     (
       if [[ $java_test_name == *\#* ]]; then
@@ -1718,7 +2027,30 @@ if [[ ${ran_tests_remotely} != "true" ]]; then
       fi
       resolve_and_run_java_test "$java_test_name"
     )
+  elif [[ $run_java_tests == "true" ]]; then
+    if should_run_java_test_methods_separately; then
+      if ! run_all_java_test_methods_separately; then
+        log "Some Java tests failed"
+        global_exit_code=1
+      fi
+    else
+      java_code_build_purpose="running tests"
+      java_test_opts=(
+        "${java_build_common_opts[@]}"
+        # To keep running tests in all Maven modules even after some tests fail.
+        --fail-never
+      )
+      for java_project_dir in "${yb_java_project_dirs[@]}"; do
+        time (
+          cd "$java_project_dir"
+          build_yb_java_code "${java_test_opts[@]}"
+        )
+      done
+      unset java_project_dir
+      unset java_code_build_purpose
+    fi
   fi
+  capture_sec_timestamp java_test_end
 
   if [[ ${should_run_ctest} == "true" ]]; then
     capture_sec_timestamp ctest_start

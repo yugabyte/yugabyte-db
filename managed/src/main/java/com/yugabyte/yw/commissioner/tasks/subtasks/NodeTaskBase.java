@@ -17,23 +17,17 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.RecoverableException;
 import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeStatus;
-
 import javax.inject.Inject;
-
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
 @Slf4j
 public abstract class NodeTaskBase extends UniverseDefinitionTaskBase {
-  private final NodeManager nodeManager;
-
   @Inject
-  protected NodeTaskBase(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
+  protected NodeTaskBase(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.nodeManager = nodeManager;
   }
 
   public NodeManager getNodeManager() {
@@ -48,7 +42,7 @@ public abstract class NodeTaskBase extends UniverseDefinitionTaskBase {
   @Override
   public String getName() {
     NodeTaskParams taskParams = taskParams();
-    return super.getName() + "(" + taskParams.universeUUID + ", " + taskParams.nodeName + ")";
+    return super.getName() + "(" + taskParams.getUniverseUUID() + ", " + taskParams.nodeName + ")";
   }
 
   @Override
@@ -58,38 +52,32 @@ public abstract class NodeTaskBase extends UniverseDefinitionTaskBase {
 
   // Helper API to update the db for the current node with the given state.
   public void setNodeState(NodeDetails.NodeState state) {
-    // Persist the desired node information into the DB.
-    UniverseUpdater updater =
-        nodeStateUpdater(
-            taskParams().universeUUID,
-            taskParams().nodeName,
-            NodeStatus.builder().nodeState(state).build());
-    saveUniverseDetails(updater);
+    saveNodeStatus(taskParams().nodeName, NodeStatus.builder().nodeState(state).build());
   }
 
   public void setNodeStatus(NodeStatus nodeStatus) {
-    UniverseUpdater updater =
-        nodeStateUpdater(taskParams().universeUUID, taskParams().nodeName, nodeStatus);
-    saveUniverseDetails(updater);
+    saveNodeStatus(taskParams().nodeName, nodeStatus);
   }
 
   @Override
-  public void onFailure(TaskInfo taskInfo, Throwable cause) {
+  public boolean onFailure(TaskInfo taskInfo, Throwable cause) {
     if (cause instanceof RecoverableException) {
       NodeTaskParams params = taskParams();
 
-      log.warn("Encountered a recoverable error, rebooting node {}", params.nodeName);
+      log.warn("Encountered a recoverable error, hard rebooting node {}", params.nodeName);
 
-      RebootServer.Params rebootParams = new RebootServer.Params();
+      NodeTaskParams rebootParams = new NodeTaskParams();
       rebootParams.nodeName = params.nodeName;
-      rebootParams.universeUUID = params.universeUUID;
+      rebootParams.setUniverseUUID(params.getUniverseUUID());
       rebootParams.azUuid = params.azUuid;
-      rebootParams.useSSH = false;
 
-      RebootServer task = createTask(RebootServer.class);
+      HardRebootServer task = createTask(HardRebootServer.class);
       task.initialize(rebootParams);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       task.run();
+      return true;
     }
+
+    return false;
   }
 }

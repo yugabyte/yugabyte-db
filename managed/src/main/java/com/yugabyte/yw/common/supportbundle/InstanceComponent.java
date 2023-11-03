@@ -1,16 +1,18 @@
 package com.yugabyte.yw.common.supportbundle;
 
-import com.typesafe.config.Config;
-import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
-import com.yugabyte.yw.models.Customer;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
-import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -21,7 +23,8 @@ class InstanceComponent implements SupportBundleComponent {
   private final NodeUniverseManager nodeUniverseManager;
   protected final Config config;
   private final SupportBundleUtil supportBundleUtil;
-  public static final String sourceNodeFiles = "master/instance;tserver/instance";
+  public static final List<String> sourceNodeFiles =
+      Arrays.asList("master/instance", "tserver/instance");
 
   @Inject
   InstanceComponent(

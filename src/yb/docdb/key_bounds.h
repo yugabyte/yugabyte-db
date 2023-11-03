@@ -13,11 +13,15 @@
 
 #pragma once
 
-#include "yb/docdb/key_bytes.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/rocksdb/rocksdb_fwd.h"
 
 namespace yb {
 namespace docdb {
+
+class HistoryRetentionPolicy;
 
 // Optional inclusive lower bound and exclusive upper bound for keys served by DocDB.
 // Could be used to split tablet without doing actual splitting of RocksDB files.
@@ -25,15 +29,15 @@ namespace docdb {
 // during compaction.
 // Both bounds should be encoded DocKey or its part to avoid splitting DocDB row.
 struct KeyBounds {
-  KeyBytes lower;
-  KeyBytes upper;
+  dockv::KeyBytes lower;
+  dockv::KeyBytes upper;
 
   static const KeyBounds kNoBounds;
 
   KeyBounds() = default;
-  KeyBounds(const Slice& _lower, const Slice& _upper) : lower(_lower), upper(_upper) {}
+  KeyBounds(Slice _lower, Slice _upper) : lower(_lower), upper(_upper) {}
 
-  bool IsWithinBounds(const Slice& key) const {
+  bool IsWithinBounds(Slice key) const {
     return (lower.empty() || key.compare(lower) >= 0) &&
            (upper.empty() || key.compare(upper) < 0);
   }
@@ -51,13 +55,16 @@ struct DocDB {
   rocksdb::DB* regular = nullptr;
   rocksdb::DB* intents = nullptr;
   const KeyBounds* key_bounds = nullptr;
+  HistoryRetentionPolicy* retention_policy = nullptr;
+  tablet::TabletMetrics* metrics = nullptr;
 
   static DocDB FromRegularUnbounded(rocksdb::DB* regular) {
-    return {regular, nullptr /* intents */, &KeyBounds::kNoBounds};
+    return {regular, nullptr /* intents */, &KeyBounds::kNoBounds,
+        nullptr /* retention_policy */, nullptr /* metrics */};
   }
 
   DocDB WithoutIntents() {
-    return {regular, nullptr /* intents */, key_bounds};
+    return {regular, nullptr /* intents */, key_bounds, retention_policy, metrics};
   }
 };
 

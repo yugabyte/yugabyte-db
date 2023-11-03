@@ -93,8 +93,8 @@ class QLProcessor : public Rescheduler {
 
   // Run (parse, analyze and execute) a SQL statement. The statement string and the parameters must
   // not be destroyed until the statement has been executed.
-  void RunAsync(const std::string& stmt, const StatementParameters& params,
-                StatementExecutedCallback cb, bool reparsed = false);
+  TreeNodeOpcode RunAsync(const std::string& stmt, const StatementParameters& params,
+                          StatementExecutedCallback cb, bool reparsed = false);
 
  protected:
   void SetCurrentSession(const QLSessionPtr& ql_session) {

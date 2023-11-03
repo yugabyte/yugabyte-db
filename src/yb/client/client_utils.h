@@ -37,10 +37,10 @@ Result<std::unique_ptr<rpc::Messenger>> CreateClientMessenger(
     const std::shared_ptr<MemTracker> &parent_mem_tracker,
     rpc::SecureContext *secure_context = nullptr);
 
-Result<std::vector<internal::RemoteTabletPtr>> FilterTabletsByHashPartitionKeyRange(
-      const std::vector<internal::RemoteTabletPtr>& all_tablets,
-      const std::string& partition_key_start,
-      const std::string& partition_key_end);
+std::vector<internal::RemoteTabletPtr> FilterTabletsByKeyRange(
+    const std::vector<internal::RemoteTabletPtr>& all_tablets,
+    const std::string& partition_key_start,
+    const std::string& partition_key_end);
 
 } // namespace client
 } // namespace yb

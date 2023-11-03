@@ -67,6 +67,12 @@ struct RpcServerOptions;
 
 }
 
+namespace rpc {
+
+class SecureContext;
+
+}
+
 namespace master {
 
 class Master : public tserver::DbServerBase {
@@ -97,9 +103,19 @@ class Master : public tserver::DbServerBase {
 
   CatalogManagerIf* catalog_manager() const;
 
-  enterprise::CatalogManager* catalog_manager_impl() const { return catalog_manager_.get(); }
+  CatalogManager* catalog_manager_impl() const { return catalog_manager_.get(); }
+
+  XClusterManagerIf* xcluster_manager() const;
+
+  XClusterManager* xcluster_manager_impl() const;
 
   FlushManager* flush_manager() const { return flush_manager_.get(); }
+
+  TestAsyncRpcManager* test_async_rpc_manager() const { return test_async_rpc_manager_.get(); }
+
+  YsqlBackendsManager* ysql_backends_manager() const {
+    return ysql_backends_manager_.get();
+  }
 
   AutoFlagsManager* auto_flags_manager() { return auto_flags_manager_.get(); }
 
@@ -183,12 +199,21 @@ class Master : public tserver::DbServerBase {
   }
 
   Status get_ysql_db_oid_to_cat_version_info_map(
-      bool size_only, tserver::GetTserverCatalogVersionInfoResponsePB *resp) const;
+      const tserver::GetTserverCatalogVersionInfoRequestPB& req,
+      tserver::GetTserverCatalogVersionInfoResponsePB *resp) const;
+
+  Status ReloadKeysAndCertificates() override;
+
+  std::string GetCertificateDetails() override;
 
  protected:
-  virtual Status RegisterServices();
+  Status RegisterServices();
 
   void DisplayGeneralInfoIcons(std::stringstream* output) override;
+
+  Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
+
+  Result<std::unordered_set<std::string>> GetAvailableAutoFlagsForServer() const override;
 
  private:
   friend class MasterTest;
@@ -218,9 +243,12 @@ class Master : public tserver::DbServerBase {
 
   std::unique_ptr<AutoFlagsManager> auto_flags_manager_;
   std::unique_ptr<TSManager> ts_manager_;
-  std::unique_ptr<enterprise::CatalogManager> catalog_manager_;
+  std::unique_ptr<CatalogManager> catalog_manager_;
+  std::unique_ptr<YsqlBackendsManager> ysql_backends_manager_;
   std::unique_ptr<MasterPathHandlers> path_handlers_;
   std::unique_ptr<FlushManager> flush_manager_;
+
+  std::unique_ptr<TestAsyncRpcManager> test_async_rpc_manager_;
 
   // For initializing the catalog manager.
   std::unique_ptr<ThreadPool> init_pool_;
@@ -246,6 +274,8 @@ class Master : public tserver::DbServerBase {
   std::unique_ptr<yb::client::AsyncClientInitialiser> cdc_state_client_init_;
   std::mutex master_metrics_mutex_;
   std::map<std::string, scoped_refptr<Histogram>> master_metrics_ GUARDED_BY(master_metrics_mutex_);
+
+  std::unique_ptr<rpc::SecureContext> secure_context_;
 
   DISALLOW_COPY_AND_ASSIGN(Master);
 };

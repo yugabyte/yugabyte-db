@@ -1,7 +1,9 @@
 ---
-title: Partial indexes
+title: Partial indexes in YugabyteDB YCQL
+headerTitle: Partial indexes
 linkTitle: Partial indexes
 description: Using Partial indexes in YCQL
+headContent: Explore partial indexes in YugabyteDB using YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
@@ -10,7 +12,6 @@ menu:
     weight: 241
 aliases:
   - /preview/explore/ysql-language-features/indexes-1/
-  - /preview/explore/indexes-constraints/indexes-1/
 type: docs
 ---
 
@@ -134,4 +135,6 @@ ycqlsh:example> EXPLAIN SELECT product FROM orders
 
 ## Learn more
 
-For more details, refer to [PARTIAL INDEX](../../../api/ycql/ddl_create_index/#partial-index) in the YCQL API documentation.
+- [PARTIAL INDEX](../../../api/ycql/ddl_create_index/#partial-index) in the YCQL API documentation
+
+- [Partial index with JSONB column](../secondary-indexes-with-jsonb-ycql/#partial-index)

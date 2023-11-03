@@ -33,10 +33,9 @@
 
 #include <memory>
 
-#include <glog/logging.h>
-
-#include "yb/common/partition.h"
-#include "yb/common/ql_rowblock.h"
+#include "yb/dockv/partition.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
@@ -68,7 +67,6 @@ using std::ostringstream;
 using std::shared_ptr;
 using std::string;
 using std::vector;
-using yb::HostPort;
 using yb::consensus::ConsensusServiceProxy;
 using yb::consensus::RaftConfigPB;
 using yb::rpc::Messenger;
@@ -471,10 +469,9 @@ Status TsAdminClient::DumpTablet(const std::string& tablet_id) {
     return STATUS(IOError, "Failed to read: ", resp.error().ShortDebugString());
   }
 
-  QLRowBlock row_block(schema);
-  std::string data_str;
-  RETURN_NOT_OK(rpc.AssignSidecarTo(0, &data_str));
-  Slice data(data_str);
+  qlexpr::QLRowBlock row_block(schema);
+  auto data_buffer = VERIFY_RESULT(rpc.ExtractSidecar(0));
+  auto data = data_buffer.AsSlice();
   if (!data.empty()) {
     RETURN_NOT_OK(row_block.Deserialize(YQL_CLIENT_CQL, &data));
   }
@@ -752,16 +749,17 @@ static int TsCliMain(int argc, char** argv) {
       Schema schema;
       RETURN_NOT_OK_PREPEND_FROM_MAIN(SchemaFromPB(status_and_schema.schema(), &schema),
                                       "Unable to deserialize schema from " + addr);
-      PartitionSchema partition_schema;
-      RETURN_NOT_OK_PREPEND_FROM_MAIN(PartitionSchema::FromPB(status_and_schema.partition_schema(),
-                                                              schema, &partition_schema),
-                                      "Unable to deserialize partition schema from " + addr);
+      dockv::PartitionSchema partition_schema;
+      RETURN_NOT_OK_PREPEND_FROM_MAIN(
+          dockv::PartitionSchema::FromPB(
+              status_and_schema.partition_schema(), schema, &partition_schema),
+          "Unable to deserialize partition schema from " + addr);
 
 
       TabletStatusPB ts = status_and_schema.tablet_status();
 
-      Partition partition;
-      Partition::FromPB(ts.partition(), &partition);
+      dockv::Partition partition;
+      dockv::Partition::FromPB(ts.partition(), &partition);
 
       string state = tablet::RaftGroupStatePB_Name(ts.state());
       std::cout << "Tablet id: " << ts.tablet_id() << std::endl;

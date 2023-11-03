@@ -1,4 +1,4 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .yb-tag {
   font-family: 'Inter';
@@ -6,7 +6,7 @@
   font-weight: 500;
   font-size: 11px;
   line-height: 13px;
-  color: $YB_DARKER_GRAY;
+  color: colors.$YB_DARKER_GRAY;
   min-width: 40px;
   min-height: 17px;
   user-select: none;
@@ -15,22 +15,22 @@
   align-self: center;
 
   &.yb-orange {
-    background: $YB_ORANGE;
-    border: 1px solid $YB_ORANGE;
+    background: colors.$YB_ORANGE;
+    border: 1px solid colors.$YB_ORANGE;
     border-radius: 4px;
-    color: $YB_BG_WHITE_3;
+    color: colors.$YB_BG_WHITE_3;
   }
 
   &.primary {
-    background: $YB_BG_WHITE_3;
-    border: 1px solid $YB_GRAY_HOVER;
+    background: colors.$YB_BG_WHITE_3;
+    border: 1px solid colors.$YB_GRAY_HOVER;
     border-radius: 4px;
   }
 
   &.yb-gray {
-    background: $YB_GRAY_HOVER;
-    border: 1px solid $YB_GRAY_HOVER;
+    background: colors.$YB_GRAY_HOVER;
+    border: 1px solid colors.$YB_GRAY_HOVER;
     border-radius: 4px;
-    color: $YB_DARKER_GRAY;
+    color: colors.$YB_DARKER_GRAY;
   }
 }

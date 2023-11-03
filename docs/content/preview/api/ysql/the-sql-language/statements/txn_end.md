@@ -18,29 +18,9 @@ Use the `END` statement to commit the current transaction. All changes made by t
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/end.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/end.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  end
+{{%/ebnf%}}
 
 ## Semantics
 
@@ -62,5 +42,6 @@ Add optional keyword — has no effect.
 
 - [`ABORT`](../txn_abort)
 - [`BEGIN`](../txn_begin/)
+- [`START TRANSACTION`](../txn_start/)
 - [`COMMIT`](../txn_commit)
 - [`ROLLBACK`](../txn_rollback)

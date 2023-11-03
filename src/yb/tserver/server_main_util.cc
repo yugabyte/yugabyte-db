@@ -15,6 +15,10 @@
 
 #include <iostream>
 
+#if YB_ABSL_ENABLED
+#include "absl/debugging/symbolize.h"
+#endif
+
 #include "yb/util/init.h"
 #include "yb/util/flags.h"
 #include "yb/util/status.h"
@@ -50,11 +54,14 @@ Status MasterTServerParseFlagsAndInit(const std::string& server_type, int* argc,
     return STATUS(InvalidArgument, "Error parsing command-line flags");
   }
 
+#if YB_ABSL_ENABLED
+  // Must be called before installing a failure signal handler (in InitYB).
+  absl::InitializeSymbolizer((*argv)[0]);
+#endif
+
   RETURN_NOT_OK(log::ModifyDurableWriteFlagIfNotODirect());
 
   RETURN_NOT_OK(InitYB(server_type, (*argv)[0]));
-
-  RETURN_NOT_OK(consensus::ValidateFlags());
 
   RETURN_NOT_OK(GetPrivateIpMode());
 
@@ -62,7 +69,8 @@ Status MasterTServerParseFlagsAndInit(const std::string& server_type, int* argc,
 
   DLOG(INFO) << "Process id: " << getpid();
 
-  MemTracker::SetTCMallocCacheMemory();
+  MemTracker::ConfigureTCMalloc();
+  MemTracker::PrintTCMallocConfigs();
 
   return Status::OK();
 }

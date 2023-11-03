@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Link } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
 import { isFinite } from 'lodash';
@@ -15,11 +15,14 @@ import {
   getPrimaryCluster,
   getClusterProviderUUIDs,
   getProviderMetadata,
-  getUniverseNodeCount
+  getUniverseNodeCount,
+  optimizeVersion
 } from '../../../utils/UniverseUtils';
 import { isNotHidden, isDisabled } from '../../../utils/LayoutUtils';
-import { TimestampWithTimezone } from '../../common/timestampWithTimezone/TimestampWithTimezone';
+import { ybFormatDate, YBTimeFormats } from '../../../redesign/helpers/DateUtils';
 
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './UniverseDisplayPanel.scss';
 
 class CTAButton extends Component {
@@ -41,7 +44,7 @@ class CTAButton extends Component {
 
 class UniverseDisplayItem extends Component {
   render() {
-    const { universe, providers, refreshUniverseData } = this.props;
+    const { universe, providers, refreshUniverseData, runtimeConfigs } = this.props;
     if (!isNonEmptyObject(universe)) {
       return <span />;
     }
@@ -62,60 +65,83 @@ class UniverseDisplayItem extends Component {
     const pricePerHour = universe.pricePerHour;
     const numNodes = <span>{nodeCount}</span>;
     let costPerMonth = <span>n/a</span>;
+
     if (isFinite(pricePerHour)) {
-      costPerMonth = (<YBCost
-        value={pricePerHour}
-        multiplier={'month'}
-        isPricingKnown={isPricingKnown}
-      />);
+      costPerMonth = (
+        <YBCost
+          value={pricePerHour}
+          multiplier={'month'}
+          isPricingKnown={isPricingKnown}
+          runtimeConfigs={runtimeConfigs}
+        />
+      );
     }
-    const universeCreationDate = universe.creationDate ? (
-      <TimestampWithTimezone timeFormat="MM/DD/YYYY" timestamp={universe.creationDate} />
-    ) : (
-      ''
-    );
+    const universeCreationDate = universe.creationDate
+      ? ybFormatDate(universe.creationDate, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP)
+      : '';
 
     return (
       <Col sm={4} md={3} lg={2}>
-        <Link to={'/universes/' + universe.universeUUID}>
-          <div className="universe-display-item-container">
-            <div className="status-icon">
-              <UniverseStatusContainer
-                currentUniverse={universe}
-                refreshUniverseData={refreshUniverseData}
-                shouldDisplayTaskButton={false}
-              />
+        <RbacValidator
+          accessRequiredOn={{
+            ...ApiPermissionMap.GET_UNIVERSES_BY_ID,
+            onResource: universe.universeUUID
+          }}
+        >
+          <Link to={'/universes/' + universe.universeUUID}>
+            <div className="universe-display-item-container">
+              <div className="status-icon">
+                <UniverseStatusContainer
+                  currentUniverse={universe}
+                  refreshUniverseData={refreshUniverseData}
+                  shouldDisplayTaskButton={false}
+                />
+              </div>
+              <div className="display-name">{universe.name}</div>
+              <div className="provider-name">{universeProviderText}</div>
+              <div className="description-item-list">
+                <DescriptionItem title="Nodes">
+                  <span>{numNodes}</span>
+                </DescriptionItem>
+                <DescriptionItem title="Replication Factor">
+                  <span>{replicationFactor}</span>
+                </DescriptionItem>
+                <DescriptionItem title="Monthly Cost">
+                  <span>{costPerMonth}</span>
+                </DescriptionItem>
+                <DescriptionItem title="Created">
+                  <span>{universeCreationDate}</span>
+                </DescriptionItem>
+                <DescriptionItem title="Version">
+                  <span>
+                    {optimizeVersion(
+                      primaryCluster?.userIntent.ybSoftwareVersion.split('-')[0].split('.')
+                    )}
+                  </span>
+                </DescriptionItem>
+              </div>
             </div>
-            <div className="display-name">{universe.name}</div>
-            <div className="provider-name">{universeProviderText}</div>
-            <div className="description-item-list">
-              <DescriptionItem title="Nodes">
-                <span>{numNodes}</span>
-              </DescriptionItem>
-              <DescriptionItem title="Replication Factor">
-                <span>{replicationFactor}</span>
-              </DescriptionItem>
-              <DescriptionItem title="Monthly Cost">
-                <span>{costPerMonth}</span>
-              </DescriptionItem>
-              <DescriptionItem title="Created">
-                <span>{universeCreationDate}</span>
-              </DescriptionItem>
-            </div>
-          </div>
-        </Link>
+          </Link>
+        </RbacValidator>
       </Col>
     );
   }
 }
 
 export default class UniverseDisplayPanel extends Component {
+  componentDidMount() {
+    if (!this.props.runtimeConfigs) {
+      this.props.fetchGlobalRunTimeConfigs();
+    }
+  }
+
   render() {
     const self = this;
     const {
       universe: { universeList },
       cloud: { providers },
-      customer: { currentCustomer }
+      customer: { currentCustomer },
+      runtimeConfigs
     } = this.props;
     if (getPromiseState(providers).isSuccess()) {
       let universeDisplayList = <span />;
@@ -131,6 +157,7 @@ export default class UniverseDisplayPanel extends Component {
                 universe={universeItem}
                 providers={providers}
                 refreshUniverseData={self.props.fetchUniverseMetadata}
+                runtimeConfigs={runtimeConfigs}
               />
             );
           });
@@ -143,25 +170,23 @@ export default class UniverseDisplayPanel extends Component {
               <h2>Universes</h2>
             </Col>
             <Col className="universe-table-header-action dashboard-universe-actions">
-              {isNotHidden(currentCustomer.data.features, 'universe.import') && (
-                <Link to="/universes/import">
-                  <YBButton
-                    btnClass="universe-button btn btn-lg btn-default"
-                    disabled={isDisabled(currentCustomer.data.features, 'universe.import')}
-                    btnText="Import Universe"
-                    btnIcon="fa fa-mail-forward"
-                  />
-                </Link>
-              )}
               {isNotHidden(currentCustomer.data.features, 'universe.create') && (
-                <Link to="/universes/create">
-                  <YBButton
-                    btnClass="universe-button btn btn-lg btn-orange"
-                    disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
-                    btnText="Create Universe"
-                    btnIcon="fa fa-plus"
-                  />
-                </Link>
+                <RbacValidator
+                  accessRequiredOn={{
+                    ...ApiPermissionMap.CREATE_UNIVERSE
+                  }}
+                  isControl
+                >
+                  <Link to="/universes/create">
+                    <YBButton
+                      btnClass="universe-button btn btn-lg btn-orange"
+                      disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
+                      btnText="Create Universe"
+                      btnIcon="fa fa-plus"
+                      data-testid="Dashboard-CreateUniverse"
+                    />
+                  </Link>
+                </RbacValidator>
               )}
             </Col>
           </Row>

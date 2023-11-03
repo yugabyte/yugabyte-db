@@ -3,7 +3,7 @@ title: SQL statements [YSQL]
 headerTitle: Categorized list of SQL statements
 linkTitle: SQL statements
 description: List of PostgreSQL-compatible SQL statements supported by Yugabyte SQL (YSQL)
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   preview:
     identifier: statements
@@ -12,8 +12,10 @@ menu:
 aliases:
   - /preview/api/ysql/commands/
 type: indexpage
+showRightNav: true
 ---
-The YSQL statements are compatible with the SQL dialect that PostgreSQL supports. The sidebar lists all of the YSQL statements in alphabetical order. The following tables list them by catagory.
+
+The YSQL statements are compatible with the SQL dialect that PostgreSQL supports. The sidebar lists all of the YSQL statements in alphabetical order. The following tables list them by category.
 
 ## Data definition language (DDL)
 
@@ -25,6 +27,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`ALTER FOREIGN TABLE`](ddl_alter_foreign_table) | Change foreign table definition |
 | [`ALTER SEQUENCE`](ddl_alter_sequence) | Change sequence definition |
 | [`ALTER SERVER`](ddl_alter_server) | Change foreign server definition |
+| [`ALTER SCHEMA`](ddl_alter_schema) | Change schema definition |
 | [`ALTER TABLE`](ddl_alter_table) | Change table definition |
 | [`COMMENT`](ddl_comment) | Set, update, or remove a comment on a database object |
 | [`CREATE AGGREGATE`](ddl_create_aggregate) | Create an aggregate |
@@ -58,11 +61,13 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`DROP FOREIGN DATA WRAPPER`](ddl_drop_foreign_data_wrapper) | Drop a foreign-data wrapper |
 | [`DROP FOREIGN TABLE`](ddl_drop_foreign_table) | Drop a foreign table |
 | [`DROP FUNCTION`](ddl_drop_function) | Delete a function |
+| [`DROP INDEX`](ddl_drop_index) | Delete an index from a database |
 | [`DROP MATERIALIZED VIEW`](ddl_drop_matview) | Drop a materialized view |
 | [`DROP OPERATOR`](ddl_drop_operator) | Delete an operator |
 | [`DROP OPERATOR CLASS`](ddl_drop_operator_class) | Delete an operator class |
 | [`DROP PROCEDURE`](ddl_drop_procedure) | Delete a procedure |
 | [`DROP RULE`](ddl_drop_rule) | Delete a rule |
+| [`DROP SCHEMA`](ddl_drop_schema) | Delete a schema from the system |
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP SERVER`](ddl_drop_server) | Drop a foreign server |
 | [`DROP TABLE`](ddl_drop_table) | Delete a table from a database |
@@ -74,12 +79,16 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 
 ## Data manipulation language (DML)
 
-| Statement | Description |
-| :-------- | :---------- |
-| [`DELETE`](dml_delete/) | Delete rows from a table |
-| [`INSERT`](dml_insert) | Insert rows into a table |
-| [`SELECT`](dml_select/) | Select rows from a table |
-| [`UPDATE`](dml_update/) | Update rows in a table |
+| Statement                 | Description                               |
+| :------------------------ | :---------------------------------------- |
+| [`CLOSE`](dml_close/)     | Remove a cursor                           |
+| [`DECLARE`](dml_declare/) | Create a cursor                           |
+| [`DELETE`](dml_delete/)   | Delete rows from a table                  |
+| [`FETCH`](dml_fetch/)     | Fetch rows from a cursor                  |
+| [`INSERT`](dml_insert/)   | Insert rows into a table                  |
+| [`MOVE`](dml_move/)       | Move the current position within a cursor |
+| [`SELECT`](dml_select/)   | Select rows from a table                  |
+| [`UPDATE`](dml_update/)   | Update rows in a table                    |
 
 ## Data control language (DCL)
 
@@ -118,6 +127,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`SET CONSTRAINTS`](txn_set_constraints) | Set constraints on current transaction |
 | [`SET TRANSACTION`](txn_set) | Set transaction behaviors |
 | [`SHOW TRANSACTION`](txn_show) | Show properties of a transaction |
+| [`START TRANSACTION`](txn_start) | Start a transaction |
 | [`SAVEPOINT`](savepoint_create) | Create a new savepoint |
 | [`ROLLBACK TO`](savepoint_rollback) | Rollback to a savepoint |
 | [`RELEASE`](savepoint_release) | Release a savepoint |
@@ -126,9 +136,9 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 
 | Statement | Description |
 | :-------- | :---------- |
-| [`RESET`](cmd_reset) | Reset a parameter to factory settings |
-| [`SET`](cmd_set) | Set a system, session, or transactional parameter |
-| [`SHOW`](cmd_show) | Show value of a system, session, or transactional parameter |
+| [`RESET`](cmd_reset) | Reset a run-time parameter to its default value |
+| [`SET`](cmd_set) | Set the value of a run-time parameter |
+| [`SHOW`](cmd_show) | Show the value of a run-time parameter |
 
 ## Performance control
 

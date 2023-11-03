@@ -50,21 +50,24 @@
 #include "yb/util/metrics.h"
 #include "yb/util/opid.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/source_location.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/to_stream.h"
 
 using namespace std::chrono_literals;
 
 METRIC_DECLARE_entity(tablet);
+DECLARE_int32(stuck_peer_call_threshold_ms);
+DECLARE_bool(force_recover_from_stuck_peer_call);
 
 namespace yb {
 namespace consensus {
 
 using log::Log;
 using log::LogOptions;
-using log::LogAnchorRegistry;
 using rpc::Messenger;
 using rpc::MessengerBuilder;
 using std::shared_ptr;
@@ -197,7 +200,7 @@ TEST_F(ConsensusPeersTest, TestRemotePeer) {
   AppendReplicateMessagesToQueue(message_queue_.get(), clock_, 1, 20);
 
   // The above append ends up appending messages in term 2, so we update the peer's term to match.
-  Arena arena;
+  ThreadSafeArena arena;
   remote_peer->TEST_SetTerm(2, &arena);
 
   // signal the peer there are requests pending.
@@ -405,8 +408,8 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
     std::this_thread::sleep_for(i == 2 ? 100ms : 2ms);
   }
 
-  LOG(INFO) << EXPR_VALUE_FOR_LOG(mock_proxy->update_count());
-  LOG(INFO) << EXPR_VALUE_FOR_LOG(initial_update_count);
+  LOG(INFO) << YB_EXPR_TO_STREAM(mock_proxy->update_count());
+  LOG(INFO) << YB_EXPR_TO_STREAM(initial_update_count);
   // Check that we didn't attempt to send one UpdateConsensus call per
   // Write. 100 writes might have taken a second or two, though, so it's
   // OK to have called UpdateConsensus() a few times due to regularly

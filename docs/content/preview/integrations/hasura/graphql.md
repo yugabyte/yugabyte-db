@@ -5,7 +5,7 @@ description: Using the benchmark tool with Hasura
 aliases:
   - /preview/develop/graphql
 menu:
-  preview:
+  preview_integrations:
     identifier: graphql
     parent: hasura
     weight: 580

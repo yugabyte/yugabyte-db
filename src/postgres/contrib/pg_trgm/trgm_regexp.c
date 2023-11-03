@@ -198,6 +198,8 @@
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
 
+/* YB includes. */
+#include "common/pg_yb_common.h"
 
 /*
  * Uncomment (or use -DTRGM_REGEXP_DEBUG) to print debug info,
@@ -2123,6 +2125,7 @@ printSourceNFA(regex_t *regex, TrgmColorInfo *colors, int ncolors)
 	int			nstates = pg_reg_getnumstates(regex);
 	int			state;
 	int			i;
+	const char *yb_tmp_dir = YbGetTmpDir();
 
 	initStringInfo(&buf);
 
@@ -2188,9 +2191,18 @@ printSourceNFA(regex_t *regex, TrgmColorInfo *colors, int ncolors)
 
 	{
 		/* dot -Tpng -o /tmp/source.png < /tmp/source.dot */
-		FILE	   *fp = fopen("/tmp/source.dot", "w");
+		FILE *fp = NULL;
+		char *yb_custom_path = palloc0(MAX_STRING_LEN);
+		if (yb_tmp_dir)
+		{
+			snprintf(yb_custom_path, MAX_STRING_LEN, "%s/source.dot", yb_tmp_dir);
+			fp = fopen(yb_custom_path, "w");
+		}
+		else
+			fp = fopen("/tmp/source.dot", "w");
 
 		fprintf(fp, "%s", buf.data);
+		pfree(yb_custom_path);
 		fclose(fp);
 	}
 
@@ -2207,6 +2219,7 @@ printTrgmNFA(TrgmNFA *trgmNFA)
 	HASH_SEQ_STATUS scan_status;
 	TrgmState  *state;
 	TrgmState  *initstate = NULL;
+	const char *yb_tmp_dir = YbGetTmpDir();
 
 	initStringInfo(&buf);
 
@@ -2250,9 +2263,19 @@ printTrgmNFA(TrgmNFA *trgmNFA)
 
 	{
 		/* dot -Tpng -o /tmp/transformed.png < /tmp/transformed.dot */
-		FILE	   *fp = fopen("/tmp/transformed.dot", "w");
+		char *yb_custom_path = palloc0(MAX_STRING_LEN);
+		FILE *fp = NULL;
+		if (yb_tmp_dir)
+		{
+			snprintf(yb_custom_path, MAX_STRING_LEN, "%s/transformed.dot",
+					 yb_tmp_dir);
+			fp = fopen(yb_custom_path, "w");
+		}
+		else
+			fp = fopen("/tmp/transformed.dot", "w");
 
 		fprintf(fp, "%s", buf.data);
+		pfree(yb_custom_path);
 		fclose(fp);
 	}
 
@@ -2341,10 +2364,21 @@ printTrgmPackedGraph(TrgmPackedGraph *packedGraph, TRGM *trigrams)
 
 	{
 		/* dot -Tpng -o /tmp/packed.png < /tmp/packed.dot */
-		FILE	   *fp = fopen("/tmp/packed.dot", "w");
+		FILE *fp = NULL;
+		char *yb_custom_path = palloc0(MAX_STRING_LEN);
+		const char *yb_tmp_dir = YbGetTmpDir();
+
+		if (yb_tmp_dir)
+		{
+			snprintf(yb_custom_path, MAX_STRING_LEN, "%s/packed.dot", yb_tmp_dir);
+			fp = fopen(yb_custom_path, "w");
+		}
+		else
+			fp = fopen("/tmp/packed.dot", "w");
 
 		fprintf(fp, "%s", buf.data);
 		fclose(fp);
+		pfree(yb_custom_path);
 	}
 
 	pfree(buf.data);

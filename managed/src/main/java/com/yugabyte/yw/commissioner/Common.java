@@ -14,9 +14,9 @@ public class Common {
     gcp("gcp", true, true, true, ConfigHelper.ConfigType.GCPRegionMetadata, "centos"),
     azu("azu", true, true, true, ConfigHelper.ConfigType.AZURegionMetadata, "centos"),
     docker("docker", false, false, false, ConfigHelper.ConfigType.DockerRegionMetadata),
-    onprem("onprem", true, false),
-    kubernetes("kubernetes", true, false),
-    local("cloud-1"),
+    onprem("onprem", true, false, true, null),
+    kubernetes("kubernetes", true, false, true, null),
+    local("local"),
     other("other");
 
     private final String value;
@@ -89,7 +89,7 @@ public class Common {
     }
 
     public boolean canAddRegions() {
-      return this == aws || this == gcp;
+      return true;
     }
 
     public boolean isHostedZoneEnabled() {
@@ -98,6 +98,18 @@ public class Common {
 
     public String getSshUser() {
       return defaultSshUser;
+    }
+
+    public boolean enforceInstanceTags() {
+      return this == aws || this == azu || this == gcp;
+    }
+
+    public boolean imageBundleSupported() {
+      return this == aws || this == azu || this == gcp;
+    }
+
+    public boolean regionBootstrapSupported() {
+      return this == aws || this == azu || this == gcp;
     }
   }
 }

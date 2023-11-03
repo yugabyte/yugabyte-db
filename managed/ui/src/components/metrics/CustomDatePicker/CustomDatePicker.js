@@ -1,13 +1,18 @@
 import { DateTimePicker } from 'react-widgets';
 import { YBButtonLink } from '../../common/forms/fields';
-import React from 'react';
 import './CustomDatePicker.scss';
 import { useSelector } from 'react-redux';
 import moment from 'moment';
 
 const TIMESTAMP_FORMAT = 'YYYY-MM-DD[T]HH:mm:ss';
 
-export const CustomDatePicker = ({ startMoment, endMoment, handleTimeframeChange, setStartMoment, setEndMoment }) => {
+export const CustomDatePicker = ({
+  startMoment,
+  endMoment,
+  handleTimeframeChange,
+  setStartMoment,
+  setEndMoment
+}) => {
   const currentUser = useSelector((state) => state.customer.currentUser);
   let newStartMoment = moment(startMoment).format(TIMESTAMP_FORMAT);
   let newEndMoment = moment(endMoment).format(TIMESTAMP_FORMAT);
@@ -15,9 +20,7 @@ export const CustomDatePicker = ({ startMoment, endMoment, handleTimeframeChange
   if (currentUser.data.timezone) {
     // Convert the local time moments to user preference timezone, and remove the timezone information
     //  so that when converting to a Date object, it doesn't convert back to local time
-    newStartMoment = moment(startMoment)
-      .tz(currentUser.data.timezone)
-      .format(TIMESTAMP_FORMAT);
+    newStartMoment = moment(startMoment).tz(currentUser.data.timezone).format(TIMESTAMP_FORMAT);
     newEndMoment = moment(endMoment).tz(currentUser.data.timezone).format(TIMESTAMP_FORMAT);
 
     // Set maximum date of the date pickers to current time in user preference timezone

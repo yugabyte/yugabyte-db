@@ -1,53 +1,86 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
+import { find } from 'lodash';
 import { Button, DropdownButton, MenuItem } from 'react-bootstrap';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../../panels';
 import { ConfigDetails } from './ConfigDetails';
 import { AssociatedUniverse } from '../../common/associatedUniverse/AssociatedUniverse';
+import { DeleteKMSConfig } from './DeleteKMSConfig.tsx';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { Action, Resource } from '../../../redesign/features/rbac';
 
 export class ListKeyManagementConfigurations extends Component {
   state = {
     associatedUniverses: [],
     isVisibleModal: false,
+    deleteConfig: null,
     configDetail: null
   };
 
   actionList = (item, row) => {
-    const { configUUID, in_use, universeDetails } = row.metadata;
-    const { isAdmin, onDelete, onEdit } = this.props;
+    const { in_use: inUse, universeDetails } = row.metadata;
+    const { isAdmin, onEdit } = this.props;
     return (
       <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
         <MenuItem
           onClick={() => {
             this.setState({ configDetail: row });
           }}
+          data-testid="EAR-Details"
         >
           <i className="fa fa-info-circle"></i> Details
         </MenuItem>
-        {isAdmin && (
-          <MenuItem onClick={() => onEdit(row)}>
-            <i className="fa fa-pencil"></i> Edit Configuration
-          </MenuItem>
+        {(isAdmin || isRbacEnabled()) && (
+          <RbacValidator
+            accessRequiredOn={ApiPermissionMap.MODIFY_CERTIFICATE}
+            isControl
+            overrideStyle={{ display: 'block' }}
+          >
+            <MenuItem
+              onClick={() => {
+                onEdit(row);
+              }}
+              data-testid="EAR-EditConfiguration"
+            >
+              <i className="fa fa-pencil"></i> Edit Configuration
+            </MenuItem>
+          </RbacValidator>
         )}
-        <MenuItem
-          title={'Delete provider'}
-          disabled={in_use}
-          onClick={() => {
-            !in_use && onDelete(configUUID);
-          }}
+        <RbacValidator
+          accessRequiredOn={ApiPermissionMap.DELETE_CERTIFICATE}
+          isControl
+          overrideStyle={{ display: 'block' }}
         >
-          <i className="fa fa-trash"></i> Delete Configuration
-        </MenuItem>
-        <MenuItem
-          onClick={() => {
-            this.setState({ associatedUniverses: [...universeDetails], isVisibleModal: true });
-          }}
+          <MenuItem
+            title={'Delete provider'}
+            disabled={inUse}
+            onClick={() => {
+              !inUse && this.setState({ deleteConfig: row });
+            }}
+            data-testid="EAR-DeleteConfiguration"
+          >
+            <i className="fa fa-trash"></i> Delete Configuration
+          </MenuItem>
+        </RbacValidator>
+
+        <RbacValidator
+          customValidateFunction={(userPermissions) => find(userPermissions, { resourceType: Resource.UNIVERSE, actions: Action.READ }) !== undefined}
+          isControl
+          overrideStyle={{ display: 'block' }}
         >
-          <i className="fa fa-eye"></i> Show Universes
-        </MenuItem>
+          <MenuItem
+            onClick={() => {
+              this.setState({ associatedUniverses: [...universeDetails], isVisibleModal: true });
+            }}
+          >
+            <i className="fa fa-eye"></i> Show Universes
+          </MenuItem>
+        </RbacValidator>
       </DropdownButton>
     );
   };
@@ -63,10 +96,19 @@ export class ListKeyManagementConfigurations extends Component {
     this.setState({ configDetail: null });
   };
 
+  handleDeleteConfig = (config) => {
+    this.props.onDelete(config.metadata.configUUID);
+    this.setState({ deleteConfig: null });
+  };
+
+  hideDeleteConfig = () => {
+    this.setState({ deleteConfig: null });
+  };
+
   render() {
     const { configs, onCreate } = this.props;
 
-    const { associatedUniverses, isVisibleModal, configDetail } = this.state;
+    const { associatedUniverses, isVisibleModal, configDetail, deleteConfig } = this.state;
 
     const showConfigProperties = (item, row) => {
       return (
@@ -93,9 +135,14 @@ export class ListKeyManagementConfigurations extends Component {
               <h2 className="table-container-title pull-left">List Configurations</h2>
               <FlexContainer className="pull-right">
                 <FlexShrink>
-                  <Button bsClass="btn btn-orange btn-config" onClick={onCreate}>
-                    Create New Config
-                  </Button>
+                  <RbacValidator
+                    accessRequiredOn={ApiPermissionMap.CREATE_CERTIFICATE}
+                    isControl
+                  >
+                    <Button bsClass="btn btn-orange btn-config" onClick={onCreate}>
+                      Create New Config
+                    </Button>
+                  </RbacValidator>
                 </FlexShrink>
               </FlexContainer>
             </Fragment>
@@ -157,6 +204,15 @@ export class ListKeyManagementConfigurations extends Component {
             visible={!!configDetail}
             onHide={this.hideConfigDetail}
             data={configDetail}
+          />
+        )}
+
+        {deleteConfig && (
+          <DeleteKMSConfig
+            open={!!deleteConfig}
+            onHide={this.hideDeleteConfig}
+            onSubmit={this.handleDeleteConfig}
+            config={deleteConfig}
           />
         )}
       </div>

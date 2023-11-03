@@ -1,11 +1,5 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
-import java.util.stream.Collectors;
-
 import com.yugabyte.yw.commissioner.IUpgradeSubTask;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
@@ -13,7 +7,11 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.NodeCertReloadTask.Params;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
+import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -46,8 +44,7 @@ public class CertReloadTaskCreator implements IUpgradeSubTask {
     this.taskExecutor = taskExecutor;
     this.runnableTask = runnableTask;
     List<String> masterHostPortList =
-        masterNodes
-            .stream()
+        masterNodes.stream()
             .map(n -> getHostPort(getHost(n), getMasterPort(n)))
             .collect(Collectors.toList());
     this.masterHostPorts = String.join(",", masterHostPortList);
@@ -84,7 +81,7 @@ public class CertReloadTaskCreator implements IUpgradeSubTask {
           String nodeHostPort = getHostPort(node, processTypes);
           NodeCertReloadTask task = NodeCertReloadTask.createTask();
           Params params = new Params();
-          params.universeUUID = universeUuid;
+          params.setUniverseUUID(universeUuid);
           params.azUuid = node.azUuid;
           params.nodeName = node.nodeName;
           params.setMasters(masterHostPorts);

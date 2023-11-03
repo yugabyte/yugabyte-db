@@ -2,57 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.TaskExecutor;
-import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
-import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
-import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.TaskType;
-import junitparams.JUnitParamsRunner;
-import junitparams.Parameters;
-import junitparams.converters.Nullable;
-import lombok.extern.slf4j.Slf4j;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.Mock;
-import org.mockito.Mockito;
-import org.mockito.junit.MockitoJUnit;
-import org.mockito.junit.MockitoRule;
-import play.api.Play;
-
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.aMapWithSize;
 import static org.hamcrest.Matchers.anEmptyMap;
@@ -72,7 +21,57 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 
-@Slf4j
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.TaskExecutor;
+import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
+import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
+import junitparams.converters.Nullable;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+
 @RunWith(JUnitParamsRunner.class)
 public class UniverseTaskBaseTest extends FakeDBApplication {
 
@@ -80,13 +79,19 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
 
   @Mock private BaseTaskDependencies baseTaskDependencies;
 
+  @Mock private PlatformExecutorFactory platformExecutorFactory;
+
+  @Mock private ExecutorService executorService;
+
   private static final int NUM_NODES = 3;
   private TestUniverseTaskBase universeTaskBase;
 
   @Before
   public void setup() {
     when(baseTaskDependencies.getTaskExecutor())
-        .thenReturn(Play.current().injector().instanceOf(TaskExecutor.class));
+        .thenReturn(app.injector().instanceOf(TaskExecutor.class));
+    when(baseTaskDependencies.getExecutorFactory()).thenReturn(platformExecutorFactory);
+    when(platformExecutorFactory.createExecutor(any(), any())).thenReturn(executorService);
     universeTaskBase = new TestUniverseTaskBase();
   }
 
@@ -136,7 +141,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     // Create Universe
     Universe universe =
         ModelFactory.createUniverse(
-            "name", UUID.randomUUID(), customer.getCustomerId(), cloudType, placementInfo);
+            "name", UUID.randomUUID(), customer.getId(), cloudType, placementInfo);
     // Update UserIntent
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     universeDetails.getPrimaryCluster().userIntent.enableLB = true;
@@ -144,7 +149,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
         u -> {
           u.setUniverseDetails(universeDetails);
         };
-    Universe.saveDetails(universe.universeUUID, updater);
+    Universe.saveDetails(universe.getUniverseUUID(), updater);
 
     return universe;
   }
@@ -158,12 +163,12 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
       // Create AZ if doesn't exist
       if (AvailabilityZone.get(uuid) == null) {
         AvailabilityZone newAz = new AvailabilityZone();
-        newAz.region = region;
-        newAz.uuid = nodes.get(i).getAzUuid();
-        newAz.code = "code" + i;
-        newAz.name = "name" + i;
-        newAz.subnet = "subnet";
-        newAz.secondarySubnet = "secondarySubnet";
+        newAz.setRegion(region);
+        newAz.setUuid(nodes.get(i).getAzUuid());
+        newAz.setCode("code" + i);
+        newAz.setName("name" + i);
+        newAz.setSubnet("subnet");
+        newAz.setSecondarySubnet("secondarySubnet");
         newAz.save();
       }
       // Create PlacementAZ
@@ -188,6 +193,14 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     return placementInfo;
   }
 
+  private Set<NodeDetails> getAllNodes(LoadBalancerConfig lbConfig) {
+    Set<NodeDetails> allNodes = new HashSet<>();
+    for (Set<NodeDetails> nodes : lbConfig.getAzNodes().values()) {
+      allNodes.addAll(nodes);
+    }
+    return allNodes;
+  }
+
   @Test
   // @formatter:off
   @Parameters({
@@ -199,14 +212,17 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
   // @formatter:on
   public void testCreateDestroyServerTasks(
       CloudType cloudType, @Nullable String privateIp, boolean detailsCleanExpected) {
-
     List<NodeDetails> nodes = setupNodeDetails(cloudType, privateIp);
     Universe universe = Mockito.mock(Universe.class);
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
     UniverseDefinitionTaskParams.Cluster cluster =
         new UniverseDefinitionTaskParams.Cluster(
-            UniverseDefinitionTaskParams.ClusterType.PRIMARY,
-            new UniverseDefinitionTaskParams.UserIntent());
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY, userIntent);
+    UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
+    universeDetails.clusters.add(cluster);
     Mockito.when(universe.getCluster(Mockito.any())).thenReturn(cluster);
+    Mockito.when(universe.getUniverseDetails()).thenReturn(universeDetails);
     universeTaskBase.createDestroyServerTasks(universe, nodes, false, false, false);
     for (int i = 0; i < NUM_NODES; i++) {
       // Node should not be in use.
@@ -246,8 +262,9 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
       fail();
     }
     doReturn(response).when(mockNodeManager).nodeCommand(any(), any());
+    InstanceExistCheck instanceExistCheck = app.injector().instanceOf(InstanceExistCheck.class);
     Optional<Boolean> optional =
-        universeTaskBase.instanceExists(
+        instanceExistCheck.instanceExists(
             taskParams,
             ImmutableMap.of(
                 "universe_uuid",
@@ -281,8 +298,9 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
       fail();
     }
     doReturn(response).when(mockNodeManager).nodeCommand(any(), any());
+    InstanceExistCheck instanceExistCheck = app.injector().instanceOf(InstanceExistCheck.class);
     Optional<Boolean> optional =
-        universeTaskBase.instanceExists(
+        instanceExistCheck.instanceExists(
             taskParams,
             ImmutableMap.of("universe_uuid", "blah", "node_uuid", taskParams.nodeUuid.toString()));
     assertEquals(true, optional.isPresent());
@@ -297,8 +315,9 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     taskParams.nodeName = "node_test_1";
     ShellResponse response = new ShellResponse();
     doReturn(response).when(mockNodeManager).nodeCommand(any(), any());
+    InstanceExistCheck instanceExistCheck = app.injector().instanceOf(InstanceExistCheck.class);
     Optional<Boolean> optional =
-        universeTaskBase.instanceExists(
+        instanceExistCheck.instanceExists(
             taskParams,
             ImmutableMap.of(
                 "universe_uuid",
@@ -329,8 +348,8 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     Customer customer = ModelFactory.testCustomer();
     Provider provider = ModelFactory.awsProvider(customer);
     Region region = Region.create(provider, "code", "name", "image");
-    PlacementInfo placementInfo1 = setupPlacementInfo(provider.uuid, region, nodes1, lbNames1);
-    PlacementInfo placementInfo2 = setupPlacementInfo(provider.uuid, region, nodes2, lbNames2);
+    PlacementInfo placementInfo1 = setupPlacementInfo(provider.getUuid(), region, nodes1, lbNames1);
+    PlacementInfo placementInfo2 = setupPlacementInfo(provider.getUuid(), region, nodes2, lbNames2);
     // Setup Universe and clusters
     Universe universe = setupUniverse(cloudType, customer, placementInfo1);
     UUID cluster1 = universe.getUniverseDetails().getPrimaryCluster().uuid;
@@ -346,7 +365,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     Map<LoadBalancerPlacement, LoadBalancerConfig> lbMap =
         universeTaskBase.createLoadBalancerMap(
-            taskParams, ImmutableList.of(taskParams.getClusterByUuid(cluster1)), null);
+            taskParams, ImmutableList.of(taskParams.getClusterByUuid(cluster1)), null, null);
     // Check only lb1 exists
     assertThat(lbMap, aMapWithSize(1));
     assertThat(lbMap.keySet(), everyItem(hasProperty("lbName", equalTo("lb1"))));
@@ -354,24 +373,32 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     for (LoadBalancerConfig lbConfig : lbMap.values()) {
       Set<NodeDetails> expectedNodes = new HashSet<>(nodes1);
       expectedNodes.add(nodes2.get(0));
-      assertThat(lbConfig.getAllNodes(), containsInAnyOrder(expectedNodes.toArray()));
+      assertThat(getAllNodes(lbConfig), containsInAnyOrder(expectedNodes.toArray()));
     }
-    // Test retrieve all nodes
+    // Test retrieve all nodes by nodesToAdd
+    lbMap = universeTaskBase.createLoadBalancerMap(taskParams, null, null, new HashSet<>(allNodes));
+    assertEquals(2, lbMap.size());
+    Set<NodeDetails> returnedNodes = new HashSet<>();
+    for (LoadBalancerConfig lbConfig : lbMap.values()) {
+      returnedNodes.addAll(getAllNodes(lbConfig));
+    }
+    assertThat(returnedNodes, containsInAnyOrder(allNodes.toArray()));
+    // Test retrieve all nodes without nodesToAdd
     lbMap =
         universeTaskBase.createLoadBalancerMap(
-            taskParams, ImmutableList.of(taskParams.getClusterByUuid(cluster2)), null);
+            taskParams, ImmutableList.of(taskParams.getClusterByUuid(cluster2)), null, null);
     assertEquals(2, lbMap.size());
-    Set<NodeDetails> nodes = new HashSet<>();
+    returnedNodes = new HashSet<>();
     for (LoadBalancerConfig lbConfig : lbMap.values()) {
-      nodes.addAll(lbConfig.getAllNodes());
+      returnedNodes.addAll(getAllNodes(lbConfig));
     }
-    assertThat(nodes, containsInAnyOrder(allNodes.toArray()));
+    assertThat(returnedNodes, containsInAnyOrder(allNodes.toArray()));
     // Test null cluster (default to all clusters)
     Map<LoadBalancerPlacement, LoadBalancerConfig> lbMapDefault =
-        universeTaskBase.createLoadBalancerMap(taskParams, null, null);
-    nodes = new HashSet<>();
+        universeTaskBase.createLoadBalancerMap(taskParams, null, null, null);
+    returnedNodes = new HashSet<>();
     for (LoadBalancerConfig lbConfig : lbMap.values()) {
-      nodes.addAll(lbConfig.getAllNodes());
+      returnedNodes.addAll(getAllNodes(lbConfig));
     }
     assertThat(lbMapDefault, equalTo(lbMap));
   }
@@ -404,8 +431,8 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     Customer customer = ModelFactory.testCustomer();
     Provider provider = ModelFactory.awsProvider(customer);
     Region region = Region.create(provider, "code", "name", "image");
-    PlacementInfo placementInfo1 = setupPlacementInfo(provider.uuid, region, nodes1, lbNames);
-    PlacementInfo placementInfo2 = setupPlacementInfo(provider.uuid, region, nodes2, lbNames);
+    PlacementInfo placementInfo1 = setupPlacementInfo(provider.getUuid(), region, nodes1, lbNames);
+    PlacementInfo placementInfo2 = setupPlacementInfo(provider.getUuid(), region, nodes2, lbNames);
     // Setup Universe and clusters
     Universe universe = setupUniverse(cloudType, customer, placementInfo1);
     UUID cluster1 = universe.getUniverseDetails().getPrimaryCluster().uuid;
@@ -420,7 +447,8 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     // Test
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     Map<LoadBalancerPlacement, LoadBalancerConfig> lbMap =
-        universeTaskBase.generateLoadBalancerMap(taskParams, taskParams.clusters, nodesToIgnore);
+        universeTaskBase.generateLoadBalancerMap(
+            taskParams, taskParams.clusters, nodesToIgnore, null);
     // Check number of LBs
     assertThat(lbMap, aMapWithSize(numLBs));
     // Check AZs/nodes
@@ -449,7 +477,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     Customer customer = ModelFactory.testCustomer();
     Provider provider = ModelFactory.awsProvider(customer);
     Region region = Region.create(provider, "code", "name", "image");
-    PlacementInfo placementInfo = setupPlacementInfo(provider.uuid, region, nodes, lbNames);
+    PlacementInfo placementInfo = setupPlacementInfo(provider.getUuid(), region, nodes, lbNames);
     // Setup Universe and clusters
     Universe universe = setupUniverse(cloudType, customer, placementInfo);
     UUID cluster = universe.getUniverseDetails().getPrimaryCluster().uuid;
@@ -459,10 +487,13 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     Map<LoadBalancerPlacement, LoadBalancerConfig> lbMap =
         universeTaskBase.generateLoadBalancerMap(
-            taskParams, taskParams.clusters, new HashSet<>(nodes));
+            taskParams, taskParams.clusters, new HashSet<>(nodes), null);
     assertThat(lbMap, anEmptyMap());
     // Test no clusters
-    lbMap = universeTaskBase.generateLoadBalancerMap(taskParams, null, null);
+    lbMap = universeTaskBase.generateLoadBalancerMap(taskParams, null, null, null);
+    assertThat(lbMap, anEmptyMap());
+    // Test no clusters and add all nodes
+    lbMap = universeTaskBase.generateLoadBalancerMap(taskParams, null, null, new HashSet<>(nodes));
     assertThat(lbMap, anEmptyMap());
   }
 

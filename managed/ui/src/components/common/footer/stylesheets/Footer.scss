@@ -1,13 +1,14 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../../_style/colors.scss';
+@use '../../../../_style/colors.scss';
+@use '../../../../_style/variables.scss';
 
 /* From gentelella.css need to cleanup */
 
 footer {
-  height: $YB_FOOTER_HEIGHT;
-  margin-left: $YB_SIDEBAR_WIDTH;
-  background-color: $YB_FOOTER_BACKGROUND;
+  height: variables.$YB_FOOTER_HEIGHT;
+  margin-left: variables.$YB_SIDEBAR_WIDTH;
+  background-color: colors.$YB_FOOTER_BACKGROUND;
   line-height: 46px;
   display: flex;
   flex-direction: row;
@@ -29,7 +30,6 @@ footer {
     display: inline-block;
   }
 
-
   .footer-social-container {
     text-align: center;
   }
@@ -45,7 +45,7 @@ footer {
 
   .social-media-logo {
     margin-bottom: 4px;
-    margin-left: 2px;
+    margin-left: 4px;
   }
 
   span.social-media-cta {

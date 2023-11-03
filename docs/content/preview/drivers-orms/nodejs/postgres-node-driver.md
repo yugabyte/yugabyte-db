@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: node-postgres Driver for YSQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: Node.js drivers for YSQL
+description: Connect a node.js application using node-postgres Driver
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:

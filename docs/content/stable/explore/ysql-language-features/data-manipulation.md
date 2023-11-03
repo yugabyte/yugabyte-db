@@ -1,7 +1,7 @@
 ---
-title: Data Manipulation
-linkTitle: Data Manipulation
-description: Data Manipulation in YSQL
+title: Data manipulation
+linkTitle: Data manipulation
+description: Data manipulation in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
@@ -13,7 +13,9 @@ type: docs
 
 This section describes how to manipulate data in YugabyteDB using the YSQL `INSERT`, `UPDATE`, and `DELETE` statements.
 
-## Inserting Rows
+{{% explore-setup-single %}}
+
+## Insert rows
 
 Initially, database tables are not populated with data. Using YSQL, you can add one or more rows containing complete or partial data by inserting one row at a time.
 
@@ -33,7 +35,7 @@ Assuming you know the order of columns in the table, you can insert a row by exe
 INSERT INTO employees VALUES (1, 'John Smith', 'Marketing');
 ```
 
-If you do not know the order of columns, you have an option of listing them within the `INSERT`  statement when adding a new row, as follows:
+If you do not know the order of columns, you have an option of listing them in the `INSERT` statement when adding a new row, as follows:
 
 ```sql
 INSERT INTO employees (employee_no, name, department)
@@ -46,13 +48,13 @@ You can view your changes by executing the following command:
 SELECT * FROM employees;
 ```
 
-You can always view the table schema by executing the following command:
+You can always view the table schema by executing the following meta-command:
 
-```shell
+```sql
 yugabyte=# \d employees
 ```
 
-### Default Values
+### Default values
 
 In some cases you might not know values for all the columns when you insert a row. You have the option of not specifying these values at all, in which case the columns are automatically filled with default values when the `INSERT`  statement is executed, as demonstrated in the following example:
 
@@ -67,7 +69,7 @@ INSERT INTO employees (employee_no, name, department)
 VALUES (1, 'John Smith', DEFAULT);
 ```
 
-### Multiple Rows
+### Multiple rows
 
 You can use YSQL to insert multiple rows by executing a single `INSERT`  statement, as shown in the following example:
 
@@ -113,7 +115,7 @@ UPDATE SET department = EXCLUDED.department || ';' || employees.department;
 
 The following is the output produced by the preceding example:
 
-```
+```output
  employee_no | name          | department
 -------------+---------------+-----------------
  1           | John Smith    | Sales;Marketing
@@ -130,7 +132,7 @@ ON CONFLICT
 DO NOTHING;
 ```
 
-## Loading Data from a File
+## Load data from a file
 
 The `COPY FROM` statement allows you to populate a table by loading data from a file whose columns are separated by a delimiter character. If the table already has data, the `COPY FROM` statement appends the new data to the existing data by creating new rows. Table columns that are not specified in the `COPY FROM` column list are populated with their default values.
 
@@ -141,7 +143,8 @@ The following example demonstrates how to use the `COPY FROM` statement:
 ```sql
 COPY employees FROM '/home/mydir/employees.txt.sql' DELIMITER ',' CSV HEADER;
 ```
-## Exporting Data to a File
+
+## Export data to a file
 
 The `COPY TO` statement allows you to export data from a table to a file. By specifying a column list, you can instruct `COPY TO` to only export data from certain columns.
 
@@ -153,11 +156,11 @@ The following example demonstrates how to use the `COPY FROM` statement:
 COPY employees TO '/home/mydir/employees.txt.sql' DELIMITER ',';
 ```
 
-## Backing Up a Database
+## Back up a database
 
 You can back up a single instance of a YugabyteDB database into a plain-text SQL file by using the  `ysql_dump` is a utility, as follows:
 
-```
+```sh
 ysql_dump mydb > mydb.sql
 ```
 
@@ -165,15 +168,15 @@ To back up global objects that are common to all databases in a cluster, such as
 
 `ysql_dump` makes backups regardless of whether or not the database is being used.
 
-To reconstruct the database from a plain-text SQL file to the state the database was in at the time of saving, import this file using the `ysqlsh \i`  command, as follows:
+To reconstruct the database from a plain-text SQL file to the state the database was in at the time of saving, import this file using the `\i` meta-command, as follows:
 
+```sql
+yugabyte=# \i mydb
 ```
-ysqlsh \i mydb
-```
 
-## Defining NOT NULL Constraint
+## Define NOT NULL constraint
 
-YSQL lets you define various constraints on columns. One of these constrains is `NOT NULL`. You can use it to specify that a column value cannot be null. Typically, you apply this constraint when creating a table, as the following example demonstrates:
+YSQL lets you define various constraints on columns. One of these constraints is [NOT NULL](../../indexes-constraints/other-constraints/#not-null-constraint). You can use it to specify that a column value cannot be null. Typically, you apply this constraint when creating a table, as the following example demonstrates:
 
 ```sql
 CREATE TABLE employees (
@@ -190,7 +193,7 @@ ALTER TABLE employees
 ALTER COLUMN department SET NOT NULL;
 ```
 
-## Deferring Constraint Check
+## Defer constraint check
 
 YSQL allows you to set constraints using the `SET CONSTRAINTS` statement and defer foreign key constraints check until the transaction commit time by declaring the constraint `DEFERRED`, as follows:
 
@@ -201,7 +204,7 @@ SET CONSTRAINTS name DEFERRED;
 COMMIT;
 ```
 
-Note that the `NOT NULL` constraint cannot be used with the `SET CONSTRAINTS` statement.
+Note that the `NOT NULL` constraint can't be used with the `SET CONSTRAINTS` statement.
 
 When creating a foreign key constraint that might need to be deferred (for example, if a transaction could have inconsistent data for a while, such as initially mismatched foreign keys), you have an option to define this transaction as `DEFERRABLE` and `INITIALLY DEFERRED`, as follows:
 
@@ -209,11 +212,11 @@ When creating a foreign key constraint that might need to be deferred (for examp
 CREATE TABLE employees (
     employee_no integer,
     name text UNIQUE
-  	DEFERRABLE INITIALLY DEFERRED
+    DEFERRABLE INITIALLY DEFERRED
 );
 ```
 
-## Configuring Automatic Timestamps
+## Configure automatic timestamps
 
 You can use automatic timestamps to keep track of when data in a table was added or updated.
 
@@ -224,7 +227,7 @@ CREATE TABLE employees (
     employee_no integer NOT NULL,
     name text,
     department text,
-  	created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 ```
 
@@ -247,7 +250,7 @@ CREATE TABLE employees (
     employee_no integer NOT NULL,
     name text,
     department text,
-  	updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 ```
 
@@ -258,31 +261,31 @@ FOR EACH ROW
 EXECUTE PROCEDURE trigger_timestamp();
 ```
 
-## Obtaining Modified Data
+## Obtain modified data
 
 The `RETURNING` clause allows you to obtain data in real time from the rows that you modified using the `INSERT`, `UPDATE`, and `DELETE` statements.
 
 The `RETURNING` clause can contain either column names of its parent statement's target table or value expressions using these columns. To select all columns of the target table, in order, use `RETURNING *`.
 
-When you use the `RETURNING` clause within the  `INSERT` statement, you are obtaining data of the row as it was inserted. This is useful when dealing with computed default values or with `INSERT ... SELECT` .
+When you use the `RETURNING` clause in the  `INSERT` statement, you are obtaining data of the row as it was inserted. This is helpful when dealing with computed default values or with `INSERT ... SELECT` .
 
-When using the `RETURNING` clause within the  `UPDATE` statement, the data you are obtaining from `RETURNING` represents the new content of the modified row, as the following example demonstrates:
+When using the `RETURNING` clause in the  `UPDATE` statement, the data you are obtaining from `RETURNING` represents the new content of the modified row, as the following example demonstrates:
 
 ```sql
 UPDATE employees SET employee_no = employee_no + 1
-	WHERE employee_no = 1
-	RETURNING name, employee_no AS new_employee_no;
+  WHERE employee_no = 1
+  RETURNING name, employee_no AS new_employee_no;
 ```
 
-In cases of using the `RETURNING` clause within the  `DELETE` statement, you are obtaining the content of the deleted row, as shown the following example:
+In cases of using the `RETURNING` clause in the  `DELETE` statement, you are obtaining the content of the deleted row, as shown the following example:
 
 ```sql
 DELETE FROM employees WHERE department = 'Sales' RETURNING *;
 ```
 
-## Auto-Incrementing Column Values
+## Auto-Increment column values
 
-Using a special kind of database object called sequence, you can generate unique identifiers by auto-incrementing the numeric identifier of each preceding row. In most cases, you would use sequences to auto-generate primary keys.
+Using a special kind of database object called a sequence, you can generate unique identifiers by auto-incrementing the numeric identifier of each preceding row. In most cases, you would use sequences to auto-generate primary keys.
 
 ```sql
 CREATE TABLE employees2 (employee_no serial, name text, department text);
@@ -317,7 +320,7 @@ INSERT INTO employees (employee_no, name, department)
 VALUES (DEFAULT, 'John Smith', 'Sales');
 ```
 
-When you create your sequence via  `serial` , the sequence has all its parameters set to default values. For example, the sequence would not be optimized for access to its information because it does not have a cache (the default value of the a `SEQUENCE` 's  `CACHE` parameter is 1;  `CACHE`  defines how many sequence numbers should be preallocated and stored in memory). To be able to configure a sequence at the time of its creation, you need to construct it explicitly and then reference it when you create your table, as shown in the following examples:
+When you create your sequence via  `serial` , the sequence has all its parameters set to default values. For example, the sequence would not be optimized for access to its information because it does not have a cache (the default value of the a `SEQUENCE` 's  `CACHE` parameter is 1;  `CACHE`  defines how many sequence numbers should be pre-allocated and stored in memory). To be able to configure a sequence at the time of its creation, you need to construct it explicitly and then reference it when you create your table, as shown in the following examples:
 
 ```sql
 CREATE SEQUENCE sec_employees_employee_no
@@ -335,7 +338,7 @@ CREATE TABLE employees (
 
 The new sequence value is generated by the `nextval()` function.
 
-## Updating Rows
+## Update rows
 
 YSQL allows you to update a single row in table, all rows, or a set of rows. You can update each column separately.
 
@@ -345,7 +348,7 @@ If you know (1) the name of the table and column that require updating, (2) the 
 UPDATE employees SET department = 'Sales';
 ```
 
-Since YSQL does not provide a unique identifier for rows, you might not be able to pinpoint the row directly. To work around this limitation, you can specify one or more conditions a row needs to meet to be updated.
+Because YSQL does not provide a unique identifiers for rows, you might not be able to pinpoint the row directly. To work around this limitation, you can specify one or more conditions a row needs to meet to be updated.
 
 The following example attempts to find an employee whose employee number is 3 and change this number to 7:
 
@@ -367,9 +370,9 @@ You can use the `UPDATE` statement to modify values of more than one column. You
 UPDATE employees SET employee_no = 2, name = 'Lee Warren' WHERE employee_no = 5;
 ```
 
-## Deleting Rows
+## Delete rows
 
-Using YSQL, you can remove rows from a table by executing the `DELETE`  statement. As with updating rows,  you delete specific rows based on one or more conditions that you define in the statement. If you do not provide conditions, you remove all rows.
+Using YSQL, you can remove rows from a table by executing the `DELETE` statement. As with updating rows, you delete specific rows based on one or more conditions that you define in the statement. If you do not provide conditions, you remove all rows.
 
 The following example deletes all rows that have the Sales department:
 

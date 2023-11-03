@@ -33,8 +33,6 @@
 set(YB_PCH_PREFIX server)
 set(YB_PCH_DEP_LIBS opid_proto)
 
-YB_INCLUDE_EXTENSIONS()
-
 #########################################
 # server_common
 #########################################
@@ -90,7 +88,7 @@ set(SERVER_PROCESS_SRCS
   generic_service.cc
   glog_metrics.cc
   monitored_task.cc
-  pgsql_webserver_wrapper.cc
+  pprof-path-handlers_util.cc
   pprof-path-handlers.cc
   rpc_server.cc
   rpcz-path-handler.cc
@@ -103,7 +101,8 @@ set(SERVER_PROCESS_SRCS
   webserver.cc
   webserver_options.cc
   webui_util.cc
-  ${RPC_SRCS_EXTENSIONS}
+  random_error_clock.cc
+  secure.cc
 )
 
 add_library(server_process ${SERVER_PROCESS_SRCS})
@@ -130,3 +129,4 @@ endif()
 
 set(YB_TEST_LINK_LIBS server_process ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(webserver-test)
+ADD_YB_TEST(pprof-path-handler_util-test)

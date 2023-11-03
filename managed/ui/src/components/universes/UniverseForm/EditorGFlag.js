@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import AceEditor from 'react-ace';
+import * as ace from 'ace-builds/src-noconflict/ace';
 //Icons
 import Bulb from '../images/bulb.svg';
 import 'ace-builds/src-noconflict/theme-textmate';
 import 'ace-builds/src-noconflict/mode-json';
 import { FlexShrink } from '../../common/flexbox/YBFlexBox';
-const ace = require('ace-builds/src-noconflict/ace');
+//Styles
+import './UniverseForm.scss';
+
 ace.config.set('basePath', 'https://cdn.jsdelivr.net/npm/ace-builds@1.4.3/src-noconflict/');
 ace.config.setModuleUrl(
   'ace/mode/json_worker',

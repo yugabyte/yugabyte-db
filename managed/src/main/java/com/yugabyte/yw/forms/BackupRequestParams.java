@@ -3,20 +3,26 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
+import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import lombok.ToString;
 import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
 
 @ApiModel(description = "Backup table parameters")
 @NoArgsConstructor
+@JsonIgnoreProperties({"currentYbcTaskId", "currentIdx", "backupDBStates"})
 public class BackupRequestParams extends UniverseTaskParams {
 
   @Constraints.Required
@@ -28,10 +34,14 @@ public class BackupRequestParams extends UniverseTaskParams {
 
   @Constraints.Required
   @ApiModelProperty(value = "Universe UUID", required = true)
-  public UUID universeUUID = null;
+  @Getter
+  @Setter
+  private UUID universeUUID = null;
 
   @Constraints.Required
-  @ApiModelProperty(value = "Backup type")
+  @ApiModelProperty(
+      value = "Backup type",
+      allowableValues = "PGSQL_TABLE_TYPE, YQL_TABLE_TYPE, REDIS_TABLE_TYPE")
   public TableType backupType;
 
   // Specifies the time in millisecs before deleting the backup from the storage
@@ -103,6 +113,9 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Schedule Name")
   public String scheduleName = null;
 
+  @ApiModelProperty(value = "Take table by table backups")
+  public boolean tableByTableBackup = false;
+
   // Specifies number of backups to retain in case of recurring backups.
   @ApiModelProperty(value = "Minimum number of backups to retain for a particular backup schedule")
   public int minNumBackupsToRetain = Util.MIN_NUM_BACKUPS_TO_RETAIN;
@@ -110,17 +123,26 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Time unit for backup expiry time")
   public TimeUnit expiryTimeUnit;
 
+  @ApiModelProperty(value = "Parallel DB backups")
+  public int parallelDBBackups = 1;
+
   // Intermediate states to resume ybc backups
   public UUID backupUUID;
 
-  public int currentIdx;
+  // This param precedes in value even if YBC is installed and enabled on the universe.
+  // If null, proceeds with usual behaviour.
+  @ApiModelProperty(value = "Overrides whether you want to use YBC based or script based backup.")
+  public BackupCategory backupCategory = null;
 
-  public String currentYbcTaskId;
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  private KubernetesResourceDetails kubernetesResourceDetails;
 
   public BackupRequestParams(BackupRequestParams backupRequestParams) {
     this.storageConfigUUID = backupRequestParams.storageConfigUUID;
     this.kmsConfigUUID = backupRequestParams.kmsConfigUUID;
-    this.universeUUID = backupRequestParams.universeUUID;
+    this.setUniverseUUID(backupRequestParams.getUniverseUUID());
     this.backupType = backupRequestParams.backupType;
     this.timeBeforeDelete = backupRequestParams.timeBeforeDelete;
     this.frequencyTimeUnit = backupRequestParams.frequencyTimeUnit;
@@ -140,6 +162,7 @@ public class BackupRequestParams extends UniverseTaskParams {
     this.minNumBackupsToRetain = backupRequestParams.minNumBackupsToRetain;
     this.expiryTimeUnit = backupRequestParams.expiryTimeUnit;
     this.baseBackupUUID = backupRequestParams.baseBackupUUID;
+    this.parallelDBBackups = backupRequestParams.parallelDBBackups;
     this.incrementalBackupFrequency = backupRequestParams.incrementalBackupFrequency;
     this.incrementalBackupFrequencyTimeUnit =
         backupRequestParams.incrementalBackupFrequencyTimeUnit;
@@ -171,10 +194,10 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ToString
   public static class KeyspaceTable {
     @ApiModelProperty(value = "Tables")
-    public List<String> tableNameList;
+    public List<String> tableNameList = new ArrayList<>();
 
     @ApiModelProperty(value = "Table UUIDs")
-    public List<UUID> tableUUIDList;
+    public List<UUID> tableUUIDList = new ArrayList<>();
 
     @ApiModelProperty(value = "keyspace")
     public String keyspace;

@@ -108,7 +108,7 @@ HdrHistogram::HdrHistogram(const HdrHistogram& other)
   NoBarrier_Store(&current_count_, total_copied_count);
 }
 
-void HdrHistogram::ResetPercentiles() {
+void HdrHistogram::Reset() {
   for (int i = 0; i < counts_array_length_; i++) {
     NoBarrier_Store(&counts_[i], 0);
   }
@@ -261,7 +261,7 @@ int HdrHistogram::CountsArrayIndex(int bucket_index, int sub_bucket_index) const
 }
 
 uint64_t HdrHistogram::CountAt(int bucket_index, int sub_bucket_index) const {
-  return counts_[CountsArrayIndex(bucket_index, sub_bucket_index)];
+  return NoBarrier_Load(&counts_[CountsArrayIndex(bucket_index, sub_bucket_index)]);
 }
 
 uint64_t HdrHistogram::CountInBucketForValue(uint64_t value) const {
@@ -370,6 +370,10 @@ void HdrHistogram::DumpHumanReadable(std::ostream* out) const {
   if (MaxValue() >= highest_trackable_value()) {
     *out << "*NOTE: some values were greater than highest trackable value" << endl;
   }
+}
+
+size_t HdrHistogram::DynamicMemoryUsage() const {
+  return sizeof(*this) + sizeof(Atomic64) * counts_array_length_;
 }
 
 ///////////////////////////////////////////////////////////////////////

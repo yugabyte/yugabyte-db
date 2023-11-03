@@ -1,4 +1,4 @@
----
+<!---
 title: xCluster replication (2+ regions) in YCQL
 headerTitle: xCluster (2+ regions)
 linkTitle: xCluster (2+ regions)
@@ -14,7 +14,7 @@ menu:
     parent: explore-multi-region-deployments
     weight: 720
 type: docs
----
+--->
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -192,6 +192,4 @@ When the bidirectional replication has been configured, you can add data to the 
 
 You can add more tables to an existing replication by following instructions provided in [Add tables](../asynchronous-replication-ysql/#add-tables).
 
-## Clean up
-
-You can choose to destroy and remove the clusters along with their associated directories by following instructions provided in [Clean up](../asynchronous-replication-ysql/#clean-up).
+{{% explore-cleanup-local %}}

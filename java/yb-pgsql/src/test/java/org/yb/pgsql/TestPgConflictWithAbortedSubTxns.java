@@ -31,7 +31,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.yb.util.ThreadUtil;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 /**
  * This test mimics the scenario in #12767 -
@@ -80,20 +80,22 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
  *
  * 9. This leads to both sessions retrying and facing false conflicts till statement timeout is hit.
  */
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestPgConflictWithAbortedSubTxns extends BasePgSQLTest {
   private static final Logger LOG =
     LoggerFactory.getLogger(TestPgConflictWithAbortedSubTxns.class);
 
   private static final int NUM_THREADS = 9;
   private static final int TEST_DURATION_SECS = 120;
-  private static final int STATEMENT_TIMEOUT_MS = 10 * 1000;
+  private static final int STATEMENT_TIMEOUT_MS = 30 * 1000;
 
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
     flags.put("yb_enable_read_committed_isolation", "true");
     flags.put("ysql_pg_conf_csv", "statement_timeout=" + STATEMENT_TIMEOUT_MS);
+    // This test is designed to validate a scenario encountered in RC without wait queues.
+    flags.put("enable_wait_queues", "false");
     return flags;
   }
 
@@ -140,7 +142,7 @@ public class TestPgConflictWithAbortedSubTxns extends BasePgSQLTest {
     try {
       LOG.info("Waiting for all threads");
       for (Future<?> future : futures) {
-        future.get(TEST_DURATION_SECS + 10, TimeUnit.SECONDS);
+        future.get(TEST_DURATION_SECS + 30, TimeUnit.SECONDS);
       }
     } catch (TimeoutException ex) {
       LOG.warn("Threads info:\n\n" + ThreadUtil.getAllThreadsInfo());

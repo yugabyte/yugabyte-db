@@ -6,7 +6,7 @@
 // alert creation.
 
 import { Field, reduxForm, FieldArray } from 'redux-form';
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import {
   YBButton,
@@ -16,7 +16,7 @@ import {
   YBTextInputWithLabel,
   YBToggle
 } from '../../common/forms/fields';
-import { connect } from 'react-redux';
+import { connect, useSelector } from 'react-redux';
 import '../CreateAlerts.scss';
 import { AlertsPolicy } from './AlertsPolicy';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
@@ -24,6 +24,7 @@ import { getAlertConfigByName } from '../../../actions/customers';
 import { toast } from 'react-toastify';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
 import { isNonAvailable } from '../../../utils/LayoutUtils';
+import AlertPolicyDetails from './AlertPolicyDetails';
 
 const required = (value) => (value ? undefined : 'This field is required.');
 
@@ -41,6 +42,7 @@ const CreateAlert = (props) => {
     alertDestinations,
     updateAlertConfig
   } = props;
+
   const [isAllUniversesDisabled, setIsAllUniversesDisabled] = useState(
     initialValues.ALERT_TARGET_TYPE === 'allUniverses'
   );
@@ -48,17 +50,19 @@ const CreateAlert = (props) => {
   const [currentMetric, setCurrentMetric] = useState(undefined);
   const isReadOnly = isNonAvailable(customer.data.features, 'alert.configuration.actions');
 
+  const featureFlags = useSelector((state) => state.featureFlags);
+
   useEffect(() => {
     alertDestinations().then((res) => {
       const defaultDestination = res.find((destination) => destination.defaultDestination);
-      res = res.map((destination, index) => (
-        <option key={index} value={destination.uuid}>
+      res = res.map((destination) => (
+        <option key={destination.uuid} value={destination.uuid}>
           {destination.name}
         </option>
       ));
       setAlertDestination([
         <option key="default" value="<default>">
-          Use Default ({defaultDestination.name})
+          Use Default ({defaultDestination?.name ?? 'No default destination configured'})
         </option>,
         <option key="empty" value="<empty>">
           No Destination
@@ -85,6 +89,7 @@ const CreateAlert = (props) => {
     </option>,
     ...metricsData.map((metric, i) => {
       return (
+        // eslint-disable-next-line react/no-array-index-key
         <option key={i} value={metric.template}>
           {metric.name}
         </option>
@@ -114,6 +119,7 @@ const CreateAlert = (props) => {
    */
   const handleMetricConditionChange = (value) => {
     const metric = metricsData.find((metric) => metric.template === value);
+
     setCurrentMetric(metric);
     if (!metric) {
       return;
@@ -161,9 +167,9 @@ const CreateAlert = (props) => {
       targetType: !enablePlatformAlert ? 'UNIVERSE' : 'PLATFORM',
       target: !enablePlatformAlert
         ? {
-          all: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? false : true,
-          uuids: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? [] : null
-        }
+            all: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? false : true,
+            uuids: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? [] : null
+          }
         : { all: true },
       thresholds: '',
       thresholdUnit: currentMetric.thresholdUnit,
@@ -213,7 +219,24 @@ const CreateAlert = (props) => {
     <form name="alertConfigForm" onSubmit={handleSubmit(handleOnSubmit)}>
       <Row className="config-section-header">
         <Col md={12}>
-          <h4>Template</h4>
+          <Row className="flex-container">
+            <h4>New Alert Policy</h4>
+            <Row className="component-flex">
+              <Col lg={5}>
+                <Field
+                  name="ALERT_STATUS"
+                  component={YBToggle}
+                  isReadOnly={isReadOnly}
+                  onChange={(event) =>
+                    props.updateField('alertConfigForm', 'ALERT_STATUS', event?.target?.checked)
+                  }
+                />
+              </Col>
+              <Col lg={7} className="component-label mg-l-15 noPadding">
+                <strong>Active</strong>
+              </Col>
+            </Row>
+          </Row>
         </Col>
         <Row>
           <Col md={6}>
@@ -224,6 +247,7 @@ const CreateAlert = (props) => {
               options={alertMetricsConditionList}
               onInputChanged={handleMetricConditionChange}
               readOnlySelect={isReadOnly}
+              label="Policy Template"
             />
           </Col>
         </Row>
@@ -284,21 +308,6 @@ const CreateAlert = (props) => {
             </Col>
           </Row>
         )}
-        {currentMetric && (
-          <Row>
-            <Col md={6}>
-              <Field
-                name="ALERT_STATUS"
-                component={YBToggle}
-                isReadOnly={isReadOnly}
-                onChange={(event) =>
-                  props.updateField('alertConfigForm', 'ALERT_STATUS', event?.target?.checked)
-                }
-                label="Active"
-              />
-            </Col>
-          </Row>
-        )}
         {currentMetric && <hr />}
         {currentMetric && (
           <Row>
@@ -342,22 +351,33 @@ const CreateAlert = (props) => {
           </Row>
         )}
         {currentMetric && (
-          <Row className="actionBtnsMargin">
-            <Col md={6}>
-              <span className="form-item-custom-label marginRight">Destination</span>
-              <YBInfoTip
-                title="Destination"
-                content={`A destination consist of one or more channels. Whenever an Alert is triggered, it sends the related data to its designated destination.`}
-              />
-              <Field
-                name="ALERT_DESTINATION_LIST"
-                component={YBSelectWithLabel}
-                options={alertDestination}
-                readOnlySelect={isReadOnly}
-              />
-            </Col>
-          </Row>
+          <div className="actionBtnsMargin">
+            <Row>
+              <Col md={6}>
+                <span className="form-item-custom-label marginRight">Alert Destination</span>
+                <YBInfoTip
+                  title="Destination"
+                  content={`A destination consist of one or more channels. Whenever an Alert is triggered, it sends the related data to its designated destination.`}
+                />
+                <Field
+                  name="ALERT_DESTINATION_LIST"
+                  component={YBSelectWithLabel}
+                  options={alertDestination}
+                  readOnlySelect={isReadOnly}
+                />
+              </Col>
+            </Row>
+            {(featureFlags.test.enableCustomEmailTemplates ||
+              featureFlags.released.enableCustomEmailTemplates) && (
+              <Row>
+                <Col md={6}>
+                  <AlertPolicyDetails currentMetric={currentMetric} />
+                </Col>
+              </Row>
+            )}
+          </div>
         )}
+
         <Row className="alert-action-button-container">
           <Col lg={6} lgOffset={6}>
             <YBButton

@@ -70,7 +70,7 @@ class Preparer;
 //
 //  1 - Init() is called on a newly created driver object.  If the driver is instantiated from a
 //  REPLICA, then we know that the operation is already "REPLICATING" (and thus we don't need to
-//  trigger replication ourself later on).
+//  trigger replication ourselves later on).
 //
 //  2 - ExecuteAsync() is called. This submits the operation driver to the Preparer and returns
 //      immediately.
@@ -102,10 +102,8 @@ class Preparer;
 //
 //  6 - The driver executes Finalize() which, in turn, makes operations make their changes visible
 //      to other operations.  After this step the driver replies to the client if needed and the
-//      operation is completed.  In-mem data structures that contain the changes made by the
+//      operation is completed.  In-memory data structures that contain the changes made by the
 //      operation can now be made durable.
-//
-// [1] - see 'Implementation Techniques for Main Memory Database Systems', DeWitt et. al.
 //
 // This class is thread safe.
 class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
@@ -167,18 +165,18 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
 
   Trace* trace() { return trace_.get(); }
 
-  void AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override;
+  Status AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override;
 
   bool is_leader_side() {
     // TODO: switch state to an atomic.
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     return replication_state_ == ReplicationState::NOT_REPLICATING;
   }
 
   // Actually prepare and start. In case of leader-side operations, this stops short of calling
   // Consensus::Replicate, which is the responsibility of the caller. This is being done so that
   // we can append multiple rounds to the consensus queue together.
-  Status PrepareAndStart();
+  Status PrepareAndStart(IsLeaderSide is_leader_side = IsLeaderSide::kTrue);
 
   // The task used to be submitted to the prepare threadpool to prepare and start the operation.
   // If PrepareAndStart() fails, calls HandleFailure. Since 07/07/2017 this is being used for

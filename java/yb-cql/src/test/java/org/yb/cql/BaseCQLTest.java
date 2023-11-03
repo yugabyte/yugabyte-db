@@ -186,6 +186,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
         break;
       }
       LOG.info("system.peers still contains only " + numPeers + " entries, waiting");
+      attemptsMade++;
       Thread.sleep(1000);
     }
     if (waitSuccessful) {
@@ -269,12 +270,14 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     afterBaseCQLTestTearDown();
   }
 
-  protected void restartClusterWithFlag(String flag, String value) throws Exception {
+  protected void restartClusterWithTSFlags(Map<String, String> tserverFlags) throws Exception {
     destroyMiniCluster();
-    createMiniCluster(
-        Collections.emptyMap(),
-        Collections.singletonMap(flag, value));
+    createMiniCluster(Collections.emptyMap(), tserverFlags);
     setUpCqlClient();
+  }
+
+  protected void restartClusterWithFlag(String flag, String value) throws Exception {
+    restartClusterWithTSFlags(Collections.singletonMap(flag, value));
   }
 
   protected void afterBaseCQLTestTearDown() throws Exception {

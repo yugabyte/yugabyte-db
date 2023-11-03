@@ -1,0 +1,22 @@
+import { FC, ReactNode } from 'react';
+import { TextField, StandardTextFieldProps } from '@material-ui/core';
+import { YBTooltip } from '../YBTooltip/YBTooltip';
+
+export type YBInputProps = { tooltip?: ReactNode } & Omit<
+  StandardTextFieldProps,
+  'variant' | 'color' | 'classes' | 'size' | 'select' | 'FormHelperTextProps' | 'SelectProps'
+>;
+
+export const YBInput: FC<YBInputProps> = ({ label, tooltip, ...props }) => (
+  <TextField
+    {...props}
+    label={
+      label && (
+        <>
+          {label} {tooltip && <YBTooltip title={tooltip} />}
+        </>
+      )
+    }
+    variant="standard"
+  />
+);

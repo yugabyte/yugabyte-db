@@ -6,131 +6,169 @@ westus:
   name: West US
   latitude: 37.783
   longitude: -122.417
+  availabilty_zones: [westus]
 westus2:
   name: West US 2
   latitude: 47.233
   longitude: -119.852
+  availabilty_zones: [westus2-1, westus2-2, westus2-3]
+westus3:
+  name: West US 3
+  latitude: 33.448376
+  longitude: -112.074036
+  availabilty_zones: [westus3-1, westus3-2, westus3-3]
 westcentralus:
   name: West Central US
   latitude: 40.890
   longitude: -110.234
+  availabilty_zones: [westcentralus]
 centralus:
   name: Central US
   latitude: 41.5908
   longitude: -93.6208
+  availabilty_zones: [centralus-1, centralus-2, centralus-3]
 northcentralus:
   name: North Central US
   latitude: 41.8819
   longitude: -87.6278
+  availabilty_zones: [northcentralus]
 southcentralus:
   name: South Central US
   latitude: 29.4167
   longitude: -98.5
+  availabilty_zones: [southcentralus-1, southcentralus-2, southcentralus-3]
 eastus:
   name: East US
   latitude: 37.3719
   longitude: -79.8164
+  availabilty_zones: [eastus-1, eastus-2, eastus-3]
 eastus2:
   name: East US 2
   latitude: 36.6681
   longitude: -78.3889
+  availabilty_zones: [eastus2-1, eastus2-2, eastus2-3]
 uksouth:
   name: UK South
   latitude: 50.941
   longitude: -0.799
+  availabilty_zones: [uksouth-1, uksouth-2, uksouth-3]
 ukwest:
   name: UK West
   latitude: 53.427
   longitude: -3.084
+  availabilty_zones: [ukwest]
 westeurope:
   name: West Europe
   latitude: 52.3667
   longitude: 4.9
+  availabilty_zones: [westeurope-1, westeurope-2, westeurope-3]
 northeurope:
   name: North Europe
   latitude: 53.3478
   longitude: -6.2597
+  availabilty_zones: [northeurope-1, northeurope-2, northeurope-3]
 japaneast:
   name: Japan East
   latitude: 35.68
   longitude: 139.77
+  availabilty_zones: [japaneast-1, japaneast-2, japaneast-3]
 japanwest:
   name: Japan West
   latitude: 34.6939
   longitude: 135.5022
+  availabilty_zones: [japanwest]
 eastasia:
   name: East Asia
   latitude: 22.267
   longitude: 114.188
+  availabilty_zones: [eastasia-1, eastasia-2, eastasia-3]
 southeastasia:
   name: Southeast Asia
   latitude: 1.283
   longitude: 103.833
+  availabilty_zones: [southeastasia-1, southeastasia-2, southeastasia-3]
 australiacentral:
   name: Australia Central
   latitude: -35.3075
   longitude: 149.1244
+  availabilty_zones: [australiacentral]
 australiaeast:
   name: Australia East
   latitude: -33.86
   longitude: 151.2094
+  availabilty_zones: [australiaeast-1, australiaeast-2, australiaeast-3]
 australiasoutheast:
   name: Australia Southeast
   latitude: -37.8136
   longitude: 144.9631
+  availabilty_zones: [australiasoutheast]
 francecentral:
   name: France Central
   latitude: 46.3772
   longitude: 2.3730
+  availabilty_zones: [francecentral-1, francecentral-2, francecentral-3]
 southafricanorth:
   name: South Africa North
   latitude: -25.731340
   longitude: 28.218370
+  availabilty_zones: [southafricanorth-1, southafricanorth-2, southafricanorth-3]
 centralindia:
   name: Central India
   latitude: -25.731340
   longitude: 28.218370
+  availabilty_zones: [centralindia-1, centralindia-2, centralindia-3]
 southindia:
   name: South India
   latitude: 12.9822
   longitude: 80.1636
+  availabilty_zones: [southindia]
 westindia:
   name: West India
   latitude: 19.088
   longitude: 72.868
+  availabilty_zones: [westindia]
 koreacentral:
   name: Korea Central
   latitude: 37.5665
   longitude: 126.9780
+  availabilty_zones: [koreacentral-1, koreacentral-2, koreacentral-3]
 koreasouth:
   name: Korea South
   latitude: 35.1796
   longitude: 129.0756
+  availabilty_zones: [koreasouth]
 canadacentral:
   name: Canada Central
   latitude: 43.653
   longitude: -79.383
+  availabilty_zones: [canadacentral-1, canadacentral-2, canadacentral-3]
 canadaeast:
   name: Canada East
   latitude: 46.817
   longitude: -71.217
+  availabilty_zones: [canadaeast]
 germanywestcentral:
   name: Germany West Central
   latitude: 50.110924
   longitude: 8.682127
+  availabilty_zones: [germanywestcentral-1, germanywestcentral-2, germanywestcentral-3]
 norwayeast:
   name: Norway East
   latitude: 59.913868
   longitude: 10.752245
+  availabilty_zones: [norwayeast-1, norwayeast-2, norwayeast-3]
 switzerlandnorth:
   name: Switzerland North
   latitude: 47.451542
   longitude: 8.564572
+  availabilty_zones: [switzerlandnorth-1, switzerlandnorth-2, switzerlandnorth-3]
 uaenorth:
   name: UAE North
   latitude: 25.266666
   longitude: 55.316666
+  availabilty_zones: [uaenorth-1, uaenorth-2, uaenorth-3]
 brazilsouth:
   name: Brazil South
   latitude: -23.55
   longitude: -46.633
+  availabilty_zones: [brazilsouth-1, brazilsouth-2, brazilsouth-3]

@@ -2,7 +2,7 @@
 title: extended_timezone_names — unrestricted full projection [YSQL]
 headerTitle: extended_timezone_names — unrestricted full projection
 linkTitle: Unrestricted full projection
-description: Table. [YSQL]
+description: extended_timezone_names Table. [YSQL]
 menu:
   preview:
     identifier: unrestricted-full-projection
@@ -12,8 +12,6 @@ type: docs
 ---
 
 This table selects every column of the _extended_timezone_names_ view with no restriction. The results are ordered by the _utc_offset_ column and then by the _name_ column. Trivial code adds the Markdown table notation.
-
-<div class="table-responsive">
 
 | Name                             | Abbrev     | STD abbrev | DST abbrev | UTC offset | STD offset | DST offset | Is DST | Country code | Lat-Long        | Region coverage                                                           | Status     |
 | ----                             | -----------| -----------| -----------| ---------- | ---------- | ---------- | ------ | ------------ | --------        | ---------------                                                           | ------     |
@@ -595,5 +593,3 @@ This table selects every column of the _extended_timezone_names_ view with no re
 | Pacific/Tongatapu                | +13        | +13        | +13        |  13:00     |  13:00     |  13:00     | false  | TO           | -2110-17510     |                                                                           | Canonical  |
 | Etc/GMT-14                       | +14        | +14        | +14        |  14:00     |  14:00     |  14:00     | false  |              |                 |                                                                           | Canonical  |
 | Pacific/Kiritimati               | +14        | +14        | +14        |  14:00     |  14:00     |  14:00     | false  | KI           | +0152-15720     | Line Islands                                                              | Canonical  |
-
-</div>

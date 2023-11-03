@@ -4,44 +4,106 @@ services:
     contents: |
       include classpath("application.common.conf")
 
-      log.override.path="{{ installRoot }}/{{ yamlPath "platform.logPath" }}"
+      log.override.path="{{ baseInstall }}/data/logs"
 
-      play.crypto.secret="{{ yamlPath "platform.appSecret" }}"
+      play.crypto.secret="${PLATFORM_APP_SECRET}"
       play.http.errorHandler = "com.yugabyte.yw.common.YWErrorHandler"
-      play.server.https.keyStore.path = "{{ installRoot }}/yb-platform/certs/server.ks"
-      play.server.https.keyStore.type = "JKS"
-      play.server.https.keyStore.password = "{{ yamlPath "platform.keyStorePassword" }}"
+      play.server.https.keyStore{
+          path = "{{ baseInstall }}/data/yba-installer/certs/server.pem"
+          type = "PEM"
+          password = "{{ yamlPath "platform.keyStorePassword" }}"
+      }
 
       play.i18n.langs = [ "en" ]
       pidfile.path = "/dev/null"
+
       db {
-        default.url="jdbc:postgresql://127.0.0.1:{{ yamlPath "platform.externalPort" }}/yugaware"
-        default.driver=org.postgresql.Driver
-        default.username="{{ yamlPath "platform.platformDbUser" }}"
-        default.password="{{ yamlPath "platform.platformDbPassword" }}"
-        default.logStatements=true
-        default.migration.initOnMigrate=true
-        default.migration.auto=true
+        # Tracking default postgresql connection details
+          default {
+            {{if eq (yamlPath "postgres.useExisting.enabled") "true" }}
+            username="" # these will be set via env var in the systemd unit
+            password="" # these will be set via env var in the systemd unit
+            host="{{ yamlPath "postgres.useExisting.host" }}"
+            port="{{ yamlPath "postgres.useExisting.port" }}"
+            dbname="yugaware"
+            pg_dump_path="{{ yamlPath "postgres.useExisting.pg_dump_path" }}"
+            pg_restore_path="{{ yamlPath "postgres.useExisting.pg_restore_path" }}"
+            {{end}}
+
+            {{if eq (yamlPath "postgres.install.enabled") "true" }}
+            username="{{ yamlPath "postgres.install.username" }}"
+            password="{{ yamlPath "postgres.install.password" }}"
+            host="localhost"
+            port="{{ yamlPath "postgres.install.port" }}"
+            dbname="yugaware"
+            pg_dump_path="{{ .PgBin }}/pg_dump"
+            pg_restore_path="{{ .PgBin }}/pg_restore"
+            {{end}}
+
+            {{if eq (yamlPath "ybdb.install.enabled") "true" }}
+            username="yugabyte"
+            password=""
+            host="localhost"
+            port="{{ yamlPath "ybdb.install.port" }}"
+            dbname="yugaware"
+            {{end}}
+
+            username=${?DB_USERNAME}
+            password=${?DB_PASSWORD}
+            driver="org.postgresql.Driver"
+            url="jdbc:postgresql://"${db.default.host}":"${db.default.port}"/"${db.default.dbname}
+            logStatements=true
+            # Config about flyway migrations.
+            migration {
+              initOnMigrate=true
+              auto=true
+              ignoreMissingMigrations=true
+              outOfOrder=true
+              # We want to use postgres db in production
+              # The migration scripts will be under resources/db.migration.default.postgres
+              # with common scripts under resources/db.migration.default.common
+              locations=["common","postgres"]
+           }
+        }
+        perf_advisor {
+          # We assume both databases are on the same PG instance. If not - this needs to be overriden
+          username=${db.default.username}
+          password=${db.default.password}
+          url="jdbc:postgresql://"${db.default.host}":"${db.default.port}"/"${db.perf_advisor.dbname}
+          createDatabaseUrl="jdbc:postgresql://"${db.default.host}":"${db.default.port}"/"${db.default.dbname}
+        }
       }
+
       ebean {
         default = ["com.yugabyte.yw.models.*"]
       }
 
       yb {
         devops.home = "{{ installRoot }}/yb-platform/devops"
-        swamper.targetPath = "{{ installRoot }}/data/prometheus/swamper_targets"
-        swamper.rulesPath = "{{ installRoot }}/data/prometheus/swamper_rules"
-        metrics.url = "http://127.0.0.1:{{ yamlPath "prometheus.externalPort" }}/api/v1"
-        metrics.management.url = "http://127.0.0.1:{{ yamlPath "prometheus.externalPort" }}/-"
-        storage.path = "{{ installRoot }}/data/yb-platform"
+        swamper.targetPath = "{{ baseInstall }}/data/prometheus/swamper_targets"
+        swamper.rulesPath = "{{ baseInstall }}/data/prometheus/swamper_rules"
+        {{ if eq (yamlPath "prometheus.enableHttps") "true" }}
+        metrics.protocol = https
+        metrics.url = "https://{{ yamlPath "host" }}:{{ yamlPath "prometheus.port" }}/api/v1"
+        {{ else }}
+        metrics.protocol = http
+        metrics.url = "http://{{ yamlPath "host" }}:{{ yamlPath "prometheus.port" }}/api/v1"
+        {{ end }}
+        {{ if eq (yamlPath "prometheus.enableAuth") "true" }}
+        metrics.auth = true
+        metrics.auth_username = "{{ yamlPath "prometheus.authUsername" }}"
+        metrics.auth_password = "{{ yamlPath "prometheus.authPassword" }}"
+        {{ end }}
+        storage.path = "{{ .DataDir }}"
         seedData = false
         multiTenant = false
-        releases.path = "{{ installRoot }}/data/yb-platform/releases"
+        releases.path = "{{ .DataDir }}/releases"
         thirdparty.packagePath = "{{ installVersionDir }}/third-party"
         # Interval at which to check the status of every universe. Default: 5 minutes.
         health.check_interval_ms = 300000
         # Interval at which to send a status report email. Default: 12 hours.
         health.status_interval_ms = 43200000
+        installation = "yba-installer"
         # If SSO needs to be enabled on the platform.
         security.use_oauth = false
         security.use_oauth = "{{ yamlPath "platform.useOauth" }}"
@@ -50,8 +112,7 @@ services:
         security.type = "{{ yamlPath "platform.ybSecurityType" }}"
         security.clientID = ""
         security.clientID = "{{ yamlPath "platform.ybOidcClientId" }}"
-        security.secret = ""
-        security.secret = "{{ yamlPath "platform.ybOidcSecret" }}"
+        # security.secret = this is set via env var in the systemd unit
         security.discoveryURI = ""
         security.discoveryURI = "{{ yamlPath "platform.ybOidcDiscoveryUri" }}"
         security.oidcScope = ""
@@ -63,11 +124,18 @@ services:
         # The IP of the platform.
         url = ""
         url = "{{ yamlPath "platform.ywUrl" }}"
+        fixPaths = "{{ .FixPaths }}"
+
+        docker.release = "{{ .PlatformPackages }}"
+
+        node_agent {
+          releases.path = "{{ .DataDir }}/node-agent/releases"
+        }
       }
 
       ybc {
-        releases.path = "{{ installRoot }}/data/yb-platform/ybc/releases"
-        docker.release = "{{ installRoot }}/data/yb-platform/ybc/release"
+        releases.path = "{{ .DataDir }}/ybc/releases"
+        docker.release = "{{ .DataDir }}/ybc/release"
       }
 
       play.filters {
@@ -90,7 +158,10 @@ services:
         }
         cors {
           pathPrefixes = ["/"]
-          allowedOrigins =  ["{{ .GenerateCORSOrigin }}"]
+          allowedOrigins =  [
+            "https://{{ yamlPath "host" }}",
+            "{{ yamlPath "platform.support_origin_url"}}"
+          ]
           supportsCredentials=true
           allowedHttpMethods = ["GET", "POST", "PUT", "OPTIONS", "DELETE"]
           allowedHttpHeaders = [
@@ -116,15 +187,40 @@ services:
       Group={{ yamlPath "service_username" }}
       Type=simple
 
-      Environment="JAVA_HOME={{ installVersionDir }}/jdk8u345-b01"
+      Environment="JAVA_HOME={{ installVersionDir }}/jdk-17.0.7+7-jre/"
+      Environment="YB_OIDC_SECRET={{ yamlPath "platform.ybOidcSecret" }}"
+      Environment="PLATFORM_APP_SECRET={{ yamlPath "platform.appSecret" }}"
+
+      {{- if eq (yamlPath "platform.proxy.enable") "true" -}}
+      Environment="HTTP_PROXY={{ yamlPath "platform.proxy.http_proxy" }}"
+      Environment="HTTPS_PROXY={{ yamlPath "platform.proxy.https_proxy" }}"
+      Environment="NO_PROXY={{ yamlPath "platform.proxy.no_proxy"}}"
+      Environment="http_proxy={{ yamlPath "platform.proxy.http_proxy" }}"
+      Environment="https_proxy={{ yamlPath "platform.proxy.https_proxy" }}"
+      Environment="no_proxy={{ yamlPath "platform.proxy.no_proxy"}}"
+      {{end}}
+
+      {{- if eq (yamlPath "postgres.useExisting.enabled") "true"  -}}
+      Environment="DB_PASSWORD={{ yamlPath "postgres.useExisting.password" }}"
+      Environment="DB_USERNAME={{ yamlPath "postgres.useExisting.username" }}"
+      {{end}}
 
       ExecStart={{ installRoot }}/yb-platform/yugaware/bin/yugaware \
         -Dconfig.file={{ .ConfFileLocation }} \
         -Dhttp.port=disabled \
-        -Dhttps.port={{ yamlPath "platform.containerExposedPort" }}
+        -Dhttps.port={{ yamlPath "platform.port" }}{{- if eq (yamlPath "platform.proxy.enable") "true"}} \
+        -Dhttp.nonProxyHosts={{ yamlPath "platform.proxy.java_non_proxy" }} \
+        -Dhttp.proxyHost={{ yamlPath "platform.proxy.java_http_proxy_host" }} \
+        -Dhttp.proxyPort={{ yamlPath "platform.proxy.java_http_proxy_port" }} \
+        -Dhttps.proxyHost={{ yamlPath "platform.proxy.java_https_proxy_host" }} \
+        -Dhttps.proxyPort={{ yamlPath "platform.proxy.java_https_proxy_port" }}
+        {{end}}
 
       Restart=always
       RestartSec={{ yamlPath "platform.restartSeconds"}}
+
+      # allow platform to bind to port 443
+      AmbientCapabilities=CAP_NET_BIND_SERVICE
 
       [Install]
       WantedBy=multi-user.target

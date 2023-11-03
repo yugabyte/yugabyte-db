@@ -36,15 +36,12 @@
 #include <iostream>
 #include <vector>
 
-#include <glog/logging.h>
-
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 
-DEFINE_UNKNOWN_bool(verbose, false,
-            "Print additional information (e.g., log segment headers)");
+DEFINE_NON_RUNTIME_bool(verbose, false, "Print additional information (e.g., log segment headers)");
 
 namespace yb {
 namespace tools {

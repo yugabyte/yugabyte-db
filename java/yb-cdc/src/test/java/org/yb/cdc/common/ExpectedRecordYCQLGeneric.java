@@ -13,26 +13,21 @@
 
 package org.yb.cdc.common;
 
-import org.yb.Value;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertTrue;
+
+import org.yb.Common.DatumMessagePB;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.RowMessage.Op;
 
-import static org.yb.AssertionWrappers.*;
-
 public class ExpectedRecordYCQLGeneric<T> {
-  public int col1;
-  public T col2;
-  public Op opType;
-
   private static final int columnCount = 2;
-
   public static Object getValue(CdcService.CDCSDKProtoRecordPB record) {
     return getValue(record, 1);
   }
-
   public static Object getValue(CdcService.CDCSDKProtoRecordPB record, int index) {
     // Considering the index 1 since only the second column is going to be varying type here.
-    Value.DatumMessagePB tuple = record.getRowMessage().getNewTuple(index);
+    DatumMessagePB tuple = record.getRowMessage().getNewTuple(index);
 
     if (tuple.hasDatumBool()) {
       return tuple.getDatumBool();
@@ -51,10 +46,27 @@ public class ExpectedRecordYCQLGeneric<T> {
     }
   }
 
-  public ExpectedRecordYCQLGeneric(int col1, T col2, Op opType) {
-    this.col1 = col1;
-    this.col2 = col2;
-    this.opType = opType;
+  public static void checkRecord(CdcService.CDCSDKProtoRecordPB record,
+                                 ExpectedRecordYCQLGeneric<?> expectedRecord) {
+    switch (expectedRecord.opType) {
+      case INSERT:
+        checkInsertRecord(record, expectedRecord);
+        break;
+      case DELETE:
+        checkDeleteRecord(record, expectedRecord);
+        break;
+      case BEGIN:
+        checkBeginRecord(record);
+        break;
+      case COMMIT:
+        checkCommitRecord(record);
+        break;
+      case UPDATE:
+        checkUpdateRecord(record, expectedRecord);
+        break;
+      case DDL:
+        checkDDLRecord(record, columnCount);
+    }
   }
 
   private static void checkInsertRecord(CdcService.CDCSDKProtoRecordPB record,
@@ -96,26 +108,15 @@ public class ExpectedRecordYCQLGeneric<T> {
     assertTrue(record.hasCdcSdkOpId());
   }
 
-  public static void checkRecord(CdcService.CDCSDKProtoRecordPB record,
-                                 ExpectedRecordYCQLGeneric<?> expectedRecord) {
-    switch (expectedRecord.opType) {
-      case INSERT:
-        checkInsertRecord(record, expectedRecord);
-        break;
-      case DELETE:
-        checkDeleteRecord(record, expectedRecord);
-        break;
-      case BEGIN:
-        checkBeginRecord(record);
-        break;
-      case COMMIT:
-        checkCommitRecord(record);
-        break;
-      case UPDATE:
-        checkUpdateRecord(record, expectedRecord);
-        break;
-      case DDL:
-        checkDDLRecord(record, columnCount);
-    }
+  public int col1;
+
+  public T col2;
+
+  public Op opType;
+
+  public ExpectedRecordYCQLGeneric(int col1, T col2, Op opType) {
+    this.col1 = col1;
+    this.col2 = col2;
+    this.opType = opType;
   }
 }

@@ -112,7 +112,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed TO on;
 UPDATE pg_yb_catalog_version SET current_version = current_version + 1;
 UPDATE pg_yb_catalog_version SET last_breaking_version = current_version;
 RESET yb_non_ddl_txn_for_sys_tables_allowed;
-SELECT current_version = last_breaking_version from pg_yb_catalog_version;
+SELECT distinct(current_version = last_breaking_version) from pg_yb_catalog_version;
 -- Do update that goes to table but doesn't go to index.
 UPDATE tmp SET i = 11 WHERE j = -5;
 -- Enable reads/writes to the index.
@@ -123,7 +123,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed TO on;
 UPDATE pg_yb_catalog_version SET current_version = current_version + 1;
 UPDATE pg_yb_catalog_version SET last_breaking_version = current_version;
 RESET yb_non_ddl_txn_for_sys_tables_allowed;
-SELECT current_version = last_breaking_version from pg_yb_catalog_version;
+SELECT distinct(current_version = last_breaking_version) from pg_yb_catalog_version;
 -- Show the corruption.
 /*+SeqScan(tmp) */
 SELECT i FROM tmp WHERE j = -5;
@@ -137,7 +137,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed TO on;
 UPDATE pg_yb_catalog_version SET current_version = current_version + 1;
 UPDATE pg_yb_catalog_version SET last_breaking_version = current_version;
 RESET yb_non_ddl_txn_for_sys_tables_allowed;
-SELECT current_version = last_breaking_version from pg_yb_catalog_version;
+SELECT distinct(current_version = last_breaking_version) from pg_yb_catalog_version;
 
 -- 3. reindex (for temp index)
 REINDEX INDEX tmp_j_idx;
@@ -277,7 +277,6 @@ REINDEX INDEX ing_j_idx;
 EXPLAIN (costs off)
 /*+IndexScan(ing_j_idx)*/
 SELECT i FROM ing WHERE j < -8 ORDER BY i;
--- TODO(#12899): fix output
 /*+IndexScan(ing_j_idx)*/
 SELECT i FROM ing WHERE j < -8 ORDER BY i;
 EXPLAIN (costs off)

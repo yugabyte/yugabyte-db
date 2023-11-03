@@ -43,9 +43,6 @@ class SnapshotTestUtil;
 
 }
 
-Result<size_t> SelectRowsCount(
-    const client::YBSessionPtr& session, const client::TableHandle& table);
-
 void DumpTableLocations(
     master::CatalogManagerIf* catalog_mgr, const client::YBTableName& table_name);
 
@@ -96,8 +93,7 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
     return WriteRows(&this->table_, num_rows, start_key);
   }
 
-  // Waits for intents of table to be applied.
-  virtual Status WaitForTableIntentsApplied(const TableId& table_id) = 0;
+  // Waits for intents of test table to be applied.
   Status WaitForTestTableIntentsApplied();
 
   Status FlushTable(const TableId& table_id);
@@ -122,7 +118,7 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
   }
 
   Status CheckRowsCount(size_t expected_num_rows) {
-    auto rows_count = VERIFY_RESULT(SelectRowsCount(this->NewSession(), this->table_));
+    auto rows_count = VERIFY_RESULT(CountRows(this->NewSession(), this->table_));
     SCHECK_EQ(rows_count, expected_num_rows, InternalError, "Got unexpected rows count");
     return Status::OK();
   }
@@ -157,9 +153,6 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
 
   Result<TabletId> CreateSingleTabletAndSplit(uint32_t num_rows, bool wait_for_intents = true);
 
-  Result<tserver::GetSplitKeyResponsePB> GetSplitKey(const std::string& tablet_id);
-  Result<master::SplitTabletResponsePB> SendMasterSplitTabletRpcSync(const std::string& tablet_id);
-
   Result<master::CatalogManagerIf*> catalog_manager() {
     return &CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster()))->catalog_manager();
   }
@@ -174,9 +167,11 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
       size_t num_replicas_online = 0, const client::YBTableName& table = client::kTableName,
       bool core_dump_on_failure = true);
 
-  Result<TabletId> SplitSingleTablet(docdb::DocKeyHash split_hash_code);
+  Result<tserver::GetSplitKeyResponsePB> SendTServerRpcSyncGetSplitKey(const TabletId& tablet_id);
 
-  Result<master::SplitTabletResponsePB> SplitSingleTablet(const TabletId& tablet_id);
+  Result<master::SplitTabletResponsePB> SendMasterRpcSyncSplitTablet(const TabletId& tablet_id);
+
+  Result<TabletId> SplitSingleTablet(docdb::DocKeyHash split_hash_code);
 
   Result<TabletId> SplitTabletAndValidate(
       docdb::DocKeyHash split_hash_code,
@@ -196,15 +191,15 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
   // post-split parent/source tablet peers.
   Result<std::vector<tablet::TabletPeerPtr>> ListSplitCompleteTabletPeers();
 
-  // Returns all tablet peers in the cluster which are not part of a transaction table and which are
-  // not in TABLET_DATA_SPLIT_COMPLETED state. In most of the test cases below, this corresponds to
-  // post-split children tablet peers.
-  Result<std::vector<tablet::TabletPeerPtr>> ListPostSplitChildrenTabletPeers();
+  // Returns all tablet peers in the cluster which are not part of a transaction table
+  // and which are Active (refer to IsActive). In most of the test cases below,
+  // this corresponds to post-split children tablet peers.
+  Result<std::vector<tablet::TabletPeerPtr>> ListTestTableActiveTabletPeers();
 
   // Wait for all peers to complete post-split compaction.
-  Status WaitForTestTablePostSplitTabletsFullyCompacted(MonoDelta timeout);
+  Status WaitForTestTableTabletPeersPostSplitCompacted(MonoDelta timeout);
 
-  Result<int> NumPostSplitTabletPeersFullyCompacted();
+  Result<int> NumTestTableTabletPeersPostSplitCompacted();
 
   // Returns the smallest sst file size among all replicas for a given tablet id
   Result<uint64_t> GetMinSstFileSizeAmongAllReplicas(const std::string& tablet_id);
@@ -214,8 +209,6 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
   // If num_replicas_online is 0, uses replication factor.
   Status CheckPostSplitTabletReplicasData(
       size_t num_rows, size_t num_replicas_online = 0, size_t num_active_tablets = 2);
-
-  Status WaitForTableIntentsApplied(const TableId& table_id) override;
 
   Status WaitForTableNumActiveLeadersPeers(size_t expected_leaders);
 
@@ -237,7 +230,8 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
 
   Result<std::set<TabletId>> GetTestTableTabletIds();
 
-  Result<std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>> ListTablets(size_t tserver_idx);
+  Result<std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>> ListTablets(
+      size_t tserver_idx);
 
   Result<std::vector<tserver::ListTabletsResponsePB_StatusAndSchemaPB>> ListTablets();
 
@@ -250,6 +244,7 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
 
   Status WaitForAnySstFiles(const TabletId& tablet_id);
   Status WaitForAnySstFiles(size_t tserver_idx, const TabletId& tablet_id);
+  Status WaitForAnySstFiles(const ExternalTabletServer& ts, const TabletId& tablet_id);
 
   Status WaitTServerToBeQuietOnTablet(
       itest::TServerDetails* ts_desc, const TabletId& tablet_id);
@@ -259,8 +254,6 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
   Result<TabletId> GetOnlyTestTabletId(size_t tserver_idx);
 
   Result<TabletId> GetOnlyTestTabletId();
-
-  Status WaitForTableIntentsApplied(const TableId& table_id) override;
 };
 
 }  // namespace yb

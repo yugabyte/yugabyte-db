@@ -196,6 +196,10 @@ Sidecars& RpcContext::sidecars() {
   return call_->sidecars();
 }
 
+Result<RefCntSlice> RpcContext::ExtractSidecar(size_t idx) const {
+  return call_->ExtractSidecar(idx);
+}
+
 const Endpoint& RpcContext::remote_address() const {
   return call_->remote_address();
 }
@@ -244,9 +248,12 @@ void RpcContext::Panic(const char* filepath, int line_number, const string& mess
 
 void RpcContext::CloseConnection() {
   auto connection = call_->connection();
-  connection->reactor()->ScheduleReactorFunctor([connection](Reactor*) {
-    connection->Close();
-  }, SOURCE_LOCATION());
+  auto closing_status =
+      connection->reactor()->ScheduleReactorFunctor([connection](Reactor*) {
+        connection->Close();
+      }, SOURCE_LOCATION());
+  LOG_IF(DFATAL, !closing_status.ok())
+      << "Could not schedule a reactor task to close a connection: " << closing_status;
 }
 
 std::string RpcContext::ToString() const {

@@ -18,7 +18,10 @@ type TabletReplicationFuture struct {
     Error error
 }
 
-func GetTabletReplicationFuture(nodeHost string, future chan TabletReplicationFuture) {
+func (h *HelperContainer) GetTabletReplicationFuture(
+    nodeHost string,
+    future chan TabletReplicationFuture,
+) {
     leaderlessTablets := TabletReplicationFuture{
         LeaderlessTablets: []TabletReplicationInfo{},
         Error: nil,
@@ -26,7 +29,7 @@ func GetTabletReplicationFuture(nodeHost string, future chan TabletReplicationFu
     httpClient := &http.Client{
         Timeout: time.Second * 10,
     }
-    url := fmt.Sprintf("http://%s:7000/api/v1/tablet-replication", nodeHost)
+    url := fmt.Sprintf("http://%s:%s/api/v1/tablet-replication", nodeHost, MasterUIPort)
     resp, err := httpClient.Get(url)
     if err != nil {
         leaderlessTablets.Error = err

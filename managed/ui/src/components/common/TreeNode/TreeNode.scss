@@ -1,6 +1,6 @@
 // Copyright (c) 2018 AppJudo Inc.  MIT License.
 
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .TreeNode {
   box-shadow: 0 1px 1px rgba(35, 35, 41, 0.05);
@@ -24,7 +24,7 @@
     height: 38px;
 
     &:hover {
-      color: $YB_ORANGE_HOVER;
+      color: colors.$YB_ORANGE_HOVER;
       background: #f1f2f3;
     }
   }

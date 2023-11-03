@@ -151,7 +151,12 @@ struct CompactionJobInfo {
   // Reason to run the compaction
   CompactionReason compaction_reason = CompactionReason::kUnknown;
 
+  // True if all files in the current storage version have been compacted.
+  // Compactions with no files are also considered as full compactions.
   bool is_full_compaction = false;
+
+  // True if a compaction has no operation (action) done.
+  bool is_no_op_compaction = false;
 
   // If non-null, this variable stores detailed information
   // about this compaction.

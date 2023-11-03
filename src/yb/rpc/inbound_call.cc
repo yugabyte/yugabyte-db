@@ -46,10 +46,6 @@
 #include "yb/util/metrics.h"
 #include "yb/util/trace.h"
 
-using std::shared_ptr;
-using std::vector;
-using strings::Substitute;
-
 DEFINE_RUNTIME_bool(rpc_dump_all_traces, false, "If true, dump all RPC traces at INFO level");
 TAG_FLAG(rpc_dump_all_traces, advanced);
 
@@ -72,27 +68,32 @@ namespace rpc {
 
 InboundCall::InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
                          CallProcessedListener* call_processed_listener)
-    : trace_(Trace::NewTrace()),
+    : trace_holder_(Trace::MaybeGetNewTrace()),
+      trace_(trace_holder_.get()),
       conn_(std::move(conn)),
       rpc_metrics_(rpc_metrics ? rpc_metrics : &conn_->rpc_metrics()),
       call_processed_listener_(call_processed_listener) {
-  TRACE_TO(trace_, "Created InboundCall");
+  TRACE_TO(trace(), "Created InboundCall");
   IncrementCounter(rpc_metrics_->inbound_calls_created);
   IncrementGauge(rpc_metrics_->inbound_calls_alive);
 }
 
 InboundCall::~InboundCall() {
-  TRACE_TO(trace_, "Destroying InboundCall");
-  if (trace_) {
+  Trace *my_trace = trace();
+  TRACE_TO(my_trace, "Destroying InboundCall");
+  if (my_trace) {
+    bool was_printed = false;
     YB_LOG_IF_EVERY_N(INFO, FLAGS_print_trace_every > 0, FLAGS_print_trace_every)
-        << "Tracing op: \n " << trace_->DumpToString(true);
+        << "Tracing op:" << Trace::SetTrue(&was_printed);
+    if (was_printed)
+      my_trace->DumpToLogInfo(true);
   }
   DecrementGauge(rpc_metrics_->inbound_calls_alive);
 }
 
-void InboundCall::NotifyTransferred(const Status& status, Connection* conn) {
+void InboundCall::NotifyTransferred(const Status& status, const ConnectionPtr& conn) {
   if (status.ok()) {
-    TRACE_TO(trace_, "Transfer finished");
+    TRACE_TO(trace(), "Transfer finished");
   } else {
     YB_LOG_EVERY_N_SECS(WARNING, 10) << LogPrefix() << "Connection torn down before " << ToString()
                                      << " could send its response: " << status.ToString();
@@ -103,17 +104,25 @@ void InboundCall::NotifyTransferred(const Status& status, Connection* conn) {
 }
 
 void InboundCall::EnsureTraceCreated() {
-  if (!trace_) {
-    trace_ = new Trace;
-    if (timing_.time_received.Initialized()) {
-      TRACE_TO_WITH_TIME(trace_, ToCoarse(timing_.time_received), "Created InboundCall");
+  scoped_refptr<Trace> trace = nullptr;
+  {
+    std::lock_guard lock(mutex_);
+    if (trace_holder_) {
+      return;
     }
-    if (timing_.time_handled.Initialized()) {
-      TRACE_TO_WITH_TIME(trace_, ToCoarse(timing_.time_handled), "Handling the call");
-    }
-    DCHECK(!timing_.time_completed.Initialized());
-    TRACE_TO(trace_, "Trace Created");
+    trace = new Trace;
+    trace_holder_ = trace;
+    trace_.store(trace.get(), std::memory_order_relaxed);
   }
+
+  if (timing_.time_received.Initialized()) {
+    TRACE_TO_WITH_TIME(trace, ToCoarse(timing_.time_received), "Created InboundCall");
+  }
+  if (timing_.time_handled.Initialized()) {
+    TRACE_TO_WITH_TIME(trace, ToCoarse(timing_.time_handled), "Handling the call");
+  }
+  DCHECK(!timing_.time_completed.Initialized());
+  TRACE_TO(trace, "Trace Created");
 }
 
 const Endpoint& InboundCall::remote_address() const {
@@ -134,10 +143,6 @@ ConnectionContext& InboundCall::connection_context() const {
   return conn_->context();
 }
 
-Trace* InboundCall::trace() {
-  return trace_.get();
-}
-
 void InboundCall::RecordCallReceived() {
   TRACE_EVENT_ASYNC_BEGIN0("rpc", "InboundCall", this);
   // Protect against multiple calls.
@@ -146,7 +151,7 @@ void InboundCall::RecordCallReceived() {
   timing_.time_received = MonoTime::Now();
 }
 
-void InboundCall::RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_time) {
+void InboundCall::RecordHandlingStarted(scoped_refptr<EventStats> incoming_queue_time) {
   DCHECK(incoming_queue_time != nullptr);
   // Protect against multiple calls.
   LOG_IF_WITH_PREFIX(DFATAL, timing_.time_handled.Initialized()) << "Already marked as started";
@@ -193,11 +198,16 @@ bool InboundCall::ClientTimedOut() const {
 }
 
 void InboundCall::QueueResponse(bool is_success) {
-  TRACE_TO(trace_, is_success ? "Queueing success response" : "Queueing failure response");
+  TRACE_TO(trace(), is_success ? "Queueing success response" : "Queueing failure response");
   LogTrace();
   bool expected = false;
   if (responded_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
-    connection()->context().QueueResponse(connection(), shared_from(this));
+    auto queuing_status =
+        connection()->context().QueueResponse(connection(), shared_from(this));
+    // Do not DFATAL here because it is a normal situation during reactor shutdown. The client
+    // should detect and handle the error.
+    LOG_IF_WITH_PREFIX(WARNING, !queuing_status.ok())
+        << "Could not queue response to an inbound call: " << queuing_status;
   } else {
     LOG_WITH_PREFIX(DFATAL) << "Response already queued";
   }
@@ -220,16 +230,17 @@ bool InboundCall::RespondTimedOutIfPending(const char* message) {
 
 void InboundCall::Clear() {
   {
-    std::lock_guard<simple_spinlock> lock(mutex_);
+    std::lock_guard lock(mutex_);
     cleared_ = true;
   }
   serialized_request_.clear();
   request_data_.Reset();
-  request_data_memory_usage_.store(0, std::memory_order_release);
 }
 
+// Overrides OutboundData::DynamicMemoryUsage() to track response buffer memory.
+// TODO: remove the trace() usage from OutboundData/Sending mem-tracker to call tracker.
 size_t InboundCall::DynamicMemoryUsage() const {
-  return request_data_memory_usage_.load(std::memory_order_acquire) + DynamicMemoryUsageOf(trace_);
+  return DynamicMemoryUsageOf(trace());
 }
 
 void InboundCall::InboundCallTask::Run() {

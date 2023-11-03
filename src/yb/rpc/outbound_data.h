@@ -25,6 +25,9 @@
 #include <boost/container/small_vector.hpp>
 #include <boost/mpl/and.hpp>
 
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/reactor_thread_role.h"
+
 #include "yb/util/format.h"
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/ref_cnt_buffer.h"
@@ -48,10 +51,10 @@ class RpcCallInProgressPB;
 // - ServerEventList
 class OutboundData : public std::enable_shared_from_this<OutboundData> {
  public:
-  virtual void Transferred(const Status& status, Connection* conn) = 0;
+  virtual void Transferred(const Status& status, const ConnectionPtr& conn) = 0;
 
   // Serializes the data to be sent out via the RPC framework.
-  virtual void Serialize(ByteBlocks* output) = 0;
+  virtual void Serialize(ByteBlocks* output) ON_REACTOR_THREAD = 0;
 
   virtual std::string ToString() const = 0;
 
@@ -76,7 +79,7 @@ class StringOutboundData : public OutboundData {
       : buffer_(data), name_(name) {}
   StringOutboundData(const char* data, size_t len, const std::string& name)
       : buffer_(data, len), name_(name) {}
-  void Transferred(const Status& status, Connection* conn) override {}
+  void Transferred(const Status& status, const ConnectionPtr& conn) override {}
 
   // Serializes the data to be sent out via the RPC framework.
   void Serialize(ByteBlocks* output) override {
@@ -107,7 +110,7 @@ class SingleBufferOutboundData : public OutboundData {
   SingleBufferOutboundData(RefCntBuffer buffer, OutboundDataPtr lower_data)
       : buffer_(std::move(buffer)), lower_data_(std::move(lower_data)) {}
 
-  void Transferred(const Status& status, Connection* conn) override {
+  void Transferred(const Status& status, const ConnectionPtr& conn) override {
     if (lower_data_) {
       lower_data_->Transferred(status, conn);
     }

@@ -1,4 +1,4 @@
-import React, { FC, useEffect, useRef, useState } from 'react';
+import { FC, useEffect, useRef, useState } from 'react';
 import _ from 'lodash';
 import { useMutation, useQueryClient } from 'react-query';
 import { Alert, Col, Grid, Row } from 'react-bootstrap';
@@ -22,6 +22,7 @@ import { getPromiseState } from '../../../utils/PromiseUtils';
 
 import './HAReplicationForm.scss';
 import { ManagePeerCertsModal } from '../modals/ManagePeerCertsModal';
+import { isCertCAEnabledInRuntimeConfig } from '../../customCACerts';
 
 export enum HAInstanceTypes {
   Active = 'Active',
@@ -157,6 +158,7 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
           await disableReplication(data);
         }
       } else {
+        // eslint-disable-next-line no-lonely-if
         if (data.instanceType === HAInstanceTypes.Active) {
           data.configId = (await createHAConfig(data)).uuid;
           await createHAInstance(data);
@@ -183,10 +185,13 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
   const ybHAWebService: YbHAWebService =
     runtimeConfigs?.data && getPromiseState(runtimeConfigs).isSuccess()
       ? JSON.parse(
-          runtimeConfigs.data.configEntries.find((c: any) => c.key === YB_HA_WS_RUNTIME_CONFIG_KEY)
-            .value
-        )
+        runtimeConfigs.data.configEntries.find((c: any) => c.key === YB_HA_WS_RUNTIME_CONFIG_KEY)
+          .value
+      )
       : EMPTY_YB_HA_WEBSERVICE;
+
+  const isCACertStoreEnabled = isCertCAEnabledInRuntimeConfig(runtimeConfigs?.data);
+
   const peerCerts = getPeerCerts(ybHAWebService);
   return (
     <div className="ha-replication-form" data-testid="ha-replication-config-form">
@@ -196,18 +201,6 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
         setYBHAWebserviceRuntimeConfig={setYBHAWebserviceRuntimeConfig}
         onClose={hideAddPeerCertModal}
       />
-      <div className="ha-replication-form__action-bar">
-        <YBButton
-          btnText={`${
-            getPeerCerts(ybHAWebService).length > 0 ? 'Manage' : 'Add'
-          } Peer Certificates`}
-          onClick={(e: any) => {
-            showAddPeerCertModal();
-            e.currentTarget.blur();
-          }}
-        />
-      </div>
-
       <Formik<FormValues>
         initialValues={initialValues}
         validationSchema={validationSchema}
@@ -216,192 +209,219 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
         {(formikProps) => {
           // workaround for outdated version of Formik to access form methods outside of <Formik>
           formik.current = formikProps;
+          
+          const isHTTPS = formikProps.values?.instanceAddress?.startsWith('https:');
           const { instanceType, clusterKey } = formikProps.values;
           return (
-            <Form role="form">
-              <Grid fluid>
-                {instanceType === HAInstanceTypes.Standby && !isEditMode && (
-                  <Row className="ha-replication-form__alert">
-                    <Col xs={12}>
-                      <Alert bsStyle="warning">
-                        Note: on standby instances you can only access the high availability
-                        configuration and other features won't be available until the configuration
-                        is deleted.
-                      </Alert>
+            <>
+              <div className="ha-replication-form__action-bar">
+                {instanceType === HAInstanceTypes.Active && !isCACertStoreEnabled && (
+                  <YBButton
+                    btnText={`${getPeerCerts(ybHAWebService).length > 0 ? 'Manage' : 'Add'
+                      } Peer Certificates`}
+                    onClick={(e: any) => {
+                      showAddPeerCertModal();
+                      e.currentTarget.blur();
+                    }}
+                  />
+                )}
+              </div>
+              <Form role="form">
+                <Grid fluid>
+                  {instanceType === HAInstanceTypes.Standby && !isEditMode && (
+                    <Row className="ha-replication-form__alert">
+                      <Col xs={12}>
+                        <Alert bsStyle="warning">
+                          {
+                            "Note: on standby instances you can only access the high availability\
+                          configuration and other features won't be available until the\
+                          configuration is deleted."
+                          }
+                        </Alert>
+                      </Col>
+                    </Row>
+                  )}
+                  <Row className="ha-replication-form__row">
+                    <Col xs={2} className="ha-replication-form__label">
+                      Instance Type
+                    </Col>
+                    <Col xs={10}>
+                      <YBSegmentedButtonGroup
+                        disabled={isEditMode}
+                        name="instanceType"
+                        options={[HAInstanceTypes.Active, HAInstanceTypes.Standby]}
+                      />
+                      <YBInfoTip
+                        title="Replication Configuration"
+                        content="The initial role for this platform instance"
+                      />
                     </Col>
                   </Row>
-                )}
-                <Row className="ha-replication-form__row">
-                  <Col xs={2} className="ha-replication-form__label">
-                    Instance Type
-                  </Col>
-                  <Col xs={10}>
-                    <YBSegmentedButtonGroup
-                      disabled={isEditMode}
-                      name="instanceType"
-                      options={[HAInstanceTypes.Active, HAInstanceTypes.Standby]}
-                    />
-                    <YBInfoTip
-                      title="Replication Configuration"
-                      content="The initial role for this platform instance"
-                    />
-                  </Col>
-                </Row>
-                <Row className="ha-replication-form__row">
-                  <Col xs={2} className="ha-replication-form__label">
-                    IP Address / Hostname
-                  </Col>
-                  <Col xs={10}>
-                    <Field
-                      name="instanceAddress"
-                      type="text"
-                      disabled={isEditMode}
-                      component={YBFormInput}
-                      placeholder="https://"
-                      className="ha-replication-form__input"
-                    />
-                    <YBInfoTip
-                      title="Replication Configuration"
-                      content="The current platform's IP address or hostname"
-                    />
-                  </Col>
-                </Row>
-                <Row className="ha-replication-form__row">
-                  <Col xs={2} className="ha-replication-form__label">
-                    Shared Authentication Key
-                  </Col>
-                  <Col xs={10}>
-                    <div className="ha-replication-form__key-input">
+                  <Row className="ha-replication-form__row">
+                    <Col xs={2} className="ha-replication-form__label">
+                      IP Address / Hostname
+                    </Col>
+                    <Col xs={10}>
                       <Field
-                        name="clusterKey"
+                        name="instanceAddress"
                         type="text"
+                        disabled={isEditMode}
                         component={YBFormInput}
-                        disabled={isEditMode || instanceType === HAInstanceTypes.Active}
+                        placeholder="https://"
                         className="ha-replication-form__input"
                       />
-                      {instanceType === HAInstanceTypes.Active ? (
-                        <YBCopyButton text={clusterKey} disabled={_.isEmpty(clusterKey)} />
-                      ) : (
-                        <YBPasteButton
-                          onPaste={(text: string) => formikProps.setFieldValue('clusterKey', text)}
-                        />
-                      )}
-                    </div>
-                    {instanceType === HAInstanceTypes.Active && (
-                      <YBButton
-                        btnClass="btn btn-orange ha-replication-form__generate-key-btn"
-                        btnText="Generate Key"
-                        loading={generateKey.isLoading}
-                        disabled={isEditMode || generateKey.isLoading}
-                        onClick={generateKey.mutate}
-                      />
-                    )}
-                    <YBInfoTip
-                      title="Replication Configuration"
-                      content={`The key used to authenticate the High Availability cluster ${
-                        instanceType === HAInstanceTypes.Standby
-                          ? '(generated on active instance)'
-                          : ''
-                      }`}
-                    />
-                  </Col>
-                </Row>
-                <div
-                  hidden={instanceType === HAInstanceTypes.Standby}
-                  data-testid="ha-replication-config-form-schedule-section"
-                >
-                  <Row className="ha-replication-form__row">
-                    <Col xs={2} className="ha-replication-form__label">
-                      Replication Frequency
-                    </Col>
-                    <Col xs={10}>
-                      <Field
-                        name="replicationFrequency"
-                        type="number"
-                        component={YBFormInput}
-                        disabled={!formikProps.values.replicationEnabled}
-                        className="ha-replication-form__input ha-replication-form__input--frequency"
-                      />
-                      <span>minute(s)</span>
                       <YBInfoTip
                         title="Replication Configuration"
-                        content="How frequently periodic backups are sent to standby platforms"
+                        content="The current platform's IP address or hostname"
                       />
                     </Col>
                   </Row>
                   <Row className="ha-replication-form__row">
                     <Col xs={2} className="ha-replication-form__label">
-                      Enable Replication
+                      Shared Authentication Key
                     </Col>
                     <Col xs={10}>
-                      <Field name="replicationEnabled">
-                        {({ field }: FieldProps) => (
-                          <YBToggle
-                            onToggle={formikProps.handleChange}
-                            name="replicationEnabled"
-                            input={{
-                              value: field.value,
-                              onChange: field.onChange
-                            }}
+                      <div className="ha-replication-form__key-input">
+                        <Field
+                          name="clusterKey"
+                          type="text"
+                          component={YBFormInput}
+                          disabled={isEditMode || instanceType === HAInstanceTypes.Active}
+                          className="ha-replication-form__input"
+                        />
+                        {instanceType === HAInstanceTypes.Active ? (
+                          <YBCopyButton text={clusterKey} disabled={_.isEmpty(clusterKey)} />
+                        ) : (
+                          <YBPasteButton
+                            onPaste={(text: string) =>
+                              formikProps.setFieldValue('clusterKey', text)
+                            }
                           />
                         )}
-                      </Field>
+                      </div>
+                      {instanceType === HAInstanceTypes.Active && (
+                        <YBButton
+                          btnClass="btn btn-orange ha-replication-form__generate-key-btn"
+                          btnText="Generate Key"
+                          loading={generateKey.isLoading}
+                          disabled={isEditMode || generateKey.isLoading}
+                          onClick={generateKey.mutate}
+                        />
+                      )}
                       <YBInfoTip
                         title="Replication Configuration"
-                        content="Enable/disable replication to standby platforms"
+                        content={`The key used to authenticate the High Availability cluster ${instanceType === HAInstanceTypes.Standby
+                            ? '(generated on active instance)'
+                            : ''
+                          }`}
                       />
                     </Col>
                   </Row>
-                </div>
-                <Row className="ha-replication-form__row">
-                  <Col xs={2} className="ha-replication-form__label">
-                    Peer Certificates
-                  </Col>
-                  <Col xs={10} className="ha-replication-form__certs">
-                    {peerCerts.length === 0 ? (
-                      <button
-                        className="ha-replication-form__no-cert--add-button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          showAddPeerCertModal();
-                        }}
-                      >
-                        Add a peer certificate
-                      </button>
-                    ) : (
-                      peerCerts.map((peerCert) => {
-                        return (
-                          <>
-                            <div className="ha-replication-form__cert-container">
-                              <span className="ha-replication-form__cert-container--identifier">
-                                {getPeerCertIdentifier(peerCert)}
-                              </span>
-                              <span className="ha-replication-form__cert-container--ellipse">
-                                ( . . . )
-                              </span>
-                            </div>
-                          </>
-                        );
-                      })
-                    )}
-                  </Col>
-                </Row>
-                <Row className="ha-replication-form__row">
-                  <Col xs={12} className="ha-replication-form__footer">
-                    {isEditMode && <YBButton btnText="Cancel" onClick={backToViewMode} />}
-                    <YBButton
-                      btnType="submit"
-                      disabled={
-                        formikProps.isSubmitting || !formikProps.isValid || peerCerts.length === 0
-                      }
-                      loading={formikProps.isSubmitting}
-                      btnClass="btn btn-orange"
-                      btnText={isEditMode ? 'Save' : 'Create'}
-                    />
-                  </Col>
-                </Row>
-              </Grid>
-            </Form>
+                  <div
+                    hidden={instanceType === HAInstanceTypes.Standby}
+                    data-testid="ha-replication-config-form-schedule-section"
+                  >
+                    <Row className="ha-replication-form__row">
+                      <Col xs={2} className="ha-replication-form__label">
+                        Replication Frequency
+                      </Col>
+                      <Col xs={10}>
+                        <Field
+                          name="replicationFrequency"
+                          type="number"
+                          component={YBFormInput}
+                          disabled={!formikProps.values.replicationEnabled}
+                          className="ha-replication-form__input ha-replication-form__input--frequency"
+                        />
+                        <span>minute(s)</span>
+                        <YBInfoTip
+                          title="Replication Configuration"
+                          content="How frequently periodic backups are sent to standby platforms"
+                        />
+                      </Col>
+                    </Row>
+                    <Row className="ha-replication-form__row">
+                      <Col xs={2} className="ha-replication-form__label">
+                        Enable Replication
+                      </Col>
+                      <Col xs={10}>
+                        <Field name="replicationEnabled">
+                          {({ field }: FieldProps) => (
+                            <YBToggle
+                              onToggle={formikProps.handleChange}
+                              name="replicationEnabled"
+                              input={{
+                                value: field.value,
+                                onChange: field.onChange
+                              }}
+                            />
+                          )}
+                        </Field>
+                        <YBInfoTip
+                          title="Replication Configuration"
+                          content="Enable/disable replication to standby platforms"
+                        />
+                      </Col>
+                    </Row>
+                  </div>
+                  {instanceType === HAInstanceTypes.Active && !isCACertStoreEnabled && (
+                    <Row className="ha-replication-form__row">
+                      <Col xs={2} className="ha-replication-form__label">
+                        Peer Certificates
+                      </Col>
+                      <Col xs={10} className="ha-replication-form__certs">
+                        {!isCACertStoreEnabled && peerCerts.length === 0 ? (
+                          <button
+                            className="ha-replication-form__no-cert--add-button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              showAddPeerCertModal();
+                            }}
+                          >
+                            {`Add a peer certificate ${isHTTPS ? '(Required for HTTPS setup)' : ''
+                              }`}
+                          </button>
+                        ) : (
+                          peerCerts.map((peerCert) => {
+                            return (
+                              <>
+                                <div className="ha-replication-form__cert-container">
+                                  <span className="ha-replication-form__cert-container--identifier">
+                                    {getPeerCertIdentifier(peerCert)}
+                                  </span>
+                                  <span className="ha-replication-form__cert-container--ellipse">
+                                    ( . . . )
+                                  </span>
+                                </div>
+                              </>
+                            );
+                          })
+                        )}
+                      </Col>
+                    </Row>
+                  )}
+
+                  <Row className="ha-replication-form__row">
+                    <Col xs={12} className="ha-replication-form__footer">
+                      {isEditMode && <YBButton btnText="Cancel" onClick={backToViewMode} />}
+                      <YBButton
+                        btnType="submit"
+                        disabled={
+                          formikProps.isSubmitting ||
+                          !formikProps.isValid ||
+                          (!isCACertStoreEnabled && instanceType === HAInstanceTypes.Active &&
+                            isHTTPS &&
+                            peerCerts.length === 0)
+                        }
+                        loading={formikProps.isSubmitting}
+                        btnClass="btn btn-orange"
+                        btnText={isEditMode ? 'Save' : 'Create'}
+                      />
+                    </Col>
+                  </Row>
+                </Grid>
+              </Form>
+            </>
           );
         }}
       </Formik>

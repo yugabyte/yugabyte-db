@@ -1,6 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .react-bs-table {
   margin: 0 !important;
@@ -32,7 +32,7 @@
     }
     td {
       padding-top: 11px !important;
-      border-bottom: 1px solid $YB_GRAY_HOVER !important;
+      border-bottom: 1px solid colors.$YB_GRAY_HOVER !important;
     }
     tr:last-child td {
       border-bottom: none !important;
@@ -78,8 +78,8 @@
         > .caret {
           border-right: 6px solid transparent;
           border-left: 6px solid transparent;
-          border-top-color: $YB_ORANGE;
-          border-bottom-color: $YB_ORANGE;
+          border-top-color: colors.$YB_ORANGE;
+          border-bottom-color: colors.$YB_ORANGE;
           border-top-width: 9px;
           border-bottom-width: 9px;
           margin: 6px 5px !important;

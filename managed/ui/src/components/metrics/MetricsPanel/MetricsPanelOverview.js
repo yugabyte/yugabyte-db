@@ -1,13 +1,13 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import PropTypes from 'prop-types';
 import { isNonEmptyObject, isNonEmptyArray, timeFormatXAxis } from '../../../utils/ObjectUtils';
 import './MetricsPanel.scss';
 import Measure from 'react-measure';
 import _ from 'lodash';
 import { METRIC_FONT } from '../MetricsConfig';
-import moment from 'moment';
+import moment from 'moment-timezone';
 
 const Plotly = require('plotly.js/lib/core');
 

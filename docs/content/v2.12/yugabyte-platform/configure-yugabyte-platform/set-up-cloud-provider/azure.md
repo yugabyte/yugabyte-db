@@ -14,47 +14,47 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
+    <a href="../aws" class="nav-link">
       <i class="fa-brands fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
+    <a href="../gcp" class="nav-link">
       <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link active">
+    <a href="../azure" class="nav-link active">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
+    <a href="../kubernetes" class="nav-link">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
+    <a href="../vmware-tanzu" class="nav-link">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
 <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link">
+    <a href="../openshift" class="nav-link">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
+    <a href="../on-premises" class="nav-link">
       <i class="fa-solid fa-building"></i>
       On-premises
     </a>
@@ -68,11 +68,11 @@ You can configure an Azure cloud provider for YugabyteDB clusters using the Yuga
 
 You need to add the following cloud provider credentials via the Yugabyte Platform console:
 
-* Subscription ID
-* Tenant ID
-* SSH port and user
-* Application client ID and secret
-* Resource group
+- Subscription ID
+- Tenant ID
+- SSH port and user
+- Application client ID and secret
+- Resource group
 
 Yugabyte Platform uses the credentials to automatically provision and deprovision YugabyteDB instances.
 
@@ -87,7 +87,7 @@ You configure the Microsoft Azure cloud provider by completing the fields of the
 - **Provider Name** translates to an internal Yugabyte Platform tag used for organizing cloud providers.
 - **Subscription ID** is required for cost management. The virtual machine resources managed by Yugabyte Platform are tagged with this subscription.
 - **Resource Group** represents the group in which YugabyteDB nodes compute and network resources are created. Your Azure Active Directory application (client ID and client secret) needs to have `Network Contributor` and `Virtual Machine Contributor` roles assigned for this resource group.
-- **Tenant ID** represents the Azure Active Directory tenant ID which belongs to an active subscription. To find your tenant ID, follow instructions provided in [Microsoft Azure: Tenant and application ID values for signing in](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#get-tenant-and-app-id-values-for-signing-in).
+- **Tenant ID** represents the Azure Active Directory tenant ID which belongs to an active subscription. To find your tenant ID, follow instructions provided in [How to find your Azure Active Directory tenant ID](https://learn.microsoft.com/en-us/azure/active-directory/fundamentals/how-to-find-tenant).
 - **SSH Port** allows you to specify the connection port number if you use custom images. The default port is 54422.
 - **SSH User** represents the user name for the **SSH Port**.
 - **Client ID** represents the [ID of an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#option-2-create-a-new-application-secret) registered in your Azure Active Directory.
@@ -109,21 +109,21 @@ Azure resource IDs typically have the following format:
 
 ### How to define a private DNS zone
 
-You may choose to define a private DNS zone to instruct Yugabyte Platform to register the universe name to all of the IP addresses in the universe within that DNS zone. For more information, see [What is a private Azure DNS zone](https://docs.microsoft.com/en-us/azure/dns/private-dns-privatednszone).
+You may choose to define a private DNS zone to instruct Yugabyte Platform to register the universe name to all of the IP addresses in the universe in that DNS zone. For more information, see [What is a private Azure DNS zone](https://docs.microsoft.com/en-us/azure/dns/private-dns-privatednszone).
 
 You can set a private DNS zone as follows:
 
-1. On the Azure portal, create the Private DNS Zone, as per the following illustration:<br><br>
+1. On the Azure portal, create the Private DNS Zone, as per the following illustration:
 
-    ![Private DNS: basics tab](/images/yb-platform/install/azure/private-dns-basics-tab.png)<br><br>
+    ![Private DNS: basics tab](/images/yb-platform/install/azure/private-dns-basics-tab.png)
 
-1. Navigate to the resource page and click **Settings > Virtual Network Links** on the left tab, as per the following illustration:<br><br>
+1. Navigate to the resource page and click **Settings > Virtual Network Links** on the left tab, as per the following illustration:
 
-    ![Resource menu](/images/yb-platform/install/azure/resource-menu.png)<br><br>
+    ![Resource menu](/images/yb-platform/install/azure/resource-menu.png)
 
 1. Add a link to the virtual network to which you want it to be connected. For more information, see [Create an Azure private DNS zone using the Azure portal](https://docs.microsoft.com/en-us/azure/dns/private-dns-getstarted-portal).
 
-1. To use the private DNS zone in Yugabyte Platform, add either the resource ID or the name of the DNS zone to the **Private DNS Zone** field of the **Cloud Provider Configuration** page in the Yugabyte Platform UI.<br>
+1. To use the private DNS zone in Yugabyte Platform, add either the resource ID or the name of the DNS zone to the **Private DNS Zone** field of the **Cloud Provider Configuration** page in the Yugabyte Platform UI.
 
     Note that if you provide the Resource ID, Yugabyte Platform infers the resource group from it. If you provide only the name, then Yugabyte Platform assumes that the resource group is the same as the group used in the cloud provider.
 
@@ -187,4 +187,4 @@ You set up a shared gallery image on Azure as follows:
 
 1. To use the image in Platform, put the image version's resource ID into the Marketplace Image URN/Shared Gallery Image ID field of the Region Info popup.
 
-    <br>The gallery image ID could be defined by a full URL containing a subscription ID, a resource group name, and the resource name itself. If the subscription ID or the resource group is different from the default values, Yugabyte Platform will use them instead.
+    The gallery image ID could be defined by a full URL containing a subscription ID, a resource group name, and the resource name itself. If the subscription ID or the resource group is different from the default values, Yugabyte Platform will use them instead.

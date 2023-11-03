@@ -16,12 +16,15 @@
 #include "yb/client/client-internal.h"
 #include "yb/client/schema-internal.h"
 
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 
 #include "yb/master/master_ddl.pb.h"
 
 using std::string;
+
+DECLARE_bool(ysql_ddl_rollback_enabled);
 
 namespace yb {
 namespace client {
@@ -167,19 +170,19 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
         // TODO(KUDU-861): support altering a column in the wire protocol.
         // For now, we just give an error if the caller tries to do
         // any operation other than rename.
-        if (s.spec->data_->has_type ||
-            s.spec->data_->has_nullable ||
-            s.spec->data_->primary_key) {
-          return STATUS(NotSupported, "cannot support AlterColumn of this type",
-                                      s.spec->data_->name);
+        if (s.spec->data_->type) {
+          return STATUS(NotSupported, "Cannot change type of the column", s.spec->data_->name);
+        }
+        if (s.spec->data_->kind != ColumnKind::VALUE) {
+          return STATUS(NotSupported, "Cannot alter key column", s.spec->data_->name);
         }
         // We only support rename column
-        if (!s.spec->data_->has_rename_to) {
+        if (!s.spec->data_->rename_to) {
           return STATUS(InvalidArgument, "no alter operation specified",
                                          s.spec->data_->name);
         }
         pb_step->mutable_rename_column()->set_old_name(s.spec->data_->name);
-        pb_step->mutable_rename_column()->set_new_name(s.spec->data_->rename_to);
+        pb_step->mutable_rename_column()->set_new_name(*s.spec->data_->rename_to);
         pb_step->set_type(master::AlterTableRequestPB::RENAME_COLUMN);
         break;
       default:
@@ -202,6 +205,7 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
 
   if (txn_) {
     txn_->ToPB(req->mutable_transaction());
+    req->set_ysql_ddl_rollback_enabled(FLAGS_ysql_ddl_rollback_enabled);
   }
 
   if (increment_schema_version_) {

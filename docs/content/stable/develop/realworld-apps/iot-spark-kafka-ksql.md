@@ -1,19 +1,20 @@
 ---
-title: IoT fleet management example application
-headerTitle: IoT fleet management
-linkTitle: IoT fleet management
+title: IoT fleet management sample application
+headerTitle: IoT Fleet Management application
+linkTitle: IoT Fleet Management
 description: Run this fleet management application built with Kafka, KSQL, Apache Spark, and YugabyteDB.
+headcontent: IoT application built using Kafka, KSQL, Apache Spark, and YugabyteDB
 menu:
   stable:
     identifier: iot-spark-kafka
     parent: realworld-apps
-    weight: 583
+    weight: 150
 type: docs
 ---
 
 ## Overview
 
-This is an end-to-end functional application with source code and installation instructions available on [GitHub](https://github.com/yugabyte/yb-iot-fleet-management). It is a blueprint for an IoT application built on top of YugabyteDB (using the Cassandra-compatible YCQL API) as the database, Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics and Spring Boot as the application framework.
+IoT Fleet Management is an end-to-end functional application with source code and installation instructions available on [GitHub](https://github.com/yugabyte/yb-iot-fleet-management). It is a blueprint for an IoT application built on top of YugabyteDB (using the Cassandra-compatible YCQL API) as the database, Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics, and Spring Boot as the application framework.
 
 ## Scenario
 
@@ -28,7 +29,7 @@ This app renders a dashboard showing both of the above. Below is a view of the r
 
 ## Application architecture
 
-This application has the following subcomponents:
+This application has the following sub-components:
 
 - Data Store - YugabyteDB for storing raw events from Kafka as well as the aggregates from the Data Processor
 - Data Producer - Test program writing into Kafka

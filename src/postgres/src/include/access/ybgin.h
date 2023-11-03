@@ -64,3 +64,5 @@ extern IndexBuildResult *ybginbackfill(Relation heap, Relation index,
 									   struct IndexInfo *indexInfo,
 									   struct YbBackfillInfo *bfinfo,
 									   struct YbPgExecOutParam *bfresult);
+extern bool ybginmightrecheck(Relation heapRelation, Relation indexRelation,
+							  bool xs_want_itup, ScanKey keys, int nkeys);

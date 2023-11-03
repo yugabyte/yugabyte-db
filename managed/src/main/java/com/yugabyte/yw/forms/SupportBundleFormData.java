@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -14,10 +15,15 @@ public class SupportBundleFormData {
   @ApiModelProperty(
       value = "Start date to filter logs from",
       required = true,
-      example = "2022-01-25")
+      example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   public Date startDate;
 
-  @ApiModelProperty(value = "End date to filter logs till", required = true, example = "2022-01-26")
+  @ApiModelProperty(
+      value = "End date to filter logs till",
+      required = true,
+      example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   public Date endDate;
 
   @ApiModelProperty(

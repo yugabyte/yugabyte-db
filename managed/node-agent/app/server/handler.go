@@ -14,13 +14,13 @@ import (
 )
 
 // Retrives current user associated with the API token from the platform.
-func RetrieveUser(apiToken string) error {
+func RetrieveUser(ctx context.Context, apiToken string) error {
 	config := util.CurrentConfig()
 	sessionInfoHandler := task.NewGetSessionInfoHandler(apiToken)
-	err := executor.GetInstance(ctx).
+	err := executor.GetInstance().
 		ExecuteTask(ctx, sessionInfoHandler.Handle)
 	if err != nil {
-		util.FileLogger().Errorf("Error fetching the session info - %s", err)
+		util.FileLogger().Errorf(ctx, "Error fetching the session info - %s", err)
 		return err
 	}
 	sessionInfo := sessionInfoHandler.Result()
@@ -28,16 +28,16 @@ func RetrieveUser(apiToken string) error {
 	config.Update(util.UserIdKey, sessionInfo.UserId)
 
 	userHandler := task.NewGetUserHandler(apiToken)
-	err = executor.GetInstance(ctx).
+	err = executor.GetInstance().
 		ExecuteTask(ctx, userHandler.Handle)
 	if err != nil {
-		util.FileLogger().Errorf("Error fetching the user %s - %s", sessionInfo.UserId, err)
+		util.FileLogger().Errorf(ctx, "Error fetching the user %s - %s", sessionInfo.UserId, err)
 		return err
 	}
 	user := userHandler.Result()
 	if strings.EqualFold(user.Role, "ReadOnly") {
 		err = fmt.Errorf("User must have SuperAdmin role instead of %s", user.Role)
-		util.FileLogger().Errorf("Unsupported user role - %s", err.Error())
+		util.FileLogger().Errorf(ctx, "Unsupported user role - %s", err.Error())
 		return err
 	}
 	return nil
@@ -49,51 +49,55 @@ func RegisterNodeAgent(ctx context.Context, apiToken string) error {
 	host := config.String(util.NodeIpKey)
 	port := config.String(util.NodePortKey)
 	version := config.String(util.PlatformVersionKey)
-	util.FileLogger().Infof(
+	util.FileLogger().Infof(ctx,
 		"Starting Node Agent registration (Version: %s)", version)
-	util.FileLogger().Info("Starting RPC server...")
+	util.FileLogger().Info(ctx, "Starting RPC server...")
+	serverConfig := &RPCServerConfig{
+		Address: fmt.Sprintf("%s:%s", host, port),
+	}
 	// Start server to verify host.
-	server, err := NewRPCServer(ctx, fmt.Sprintf("%s:%s", host, port), false)
+	server, err := NewRPCServer(ctx, serverConfig)
 	if err != nil {
-		util.FileLogger().Errorf("Failed to start RPC server - %s", err.Error())
+		util.FileLogger().Errorf(ctx, "Failed to start RPC server - %s", err.Error())
 		return err
 	}
 	defer server.Stop()
-	util.FileLogger().Info("Submiting Registration task to the executor.")
+	util.FileLogger().Info(ctx, "Submiting Registration task to the executor.")
 	registrationHandler := task.NewAgentRegistrationHandler(apiToken)
 	// Call platform to register the node agent.
-	err = executor.GetInstance(ctx).
+	err = executor.GetInstance().
 		ExecuteTask(ctx, registrationHandler.Handle)
 	if err != nil {
-		util.FileLogger().Errorf("Node Agent Registration Failed - %s", err)
+		util.FileLogger().Errorf(ctx, "Node Agent Registration Failed - %s", err)
 		return err
 	}
 	data := registrationHandler.Result()
 	nuuid := data.Uuid
 	config.Update(util.NodeAgentIdKey, nuuid)
-	util.FileLogger().Info("Saving the node agent certs.")
+	util.FileLogger().Info(ctx, "Saving the node agent certs.")
 	certsUUID := util.NewUUID().String()
 	config.Update(util.PlatformCertsKey, certsUUID)
-	err = util.SaveCerts(config, data.Config.ServerCert, data.Config.ServerKey, certsUUID)
+	err = util.SaveCerts(ctx, config, data.Config.ServerCert, data.Config.ServerKey, certsUUID)
 	if err != nil {
 		util.FileLogger().Info(
+			ctx,
 			"Error while saving certs, unregistering the node-agent in the platform.",
 		)
 		UnregisterNodeAgent(ctx, apiToken)
 		return err
 	}
-	util.FileLogger().Info("Setting node agent state to LIVE.")
-	agentStateHandler := task.NewPutAgentStateHandler(model.Live, version)
+	util.FileLogger().Info(ctx, "Setting node agent state to Ready.")
+	agentStateHandler := task.NewPutAgentStateHandler(model.Ready, version)
 	// TODO add generic retry for HTTP calls.
-	err = executor.GetInstance(ctx).ExecuteTask(
+	err = executor.GetInstance().ExecuteTask(
 		ctx,
 		agentStateHandler.Handle,
 	)
 	if err != nil {
-		util.FileLogger().Errorf("Node Agent Registration Failed - %s", err)
+		util.FileLogger().Errorf(ctx, "Node Agent Registration Failed - %s", err)
 		return err
 	}
-	util.FileLogger().Infof("Node Agent Registration Successful with Node ID - %s.", nuuid)
+	util.FileLogger().Infof(ctx, "Node Agent Registration Successful with Node ID - %s.", nuuid)
 	return nil
 }
 
@@ -106,18 +110,18 @@ func UnregisterNodeAgent(ctx context.Context, apiToken string) error {
 		err := errors.New(
 			"Node Agent Unregistration Failed - Node Agent ID not found in the config",
 		)
-		util.FileLogger().Error(err.Error())
+		util.FileLogger().Error(ctx, err.Error())
 		return err
 	}
-	util.FileLogger().Infof("Unregistering Node Agent - %s", nodeAgentId)
+	util.FileLogger().Infof(ctx, "Unregistering Node Agent - %s", nodeAgentId)
 	unregisterHandler := task.NewAgentUnregistrationHandler(apiToken)
-	err := executor.GetInstance(ctx).
+	err := executor.GetInstance().
 		ExecuteTask(ctx, unregisterHandler.Handle)
 	if err != nil {
-		util.FileLogger().Errorf("Node Agent Unregistration Failed - %s", err)
+		util.FileLogger().Errorf(ctx, "Node Agent Unregistration Failed - %s", err)
 		return err
 	}
 	config.Remove(util.NodeAgentIdKey)
-	util.FileLogger().Infof("Node Agent Unregistration Successful")
+	util.FileLogger().Infof(ctx, "Node Agent Unregistration Successful")
 	return nil
 }

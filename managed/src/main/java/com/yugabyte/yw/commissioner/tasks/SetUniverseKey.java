@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
+import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -38,10 +39,21 @@ public class SetUniverseKey extends UniverseTaskBase {
       // Update the universe DB with the update to be performed and set the
       // 'updateInProgress' flag to prevent other updates from happening.
       lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-
       preTaskActions();
 
       // Manage encryption at rest
+      log.debug(
+          "Current EAR status is {} for universe {} in the YBA Universe details.",
+          Universe.getOrBadRequest(taskParams().getUniverseUUID())
+              .getUniverseDetails()
+              .encryptionAtRestConfig
+              .opType
+              .name(),
+          taskParams().getUniverseUUID());
+      log.info(
+          "Setting EAR status {} for universe {} in the DB nodes.",
+          taskParams().encryptionAtRestConfig.opType.name(),
+          taskParams().getUniverseUUID());
       SubTaskGroup manageEncryptionKeyTask = createManageEncryptionAtRestTask();
       if (manageEncryptionKeyTask != null) {
         manageEncryptionKeyTask.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -53,6 +65,10 @@ public class SetUniverseKey extends UniverseTaskBase {
 
       // Run all the tasks.
       getRunnableTask().runSubTasks();
+      log.info(
+          "Successfully set EAR status {} for universe {} in the DB nodes.",
+          taskParams().encryptionAtRestConfig.opType.name(),
+          taskParams().getUniverseUUID());
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;

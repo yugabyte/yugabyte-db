@@ -16,7 +16,6 @@ import static com.yugabyte.yw.common.PlacementInfoUtil.updatePlacementInfo;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.NodeInstance;
@@ -29,8 +28,8 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class DeleteNode extends NodeTaskBase {
   @Inject
-  protected DeleteNode(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected DeleteNode(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   @Override
@@ -67,7 +66,7 @@ public class DeleteNode extends NodeTaskBase {
                       "On-prem node {} in universe {} doesn't have a linked instance. "
                           + "Deletion is skipped.",
                       taskParams().nodeName,
-                      universe.name);
+                      universe.getName());
                 }
               }
               universe.setUniverseDetails(universeDetails);

@@ -32,9 +32,9 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgYbHashCodeScanProjection extends BasePgSQLTest {
   private static final String kTableName = "scan_test_table";
   private static final int kNumTableColumns = 10;
@@ -109,6 +109,7 @@ public class TestPgYbHashCodeScanProjection extends BasePgSQLTest {
     try (ResultSet rs = stmt.executeQuery(query)) {
       while (rs.next()) {
       }
+      Thread.sleep(5); // Reduce flakiness by giving a moment for the logs to flush
       rs.close();
     } finally {
       logs = logInterceptor.stop();

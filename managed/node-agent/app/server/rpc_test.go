@@ -6,13 +6,19 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"math/rand"
+	"net/http"
+	"node-agent/app/executor"
+	"node-agent/app/scheduler"
+	"node-agent/app/task"
 	pb "node-agent/generated/service"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,10 +27,12 @@ import (
 )
 
 var (
-	server     *RPCServer
-	clientCtx  context.Context
-	dialOpts   []grpc.DialOption
-	serverAddr = "localhost:0"
+	server            *RPCServer
+	clientCtx         context.Context
+	dialOpts          []grpc.DialOption
+	serverAddr        = "localhost:0"
+	enableTLS         = false
+	disableMetricsTLS = false
 )
 
 func init() {
@@ -44,8 +52,17 @@ func TestMain(m *testing.M) {
 	var err error
 	ctx := Context()
 	cancelFunc = CancelFunc()
+	executor.Init(ctx)
+	scheduler.Init(ctx)
+	task.InitTaskManager(ctx)
 	dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	server, err = NewRPCServer(ctx, serverAddr, false)
+	serverConfig := &RPCServerConfig{
+		Address:           serverAddr,
+		EnableTLS:         enableTLS,
+		EnableMetrics:     true,
+		DisableMetricsTLS: disableMetricsTLS,
+	}
+	server, err = NewRPCServer(ctx, serverConfig)
 	if err != nil {
 		panic(err)
 	}
@@ -55,6 +72,7 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	server.Stop()
 	cancelFunc()
+	executor.GetInstance().WaitOnShutdown()
 	os.Exit(code)
 }
 
@@ -66,15 +84,15 @@ func TestPing(t *testing.T) {
 	}
 	defer conn.Close()
 	client := pb.NewNodeAgentClient(conn)
-	req := pb.PingRequest{Data: "Hello"}
+	req := pb.PingRequest{}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	res, err := client.Ping(ctx, &req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Data != "Hello" {
-		t.Fatalf("Expected 'Hello', found '%s'", res.Data)
+	if res.ServerInfo == nil {
+		t.Fatalf("ServerInfo must be set")
 	}
 }
 
@@ -142,8 +160,75 @@ func TestExecuteCommand(t *testing.T) {
 		}
 	}
 	out := buffer.String()
+	t.Logf("Output: %s\n", out)
 	if out != echoWord {
 		t.Fatalf("Expected '%s', found '%s'", echoWord, out)
+	}
+}
+
+func TestSubmitTask(t *testing.T) {
+	conn, err := grpc.Dial(serverAddr, dialOpts...)
+	if err != nil {
+		t.Fatalf("Failed to dial: %v", err)
+	}
+	defer conn.Close()
+	client := pb.NewNodeAgentClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	echoWord := "Hello Test"
+	taskID := "task1"
+	cmd := fmt.Sprintf("sleep 5 & echo -n \"%s\"", echoWord)
+	req := pb.SubmitTaskRequest{TaskId: taskID, Data: &pb.SubmitTaskRequest_CommandInput{
+		CommandInput: &pb.CommandInput{
+			Command: []string{"bash", "-c", cmd},
+		},
+	}}
+	_, err = client.SubmitTask(ctx, &req)
+	if err != nil {
+		t.Fatalf("Failed to submit task - %s", err.Error())
+	}
+	buffer := bytes.Buffer{}
+	rc := 0
+	retryCount := 0
+outer:
+	for {
+		ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		stream, err := client.DescribeTask(
+			ctx,
+			&pb.DescribeTaskRequest{TaskId: taskID},
+		)
+		if err != nil {
+			t.Fatalf("Error in describe call: %s", err.Error())
+		}
+		for {
+			res, err := stream.Recv()
+			if err == io.EOF {
+				break outer
+			}
+			if err != nil {
+				retryCount++
+				t.Logf("Retrying because the error is not EOF - %s", err.Error())
+				break
+			}
+			if res.GetError() != nil {
+				rc = int(res.GetError().Code)
+				buffer.WriteString(res.GetError().Message)
+			} else {
+				buffer.WriteString(res.GetOutput())
+			}
+		}
+	}
+	out := buffer.String()
+	t.Logf("Output: %s\n", out)
+	if out != echoWord {
+		t.Fatalf("Expected '%s', found '%s'", echoWord, out)
+	}
+	if rc != 0 {
+		t.Fatalf("Expected exit code of 0, found %d", rc)
+	}
+	if retryCount == 0 {
+		t.Fatal("Expected retry")
 	}
 }
 
@@ -254,4 +339,93 @@ func TestDownloadFile(t *testing.T) {
 	if out != content {
 		t.Fatalf("Expected %s, found %s", content, out)
 	}
+}
+
+func TestRunPreflightCheck(t *testing.T) {
+	conn, err := grpc.Dial(serverAddr, dialOpts...)
+	if err != nil {
+		log.Fatalf("Failed to dial: %v", err)
+	}
+	defer conn.Close()
+	client := pb.NewNodeAgentClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	taskID := "PreflightCheckTask1"
+	req := pb.SubmitTaskRequest{TaskId: taskID, Data: &pb.SubmitTaskRequest_PreflightCheckInput{
+		PreflightCheckInput: &pb.PreflightCheckInput{
+			SkipProvisioning:    false,
+			AirGapInstall:       false,
+			InstallNodeExporter: false,
+			YbHomeDir:           "/home/yugabyte",
+			SshPort:             22,
+			MountPaths:          []string{"/mnt/d0"},
+		},
+	}}
+	_, err = client.SubmitTask(ctx, &req)
+	if err != nil {
+		t.Fatalf("Failed to submit task - %s", err.Error())
+	}
+	buffer := bytes.Buffer{}
+	rc := 0
+	ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	stream, err := client.DescribeTask(
+		ctx,
+		&pb.DescribeTaskRequest{TaskId: taskID},
+	)
+	if err != nil {
+		t.Fatalf("Error in describe call: %s", err.Error())
+	}
+	for {
+		res, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Error occurred - %s", err.Error())
+		}
+		if res.GetError() != nil {
+			rc = int(res.GetError().Code)
+			buffer.WriteString(res.GetError().Message)
+			break
+		} else {
+			buffer.WriteString(res.GetOutput())
+			if res.State == "Success" {
+				output := res.GetPreflightCheckOutput()
+				t.Logf("Node configs: %+v", output.NodeConfigs)
+				break
+			}
+		}
+	}
+	if rc != 0 {
+		t.Fatalf("Expected exit code of 0, found %d", rc)
+	}
+	t.Logf("Output: %s\n", buffer.String())
+}
+
+func TestMetric(t *testing.T) {
+	var client *http.Client
+	var protocol string
+	if disableMetricsTLS {
+		client = &http.Client{}
+		protocol = "http"
+	} else {
+		client = &http.Client{Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}}
+		protocol = "https"
+	}
+	resp, err := client.Get(fmt.Sprintf("%s://%s/metrics", protocol, serverAddr))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+	output := string(body)
+	if !strings.Contains(output, "nodeagent_") {
+		log.Fatal("No nodeagent metric found")
+	}
+	t.Logf(output)
 }

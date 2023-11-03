@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.metrics.MetricSettings;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -47,9 +48,15 @@ public class MetricQueryParams {
   @ApiModelProperty(value = "Table id")
   private String tableId;
 
+  @ApiModelProperty(value = "Stream id")
+  private String streamId;
+
   @ApiModelProperty(value = "Is Recharts")
   private boolean isRecharts;
 
   @ApiModelProperty(value = "List of metrics with custom settings")
   private List<MetricSettings> metricsWithSettings;
+
+  @ApiModelProperty(value = "Server type")
+  private UniverseTaskBase.ServerType serverType;
 }

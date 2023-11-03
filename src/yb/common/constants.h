@@ -15,6 +15,8 @@
 
 #include "yb/common/common_fwd.h"
 
+#include "yb/util/enums.h"
+
 namespace yb {
 
 // As a result of single dynamic tablet splitting operation we always have kNumSplitParts new
@@ -28,15 +30,16 @@ constexpr const ColocationId kColocationIdNotSet = 0;
 // This has been chosen to match FirstNormalObjectId from Postgres code.
 constexpr const ColocationId kFirstNormalColocationId = 16384;
 
-enum SortingType : uint8_t {
-  kNotSpecified = 0,
-  kAscending,          // ASC, NULLS FIRST
-  kDescending,         // DESC, NULLS FIRST
-  kAscendingNullsLast, // ASC, NULLS LAST
-  kDescendingNullsLast // DESC, NULLS LAST
-};
+YB_DEFINE_ENUM(SortingType,
+               (kNotSpecified)
+               (kAscending)           // ASC, NULLS FIRST
+               (kDescending)          // DESC, NULLS FIRST
+               (kAscendingNullsLast)  // ASC, NULLS LAST
+               (kDescendingNullsLast) // DESC, NULLS LAST
+);
 
 static const char* const kObsoleteShortPrimaryTableId = "sys.catalog.uuid";
 
+constexpr auto kPitrFeatureName = "PITR";
 
 } // namespace yb

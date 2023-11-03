@@ -23,6 +23,9 @@
 #include "utils/memdebug.h"
 #include "utils/memutils.h"
 
+/* YB includes. */
+#include "common/pg_yb_common.h"
+
 
 static void printtup_startup(DestReceiver *self, int operation,
 				 TupleDesc typeinfo);
@@ -131,15 +134,16 @@ printtup_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 {
 	DR_printtup *myState = (DR_printtup *) self;
 	Portal		portal = myState->portal;
-	MemoryContext oldcontext;
+	MemoryContext oldcontext = NULL;
 
-	/* Use the runContext of the portal to send out tuple because after each run, the memory space
-	 * for formating data before sending out can be reset.
-	 */
+
 	if (!YBCIsEnvVarTrueWithDefault("FLAGS_ysql_disable_portal_run_context", false)) {
+		/* Use the runContext of the portal to send out tuple because
+		 * after each run, the memory space for formating data before
+		 * sending out can be reset.
+		 */
+		Assert(MemoryContextIsValid(portal->ybRunContext));
 		oldcontext = MemoryContextSwitchTo(portal->ybRunContext);
-	} else {
-		oldcontext = GetCurrentMemoryContext();
 	}
 
 	/* create buffer to be used for all messages */
@@ -191,7 +195,8 @@ printtup_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 	 * ----------------
 	 */
 
-	MemoryContextSwitchTo(oldcontext);
+	if(oldcontext)
+		MemoryContextSwitchTo(oldcontext);
 }
 
 /*
@@ -445,12 +450,7 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 		else
 		{
 			/* Binary output */
-			bytea	   *outputbytes;
-
-			outputbytes = SendFunctionCall(&thisState->finfo, attr);
-			pq_sendint32(buf, VARSIZE(outputbytes) - VARHDRSZ);
-			pq_sendbytes(buf, VARDATA(outputbytes),
-						 VARSIZE(outputbytes) - VARHDRSZ);
+			StringInfoSendFunctionCall(buf, &thisState->finfo, attr);
 		}
 	}
 
@@ -705,18 +705,13 @@ printtup_internal_20(TupleTableSlot *slot, DestReceiver *self)
 	for (i = 0; i < natts; ++i)
 	{
 		PrinttupAttrInfo *thisState = myState->myinfo + i;
-		Datum		attr = slot->tts_values[i];
-		bytea	   *outputbytes;
 
 		if (slot->tts_isnull[i])
 			continue;
 
 		Assert(thisState->format == 1);
 
-		outputbytes = SendFunctionCall(&thisState->finfo, attr);
-		pq_sendint32(buf, VARSIZE(outputbytes) - VARHDRSZ);
-		pq_sendbytes(buf, VARDATA(outputbytes),
-					 VARSIZE(outputbytes) - VARHDRSZ);
+		StringInfoSendFunctionCall(buf, &thisState->finfo, slot->tts_values[i]);
 	}
 
 	pq_endmessage_reuse(buf);

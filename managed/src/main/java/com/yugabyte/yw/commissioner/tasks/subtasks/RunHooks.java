@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import org.apache.commons.io.FileUtils;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -12,19 +11,19 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Hook;
 import com.yugabyte.yw.models.HookScope.TriggerType;
-import javax.inject.Inject;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-
+import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.FileUtils;
 
 @Slf4j
 public class RunHooks extends NodeTaskBase {
 
   @Inject
-  protected RunHooks(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected RunHooks(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   public static class Params extends NodeTaskParams {
@@ -39,7 +38,7 @@ public class RunHooks extends NodeTaskBase {
 
     // Parent class name
     public String parentTask;
-  };
+  }
 
   @Override
   protected Params taskParams() {
@@ -48,16 +47,16 @@ public class RunHooks extends NodeTaskBase {
 
   @Override
   public void run() {
-    log.info("Running hook {} on node {}", taskParams().hook.name, taskParams().nodeName);
+    log.info("Running hook {} on node {}", taskParams().hook.getName(), taskParams().nodeName);
 
     // Create the hook script to run
     Hook hook = taskParams().hook;
     File hookFile = new File(taskParams().hookPath);
     try {
-      FileUtils.write(hookFile, hook.hookText, StandardCharsets.UTF_8);
+      FileUtils.write(hookFile, hook.getHookText(), StandardCharsets.UTF_8);
     } catch (IOException e) {
       throw new RuntimeException(
-          "Error creating hook file " + taskParams().hookPath + " for hook " + hook.uuid);
+          "Error creating hook file " + taskParams().hookPath + " for hook " + hook.getUuid());
     }
 
     ShellResponse response =
@@ -73,10 +72,11 @@ public class RunHooks extends NodeTaskBase {
         "/run/custom_hook/" + taskParams().trigger.name(),
         "DUMMY",
         Audit.TargetType.Hook,
-        hook.uuid.toString(),
+        hook.getUuid().toString(),
         Audit.ActionType.RunHook,
         body,
-        this.userTaskUUID,
+        getUserTaskUUID(),
+        null,
         null);
 
     if (!hookFile.delete()) log.warn("Failed to delete hook file " + taskParams().hookPath);

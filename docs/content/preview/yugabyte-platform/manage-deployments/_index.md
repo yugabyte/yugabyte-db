@@ -8,7 +8,7 @@ menu:
   preview_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: manage-deployments
-    weight: 644
+    weight: 630
 type: indexpage
 ---
 YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtual machines, pods, machines, and so on, provided by IaaS), logically grouped together to form one distributed database. Each universe includes one primary cluster and, optionally, any number of replica clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.
@@ -73,18 +73,6 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
       </div>
       <div class="body">
         Recover removed nodes in your YugabyteDB universe.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="high-availability/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
-        <div class="title">Enable high availability</div>
-      </div>
-      <div class="body">
-        Enable YugabyteDB Anywhere's high-availability features.
       </div>
     </a>
   </div>
@@ -160,5 +148,4 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
       </div>
     </a>
   </div>
-
 </div>

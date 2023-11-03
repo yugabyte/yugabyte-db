@@ -21,6 +21,7 @@
         "kms:CreateAlias",
         "kms:DeleteAlias",
         "kms:UpdateAlias",
+        "kms:Encrypt",
         "kms:Decrypt",
         "kms:DescribeKey",
         "kms:GenerateDataKeyWithoutPlaintext",

@@ -1,5 +1,5 @@
 ---
-title: Security
+title: Explore Security
 headerTitle: Security
 linkTitle: Security
 description: Overview of security in YugabyteDB.

@@ -15,13 +15,10 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
-import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-
-import java.util.List;
+import com.yugabyte.yw.models.helpers.NodeStatus;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -29,8 +26,8 @@ import lombok.extern.slf4j.Slf4j;
 public class AnsibleSetupServer extends NodeTaskBase {
 
   @Inject
-  protected AnsibleSetupServer(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected AnsibleSetupServer(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   // Additional parameters for this task.
@@ -49,6 +46,8 @@ public class AnsibleSetupServer extends NodeTaskBase {
     public boolean isSystemdUpgrade = false;
     // In case a node doesn't have custom AMI, ignore the value of USE_CUSTOM_IMAGE config.
     public boolean ignoreUseCustomImageConfig = false;
+    // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)
+    public int cgroupSize = 0;
   }
 
   @Override
@@ -59,16 +58,14 @@ public class AnsibleSetupServer extends NodeTaskBase {
   @Override
   public void run() {
     Provider p = taskParams().getProvider();
-    List<AccessKey> accessKeys = AccessKey.getAll(p.uuid);
     boolean skipProvision = false;
 
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     taskParams().useSystemd =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
 
-    // For now we will skipProvision if it's set in accessKeys.
-    if (p.code.equals(Common.CloudType.onprem.name()) && accessKeys.size() > 0) {
-      skipProvision = accessKeys.get(0).getKeyInfo().skipProvisioning;
+    if (p.getCode().equals(Common.CloudType.onprem.name())) {
+      skipProvision = p.getDetails().skipProvisioning;
     }
 
     if (skipProvision) {

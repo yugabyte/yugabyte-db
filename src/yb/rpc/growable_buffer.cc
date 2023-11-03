@@ -21,7 +21,7 @@
 #include <thread>
 
 #include <boost/lockfree/stack.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/util/mem_tracker.h"
 #include "yb/util/result.h"
@@ -29,8 +29,7 @@
 
 using namespace std::placeholders;
 
-namespace yb {
-namespace rpc {
+namespace yb::rpc {
 
 class GrowableBufferAllocator::Impl : public GarbageCollector,
                                       public std::enable_shared_from_this<Impl> {
@@ -49,7 +48,7 @@ class GrowableBufferAllocator::Impl : public GarbageCollector,
     allocated_tracker_->parent()->AddGarbageCollector(shared_from_this());
   }
 
-  virtual ~Impl() {
+  ~Impl() override {
     CollectGarbage(std::numeric_limits<size_t>::max());
   }
 
@@ -273,5 +272,4 @@ std::ostream& operator<<(std::ostream& out, const GrowableBuffer& receiver) {
   return out << receiver.ToString();
 }
 
-} // namespace rpc
-} // namespace yb
+} // namespace yb::rpc

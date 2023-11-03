@@ -1,18 +1,22 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
+import _ from 'lodash';
 import { withRouter } from 'react-router';
 import { isNonEmptyArray } from '../../utils/ObjectUtils';
 import { getPromiseState } from '../../utils/PromiseUtils';
 import { isHidden } from '../../utils/LayoutUtils';
 import PropTypes from 'prop-types';
+import { YBModal, YBCheckBox } from '../common/forms/fields';
 
 class AuthenticatedComponent extends Component {
   constructor(props) {
     super(props);
     this.state = {
       prevPath: '',
-      fetchScheduled: false
+      fetchScheduled: false,
+      notificationsHidden: false,
+      hideNotificationsChecked: false
     };
   }
 
@@ -32,8 +36,9 @@ class AuthenticatedComponent extends Component {
     this.props.fetchCustomerTasks();
     this.props.fetchCustomerCertificates();
     this.props.fetchCustomerConfigs();
-    this.props.fetchInsecureLogin();
+    this.props.fetchRuntimeConfigKeyInfo();
     this.props.fetchUser();
+    this.props.fetchAdminNotifications();
   }
 
   componentWillUnmount() {
@@ -43,10 +48,10 @@ class AuthenticatedComponent extends Component {
   hasPendingCustomerTasks = (taskList) => {
     return isNonEmptyArray(taskList)
       ? taskList.some(
-        (task) =>
-          (task.status === 'Running' || task.status === 'Initializing') &&
-          Number(task.percentComplete) !== 100
-      )
+          (task) =>
+            (task.status === 'Running' || task.status === 'Initializing') &&
+            Number(task.percentComplete) !== 100
+        )
       : false;
   };
 
@@ -92,16 +97,66 @@ class AuthenticatedComponent extends Component {
     this.setState({ fetchScheduled: true });
   };
 
+  closeNotificationsModal = () => {
+    const { adminNotifications } = this.props;
+    _.forEach(adminNotifications?.data?.messages || [], (message) => {
+      if (this.state.hideNotificationsChecked) {
+        localStorage.setItem(message.code, 'hidden');
+      }
+    });
+    this.setState({ notificationsHidden: true });
+  };
+
   render() {
-    const { currentCustomer } = this.props;
+    const { currentCustomer, adminNotifications, location } = this.props;
+    const { notificationsHidden } = this.state;
     const sidebarHidden =
       getPromiseState(currentCustomer).isSuccess() &&
       isHidden(currentCustomer.data.features, 'menu.sidebar');
+    const showNotifications =
+      getPromiseState(adminNotifications).isSuccess() &&
+      !notificationsHidden &&
+      adminNotifications?.data?.messages?.length > 0 &&
+      !location.query['hide-notifications'];
+    let notificationText = '';
+    if (showNotifications) {
+      _.forEach(adminNotifications?.data?.messages || [], (message) => {
+        if (
+          localStorage.getItem(message.code) === null &&
+          localStorage.getItem(message.code) !== 'hidden'
+        ) {
+          notificationText += `<span>${message.htmlMessage}</span>`;
+        }
+      });
+    }
+    const notificationVisible = showNotifications && notificationText.length > 0;
+
+    const notificationMessageStatus = (
+      <div className="footer-accessory-wrapper">
+        <YBCheckBox
+          label={'Do not show this message in the future'}
+          onClick={() => this.setState({ hideNotificationsChecked: true })}
+        />
+      </div>
+    );
     return (
       <div
         className={sidebarHidden ? 'full-height-container sidebar-hidden' : 'full-height-container'}
       >
         {this.props.children}
+        <YBModal
+          title="Notification"
+          visible={notificationVisible}
+          onHide={this.closeNotificationsModal}
+          showCancelButton={true}
+          cancelLabel={'Close'}
+          footerAccessory={notificationMessageStatus}
+        >
+          <div
+            onClick={this.notificationLinkHandler}
+            dangerouslySetInnerHTML={{ __html: notificationText }}
+          />
+        </YBModal>
       </div>
     );
   }

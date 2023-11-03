@@ -1,31 +1,37 @@
-//--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
-// in compliance with the License.  You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software distributed under the License
-// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
-// or implied.  See the License for the specific language governing permissions and limitations
-// under the License.
-//--------------------------------------------------------------------------------------------------
+/*-------------------------------------------------------------------------
+ *
+ * ybgate_api.h
+ *	  YbGate interface functions.
+ *	  YbGate allows to execute Postgres code from DocDB
+ *
+ * Copyright (c) Yugabyte, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ *
+ * IDENTIFICATION
+ *	  src/include/ybgate/ybgate_api.h
+ *
+ *-------------------------------------------------------------------------
+ */
 
-
-// This file includes C/C++ wrappers around some PG utilities such that it can be be included
-// into YB C++ codebases.
-// Specifically, it is currently used by DocDB to evaluate YSQL expresison (pushed down from
-// the query layer).
-
-#ifndef PG_YBGATE_YBGATE_API_H
-#define PG_YBGATE_YBGATE_API_H
+#pragma once
 
 #include <setjmp.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "ybgate/ybgate_status.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -41,56 +47,19 @@ extern "C" {
 // function will be caught/handled (and not crash the tserver process).
 //-----------------------------------------------------------------------------
 
-struct YbgStatus {
-	int32_t err_code; /* error code (from elog.h), 0 means no error */
-	const char *err_msg; /* NULL if no error, else may still be NULL */
-};
-
-#ifndef __cplusplus
-typedef struct YbgStatus YbgStatus;
-#endif
-
-#define PG_STATUS_OK (YbgStatus) {0, NULL};
-
-#define PG_STATUS(elevel, msg) (YbgStatus) {elevel, msg};
-
-/*
- * We cannot use the standard Postgres PG_TRY() and friends here because error
- * reporting framework is not fully set up. But we use the same setjmp/longjmp
- * mechanism to report reasonable errors to DocDB.
- * TODO this should be better integrated with both PG/YSQL error reporting and
- * DocDB. Current limitations include:
- *   - PG error message handling -- some error message components (e.g. the
- *     DETAIL line) might not be set or fully processed.
- *   - currently DocDB will turn PG error code/message into a DocDB error
- *     code/message (e.g. add a "Query error: " prefix to the message).
- */
-#define PG_SETUP_ERROR_REPORTING() \
-	do { \
-		jmp_buf buffer; \
-		YBCPgSetThreadLocalJumpBuffer(&buffer); \
-		int r = setjmp(buffer); \
-		if (r != 0) { \
-			return PG_STATUS(r, (const char *) YBCPgGetThreadLocalErrMsg()); \
-		} \
-	} while(0) \
-
-YbgStatus YbgInit();
-
-//-----------------------------------------------------------------------------
-// Memory Context
-//-----------------------------------------------------------------------------
-
 #ifdef __cplusplus
 typedef void *YbgMemoryContext;
 #else
 typedef MemoryContext YbgMemoryContext;
 #endif
 
-YbgStatus YbgGetCurrentMemoryContext(YbgMemoryContext *memctx);
+//-----------------------------------------------------------------------------
+// Memory Context
+//-----------------------------------------------------------------------------
 
-YbgStatus YbgSetCurrentMemoryContext(YbgMemoryContext memctx,
-									 YbgMemoryContext *oldctx);
+YbgMemoryContext YbgGetCurrentMemoryContext();
+
+YbgMemoryContext YbgSetCurrentMemoryContext(YbgMemoryContext memctx);
 
 YbgStatus YbgCreateMemoryContext(YbgMemoryContext parent,
 								 const char *name,
@@ -101,6 +70,8 @@ YbgStatus YbgPrepareMemoryContext();
 YbgStatus YbgResetMemoryContext();
 
 YbgStatus YbgDeleteMemoryContext();
+
+YbgStatus YbgInit();
 
 //-----------------------------------------------------------------------------
 // Types
@@ -268,5 +239,3 @@ void HeapDeformTuple(uintptr_t datum, void *attrs, size_t natts,
 #ifdef __cplusplus
 }
 #endif
-
-#endif  // PG_YBGATE_YBGATE_API_H

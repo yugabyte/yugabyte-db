@@ -4,46 +4,52 @@ package com.yugabyte.yw.forms;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.fasterxml.jackson.annotation.JsonGetter;
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.*;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.util.StdConverter;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.XClusterConfig;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
+import com.yugabyte.yw.models.helpers.*;
+import com.yugabyte.yw.models.helpers.audit.*;
+import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import io.swagger.annotations.ApiModelProperty.AccessMode;
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
+import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.ToString;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.data.validation.Constraints;
+import play.libs.Json;
 
 /**
  * This class captures the user intent for creation of the universe. Note some nuances in the way
@@ -68,6 +74,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   private static final Set<String> AWS_INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY =
       ImmutableSet.of("i3.", "c5d.", "c6gd.");
+
+  public static final String UPDATING_TASK_UUID_FIELD = "updatingTaskUUID";
+  public static final String PLACEMENT_MODIFICATION_TASK_UUID_FIELD =
+      "placementModificationTaskUuid";
 
   @Constraints.Required()
   @Size(min = 1)
@@ -95,7 +105,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS
   // communication between server and client.
-  @ApiModelProperty public UUID clientRootCA = null;
+  // This is made 'protected' to make sure there is no direct setting/getting
+  @ApiModelProperty protected UUID clientRootCA = null;
 
   // This flag represents whether user has chosen to use same certificates for node to node and
   // client to server communication.
@@ -127,6 +138,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // This tracks whether the universe is in the paused state or not.
   @ApiModelProperty public boolean universePaused = false;
 
+  // UUID of last failed task that applied modification to cluster state.
+  @ApiModelProperty public UUID placementModificationTaskUuid = null;
+
   // The next cluster index to be used when a new read-only cluster is added.
   @ApiModelProperty public int nextClusterIndex = 1;
 
@@ -157,6 +171,22 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // Place all masters into default region flag.
   @ApiModelProperty public boolean mastersInDefaultRegion = true;
+
+  // true iff created through a k8s CR and controlled by the
+  // Kubernetes Operator.
+  @ApiModelProperty public boolean isKubernetesOperatorControlled = false;
+
+  @ApiModelProperty public Map<ClusterAZ, String> existingLBs = null;
+
+  // Override the default DB present in pre-built Ami
+  @ApiModelProperty(hidden = true)
+  public boolean overridePrebuiltAmiDBVersion = false;
+
+  // if we want to use a different SSH_USER instead of  what is defined in the accessKey
+  // Use imagebundle to overwrite the sshPort
+  @Nullable @ApiModelProperty @Deprecated public String sshUserOverride;
+
+  @ApiModelProperty public Architecture arch;
 
   /** Allowed states for an imported universe. */
   public enum ImportedState {
@@ -210,6 +240,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @ApiModelProperty public Set<UpdateOptions> updateOptions = new HashSet<>();
 
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  private KubernetesResourceDetails kubernetesResourceDetails;
+
+  @ApiModelProperty public boolean otelCollectorEnabled = false;
+
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
   public static class Cluster {
@@ -234,6 +271,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // This is set internally by the placement util in the server, client should not set it.
     @ApiModelProperty public int index = 0;
 
+    @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     public List<Region> regions;
 
@@ -285,17 +323,65 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return false;
     }
 
-    public void validate(boolean validateGFlagsConsistency) {
-      checkDeviceInfo();
-      checkStorageType();
+    public void validate(
+        boolean validateGFlagsConsistency, boolean isAuthEnforced, Set<NodeDetails> nodes) {
+      if (uuid == null) {
+        throw new IllegalStateException("Cluster uuid should not be null");
+      }
+      if (placementInfo == null) {
+        throw new IllegalStateException("Placement should be provided");
+      }
+      checkDeviceInfo(userIntent.deviceInfo);
+      if (userIntent.masterDeviceInfo != null && userIntent.dedicatedNodes) {
+        checkDeviceInfo(userIntent.masterDeviceInfo);
+        checkStorageType(
+            userIntent.deviceInfo,
+            nodes.stream()
+                .filter(n -> n.dedicatedTo == UniverseTaskBase.ServerType.TSERVER)
+                .collect(Collectors.toSet()));
+        checkStorageType(
+            userIntent.masterDeviceInfo,
+            nodes.stream()
+                .filter(n -> n.dedicatedTo == UniverseTaskBase.ServerType.MASTER)
+                .collect(Collectors.toSet()));
+      } else {
+        checkStorageType(userIntent.deviceInfo, nodes);
+      }
+      validateAuth(isAuthEnforced);
       if (validateGFlagsConsistency) {
         GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
       }
+      if (userIntent.specificGFlags != null) {
+        if (clusterType == ClusterType.PRIMARY
+            && userIntent.specificGFlags.isInheritFromPrimary()) {
+          throw new IllegalStateException("Cannot inherit gflags for primary cluster");
+        }
+        userIntent.specificGFlags.validateConsistency();
+      }
     }
 
-    private void checkDeviceInfo() {
+    /**
+     * Validate to ensure that the user is not able to create a universe via API when they disable
+     * YSQL Auth or YCQL Auth but yb.universe.auth.is_enforced runtime config value is true
+     *
+     * @param isAuthEnforced Runtime config value denoting if user is manadated to have auth.
+     */
+    private void validateAuth(boolean isAuthEnforced) {
+      if (isAuthEnforced) {
+        boolean enableYSQLAuth = userIntent.enableYSQLAuth;
+        boolean enableYCQLAuth = userIntent.enableYCQLAuth;
+        if ((userIntent.enableYSQL && !enableYSQLAuth)
+            || (userIntent.enableYCQL && !enableYCQLAuth)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Global Policy mandates auth-enforced universes."
+                  + "Make sure to enableAuth in request.");
+        }
+      }
+    }
+
+    private void checkDeviceInfo(DeviceInfo deviceInfo) {
       CloudType cloudType = userIntent.providerType;
-      DeviceInfo deviceInfo = userIntent.deviceInfo;
       if (cloudType.isRequiresDeviceInfo()) {
         if (deviceInfo == null) {
           throw new PlatformServiceException(
@@ -309,13 +395,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
     }
 
-    private void checkStorageType() {
-      if (userIntent.deviceInfo == null) {
+    private void checkStorageType(DeviceInfo deviceInfo, Set<NodeDetails> nodes) {
+      if (deviceInfo == null) {
         return;
       }
-      DeviceInfo deviceInfo = userIntent.deviceInfo;
       CloudType cloudType = userIntent.providerType;
-      if (cloudType == CloudType.aws && hasEphemeralStorage(userIntent)) {
+      boolean hasEphemeralStorage =
+          nodes.stream()
+              .filter(n -> hasEphemeralStorage(cloudType, n.cloudInfo.instance_type, deviceInfo))
+              .findFirst()
+              .isPresent();
+      if (cloudType == CloudType.aws && hasEphemeralStorage) {
         // Ephemeral storage AWS instances should not have storage type
         if (deviceInfo.storageType != null) {
           throw new PlatformServiceException(
@@ -341,19 +431,23 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
   }
 
-  public static boolean hasEphemeralStorage(UserIntent userIntent) {
-    boolean result =
-        hasEphemeralStorage(
-            userIntent.providerType, userIntent.instanceType, userIntent.deviceInfo);
-    if (userIntent.dedicatedNodes) {
-      result =
-          result
-              || hasEphemeralStorage(
-                  userIntent.providerType,
-                  userIntent.masterInstanceType,
-                  userIntent.masterDeviceInfo);
+  public static boolean hasEphemeralStorage(UniverseDefinitionTaskParams params) {
+    if (CollectionUtils.isEmpty(params.nodeDetailsSet)) {
+      return false;
     }
-    return result;
+    for (Cluster cluster : params.clusters) {
+      for (NodeDetails node : params.nodeDetailsSet) {
+        if (!node.isInPlacement(cluster.uuid)) {
+          continue;
+        }
+        DeviceInfo deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
+        if (hasEphemeralStorage(
+            cluster.userIntent.providerType, node.cloudInfo.instance_type, deviceInfo)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   public static boolean hasEphemeralStorage(
@@ -374,7 +468,73 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     return false;
   }
 
+  interface PerProcessOverrides<T> {
+    Map<UniverseTaskBase.ServerType, T> getPerProcess();
+
+    void setPerProcess(Map<UniverseTaskBase.ServerType, T> values);
+  }
+
+  // TODO: We can migrate masterDeviceInfo, masterInstanceType here
+  @ApiModel(description = "YbaApi Internal: Used by YBM")
+  @Data
+  public static class OverridenDetails {
+    @ApiModelProperty private String instanceType;
+    @ApiModelProperty private DeviceInfo deviceInfo;
+    @ApiModelProperty private Integer cgroupSize;
+
+    public void mergeWith(OverridenDetails other) {
+      if (other == null) {
+        return;
+      }
+      if (other.getDeviceInfo() != null) {
+        this.deviceInfo = other.getDeviceInfo();
+      }
+      if (other.getInstanceType() != null) {
+        this.instanceType = other.getInstanceType();
+      }
+      if (other.getCgroupSize() != null) {
+        this.cgroupSize = other.getCgroupSize();
+      }
+    }
+
+    public <T, P extends OverridenDetails> P mergeApply(T val, Function<T, P> extractor) {
+      P result = null;
+      if (val != null) {
+        result = extractor.apply(val);
+        if (result != null) {
+          mergeWith(result);
+        }
+      }
+      return result;
+    }
+  }
+
+  @ApiModel(description = "YbaApi Internal: Used by YBM")
+  @Data
+  public static class AZOverrides extends OverridenDetails
+      implements PerProcessOverrides<OverridenDetails> {
+    @ApiModelProperty private Map<UniverseTaskBase.ServerType, OverridenDetails> perProcess;
+  }
+
+  @ApiModel(description = "YbaApi Internal: Used by YBM")
+  @Data
+  public static class UserIntentOverrides implements PerProcessOverrides<OverridenDetails> {
+    @ApiModelProperty private Map<UniverseTaskBase.ServerType, OverridenDetails> perProcess;
+    @ApiModelProperty private Map<UUID, AZOverrides> azOverrides;
+
+    @JsonIgnore
+    public UserIntentOverrides clone() {
+      try {
+        return Json.mapper()
+            .treeToValue(Json.mapper().valueToTree(this), UserIntentOverrides.class);
+      } catch (JsonProcessingException e) {
+        throw new RuntimeException("Failed to clone overrides", e);
+      }
+    }
+  }
+
   /** The user defined intent for the universe. */
+  @Slf4j
   public static class UserIntent {
 
     // Nice name for the universe.
@@ -403,6 +563,23 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Cloud Instance Type that the user wants for tserver nodes.
     @Constraints.Required() @ApiModelProperty public String instanceType;
 
+    // Used only for k8s universes when instance type is set to custom.
+    @ApiModelProperty public K8SNodeResourceSpec masterK8SNodeResourceSpec;
+
+    @ApiModelProperty public K8SNodeResourceSpec tserverK8SNodeResourceSpec;
+
+    public static class K8SNodeResourceSpec {
+      // Memory in GiB
+      public Double memoryGib = 4.0;
+      // CPU in core count
+      public Double cpuCoreCount = 2.0;
+    }
+
+    public static final double MIN_CPU = 0.5;
+    public static final double MAX_CPU = 100.0;
+    public static final double MIN_MEMORY = 2.0;
+    public static final double MAX_MEMORY = 1000.0;
+
     // The number of nodes to provision. These include ones for both masters and tservers.
     @Constraints.Min(1)
     @ApiModelProperty
@@ -427,6 +604,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty(value = "Whether to assign static public IP")
     public boolean assignStaticPublicIP = false;
 
+    @ApiModelProperty(notes = "default: false")
+    public boolean useSpotInstance = false;
+
+    @ApiModelProperty(notes = "Max price we are willing to pay for spot instance")
+    public Double spotPrice = 0.0;
+
     @ApiModelProperty() public boolean useTimeSync = false;
 
     @ApiModelProperty() public boolean enableYCQL = true;
@@ -434,6 +617,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty() public String ysqlPassword;
 
     @ApiModelProperty() public String ycqlPassword;
+
+    @ApiModelProperty(hidden = true)
+    public boolean defaultYsqlPassword = false;
+
+    @ApiModelProperty(hidden = true)
+    public boolean defaultYcqlPassword = false;
+
+    @ApiModelProperty() public Long kubernetesOperatorVersion;
 
     @ApiModelProperty() public boolean enableYSQLAuth = false;
 
@@ -451,6 +642,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty() public boolean enableVolumeEncryption = false;
 
     @ApiModelProperty() public boolean enableIPV6 = false;
+
+    @ApiModelProperty() public UUID imageBundleUUID;
 
     // Flag to use if we need to deploy a loadbalancer/some kind of
     // exposing service for the cluster.
@@ -471,7 +664,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // setup and will be in-place of privateIP
     @Deprecated @ApiModelProperty() public boolean useHostname = false;
 
-    @ApiModelProperty() public boolean useSystemd = false;
+    @ApiModelProperty() public Boolean useSystemd = false;
 
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match
@@ -494,41 +687,54 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Device info for dedicated master nodes.
     @Nullable @ApiModelProperty public DeviceInfo masterDeviceInfo;
 
+    // New version of gflags. If present - replaces old masterGFlags/tserverGFlags thing
+    @ApiModelProperty public SpecificGFlags specificGFlags;
+
+    // Overrides for some of user intent values per AZ or/and process type.
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.19.3.0")
+    @Getter
+    @Setter
+    @ApiModelProperty("YbaApi Internal: Used by YBM")
+    private UserIntentOverrides userIntentOverrides;
+
+    // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)
+    // 0 will not set any cgroup limits.
+    // For read replica null or -1 value means use that of from primary cluster.
+    @Getter @Setter @ApiModelProperty private Integer cgroupSize;
+
+    // Audit Logging Config
+    @ApiModelProperty public AuditLogConfig auditLogConfig;
+
+    // for gflags
+    public AuditLogConfig getAuditLogConfig() {
+      return auditLogConfig;
+    }
+
     @Override
     public String toString() {
-      return "UserIntent "
-          + "for universe="
-          + universeName
-          + " type="
-          + instanceType
-          + ", numNodes="
-          + numNodes
-          + ", prov="
-          + provider
-          + ", provType="
-          + providerType
-          + ", RF="
-          + replicationFactor
-          + ", regions="
-          + regionList
-          + ", pref="
-          + preferredRegion
-          + ", ybVersion="
-          + ybSoftwareVersion
-          + ", accessKey="
-          + accessKeyCode
-          + ", deviceInfo='"
-          + deviceInfo
-          + "', timeSync="
-          + useTimeSync
-          + ", publicIP="
-          + assignPublicIP
-          + ", staticPublicIP="
-          + assignStaticPublicIP
-          + ", tags="
-          + instanceTags
-          + ", masterInstanceType="
-          + masterInstanceType;
+      StringBuilder sb = new StringBuilder();
+      sb.append("UserIntent for universe=").append(universeName);
+      sb.append(", type=").append(instanceType);
+      sb.append(", spotInstance=").append(useSpotInstance);
+      sb.append(", useSpotInstance=").append(useSpotInstance);
+      sb.append(", spotPrice=").append(spotPrice);
+      sb.append(", useSpotInstance=").append(useSpotInstance);
+      sb.append(", numNodes=").append(numNodes);
+      sb.append(", prov=").append(provider);
+      sb.append(", provType=").append(providerType);
+      sb.append(", RF=").append(replicationFactor);
+      sb.append(", regions=").append(regionList);
+      sb.append(", pref=").append(preferredRegion);
+      sb.append(", ybVersion=").append(ybSoftwareVersion);
+      sb.append(", accessKey=").append(accessKeyCode);
+      sb.append(", deviceInfo=").append(deviceInfo);
+      sb.append(", timeSync=").append(useTimeSync);
+      sb.append(", publicIP=").append(assignPublicIP);
+      sb.append(", staticPublicIP=").append(assignStaticPublicIP);
+      sb.append(", tags=").append(instanceTags);
+      sb.append(", masterInstanceType=").append(masterInstanceType);
+      sb.append(", kubernetesOperatorVersion=").append(kubernetesOperatorVersion);
+      return sb.toString();
     }
 
     @Override
@@ -538,7 +744,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.provider = provider;
       newUserIntent.providerType = providerType;
       newUserIntent.replicationFactor = replicationFactor;
-      newUserIntent.regionList = new ArrayList<>(regionList);
+      if (regionList != null) {
+        newUserIntent.regionList = new ArrayList<>(regionList);
+      }
       newUserIntent.preferredRegion = preferredRegion;
       newUserIntent.instanceType = instanceType;
       newUserIntent.numNodes = numNodes;
@@ -546,7 +754,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.useSystemd = useSystemd;
       newUserIntent.accessKeyCode = accessKeyCode;
       newUserIntent.assignPublicIP = assignPublicIP;
+      newUserIntent.useSpotInstance = useSpotInstance;
+      newUserIntent.spotPrice = spotPrice;
       newUserIntent.assignStaticPublicIP = assignStaticPublicIP;
+      newUserIntent.specificGFlags = specificGFlags == null ? null : specificGFlags.clone();
       newUserIntent.masterGFlags = new HashMap<>(masterGFlags);
       newUserIntent.tserverGFlags = new HashMap<>(tserverGFlags);
       newUserIntent.useTimeSync = useTimeSync;
@@ -569,27 +780,95 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         newUserIntent.masterDeviceInfo = masterDeviceInfo.clone();
       }
       newUserIntent.dedicatedNodes = dedicatedNodes;
+      if (userIntentOverrides != null) {
+        newUserIntent.userIntentOverrides = userIntentOverrides.clone();
+      }
+      newUserIntent.cgroupSize = cgroupSize;
       return newUserIntent;
     }
 
-    public String getInstanceTypeForNode(NodeDetails nodeDetails) {
-      return getInstanceTypeForProcessType(nodeDetails.dedicatedTo);
+    private OverridenDetails getOverridenDetails(
+        @Nonnull UniverseTaskBase.ServerType serverType, @Nullable UUID azUUID) {
+      OverridenDetails res = new OverridenDetails(); // Empty
+      if (userIntentOverrides != null) {
+        res.mergeApply(userIntentOverrides.getPerProcess(), perProc -> perProc.get(serverType));
+        if (azUUID != null) {
+          AZOverrides azOverrides =
+              res.mergeApply(userIntentOverrides.getAzOverrides(), az -> az.get(azUUID));
+          if (azOverrides != null) {
+            res.mergeApply(azOverrides.getPerProcess(), perProc -> perProc.get(serverType));
+          }
+        }
+      }
+      return res;
     }
 
-    public String getInstanceTypeForProcessType(@Nullable UniverseTaskBase.ServerType type) {
-      if (type == UniverseTaskBase.ServerType.MASTER && masterInstanceType != null) {
+    public Integer getCGroupSize(@NotNull NodeDetails nodeDetails) {
+      return getCGroupSize(nodeDetails.azUuid);
+    }
+
+    public Integer getCGroupSize(UUID azUUID) {
+      OverridenDetails overridenDetails =
+          getOverridenDetails(UniverseTaskBase.ServerType.TSERVER, azUUID);
+      if (overridenDetails.getCgroupSize() != null) {
+        return overridenDetails.getCgroupSize();
+      }
+      return cgroupSize;
+    }
+
+    @JsonIgnore
+    public String getBaseInstanceType() {
+      return getInstanceType(null);
+    }
+
+    public String getInstanceType(@Nullable UUID azUUID) {
+      return getInstanceType(null, azUUID);
+    }
+
+    public String getInstanceType(
+        @Nullable UniverseTaskBase.ServerType serverType, @Nullable UUID azUUID) {
+      if (serverType != UniverseTaskBase.ServerType.MASTER
+          && serverType != UniverseTaskBase.ServerType.TSERVER) {
+        serverType = UniverseTaskBase.ServerType.TSERVER;
+      }
+      String result = instanceType;
+      if (serverType == UniverseTaskBase.ServerType.MASTER
+          && masterInstanceType != null
+          && dedicatedNodes) {
         return masterInstanceType;
       }
-      return instanceType;
+      OverridenDetails overridenDetails = getOverridenDetails(serverType, azUUID);
+      if (overridenDetails.getInstanceType() != null) {
+        result = overridenDetails.getInstanceType();
+        log.debug("Getting overriden instance type {} for az {}", result, azUUID);
+      }
+      return result;
+    }
+
+    public String getInstanceTypeForNode(NodeDetails nodeDetails) {
+      return getInstanceType(nodeDetails.dedicatedTo, nodeDetails.getAzUuid());
     }
 
     public DeviceInfo getDeviceInfoForNode(NodeDetails nodeDetails) {
-      return getDeviceInfoForProcessType(nodeDetails.dedicatedTo);
-    }
-
-    public DeviceInfo getDeviceInfoForProcessType(@Nullable UniverseTaskBase.ServerType type) {
-      if (type == UniverseTaskBase.ServerType.MASTER && masterDeviceInfo != null) {
+      if (dedicatedNodes
+          && masterDeviceInfo != null
+          && nodeDetails.dedicatedTo == UniverseTaskBase.ServerType.MASTER) {
         return masterDeviceInfo;
+      }
+      OverridenDetails overridenDetails =
+          getOverridenDetails(UniverseTaskBase.ServerType.TSERVER, nodeDetails.getAzUuid());
+      if (overridenDetails.getDeviceInfo() != null) {
+        JsonNode original = Json.toJson(deviceInfo);
+        JsonNode overriden = Json.toJson(overridenDetails.getDeviceInfo());
+        log.debug(
+            "Getting overriden device info {} for az {}",
+            Json.toJson(overriden),
+            nodeDetails.getAzUuid());
+
+        CommonUtils.deepMerge(original, overriden);
+        log.debug("Device info after merging {}", original);
+
+        return Json.fromJson(original, DeviceInfo.class);
       }
       return deviceInfo;
     }
@@ -607,11 +886,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && ybSoftwareVersion.equals(other.ybSoftwareVersion)
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
+          && useSpotInstance == other.useSpotInstance
+          && spotPrice.equals(other.spotPrice)
           && assignStaticPublicIP == other.assignStaticPublicIP
           && useTimeSync == other.useTimeSync
           && useSystemd == other.useSystemd
           && dedicatedNodes == other.dedicatedNodes
-          && Objects.equals(masterInstanceType, other.masterInstanceType)) {
+          && Objects.equals(masterInstanceType, other.masterInstanceType)
+          && Objects.equals(userIntentOverrides, other.userIntentOverrides)) {
         return true;
       }
       return false;
@@ -629,6 +911,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && ybSoftwareVersion.equals(other.ybSoftwareVersion)
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
+          && useSpotInstance == other.useSpotInstance
+          && spotPrice.equals(other.spotPrice)
           && assignStaticPublicIP == other.assignStaticPublicIP
           && useTimeSync == other.useTimeSync
           && dedicatedNodes == other.dedicatedNodes
@@ -768,7 +1052,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     Cluster cluster = getClusterByUuid(clusterUuid);
     if (cluster == null) {
       throw new IllegalArgumentException(
-          "UUID " + clusterUuid + " not found in universe " + universeUUID);
+          "UUID " + clusterUuid + " not found in universe " + getUniverseUUID());
     }
 
     clusters.remove(cluster);
@@ -782,13 +1066,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @JsonIgnore
   public Cluster getPrimaryCluster() {
     List<Cluster> foundClusters =
-        clusters
-            .stream()
+        clusters.stream()
             .filter(c -> c.clusterType.equals(ClusterType.PRIMARY))
             .collect(Collectors.toList());
     if (foundClusters.size() > 1) {
       throw new RuntimeException(
-          "Multiple primary clusters found in params for universe " + universeUUID.toString());
+          "Multiple primary clusters found in params for universe " + getUniverseUUID().toString());
     }
     return Iterables.getOnlyElement(foundClusters, null);
   }
@@ -826,16 +1109,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @JsonIgnore
   public List<Cluster> getClusterByType(ClusterType clusterType) {
-    return clusters
-        .stream()
+    return clusters.stream()
         .filter(c -> c.clusterType.equals(clusterType))
         .collect(Collectors.toList());
   }
 
   @JsonIgnore
   public List<Cluster> getNonPrimaryClusters() {
-    return clusters
-        .stream()
+    return clusters.stream()
         .filter(c -> !c.clusterType.equals(ClusterType.PRIMARY))
         .collect(Collectors.toList());
   }
@@ -860,10 +1141,20 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           "Multiple clusters with uuid "
               + uuid.toString()
               + " found in params for universe "
-              + universeUUID.toString());
+              + getUniverseUUID().toString());
     }
 
     return Iterables.getOnlyElement(foundClusters, null);
+  }
+
+  // the getter has some logic built around, as there are no other layer to
+  // have such logic at a common place
+  public UUID getClientRootCA() {
+    return (rootCA != null && rootAndClientRootCASame) ? rootCA : clientRootCA;
+  }
+
+  public void setClientRootCA(UUID clientRootCA) {
+    this.clientRootCA = clientRootCA;
   }
 
   /**
@@ -878,6 +1169,38 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return null;
     }
     return nodeDetailsSet.stream().filter(n -> n.isInPlacement(uuid)).collect(Collectors.toSet());
+  }
+
+  @JsonIgnore
+  public Cluster getClusterByNodeUUID(UUID nodeUUID) {
+    NodeDetails node =
+        nodeDetailsSet.stream().filter(n -> n.nodeUuid.equals(nodeUUID)).findFirst().orElse(null);
+    if (node == null) {
+      return null;
+    }
+
+    return getClusterByUuid(node.placementUuid);
+  }
+
+  @JsonIgnore
+  public void setExistingLBs(List<Cluster> clusters) {
+    Map<ClusterAZ, String> existingLBsMap = new HashMap<>();
+    for (Cluster cluster : clusters) {
+      if (cluster.userIntent.enableLB) {
+        // Get AZs in cluster
+        List<PlacementInfo.PlacementAZ> azList =
+            PlacementInfoUtil.getAZsSortedByNumNodes(cluster.placementInfo);
+        for (PlacementInfo.PlacementAZ placementAZ : azList) {
+          String lbName = placementAZ.lbName;
+          AvailabilityZone az = AvailabilityZone.getOrBadRequest(placementAZ.uuid);
+          if (!Strings.isNullOrEmpty(lbName)) {
+            ClusterAZ clusterAZ = new ClusterAZ(cluster.uuid, az);
+            existingLBsMap.computeIfAbsent(clusterAZ, v -> lbName);
+          }
+        }
+      }
+    }
+    this.existingLBs = existingLBsMap;
   }
 
   public static class BaseConverter<T extends UniverseDefinitionTaskParams>
@@ -899,6 +1222,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
   }
 
+  @ApiModelProperty("Previous software version related data")
+  public PrevYBSoftwareConfig prevYBSoftwareConfig;
+
+  @Data
+  public static class PrevYBSoftwareConfig {
+
+    @ApiModelProperty private String softwareVersion;
+
+    @ApiModelProperty private int autoFlagConfigVersion;
+  }
+
   // XCluster: All the xCluster related code resides in this section.
   // --------------------------------------------------------------------------------
   @ApiModelProperty("XCluster related states in this universe")
@@ -907,7 +1241,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @JsonGetter("xclusterInfo")
   XClusterInfo getXClusterInfo() {
-    this.xClusterInfo.universeUuid = this.universeUUID;
+    this.xClusterInfo.universeUuid = this.getUniverseUUID();
     return this.xClusterInfo;
   }
 
@@ -933,9 +1267,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (universeUuid == null) {
         return new ArrayList<>();
       }
-      return XClusterConfig.getByTargetUniverseUUID(universeUuid)
-          .stream()
-          .map(xClusterConfig -> xClusterConfig.uuid)
+      return XClusterConfig.getByTargetUniverseUUID(universeUuid).stream()
+          .map(xClusterConfig -> xClusterConfig.getUuid())
           .collect(Collectors.toList());
     }
 
@@ -945,9 +1278,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (universeUuid == null) {
         return Collections.emptyList();
       }
-      return XClusterConfig.getBySourceUniverseUUID(universeUuid)
-          .stream()
-          .map(xClusterConfig -> xClusterConfig.uuid)
+      return XClusterConfig.getBySourceUniverseUUID(universeUuid).stream()
+          .map(xClusterConfig -> xClusterConfig.getUuid())
           .collect(Collectors.toList());
     }
   }
@@ -960,11 +1292,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
    */
   @JsonIgnore
   public File getSourceRootCertDirPath() {
-    UniverseDefinitionTaskParams.UserIntent userIntent = getPrimaryCluster().userIntent;
+    Map<String, String> masterGflags =
+        GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.MASTER, getPrimaryCluster(), clusters);
+    Map<String, String> tserverGflags =
+        GFlagsUtil.getBaseGFlags(
+            UniverseTaskBase.ServerType.TSERVER, getPrimaryCluster(), clusters);
     String gflagValueOnMasters =
-        userIntent.masterGFlags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+        masterGflags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
     String gflagValueOnTServers =
-        userIntent.tserverGFlags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+        tserverGflags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
     if (gflagValueOnMasters != null || gflagValueOnTServers != null) {
       if (!Objects.equals(gflagValueOnMasters, gflagValueOnTServers)) {
         throw new IllegalStateException(
@@ -980,6 +1316,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return new File(xClusterInfo.sourceRootCertDirPath);
     }
     return null;
+  }
+
+  @JsonIgnore
+  public boolean isUniverseBusyByTask() {
+    return updateInProgress
+        && updatingTask != TaskType.BackupTable
+        && updatingTask != TaskType.MultiTableBackup
+        && updatingTask != TaskType.CreateBackup
+        && updatingTask != TaskType.RestoreBackup;
   }
   // --------------------------------------------------------------------------------
   // End of XCluster.

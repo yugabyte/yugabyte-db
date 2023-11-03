@@ -121,11 +121,13 @@ class TabletInvoker {
 
   // If we receive TABLET_NOT_FOUND and current_ts_ is set, that means we contacted a tserver
   // with a tablet_id, but the tserver no longer has that tablet.
-  bool TabletNotFoundOnTServer(const tserver::TabletServerErrorPB* error_code,
-                               const Status& status) {
-    return status.IsNotFound() &&
+  // If we receive ShutdownInProgress status then the tablet is about to shutdown and such tablet
+  // should also be considered as not found.
+  bool IsTabletConsideredNotFound(
+      const tserver::TabletServerErrorPB* error_code, const Status& status) {
+    return (status.IsNotFound() &&
         ErrorCode(error_code) == tserver::TabletServerErrorPB::TABLET_NOT_FOUND &&
-        current_ts_ != nullptr;
+        current_ts_ != nullptr) || status.IsShutdownInProgress();
   }
 
   YBClient* const client_;

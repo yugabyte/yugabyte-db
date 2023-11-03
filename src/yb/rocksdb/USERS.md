@@ -25,7 +25,7 @@ DNANexus is using RocksDB to speed up processing of genomics data.
 You can learn more from this great blog post by Mike Lin: http://devblog.dnanexus.com/faster-bam-sorting-with-samtools-and-rocksdb/
 
 ## Iron.io
-Iron.io is using RocksDB as a storage engine for their distributed queueing system.
+Iron.io is using RocksDB as a storage engine for their distributed queuing system.
 Learn more from Tech Talk by Reed Allman: http://www.youtube.com/watch?v=HTjt6oj-RL4
 
 ## Tango Me

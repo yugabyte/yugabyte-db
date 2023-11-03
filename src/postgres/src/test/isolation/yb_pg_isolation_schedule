@@ -14,6 +14,10 @@ test: yb-modification-followed-by-lock
 test: yb-skip-locked-after-update
 test: yb-skip-locked-single-shard-transaction
 
+# TODO: Re-enable after memory leak fixed
+# Refer https://github.com/yugabyte/yugabyte-db/issues/18324 for details.
+# test: yb-lock-status
+
 # TODO:
 # 1. Test to ensure that new sub txns inherit ybDataSentForCurrQuery and parent txns
 #    inherit it back from nested sub txns once they are removed.
@@ -39,3 +43,7 @@ test: aborted-keyrevoke
 test: delete-abort-savept-2
 test: ignore-intent-of-rolled-back-savepoint-cross-txn
 test: ensure-lock-only-conflict-always-ignored
+test: skip-locked-3
+test: tuplelock-conflict
+test: multixact-no-forget
+test: drop-probe-waiting-on-aborted-blocker-subtxn

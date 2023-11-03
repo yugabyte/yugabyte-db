@@ -26,50 +26,72 @@
 
 namespace rocksdb {
 
+class Comparator;
+
+struct ScanForwardResult {
+  bool reached_upperbound = false;
+  uint64_t number_of_keys_visited = 0;
+};
+
 class InternalIterator : public Cleanable {
  public:
   InternalIterator() {}
   virtual ~InternalIterator() {}
 
+  virtual const KeyValueEntry& Entry() const = 0;
+
   // An iterator is either positioned at a key/value pair, or
   // not valid.  This method returns true iff the iterator is valid.
-  virtual bool Valid() const = 0;
+  // It is mandatory to check status() to distinguish between absence of entry vs read error.
+  bool Valid() const {
+    return Entry().Valid();
+  }
+
+  // Same as Valid(), but returns error if there was a read error.
+  // For hot paths consider using Valid() in a loop and checking status after the loop.
+  yb::Result<bool> CheckedValid() const {
+    return Valid() ? true : (status().ok() ? yb::Result<bool>(false) : status());
+  }
 
   // Position at the first key in the source.  The iterator is Valid()
   // after this call iff the source is not empty.
-  virtual void SeekToFirst() = 0;
+  virtual const KeyValueEntry& SeekToFirst() = 0;
 
   // Position at the last key in the source.  The iterator is
   // Valid() after this call iff the source is not empty.
-  virtual void SeekToLast() = 0;
+  virtual const KeyValueEntry& SeekToLast() = 0;
 
   // Position at the first key in the source that at or past target
   // The iterator is Valid() after this call iff the source contains
   // an entry that comes at or past target.
   // target is encoded representation of InternalKey.
-  virtual void Seek(const Slice& target) = 0;
+  virtual const KeyValueEntry& Seek(Slice target) = 0;
 
   // Moves to the next entry in the source.  After this call, Valid() is
   // true iff the iterator was not positioned at the last entry in the source.
   // REQUIRES: Valid()
-  virtual void Next() = 0;
+  virtual const KeyValueEntry& Next() = 0;
 
   // Moves to the previous entry in the source.  After this call, Valid() is
   // true iff the iterator was not positioned at the first entry in source.
   // REQUIRES: Valid()
-  virtual void Prev() = 0;
+  virtual const KeyValueEntry& Prev() = 0;
 
   // Return the key for the current entry.  The underlying storage for
   // the returned slice is valid only until the next modification of
   // the iterator.
   // REQUIRES: Valid()
-  virtual Slice key() const = 0;
+  Slice key() const {
+    return Entry().key;
+  }
 
   // Return the value for the current entry.  The underlying storage for
   // the returned slice is valid only until the next modification of
   // the iterator.
   // REQUIRES: !AtEnd() && !AtStart()
-  virtual Slice value() const = 0;
+  Slice value() const {
+    return Entry().value;
+  }
 
   // If an error has occurred, return it.  Else return an ok status.
   // If non-blocking IO is requested and this operation cannot be
@@ -115,11 +137,12 @@ class InternalIterator : public Cleanable {
   // Output: Returns bool when the upperbound is reached, otherwise returns false when either
   //  callback failed (i.e. returned false) or lower layer ran into some issue when reading data.
   //  status() call should be used to figure out the callback failure vs lower layer failure.
-  virtual bool ScanForward(
-      const Slice& upperbound, KeyFilterCallback* key_filter_callback,
-      ScanCallback* scan_callback) {
+  //  Result also includes the number of keys which were visited.
+  virtual ScanForwardResult ScanForward(
+      const Comparator* user_key_comparator, const Slice& upperbound,
+      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
     LOG(FATAL) << "ScanForward is not supported yet";
-    return false;
+    return ScanForwardResult();
   }
 
  private:

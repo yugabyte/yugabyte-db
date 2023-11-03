@@ -45,10 +45,8 @@ namespace yb {
 namespace tools {
 
 using client::YBClient;
-using client::YBClientBuilder;
 using client::YBSchema;
 using client::YBSchemaBuilder;
-using client::YBTableCreator;
 using client::YBTableName;
 using client::YBTable;
 
@@ -74,7 +72,7 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
 
     YBSchema schema;
     YBSchemaBuilder b;
-    b.AddColumn("k")->Type(INT64)->NotNull()->HashPrimaryKey();
+    b.AddColumn("k")->Type(DataType::INT64)->NotNull()->HashPrimaryKey();
     ASSERT_OK(b.Build(&schema));
 
     client_ = ASSERT_RESULT(cluster_->CreateClient());
@@ -104,8 +102,7 @@ class YBTabletUtilTest : public YBMiniClusterTestBase<MiniCluster> {
  protected:
 
   Status WriteData() {
-    auto session = client_->NewSession();
-    session->SetTimeout(5s);
+    auto session = client_->NewSession(5s);
 
     std::shared_ptr<client::YBqlWriteOp> insert(table_->NewQLWrite());
     auto req = insert->mutable_request();

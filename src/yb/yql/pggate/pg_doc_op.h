@@ -20,6 +20,8 @@
 #include <variant>
 #include <vector>
 
+#include "yb/common/hybrid_time.h"
+
 #include "yb/gutil/macros.h"
 
 #include "yb/util/locks.h"
@@ -33,8 +35,6 @@
 
 namespace yb {
 namespace pggate {
-
-class PgTuple;
 
 YB_STRONGLY_TYPED_BOOL(RequestSent);
 
@@ -56,7 +56,8 @@ class PgDocResult {
   }
 
   // Get the postgres tuple from this batch.
-  Status WritePgTuple(const std::vector<PgExpr*>& targets, PgTuple* pg_tuple, int64_t* row_order);
+  Status WritePgTuple(
+      const std::vector<PgFetchedTarget*>& targets, PgTuple* pg_tuple, int64_t* row_order);
 
   // Get system columns' values from this batch.
   // Currently, we only have ybctids, but there could be more.
@@ -212,13 +213,7 @@ class PgDocResult {
 // No memory allocations is required in case of using PerformFuture.
 class PgDocResponse {
  public:
-  struct Data {
-    Data(const rpc::CallResponsePtr& response_, uint64_t in_txn_limit_)
-        : response(response_), in_txn_limit(in_txn_limit_) {
-    }
-    rpc::CallResponsePtr response;
-    uint64_t in_txn_limit;
-  };
+  using Data = PerformFuture::Data;
 
   class Provider {
    public:
@@ -229,18 +224,14 @@ class PgDocResponse {
   using ProviderPtr = std::unique_ptr<Provider>;
 
   PgDocResponse() = default;
-  PgDocResponse(PerformFuture future, uint64_t in_txn_limit);
+  explicit PgDocResponse(PerformFuture future);
   explicit PgDocResponse(ProviderPtr provider);
 
   bool Valid() const;
-  Result<Data> Get(MonoDelta* wait_time);
+  Result<Data> Get();
 
  private:
-  struct PerformInfo {
-    PerformFuture future;
-    uint64_t in_txn_limit;
-  };
-  std::variant<PerformInfo, ProviderPtr> holder_;
+  std::variant<PerformFuture, ProviderPtr> holder_;
 };
 
 class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
@@ -248,7 +239,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   using SharedPtr = std::shared_ptr<PgDocOp>;
 
   using Sender = std::function<Result<PgDocResponse>(
-      PgSession*, const PgsqlOpPtr*, size_t, const PgTableDesc&, uint64_t, ForceNonBufferable)>;
+      PgSession*, const PgsqlOpPtr*, size_t, const PgTableDesc&, HybridTime, ForceNonBufferable)>;
 
   struct OperationRowOrder {
     OperationRowOrder(const PgsqlOpPtr& operation_, int64_t order_)
@@ -318,20 +309,10 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   const PgTable& table() const { return table_; }
 
-  // RPC stats for EXPLAIN ANALYZE
-  void GetAndResetReadRpcStats(uint64_t* read_rpc_count, uint64_t* read_rpc_wait_time) {
-    *read_rpc_count = read_rpc_count_;
-    read_rpc_count_ = 0;
-    *read_rpc_wait_time = read_rpc_wait_time_.ToNanoseconds();
-    read_rpc_wait_time_ = MonoDelta::FromNanoseconds(0);
-  }
-
  protected:
   PgDocOp(
     const PgSession::ScopedRefPtr& pg_session, PgTable* table,
     const Sender& = Sender(&PgDocOp::DefaultSender));
-
-  uint64_t& GetInTxnLimit();
 
   // Populate Protobuf requests using the collected information for this DocDB operator.
   virtual Result<bool> DoCreateRequests() = 0;
@@ -345,18 +326,6 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   // Session control.
   PgSession::ScopedRefPtr pg_session_;
-
-  // This time is set at the start (i.e., before sending the first batch of PgsqlOp ops) and must
-  // stay the same for the lifetime of the PgDocOp.
-  //
-  // Each query must only see data written by earlier queries in the same transaction, not data
-  // written by itself. Setting it at the start ensures that future operations of the PgDocOp only
-  // see data written by previous queries.
-  //
-  // NOTE: Each query might result in many PgDocOps. So using 1 in_txn_limit_ per PgDocOp is not
-  // enough. The same should be used across all PgDocOps in the query. This is ensured by the use
-  // of statement_in_txn_limit in yb_exec_params of EState.
-  uint64_t in_txn_limit_ = 0;
 
   // Target table.
   PgTable& table_;
@@ -436,14 +405,12 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // Output parameter of the execution.
   std::string out_param_backfill_spec_;
 
-  // Read RPC stats for EXPLAIN ANALYZE.
-  uint64_t read_rpc_count_ = 0;
-  MonoDelta read_rpc_wait_time_ = MonoDelta::FromNanoseconds(0);
-
  private:
   Status SendRequest(ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);
 
   Status SendRequestImpl(ForceNonBufferable force_non_bufferable);
+
+  void RecordRequestMetrics();
 
   Result<std::list<PgDocResult>> ProcessResponse(const Result<PgDocResponse::Data>& data);
 
@@ -455,15 +422,32 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   Status CompleteRequests();
 
+  // Returns a reference to the in_txn_limit_ht to be used.
+  //
+  // For read ops: usually one in txn limit is chosen for all for read ops of a SQL statement. And
+  // the hybrid time in such a situation references the statement level integer that is passed down
+  // to all PgDocOp instances via PgExecParameters.
+  //
+  // In case the reference to the statement level in_txn_limit_ht isn't passed in PgExecParameters,
+  // the local in_txn_limit_ht_ is used which is 0 at the start of the PgDocOp.
+  //
+  // For writes: the local in_txn_limit_ht_ is used if available.
+  //
+  // See ReadHybridTimePB for more details about in_txn_limit.
+  uint64_t& GetInTxnLimitHt();
+
   static Result<PgDocResponse> DefaultSender(
       PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      uint64_t in_txn_limit, ForceNonBufferable force_non_bufferable);
+      HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable);
 
   // Result set either from selected or returned targets is cached in a list of strings.
   // Querying state variables.
   Status exec_status_ = Status::OK();
 
   Sender sender_;
+
+  // See ReadHybridTimePB for more details about in_txn_limit.
+  uint64_t in_txn_limit_ht_ = 0;
 
   DISALLOW_COPY_AND_ASSIGN(PgDocOp);
 };
@@ -498,6 +482,12 @@ class PgDocReadOp : public PgDocOp {
   // - After being queried from inner select, ybctids are used for populate request for outer query.
   void InitializeYbctidOperators();
 
+  bool IsHashBatchingEnabled();
+
+  bool IsBatchFlushRequired() const;
+
+  void ResetHashBatches();
+
   // Create operators by partition arguments.
   // - Optimization for statement:
   //     SELECT ... WHERE <hash-columns> IN <value-lists>
@@ -506,8 +496,58 @@ class PgDocReadOp : public PgDocOp {
   // - When an operator is assigned a hash permutation, it is marked as active to be executed.
   // - When an operator completes the execution, it is marked as inactive and available for the
   //   exection of the next hash permutation.
-  bool PopulateNextHashPermutationOps();
+  Result<bool> PopulateNextHashPermutationOps();
   void InitializeHashPermutationStates();
+
+  // Binds the given hash and range values to the given read request.
+  // hashed_values and range_values have the same descriptions as in BindExprsToBatch.
+  void BindExprsRegular(
+      LWPgsqlReadRequestPB* read_req,
+      const std::vector<const LWPgsqlExpressionPB*>& hashed_values,
+      const std::vector<const LWPgsqlExpressionPB*>& range_values);
+
+  // Helper functions for when we are batching hash permutations where
+  // we are creating an IN condition of the form
+  // (yb_hash_code(hashkeys), h1, h2, ..., hn) IN (tuple_1, tuple_2, tuple_3, ...)
+
+  // This operates by creating one such IN condition for each partition we are sending
+  // our query to and buidling each of them up in hash_in_conds_[partition_idx]. We make sure
+  // that each permutation value goes into the correct partition's condition. We then
+  // make one read op clone per partition and for each one we bind their respective condition
+  // from hash_in_conds_[partition_idx].
+
+  // This prepares the LHS of the hash IN condition for a particular partition.
+  void PrepareInitialHashConditionList(size_t partition);
+
+  // Binds the given hash and range values to whatever partition in hash_in_conds_
+  // the hashed values suggest. The range_values vector is expected to be a
+  // vector of size num_range_keys where a range_values[i] == nullptr iff
+  // the ith range column is not relevant to the IN condition we are building
+  // up.
+  void BindExprsToBatch(
+      const std::vector<const LWPgsqlExpressionPB*>& hashed_values,
+      const std::vector<const LWPgsqlExpressionPB*>& range_values);
+
+  // These functions are used to iterate over each partition batch and bind them to a request.
+
+  Result<bool> BindBatchesToRequests();
+
+  // Returns false if we are done iterating over our partition batches.
+  bool HasNextBatch();
+
+  // Binds the next partition batch available to the given request's condition expression.
+  Result<bool> BindNextBatchToRequest(LWPgsqlReadRequestPB* read_req);
+
+  // Helper functions for PopulateNextHashPermutationOps
+  // Prepares a new read request from the pool of inactive operators.
+  LWPgsqlReadRequestPB* PrepareReadReq();
+  // True if the next call to GetNextPermutation will not fail.
+  bool HasNextPermutation() const;
+  // Gets the next possible permutation of partition_exprs.
+  bool GetNextPermutation(std::vector<const LWPgsqlExpressionPB*>* exprs);
+  // Binds a given permutation of partition expressions to the given read request.
+  void BindPermutation(const std::vector<const LWPgsqlExpressionPB*>& exprs,
+                       LWPgsqlReadRequestPB* read_op);
 
   // Create operators by partitions.
   // - Optimization for aggregating or filtering requests.
@@ -516,8 +556,10 @@ class PgDocReadOp : public PgDocOp {
   // Create one sampling operator per partition and arrange their execution in random order
   Result<bool> PopulateSamplingOps();
 
-  // Set partition boundaries to a given partition.
-  Status SetScanPartitionBoundary();
+  // Set partition boundaries to a given partition. Return true if new boundaries combined with
+  // old boundaries, if any, are non-empty range. Obviously, there's no need to send request with
+  // empty range boundaries, because the result will be empty.
+  Result<bool> SetScanPartitionBoundary();
 
   Status CompleteProcessResponse() override;
 
@@ -528,7 +570,7 @@ class PgDocReadOp : public PgDocOp {
   void ResetInactivePgsqlOps();
 
   // Analyze options and pick the appropriate prefetch limit.
-  void SetRequestPrefetchLimit();
+  Status SetRequestPrefetchLimit();
 
   // Set the backfill_spec field of our read request.
   void SetBackfillSpec();
@@ -539,6 +581,8 @@ class PgDocReadOp : public PgDocOp {
   // Set the read_time for our backfill's read request based on our exec control parameter.
   void SetReadTimeForBackfill();
 
+  // Set bounds on the request so it only affect specified partition
+  // Returns false if current bounds fully exclude the partition
   Result<bool> SetLowerUpperBound(LWPgsqlReadRequestPB* request, size_t partition);
 
   // Get the read_op for a specific operation index from pgsql_ops_.
@@ -567,6 +611,34 @@ class PgDocReadOp : public PgDocOp {
 
   //----------------------------------- Data Members -----------------------------------------------
 
+  // Whether or not we are using hash permutation batching for this op.
+  boost::optional<bool> is_hash_batched_;
+
+  // Pointer to the per tablet hash component condition expression. For each hash key
+  // combination, once we identify the partition at which it should be executed, we enqueue
+  // it into this vector among the other hash keys that are to be executed in that tablet.
+  // This vector contains a reference to the vector that contains the list of hash keys
+  // that are supposed to be executed in each tablet.
+
+  // This is a vector of IN condition expressions for each partition. In each partition's
+  // condition expression the LHS is a tuple of the hash code and hash keys and the RHS
+  // is built up to eventually be a list of all the hash key permutations
+  // that belong to that partition. These conditions are eventually bound
+  // to a read op's condition expression.
+  std::vector<LWPgsqlExpressionPB*> hash_in_conds_;
+
+  // Sometimes in the final hash IN condition's LHS, range columns may be involved.
+  // For example, if we get a filter of the form (h1, h2, r2) IN (t2, t2, t3), commonly found
+  // in the case of batched nested loop joins. These should be sorted.
+  std::vector<size_t> permutation_range_column_indexes_;
+
+  // Used when iterating over the partition batches in hash_in_conds_.
+  size_t next_batch_partition_ = 0;
+
+  // Used to store temporary objects formed during op creation. Relevant
+  // when cloning ops for hash permutations.
+  std::unique_ptr<ThreadSafeArena> hash_key_arena_;
+
   // Template operation, used to fill in pgsql_ops_ by either assigning or cloning.
   PgsqlReadOpPtr read_op_;
 
@@ -583,8 +655,8 @@ class PgDocReadOp : public PgDocOp {
   // For a query clause "h1 = 1 AND h2 IN (2,3) AND h3 IN (4,5,6) AND h4 = 7",
   // there are 1*2*3*1 = 6 possible permutation.
   // As such, this field will take on values 0 through 5.
-  int total_permutation_count_ = 0;
-  int next_permutation_idx_ = 0;
+  size_t total_permutation_count_ = 0;
+  size_t next_permutation_idx_ = 0;
 
   // Used internally for PopulateNextHashPermutationOps to holds all partition expressions.
   // Elements correspond to a hash columns, in the same order as they were defined
@@ -594,6 +666,8 @@ class PgDocReadOp : public PgDocOp {
   // Example:
   // For a query clause "h1 = 1 AND h2 IN (2,3) AND h3 IN (4,5,6) AND h4 = 7",
   // this will be initialized to [[1], [2, 3], [4, 5, 6], [7]]
+  // For a query clause "(h1,h3) IN ((1,5),(2,3)) AND h2 IN (2,4)"
+  // the will be initialized to [[(1,5), (2,3)], [(2,4)], []]
   std::vector<std::vector<const LWPgsqlExpressionPB*>> partition_exprs_;
 };
 

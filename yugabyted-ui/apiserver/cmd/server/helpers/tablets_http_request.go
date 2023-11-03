@@ -1,80 +1,55 @@
 package helpers
 
 import (
+    "encoding/json"
     "fmt"
     "io/ioutil"
     "net/http"
-    "regexp"
-    "strings"
     "time"
 )
 
-type TabletInfo struct {
-    Namespace  string
-    TableName  string
-    TableUuid  string
-    State      string
-    HasLeader  bool
+type TabletOnDiskSizeStruct struct {
+    TotalSize                    string `json:"total_size"`
+    TotalSizeBytes               uint64 `json:"total_size_bytes"`
+    ConsensusMetadataSize        string `json:"consensus_metadata_size"`
+    ConsensusMetadataSizeBytes   uint64 `json:"consensus_metadata_size_bytes"`
+    WalFilesSize                 string `json:"wal_files_size"`
+    WalFilesSizeBytes            uint64 `json:"wal_files_size_bytes"`
+    SstFilesSize                 string `json:"sst_files_size"`
+    SstFilesSizeBytes            uint64 `json:"sst_files_size_bytes"`
+    UncompressedSstFileSize      string `json:"uncompressed_sst_file_size"`
+    UncompressedSstFileSizeBytes uint64 `json:"uncompressed_sst_file_size_bytes"`
+}
+
+type TabletInfoStruct struct {
+    Namespace   string                 `json:"namespace"`
+    TableName   string                 `json:"table_name"`
+    TableId     string                 `json:"table_id"`
+    Partition   string                 `json:"partition"`
+    State       string                 `json:"string"`
+    Hidden      bool                   `json:"hidden"`
+    NumSstFiles uint64                 `json:"num_sst_files"`
+    OnDiskSize  TabletOnDiskSizeStruct `json:"on_disk_size"`
+    RaftConfig  []map[string]string    `json:"raft_config"`
+    Status      string                 `json:"status"`
 }
 
 // Tablets maps tablet ID to tablet info
 type TabletsFuture struct {
-    Tablets map[string]TabletInfo
+    Tablets map[string]TabletInfoStruct
     Error   error
 }
 
-// TODO: replace this with a call to a json endpoint so we don't have to parse html
-func parseTabletsFromHtml(body string) (map[string]TabletInfo, error) {
-    tablets := map[string]TabletInfo{}
-    // Regex for getting the table from html
-    tableRegex, err := regexp.Compile(`(?ms)<table class='table table-striped'>(.*?)<\/table>`)
-    if err != nil {
-        return tablets, err
-    }
-    rowRegex, err := regexp.Compile(
-        `(?ms)<tr><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td>`+
-        `<td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td>`)
-    if err != nil {
-        return tablets, err
-    }
-    tableHtml := tableRegex.FindString(body)
-
-    rowMatches := rowRegex.FindAllStringSubmatch(tableHtml, -1)
-    if err != nil {
-        return tablets, err
-    }
-    linkRegex, err := regexp.Compile(`(?ms)<a.*?>(.*?)</a>`)
-    if err != nil {
-        return tablets, err
-    }
-    for _, row := range rowMatches {
-        namespace := row[1]
-        tableName := row[2]
-        tableUuid := row[3]
-        tabletId := linkRegex.FindStringSubmatch(row[4])[1]
-        state := row[6]
-        raftConfig := row[10]
-        hasLeader := strings.Contains(raftConfig, "LEADER")
-        tablets[tabletId] = TabletInfo{
-            Namespace: namespace,
-            TableName: tableName,
-            TableUuid: tableUuid,
-            State: state,
-            HasLeader: hasLeader,
-        }
-    }
-    return tablets, nil
-}
-
-func GetTabletsFuture(nodeHost string, future chan TabletsFuture) {
+// Gets tablets from a single tserver
+func (h *HelperContainer) GetTabletsFuture(nodeHost string, future chan TabletsFuture) {
     tablets := TabletsFuture{
-        Tablets: map[string]TabletInfo{},
+        Tablets: map[string]TabletInfoStruct{},
         Error: nil,
     }
     httpClient := &http.Client{
         Timeout: time.Second * 10,
     }
-    url := fmt.Sprintf("http://%s:9000/tablets", nodeHost)
+    url := fmt.Sprintf("http://%s:%s/api/v1/tablets", nodeHost, TserverUIPort)
     resp, err := httpClient.Get(url)
     if err != nil {
         tablets.Error = err
@@ -88,6 +63,7 @@ func GetTabletsFuture(nodeHost string, future chan TabletsFuture) {
         future <- tablets
         return
     }
-    tablets.Tablets, tablets.Error = parseTabletsFromHtml(string(body))
+    err = json.Unmarshal([]byte(body), &tablets.Tablets)
+    tablets.Error = err
     future <- tablets
 }

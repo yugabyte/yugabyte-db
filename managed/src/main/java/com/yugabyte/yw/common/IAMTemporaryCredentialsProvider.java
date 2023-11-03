@@ -1,25 +1,5 @@
 package com.yugabyte.yw.common;
 
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
-import static play.mvc.Http.Status.FAILED_DEPENDENCY;
-import static play.mvc.Http.Status.BAD_REQUEST;
-
-import java.io.File;
-import java.sql.Timestamp;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.TimeZone;
-import java.util.stream.Stream;
-
-import org.apache.commons.collections.MapUtils;
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang.StringUtils;
-
-import com.amazonaws.SDKGlobalConfiguration;
 import com.amazonaws.SdkClientException;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSCredentialsProvider;
@@ -27,21 +7,14 @@ import com.amazonaws.auth.AWSSessionCredentials;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.AnonymousAWSCredentials;
 import com.amazonaws.auth.EC2ContainerCredentialsProviderWrapper;
-import com.amazonaws.auth.InstanceProfileCredentialsProvider;
 import com.amazonaws.auth.WebIdentityTokenCredentialsProvider;
 import com.amazonaws.auth.profile.ProfileCredentialsProvider;
-import com.amazonaws.client.builder.AwsClientBuilder;
 import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
-import com.amazonaws.regions.AwsRegionProvider;
-import com.amazonaws.regions.AwsRegionProviderChain;
-import com.amazonaws.regions.DefaultAwsRegionProviderChain;
 import com.amazonaws.services.identitymanagement.AmazonIdentityManagement;
 import com.amazonaws.services.identitymanagement.AmazonIdentityManagementClientBuilder;
 import com.amazonaws.services.identitymanagement.model.GetRoleRequest;
 import com.amazonaws.services.identitymanagement.model.Role;
-import com.amazonaws.services.s3.internal.RegionalEndpointsOptionResolver;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
-import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClient;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClientBuilder;
 import com.amazonaws.services.securitytoken.model.AssumeRoleRequest;
 import com.amazonaws.services.securitytoken.model.AssumeRoleResult;
@@ -50,15 +23,15 @@ import com.amazonaws.services.securitytoken.model.AssumeRoleWithWebIdentityResul
 import com.amazonaws.services.securitytoken.model.Credentials;
 import com.amazonaws.services.securitytoken.model.GetCallerIdentityRequest;
 import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
-import com.amazonaws.util.EC2MetadataUtils;
-import com.amazonaws.util.EC2MetadataUtils.IAMSecurityCredential;
-import com.google.auth.oauth2.AwsCredentials;
-import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.IAMConfiguration;
-
+import java.io.File;
+import java.util.Optional;
+import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 @Singleton
@@ -153,7 +126,7 @@ public class IAMTemporaryCredentialsProvider {
       String roleArn = null;
       AWSSecurityTokenService stsService =
           getStandardSTSClientWithoutCredentials(signingRegion, iamConfig.regionalSTS)
-              .withCredentials(new InstanceProfileCredentialsProvider(false))
+              .withCredentials(new EC2ContainerCredentialsProviderWrapper())
               .build();
 
       try {
@@ -165,7 +138,7 @@ public class IAMTemporaryCredentialsProvider {
         String role = arnSplit[arnSplit.length - 2];
         AmazonIdentityManagement iamClient =
             AmazonIdentityManagementClientBuilder.standard()
-                .withCredentials(new InstanceProfileCredentialsProvider(false))
+                .withCredentials(new EC2ContainerCredentialsProviderWrapper())
                 .build();
         Role iamRole = iamClient.getRole(new GetRoleRequest().withRoleName(role)).getRole();
         roleArn = iamRole.getArn();
@@ -300,7 +273,9 @@ public class IAMTemporaryCredentialsProvider {
 
     @Override
     public AWSCredentials getCredentialsOrFail() throws Exception {
-      return new EC2ContainerCredentialsProviderWrapper().getCredentials();
+      AWSCredentialsProvider ec2CredentialsProvider = new EC2ContainerCredentialsProviderWrapper();
+      ec2CredentialsProvider.refresh();
+      return ec2CredentialsProvider.getCredentials();
     }
   }
 

@@ -1,17 +1,18 @@
-@import '../../../_style/colors.scss';
+@use "sass:color";
+@use '../../../_style/colors.scss';
 
 .backup-details-panel {
   border-radius: 2px;
   padding: 24px;
   box-shadow: 0 0.12em 2px rgba(35, 35, 41, 0.05), 0 0.5em 10px rgba(35, 35, 41, 0.07);
-  background: $YB_BG_WHITE_2;
+  background: colors.$YB_BG_WHITE_2;
   height: 100%;
   width: 700px;
   position: fixed;
   z-index: 9999;
   top: 0;
   right: 0%;
-  border-left: 1px solid darken($YB_BACKGROUND, 10%);
+  border-left: 1px solid color.adjust(colors.$YB_BACKGROUND, $lightness: -10%);
   max-height: 100%;
 
   .side-panel {
@@ -35,8 +36,8 @@
   }
 
   .backup-details-info {
-    background: $YB_BACKGROUND;
-    border: 1px solid $YB_LIGHT_GRAY_BORDER;
+    background: colors.$YB_BACKGROUND;
+    border: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
     border-radius: 4px;
     margin-top: 15px;
 
@@ -52,18 +53,10 @@
       justify-content: flex-start;
       flex-wrap: wrap;
       margin: -10px 0 0 0;
-      border-top: 1px solid $YB_LIGHT_GRAY_BORDER;
+      border-top: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
       padding: 16px;
       column-gap: 50px;
-      row-gap: 12px;
-
-      & > div {
-        max-width: 200px;
-      }
-
-      .flex-divider {
-        width: 100%;
-      }
+      row-gap: 24px;
 
       .details-storage-config {
         max-width: fit-content !important;
@@ -75,7 +68,7 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background: $YB_BANNER_WARNING_BACKGROUND;
+      background: colors.$YB_BANNER_WARNING_BACKGROUND;
       padding: 5px 8px;
       font-size: 12px;
       border: 1px solid rgba(157, 108, 0, 0.3);
@@ -114,12 +107,12 @@
     float: right;
     padding: 5px 10px;
     height: 30px;
-    border: 1px solid $YB_BG_WHITE_4;
+    border: 1px solid colors.$YB_BG_WHITE_4;
     border-radius: 6px;
     font-weight: 500;
     font-size: 12px;
     line-height: 15px;
-    color: $YB_TEXT_COLOR;
+    color: colors.$YB_TEXT_COLOR;
     margin-top: 10px;
     display: flex;
     align-items: center;

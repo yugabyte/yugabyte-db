@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: Go PGX driver for YSQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: Go drivers for YSQL
+description: Connect a Go application using PGX Driver
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -120,7 +121,7 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 
 ### Step 3: Write your application
 
-Create a file called `QuickStart.go` and add the following contents into it:
+Create a file called `QuickStartApp.go` and add the following contents into it:
 
 ```go
 package main

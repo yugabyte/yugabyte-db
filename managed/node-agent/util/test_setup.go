@@ -5,6 +5,7 @@
 package util
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -36,7 +37,7 @@ func init() {
 func setUp() {
 	// Sets the env to test to load test config.
 	os.Setenv("env", "TEST")
-	SetCurrentConfig("test-config.conf")
+	SetCurrentConfig("test-config")
 	config := CurrentConfig()
 	server := MockServer()
 	config.Update(PlatformUrlKey, server.URL)
@@ -55,7 +56,13 @@ func setUp() {
 	config.Update(NodeLoggerKey, "node_agent_test.log")
 	config.Update(PlatformCertsKey, "test")
 	private, public := GetPublicAndPrivateKey()
-	SaveCerts(config, string(public), string(private), config.String(PlatformCertsKey))
+	SaveCerts(
+		context.TODO(),
+		config,
+		string(public),
+		string(private),
+		config.String(PlatformCertsKey),
+	)
 }
 
 // Sets up a mock server to test http client calls.
@@ -161,7 +168,7 @@ func GetTestRegisterResponse() model.RegisterResponseSuccess {
 		NodeAgent: model.NodeAgent{
 			CommonInfo:   commonInfo,
 			Uuid:         "n1234",
-			UpdatedAt:    1234,
+			UpdatedAt:    time.Now(),
 			Config:       config,
 			CustomerUuid: "c1234",
 		},

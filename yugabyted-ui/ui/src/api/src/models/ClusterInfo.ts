@@ -37,6 +37,12 @@ export interface ClusterInfo  {
    */
   fault_tolerance: ClusterFaultTolerance;
   /**
+   * The replication factor applied on the cluster
+   * @type {number}
+   * @memberof ClusterInfo
+   */
+  replication_factor?: number;
+  /**
    * 
    * @type {ClusterNodeInfo}
    * @memberof ClusterInfo

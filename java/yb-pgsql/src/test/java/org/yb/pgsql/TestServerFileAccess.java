@@ -15,7 +15,7 @@ package org.yb.pgsql;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 import java.sql.Connection;
 import java.sql.Statement;
 import java.util.Map;
@@ -23,7 +23,7 @@ import java.util.Map;
 /*
  * Tests whether users can access local file servers when --ysql_disable_server_file_access = true.
  */
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestServerFileAccess extends BasePgSQLTest {
   private static final String GFLAG_ERROR_MESSAGE = "ERROR: server file access disabled";
 

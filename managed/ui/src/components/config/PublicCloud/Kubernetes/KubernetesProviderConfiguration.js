@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { YBLoading } from '../../../common/indicators';
 import { withRouter } from 'react-router';
@@ -43,9 +43,12 @@ class KubernetesProviderConfiguration extends Component {
     } = this.props;
 
     if (
-      getPromiseState(providers).isLoading() || getPromiseState(providers).isInit() ||
-      getPromiseState(regions).isLoading() || getPromiseState(regions).isInit() ||
-      getPromiseState(universeList).isLoading() || getPromiseState(universeList).isInit()
+      getPromiseState(providers).isLoading() ||
+      getPromiseState(providers).isInit() ||
+      getPromiseState(regions).isLoading() ||
+      getPromiseState(regions).isInit() ||
+      getPromiseState(universeList).isLoading() ||
+      getPromiseState(universeList).isInit()
     ) {
       return <YBLoading />;
     }
@@ -63,7 +66,8 @@ class KubernetesProviderConfiguration extends Component {
         const dedicatedK8sTabs = ['tanzu', 'openshift'];
         if (
           !isDefinedNotNull(providerData) ||
-          (dedicatedK8sTabs.includes(type) && providerData.config['KUBECONFIG_PROVIDER'] !== type) ||
+          (dedicatedK8sTabs.includes(type) &&
+            providerData.config['KUBECONFIG_PROVIDER'] !== type) ||
           (type === 'k8s' && dedicatedK8sTabs.includes(providerData.config['KUBECONFIG_PROVIDER']))
         ) {
           return null;
@@ -78,8 +82,7 @@ class KubernetesProviderConfiguration extends Component {
           zones: region.zones,
           configPath: providerData.config['KUBECONFIG'],
           namespace: providerData.config['KUBECONFIG_NAMESPACE'],
-          serviceAccount: providerData.config['KUBECONFIG_SERVICE_ACCOUNT'],
-          type: providerTypeMetadata && providerTypeMetadata.name
+          type: providerTypeMetadata?.name
         };
       })
       .filter(Boolean);
@@ -96,6 +99,7 @@ class KubernetesProviderConfiguration extends Component {
           showDeleteConfirmationModal={this.props.showDeleteConfirmationModal}
           modal={this.props.modal}
           type={type}
+          isRedesign={this.props.isRedesign}
         />
       );
     } else {

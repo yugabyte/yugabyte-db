@@ -9,25 +9,25 @@
 
 import React, { FC, useState } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import {
-  Backup_States,
-  fetchIncrementalBackup,
-  IBackup,
-  ICommonBackupInfo,
-  deleteIncrementalBackup
-} from '..';
+import { Backup_States, IBackup, ICommonBackupInfo, Keyspace_Table } from '..';
+import { fetchIncrementalBackup, deleteIncrementalBackup } from '../../backupv2/common/BackupAPI';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import copy from 'copy-to-clipboard';
 import { toast } from 'react-toastify';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { YBLoadingCircleIcon } from '../../common/indicators';
-import { calculateDuration, FormatUnixTimeStampTimeToTimezone } from '../common/BackupUtils';
+import { BACKUP_REFETCH_INTERVAL, calculateDuration } from '../common/BackupUtils';
 import { formatBytes } from '../../xcluster/ReplicationUtils';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { TableType } from '../../../redesign/helpers/dtos';
 import Timer from '../../universes/images/timer.svg';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import { IncrementalBackupProps } from './BackupDetails';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import './BackupTableList.scss';
+import { find } from 'lodash';
+import { Action, Resource } from '../../../redesign/features/rbac';
 
 export enum BackupTypes {
   FULL_BACKUP = 'FULL BACKUP',
@@ -35,7 +35,7 @@ export enum BackupTypes {
 }
 export interface YSQLTableProps {
   keyspaceSearch?: string;
-  onRestore: Function;
+  onRestore: (tablesList: Keyspace_Table[], incrementalBackupProps: IncrementalBackupProps) => void;
   backup: IBackup;
   backupType?: BackupTypes;
   hideRestore?: boolean;
@@ -57,9 +57,9 @@ export const YSQLTableList: FC<YSQLTableProps> = ({
     backupType === BackupTypes.INCREMENT_BACKUP
       ? incrementalBackup?.responseList
       : backup.commonBackupInfo.responseList;
-  const filteredDBList = (dbList || [])
+  const filteredDBList = (dbList ?? [])
     .filter((e) => {
-      return !(keyspaceSearch && e.keyspace.indexOf(keyspaceSearch) < 0);
+      return !(keyspaceSearch && !e.keyspace.includes(keyspaceSearch));
     })
     .map((table, index) => {
       return {
@@ -81,18 +81,32 @@ export const YSQLTableList: FC<YSQLTableProps> = ({
           dataFormat={(_, row) => (
             <>
               {!hideRestore && (
-                <YBButton
-                  btnText="Restore"
-                  className="restore-detail-button"
-                  disabled={
-                    backup.commonBackupInfo.state !== Backup_States.COMPLETED ||
-                    !backup.isStorageConfigPresent
-                  }
-                  onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-                    e.stopPropagation();
-                    onRestore([row]);
-                  }}
-                />
+                <RbacValidator
+                  customValidateFunction={(userPerm) => find(userPerm, { actions: [Action.BACKUP_RESTORE], resourceType: Resource.UNIVERSE }) !== undefined}
+                  isControl
+                  overrideStyle={{ display: 'inline-flex' }}
+                  popOverOverrides={{ zIndex: 10000 }}
+                >
+                  <YBButton
+                    btnText="Restore"
+                    className="restore-detail-button"
+                    disabled={
+                      backup.commonBackupInfo.state !== Backup_States.COMPLETED ||
+                      !backup.isStorageConfigPresent
+                    }
+                    onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                      e.stopPropagation();
+                      onRestore([row], {
+                        isRestoreEntireBackup: false,
+                        singleKeyspaceRestore: true,
+                        incrementalBackupUUID:
+                          backupType === BackupTypes.INCREMENT_BACKUP
+                            ? incrementalBackup?.backupUUID
+                            : backup.commonBackupInfo.backupUUID
+                      });
+                    }}
+                  />
+                </RbacValidator>
               )}
               <YBButton
                 className="copy-location-button"
@@ -150,9 +164,13 @@ export const YCQLTableList: FC<YSQLTableProps> = ({
     backupType === BackupTypes.INCREMENT_BACKUP
       ? incrementalBackup?.responseList
       : backup.commonBackupInfo.responseList;
-  const filteredDBList = (dbList || []).filter((e) => {
-    return !(keyspaceSearch && e.keyspace.indexOf(keyspaceSearch) < 0);
-  });
+  const filteredDBList = (dbList ?? [])
+    .filter((e) => {
+      return !(keyspaceSearch && !e.keyspace.includes(keyspaceSearch));
+    })
+    .map((t, index) => {
+      return { ...t, index };
+    });
   return (
     <div className="backup-table-list ycql-table" id="ycql-table">
       <BootstrapTable
@@ -167,7 +185,7 @@ export const YCQLTableList: FC<YSQLTableProps> = ({
         trClassName="clickable"
         tableHeaderClass="table-list-header"
       >
-        <TableHeaderColumn dataField="keyspace" isKey={true} hidden={true} />
+        <TableHeaderColumn dataField="index" isKey={true} hidden={true} />
         <TableHeaderColumn dataField="keyspace">Keyspace</TableHeaderColumn>
         <TableHeaderColumn dataField="tablesList" dataFormat={(cell) => cell.length}>
           Tables
@@ -187,7 +205,14 @@ export const YCQLTableList: FC<YSQLTableProps> = ({
                   className="restore-detail-button"
                   onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
                     e.stopPropagation();
-                    onRestore([row]);
+                    onRestore([row], {
+                      isRestoreEntireBackup: false,
+                      singleKeyspaceRestore: true,
+                      incrementalBackupUUID:
+                        backupType === BackupTypes.INCREMENT_BACKUP
+                          ? incrementalBackup?.backupUUID
+                          : backup.commonBackupInfo.backupUUID
+                    });
                   }}
                 />
               )}
@@ -225,7 +250,10 @@ export const IncrementalTableBackupList: FC<YSQLTableProps> = ({
 }) => {
   const { data: incrementalBackups, isLoading, isError } = useQuery(
     ['incremental_backups', backup.commonBackupInfo.baseBackupUUID],
-    () => fetchIncrementalBackup(backup.commonBackupInfo.baseBackupUUID)
+    () => fetchIncrementalBackup(backup.commonBackupInfo.baseBackupUUID),
+    {
+      refetchInterval: BACKUP_REFETCH_INTERVAL
+    }
   );
 
   if (isLoading) {
@@ -245,7 +273,7 @@ export const IncrementalTableBackupList: FC<YSQLTableProps> = ({
       {incrementalBackups.data
         .filter((e) => {
           return !(
-            keyspaceSearch && e.responseList.some((t) => t.keyspace.indexOf(keyspaceSearch) === -1)
+            keyspaceSearch && e.responseList.some((t) => !t.keyspace.includes(keyspaceSearch))
           );
         })
         .map((b) => (
@@ -274,7 +302,7 @@ const IncrementalBackupCard = ({
 
   const queryClient = useQueryClient();
 
-  let listComponent = null;
+  let listComponent: any = null;
   if (isExpanded) {
     if (
       backup.backupType === TableType.YQL_TABLE_TYPE ||
@@ -323,7 +351,7 @@ const IncrementalBackupCard = ({
         }}
       >
         {isExpanded ? EXPANDED_ICON : COLLAPSED_ICON}
-        <FormatUnixTimeStampTimeToTimezone timestamp={incrementalBackup.createTime} />
+        {ybFormatDate(incrementalBackup.createTime)}
         <span className="backup-type">{backup_type}</span>
         <span className="backup-pill">{formatBytes(incrementalBackup.totalBackupSizeInBytes)}</span>
         <span className="backup-pill backup-duration">
@@ -338,39 +366,53 @@ const IncrementalBackupCard = ({
         {[Backup_States.FAILED, Backup_States.FAILED_TO_DELETE, Backup_States.STOPPED].includes(
           incrementalBackup.state
         ) && (
-          <>
+            <>
+              <YBButton
+                btnIcon="fa fa-trash-o"
+                btnText="Delete"
+                className="incremental-backup-action-button incremental-backup-delete-button"
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                  e.stopPropagation();
+                  setShowDeleteConfirmDialog(true);
+                }}
+              />
+              <YBModal
+                name="delete-incremental-backup"
+                title="Confirm Delete"
+                className="backup-modal"
+                showCancelButton
+                onFormSubmit={() => doDeleteBackup.mutate()}
+                onHide={() => setShowDeleteConfirmDialog(false)}
+                visible={showDeleteConfirmDialog}
+              >
+                Are you sure you want to delete this incremental backup?
+              </YBModal>
+            </>
+          )}
+        {!rest.hideRestore && incrementalBackup.state === Backup_States.COMPLETED && (
+          <RbacValidator
+            customValidateFunction={(userPerm) => find(userPerm, { actions: [Action.BACKUP_RESTORE], resourceType: Resource.UNIVERSE }) !== undefined}
+            isControl
+            popOverOverrides={{ zIndex: 10000 }}
+            overrideStyle={{ display: 'inline-flex' }}
+          >
             <YBButton
-              btnIcon="fa fa-trash-o"
-              btnText="Delete"
-              className="incremental-backup-action-button incremental-backup-delete-button"
+              btnText="Restore to this point"
+              className="incremental-backup-action-button incremental-backup-restore-button"
               onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                const { onRestore } = rest;
                 e.stopPropagation();
-                setShowDeleteConfirmDialog(true);
+                const incrementalBackupProps: IncrementalBackupProps = {
+                  isRestoreEntireBackup: false,
+                  incrementalBackupUUID: incrementalBackup.backupUUID,
+                  singleKeyspaceRestore: false
+                };
+                if (incrementalBackup.kmsConfigUUID)
+                  incrementalBackupProps.kmsConfigUUID = incrementalBackup.kmsConfigUUID;
+                onRestore(incrementalBackup.responseList, incrementalBackup);
               }}
             />
-            <YBModal
-              name="delete-incremental-backup"
-              title="Confirm Delete"
-              className="backup-modal"
-              showCancelButton
-              onFormSubmit={() => doDeleteBackup.mutate()}
-              onHide={() => setShowDeleteConfirmDialog(false)}
-              visible={showDeleteConfirmDialog}
-            >
-              Are you sure you want to delete this incremental backup?
-            </YBModal>
-          </>
-        )}
-        {!rest.hideRestore && incrementalBackup.state === Backup_States.COMPLETED && (
-          <YBButton
-            btnText="Restore to this point"
-            className="incremental-backup-action-button incremental-backup-restore-button"
-            onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-              const { onRestore } = rest;
-              e.stopPropagation();
-              onRestore(incrementalBackup.responseList);
-            }}
-          />
+          </RbacValidator>
         )}
       </div>
 

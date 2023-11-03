@@ -46,8 +46,6 @@ TAG_FLAG(create_initial_sys_catalog_snapshot, hidden);
 DEFINE_test_flag(bool, fail_initdb_after_snapshot_restore, false,
                  "Kill the master process after successfully restoring the sys catalog snapshot.");
 
-using yb::CountDownLatch;
-using yb::tserver::TabletSnapshotOpRequestPB;
 using yb::tserver::TabletSnapshotOpResponsePB;
 using yb::tablet::SnapshotOperation;
 using yb::pb_util::ReadPBContainerFromPath;
@@ -210,7 +208,7 @@ Status MakeYsqlSysCatalogTablesTransactional(
     TableIndex::TablesRange tables,
     SysCatalogTable* sys_catalog,
     SysConfigInfo* ysql_catalog_config,
-    int64_t term) {
+    const LeaderEpoch& epoch) {
   {
     auto ysql_catalog_config_lock = ysql_catalog_config->LockForRead();
     const auto& ysql_catalog_config_pb = ysql_catalog_config_lock->pb.ysql_catalog_config();
@@ -267,11 +265,11 @@ Status MakeYsqlSysCatalogTablesTransactional(
     metadata_table_properties.set_is_transactional(true);
 
     RETURN_NOT_OK(tablet::SyncReplicateChangeMetadataOperation(
-        &change_req, sys_catalog->tablet_peer().get(), term));
+        &change_req, sys_catalog->tablet_peer().get(), epoch.leader_term));
 
     // Change table properties in the sys catalog. We do this after updating tablet metadata, so
     // that if a restart happens before this step succeeds, we'll retry updating both next time.
-    RETURN_NOT_OK(sys_catalog->Upsert(term, &table_info));
+    RETURN_NOT_OK(sys_catalog->Upsert(epoch, &table_info));
     table_lock.Commit();
   }
 
@@ -285,7 +283,7 @@ Status MakeYsqlSysCatalogTablesTransactional(
     auto* ysql_catalog_config_pb =
         ysql_catalog_lock.mutable_data()->pb.mutable_ysql_catalog_config();
     ysql_catalog_config_pb->set_transactional_sys_catalog_enabled(true);
-    RETURN_NOT_OK(sys_catalog->Upsert(term, ysql_catalog_config));
+    RETURN_NOT_OK(sys_catalog->Upsert(epoch.leader_term, ysql_catalog_config));
     ysql_catalog_lock.Commit();
   }
 

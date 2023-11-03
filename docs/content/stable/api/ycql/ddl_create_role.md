@@ -22,7 +22,7 @@ This statement is enabled by setting the YB-TServer flag [`--use_cassandra_authe
 
 #### create_role
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="486" height="80" viewbox="0 0 486 80"><path class="connector" d="M0 52h5m67 0h10m52 0h10m84 0h30m53 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h32m46 0h32q5 0 5 5v20q0 5-5 5m-5 0h40m-238 0q5 0 5 5v8q0 5 5 5h213q5 0 5-5v-8q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="35" width="67" height="25" rx="7"/><text class="text" x="15" y="52">CREATE</text><rect class="literal" x="82" y="35" width="52" height="25" rx="7"/><text class="text" x="92" y="52">ROLE</text><a xlink:href="../grammar_diagrams#role-name"><rect class="rule" x="144" y="35" width="84" height="25"/><text class="text" x="154" y="52">role_name</text></a><rect class="literal" x="258" y="35" width="53" height="25" rx="7"/><text class="text" x="268" y="52">WITH</text><rect class="literal" x="368" y="5" width="46" height="25" rx="7"/><text class="text" x="378" y="22">AND</text><a xlink:href="../grammar_diagrams#role-property"><rect class="rule" x="341" y="35" width="100" height="25"/><text class="text" x="351" y="52">role_property</text></a></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="730" height="80" viewbox="0 0 730 80"><path class="connector" d="M0 52h15m68 0h10m53 0h30m32 0h10m46 0h10m64 0h20m-197 0q5 0 5 5v8q0 5 5 5h172q5 0 5-5v-8q0-5 5-5m5 0h10m87 0h30m54 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h35m46 0h35q5 0 5 5v20q0 5-5 5m-5 0h40m-245 0q5 0 5 5v8q0 5 5 5h220q5 0 5-5v-8q0-5 5-5m5 0h15"/><polygon points="0,59 5,52 0,45" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="35" width="68" height="25" rx="7"/><text class="text" x="25" y="52">CREATE</text><rect class="literal" x="93" y="35" width="53" height="25" rx="7"/><text class="text" x="103" y="52">ROLE</text><rect class="literal" x="176" y="35" width="32" height="25" rx="7"/><text class="text" x="186" y="52">IF</text><rect class="literal" x="218" y="35" width="46" height="25" rx="7"/><text class="text" x="228" y="52">NOT</text><rect class="literal" x="274" y="35" width="64" height="25" rx="7"/><text class="text" x="284" y="52">EXISTS</text><a xlink:href="../grammar_diagrams#role-name"><rect class="rule" x="368" y="35" width="87" height="25"/><text class="text" x="378" y="52">role_name</text></a><rect class="literal" x="485" y="35" width="54" height="25" rx="7"/><text class="text" x="495" y="52">WITH</text><rect class="literal" x="599" y="5" width="46" height="25" rx="7"/><text class="text" x="609" y="22">AND</text><a xlink:href="../grammar_diagrams#role-property"><rect class="rule" x="569" y="35" width="106" height="25"/><text class="text" x="579" y="52">role_property</text></a><polygon points="726,59 730,59 730,45 726,45" style="fill:black;stroke-width:0"/></svg>
 
 #### role_property
 
@@ -30,8 +30,9 @@ This statement is enabled by setting the YB-TServer flag [`--use_cassandra_authe
 
 ### Grammar
 
-```
-create_table ::= CREATE ROLE [ IF NOT EXISTS ] role_name [ WITH role_property [ AND role_property ...] ];
+```ebnf
+create_role ::= CREATE ROLE [ IF NOT EXISTS ] role_name 
+                [ WITH role_property [ AND ... ] ]
 
 role_property ::=  PASSWORD = <Text Literal>
                  | LOGIN = <Boolean Literal>
@@ -39,9 +40,11 @@ role_property ::=  PASSWORD = <Text Literal>
 ```
 
 Where
+
 - `role_name` is a text identifier.
 
 ## Semantics
+
 - An error is raised if `role_name` already exists unless the `IF NOT EXISTS` option is used.
 - By default, a role does not possess the `LOGIN` privilege nor `SUPERUSER` status.
 - A role with the `SUPERUSER` status possesses all the permissions on all the objects in the database even though they are not explicitly granted.
@@ -63,7 +66,7 @@ ycqlsh:example> CREATE ROLE role1;
 ycqlsh:example> CREATE ROLE role2 WITH SUPERUSER = true;
 ```
 
-### Create a regular user with ability to login
+### Create a regular user with ability to log in
 
 You can create a regular user with login privileges as shown below. Note the `SUPERUSER` set to `false`.
 

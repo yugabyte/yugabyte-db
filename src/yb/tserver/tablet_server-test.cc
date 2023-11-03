@@ -30,10 +30,10 @@
 // under the License.
 //
 
-#include "yb/common/index.h"
-#include "yb/common/partition.h"
+#include "yb/qlexpr/index.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 
 #include "yb/consensus/log-test-base.h"
 
@@ -69,24 +69,17 @@
 #include "yb/util/status_log.h"
 #include "yb/util/flags.h"
 
-using yb::consensus::RaftConfigPB;
-using yb::consensus::RaftPeerPB;
-using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
-using yb::server::Clock;
 using yb::server::HybridClock;
-using yb::tablet::Tablet;
-using yb::tablet::TabletPeer;
-using std::shared_ptr;
 using std::string;
 using strings::Substitute;
 
-DEFINE_UNKNOWN_int32(single_threaded_insert_latency_bench_warmup_rows, 100,
+DEFINE_NON_RUNTIME_int32(single_threaded_insert_latency_bench_warmup_rows, 100,
              "Number of rows to insert in the warmup phase of the single threaded"
              " tablet server insert latency micro-benchmark");
 
-DEFINE_UNKNOWN_int32(single_threaded_insert_latency_bench_insert_rows, 1000,
+DEFINE_NON_RUNTIME_int32(single_threaded_insert_latency_bench_insert_rows, 1000,
              "Number of rows to insert in the testing phase of the single threaded"
              " tablet server insert latency micro-benchmark");
 
@@ -236,7 +229,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   ASSERT_OK(c.FetchURL(Substitute("http://$0/tablet?id=$1", addr, kTabletId),
                        &buf));
   ASSERT_STR_CONTAINS(buf.ToString(), "<th>key</th>");
-  ASSERT_STR_CONTAINS(buf.ToString(), "<td>string NULLABLE NOT A PARTITION KEY</td>");
+  ASSERT_STR_CONTAINS(buf.ToString(), "<td>string NULLABLE VALUE</td>");
 
   ASSERT_OK(c.FetchURL(Substitute("http://$0/tablet-consensus-status?id=$1",
                        addr, kTabletId), &buf));
@@ -248,7 +241,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
   // metrics was accidentally un-referenced too early, we'd cause it to get retired.
   // If the metrics survive several passes of fetching, then we are pretty sure they will
   // stick around properly for the whole lifetime of the server.
-  FLAGS_metrics_retirement_age_ms = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_metrics_retirement_age_ms) = 0;
   for (int i = 0; i < 3; i++) {
     SCOPED_TRACE(i);
     ASSERT_OK(c.FetchURL(strings::Substitute("http://$0/jsonmetricz", addr, kTabletId),
@@ -265,7 +258,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
     // bugs in the past.
     ASSERT_STR_CONTAINS(buf.ToString(), "hybrid_clock_hybrid_time");
     ASSERT_STR_CONTAINS(buf.ToString(), "threads_started");
-#ifdef TCMALLOC_ENABLED
+#if YB_TCMALLOC_ENABLED
     ASSERT_STR_CONTAINS(buf.ToString(), "tcmalloc_max_total_thread_cache_bytes");
 #endif
     ASSERT_STR_CONTAINS(buf.ToString(), "glog_info_messages");
@@ -425,13 +418,10 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_ClientPropagated) {
   RpcController controller;
 
   auto tablet = ASSERT_RESULT(mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
-  // get the current time
-  HybridTime current = mini_server_->server()->clock()->Now();
-  // advance current to some time in the future. we do 5 secs to make
+  // Advance current to some time in the future. we do 5 secs to make
   // sure this hybrid_time will still be in the future when it reaches the
   // server.
-  current = HybridClock::HybridTimeFromMicroseconds(
-      HybridClock::GetPhysicalValueMicros(current) + 5000000);
+  HybridTime current = mini_server_->server()->clock()->Now().AddMicroseconds(5000000);
 
   AddTestRowInsert(1234, 5678, "hello world via RPC", &req);
 
@@ -446,11 +436,11 @@ TEST_F(TabletServerTest, TestExternalConsistencyModes_ClientPropagated) {
   // its clock with the client's value.
   HybridTime write_hybrid_time(resp.propagated_hybrid_time());
 
-  ASSERT_EQ(HybridClock::GetPhysicalValueMicros(current),
-            HybridClock::GetPhysicalValueMicros(write_hybrid_time));
+  ASSERT_EQ(current.GetPhysicalValueMicros(),
+            write_hybrid_time.GetPhysicalValueMicros());
 
-  ASSERT_LE(HybridClock::GetLogicalValue(current) + 1,
-            HybridClock::GetLogicalValue(write_hybrid_time));
+  ASSERT_LE(current.GetLogicalValue() + 1,
+            write_hybrid_time.GetLogicalValue());
 }
 
 TEST_F(TabletServerTest, TestInsertAndMutate) {
@@ -575,7 +565,7 @@ TEST_F(TabletServerTest, TestInsertAndMutate) {
 // throws an exception.
 TEST_F(TabletServerTest, TestInvalidWriteRequest_BadSchema) {
   SchemaBuilder schema_builder(schema_);
-  ASSERT_OK(schema_builder.AddColumn("col_doesnt_exist", INT32));
+  ASSERT_OK(schema_builder.AddColumn("col_doesnt_exist", DataType::INT32));
   Schema bad_schema_with_ids = schema_builder.Build();
   Schema bad_schema = schema_builder.BuildWithoutIds();
 
@@ -691,6 +681,9 @@ TEST_F(TabletServerTest, TestDeleteTablet) {
   ASSERT_TRUE(s.IsNotFound()) << s.ToString();
   ASSERT_TRUE(ResultToStatus(
       mini_server_->server()->tablet_manager()->GetTablet(kTabletId)).IsNotFound());
+
+  // Verify that the BlockBasedTable mem tracker is still attached to the server mem tracker.
+  ASSERT_TRUE(mini_server_->server()->mem_tracker()->FindChild("BlockBasedTable") != nullptr);
 }
 
 TEST_F(TabletServerTest, TestDeleteTablet_TabletNotCreated) {
@@ -741,12 +734,13 @@ TEST_F(TabletServerTest, TestConcurrentDeleteTablet) {
 
 TEST_F(TabletServerTest, TestInsertLatencyMicroBenchmark) {
   METRIC_DEFINE_entity(test);
-  METRIC_DEFINE_coarse_histogram(test, insert_latency,
+  METRIC_DEFINE_event_stats(test, insert_latency,
                           "Insert Latency",
                           MetricUnit::kMicroseconds,
                           "TabletServer single threaded insert latency.");
 
-  scoped_refptr<Histogram> histogram = METRIC_insert_latency.Instantiate(ts_test_metric_entity_);
+  scoped_refptr<EventStats> stats =
+      METRIC_insert_latency.Instantiate(ts_test_metric_entity_);
 
   auto warmup = AllowSlowTests() ?
       FLAGS_single_threaded_insert_latency_bench_warmup_rows : 10;
@@ -765,7 +759,7 @@ TEST_F(TabletServerTest, TestInsertLatencyMicroBenchmark) {
     InsertTestRowsRemote(0, i, 1);
     MonoTime after = MonoTime::Now();
     MonoDelta delta = after.GetDeltaSince(before);
-    histogram->Increment(delta.ToMicroseconds());
+    stats->Increment(delta.ToMicroseconds());
   }
 
   MonoTime end = MonoTime::Now();
@@ -774,7 +768,7 @@ TEST_F(TabletServerTest, TestInsertLatencyMicroBenchmark) {
   // Generate the JSON.
   std::stringstream out;
   JsonWriter writer(&out, JsonWriter::PRETTY);
-  ASSERT_OK(histogram->WriteAsJson(&writer, MetricJsonOptions()));
+  ASSERT_OK(stats->WriteAsJson(&writer, MetricJsonOptions()));
 
   LOG(INFO) << "Throughput: " << throughput << " rows/sec.";
   LOG(INFO) << out.str();
@@ -801,7 +795,7 @@ TEST_F(TabletServerTest, TestRpcServerCreateDestroy) {
 
 // Simple test to ensure we can create RpcServer with different bind address options.
 TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
-  FLAGS_rpc_bind_addresses = "0.0.0.0:2000";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_bind_addresses) = "0.0.0.0:2000";
   server::RpcServerOptions opts;
   ServerRegistrationPB reg;
   auto tbo = ASSERT_RESULT(TabletServerOptions::CreateTabletServerOptions());
@@ -812,13 +806,13 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
       "server1", opts, rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>());
   ASSERT_OK(server1.Init(messenger.get()));
 
-  FLAGS_rpc_bind_addresses = "0.0.0.0:2000,0.0.0.1:2001";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_bind_addresses) = "0.0.0.0:2000,0.0.0.1:2001";
   server::RpcServerOptions opts2;
   server::RpcServer server2(
       "server2", opts2, rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>());
   ASSERT_OK(server2.Init(messenger.get()));
 
-  FLAGS_rpc_bind_addresses = "10.20.30.40:2017";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_bind_addresses) = "10.20.30.40:2017";
   server::RpcServerOptions opts3;
   server::RpcServer server3(
       "server3", opts3, rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>());
@@ -837,7 +831,7 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
   ASSERT_EQ(2017, reg.private_rpc_addresses(0).port());
 
   reg.Clear();
-  FLAGS_rpc_bind_addresses = "10.20.30.40:2017,20.30.40.50:2018";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_bind_addresses) = "10.20.30.40:2017,20.30.40.50:2018";
   server::RpcServerOptions opts4;
   tbo.rpc_opts = opts4;
   TabletServer tserver2(tbo);
@@ -855,14 +849,14 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
   const char *tabletId = "TestWriteOutOfBoundsTablet";
   Schema schema = SchemaBuilder(schema_).Build();
 
-  PartitionSchema partition_schema;
-  CHECK_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
+  dockv::PartitionSchema partition_schema;
+  CHECK_OK(dockv::PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
 
-  Partition partition;
+  dockv::Partition partition;
   auto table_info = std::make_shared<tablet::TableInfo>(
       "TEST: ", tablet::Primary::kTrue, "TestWriteOutOfBoundsTable", "test_ns", tabletId,
-      YQL_TABLE_TYPE, schema, IndexMap(), boost::none /* index_info */, 0 /* schema_version */,
-      partition_schema);
+      YQL_TABLE_TYPE, schema, qlexpr::IndexMap(), boost::none /* index_info */,
+      0 /* schema_version */, partition_schema);
   ASSERT_OK(mini_server_->server()->tablet_manager()->CreateNewTablet(
       table_info, tabletId, partition, mini_server_->CreateLocalConfig()));
 

@@ -36,7 +36,7 @@
 
 namespace yb {
 
-size_t percpu_rwlock::memory_footprint_excluding_this() const {
+size_t PerCpuRwMutex::memory_footprint_excluding_this() const {
   // Because locks_ is a dynamic array of non-trivially-destructable types,
   // the returned pointer from new[] isn't guaranteed to point at the start of
   // a memory block, rendering it useless for malloc_usable_size().
@@ -50,7 +50,7 @@ size_t percpu_rwlock::memory_footprint_excluding_this() const {
   return n_cpus_ * sizeof(padded_lock);
 }
 
-size_t percpu_rwlock::memory_footprint_including_this() const {
+size_t PerCpuRwMutex::memory_footprint_including_this() const {
   return malloc_usable_size(this) + memory_footprint_excluding_this();
 }
 

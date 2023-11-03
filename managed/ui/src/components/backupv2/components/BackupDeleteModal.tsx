@@ -6,16 +6,18 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import React, { FC } from 'react';
+import { FC } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useMutation, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
-import { cancelBackup, deleteBackup, IBackup, Backup_States } from '..';
+import { cancelBackup, deleteBackup } from '../../backupv2/common/BackupAPI';
+import { IBackup, Backup_States } from '..';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBModalForm } from '../../common/forms';
 import { YBButton } from '../../common/forms/fields';
-import { FormatUnixTimeStampTimeToTimezone } from '../common/BackupUtils';
+import { handleCACertErrMsg } from '../../customCACerts';
 
 interface BackupDeleteProps {
   backupsList: IBackup[];
@@ -32,12 +34,21 @@ const isIncrementalBackupInProgress = (backupList: IBackup[]) => {
 export const BackupDeleteModal: FC<BackupDeleteProps> = ({ backupsList, visible, onHide }) => {
   const queryClient = useQueryClient();
   const delBackup = useMutation((backupList: IBackup[]) => deleteBackup(backupList), {
-    onSuccess: () => {
+    onSuccess: (resp: any) => {
+      toast.success(
+        <span>
+          Backup is queued for deletion. Click &nbsp;
+          <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+            here
+          </a>
+          &nbsp; for task details
+        </span>
+      );
       onHide();
       queryClient.invalidateQueries('backups');
     },
-    onError: () => {
-      toast.error('Unable to delete backup');
+    onError: (resp: any) => {
+      !handleCACertErrMsg(resp) && toast.error('Unable to delete backup');
       onHide();
     }
   });
@@ -79,9 +90,7 @@ export const BackupDeleteModal: FC<BackupDeleteProps> = ({ backupsList, visible,
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="createTime"
-            dataFormat={(_, row: IBackup) => (
-              <FormatUnixTimeStampTimeToTimezone timestamp={row.commonBackupInfo.createTime} />
-            )}
+            dataFormat={(_, row: IBackup) => ybFormatDate(row.commonBackupInfo.createTime)}
           >
             Created At
           </TableHeaderColumn>

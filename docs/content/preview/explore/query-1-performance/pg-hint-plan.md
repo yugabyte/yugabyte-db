@@ -28,7 +28,7 @@ To use `pg_hint_plan` effectively, you need thorough knowledge of how your appli
 
 ## Configure pg_hint_plan
 
-pg_hint_plan is pre-configured, and enabled by default. The following GUC (Grand Unified Configuration) parameters control pg_hint_plan:
+pg_hint_plan is pre-configured, and enabled by default. The following YSQL parameters control pg_hint_plan:
 
 | Option | Description | Default |
 | :----- | :---------- | :------ |
@@ -43,6 +43,11 @@ To enable pg_hint_plan, run the following command:
 ```sql
 yugabyte=# SET pg_hint_plan.enable_hint=ON;
 ```
+
+{{<note title="Enable pg_hint_plan for all sessions">}}
+You can enable `pg_hint_plan` in different levels like [all PostgreSQL options can](../../../reference/configuration/yb-tserver/#postgresql-options).
+{{</note>}}
+
 
 ### Turn on debug output
 
@@ -531,9 +536,9 @@ error hint:
 (5 rows)
 ```
 
-The first query uses an `IndexScan` in table `t2`. However, when you add `/*+Set(enable_indexscan off)*/`, the second query uses `SeqScan` in table `t2`. You can combine any GUC parameters in the hint phrases of your SQL queries.
+The first query uses an `IndexScan` in table `t2`. However, when you add `/*+Set(enable_indexscan off)*/`, the second query uses `SeqScan` in table `t2`. You can combine any parameters in the hint phrases of your SQL queries.
 
-For a more detailed explanation of the Planner Method Configuration and a complete list of available GUC parameters, refer to [Planner Method Configuration](https://www.postgresql.org/docs/11/runtime-config-query.html#RUNTIME-CONFIG-QUERY-ENABLE) in the PostgreSQL documentation.
+For a more detailed explanation of the Planner Method Configuration and a complete list of available configuration parameters, refer to [Planner Method Configuration](https://www.postgresql.org/docs/11/runtime-config-query.html#RUNTIME-CONFIG-QUERY-ENABLE) in the PostgreSQL documentation.
 
 ## Using the hint table
 

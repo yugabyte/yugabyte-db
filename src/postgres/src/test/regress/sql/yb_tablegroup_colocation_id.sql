@@ -49,7 +49,7 @@ DROP TABLE tg1_table1, tg1_table2, tg1_table3, tg2_table1, tg2_table2;
 
 CREATE TABLE tg1_table_valid(v1 int PRIMARY KEY) WITH (colocation_id=20001) TABLEGROUP tg1; -- Success
 CREATE TABLE tg1_table_invalid(v1 int PRIMARY KEY) WITH (colocation_id=20001) TABLEGROUP tg1;
-CREATE TABLE tg1_table_invalid(v1 int UNIQUE WITH (colocation_id=20002)) WITH (colocation_id=20002) TABLEGROUP tg1;
+CREATE TABLE tg1_table_invalid(v1 int UNIQUE WITH (colocation_id=40002)) WITH (colocation_id=40002) TABLEGROUP tg1;
 
 SELECT * FROM table_props;
 

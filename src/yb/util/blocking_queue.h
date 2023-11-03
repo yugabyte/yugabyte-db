@@ -172,7 +172,7 @@ class BlockingQueue {
 
   // Gets an element for the queue; if the queue is full, blocks until
   // space becomes available. Returns false if we were shutdown prior
-  // to enqueueing the element.
+  // to enqueuing the element.
   bool BlockingPut(const T& val) {
     MutexLock l(lock_);
     while (true) {

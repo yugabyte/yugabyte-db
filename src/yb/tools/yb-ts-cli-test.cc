@@ -33,7 +33,7 @@
 
 #include <boost/assign/list_of.hpp>
 #include <gtest/gtest.h>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/consensus/consensus.pb.h"
 
@@ -64,8 +64,6 @@
 using std::string;
 using std::vector;
 
-using boost::assign::list_of;
-using strings::Split;
 using strings::Substitute;
 using yb::consensus::OpIdType;
 using yb::itest::FindTabletFollowers;
@@ -451,8 +449,8 @@ Status RunUnsafeChangeConfig(
 // 6. Verify that new config doesn't contain old leader and follower1.
 TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigOnSingleFollower) {
   MonoDelta kTimeout = MonoDelta::FromSeconds(30);
-  FLAGS_num_tablet_servers = 5;
-  FLAGS_num_replicas = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 3;
   // tserver_unresponsive_timeout_ms is useful so that master considers
   // the live tservers for tablet re-replication.
   std::vector<std::string> master_flags;
@@ -546,8 +544,8 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigOnSingleFollower) {
 // 5. Verify that new config does not contain old followers.
 TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigOnSingleLeader) {
   MonoDelta kTimeout = MonoDelta::FromSeconds(30);
-  FLAGS_num_tablet_servers = 5;
-  FLAGS_num_replicas = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 3;
   std::vector<std::string> master_flags;
   std::vector<std::string> ts_flags;
   master_flags.push_back("--enable_load_balancing=true");
@@ -629,8 +627,8 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigOnSingleLeader) {
 // 5. Verify that new config does not contain old leader.
 TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigForConfigWithTwoNodes) {
   MonoDelta kTimeout = MonoDelta::FromSeconds(30);
-  FLAGS_num_tablet_servers = 4;
-  FLAGS_num_replicas = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 4;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 3;
   std::vector<std::string> master_flags;
   std::vector<std::string> ts_flags;
   master_flags.push_back("--enable_load_balancing=true");
@@ -713,8 +711,8 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigForConfigWithTwoNodes) {
 // 5. Verify that new config does not contain old leader and old followers.
 TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithFiveReplicaConfig) {
   MonoDelta kTimeout = MonoDelta::FromSeconds(30);
-  FLAGS_num_tablet_servers = 8;
-  FLAGS_num_replicas = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 8;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 5;
   std::vector<std::string> master_flags;
   std::vector<std::string> ts_flags;
   master_flags.push_back("--enable_load_balancing=true");
@@ -809,8 +807,8 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithFiveReplicaConfig) {
 //    has populated the new config.
 TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigLeaderWithPendingConfig) {
   MonoDelta kTimeout = MonoDelta::FromSeconds(30);
-  FLAGS_num_tablet_servers = 5;
-  FLAGS_num_replicas = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 3;
   std::vector<std::string> master_flags;
   std::vector<std::string> ts_flags;
   master_flags.push_back("--enable_load_balancing=true");
@@ -904,8 +902,8 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigLeaderWithPendingConfig) {
 //    has populated the new config.
 TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigFollowerWithPendingConfig) {
   MonoDelta kTimeout = MonoDelta::FromSeconds(30);
-  FLAGS_num_tablet_servers = 5;
-  FLAGS_num_replicas = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 3;
   std::vector<std::string> master_flags;
   std::vector<std::string> ts_flags;
   master_flags.push_back("--enable_load_balancing=true");
@@ -1009,8 +1007,8 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigFollowerWithPendingConfig)
 // 7. Verify that a new node has populated the new config with 3 voters.
 TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithPendingConfigsOnWAL) {
   MonoDelta kTimeout = MonoDelta::FromSeconds(30);
-  FLAGS_num_tablet_servers = 5;
-  FLAGS_num_replicas = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 3;
   std::vector<std::string> master_flags;
   std::vector<std::string> ts_flags;
   master_flags.push_back("--enable_load_balancing=true");
@@ -1113,8 +1111,8 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithPendingConfigsOnWAL) {
 // 5. Verify that new config does not contain old followers.
 TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithMultiplePendingConfigs) {
   MonoDelta kTimeout = MonoDelta::FromSeconds(30);
-  FLAGS_num_tablet_servers = 9;
-  FLAGS_num_replicas = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 9;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 5;
   // Retire the dead servers early with these settings.
   std::vector<std::string> master_flags;
   std::vector<std::string> ts_flags;

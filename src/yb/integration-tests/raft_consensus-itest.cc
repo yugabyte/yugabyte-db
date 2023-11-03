@@ -35,17 +35,20 @@
 #include <unordered_set>
 
 #include <boost/optional.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/client-test-util.h"
 #include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
@@ -59,8 +62,8 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/strcat.h"
@@ -93,17 +96,18 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/flags.h"
 
 using namespace std::literals;
 
-DEFINE_UNKNOWN_int32(num_client_threads, 8,
+DEFINE_NON_RUNTIME_int32(num_client_threads, 8,
              "Number of client threads to launch");
-DEFINE_UNKNOWN_int32(client_inserts_per_thread, 50,
+DEFINE_NON_RUNTIME_int32(client_inserts_per_thread, 50,
              "Number of rows inserted by each client thread");
-DEFINE_UNKNOWN_int32(client_num_batches_per_thread, 5,
+DEFINE_NON_RUNTIME_int32(client_num_batches_per_thread, 5,
              "In how many batches to group the rows, for each client");
 DECLARE_int32(consensus_rpc_timeout_ms);
 DECLARE_int32(leader_lease_duration_ms);
@@ -126,21 +130,12 @@ using std::shared_ptr;
 using std::string;
 
 using client::YBSession;
-using client::YBTable;
-using client::YBTableName;
-using consensus::ConsensusRequestPB;
-using consensus::ConsensusResponsePB;
 using consensus::ConsensusServiceProxy;
 using consensus::MajoritySize;
 using consensus::MakeOpId;
 using consensus::PeerMemberType;
 using consensus::RaftPeerPB;
-using consensus::ReplicateMsg;
 using consensus::LeaderLeaseCheckMode;
-using docdb::KeyValuePairPB;
-using docdb::SubDocKey;
-using docdb::DocKey;
-using docdb::PrimitiveValue;
 using itest::AddServer;
 using itest::GetReplicaStatusAndCheckIfLeader;
 using itest::LeaderStepDown;
@@ -154,7 +149,6 @@ using itest::WaitUntilLeader;
 using itest::WriteSimpleTestRow;
 using master::GetTabletLocationsRequestPB;
 using master::GetTabletLocationsResponsePB;
-using master::TabletLocationsPB;
 using rpc::RpcController;
 using server::SetFlagRequestPB;
 using server::SetFlagResponsePB;
@@ -179,11 +173,12 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
 
   void SetUp() override {
     TabletServerIntegrationTestBase::SetUp();
-    FLAGS_consensus_rpc_timeout_ms = kConsensusRpcTimeoutForTests;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_rpc_timeout_ms) = kConsensusRpcTimeoutForTests;
   }
 
   void ScanReplica(TabletServerServiceProxy* replica_proxy,
-                   vector<string>* results) {
+                   vector<string>* results,
+                   YBConsistencyLevel consistency_level = YBConsistencyLevel::CONSISTENT_PREFIX) {
 
     ReadRequestPB req;
     ReadResponsePB resp;
@@ -191,7 +186,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
     rpc.set_timeout(MonoDelta::FromSeconds(10));  // Squelch warnings.
 
     req.set_tablet_id(tablet_id_);
-    req.set_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
+    req.set_consistency_level(consistency_level);
     auto batch = req.add_ql_batch();
     batch->set_schema_version(0);
     int id = kFirstColumnId;
@@ -215,11 +210,10 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
       }
     }
 
-    Schema schema(client::MakeColumnSchemasFromColDesc(rsrow->rscol_descs()), 0);
-    QLRowBlock result(schema);
-    std::string data_str;
-    ASSERT_OK(rpc.AssignSidecarTo(0, &data_str));
-    Slice data(data_str);
+    Schema schema(client::MakeColumnSchemasFromColDesc(rsrow->rscol_descs()));
+    qlexpr::QLRowBlock result(schema);
+    auto data_buffer = ASSERT_RESULT(rpc.ExtractSidecar(0));
+    auto data = data_buffer.AsSlice();
     if (!data.empty()) {
       ASSERT_OK(result.Deserialize(QLClient::YQL_CLIENT_CQL, &data));
     }
@@ -295,8 +289,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
     client::TableHandle table;
     ASSERT_OK(table.Open(kTableName, client_.get()));
 
-    shared_ptr<YBSession> session = client_->NewSession();
-    session->SetTimeout(60s);
+    auto session = client_->NewSession(60s);
 
     for (int i = 0; i < num_batches; i++) {
       SCOPED_TRACE(Format("Batch: $0", i));
@@ -597,8 +590,10 @@ TEST_F(RaftConsensusITest, MultiThreadedMutateAndInsertThroughConsensus) {
 
   if (500 == FLAGS_client_inserts_per_thread) {
     if (AllowSlowTests()) {
-      FLAGS_client_inserts_per_thread = FLAGS_client_inserts_per_thread * 10;
-      FLAGS_client_num_batches_per_thread = FLAGS_client_num_batches_per_thread * 10;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_inserts_per_thread) =
+          FLAGS_client_inserts_per_thread * 10;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_num_batches_per_thread) =
+          FLAGS_client_num_batches_per_thread * 10;
     }
   }
 
@@ -688,7 +683,7 @@ TEST_F(RaftConsensusITest, TestInsertOnNonLeader) {
 
 TEST_F(RaftConsensusITest, TestRunLeaderElection) {
   // Reset consensus rpc timeout to the default value or the election might fail often.
-  FLAGS_consensus_rpc_timeout_ms = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_rpc_timeout_ms) = 1000;
 
   ASSERT_NO_FATALS(BuildAndStart(vector<string>()));
 
@@ -848,7 +843,7 @@ TEST_F(RaftConsensusITest, TestLaggingFollowerRestart) {
   vector<string> extra_flags = {
       "--consensus_inject_latency_ms_in_notifications=10"s,
       "--rpc_throttle_threshold_bytes=-1"s,
-      "--consensus_max_batch_size_bytes=1024"s
+      "--consensus_max_batch_size_bytes=512"s
   };
   ASSERT_NO_FATALS(BuildAndStart(extra_flags));
 
@@ -892,7 +887,7 @@ TEST_F(RaftConsensusITest, TestLaggingFollowerRestart) {
                                        TServerDetailsVector(tablet_servers_), 10s,
                                        &actual_minimum_index));
   LOG(INFO) << "Replica " << replica->uuid() << " received " << actual_minimum_index;
-  ASSERT_LE(actual_minimum_index, kNumWrites / 2);
+  ASSERT_LT(actual_minimum_index, kNumWrites);
 
   replica_ets->Shutdown();
   LOG(INFO)<< "Shutdown replica " << replica->uuid() << ".";
@@ -988,7 +983,7 @@ TEST_F(RaftConsensusITest, TestLaggingFollowerLogCacheEviction) {
 
 TEST_F(RaftConsensusITest, TestAddRemoveNonVoter) {
   MonoDelta kTimeout = MonoDelta::FromSeconds(30);
-  FLAGS_num_tablet_servers = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
   vector<string> ts_flags = {
     "--enable_leader_failure_detection=false"s,
     "--TEST_inject_latency_before_change_role_secs=1"s,
@@ -1159,7 +1154,7 @@ void RaftConsensusITest::TestAddRemoveServer(PeerMemberType member_type) {
               member_type == PeerMemberType::PRE_OBSERVER);
 
   MonoDelta kTimeout = MonoDelta::FromSeconds(30);
-  FLAGS_num_tablet_servers = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
   vector<string> ts_flags = {
     "--enable_leader_failure_detection=false"s,
     "--TEST_inject_latency_before_change_role_secs=1"s,
@@ -1281,7 +1276,7 @@ void RaftConsensusITest::TestRemoveTserverSucceedsWhenServerInTransition(
   ASSERT_TRUE(member_type == PeerMemberType::PRE_VOTER ||
               member_type == PeerMemberType::PRE_OBSERVER);
 
-  FLAGS_num_tablet_servers = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
   vector<string> ts_flags = {
     "--enable_leader_failure_detection=false"s,
     "--TEST_inject_latency_before_change_role_secs=10"s,
@@ -1346,7 +1341,7 @@ void RaftConsensusITest::TestRemoveTserverInTransitionSucceeds(PeerMemberType me
   ASSERT_TRUE(member_type == PeerMemberType::PRE_VOTER ||
               member_type == PeerMemberType::PRE_OBSERVER);
 
-  FLAGS_num_tablet_servers = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
   vector<string> ts_flags = {
     "--enable_leader_failure_detection=false"s,
     "--TEST_skip_change_role"s,
@@ -1486,8 +1481,8 @@ TEST_F(RaftConsensusITest, InsertWithCrashyNodes) {
   int kCrashesToCause = 3;
   vector<string> ts_flags, master_flags;
   if (AllowSlowTests()) {
-    FLAGS_num_tablet_servers = 7;
-    FLAGS_num_replicas = 7;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 7;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 7;
     kCrashesToCause = 15;
     master_flags.push_back("--replication_factor=7");
   }
@@ -1631,14 +1626,14 @@ TEST_F(RaftConsensusITest, MultiThreadedInsertWithFailovers) {
   vector<string> master_flags;
 
   if (AllowSlowTests()) {
-    FLAGS_num_tablet_servers = 7;
-    FLAGS_num_replicas = 7;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 7;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 7;
     kNumElections = 3 * FLAGS_num_replicas;
     master_flags.push_back("--replication_factor=7");
   }
 
   // Reset consensus rpc timeout to the default value or the election might fail often.
-  FLAGS_consensus_rpc_timeout_ms = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_rpc_timeout_ms) = 1000;
 
   // Start a 7 node configuration cluster (since we can't bring leaders back we start with a
   // higher replica count so that we kill more leaders).
@@ -1691,8 +1686,8 @@ TEST_F(RaftConsensusITest, MultiThreadedInsertWithFailovers) {
 TEST_F(RaftConsensusITest, TestAutomaticLeaderElection) {
   vector<string> master_flags;
   if (AllowSlowTests()) {
-    FLAGS_num_tablet_servers = 5;
-    FLAGS_num_replicas = 5;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 5;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 5;
     master_flags.push_back("--replication_factor=5");
   }
   ASSERT_NO_FATALS(BuildAndStart({}, master_flags));
@@ -1737,8 +1732,8 @@ TEST_F(RaftConsensusITest, TestAutomaticLeaderElection) {
 
 // Single-replica leader election test.
 TEST_F(RaftConsensusITest, TestAutomaticLeaderElectionOneReplica) {
-  FLAGS_num_tablet_servers = 1;
-  FLAGS_num_replicas = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
   ASSERT_NO_FATALS(BuildAndStart({}, {"--replication_factor=1"}));
 
   TServerDetails* leader;
@@ -1788,7 +1783,7 @@ void RaftConsensusITest::StubbornlyWriteSameRowThread(int replica_idx, const Ato
 // will trigger an assertion because the prepare order and the op indexes will become
 // misaligned.
 TEST_F(RaftConsensusITest, VerifyTransactionOrder) {
-  FLAGS_num_tablet_servers = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
   ASSERT_NO_FATALS(BuildAndStart(vector<string>()));
 
   AtomicBool finish(false);
@@ -1828,7 +1823,7 @@ void RaftConsensusITest::AddOp(const OpId& id, consensus::LWConsensusRequestPB* 
 // Triggers some complicated scenarios on the replica involving aborting and
 // replacing transactions.
 TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
-  FLAGS_num_tablet_servers = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
   auto ts_flags = {
     "--enable_leader_failure_detection=false"s,
     "--max_wait_for_safe_time_ms=100"s,
@@ -1873,7 +1868,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
 
   ConsensusServiceProxy* c_proxy = CHECK_NOTNULL(replica_ts->consensus_proxy.get());
 
-  Arena arena;
+  ThreadSafeArena arena;
   consensus::LWConsensusRequestPB req(&arena);
   consensus::LWConsensusResponsePB resp(&arena);
   RpcController rpc;
@@ -2015,8 +2010,70 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   }
 }
 
+TEST_F(RaftConsensusITest, YB_DISABLE_TEST_IN_FASTDEBUG(TestExpiredOperationWithSchemaChange)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
+
+  vector<string> ts_flags = {
+    "--enable_leader_failure_detection=false"s,
+  };
+  vector<string> master_flags = {
+    "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"s,
+    "--use_create_table_leader_hint=false"s,
+  };
+  ASSERT_NO_FATALS(BuildAndStart(ts_flags, master_flags));
+
+  vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
+
+  // Become leader.
+  ASSERT_OK(StartElection(tservers[0], tablet_id_, MonoDelta::FromSeconds(10)));
+  ASSERT_OK(WaitUntilLeader(tservers[0], tablet_id_, MonoDelta::FromSeconds(10)));
+  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_, tablet_id_, 1));
+
+  // Make the the prepare thread to delay.
+  auto* const ts = cluster_->tablet_server(0);
+  ASSERT_OK(cluster_->SetFlag(ts, "TEST_block_prepare_batch", "true"));
+  // And the following write will also get delayed in prepare phase.
+  ASSERT_NOK(WriteSimpleTestRow(
+      tservers[0], tablet_id_, kTestRowKey, kTestRowIntVal, "foo", MonoDelta::FromSeconds(2)));
+
+  LOG(INFO) << "Stepping down leader " << tservers[0];
+  // Step down and verify that leadership gracefully transitions to a new leader
+  // despite failure detection being disabled.
+  bool allow_graceful_leader_transfer = true;
+  ASSERT_OK(LeaderStepDown(
+      tservers[0], tablet_id_, nullptr, MonoDelta::FromSeconds(10),
+      !allow_graceful_leader_transfer));
+  TServerDetails* new_leader_ts = nullptr;
+  ASSERT_OK(
+      FindTabletLeader(tablet_servers_, tablet_id_, MonoDelta::FromSeconds(10), &new_leader_ts));
+  ASSERT_TRUE(new_leader_ts != nullptr);
+  LOG(INFO) << "Identified new leader " << new_leader_ts;
+
+  // Schema change.
+  client::YBTableName index_name(YQL_DATABASE_CQL, "test", "TestExpiredOperationWithSchemaChange");
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(index_name.namespace_name()));
+  auto client_schema = client::YBSchemaFromSchema(GetSimpleTestSchema());
+  client::TableHandle table;
+  ASSERT_OK(table.Open(kTableName, client_.get()));
+  std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  ASSERT_OK(table_creator->table_name(index_name)
+      .table_type(client::YBTableType::YQL_TABLE_TYPE)
+      .indexed_table_id(table->id())
+      .schema(&client_schema)
+      .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
+      .timeout(MonoDelta::FromSeconds(10))
+      .wait(true)
+      .TEST_use_old_style_create_request()
+      .Create());
+
+  // The previous delayed write operation's term and schema version is less than the current.
+  // Because of smaller term, we expect WriteQuery::Finish() will skip CHECK on schema version.
+  ASSERT_OK(cluster_->SetFlag(ts, "TEST_block_prepare_batch", "false"));
+  SleepFor(MonoDelta::FromMilliseconds(1000));
+}
+
 TEST_F(RaftConsensusITest, TestLeaderStepDown) {
-  FLAGS_num_tablet_servers = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
 
   vector<string> ts_flags = {
     "--enable_leader_failure_detection=false"s,
@@ -2154,8 +2211,12 @@ void RaftConsensusITest::AssertMajorityRequiredForElectionsAndWrites(
                                   MonoDelta::FromMilliseconds(100));
     ASSERT_TRUE(s.IsTimedOut()) << s.ToString();
 
-    // Step down.
-    ASSERT_OK(LeaderStepDown(initial_leader, tablet_id_, nullptr, MonoDelta::FromSeconds(10)));
+    // Step down. Disable graceful transition to avoid other voters are elected as leader.
+    ASSERT_OK(LeaderStepDown(initial_leader,
+                             tablet_id_,
+                             nullptr,
+                             MonoDelta::FromSeconds(10),
+                             /* disable_graceful_transition = */ true));
 
     // Assert that elections time out without a live majority.
     // We specify a very short timeout here to keep the tests fast.
@@ -2252,7 +2313,7 @@ TEST_F(RaftConsensusITest, TestAddRemoveObserver) {
 // Regression test for KUDU-1169: a crash when a Config Change operation is replaced
 // by a later leader.
 TEST_F(RaftConsensusITest, TestReplaceChangeConfigOperation) {
-  FLAGS_num_tablet_servers = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
   vector<string> ts_flags = { "--enable_leader_failure_detection=false"s };
   vector<string> master_flags = {
     "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"s,
@@ -2310,7 +2371,7 @@ TEST_F(RaftConsensusITest, TestReplaceChangeConfigOperation) {
 
 // Test the atomic CAS arguments to ChangeConfig() add server and remove server.
 TEST_F(RaftConsensusITest, TestAtomicAddRemoveServer) {
-  FLAGS_num_tablet_servers = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
   vector<string> ts_flags = { "--enable_leader_failure_detection=false" };
   vector<string> master_flags = {
     "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"s,
@@ -2396,8 +2457,8 @@ TEST_F(RaftConsensusITest, TestElectPendingVoter) {
   //  8. Start a leader election on the new (pending) node. It should win.
   //  9. Unpause the two remaining stopped nodes.
   // 10. Wait for all nodes to sync to the new leader's log.
-  FLAGS_num_tablet_servers = 5;
-  FLAGS_num_replicas = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 5;
   vector<string> ts_flags = {
     "--enable_leader_failure_detection=false"s,
     "--TEST_inject_latency_before_change_role_secs=10"s,
@@ -2545,7 +2606,7 @@ void DoWriteTestRows(const TServerDetails* leader_tserver,
 
 // Test that config change works while running a workload.
 TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
-  FLAGS_num_tablet_servers = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
   vector<string> ts_flags = { "--enable_leader_failure_detection=false" };
   vector<string> master_flags = {
     "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"s,
@@ -2648,8 +2709,8 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
 
 TEST_F(RaftConsensusITest, TestMasterNotifiedOnConfigChange) {
   MonoDelta timeout = MonoDelta::FromSeconds(30);
-  FLAGS_num_tablet_servers = 3;
-  FLAGS_num_replicas = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 2;
   vector<string> ts_flags;
   vector<string> master_flags;
   master_flags.push_back("--replication_factor=2");
@@ -2723,8 +2784,8 @@ TEST_F(RaftConsensusITest, TestMasterNotifiedOnConfigChange) {
 
 // Test that we can create (vivify) a new tablet via remote bootstrap.
 TEST_F(RaftConsensusITest, TestAutoCreateReplica) {
-  FLAGS_num_tablet_servers = 3;
-  FLAGS_num_replicas = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 2;
   std::vector<std::string> ts_flags = {
     "--enable_leader_failure_detection=false",
     "--log_cache_size_limit_mb=1",
@@ -3091,7 +3152,7 @@ TEST_F(RaftConsensusITest, TestChangeConfigRejectedUnlessNoopReplicated) {
 }
 
 TEST_F(RaftConsensusITest, TestChangeConfigBasedOnJepsen) {
-  FLAGS_num_tablet_servers = 4;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 4;
   vector<string> ts_flags = { "--enable_leader_failure_detection=false",
                               "--TEST_log_change_config_every_n=3000" };
   vector<string> master_flags = {
@@ -3200,7 +3261,7 @@ TEST_F(RaftConsensusITest, TestUpdateConsensusErrorNonePrepared) {
                 "TEST_follower_fail_all_prepare", "true"));
 
   // Pretend to be the leader and send a request that should return an error.
-  Arena arena;
+  ThreadSafeArena arena;
   consensus::LWConsensusRequestPB req(&arena);
   consensus::LWConsensusResponsePB resp(&arena);
   RpcController rpc;
@@ -3388,8 +3449,8 @@ TEST_F(RaftConsensusITest, SplitOpId) {
   RpcController rpc;
   const auto kTimeout = 60s * kTimeMultiplier;
 
-  FLAGS_num_tablet_servers = 3;
-  FLAGS_num_replicas = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 3;
   vector<string> ts_flags = {
     "--enable_leader_failure_detection=false"s,
   };
@@ -3430,10 +3491,10 @@ TEST_F(RaftConsensusITest, SplitOpId) {
     const auto min_hash_code = std::numeric_limits<docdb::DocKeyHash>::max();
     const auto max_hash_code = std::numeric_limits<docdb::DocKeyHash>::min();
     const auto split_hash_code = (max_hash_code - min_hash_code) / 2 + min_hash_code;
-    const auto partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
-    docdb::KeyBytes encoded_doc_key;
-    docdb::DocKeyEncoderAfterTableIdStep(&encoded_doc_key).Hash(
-        split_hash_code, std::vector<docdb::KeyEntryValue>());
+    const auto partition_key = dockv::PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
+    dockv::KeyBytes encoded_doc_key;
+    dockv::DocKeyEncoderAfterTableIdStep(&encoded_doc_key).Hash(
+        split_hash_code, dockv::KeyEntryValues());
     req.set_split_encoded_key(encoded_doc_key.ToStringBuffer());
     req.set_split_partition_key(partition_key);
   }
@@ -3573,7 +3634,7 @@ TEST_F(RaftConsensusITest, CatchupAfterLeaderRestarted) {
   for (size_t ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ++ts_idx) {
     if (ts_idx != paused_ts_idx) {
       ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(
-          cluster_->tablet_server(ts_idx), {tablet_id_}, /* is_compaction = */ false));
+          cluster_->tablet_server(ts_idx), {tablet_id_}, FlushTabletsRequestPB::FLUSH));
       cluster_->tablet_server(ts_idx)->Shutdown();
       ASSERT_OK(cluster_->tablet_server(ts_idx)->Restart());
     }
@@ -3652,6 +3713,86 @@ TEST_F(RaftConsensusITest, GetSafeTimeBeforeNoOpReplicated) {
 
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_,
                                   tablet_id_, 5));
+}
+
+// Test new leader starts accepting writes before old leader finishes all reads.
+// See more in https://github.com/yugabyte/yugabyte-db/issues/18121
+TEST_F(RaftConsensusITest, OldLeaderLeaseTooOldOnNewLeader) {
+  ASSERT_NO_FATALS(BuildAndStart());
+  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_,
+                                  tablet_id_, 1));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_election_when_fail_detected", "true"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ht_lease_duration_ms", "5000"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("leader_lease_duration_ms", "5000"));
+
+  const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id_));
+  const auto follower_idx = (leader_idx + 1) % 3;
+  const auto other_follower_idx = (leader_idx + 2) % 3;
+
+  ASSERT_NO_FATALS(
+      WriteOpsToLeader(/* num_writes = */ 1, /* size_bytes = */ 1, /* accept_failure = */ false));
+  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_,
+                                  tablet_id_, 2));
+
+  // Pause one follower, and wait until the old leader lease on it is expired.
+  const auto follower = cluster_->tablet_server(follower_idx);
+  ASSERT_OK(
+      cluster_->SetFlag(follower, "TEST_follower_reject_update_consensus_requests", "true"));
+  ASSERT_OK(follower->Pause());
+  SleepFor(5s);
+
+  const auto old_leader = cluster_->tablet_server(leader_idx);
+  // To reject NoOp of the new term.
+  ASSERT_OK(
+      cluster_->SetFlag(old_leader, "TEST_follower_reject_update_consensus_requests", "true"));
+  std::vector<string> results;
+  ASSERT_NO_FATALS(WaitForRowCount(
+      tablet_servers_[old_leader->uuid()]->tserver_proxy.get(), 1, &results));
+
+  // Pause the other follower and step down the current leader.
+  const auto other_follower = cluster_->tablet_server(other_follower_idx);
+  ASSERT_OK(cluster_->SetFlag(
+      other_follower, "TEST_request_vote_respond_leader_still_alive", "true"));
+
+  ASSERT_OK(cluster_->SetFlag(old_leader, "TEST_pause_before_getting_safe_time", "true"));
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&] {
+    vector<string> results;
+    ASSERT_NO_FATALS(ScanReplica(tablet_servers_[old_leader->uuid()]->tserver_proxy.get(),
+                                 &results,
+                                 YBConsistencyLevel::STRONG));
+  });
+  SleepFor(1s);
+
+  ASSERT_OK(follower->Resume());
+  ASSERT_OK(LeaderStepDown(
+      tablet_servers_[old_leader->uuid()].get(),
+      tablet_id_, tablet_servers_[follower->uuid()].get(),
+      10s));
+  ASSERT_OK(WaitUntilLeader(
+    tablet_servers_[follower->uuid()].get(), tablet_id_, 10s,
+    consensus::LeaderLeaseCheckMode::DONT_NEED_LEASE));
+
+  // Pause the old leader and let the new leader replicate NoOp to the other follower.
+  ASSERT_OK(old_leader->Pause());
+
+  // Wait for the NoOp of new term has been replicated on the other follower.
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(
+      3, tablet_servers_[other_follower->uuid()].get(), tablet_id_, 10s));
+  ASSERT_NO_FATALS(
+      WriteOpsToLeader(/* num_writes = */ 1, /* size_bytes = */ 2, /* accept_failure = */ false));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(
+      4, tablet_servers_[other_follower->uuid()].get(), tablet_id_, 10s));
+
+  // Resume the old leader and resume DoGetSafeTime on it. It will get a safe time with kNow
+  // and update max_safe_time_returned_with_lease_.
+  ASSERT_OK(old_leader->Resume());
+  ASSERT_OK(cluster_->SetFlag(old_leader, "TEST_pause_before_getting_safe_time", "false"));
+  thread_holder.WaitAndStop(10s);
+  ASSERT_OK(
+      cluster_->SetFlag(old_leader, "TEST_follower_reject_update_consensus_requests", "false"));
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(
+      4, tablet_servers_[old_leader->uuid()].get(), tablet_id_, 10s));
 }
 
 }  // namespace tserver

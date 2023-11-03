@@ -1,9 +1,9 @@
-import React from 'react';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'react-toastify';
 import { render, waitFor } from '../../../test-utils';
 import { AddStandbyInstanceModal } from './AddStandbyInstanceModal';
 import { api } from '../../../redesign/helpers/api';
+import { MOCK_HA_WS_RUNTIME_CONFIG_WITH_PEER_CERTS } from '../replication/mockUtils';
 
 jest.mock('../../../redesign/helpers/api');
 
@@ -11,11 +11,23 @@ const fakeConfigId = 'aaa-111';
 
 const setup = () => {
   const onClose = jest.fn();
+  const fetchRuntimeConfigs = jest.fn();
+  const setRuntimeConfig = jest.fn();
+
+  const mockRuntimeConfigPromise = {
+    data: MOCK_HA_WS_RUNTIME_CONFIG_WITH_PEER_CERTS,
+    error: null,
+    promiseState: 'SUCCESS'
+  };
+
   const component = render(
     <AddStandbyInstanceModal
       visible
       onClose={onClose}
       configId={fakeConfigId}
+      runtimeConfigs={mockRuntimeConfigPromise}
+      fetchRuntimeConfigs={fetchRuntimeConfigs}
+      setRuntimeConfig={setRuntimeConfig}
     />
   );
   return { component, onClose };
@@ -41,7 +53,7 @@ describe('HA add standby instance modal', () => {
     expect(onClose).not.toBeCalled();
 
     userEvent.type(component.getByRole('textbox'), 'lorem ipsum');
-    expect(await component.findByText(/should be a valid url/i)).toBeInTheDocument();
+    expect(await component.findByText(/must be a valid URL/i)).toBeInTheDocument();
     expect(onClose).not.toBeCalled();
   });
 

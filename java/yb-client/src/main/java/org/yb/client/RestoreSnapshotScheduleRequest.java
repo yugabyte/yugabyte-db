@@ -14,8 +14,8 @@ import org.yb.master.MasterBackupOuterClass;
 import org.yb.master.MasterBackupOuterClass.RestoreSnapshotScheduleResponsePB;
 import org.yb.master.MasterBackupOuterClass.RestoreSnapshotScheduleRequestPB;
 import org.yb.master.MasterTypes;
+import org.yb.util.CommonUtil;
 import org.yb.util.Pair;
-import org.yb.util.SnapshotUtil;
 
 @InterfaceAudience.Public
 public class RestoreSnapshotScheduleRequest extends YRpc<RestoreSnapshotScheduleResponse> {
@@ -37,7 +37,7 @@ public class RestoreSnapshotScheduleRequest extends YRpc<RestoreSnapshotSchedule
         final RestoreSnapshotScheduleRequestPB.Builder builder =
                 RestoreSnapshotScheduleRequestPB.newBuilder();
         if (snapshotScheduleUUID != null) {
-            builder.setSnapshotScheduleId(SnapshotUtil.convertToByteString(snapshotScheduleUUID));
+            builder.setSnapshotScheduleId(CommonUtil.convertToByteString(snapshotScheduleUUID));
         }
         builder.setRestoreHt(
             clockTimestampToHTTimestamp(restoreTimeInMillis, TimeUnit.MILLISECONDS));
@@ -59,11 +59,16 @@ public class RestoreSnapshotScheduleRequest extends YRpc<RestoreSnapshotSchedule
         final RestoreSnapshotScheduleResponsePB.Builder respBuilder =
                 RestoreSnapshotScheduleResponsePB.newBuilder();
         readProtobuf(callResponse.getPBMessage(), respBuilder);
+        boolean hasErr = respBuilder.hasError();
         MasterTypes.MasterErrorPB serverError =
-                respBuilder.hasError() ? respBuilder.getError() : null;
+                hasErr ? respBuilder.getError() : null;
 
-        UUID restorationUUID = SnapshotUtil.convertToUUID(respBuilder.getRestorationId());
-        UUID snapshotUUID = SnapshotUtil.convertToUUID(respBuilder.getSnapshotId());
+        UUID snapshotUUID = null;
+        UUID restorationUUID = null;
+        if (!hasErr) {
+            restorationUUID = CommonUtil.convertToUUID(respBuilder.getRestorationId());
+            snapshotUUID = CommonUtil.convertToUUID(respBuilder.getSnapshotId());
+        }
         RestoreSnapshotScheduleResponse response =
                 new RestoreSnapshotScheduleResponse(deadlineTracker.getElapsedMillis(),
                         masterUUID, serverError, restorationUUID, snapshotUUID);

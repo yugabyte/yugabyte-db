@@ -5,9 +5,9 @@ description: Apache Kafka
 aliases:
   - /preview/integrations
 menu:
-  preview:
+  preview_integrations:
     identifier: apache-kafka
-    parent: integrations
+    parent: data-integration
     weight: 571
 type: docs
 ---
@@ -219,7 +219,7 @@ You can configure the JDBC Sink connector as follows:
 - Load the JDBC Sink by executing the following command:
 
   ```sh
-  curl -X POST -H "Content-Type: application/json" -d @/Users/me/confluent-6.1.1/etc/kafka/yb-jdbc-sink-quickstart.properties "localhost:8083/connectors"
+  curl -X POST -H "Content-Type: application/json" -d @/Users/me/confluent-6.1.1/etc/kafka/yb-jdbc-sink-connector.properties "localhost:8083/connectors"
   ```
 
 - Query the YugabyteDB database to select all rows from the `orders` table, as follows:

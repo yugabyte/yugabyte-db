@@ -13,7 +13,7 @@
 
 #include "yb/tablet/tablet_component.h"
 
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -21,14 +21,18 @@
 namespace yb {
 namespace tablet {
 
-Result<TabletScopedRWOperationPauses> TabletComponent::StartShutdownRocksDBs(
-    DisableFlushOnShutdown disable_flush_on_shutdown) {
-  return tablet_.StartShutdownRocksDBs(disable_flush_on_shutdown);
+TabletScopedRWOperationPauses TabletComponent::StartShutdownRocksDBs(
+    const DisableFlushOnShutdown disable_flush_on_shutdown, const AbortOps abort_ops) {
+  return tablet_.StartShutdownRocksDBs(disable_flush_on_shutdown, abort_ops);
 }
 
-Status TabletComponent::CompleteShutdownRocksDBs(
-    Destroy destroy, TabletScopedRWOperationPauses* ops_pauses) {
-  return tablet_.CompleteShutdownRocksDBs(destroy, ops_pauses);
+std::vector<std::string> TabletComponent::CompleteShutdownRocksDBs(
+    const TabletScopedRWOperationPauses& ops_pauses) {
+  return tablet_.CompleteShutdownRocksDBs(ops_pauses);
+}
+
+Status TabletComponent::DeleteRocksDBs(const std::vector<std::string>& db_paths) {
+  return tablet_.DeleteRocksDBs(db_paths);
 }
 
 Status TabletComponent::OpenRocksDBs() {
@@ -43,8 +47,8 @@ RaftGroupMetadata& TabletComponent::metadata() const {
   return *tablet_.metadata();
 }
 
-RWOperationCounter& TabletComponent::pending_op_counter() const {
-  return tablet_.pending_non_abortable_op_counter_;
+RWOperationCounter& TabletComponent::pending_op_counter_blocking_rocksdb_shutdown_start() const {
+  return tablet_.pending_op_counter_blocking_rocksdb_shutdown_start_;
 }
 
 rocksdb::DB& TabletComponent::regular_db() const {
@@ -72,10 +76,9 @@ rocksdb::Env& TabletComponent::rocksdb_env() const {
 }
 
 void TabletComponent::RefreshYBMetaDataCache() {
+  // Note: every tablet will cleanup the cache, since during restore, there are no
+  // operations allowed, this should be fine.
   tablet_.ResetYBMetaDataCache();
-  if (!metadata().index_map()->empty()) {
-    tablet_.CreateNewYBMetaDataCache();
-  }
 }
 
 } // namespace tablet

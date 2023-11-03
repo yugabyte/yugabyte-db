@@ -32,10 +32,11 @@ static constexpr int kDefaultTestNumIter = 20000;
 static constexpr int kDefaultSnapshotVerificationTestNumIter = 15000;
 #endif
 
-DEFINE_UNKNOWN_int32(snapshot_verification_test_num_iter, kDefaultSnapshotVerificationTestNumIter,
+DEFINE_NON_RUNTIME_int32(snapshot_verification_test_num_iter,
+             kDefaultSnapshotVerificationTestNumIter,
              "Number iterations for randomized history cleanup DocDB tests.");
 
-DEFINE_UNKNOWN_int32(test_num_iter, kDefaultTestNumIter,
+DEFINE_NON_RUNTIME_int32(test_num_iter, kDefaultTestNumIter,
              "Number iterations for randomized DocDB tests, except those involving logical DocDB "
              "snapshots.");
 
@@ -44,10 +45,11 @@ constexpr int kNumUniqueSubKeys = 500;
 
 using std::vector;
 using std::pair;
-using std::sort;
 
 namespace yb {
 namespace docdb {
+
+using dockv::UseHash;
 
 namespace {
 
@@ -69,7 +71,7 @@ class RandomizedDocDBTest : public DocDBTestBase,
   RandomizedDocDBTest() : verify_history_cleanup_(true) {
   }
 
-  void Init(const UseHash use_hash) {
+  void Init(const dockv::UseHash use_hash) {
     // This test was created when this was the only supported init marker behavior.
     SetInitMarkerBehavior(InitMarkerBehavior::kRequired);
     if (load_gen_.get() != nullptr) {
@@ -80,6 +82,10 @@ class RandomizedDocDBTest : public DocDBTestBase,
     load_gen_.reset(new DocDBLoadGenerator(this, kNumDocKeys, kNumUniqueSubKeys, use_hash,
         resolve_intents_));
     SeedRandom();
+  }
+
+  Schema CreateSchema() override {
+    return Schema();
   }
 
   ~RandomizedDocDBTest() override {}

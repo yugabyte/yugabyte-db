@@ -24,6 +24,7 @@ enum RelationType {
   USER_TABLE_RELATION = 2;
   INDEX_TABLE_RELATION = 3;
   MATVIEW_TABLE_RELATION = 4;
+  COLOCATED_PARENT_TABLE_RELATION = 5;
 }
 
 enum SysRowEntryType {
@@ -43,6 +44,8 @@ enum SysRowEntryType {
   DDL_LOG_ENTRY = 13;
   SNAPSHOT_RESTORATION = 14;
   XCLUSTER_SAFE_TIME = 15;
+  XCLUSTER_CONFIG = 16;
+  UNIVERSE_REPLICATION_BOOTSTRAP = 17;
 }
 
 // Master specific errors use this protobuf.
@@ -176,6 +179,12 @@ message TableIdentifierPB {
   optional NamespaceIdentifierPB namespace = 3;
 }
 
+message ResourcesPB {
+  optional int64 core_count = 1;
+  // The amount of memory the TServer has reserved for tablet overheads.
+  optional int64 tablet_overhead_ram_in_bytes = 2;
+}
+
 // Sent by the TS when it first heartbeats with a master. This sends the
 // master all of the necessary information about the current instance
 // of the TS.
@@ -184,6 +193,9 @@ message TSRegistrationPB {
 
   // Capabilities supported byt this TS.
   repeated fixed32 capabilities = 2;
+
+  // Resources available at the tserver.
+  optional ResourcesPB resources = 3;
 }
 
 message TServerMetricsPB {

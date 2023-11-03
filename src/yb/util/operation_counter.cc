@@ -15,8 +15,6 @@
 
 #include <thread>
 
-#include <glog/logging.h>
-
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/debug/long_operation_tracker.h"
@@ -27,8 +25,6 @@
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;
-
-using strings::Substitute;
 
 namespace yb {
 
@@ -69,7 +65,8 @@ namespace {
 
 // Using upper bits of counter as special flags.
 constexpr uint64_t kStopDelta = 1ull << 63u;
-constexpr uint64_t kDisabledDelta = 1ull << 48u;
+constexpr auto kOpCounterBits = 48u;
+constexpr uint64_t kDisabledDelta = 1ull << kOpCounterBits;
 constexpr uint64_t kOpCounterMask = kDisabledDelta - 1;
 constexpr uint64_t kDisabledCounterMask = ~kOpCounterMask;
 
@@ -80,12 +77,20 @@ uint64_t RWOperationCounter::GetOpCounter() const {
   return Get() & kOpCounterMask;
 }
 
+uint64_t RWOperationCounter::TEST_GetDisableCount() const {
+  return Get() >> kOpCounterBits;
+}
+
+bool RWOperationCounter::TEST_IsStopped() const {
+  return Get() & kStopDelta;
+}
+
 uint64_t RWOperationCounter::Update(uint64_t delta) {
   uint64_t result = counters_.fetch_add(delta, std::memory_order::acq_rel) + delta;
   VLOG(2) << "[" << this << "] Update(" << static_cast<int64_t>(delta) << "), result = " << result;
-  // Ensure that there is no underflow in either counter.
-  DCHECK_EQ((result & (kStopDelta >> 1u)), 0); // Counter of DisableAndWaitForOps() calls.
-  DCHECK_EQ((result & (kDisabledDelta >> 1u)), 0); // Counter of pending operations.
+  LOG_IF(DFATAL, (result & (kStopDelta >> 1u)) != 0) << "Disable counter underflow: " << result;
+  LOG_IF(DFATAL, (result & (kDisabledDelta >> 1u)) != 0)
+      << "Pending operations counter underflow: " << result;
   return result;
 }
 
@@ -136,7 +141,9 @@ Status RWOperationCounter::DisableAndWaitForOps(const CoarseTimePoint& deadline,
     return STATUS(TimedOut, "Timed out waiting to disable the resource exclusively");
   }
 
-  Update(stop ? kStopDelta : kDisabledDelta);
+  const uint64_t previous_value = Update(stop ? kStopDelta : kDisabledDelta);
+  LOG_IF(DFATAL, stop && (previous_value & kStopDelta) == 0) << "Counter already stopped";
+
   auto status = WaitForOpsToFinish(start_time, deadline);
   if (!status.ok()) {
     Enable(Unlock::kFalse, stop);
@@ -161,9 +168,9 @@ Status RWOperationCounter::WaitForOpsToFinish(
     if (now > deadline) {
       return STATUS_FORMAT(
           TimedOut,
-          "Timed out waiting for all pending operations to complete. "
-              "$0 transactions pending. Waited for $1",
-          num_pending_ops, waited_time);
+          "$0: Timed out waiting for all pending operations to complete. "
+              "$1 transactions pending. Waited for $2",
+          resource_name_, num_pending_ops, waited_time);
     }
     if (waited_time > num_complaints * complain_interval) {
       LOG(WARNING) << Format("Waiting for $0 pending operations to complete now for $1",
@@ -177,8 +184,10 @@ Status RWOperationCounter::WaitForOpsToFinish(
   return Status::OK();
 }
 
-ScopedRWOperation::ScopedRWOperation(RWOperationCounter* counter, const CoarseTimePoint& deadline)
-    : data_{counter, counter ? counter->resource_name() : ""
+ScopedRWOperation::ScopedRWOperation(
+    RWOperationCounter* counter, const StatusHolder* abort_status_holder,
+    const CoarseTimePoint& deadline)
+    : data_{counter, abort_status_holder, counter ? counter->resource_name() : ""
 #ifndef NDEBUG
             , counter ? LongOperationTracker("ScopedRWOperation", 1s) : LongOperationTracker()
 #endif
@@ -190,6 +199,7 @@ ScopedRWOperation::ScopedRWOperation(RWOperationCounter* counter, const CoarseTi
     VTRACE(1, "$0 $1", __func__, resource_name());
     if (!counter->Increment() && !counter->WaitMutexAndIncrement(deadline)) {
       data_.counter_ = nullptr;
+      data_.abort_status_holder_ = nullptr;
     }
   }
 }
@@ -204,7 +214,12 @@ void ScopedRWOperation::Reset() {
     data_.counter_->Decrement();
     data_.counter_ = nullptr;
   }
+  data_.abort_status_holder_ = nullptr;
   data_.resource_name_ = "";
+}
+
+Status ScopedRWOperation::GetAbortedStatus() const {
+  return data_.abort_status_holder_ ? data_.abort_status_holder_->GetStatus() : Status::OK();
 }
 
 ScopedRWOperationPause::ScopedRWOperationPause(

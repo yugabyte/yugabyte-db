@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { FieldArray, SubmissionError } from 'redux-form';
@@ -13,11 +13,12 @@ import { YBButton, YBModal } from '../../common/forms/fields';
 import InstanceTypeForRegion from '../OnPrem/wizard/InstanceTypeForRegion';
 import { YBBreadcrumb } from '../../common/descriptors';
 import { isDefinedNotNull, isNonEmptyString } from '../../../utils/ObjectUtils';
-import { YBCodeBlock } from '../../common/descriptors/index';
+import { YBCodeBlock, YBCopyButton } from '../../common/descriptors/index';
 import { YBConfirmModal } from '../../modals';
 import { TASK_SHORT_TIMEOUT } from '../../tasks/constants';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
-import { YUGABYTE_TITLE } from '../../../config';
+import { getLatestAccessKey } from '../../configRedesign/providerRedesign/utils';
+import { NodeAgentStatus } from '../../../redesign/features/NodeAgent/NodeAgentStatus';
 
 const TIMEOUT_BEFORE_REFRESH = 2500;
 
@@ -98,16 +99,19 @@ class OnPremNodesList extends Component {
 
   submitAddNodesForm = (vals, dispatch, reduxProps) => {
     const {
-      cloud: { supportedRegionList, nodeInstanceList, accessKeys }
+      cloud: { supportedRegionList, nodeInstanceList, accessKeys },
+      currentProvider
     } = this.props;
-    const onPremProvider = this.findProvider();
+    const onPremProvider = currentProvider ?? this.findProvider();
     const self = this;
-    const currentCloudRegions = supportedRegionList.data.filter(
-      (region) => region.provider.uuid === onPremProvider.uuid
-    );
-    const currentCloudAccessKey = accessKeys.data
-      .filter((accessKey) => accessKey.idKey.providerUUID === onPremProvider.uuid)
-      .shift();
+    const currentCloudRegions = currentProvider
+      ? currentProvider.regions
+      : supportedRegionList.data.filter((region) => region.provider.uuid === onPremProvider.uuid);
+    const latestAccessKey = currentProvider
+      ? getLatestAccessKey(currentProvider.allAccessKeys)
+      : accessKeys.data
+          .filter((accessKey) => accessKey.idKey.providerUUID === onPremProvider.uuid)
+          .shift();
     // function to construct list of all zones in current configuration
     const zoneList = currentCloudRegions.reduce(function (azs, r) {
       azs[r.code] = [];
@@ -129,12 +133,8 @@ class OnPremNodesList extends Component {
               region: region,
               ip: val.instanceTypeIP.trim(),
               instanceType: val.machineType,
-              sshUser: isNonEmptyObject(currentCloudAccessKey)
-                ? currentCloudAccessKey.keyInfo.sshUser
-                : '',
-              sshPort: isNonEmptyObject(currentCloudAccessKey)
-                ? currentCloudAccessKey.keyInfo.sshPort
-                : null,
+              sshUser: isNonEmptyObject(latestAccessKey) ? latestAccessKey.keyInfo.sshUser : '',
+              sshPort: isNonEmptyObject(latestAccessKey) ? latestAccessKey.keyInfo.sshPort : null,
               instanceName: instanceName
             });
           }
@@ -231,6 +231,12 @@ class OnPremNodesList extends Component {
     }
   };
 
+  componentDidMount() {
+    if (!getPromiseState(this.props.universeList).isSuccess()) {
+      this.props.fetchUniverseList();
+    }
+  }
+
   componentDidUpdate(prevProps) {
     const { tasks } = this.props;
     if (tasks && isNonEmptyArray(tasks.customerTaskList)) {
@@ -253,7 +259,8 @@ class OnPremNodesList extends Component {
       handleSubmit,
       tasks: { customerTaskList },
       showProviderView,
-      visibleModal
+      visibleModal,
+      nodeAgentStatusByIPs
     } = this.props;
     const self = this;
     let nodeListItems = [];
@@ -329,6 +336,19 @@ class OnPremNodesList extends Component {
       }
     };
 
+    const nodeAgentStatus = (cell, row) => {
+      let status = '';
+      let isReachable = false;
+      if (nodeAgentStatusByIPs.isSuccess) {
+        const nodeAgents = nodeAgentStatusByIPs.data.entities;
+        const nodeAgent = nodeAgents.find((nodeAgent) => row.ip === nodeAgent.ip);
+        status = nodeAgent?.state;
+        isReachable = nodeAgent?.reachable;
+      }
+
+      return <NodeAgentStatus status={status} isReachable={isReachable} />;
+    };
+
     const actionsList = (cell, row) => {
       const precheckDisabled = row.inUse || isActive(row.precheckTask);
       return (
@@ -340,13 +360,16 @@ class OnPremNodesList extends Component {
             pullRight
           >
             <MenuItem
-              onClick={self.showConfirmPrecheckModal.bind(self, row)}
+              onClick={!precheckDisabled ? self.showConfirmPrecheckModal.bind(self, row) : null}
               disabled={precheckDisabled}
             >
               <i className="fa fa-play-circle-o" />
               Perform check
             </MenuItem>
-            <MenuItem onClick={self.showConfirmDeleteModal.bind(self, row)} disabled={row.inUse}>
+            <MenuItem
+              onClick={!row.inUse ? self.showConfirmDeleteModal.bind(self, row) : null}
+              disabled={row.inUse}
+            >
               <i className={`fa fa-trash`} />
               Delete node
             </MenuItem>
@@ -355,81 +378,108 @@ class OnPremNodesList extends Component {
       );
     };
 
-    const onPremSetupReference = 'https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/';
+    const onPremSetupReference =
+      'https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/#configure-hardware-for-yugabytedb-nodes';
     let provisionMessage = <span />;
-    const onPremProvider = this.findProvider();
+    const onPremProvider = this.props.currentProvider ?? this.findProvider();
     if (isDefinedNotNull(onPremProvider)) {
       const onPremKey = accessKeys.data.find(
         (accessKey) => accessKey.idKey.providerUUID === onPremProvider.uuid
       );
-      if (isDefinedNotNull(onPremKey) && onPremKey.keyInfo.skipProvisioning) {
+      if (
+        onPremProvider.details.skipProvisioning ||
+        (isDefinedNotNull(onPremKey) && onPremKey.keyInfo.skipProvisioning)
+      ) {
+        const provisionInstanceScript = `${
+          onPremProvider.details.provisionInstanceScript ??
+          onPremKey.keyInfo.provisionInstanceScript
+        } --ask_password --ip <node IP Address> --mount_points <instance type mount points> ${
+          onPremProvider.details.enableNodeAgent
+            ? '--install_node_agent --api_token <API token> --yba_url <YBA URL> --node_name <name for the node> --instance_type <instance type name> --zone_name <name for the zone>'
+            : ''
+        }`;
+
         provisionMessage = (
           <Alert bsStyle="warning" className="pre-provision-message">
-            You need to pre-provision your nodes, If the Provider SSH User has sudo privileges
-            you can execute the following script on the {YUGABYTE_TITLE} <b> yugaware </b>
-            container -or- the  YugabyteDB Anywhere host machine depending on your deployment
-            type once for each instance that you add here.
+            <p>
+              This provider is configured for manual provisioning. Before you can add instances, you
+              must provision the nodes.
+            </p>
+            <p>
+              If the SSH user has sudo access, run the provisioning script on each node using the
+              following command:
+            </p>
             <YBCodeBlock>
-              {onPremKey.keyInfo.provisionInstanceScript + ' --ip '}
-              <b>{'<IP Address> '}</b>
-              {'--mount_points '}
-              <b>{'<instance type mount points>'}</b>
+              {provisionInstanceScript}
+              <YBCopyButton text={provisionInstanceScript} />
             </YBCodeBlock>
-            See the On-premises Provider <a href={onPremSetupReference}> documentation </a> for 
-            more details if the <b> Provider SSH User</b>  does not have <b>sudo</b> privileges.
+            {!!onPremProvider.details.enableNodeAgent && (
+              <p>
+                For YBA URL, provide the URL of your YBA machine (e.g.,
+                http://ybahost.company.com:9000). The node must be able to reach YugabyteDB Anywhere
+                at this address.
+              </p>
+            )}
+            <p>
+              If the SSH user does not have sudo access, you must set up each node manually. For
+              information on the script options or setting up nodes manually, see the{' '}
+              <a href={onPremSetupReference}>provider documentation.</a>
+            </p>
           </Alert>
         );
       }
     }
 
-    const currentCloudRegions = supportedRegionList.data.filter(
-      (region) => region.provider.uuid === this.props.selectedProviderUUID
-    );
+    const currentCloudRegions = this.props.currentProvider
+      ? this.props.currentProvider.regions
+      : supportedRegionList.data.filter(
+          (region) => region.provider.uuid === this.props.selectedProviderUUID
+        );
     const regionFormTemplate = isNonEmptyArray(currentCloudRegions)
       ? currentCloudRegions
-        .filter((regionItem) => regionItem.active)
-        .map(function (regionItem, idx) {
-          const zoneOptions = regionItem.zones
-            .filter((zoneItem) => zoneItem.active)
-            .map(function (zoneItem, zoneIdx) {
+          .filter((regionItem) => regionItem.active)
+          .map(function (regionItem, idx) {
+            const zoneOptions = regionItem.zones
+              .filter((zoneItem) => zoneItem.active)
+              .map(function (zoneItem, zoneIdx) {
+                return (
+                  <option key={zoneItem + zoneIdx} value={zoneItem.code}>
+                    {zoneItem.code}
+                  </option>
+                );
+              });
+            const machineTypeOptions = instanceTypes.data.map(function (machineTypeItem, mcIdx) {
               return (
-                <option key={zoneItem + zoneIdx} value={zoneItem.code}>
-                  {zoneItem.code}
+                <option key={machineTypeItem + mcIdx} value={machineTypeItem.instanceTypeCode}>
+                  {machineTypeItem.instanceTypeCode}
                 </option>
               );
             });
-          const machineTypeOptions = instanceTypes.data.map(function (machineTypeItem, mcIdx) {
-            return (
-              <option key={machineTypeItem + mcIdx} value={machineTypeItem.instanceTypeCode}>
-                {machineTypeItem.instanceTypeCode}
+            zoneOptions.unshift(
+              <option key={-1} value={''}>
+                Select
               </option>
             );
-          });
-          zoneOptions.unshift(
-            <option key={-1} value={''}>
+            machineTypeOptions.unshift(
+              <option key={-1} value={''}>
                 Select
-            </option>
-          );
-          machineTypeOptions.unshift(
-            <option key={-1} value={''}>
-                Select
-            </option>
-          );
-          return (
-            <div key={`instance${idx}`}>
-              <div className="instance-region-type">{regionItem.code}</div>
-              <div className="form-field-grid">
-                <FieldArray
-                  name={`instances.${regionItem.code}`}
-                  component={InstanceTypeForRegion}
-                  zoneOptions={zoneOptions}
-                  machineTypeOptions={machineTypeOptions}
-                  formType={'modal'}
-                />
+              </option>
+            );
+            return (
+              <div key={`instance${idx}`}>
+                <div className="instance-region-type">{regionItem.code}</div>
+                <div className="form-field-grid">
+                  <FieldArray
+                    name={`instances.${regionItem.code}`}
+                    component={InstanceTypeForRegion}
+                    zoneOptions={zoneOptions}
+                    machineTypeOptions={machineTypeOptions}
+                    formType={'modal'}
+                  />
+                </div>
               </div>
-            </div>
-          );
-        })
+            );
+          })
       : null;
     const deleteConfirmationText = `Are you sure you want to delete node${
       isNonEmptyObject(this.state.nodeToBeDeleted) && this.state.nodeToBeDeleted.nodeName
@@ -440,16 +490,20 @@ class OnPremNodesList extends Component {
       isNonEmptyObject(this.state.nodeToBePrechecked) ? ' ' + this.state.nodeToBePrechecked.ip : ''
     }?`;
     const modalAddressSpecificText = 'IP addresses/hostnames';
+
     return (
       <div className="onprem-node-instances">
-        <span className="buttons pull-right">
-          <YBButton btnText="Add Instances" btnIcon="fa fa-plus" onClick={this.addNodeToList} />
-        </span>
-
-        <YBBreadcrumb to="/config/cloud/onprem" onClick={showProviderView}>
-          On-Premises Datacenter Config
-        </YBBreadcrumb>
-        <h3 className="onprem-node-instances__title">Instances</h3>
+        {!this.props.isRedesignedView && (
+          <>
+            <span className="buttons pull-right">
+              <YBButton btnText="Add Instances" btnIcon="fa fa-plus" onClick={this.addNodeToList} />
+            </span>
+            <YBBreadcrumb to="/config/cloud/onprem" onClick={showProviderView}>
+              On-Premises Datacenter Config
+            </YBBreadcrumb>
+            <h3 className="onprem-node-instances__title">Instances</h3>
+          </>
+        )}
 
         {provisionMessage}
 
@@ -466,7 +520,7 @@ class OnPremNodesList extends Component {
             >
               <TableHeaderColumn dataField="nodeId" isKey={true} hidden={true} dataSort />
               <TableHeaderColumn dataField="instanceName" dataSort>
-                Identifier
+                Node Name
               </TableHeaderColumn>
               <TableHeaderColumn dataField="ip" dataSort>
                 Address
@@ -486,6 +540,11 @@ class OnPremNodesList extends Component {
               <TableHeaderColumn dataField="instanceType" dataSort>
                 Instance Type
               </TableHeaderColumn>
+              {this.props.isNodeAgentHealthDown && (
+                <TableHeaderColumn dataField="" dataFormat={nodeAgentStatus} dataSort>
+                  Agent
+                </TableHeaderColumn>
+              )}
               <TableHeaderColumn
                 dataField=""
                 dataFormat={actionsList}

@@ -29,7 +29,7 @@ public class CreateTableSpacesInUniverse extends UniverseTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     if (!primaryCluster.userIntent.enableYSQL) {
       throw new PlatformServiceException(
@@ -62,7 +62,7 @@ public class CreateTableSpacesInUniverse extends UniverseTaskBase {
   }
 
   private SubTaskGroup createTableSpacesTask() {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("CreateTablespaces", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CreateTablespaces");
     CreateTableSpaces task = createTask(CreateTableSpaces.class);
     CreateTableSpaces.Params params = taskParams();
     task.initialize(params);

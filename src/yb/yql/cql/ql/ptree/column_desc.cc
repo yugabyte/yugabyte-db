@@ -13,7 +13,7 @@
 
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 
-#include "yb/common/ql_name.h"
+#include "yb/qlexpr/ql_name.h"
 
 namespace yb {
 namespace ql {
@@ -21,7 +21,7 @@ namespace ql {
 std::string ColumnDesc::name() const {
   // Demangle "name_" if it was previous mangled (IndexTable has mangled column names).
   if (has_mangled_name_) {
-    return YcqlName::DemangleName(name_);
+    return qlexpr::YcqlName::DemangleName(name_);
   }
   return name_;
 }
@@ -32,7 +32,7 @@ std::string ColumnDesc::MangledName() const {
   if (has_mangled_name_) {
     return name_;
   }
-  return YcqlName::MangleColumnName(name_);
+  return qlexpr::YcqlName::MangleColumnName(name_);
 }
 
 }  // namespace ql

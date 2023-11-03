@@ -139,6 +139,7 @@ alter table atacc1 drop constraint checkb2;
 insert into atacc1 values (5, 5, 5);
 alter table atacc1 drop constraint checkb;
 alter table atacc1 drop constraint if exists checkb2;
+alter table atacc1 drop constraint checkb2;
 alter table atacc1 drop constraint if exists checkb3;
 delete from atacc1 where b = 5;
 
@@ -405,35 +406,36 @@ select * from test_alter_column_type;
 
 alter table test_alter_column_type alter column a type varchar(1);
 alter table test_alter_column_type alter column a type varchar(5);
-alter table test_alter_column_type alter column a type varchar(1); --fails
-alter table test_alter_column_type alter column a type char(10); --fails
+alter table test_alter_column_type alter column a type varchar(1);
+alter table test_alter_column_type alter column a type char(10);
 
 alter table test_alter_column_type alter column b type name;
-alter table test_alter_column_type alter column b type varchar(100); --fails
+alter table test_alter_column_type alter column b type varchar(100);
 
 alter table test_alter_column_type alter column c type text;
-alter table test_alter_column_type alter column c type varchar(100); --fails
+alter table test_alter_column_type alter column c type varchar(100);
 
 alter table test_alter_column_type alter column d type char(1);
-alter table test_alter_column_type alter column d type varchar(100); --fails
-alter table test_alter_column_type alter column d type char(100); --fails
+alter table test_alter_column_type alter column d type varchar(100);
+alter table test_alter_column_type alter column d type char(100);
 
 alter table test_alter_column_type alter column e type varbit(1);
 alter table test_alter_column_type alter column e type varbit(5);
-alter table test_alter_column_type alter column e type varbit(1); --fails
+alter table test_alter_column_type alter column e type varbit(1);
 
-alter table test_alter_column_type alter column f type varchar(100); --fails
+alter table test_alter_column_type alter column f type varchar(100);
 alter table test_alter_column_type alter column f type varbit(100); --fails
-alter table test_alter_column_type alter column f type int;
+alter table test_alter_column_type alter column f type int; --fails
 
 alter table test_alter_column_type alter column g type varchar;
-alter table test_alter_column_type alter column g type varchar(5); --fails
-alter table test_alter_column_type alter column g type text; --fails
+alter table test_alter_column_type alter column g type varchar(5);
+alter table test_alter_column_type alter column g type text;
 
 alter table test_alter_column_type alter column h type varbit;
-alter table test_alter_column_type alter column h type varbit(5); --fails
+alter table test_alter_column_type alter column h type varbit(5);
 
-insert into test_alter_column_type values ('abcde', '-', '-', '-', B'10101', 0, '-', B'0');
+insert into test_alter_column_type values ('abcde', '-', '-', '-', B'10101', 0, '-', B'0'); --fails
+insert into test_alter_column_type values ('abcde', '-', '-', '-', B'1', 0, '-', B'0');
 
 select * from test_alter_column_type order by a;
 \d test_alter_column_type

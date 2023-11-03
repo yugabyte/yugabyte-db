@@ -25,7 +25,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_type.h"
 
 #include "yb/gutil/callback.h"
@@ -57,7 +57,7 @@ class AuditLogger;
 
 class QLMetrics;
 
-class Executor : public QLExprExecutor {
+class Executor : public qlexpr::QLExprExecutor {
  public:
   //------------------------------------------------------------------------------------------------
   // Public types.
@@ -91,17 +91,19 @@ class Executor : public QLExprExecutor {
     ResetAsyncCalls(ResetAsyncCalls&& rhs);
     void operator=(ResetAsyncCalls&& rhs);
 
-    bool empty() const {
-      return num_async_calls_ == nullptr;
-    }
-
     void Cancel();
     void Perform();
 
     ~ResetAsyncCalls();
 
    private:
-    std::atomic<int64_t>* num_async_calls_;
+    void PerformUnlocked() REQUIRES(num_async_calls_mutex_);
+
+    // Move the pointer out of this object and return it, and make this object empty.
+    std::atomic<int64_t>* Move() EXCLUDES(num_async_calls_mutex_);
+
+    std::atomic<int64_t>* num_async_calls_ GUARDED_BY(num_async_calls_mutex_);
+    std::mutex num_async_calls_mutex_;
   };
 
   ResetAsyncCalls PrepareExecuteAsync();
@@ -255,25 +257,25 @@ class Executor : public QLExprExecutor {
   // Fetch rows for a select statement using primary keys selected from an uncovered index.
   Result<bool> FetchRowsByKeys(const PTSelectStmt* tnode,
                                const client::YBqlReadOpPtr& select_op,
-                               const QLRowBlock& keys,
+                               const qlexpr::QLRowBlock& keys,
                                TnodeContext* tnode_context);
 
   // Aggregate all result sets from all tablet servers to form the requested resultset.
   Status AggregateResultSets(const PTSelectStmt* pt_select, TnodeContext* tnode_context);
-  Status EvalCount(const std::shared_ptr<QLRowBlock>& row_block,
+  Status EvalCount(const std::shared_ptr<qlexpr::QLRowBlock>& row_block,
                    int column_index,
                    QLValue *ql_value);
-  Status EvalMax(const std::shared_ptr<QLRowBlock>& row_block,
+  Status EvalMax(const std::shared_ptr<qlexpr::QLRowBlock>& row_block,
                  int column_index,
                  QLValue *ql_value);
-  Status EvalMin(const std::shared_ptr<QLRowBlock>& row_block,
+  Status EvalMin(const std::shared_ptr<qlexpr::QLRowBlock>& row_block,
                  int column_index,
                  QLValue *ql_value);
-  Status EvalSum(const std::shared_ptr<QLRowBlock>& row_block,
+  Status EvalSum(const std::shared_ptr<qlexpr::QLRowBlock>& row_block,
                  int column_index,
                  DataType data_type,
                  QLValue *ql_value);
-  Status EvalAvg(const std::shared_ptr<QLRowBlock>& row_block,
+  Status EvalAvg(const std::shared_ptr<qlexpr::QLRowBlock>& row_block,
                  int column_index,
                  DataType data_type,
                  QLValue *ql_value);
@@ -387,7 +389,7 @@ class Executor : public QLExprExecutor {
                          const MCList<SubscriptedColumnOp>& subcol_where_ops);
 
   // Set a primary key in a read request.
-  Status WhereKeyToPB(QLReadRequestPB *req, const Schema& schema, const QLRow& key);
+  Status WhereKeyToPB(QLReadRequestPB *req, const Schema& schema, const qlexpr::QLRow& key);
 
   // Convert an expression op in where clause to protobuf.
   Status WhereColumnOpToPB(QLConditionPB *condition, const ColumnOp &col_op);

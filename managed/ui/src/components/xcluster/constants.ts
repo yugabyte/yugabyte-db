@@ -2,7 +2,6 @@ import { Metrics } from './XClusterTypes';
 
 //------------------------------------------------------------------------------------
 // XCluster Status Constants
-
 export const XClusterConfigStatus = {
   INITIALIZED: 'Initialized',
   RUNNING: 'Running',
@@ -36,7 +35,8 @@ export const XClusterTableStatus = {
   ERROR: 'Error',
   UPDATING: 'Updating',
   VALIDATED: 'Validated',
-  BOOTSTRAPPING: 'Bootstrapping'
+  BOOTSTRAPPING: 'Bootstrapping',
+  UNABLE_TO_FETCH: 'UnableToFetch'
 } as const;
 export type XClusterTableStatus = typeof XClusterTableStatus[keyof typeof XClusterTableStatus];
 //------------------------------------------------------------------------------------
@@ -51,9 +51,28 @@ export const XClusterConfigAction = {
   RESTART: 'restart',
   DELETE: 'delete',
   ADD_TABLE: 'addTable',
-  EDIT: 'edit'
+  MANAGE_TABLE: 'manageTable',
+  EDIT: 'edit',
+  DB_SYNC: 'dbSync'
 } as const;
 export type XClusterConfigAction = typeof XClusterConfigAction[keyof typeof XClusterConfigAction];
+
+export const XClusterConfigType = {
+  BASIC: 'Basic',
+  TXN: 'Txn'
+} as const;
+export type XClusterConfigType = typeof XClusterConfigType[keyof typeof XClusterConfigType];
+
+export const XClusterConfigTypeLabel = {
+  [XClusterConfigType.BASIC]: 'Basic',
+  [XClusterConfigType.TXN]: 'Transactional'
+} as const;
+
+export const UniverseXClusterRole = {
+  SOURCE: 'source',
+  TARGET: 'target'
+} as const;
+export type UniverseXClusterRole = typeof UniverseXClusterRole[keyof typeof UniverseXClusterRole];
 
 //------------------------------------------------------------------------------------
 // Table Selection Constants
@@ -65,7 +84,7 @@ export const XClusterTableEligibility = {
   // Ineligible statuses:
   // Ineligible - The table in use in another xCluster config
   INELIGIBLE_IN_USE: 'ineligibleInUse',
-  // Inenligible - No table with a matching indentifier (keyspace, table and schema name)
+  // Inenligible - No table with a matching identifier (keyspace, table and schema name)
   //               exists in the target universe
   INELIGIBLE_NO_MATCH: 'ineligibleNoMatch',
 
@@ -172,18 +191,16 @@ export const MetricTraceName = {
 
 export const REPLICATION_LAG_ALERT_NAME = 'Replication Lag';
 
-export const XCLUSTER_METRIC_REFETCH_INTERVAL_MS = 10_000;
-export const XCLUSTER_CONFIG_REFETCH_INTERVAL_MS = 30_000;
-
-/**
- * Values are mapped to the sort order strings from
- * react-boostrap-table ('asc', 'desc').
- */
-export const SortOrder = {
-  ASCENDING: 'asc',
-  DESCENDING: 'desc'
+export const PollingIntervalMs = {
+  DR_CONFIG: 30_000,
+  DR_CONFIG_STATE_TRANSITIONS: 10_000,
+  XCLUSTER_CONFIG: 30_000,
+  XCLUSTER_CONFIG_STATE_TRANSITIONS: 10_000,
+  XCLUSTER_METRICS: 10_000
 } as const;
-export type SortOrder = typeof SortOrder[keyof typeof SortOrder];
+
+export const XCLUSTER_METRIC_REFETCH_INTERVAL_MS = PollingIntervalMs.XCLUSTER_METRICS;
+export const XCLUSTER_CONFIG_REFETCH_INTERVAL_MS = PollingIntervalMs.XCLUSTER_CONFIG;
 
 export const XClusterModalName = {
   EDIT_CONFIG: 'editXClusterConfigModal',
@@ -191,10 +208,19 @@ export const XClusterModalName = {
   RESTART_CONFIG: 'restartXClusterConfigModal',
   ADD_TABLE_TO_CONFIG: 'addTablesToXClusterConfigModal',
   REMOVE_TABLE_FROM_CONFIG: 'removeTableFromXClusterConfigModal',
-  TABLE_REPLICATION_LAG_GRAPH: 'tableReplicationLagGraphModal'
+  TABLE_REPLICATION_LAG_GRAPH: 'tableReplicationLagGraphModal',
+  SYNC_XCLUSTER_CONFIG_WITH_DB: 'syncXClusterConfigWithDB'
 } as const;
 
 /**
  * The name of the replication configuration cannot contain any characters in [SPACE '_' '*' '<' '>' '?' '|' '"' NULL])
  */
 export const XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN = /[\s_*<>?|"\0]/;
+
+/**
+ * A YB software version must exceed the threshold to be considered a supported version.
+ */
+export const TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD = '2.17.3.0-b1';
+
+export const XCLUSTER_REPLICATION_DOCUMENTATION_URL =
+  'https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/async-replication-platform/';

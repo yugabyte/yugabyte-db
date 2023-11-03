@@ -10,34 +10,58 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.RetryTaskUntilCondition;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse;
+import com.yugabyte.yw.forms.NodeActionFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.util.TabletServerInfo;
+import play.libs.Json;
 
 // Allows the removal of a node from a universe. Ensures the task waits for the right set of
 // server data move primitives. And stops using the underlying instance, though YW still owns it.
+
 @Slf4j
 @Retryable
-public class RemoveNodeFromUniverse extends UniverseTaskBase {
+public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
+
+  private final ApiHelper apiHelper;
+
+  public static final String DUMP_ENTITIES_URL_SUFFIX = "/dump-entities";
 
   @Inject
-  protected RemoveNodeFromUniverse(BaseTaskDependencies baseTaskDependencies) {
+  protected RemoveNodeFromUniverse(
+      BaseTaskDependencies baseTaskDependencies, NodeUIApiHelper apiHelper) {
     super(baseTaskDependencies);
+    this.apiHelper = apiHelper;
   }
 
   @Override
@@ -45,147 +69,128 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
     return (NodeTaskParams) taskParams;
   }
 
+  protected NodeDetails findNewMasterIfApplicable(Universe universe, NodeDetails currentNode) {
+    boolean startMasterOnRemoveNode =
+        confGetter.getGlobalConf(GlobalConfKeys.startMasterOnRemoveNode);
+    if (startMasterOnRemoveNode && NodeActionFormData.startMasterOnRemoveNode) {
+      return super.findReplacementMaster(universe, currentNode);
+    }
+    return null;
+  }
+
   @Override
   public void run() {
-    log.info(
-        "Started {} task for node {} in univ uuid={}",
-        getName(),
-        taskParams().nodeName,
-        taskParams().universeUUID);
-    NodeDetails currentNode = null;
-    boolean hitException = false;
     try {
       checkUniverseVersion();
+      boolean alwaysWaitForDataMove =
+          confGetter.getConfForScope(getUniverse(), UniverseConfKeys.alwaysWaitForDataMove);
 
-      // Set the 'updateInProgress' flag to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      lockUniverseForFreezeAndUpdate(taskParams().expectedUniverseVersion);
 
-      currentNode = universe.getNode(taskParams().nodeName);
+      if (alwaysWaitForDataMove) {
+        performPrecheck();
+      }
+
+      Consumer<Universe> universeFreezeConsumer =
+          u -> {
+            if (isFirstTry()) {
+              NodeDetails node = u.getNode(taskParams().nodeName);
+              if (node == null) {
+                String msg =
+                    "No node " + taskParams().nodeName + " found in universe " + u.getName();
+                log.error(msg);
+                throw new RuntimeException(msg);
+              }
+              if (node.isMaster) {
+                NodeDetails newMasterNode = findNewMasterIfApplicable(u, node);
+                if (newMasterNode != null && newMasterNode.masterState == null) {
+                  newMasterNode.masterState = MasterState.ToStart;
+                }
+                node.masterState = MasterState.ToStop;
+              }
+            }
+          };
+
+      Universe universe = freezeUniverse(universeFreezeConsumer);
+
+      log.info(
+          "Started {} task for node {} in univ uuid={}",
+          getName(),
+          taskParams().nodeName,
+          taskParams().getUniverseUUID());
+      NodeDetails currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
-        String msg = "No node " + taskParams().nodeName + " found in universe " + universe.name;
+        String msg =
+            "No node " + taskParams().nodeName + " found in universe " + universe.getName();
         log.error(msg);
         throw new RuntimeException(msg);
       }
 
-      currentNode.validateActionOnState(NodeActionType.REMOVE);
+      if (isFirstTry()) {
+        currentNode.validateActionOnState(NodeActionType.REMOVE);
+      }
 
       preTaskActions();
 
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
 
-      String masterAddrs = universe.getMasterAddresses();
-
       Cluster currCluster =
           universe.getUniverseDetails().getClusterByUuid(taskParams().placementUuid);
       UserIntent userIntent = currCluster.userIntent;
       PlacementInfo pi = currCluster.placementInfo;
 
+      boolean masterReachable = false;
       // Update Node State to being removed.
       createSetNodeStateTask(currentNode, NodeState.Removing)
           .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
 
-      boolean instanceAlive = instanceExists(taskParams());
-
-      if (instanceAlive) {
-        // Remove the master on this node from master quorum and update its state from YW DB,
-        // only if it reachable.
-        boolean masterReachable = isMasterAliveOnNode(currentNode, masterAddrs);
-        log.info("Master {}, reachable = {}.", currentNode.cloudInfo.private_ip, masterReachable);
-        if (currentNode.isMaster) {
-          // Wait for Master Leader before doing any MasterChangeConfig operations.
-          createWaitForMasterLeaderTask()
-              .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-          if (masterReachable) {
-            createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration);
-            createStopMasterTasks(new HashSet<>(Arrays.asList(currentNode)))
-                .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-            createWaitForMasterLeaderTask()
-                .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-          } else {
-            createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration, true);
-          }
-        }
-
-      } else {
-        if (currentNode.isMaster) {
-          createWaitForMasterLeaderTask()
-              .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-          createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration, true);
-        }
-      }
-
       // Mark the tserver as blacklisted on the master leader.
-      createPlacementInfoTask(new HashSet<>(Arrays.asList(currentNode)))
+      createPlacementInfoTask(
+              Collections.singleton(currentNode), universe.getUniverseDetails().clusters)
           .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
-      // Wait for tablet quorums to remove the blacklisted tserver. Do not perform load balance
-      // if node is not reachable so as to avoid cases like 1 node in an 3 node cluster is being
-      // removed and we know LoadBalancer will not be able to handle that.
-      if (instanceAlive) {
-        Collection<NodeDetails> nodesExcludingCurrentNode = new HashSet<>(universe.getNodes());
-        nodesExcludingCurrentNode.remove(currentNode);
-        int rfInZone =
-            PlacementInfoUtil.getZoneRF(
-                pi,
-                currentNode.cloudInfo.cloud,
-                currentNode.cloudInfo.region,
-                currentNode.cloudInfo.az);
-        long nodesActiveInAZExcludingCurrentNode =
-            PlacementInfoUtil.getNumActiveTserversInZone(
-                nodesExcludingCurrentNode,
-                currentNode.cloudInfo.cloud,
-                currentNode.cloudInfo.region,
-                currentNode.cloudInfo.az);
-
-        if (rfInZone == -1) {
-          log.error(
-              "Unexpected placement info in univ {} {} {}",
-              universe.name,
-              rfInZone,
-              nodesActiveInAZExcludingCurrentNode);
-          throw new RuntimeException(
-              "Error getting placement info for cluster with node: " + currentNode.nodeName);
-        }
-
-        // Since numNodes can never be less, that will mean there is a potential node to move
-        // data to.
-        if (userIntent.numNodes > userIntent.replicationFactor) {
-          // We only want to move data if the number of nodes in the zone are more than or equal
-          //  the RF of the zone.
-          // We would like to remove currentNode whether it is in live/stopped state
-          if (nodesActiveInAZExcludingCurrentNode >= rfInZone) {
-            createWaitForDataMoveTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-          }
-        }
-        createTServerTaskForNode(currentNode, "stop")
-            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-
-        if (universe.isYbcEnabled()) {
-          createStopYbControllerTasks(new HashSet<>(Arrays.asList(currentNode)))
-              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-        }
+      if (alwaysWaitForDataMove || isTabletMovementAvailable()) {
+        createWaitForDataMoveTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
       }
 
-      // Remove master status (even when it does not exists or is not reachable).
-      createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, false)
+      // Remove node from load balancer.
+      createManageLoadBalancerTasks(
+          createLoadBalancerMap(
+              universe.getUniverseDetails(),
+              Arrays.asList(currCluster),
+              Collections.singleton(currentNode),
+              null));
+      createTServerTaskForNode(currentNode, "stop", true /*isIgnoreErrors*/)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
-      // Update the master addresses on the target universes whose source universe belongs to
-      // this task.
-      createXClusterConfigUpdateMasterAddressesTask();
+      if (universe.isYbcEnabled()) {
+        createStopYbControllerTasks(Collections.singleton(currentNode), true /*isIgnoreErrors*/)
+            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+      }
+      masterReachable = isMasterAliveOnNode(currentNode, universe.getMasterAddresses());
 
-      // Remove its tserver status in DB.
+      // Remove its tserver status in YBA DB.
       createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, false)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
+      // Create the master replacement tasks.
+      createMasterReplacementTasks(
+          universe,
+          currentNode,
+          () -> findNewMasterIfApplicable(universe, currentNode),
+          masterReachable);
+
       // Update the DNS entry for this universe.
-      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
           .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
 
       // Update Node State to Removed
       createSetNodeStateTask(currentNode, NodeState.Removed)
           .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
+
+      // Update the swamper target file.
+      createSwamperTargetUpdateTask(false /* removeFile */);
 
       // Mark universe task state to success
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.RemovingNode);
@@ -201,5 +206,131 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());
+  }
+
+  private boolean isTabletMovementAvailable() {
+    Universe universe = getUniverse();
+    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+
+    // taskParams().placementUuid is not used because it will be null for RR.
+    Cluster currCluster = universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid);
+    UserIntent userIntent = currCluster.userIntent;
+    PlacementInfo pi = currCluster.placementInfo;
+
+    Collection<NodeDetails> nodesExcludingCurrentNode =
+        new HashSet<>(universe.getNodesByCluster(currCluster.uuid));
+    nodesExcludingCurrentNode.remove(currentNode);
+    int rfInZone =
+        PlacementInfoUtil.getZoneRF(
+            pi,
+            currentNode.cloudInfo.cloud,
+            currentNode.cloudInfo.region,
+            currentNode.cloudInfo.az);
+
+    if (rfInZone == -1) {
+      log.error(
+          "Unexpected placement info in universe: {} rfInZone: {}", universe.getName(), rfInZone);
+      throw new RuntimeException(
+          "Error getting placement info for cluster with node: " + currentNode.nodeName);
+    }
+
+    // We do not get isActive() tservers due to new masters starting up changing
+    //   nodeStates to not-active node states which will cause retry to fail.
+    // Note: On master leader failover, if a tserver was already down, it will not be reported as a
+    //    "live" tserver even though it has been less than
+    //    "follower_unavailable_considered_failed_sec" secs since the tserver was down. This is
+    //    fine because we do not take into account the current node and if it is not the current
+    //    node that is down we may prematurely fail, which is expected.
+    List<TabletServerInfo> liveTabletServers = getLiveTabletServers(universe);
+
+    List<TabletServerInfo> tserversActiveInAZExcludingCurrentNode =
+        liveTabletServers.stream()
+            .filter(
+                tserverInfo ->
+                    currentNode.cloudInfo.cloud.equals(tserverInfo.getCloudInfo().getCloud())
+                        && currentNode.cloudInfo.region.equals(
+                            tserverInfo.getCloudInfo().getRegion())
+                        && currentNode.cloudInfo.az.equals(tserverInfo.getCloudInfo().getZone())
+                        && currCluster.uuid.equals(tserverInfo.getPlacementUuid())
+                        && !currentNode.cloudInfo.private_ip.equals(
+                            tserverInfo.getPrivateAddress().getHost()))
+            .collect(Collectors.toList());
+
+    long numActiveTservers = tserversActiveInAZExcludingCurrentNode.size();
+
+    // We have replication number of copies a tablet so we need more than the replication
+    //   factor number of nodes for tablets to move off.
+    // We only want to move data if the number of nodes in the zone are more than or equal
+    //   the RF of the zone.
+    log.debug(
+        "Cluster: {}, numNodes in cluster: {}, number of active tservers excluding current node"
+            + " removing: {}, RF in az: {}",
+        currCluster.uuid,
+        userIntent.numNodes,
+        numActiveTservers,
+        rfInZone);
+    return userIntent.numNodes > userIntent.replicationFactor && numActiveTservers >= rfInZone;
+  }
+
+  // Check that there is a place to move the tablets and if not, make sure there are no tablets
+  // assigned to this tserver. Otherwise, do not allow the remove node task to succeed.
+  public void performPrecheck() {
+    Universe universe = getUniverse();
+    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+
+    if (!isTabletMovementAvailable()) {
+      log.debug(
+          "Tablets have nowhere to move off of tserver on node: {}", currentNode.getNodeName());
+      Set<String> tabletsOnTserver = getTserverTablets(universe, currentNode);
+      log.debug(
+          "There are currently {} tablets assigned to tserver {}",
+          tabletsOnTserver.size(),
+          taskParams().nodeName);
+      if (tabletsOnTserver.size() != 0) {
+        throw new RuntimeException(
+            String.format(
+                "There is no place to move the tablets from this"
+                    + " tserver and there are still %d tablets assigned to it on node %s. "
+                    + "A healthy tserver should not be removed. Example tablet ids assigned: %s",
+                tabletsOnTserver.size(),
+                currentNode.getNodeName(),
+                tabletsOnTserver.stream().limit(10).collect(Collectors.toList()).toString()));
+      }
+    }
+    log.debug("Pre-check succeeded");
+  }
+
+  private Set<String> getTserverTablets(Universe universe, NodeDetails currentNode) {
+    // Wait for a maximum of 10 seconds for url to succeed.
+    NodeDetails masterLeaderNode = universe.getMasterLeaderNode();
+    HostAndPort masterLeaderHostPort =
+        HostAndPort.fromParts(
+            masterLeaderNode.cloudInfo.private_ip, masterLeaderNode.masterHttpPort);
+    String masterLeaderUrl =
+        String.format("http://%s%s", masterLeaderHostPort.toString(), DUMP_ENTITIES_URL_SUFFIX);
+
+    RetryTaskUntilCondition<DumpEntitiesResponse> waitForCheck =
+        new RetryTaskUntilCondition<>(
+            () -> {
+              log.debug("Making url request to endpoint: {}", masterLeaderUrl);
+              JsonNode masterLeaderDumpJson = apiHelper.getRequest(masterLeaderUrl);
+              DumpEntitiesResponse dumpEntities =
+                  Json.fromJson(masterLeaderDumpJson, DumpEntitiesResponse.class);
+              return dumpEntities;
+            },
+            (d) -> {
+              if (d.getError() != null) {
+                log.warn("Url request to {} failed with error {}", masterLeaderUrl, d.getError());
+                return false;
+              }
+              return true;
+            });
+
+    DumpEntitiesResponse dumpEntitiesResponse = waitForCheck.retryWithBackoff(1, 2, 10);
+
+    HostAndPort currentNodeHP =
+        HostAndPort.fromParts(currentNode.cloudInfo.private_ip, currentNode.tserverRpcPort);
+
+    return dumpEntitiesResponse.getTabletsByTserverAddress(currentNodeHP);
   }
 }

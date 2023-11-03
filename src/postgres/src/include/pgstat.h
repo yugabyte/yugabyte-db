@@ -903,7 +903,8 @@ typedef enum
 {
 	WAIT_EVENT_BASE_BACKUP_THROTTLE = PG_WAIT_TIMEOUT,
 	WAIT_EVENT_PG_SLEEP,
-	WAIT_EVENT_RECOVERY_APPLY_DELAY
+	WAIT_EVENT_RECOVERY_APPLY_DELAY,
+	WAIT_EVENT_YB_TXN_CONFLICT_BACKOFF
 } WaitEventTimeout;
 
 /* ----------
@@ -991,10 +992,11 @@ typedef enum ProgressCommandType
 {
 	PROGRESS_COMMAND_INVALID,
 	PROGRESS_COMMAND_VACUUM,
-	PROGRESS_COMMAND_COPY
+	PROGRESS_COMMAND_COPY,
+	PROGRESS_COMMAND_CREATE_INDEX
 } ProgressCommandType;
 
-#define PGSTAT_NUM_PROGRESS_PARAM	10
+#define PGSTAT_NUM_PROGRESS_PARAM	17
 
 /* ----------
  * Shared-memory data structures
@@ -1017,6 +1019,24 @@ typedef struct PgBackendSSLStatus
 	char		ssl_cipher[NAMEDATALEN];	/* MUST be null-terminated */
 	char		ssl_clientdn[NAMEDATALEN];	/* MUST be null-terminated */
 } PgBackendSSLStatus;
+
+/*
+ * YbPgBackendCatalogVersionStatus
+ *
+ * Each live backend maintains a YbPgBackendCatalogVersionStatus struct in
+ * shared memory indicating what catalog version it is at.  A backend in the
+ * middle of a query or transaction uses a consistent snapshot of the system
+ * catalog (technically, only the cache does, not direct reads/writes to/from
+ * system catalog).  The catalog version indicates that snapshot.  has_version
+ * is false for backends that are idle (and not in txn) or non-client backends.
+ */
+typedef struct YbPgBackendCatalogVersionStatus
+{
+	bool		has_version;	/* whether the backend is using the following
+								   version */
+	uint64_t	version;		/* if has_version, catalog version that the
+								   backend is on */
+} YbPgBackendCatalogVersionStatus;
 
 
 /* ----------
@@ -1076,8 +1096,6 @@ typedef struct PgBackendStatus
 
 	/* current state */
 	BackendState st_state;
-	/* new connection count */
-	int yb_new_conn;
 
 	/* application name; MUST be null-terminated */
 	char	   *st_appname;
@@ -1109,6 +1127,13 @@ typedef struct PgBackendStatus
 	 * + pggate memory usage + cached memory - memory that was freed but not recycled
 	 */
 	int64_t yb_st_allocated_mem_bytes;
+
+	/* YB catalog version */
+	YbPgBackendCatalogVersionStatus yb_st_catalog_version;
+
+	/* YB (pg_client <--> tserver) Session ID */
+	uint64_t yb_session_id;
+
 } PgBackendStatus;
 
 /*
@@ -1359,6 +1384,29 @@ pgstat_report_wait_start(uint32 wait_event_info)
 }
 
 /* ----------
+ * pgstat_report_wait_end_for_proc(PGPROC *proc) -
+ *
+ *	Called to report end of a wait for a specific process.
+ *
+ * NB: this *must* be able to survive being called before MyProc has been
+ * initialized.
+ * ----------
+ */
+static inline void
+pgstat_report_wait_end_for_proc(volatile PGPROC *proc)
+{
+	if (!pgstat_track_activities || !proc)
+		return;
+
+	/*
+	 * Since this is a four-byte field which is always read and written as
+	 * four-bytes, updates are atomic.
+	 */
+	proc->wait_event_info = 0;
+}
+
+
+/* ----------
  * pgstat_report_wait_end() -
  *
  *	Called to report end of a wait.
@@ -1370,16 +1418,7 @@ pgstat_report_wait_start(uint32 wait_event_info)
 static inline void
 pgstat_report_wait_end(void)
 {
-	volatile PGPROC *proc = MyProc;
-
-	if (!pgstat_track_activities || !proc)
-		return;
-
-	/*
-	 * Since this is a four-byte field which is always read and written as
-	 * four-bytes, updates are atomic.
-	 */
-	proc->wait_event_info = 0;
+	return pgstat_report_wait_end_for_proc(MyProc);
 }
 
 /* nontransactional event counts are simple enough to inline */
@@ -1463,11 +1502,21 @@ extern PgStat_StatFuncEntry *pgstat_fetch_stat_funcentry(Oid funcid);
 extern int	pgstat_fetch_stat_numbackends(void);
 extern PgStat_ArchiverStats *pgstat_fetch_stat_archiver(void);
 extern PgStat_GlobalStats *pgstat_fetch_global(void);
-extern PgBackendStatus **getBackendStatusArrayPointer(void);
+extern PgBackendStatus		*getBackendStatusArray(void);
+
+/*
+ * Metric to track number of sql connections established since
+ * postmaster started.
+ */
+extern uint64_t *yb_new_conn;
 
 /* ----------
  * YB functions called from backends
  * ----------
  */
 extern void yb_pgstat_report_allocated_mem_bytes(void);
+extern void yb_pgstat_set_catalog_version(uint64_t catalog_version);
+extern void yb_pgstat_set_has_catalog_version(bool has_catalog_version);
+extern void yb_pgstat_add_session_info(uint64_t session_id);
+
 #endif							/* PGSTAT_H */

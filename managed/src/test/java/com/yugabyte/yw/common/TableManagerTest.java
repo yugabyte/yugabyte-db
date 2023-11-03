@@ -2,21 +2,25 @@
 
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.common.BackupUtil.K8S_CERT_PATH;
-import static com.yugabyte.yw.common.BackupUtil.VM_CERT_DIR;
 import static com.yugabyte.yw.common.DevopsBase.PY_WRAPPER;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.K8S_CERT_PATH;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.VM_CERT_DIR;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -30,6 +34,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -51,18 +56,17 @@ import play.libs.Json;
 @RunWith(MockitoJUnitRunner.class)
 public class TableManagerTest extends FakeDBApplication {
 
-  @Mock play.Configuration mockAppConfig;
+  @Mock Config mockAppConfig;
 
   @Mock ShellProcessHandler shellProcessHandler;
 
   @Mock ReleaseManager releaseManager;
 
-  // @Mock BackupUtil backupUtil;
-
   @InjectMocks TableManager tableManager;
 
   @Mock RuntimeConfigFactory mockruntimeConfigFactory;
   @Mock Config mockConfigUniverseScope;
+  @Mock RuntimeConfGetter mockConfGetter;
 
   private Provider testProvider;
   private Customer testCustomer;
@@ -80,7 +84,7 @@ public class TableManagerTest extends FakeDBApplication {
       String subnetName = "Subnet - " + Integer.toString(i);
       Region r = Region.create(testProvider, regionCode, regionName, "default-image");
       AvailabilityZone.createOrThrow(r, azCode, azName, subnetName);
-      regionUUIDs.add(r.uuid);
+      regionUUIDs.add(r.getUuid());
     }
     return regionUUIDs;
   }
@@ -98,16 +102,16 @@ public class TableManagerTest extends FakeDBApplication {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.privateKey = pkPath;
     keyInfo.sshPort = 3333;
-    if (AccessKey.get(testProvider.uuid, keyCode) == null) {
-      AccessKey.create(testProvider.uuid, keyCode, keyInfo);
+    if (AccessKey.get(testProvider.getUuid(), keyCode) == null) {
+      AccessKey.create(testProvider.getUuid(), keyCode, keyInfo);
     }
 
     UniverseDefinitionTaskParams uniParams = new UniverseDefinitionTaskParams();
-    uniParams.nodePrefix = "yb-1-" + testUniverse.name;
+    uniParams.nodePrefix = "yb-1-" + testUniverse.getName();
     UserIntent userIntent = new UniverseDefinitionTaskParams.UserIntent();
     userIntent.accessKeyCode = keyCode;
     userIntent.ybSoftwareVersion = softwareVersion;
-    userIntent.provider = testProvider.uuid.toString();
+    userIntent.provider = testProvider.getUuid().toString();
     userIntent.numNodes = 3;
     userIntent.replicationFactor = 3;
     userIntent.regionList = getMockRegionUUIDs(3);
@@ -119,7 +123,7 @@ public class TableManagerTest extends FakeDBApplication {
     testUniverse.setUniverseDetails(uniParams);
     testUniverse =
         Universe.saveDetails(
-            testUniverse.universeUUID,
+            testUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(userIntent, uniParams.nodePrefix));
   }
 
@@ -128,7 +132,7 @@ public class TableManagerTest extends FakeDBApplication {
     bulkImportParams.setTableName("mock_table");
     bulkImportParams.setKeyspace("mock_ks");
     bulkImportParams.s3Bucket = "s3://foo.bar.com/bulkload";
-    bulkImportParams.universeUUID = testUniverse.universeUUID;
+    bulkImportParams.setUniverseUUID(testUniverse.getUniverseUUID());
     return bulkImportParams;
   }
 
@@ -140,7 +144,7 @@ public class TableManagerTest extends FakeDBApplication {
     backupTableParams.setTableName("mock_table");
     backupTableParams.setKeyspace("mock_ks");
     backupTableParams.actionType = actionType;
-    backupTableParams.universeUUID = testUniverse.universeUUID;
+    backupTableParams.setUniverseUUID(testUniverse.getUniverseUUID());
     return backupTableParams;
   }
 
@@ -152,19 +156,19 @@ public class TableManagerTest extends FakeDBApplication {
     }
     backupTableParams.actionType = actionType;
     backupTableParams.storageConfigUUID = storageUUID;
-    backupTableParams.universeUUID = testUniverse.universeUUID;
+    backupTableParams.setUniverseUUID(testUniverse.getUniverseUUID());
     List<BackupTableParams> backupList = new ArrayList<>();
     BackupTableParams b1Params = new BackupTableParams();
     b1Params.setTableName("mock_table");
     b1Params.setKeyspace("mock_ks");
     b1Params.actionType = actionType;
-    b1Params.universeUUID = testUniverse.universeUUID;
+    b1Params.setUniverseUUID(testUniverse.getUniverseUUID());
     b1Params.storageConfigUUID = storageUUID;
     backupList.add(b1Params);
     BackupTableParams b2Params = new BackupTableParams();
     b2Params.setKeyspace("mock_ysql");
     b2Params.actionType = actionType;
-    b2Params.universeUUID = testUniverse.universeUUID;
+    b2Params.setUniverseUUID(testUniverse.getUniverseUUID());
     b2Params.storageConfigUUID = storageUUID;
     backupList.add(b2Params);
     backupTableParams.backupList = backupList;
@@ -196,7 +200,7 @@ public class TableManagerTest extends FakeDBApplication {
       cmd.add(Integer.toString(bulkImportParams.instanceCount));
     }
     cmd.add("--universe");
-    cmd.add("yb-1-" + testUniverse.name);
+    cmd.add("yb-1-" + testUniverse.getName());
     cmd.add("--release");
     cmd.add("/yb/release.tar.gz");
     cmd.add("--s3bucket");
@@ -211,15 +215,15 @@ public class TableManagerTest extends FakeDBApplication {
 
   private List<String> getExpectedBackupTableCommand(
       BackupTableParams backupTableParams, String storageType, boolean isDelete) {
-    AccessKey accessKey = AccessKey.get(testProvider.uuid, keyCode);
+    AccessKey accessKey = AccessKey.get(testProvider.getUuid(), keyCode);
     Map<String, Map<String, String>> podAddrToConfig = new HashMap<>();
     UserIntent userIntent = testUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
 
-    if (testProvider.code.equals("kubernetes")) {
+    if (testProvider.getCode().equals("kubernetes")) {
       PlacementInfo pi = testUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
       for (Cluster cluster : testUniverse.getUniverseDetails().clusters) {
         podAddrToConfig.putAll(
-            PlacementInfoUtil.getKubernetesConfigPerPod(
+            KubernetesUtil.getKubernetesConfigPerPod(
                 pi, testUniverse.getUniverseDetails().getNodesInCluster(cluster.uuid)));
       }
     }
@@ -261,11 +265,8 @@ public class TableManagerTest extends FakeDBApplication {
         cmd.add(backupTableParams.tableUUID.toString().replace("-", ""));
       }
       cmd.add("--no_auto_name");
-      if (backupTableParams.sse) {
-        cmd.add("--sse");
-      }
     }
-    if (testProvider.code.equals("kubernetes")) {
+    if (testProvider.getCode().equals("kubernetes")) {
       cmd.add("--k8s_config");
       cmd.add(Json.stringify(Json.toJson(podAddrToConfig)));
     } else {
@@ -277,11 +278,10 @@ public class TableManagerTest extends FakeDBApplication {
       cmd.add(
           Json.stringify(
               Json.toJson(
-                  testUniverse
-                      .getTServers()
-                      .stream()
+                  testUniverse.getTServers().stream()
                       .collect(Collectors.toMap(t -> t.cloudInfo.private_ip, t -> pkPath)))));
     }
+    cmd.add("--use_server_broadcast_address");
     cmd.add("--backup_location");
     cmd.add(backupTableParams.storageLocation);
     cmd.add("--storage_type");
@@ -293,7 +293,7 @@ public class TableManagerTest extends FakeDBApplication {
     if (userIntent.enableNodeToNodeEncrypt) {
       cmd.add("--certs_dir");
       cmd.add(
-          testProvider.code.equals("kubernetes")
+          testProvider.getCode().equals("kubernetes")
               ? K8S_CERT_PATH
               : testProvider.getYbHome() + VM_CERT_DIR);
     }
@@ -309,13 +309,22 @@ public class TableManagerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     testCustomer = ModelFactory.testCustomer();
-    testUniverse = createUniverse("Universe-1", testCustomer.getCustomerId());
+    testUniverse = createUniverse("Universe-1", testCustomer.getId());
     ReleaseManager.ReleaseMetadata metadata = new ReleaseManager.ReleaseMetadata();
     metadata.filePath = "/yb/release.tar.gz";
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(metadata);
     when(mockruntimeConfigFactory.forUniverse(any())).thenReturn(mockConfigUniverseScope);
-    when(mockConfigUniverseScope.getBoolean("yb.backup.pg_based")).thenReturn(false);
-    when(mockruntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfigUniverseScope);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.pgBasedBackup)))
+        .thenReturn(false);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.backupLogVerbose)))
+        .thenReturn(false);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.enableSSE)))
+        .thenReturn(false);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.useServerBroadcastAddressForYbBackup)))
+        .thenReturn(true);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ssh2Enabled))).thenReturn(false);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.disableXxHashChecksum))).thenReturn(false);
   }
 
   @Test
@@ -324,8 +333,8 @@ public class TableManagerTest extends FakeDBApplication {
     BulkImportParams bulkImportParams = getBulkImportParams();
     UserIntent userIntent = testUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
     List<String> expectedCommand = getExpectedBulkImportCommmand(bulkImportParams);
-    Map<String, String> expectedEnvVars = testProvider.getUnmaskedConfig();
-    expectedEnvVars.put("AWS_DEFAULT_REGION", Region.get(userIntent.regionList.get(0)).code);
+    Map<String, String> expectedEnvVars = CloudInfoInterface.fetchEnvVars(testProvider);
+    expectedEnvVars.put("AWS_DEFAULT_REGION", Region.get(userIntent.regionList.get(0)).getCode());
 
     tableManager.bulkImport(bulkImportParams);
     verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
@@ -338,8 +347,8 @@ public class TableManagerTest extends FakeDBApplication {
     bulkImportParams.instanceCount = 5;
     UserIntent userIntent = testUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
     List<String> expectedCommand = getExpectedBulkImportCommmand(bulkImportParams);
-    Map<String, String> expectedEnvVars = testProvider.getUnmaskedConfig();
-    expectedEnvVars.put("AWS_DEFAULT_REGION", Region.get(userIntent.regionList.get(0)).code);
+    Map<String, String> expectedEnvVars = CloudInfoInterface.fetchEnvVars(testProvider);
+    expectedEnvVars.put("AWS_DEFAULT_REGION", Region.get(userIntent.regionList.get(0)).getCode());
 
     tableManager.bulkImport(bulkImportParams);
     verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
@@ -349,12 +358,12 @@ public class TableManagerTest extends FakeDBApplication {
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer, "TEST101");
     ;
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
-    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    backupTableParams.storageConfigUUID = storageConfig.getConfigUUID();
     backupTableParams.sse = sse;
     if (enableVerbose) {
       backupTableParams.enableVerboseLogs = true;
     }
-    Backup.create(testCustomer.uuid, backupTableParams);
+    Backup.create(testCustomer.getUuid(), backupTableParams);
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "s3");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
@@ -365,13 +374,13 @@ public class TableManagerTest extends FakeDBApplication {
   private void testCreateBackupKubernetesHelper() {
     Map<String, String> config = new HashMap<>();
     config.put("KUBECONFIG", "foo");
-    testProvider.setConfig(config);
+    testProvider.setConfigMap(config);
     testProvider.save();
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer, "TEST102");
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
-    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    backupTableParams.storageConfigUUID = storageConfig.getConfigUUID();
 
-    Backup.create(testCustomer.uuid, backupTableParams);
+    Backup.create(testCustomer.getUuid(), backupTableParams);
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "s3");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     expectedEnvVars.put("KUBECONFIG", "foo");
@@ -404,8 +413,8 @@ public class TableManagerTest extends FakeDBApplication {
     CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer, "TEST35");
     ;
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
-    backupTableParams.storageConfigUUID = storageConfig.configUUID;
-    Backup.create(testCustomer.uuid, backupTableParams);
+    backupTableParams.storageConfigUUID = storageConfig.getConfigUUID();
+    Backup.create(testCustomer.getUuid(), backupTableParams);
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "nfs");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
@@ -419,8 +428,8 @@ public class TableManagerTest extends FakeDBApplication {
     CustomerConfig storageConfig = ModelFactory.createGcsStorageConfig(testCustomer, "TEST50");
     ;
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
-    backupTableParams.storageConfigUUID = storageConfig.configUUID;
-    Backup.create(testCustomer.uuid, backupTableParams);
+    backupTableParams.storageConfigUUID = storageConfig.getConfigUUID();
+    Backup.create(testCustomer.getUuid(), backupTableParams);
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "gcs");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
@@ -433,8 +442,8 @@ public class TableManagerTest extends FakeDBApplication {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
     CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer, "TEST36");
     BackupTableParams backupTableParams =
-        getBackupUniverseParams(BackupTableParams.ActionType.CREATE, storageConfig.configUUID);
-    Backup.create(testCustomer.uuid, backupTableParams);
+        getBackupUniverseParams(BackupTableParams.ActionType.CREATE, storageConfig.getConfigUUID());
+    Backup.create(testCustomer.getUuid(), backupTableParams);
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     for (BackupTableParams params : backupTableParams.backupList) {
       tableManager.createBackup(params);
@@ -451,8 +460,8 @@ public class TableManagerTest extends FakeDBApplication {
     ;
     BackupTableParams backupTableParams =
         getBackupTableParams(BackupTableParams.ActionType.RESTORE);
-    backupTableParams.storageConfigUUID = storageConfig.configUUID;
-    Backup.create(testCustomer.uuid, backupTableParams);
+    backupTableParams.storageConfigUUID = storageConfig.getConfigUUID();
+    Backup.create(testCustomer.getUuid(), backupTableParams);
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "s3");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
@@ -467,8 +476,8 @@ public class TableManagerTest extends FakeDBApplication {
     ;
     BackupTableParams backupTableParams =
         getBackupTableParams(BackupTableParams.ActionType.RESTORE);
-    backupTableParams.storageConfigUUID = storageConfig.configUUID;
-    Backup.create(testCustomer.uuid, backupTableParams);
+    backupTableParams.storageConfigUUID = storageConfig.getConfigUUID();
+    Backup.create(testCustomer.getUuid(), backupTableParams);
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "nfs");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
@@ -483,8 +492,8 @@ public class TableManagerTest extends FakeDBApplication {
     ;
     BackupTableParams backupTableParams =
         getBackupTableParams(BackupTableParams.ActionType.RESTORE);
-    backupTableParams.storageConfigUUID = storageConfig.configUUID;
-    Backup.create(testCustomer.uuid, backupTableParams);
+    backupTableParams.storageConfigUUID = storageConfig.getConfigUUID();
+    Backup.create(testCustomer.getUuid(), backupTableParams);
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "gcs");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     tableManager.createBackup(backupTableParams);
@@ -498,8 +507,9 @@ public class TableManagerTest extends FakeDBApplication {
     CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer, "TEST39");
     ;
     BackupTableParams backupTableParams =
-        getBackupUniverseParams(BackupTableParams.ActionType.RESTORE, storageConfig.configUUID);
-    Backup.create(testCustomer.uuid, backupTableParams);
+        getBackupUniverseParams(
+            BackupTableParams.ActionType.RESTORE, storageConfig.getConfigUUID());
+    Backup.create(testCustomer.getUuid(), backupTableParams);
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     for (BackupTableParams params : backupTableParams.backupList) {
       tableManager.createBackup(params);
@@ -515,11 +525,11 @@ public class TableManagerTest extends FakeDBApplication {
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer, "TEST41");
     BackupTableParams backupTableParams =
         getBackupTableParams(BackupTableParams.ActionType.RESTORE);
-    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    backupTableParams.storageConfigUUID = storageConfig.getConfigUUID();
     SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
     Date date = new Date();
     backupTableParams.restoreTimeStamp = formatter.format(date);
-    Backup.create(testCustomer.uuid, backupTableParams);
+    Backup.create(testCustomer.getUuid(), backupTableParams);
     try {
       tableManager.createBackup(backupTableParams);
     } catch (Exception e) {
@@ -533,11 +543,11 @@ public class TableManagerTest extends FakeDBApplication {
     CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer, "TEST42");
     BackupTableParams backupTableParams =
         getBackupTableParams(BackupTableParams.ActionType.RESTORE);
-    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    backupTableParams.storageConfigUUID = storageConfig.getConfigUUID();
     SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
     Date date = new Date();
     backupTableParams.restoreTimeStamp = formatter.format(date);
-    Backup.create(testCustomer.uuid, backupTableParams);
+    Backup.create(testCustomer.getUuid(), backupTableParams);
     try {
       tableManager.createBackup(backupTableParams);
     } catch (Exception e) {
@@ -551,11 +561,11 @@ public class TableManagerTest extends FakeDBApplication {
     CustomerConfig storageConfig = ModelFactory.createGcsStorageConfig(testCustomer, "TEST43");
     BackupTableParams backupTableParams =
         getBackupTableParams(BackupTableParams.ActionType.RESTORE);
-    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    backupTableParams.storageConfigUUID = storageConfig.getConfigUUID();
     SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
     Date date = new Date();
     backupTableParams.restoreTimeStamp = formatter.format(date);
-    Backup.create(testCustomer.uuid, backupTableParams);
+    Backup.create(testCustomer.getUuid(), backupTableParams);
     try {
       tableManager.createBackup(backupTableParams);
     } catch (Exception e) {
@@ -569,11 +579,11 @@ public class TableManagerTest extends FakeDBApplication {
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer, "TEST44");
     BackupTableParams backupTableParams =
         getBackupTableParams(BackupTableParams.ActionType.RESTORE);
-    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    backupTableParams.storageConfigUUID = storageConfig.getConfigUUID();
     SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
     Date date = new Date();
     backupTableParams.restoreTimeStamp = formatter.format(date);
-    Backup.create(testCustomer.uuid, backupTableParams);
+    Backup.create(testCustomer.getUuid(), backupTableParams);
     try {
       tableManager.createBackup(backupTableParams);
     } catch (Exception e) {
@@ -586,7 +596,7 @@ public class TableManagerTest extends FakeDBApplication {
   @Test
   public void testCreateBackupWithSSHUser() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    AccessKey accessKey = AccessKey.get(testProvider.uuid, keyCode);
+    AccessKey accessKey = AccessKey.get(testProvider.getUuid(), keyCode);
     AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
     keyInfo.sshUser = "foo";
     accessKey.setKeyInfo(keyInfo);
@@ -594,9 +604,9 @@ public class TableManagerTest extends FakeDBApplication {
 
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer, "TEST104");
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
-    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    backupTableParams.storageConfigUUID = storageConfig.getConfigUUID();
 
-    Backup.create(testCustomer.uuid, backupTableParams);
+    Backup.create(testCustomer.getUuid(), backupTableParams);
     // Backups should always be done as the yugabyte user.
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "s3");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
@@ -639,8 +649,8 @@ public class TableManagerTest extends FakeDBApplication {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
     CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer, "TEST40");
     BackupTableParams backupTableParams =
-        getBackupUniverseParams(BackupTableParams.ActionType.CREATE, storageConfig.configUUID);
-    Backup.create(testCustomer.uuid, backupTableParams);
+        getBackupUniverseParams(BackupTableParams.ActionType.CREATE, storageConfig.getConfigUUID());
+    Backup.create(testCustomer.getUuid(), backupTableParams);
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     for (BackupTableParams params : backupTableParams.backupList) {
       tableManager.deleteBackup(params);

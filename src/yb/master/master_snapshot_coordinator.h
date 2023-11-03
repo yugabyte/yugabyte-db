@@ -26,6 +26,7 @@
 #include "yb/master/master_types.pb.h"
 
 #include "yb/tablet/snapshot_coordinator.h"
+#include "yb/tablet/tablet_retention_policy.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/opid.h"
@@ -40,6 +41,8 @@ struct SnapshotScheduleRestoration {
   OpId op_id;
   HybridTime write_time;
   int64_t term;
+  // DB OID of the database that is being restored.
+  std::optional<int64_t> db_oid;
   std::vector<std::pair<SnapshotScheduleId, SnapshotScheduleFilterPB>> schedules;
   std::vector<std::pair<TabletId, SysTabletsEntryPB>> non_system_obsolete_tablets;
   std::vector<std::pair<TableId, SysTablesEntryPB>> non_system_obsolete_tables;
@@ -53,6 +56,7 @@ struct SnapshotScheduleRestoration {
     std::pair<TabletId, SysTabletsEntryPB*> parent;
     std::unordered_map<TabletId, SysTabletsEntryPB*> children;
   };
+  std::unordered_map<TableId, std::vector<TableId>> parent_to_child_tables;
   // Tablets as of the restoring time with their parent-child relationships.
   // Map from parent tablet id -> information about parent and children.
   // For colocated tablets or tablets that have not been split as of restoring time,
@@ -64,12 +68,12 @@ struct SnapshotScheduleRestoration {
 // Class that coordinates transaction aware snapshots at master.
 class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
  public:
-  explicit MasterSnapshotCoordinator(
-      SnapshotCoordinatorContext* context, enterprise::CatalogManager* cm);
+  explicit MasterSnapshotCoordinator(SnapshotCoordinatorContext* context, CatalogManager* cm);
   ~MasterSnapshotCoordinator();
 
   Result<TxnSnapshotId> Create(
-      const SysRowEntries& entries, bool imported, int64_t leader_term, CoarseTimePoint deadline);
+      const SysRowEntries& entries, bool imported, int64_t leader_term, CoarseTimePoint deadline,
+      int32_t retention_duration_hours);
 
   Result<TxnSnapshotId> CreateForSchedule(
       const SnapshotScheduleId& schedule_id, int64_t leader_term, CoarseTimePoint deadline);
@@ -77,12 +81,14 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   Status Delete(
       const TxnSnapshotId& snapshot_id, int64_t leader_term, CoarseTimePoint deadline);
 
-  // As usual negative leader_term means that this operation was replicated at the follower.
-  Status CreateReplicated(
-      int64_t leader_term, const tablet::SnapshotOperation& operation) override;
+  Status AbortRestore(
+      const TxnSnapshotRestorationId& restoration_id, int64_t leader_term,
+      CoarseTimePoint deadline);
 
-  Status DeleteReplicated(
-      int64_t leader_term, const tablet::SnapshotOperation& operation) override;
+  // As usual negative leader_term means that this operation was replicated at the follower.
+  Status CreateReplicated(int64_t leader_term, const tablet::SnapshotOperation& operation) override;
+
+  Status DeleteReplicated(int64_t leader_term, const tablet::SnapshotOperation& operation) override;
 
   Status RestoreSysCatalogReplicated(
       int64_t leader_term, const tablet::SnapshotOperation& operation,
@@ -128,7 +134,10 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
 
   Status FillHeartbeatResponse(TSHeartbeatResponsePB* resp);
 
-  void SysCatalogLoaded(int64_t term);
+  docdb::HistoryCutoff AllowedHistoryCutoffProvider(
+      tablet::RaftGroupMetadata* metadata);
+
+  void SysCatalogLoaded(int64_t leader_term);
 
   Result<docdb::KeyValuePairPB> UpdateRestorationAndGetWritePair(
       SnapshotScheduleRestoration* restoration);
@@ -148,6 +157,12 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   void Start();
 
   void Shutdown();
+
+  // If snapshot_id is nil then returns true if any snapshot covers the particular tablet
+  // whereas if snapshot_id is not nil then returns true if that particular snapshot
+  // covers the tablet.
+  bool IsTabletCoveredBySnapshot(
+      const TabletId& tablet_id, const TxnSnapshotId& snapshot_id = TxnSnapshotId(Uuid::Nil()));
 
  private:
   class Impl;

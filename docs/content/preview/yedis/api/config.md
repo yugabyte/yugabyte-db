@@ -6,9 +6,6 @@ menu:
   preview:
     parent: api-yedis
     weight: 2030
-aliases:
-  - /preview/api/redis/config
-  - /preview/api/yedis/config
 type: docs
 ---
 

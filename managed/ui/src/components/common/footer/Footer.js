@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { PureComponent } from 'react';
+import { PureComponent } from 'react';
 import './stylesheets/Footer.scss';
 import slackLogo from './images/slack-logo-full.svg';
 import githubLogo from './images/github-light-small.png';
@@ -57,7 +57,7 @@ class Footer extends PureComponent {
                 alt="YugabyteDB Community Rewards"
                 className="social-media-logo"
                 src={ybLogoImage}
-                width="100"
+                width="85"
               />
             </span>
           </a>

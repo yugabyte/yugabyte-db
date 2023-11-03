@@ -103,7 +103,7 @@ class ParseTree {
   Result<SchemaVersion> GetYBTableSchemaVersion() const;
 
   // Check if the used schema version is not in sync with the Master.
-  Result<bool> IsYBTableAltered(QLEnv *ql_env) const;
+  Result<bool> IsYBTableAltered(QLEnv *ql_env, bool use_cache) const;
 
   // Add table to the set of tables used during semantic analysis.
   void AddAnalyzedTable(const client::YBTableName& table_name);

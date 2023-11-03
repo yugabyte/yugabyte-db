@@ -14,6 +14,7 @@
 #pragma once
 
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/reactor_thread_role.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/net/socket.h"
@@ -30,6 +31,11 @@ class MemTracker;
 class MetricEntity;
 
 namespace rpc {
+
+using CallHandle = size_t;
+
+// A value we use instead of a call handle in case there is a failure to queue a call.
+constexpr CallHandle kUnknownCallHandle = std::numeric_limits<size_t>::max();
 
 class StreamReadBuffer {
  public:
@@ -77,7 +83,7 @@ class StreamContext {
   virtual void Destroy(const Status& status) = 0;
 
   // Called by underlying stream when stream has been connected (Stream::IsConnected() became true).
-  virtual void Connected() = 0;
+  virtual Status Connected() = 0;
 
   virtual Result<size_t> ProcessReceived(ReadBufferFull read_buffer_full) = 0;
   virtual StreamReadBuffer& ReadBuffer() = 0;
@@ -98,9 +104,9 @@ class Stream {
   virtual void Shutdown(const Status& status) = 0;
 
   // Returns handle to block associated with this data. This handle could be used to cancel
-  // transfer of this block using Cancelled.
-  // For instance when unsent call times out.
-  virtual Result<size_t> Send(OutboundDataPtr data) = 0;
+  // transfer of this block using Cancelled, e.g. when a unsent call times out.
+  // May return kUnknownCallHandle.
+  virtual Result<CallHandle> Send(OutboundDataPtr data) ON_REACTOR_THREAD = 0;
 
   virtual Status TryWrite() = 0;
   virtual void ParseReceived() = 0;

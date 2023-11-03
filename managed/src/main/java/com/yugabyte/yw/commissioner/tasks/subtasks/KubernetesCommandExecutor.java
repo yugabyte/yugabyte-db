@@ -11,6 +11,7 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,19 +20,26 @@ import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderInterface;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -39,6 +47,7 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -46,19 +55,20 @@ import io.fabric8.kubernetes.api.model.Service;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -68,6 +78,9 @@ import play.libs.Json;
 
 @Slf4j
 public class KubernetesCommandExecutor extends UniverseTaskBase {
+
+  private static final List<CommandType> skipNamespaceCommands =
+      Arrays.asList(CommandType.POD_INFO, CommandType.COPY_PACKAGE, CommandType.YBC_ACTION);
 
   public enum CommandType {
     CREATE_NAMESPACE,
@@ -85,9 +98,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     VOLUME_DELETE,
     NAMESPACE_DELETE,
     POD_DELETE,
+    DELETE_ALL_SERVER_TYPE_PODS,
     POD_INFO,
     STS_DELETE,
     PVC_EXPAND_SIZE,
+    COPY_PACKAGE,
+    YBC_ACTION,
     // The following flag is deprecated.
     INIT_YSQL;
 
@@ -111,8 +127,14 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           return UserTaskDetails.SubTaskGroupType.KubernetesNamespaceDelete.name();
         case POD_DELETE:
           return UserTaskDetails.SubTaskGroupType.RebootingNode.name();
+        case DELETE_ALL_SERVER_TYPE_PODS:
+          return UserTaskDetails.SubTaskGroupType.DeleteAllServerTypePods.name();
         case POD_INFO:
           return UserTaskDetails.SubTaskGroupType.KubernetesPodInfo.name();
+        case COPY_PACKAGE:
+          return UserTaskDetails.SubTaskGroupType.KubernetesCopyPackage.name();
+        case YBC_ACTION:
+          return UserTaskDetails.SubTaskGroupType.KubernetesYbcAction.name();
         case INIT_YSQL:
           return UserTaskDetails.SubTaskGroupType.KubernetesInitYSQL.name();
         case STS_DELETE:
@@ -123,14 +145,38 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
   }
 
+  public enum UpdateStrategy {
+    RollingUpdate("RollingUpdate"),
+    OnDelete("OnDelete");
+
+    public final String value;
+
+    UpdateStrategy(String value) {
+      this.value = value;
+    }
+
+    public String toString() {
+      return this.value;
+    }
+  }
+
   private final KubernetesManagerFactory kubernetesManagerFactory;
+  private final ReleaseManager releaseManager;
+  private final FileHelperService fileHelperService;
+  private final YbcManager ybcManager;
 
   @Inject
   protected KubernetesCommandExecutor(
       BaseTaskDependencies baseTaskDependencies,
-      KubernetesManagerFactory kubernetesManagerFactory) {
+      KubernetesManagerFactory kubernetesManagerFactory,
+      ReleaseManager releaseManager,
+      FileHelperService fileHelperService,
+      YbcManager ybcManager) {
     super(baseTaskDependencies);
     this.kubernetesManagerFactory = kubernetesManagerFactory;
+    this.releaseManager = releaseManager;
+    this.fileHelperService = fileHelperService;
+    this.ybcManager = ybcManager;
   }
 
   static final Pattern nodeNamePattern = Pattern.compile(".*-n(\\d+)+");
@@ -140,6 +186,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
   public static class Params extends UniverseTaskParams {
     public UUID providerUUID;
+    public String universeName;
     public CommandType commandType;
     public String helmReleaseName;
     public String namespace;
@@ -163,8 +210,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // as well as to control the replicas for each deployment.
     public PlacementInfo placementInfo = null;
 
+    // RollingUpdate vs OnDelete upgrade strategy for K8s statefulset.
+    public UpdateStrategy updateStrategy = KubernetesCommandExecutor.UpdateStrategy.RollingUpdate;
+
     // The target cluster's config.
     public Map<String, String> config = null;
+
+    // YBC server name
+    public String ybcServerName = null;
+    public String command = null;
+    public String azCode = null;
   }
 
   protected KubernetesCommandExecutor.Params taskParams() {
@@ -176,7 +231,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // (for backwards compatibility).
     Map<String, String> config = taskParams().config;
     if (config == null) {
-      config = Provider.get(taskParams().providerUUID).getUnmaskedConfig();
+      Provider provider = Provider.getOrBadRequest(taskParams().providerUUID);
+      config = CloudInfoInterface.fetchEnvVars(provider);
     }
     return config;
   }
@@ -185,9 +241,29 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   public void run() {
     String overridesFile;
 
-    Map<String, String> config = getConfig();
+    Map<String, String> config;
+    if (taskParams().commandType.equals(CommandType.COPY_PACKAGE)
+        || taskParams().commandType.equals(CommandType.YBC_ACTION)) {
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+      PlacementInfo pi;
+      if (taskParams().isReadOnlyCluster) {
+        pi = universe.getUniverseDetails().getReadOnlyClusters().get(0).placementInfo;
+      } else {
+        pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
+      }
+      Map<String, Map<String, String>> k8sConfigMap =
+          KubernetesUtil.getKubernetesConfigPerPodName(
+              pi, Collections.singleton(universe.getNode(taskParams().ybcServerName)));
+      config = k8sConfigMap.get(taskParams().ybcServerName);
+      if (config == null) {
+        config = getConfig();
+      }
+    } else {
+      config = getConfig();
+    }
 
-    if (taskParams().commandType != CommandType.POD_INFO && taskParams().namespace == null) {
+    if (!skipNamespaceCommands.contains(taskParams().commandType)
+        && taskParams().namespace == null) {
       throw new IllegalArgumentException("namespace can be null only in case of POD_INFO");
     }
 
@@ -211,6 +287,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         kubernetesManagerFactory
             .getManager()
             .helmInstall(
+                taskParams().getUniverseUUID(),
                 taskParams().ybSoftwareVersion,
                 config,
                 taskParams().providerUUID,
@@ -223,6 +300,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         kubernetesManagerFactory
             .getManager()
             .helmUpgrade(
+                taskParams().getUniverseUUID(),
                 taskParams().ybSoftwareVersion,
                 config,
                 taskParams().helmReleaseName,
@@ -233,7 +311,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         int numNodes = this.getNumNodes();
         if (numNodes > 0) {
           boolean newNamingStyle =
-              Universe.getOrBadRequest(taskParams().universeUUID)
+              Universe.getOrBadRequest(taskParams().getUniverseUUID())
                   .getUniverseDetails()
                   .useNewHelmNamingStyle;
           kubernetesManagerFactory
@@ -264,41 +342,69 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             .getManager()
             .deletePod(config, taskParams().namespace, taskParams().podName);
         break;
+      case DELETE_ALL_SERVER_TYPE_PODS:
+        Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+        kubernetesManagerFactory
+            .getManager()
+            .deleteAllServerTypePods(
+                config,
+                taskParams().namespace,
+                taskParams().serverType,
+                taskParams().helmReleaseName,
+                u.getUniverseDetails().useNewHelmNamingStyle);
+        break;
       case POD_INFO:
         processNodeInfo();
         break;
       case STS_DELETE:
+        u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+        boolean newNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
+        // Ideally we should have called KubernetesUtil.getHelmFullNameWithSuffix()
+        String appName = (newNamingStyle ? taskParams().helmReleaseName + "-" : "") + "yb-tserver";
         kubernetesManagerFactory
             .getManager()
-            .deleteStatefulSet(config, taskParams().namespace, "yb-tserver");
+            .deleteStatefulSet(config, taskParams().namespace, appName);
         break;
       case PVC_EXPAND_SIZE:
+        u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
         kubernetesManagerFactory
             .getManager()
             .expandPVC(
+                taskParams().getUniverseUUID(),
                 config,
                 taskParams().namespace,
                 taskParams().helmReleaseName,
                 "yb-tserver",
-                taskParams().newDiskSize);
+                taskParams().newDiskSize,
+                u.getUniverseDetails().useNewHelmNamingStyle);
+        break;
+      case COPY_PACKAGE:
+        u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+        NodeDetails nodeDetails = u.getNode(taskParams().ybcServerName);
+        ybcManager.copyYbcPackagesOnK8s(
+            config, u, nodeDetails, taskParams().getYbcSoftwareVersion());
+        break;
+      case YBC_ACTION:
+        u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+        nodeDetails = u.getNode(taskParams().ybcServerName);
+        List<String> commandArgs =
+            Arrays.asList(
+                "/bin/bash",
+                "-c",
+                String.format("/home/yugabyte/tools/k8s_ybc_parent.py %s", taskParams().command));
+        ybcManager.performActionOnYbcK8sNode(config, nodeDetails, commandArgs);
         break;
     }
   }
 
   private Map<String, String> getClusterIpForLoadBalancer() {
-    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
     PlacementInfo pi = taskParams().placementInfo;
 
-    Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
-    Map<UUID, String> azToDomain = PlacementInfoUtil.getDomainPerAZ(pi);
-    boolean isMultiAz = PlacementInfoUtil.isMultiAZ(Provider.get(taskParams().providerUUID));
+    Map<UUID, Map<String, String>> azToConfig = KubernetesUtil.getConfigPerAZ(pi);
 
     Map<String, String> serviceToIP = new HashMap<String, String>();
 
     for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
-      UUID azUUID = entry.getKey();
-      String azName = AvailabilityZone.get(azUUID).code;
-      String regionName = AvailabilityZone.get(azUUID).region.code;
       Map<String, String> config = entry.getValue();
 
       // TODO(bhavin192): we seem to be iterating over all the AZs
@@ -321,30 +427,34 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
   private void processNodeInfo() {
     ObjectNode pods = Json.newObject();
-    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     UUID placementUuid =
         taskParams().isReadOnlyCluster
             ? u.getUniverseDetails().getReadOnlyClusters().get(0).uuid
             : u.getUniverseDetails().getPrimaryCluster().uuid;
     PlacementInfo pi = taskParams().placementInfo;
-
-    Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
-    Map<UUID, String> azToDomain = PlacementInfoUtil.getDomainPerAZ(pi);
+    String universename = taskParams().universeName;
+    Map<UUID, Map<String, String>> azToConfig = KubernetesUtil.getConfigPerAZ(pi);
+    Map<UUID, String> azToDomain = KubernetesUtil.getDomainPerAZ(pi);
     Provider provider = Provider.get(taskParams().providerUUID);
     boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
     String nodePrefix = u.getUniverseDetails().nodePrefix;
-
     for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
       UUID azUUID = entry.getKey();
-      String azName = AvailabilityZone.get(azUUID).code;
-      String regionName = AvailabilityZone.get(azUUID).region.code;
+      String azName = AvailabilityZone.get(azUUID).getCode();
+      String regionName = AvailabilityZone.get(azUUID).getRegion().getCode();
       Map<String, String> config = entry.getValue();
 
       String helmReleaseName =
-          PlacementInfoUtil.getHelmReleaseName(
-              isMultiAz, nodePrefix, azName, taskParams().isReadOnlyCluster);
+          KubernetesUtil.getHelmReleaseName(
+              isMultiAz,
+              nodePrefix,
+              universename,
+              azName,
+              taskParams().isReadOnlyCluster,
+              u.getUniverseDetails().useNewHelmNamingStyle);
       String namespace =
-          PlacementInfoUtil.getKubernetesNamespace(
+          KubernetesUtil.getKubernetesNamespace(
               isMultiAz,
               nodePrefix,
               azName,
@@ -356,6 +466,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
       List<Pod> podInfos =
           kubernetesManagerFactory.getManager().getPodInfos(config, helmReleaseName, namespace);
+
       for (Pod podInfo : podInfos) {
         ObjectNode pod = Json.newObject();
         pod.put("startTime", podInfo.getStatus().getStartTime());
@@ -399,6 +510,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           NodeDetails defaultNode = defaultNodes.iterator().next();
           Set<NodeDetails> nodeDetailsSet = new HashSet<>();
           Iterator<Map.Entry<String, JsonNode>> iter = pods.fields();
+          Map<String, String> azConfig;
+          Map<String, String> regionConfig;
           while (iter.hasNext()) {
             NodeDetails nodeDetail = defaultNode.clone();
             Map.Entry<String, JsonNode> pod = iter.next();
@@ -409,15 +522,22 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             String helmFullNameWithSuffix = podVals.get("helmFullNameWithSuffix").asText();
             UUID azUUID = UUID.fromString(podVals.get("az_uuid").asText());
             String domain = azToDomain.get(azUUID);
+            AvailabilityZone az = AvailabilityZone.getOrBadRequest(azUUID);
+            Region region = az.getRegion();
+            azConfig = CloudInfoInterface.fetchEnvVars(az);
+            regionConfig = CloudInfoInterface.fetchEnvVars(region);
             String podAddressTemplate =
-                AvailabilityZone.get(azUUID)
-                    .getUnmaskedConfig()
-                    .getOrDefault("KUBE_POD_ADDRESS_TEMPLATE", Util.K8S_POD_FQDN_TEMPLATE);
+                getK8sPropertyFromConfigOrDefault(
+                    null,
+                    regionConfig,
+                    azConfig,
+                    "KUBE_POD_ADDRESS_TEMPLATE",
+                    Util.K8S_POD_FQDN_TEMPLATE);
             if (nodeName.contains("master")) {
               nodeDetail.isTserver = false;
               nodeDetail.isMaster = true;
               nodeDetail.cloudInfo.private_ip =
-                  PlacementInfoUtil.formatPodAddress(
+                  KubernetesUtil.formatPodAddress(
                       podAddressTemplate,
                       hostname,
                       helmFullNameWithSuffix + "yb-masters",
@@ -427,7 +547,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               nodeDetail.isMaster = false;
               nodeDetail.isTserver = true;
               nodeDetail.cloudInfo.private_ip =
-                  PlacementInfoUtil.formatPodAddress(
+                  KubernetesUtil.formatPodAddress(
                       podAddressTemplate,
                       hostname,
                       helmFullNameWithSuffix + "yb-tservers",
@@ -440,10 +560,13 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               nodeDetail.cloudInfo.az = podVals.get("az_name").asText();
               nodeDetail.cloudInfo.region = podVals.get("region_name").asText();
             }
-            nodeDetail.cloudInfo.instance_type =
-                taskParams().isReadOnlyCluster
-                    ? u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.instanceType
-                    : u.getUniverseDetails().getPrimaryCluster().userIntent.instanceType;
+            if (!confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+              UserIntent userIntent =
+                  taskParams().isReadOnlyCluster
+                      ? u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent
+                      : u.getUniverseDetails().getPrimaryCluster().userIntent;
+              nodeDetail.cloudInfo.instance_type = userIntent.getInstanceTypeForNode(nodeDetail);
+            }
             nodeDetail.azUuid = azUUID;
             nodeDetail.placementUuid = placementUuid;
             nodeDetail.state = NodeDetails.NodeState.Live;
@@ -464,25 +587,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     saveUniverseDetails(updater);
   }
 
-  // TODO: Remove this method as it is no longer needed. It does not
-  // generate correct pod name with new naming style. The method which
-  // was using this has stopped doing so as of
-  // ea110f66098d2684863578cd2b730ec677e2de4e
-  private String nodeNameToPodName(String nodeName, boolean isMaster) {
-    Matcher matcher = nodeNamePattern.matcher(nodeName);
-    if (!matcher.matches()) {
-      throw new RuntimeException("Invalid nodeName : " + nodeName);
-    }
-    int nodeIdx = Integer.parseInt(matcher.group(1));
-    return String.format("%s-%d", isMaster ? "yb-master" : "yb-tserver", nodeIdx - 1);
-  }
-
   private String getPullSecret() {
     // Since the pull secret will always be the same across clusters,
     // it is always at the provider level.
-    Provider provider = Provider.get(taskParams().providerUUID);
+    Provider provider = Provider.getOrBadRequest(taskParams().providerUUID);
     if (provider != null) {
-      Map<String, String> config = provider.getUnmaskedConfig();
+      Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
       if (config.containsKey("KUBECONFIG_IMAGE_PULL_SECRET_NAME")) {
         return config.get("KUBECONFIG_PULL_SECRET");
       }
@@ -493,7 +603,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   private int getNumNodes() {
     Provider provider = Provider.get(taskParams().providerUUID);
     if (provider != null) {
-      Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
+      Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
       UniverseDefinitionTaskParams.UserIntent userIntent =
           u.getUniverseDetails().getPrimaryCluster().userIntent;
       return userIntent.numNodes;
@@ -501,26 +611,55 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     return -1;
   }
 
+  private String getK8sPropertyFromConfigOrDefault(
+      Map<String, String> config,
+      Map<String, String> regionConfig,
+      Map<String, String> azConfig,
+      String property,
+      String defaultValue) {
+    String value = azConfig != null ? azConfig.get(property) : null;
+    if (value != null) {
+      return value;
+    }
+
+    value = regionConfig != null ? regionConfig.get(property) : null;
+    if (value != null) {
+      return value;
+    }
+
+    value = config != null ? config.get(property) : null;
+    if (value != null) {
+      return value;
+    }
+
+    return defaultValue;
+  }
+
   private String generateHelmOverride() {
     Map<String, Object> overrides = new HashMap<String, Object>();
     Yaml yaml = new Yaml();
 
     // TODO: decide if the user wants to expose all the services or just master.
-    overrides = yaml.load(application.resourceAsStream("k8s-expose-all.yml"));
+    overrides = yaml.load(environment.resourceAsStream("k8s-expose-all.yml"));
 
     Provider provider = Provider.get(taskParams().providerUUID);
-    Map<String, String> config = provider.getUnmaskedConfig();
+    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
     Map<String, String> azConfig = new HashMap<String, String>();
     Map<String, String> regionConfig = new HashMap<String, String>();
 
-    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
-    UniverseDefinitionTaskParams.UserIntent userIntent =
+    Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+
+    UniverseDefinitionTaskParams.Cluster cluster =
         taskParams().isReadOnlyCluster
-            ? u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent
-            : u.getUniverseDetails().getPrimaryCluster().userIntent;
+            ? u.getUniverseDetails().getReadOnlyClusters().get(0)
+            : u.getUniverseDetails().getPrimaryCluster();
+    UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
+    // TODO Support overriden instance types
     InstanceType instanceType =
         InstanceType.get(UUID.fromString(userIntent.provider), userIntent.instanceType);
-    if (instanceType == null) {
+    if (instanceType == null && !confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+      log.info(
+          "Config parameter {}", confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources));
       log.error(
           "Unable to fetch InstanceType for {}, {}",
           userIntent.providerType,
@@ -573,14 +712,38 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           PlacementInfo.PlacementRegion region = cloud.regionList.get(0);
           placementRegion = region.code;
           if (region.azList.size() != 0) {
-            PlacementInfo.PlacementAZ zone = region.azList.get(0);
-            // TODO: wtf, why do we have AZ name but not code at this level??
-            placementZone = AvailabilityZone.get(zone.uuid).code;
+            PlacementInfo.PlacementAZ zone = null;
+            if (isMultiAz && taskParams().azCode != null) {
+              AvailabilityZone azByCode = AvailabilityZone.getByCode(provider, taskParams().azCode);
+              if (azByCode == null) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST,
+                    String.format("Specified zone code %s does not exist.", taskParams().azCode));
+              }
+              Optional<PlacementInfo.PlacementAZ> pZone =
+                  region.azList.stream()
+                      .filter(azs -> azs.uuid.equals(azByCode.getUuid()))
+                      .findFirst();
+              if (!pZone.isPresent()) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST,
+                    String.format(
+                        "Specified zone code %s does not exist in the placement config",
+                        taskParams().azCode));
+              }
+              zone = pZone.get();
+              placementZone = taskParams().azCode;
+            } else {
+              zone = region.azList.get(0);
+              placementZone = AvailabilityZone.get(zone.uuid).getCode();
+            }
             numNodes = zone.numNodesInAZ;
             replicationFactorZone = zone.replicationFactor;
             replicationFactor = userIntent.replicationFactor;
-            azConfig = AvailabilityZone.get(zone.uuid).getUnmaskedConfig();
-            regionConfig = Region.get(region.uuid).getUnmaskedConfig();
+            Region r = Region.getOrBadRequest(region.uuid);
+            regionConfig = CloudInfoInterface.fetchEnvVars(r);
+            AvailabilityZone az = AvailabilityZone.getOrBadRequest(zone.uuid);
+            azConfig = CloudInfoInterface.fetchEnvVars(az);
           }
         }
       }
@@ -609,9 +772,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
 
     // Storage class needs to be updated if it is overriden in the zone config.
-    if (azConfig.containsKey("STORAGE_CLASS")) {
-      tserverDiskSpecs.put("storageClass", azConfig.get("STORAGE_CLASS"));
-      masterDiskSpecs.put("storageClass", azConfig.get("STORAGE_CLASS"));
+    String storageClass =
+        getK8sPropertyFromConfigOrDefault(config, regionConfig, azConfig, "STORAGE_CLASS", null);
+    if (StringUtils.isNoneEmpty(storageClass)) {
+      tserverDiskSpecs.put("storageClass", storageClass);
+      masterDiskSpecs.put("storageClass", storageClass);
     }
 
     if (isMultiAz) {
@@ -646,48 +811,89 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (!tserverDiskSpecs.isEmpty()) {
       storageOverrides.put("tserver", tserverDiskSpecs);
     }
-    String instanceTypeCode = instanceType.getInstanceTypeCode();
-    if (instanceTypeCode.equals("cloud")) {
-      masterDiskSpecs.put("size", String.format("%dGi", 3));
-    }
-    if (!masterDiskSpecs.isEmpty()) {
-      storageOverrides.put("master", masterDiskSpecs);
-    }
 
-    // Override resource request and limit based on instance type.
+    // Override resource request and limit.
     Map<String, Object> tserverResource = new HashMap<>();
     Map<String, Object> tserverLimit = new HashMap<>();
     Map<String, Object> masterResource = new HashMap<>();
     Map<String, Object> masterLimit = new HashMap<>();
 
-    tserverResource.put("cpu", instanceType.numCores);
-    tserverResource.put("memory", String.format("%.2fGi", instanceType.memSizeGB));
-    tserverLimit.put("cpu", instanceType.numCores * burstVal);
-    tserverLimit.put("memory", String.format("%.2fGi", instanceType.memSizeGB));
+    if (!confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+      // InstanceType should be defined here in this case.
+      String instanceTypeCode = instanceType.getInstanceTypeCode();
+      if (instanceTypeCode.equals("cloud")) {
+        masterDiskSpecs.put("size", String.format("%dGi", 3));
+      }
+      if (!masterDiskSpecs.isEmpty()) {
+        storageOverrides.put("master", masterDiskSpecs);
+      }
 
-    // If the instance type is not xsmall or dev, we would bump the master resource.
-    if (!instanceTypeCode.equals("xsmall") && !instanceTypeCode.equals("dev")) {
-      masterResource.put("cpu", 2);
-      masterResource.put("memory", "4Gi");
-      masterLimit.put("cpu", 2 * burstVal);
-      masterLimit.put("memory", "4Gi");
-    }
-    // For testing with multiple deployments locally.
-    if (instanceTypeCode.equals("dev")) {
-      masterResource.put("cpu", 0.5);
-      masterResource.put("memory", "0.5Gi");
-      masterLimit.put("cpu", 0.5);
-      masterLimit.put("memory", "0.5Gi");
-    }
-    // For cloud deployments, we want bigger bursts in CPU if available for better performance.
-    // Memory should not be burstable as memory consumption above requests can lead to pods being
-    // killed if the nodes is running out of resources.
-    if (instanceTypeCode.equals("cloud")) {
-      tserverLimit.put("cpu", instanceType.numCores * 2);
-      masterResource.put("cpu", 0.3);
-      masterResource.put("memory", "1Gi");
-      masterLimit.put("cpu", 0.6);
-      masterLimit.put("memory", "1Gi");
+      tserverResource.put("cpu", instanceType.getNumCores());
+      tserverResource.put("memory", String.format("%.2fGi", instanceType.getMemSizeGB()));
+      tserverLimit.put("cpu", instanceType.getNumCores() * burstVal);
+      tserverLimit.put("memory", String.format("%.2fGi", instanceType.getMemSizeGB()));
+
+      // If the instance type is not xsmall or dev, we would bump the master resource.
+      if (!instanceTypeCode.equals("xsmall") && !instanceTypeCode.equals("dev")) {
+        masterResource.put("cpu", 2);
+        masterResource.put("memory", "4Gi");
+        masterLimit.put("cpu", 2 * burstVal);
+        masterLimit.put("memory", "4Gi");
+      }
+      // For testing with multiple deployments locally.
+      if (instanceTypeCode.equals("dev")) {
+        masterResource.put("cpu", 0.5);
+        masterResource.put("memory", "0.5Gi");
+        masterLimit.put("cpu", 0.5);
+        masterLimit.put("memory", "0.5Gi");
+      }
+      // For cloud deployments, we want bigger bursts in CPU if available for better performance.
+      // Memory should not be burstable as memory consumption above requests can lead to pods being
+      // killed if the nodes is running out of resources.
+      if (instanceTypeCode.equals("cloud")) {
+        tserverLimit.put("cpu", instanceType.getNumCores() * 2);
+        masterResource.put("cpu", 0.3);
+        masterResource.put("memory", "1Gi");
+        masterLimit.put("cpu", 0.6);
+        masterLimit.put("memory", "1Gi");
+      }
+    } else {
+      // Use defaults in case we don't find anythihng,
+      if (userIntent.masterK8SNodeResourceSpec == null) {
+        log.warn(
+            "master k8s node resources (cpu/memory) passed as null for universe: "
+                + u.getUniverseUUID()
+                + " readcluster: "
+                + taskParams().isReadOnlyCluster
+                + " Using deafult values.");
+        userIntent.masterK8SNodeResourceSpec = new UserIntent.K8SNodeResourceSpec();
+      }
+      if (userIntent.tserverK8SNodeResourceSpec == null) {
+        log.warn(
+            "tserver k8s node resources (cpu/memory) passed as null for universe: "
+                + u.getUniverseUUID()
+                + " readcluster: "
+                + taskParams().isReadOnlyCluster
+                + " Using deafult values.");
+        userIntent.tserverK8SNodeResourceSpec = new UserIntent.K8SNodeResourceSpec();
+      }
+      masterResource.put(
+          "memory", String.format("%.2f%s", userIntent.masterK8SNodeResourceSpec.memoryGib, "Gi"));
+      masterResource.put(
+          "cpu", String.format("%.2f", userIntent.masterK8SNodeResourceSpec.cpuCoreCount));
+      tserverResource.put(
+          "memory", String.format("%.2f%s", userIntent.tserverK8SNodeResourceSpec.memoryGib, "Gi"));
+      tserverResource.put(
+          "cpu", String.format("%.2f", userIntent.tserverK8SNodeResourceSpec.cpuCoreCount));
+      // We are keeping requests and limits same.
+      masterLimit.put(
+          "memory", String.format("%.2f%s", userIntent.masterK8SNodeResourceSpec.memoryGib, "Gi"));
+      masterLimit.put(
+          "cpu", String.format("%.2f", userIntent.masterK8SNodeResourceSpec.cpuCoreCount));
+      tserverLimit.put(
+          "memory", String.format("%.2f%s", userIntent.tserverK8SNodeResourceSpec.memoryGib, "Gi"));
+      tserverLimit.put(
+          "cpu", String.format("%.2f", userIntent.tserverK8SNodeResourceSpec.cpuCoreCount));
     }
 
     Map<String, Object> resourceOverrides = new HashMap();
@@ -728,15 +934,22 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     UniverseDefinitionTaskParams.UserIntent primaryClusterIntent =
         u.getUniverseDetails().getPrimaryCluster().userIntent;
 
-    if (u.getUniverseDetails().rootCA != null) {
+    if (u.getUniverseDetails().rootCA != null || u.getUniverseDetails().getClientRootCA() != null) {
       Map<String, Object> tlsInfo = new HashMap<>();
       tlsInfo.put("enabled", true);
       tlsInfo.put("nodeToNode", primaryClusterIntent.enableNodeToNodeEncrypt);
       tlsInfo.put("clientToServer", primaryClusterIntent.enableClientToNodeEncrypt);
       tlsInfo.put("insecure", u.getUniverseDetails().allowInsecure);
+      String rootCert;
+      String rootKey;
+      if (u.getUniverseDetails().rootCA != null) {
+        rootCert = CertificateHelper.getCertPEM(u.getUniverseDetails().rootCA);
+        rootKey = CertificateHelper.getKeyPEM(u.getUniverseDetails().rootCA);
+      } else {
+        rootCert = CertificateHelper.getCertPEM(u.getUniverseDetails().getClientRootCA());
+        rootKey = CertificateHelper.getKeyPEM(u.getUniverseDetails().getClientRootCA());
+      }
 
-      String rootCert = CertificateHelper.getCertPEM(u.getUniverseDetails().rootCA);
-      String rootKey = CertificateHelper.getKeyPEM(u.getUniverseDetails().rootCA);
       if (rootKey != null && !rootKey.isEmpty()) {
         Map<String, Object> rootCA = new HashMap<>();
         rootCA.put("cert", rootCert);
@@ -745,28 +958,39 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       } else {
         // In case root cert key is null which will be the case with Hashicorp Vault certificates
         // Generate wildcard node cert and client cert and set them in override file
-        CertificateInfo certInfo = CertificateInfo.get(u.getUniverseDetails().rootCA);
+        CertificateInfo certInfo;
+        if (u.getUniverseDetails().rootCA != null) {
+          certInfo = CertificateInfo.get(u.getUniverseDetails().rootCA);
+        } else {
+          certInfo = CertificateInfo.get(u.getUniverseDetails().getClientRootCA());
+        }
 
         Map<String, Object> rootCA = new HashMap<>();
         rootCA.put("cert", rootCert);
         rootCA.put("key", "");
         tlsInfo.put("rootCA", rootCA);
+        String certManagerIssuer =
+            getK8sPropertyFromConfigOrDefault(
+                null, regionConfig, azConfig, "CERT-MANAGER-ISSUER", null);
+        String certManagerClusterIssuer =
+            getK8sPropertyFromConfigOrDefault(
+                null, regionConfig, azConfig, "CERT-MANAGER-CLUSTERISSUER", null);
 
-        if (certInfo.certType == CertConfigType.K8SCertManager
-            && (azConfig.containsKey("CERT-MANAGER-ISSUER")
-                || azConfig.containsKey("CERT-MANAGER-CLUSTERISSUER"))) {
+        if (certInfo.getCertType() == CertConfigType.K8SCertManager
+            && (StringUtils.isNotEmpty(certManagerClusterIssuer)
+                || StringUtils.isNotEmpty(certManagerIssuer))) {
           // User configuring a K8SCertManager type of certificate on a Universe and setting
           // the corresponding azConfig enables the cert-manager integration for this
           // Universe. The name of Issuer/ClusterIssuer will come from the azConfig.
           Map<String, Object> certManager = new HashMap<>();
           certManager.put("enabled", true);
           certManager.put("bootstrapSelfsigned", false);
-          boolean useClusterIssuer = azConfig.containsKey("CERT-MANAGER-CLUSTERISSUER");
+          boolean useClusterIssuer = StringUtils.isNotEmpty(certManagerClusterIssuer);
           certManager.put("useClusterIssuer", useClusterIssuer);
           if (useClusterIssuer) {
-            certManager.put("clusterIssuer", azConfig.get("CERT-MANAGER-CLUSTERISSUER"));
+            certManager.put("clusterIssuer", certManagerClusterIssuer);
           } else {
-            certManager.put("issuer", azConfig.get("CERT-MANAGER-ISSUER"));
+            certManager.put("issuer", certManagerIssuer);
           }
           tlsInfo.put("certManager", certManager);
         } else {
@@ -775,14 +999,18 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                   certInfo, runtimeConfigFactory.staticApplicationConf());
           // Generate node cert from cert provider and set nodeCert param
           // As we are using same node cert for all nodes, set wildcard commonName
-          String dnsWildCard1 = String.format("*.*.%s", taskParams().namespace);
-          String dnsWildCard2 = dnsWildCard1 + ".svc.cluster.local";
-          Map<String, Integer> subjectAltNames = new HashMap<>();
-          subjectAltNames.put(dnsWildCard1, GeneralName.dNSName);
-          subjectAltNames.put(dnsWildCard2, GeneralName.dNSName);
+          boolean newNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
+          String kubeDomain =
+              getK8sPropertyFromConfigOrDefault(
+                  null, regionConfig, azConfig, "KUBE_DOMAIN", "cluster.local");
+          List<String> dnsNames = getDnsNamesForSAN(newNamingStyle, kubeDomain);
+          Map<String, Integer> subjectAltNames = new HashMap<>(dnsNames.size());
+          for (String dnsName : dnsNames) {
+            subjectAltNames.put(dnsName, GeneralName.dNSName);
+          }
           CertificateDetails nodeCertDetails =
               certProvider.createCertificate(
-                  null, dnsWildCard2, null, null, null, null, subjectAltNames);
+                  null, dnsNames.get(0), null, null, null, null, subjectAltNames);
           Map<String, Object> nodeCert = new HashMap<>();
           nodeCert.put(
               "cert", Base64.getEncoder().encodeToString(nodeCertDetails.getCrt().getBytes()));
@@ -808,18 +1036,24 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       overrides.put("ip_version_support", "v6_only");
     }
 
-    Map<String, Object> partition = new HashMap<>();
-    partition.put("tserver", taskParams().tserverPartition);
-    partition.put("master", taskParams().masterPartition);
-    overrides.put("partition", partition);
+    UpdateStrategy updateStrategyParam = taskParams().updateStrategy;
+    if (updateStrategyParam.equals(UpdateStrategy.RollingUpdate)) {
+      Map<String, Object> partition = new HashMap<>();
+      partition.put("tserver", taskParams().tserverPartition);
+      partition.put("master", taskParams().masterPartition);
+      overrides.put("partition", partition);
+    } else if (updateStrategyParam.equals(UpdateStrategy.OnDelete)) {
+      Map<String, Object> updateStrategy = new HashMap<>();
+      updateStrategy.put("type", KubernetesCommandExecutor.UpdateStrategy.OnDelete.toString());
+      overrides.put("updateStrategy", updateStrategy);
+    }
 
-    UUID placementUuid =
-        taskParams().isReadOnlyCluster
-            ? u.getUniverseDetails().getReadOnlyClusters().get(0).uuid
-            : u.getUniverseDetails().getPrimaryCluster().uuid;
+    UUID placementUuid = cluster.uuid;
     Map<String, Object> gflagOverrides = new HashMap<>();
     // Go over master flags.
-    Map<String, Object> masterOverrides = new HashMap<String, Object>(userIntent.masterGFlags);
+    Map<String, Object> masterOverrides =
+        new HashMap<>(
+            GFlagsUtil.getBaseGFlags(ServerType.MASTER, cluster, u.getUniverseDetails().clusters));
     if (placementCloud != null && masterOverrides.get("placement_cloud") == null) {
       masterOverrides.put("placement_cloud", placementCloud);
     }
@@ -842,8 +1076,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
 
     // Go over tserver flags.
-    Map<String, Object> tserverOverrides =
-        new HashMap<String, Object>(primaryClusterIntent.tserverGFlags);
+    Map<String, String> tserverOverrides =
+        GFlagsUtil.getBaseGFlags(ServerType.TSERVER, cluster, u.getUniverseDetails().clusters);
     if (!primaryClusterIntent
         .enableYSQL) { // In the UI, we can choose not to show these entries for read replica.
       tserverOverrides.put("enable_ysql", "false");
@@ -854,7 +1088,27 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     tserverOverrides.put("start_redis_proxy", String.valueOf(primaryClusterIntent.enableYEDIS));
     if (primaryClusterIntent.enableYSQL && primaryClusterIntent.enableYSQLAuth) {
       tserverOverrides.put("ysql_enable_auth", "true");
-      tserverOverrides.put("ysql_hba_conf_csv", "local all yugabyte trust");
+      Map<String, String> DEFAULT_YSQL_HBA_CONF_MAP =
+          Collections.singletonMap(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
+      if (tserverOverrides.containsKey(GFlagsUtil.YSQL_HBA_CONF_CSV)
+          && confGetter.getGlobalConf(GlobalConfKeys.oidcFeatureEnhancements)) {
+        /*
+         * Preprocess the ysql_hba_conf_csv flag for IdP specific use case.
+         * Refer Design Doc:
+         * https://docs.google.com/document/d/1SJzZJrAqc0wkXTCuMS7UKi1-5xEuYQKCOOa3QWYpMeM/edit
+         */
+        GFlagsUtil.processHbaConfFlagIfRequired(
+            null,
+            tserverOverrides,
+            confGetter,
+            u.getUniverseUUID(),
+            taskParams().isReadOnlyCluster
+                ? u.getUniverseDetails().getReadOnlyClusters().get(0).uuid
+                : u.getUniverseDetails().getPrimaryCluster().uuid);
+      }
+      GFlagsUtil.mergeCSVs(
+          tserverOverrides, DEFAULT_YSQL_HBA_CONF_MAP, GFlagsUtil.YSQL_HBA_CONF_CSV);
+      tserverOverrides.putIfAbsent(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
     }
     if (primaryClusterIntent.enableYCQL && primaryClusterIntent.enableYCQLAuth) {
       tserverOverrides.put("use_cassandra_authentication", "true");
@@ -884,8 +1138,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       overrides.put("gflags", gflagOverrides);
     }
 
-    if (azConfig.containsKey("KUBE_DOMAIN")) {
-      overrides.put("domainName", azConfig.get("KUBE_DOMAIN"));
+    String kubeDomain =
+        getK8sPropertyFromConfigOrDefault(null, regionConfig, azConfig, "KUBE_DOMAIN", null);
+    if (StringUtils.isNotBlank(kubeDomain)) {
+      overrides.put("domainName", kubeDomain);
     }
 
     overrides.put("disableYsql", !primaryClusterIntent.enableYSQL);
@@ -905,22 +1161,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // loadbalancers, so the annotations will be at the provider level.
     // TODO (Arnav): Update this to use overrides created at the provider, region or
     // zone level.
-    Map<String, Object> annotations = new HashMap<String, Object>();
-    String overridesYAML = null;
-    if (!azConfig.containsKey("OVERRIDES")) {
-      if (!regionConfig.containsKey("OVERRIDES")) {
-        if (config.containsKey("OVERRIDES")) {
-          overridesYAML = config.get("OVERRIDES");
-        }
-      } else {
-        overridesYAML = regionConfig.get("OVERRIDES");
-      }
-    } else {
-      overridesYAML = azConfig.get("OVERRIDES");
-    }
+    Map<String, Object> annotations;
+    String overridesYAML =
+        getK8sPropertyFromConfigOrDefault(config, regionConfig, azConfig, "OVERRIDES", null);
+
+    Map<String, Object> ybcInfo = new HashMap<>();
+    ybcInfo.put("enabled", taskParams().isEnableYbc());
+    overrides.put("ybc", ybcInfo);
 
     if (overridesYAML != null) {
-      annotations = (HashMap<String, Object>) yaml.load(overridesYAML);
+      annotations = yaml.load(overridesYAML);
       if (annotations != null) {
         HelmUtils.mergeYaml(overrides, annotations);
       }
@@ -982,7 +1232,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
 
     try {
-      Path tempFile = Files.createTempFile(taskParams().universeUUID.toString(), ".yml");
+      Path tempFile =
+          fileHelperService.createTempFile(taskParams().getUniverseUUID().toString(), ".yml");
       try (BufferedWriter bw = new BufferedWriter(new FileWriter(tempFile.toFile())); ) {
         yaml.dump(overrides, bw);
         return tempFile.toAbsolutePath().toString();
@@ -1049,13 +1300,13 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
    * user does not end up in such an unsupported configuration.
    */
   private void allowK8SCertManagerOnlyWithOverride(Map<String, Object> values) {
-    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     if (u.getUniverseDetails().rootCA == null) {
       // nothing to validate on a Universe that does not have TLS enabled
       return;
     }
     CertificateInfo certInfo = CertificateInfo.get(u.getUniverseDetails().rootCA);
-    boolean isK8SCertManager = certInfo.certType == CertConfigType.K8SCertManager;
+    boolean isK8SCertManager = certInfo.getCertType() == CertConfigType.K8SCertManager;
     boolean hasCertManagerOverride = hasCertManagerOverride(values);
     if (isK8SCertManager != hasCertManagerOverride) {
       throw new RuntimeException(
@@ -1104,5 +1355,31 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         }
       }
     }
+  }
+
+  private List<String> getDnsNamesForSAN(boolean newNamingStyle, String kubeDomain) {
+    List<String> dnsNames = new ArrayList<>(4);
+    if (newNamingStyle) {
+      dnsNames.add(
+          String.format(
+              "*.%s-yb-tservers.%s", taskParams().helmReleaseName, taskParams().namespace));
+      dnsNames.add(
+          String.format(
+              "*.%s-yb-tservers.%s.svc.%s",
+              taskParams().helmReleaseName, taskParams().namespace, kubeDomain));
+      dnsNames.add(
+          String.format(
+              "*.%s-yb-masters.%s", taskParams().helmReleaseName, taskParams().namespace));
+      dnsNames.add(
+          String.format(
+              "*.%s-yb-masters.%s.svc.%s",
+              taskParams().helmReleaseName, taskParams().namespace, kubeDomain));
+    } else {
+      dnsNames.add(String.format("*.yb-tservers.%s", taskParams().namespace));
+      dnsNames.add(String.format("*.yb-tservers.%s.svc.%s", taskParams().namespace, kubeDomain));
+      dnsNames.add(String.format("*.yb-masters.%s", taskParams().namespace));
+      dnsNames.add(String.format("*.yb-masters.%s.svc.%s", taskParams().namespace, kubeDomain));
+    }
+    return dnsNames;
   }
 }

@@ -14,7 +14,7 @@
 #include <chrono>
 #include <thread>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/client/schema.h"
 
@@ -24,24 +24,12 @@
 #include "yb/integration-tests/yb_table_test_base.h"
 
 using std::string;
-using std::vector;
-using std::unique_ptr;
 
 namespace yb {
 namespace integration_tests {
 
 class RedisTableTest : public RedisTableTestBase {
 };
-
-using client::YBRedisWriteOp;
-using client::YBColumnSchema;
-using client::YBTableCreator;
-using client::YBSchemaBuilder;
-using client::YBColumnSchema;
-using client::YBTableType;
-using client::YBSession;
-
-using integration_tests::YBTableTestBase;
 
 TEST_F(RedisTableTest, SimpleRedisSetTest) {
   ASSERT_NO_FATALS(RedisSimpleSetCommands());

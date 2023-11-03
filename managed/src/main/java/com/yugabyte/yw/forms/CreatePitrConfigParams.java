@@ -1,10 +1,13 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.models.XClusterConfig;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.UUID;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
 
@@ -12,7 +15,7 @@ import play.data.validation.Constraints;
 @NoArgsConstructor
 public class CreatePitrConfigParams extends UniverseTaskParams {
 
-  @JsonIgnore public UUID universeUUID;
+  @JsonIgnore @Getter @Setter private UUID universeUUID;
 
   @JsonIgnore public UUID customerUUID;
 
@@ -30,4 +33,6 @@ public class CreatePitrConfigParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Time interval between snapshots")
   @Constraints.Required
   public long intervalInSeconds = 86400L;
+
+  @JsonIgnore public XClusterConfig xClusterConfig;
 }

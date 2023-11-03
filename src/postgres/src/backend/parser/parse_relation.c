@@ -2676,6 +2676,10 @@ get_rte_attribute_name(RangeTblEntry *rte, AttrNumber attnum)
 	if (attnum == InvalidAttrNumber)
 		return "*";
 
+	/* The ybctid has no entry in pg_attribute */
+	if (attnum == YBTupleIdAttributeNumber)
+		return "ybctid";
+
 	/*
 	 * If there is a user-written column alias, use it.
 	 */

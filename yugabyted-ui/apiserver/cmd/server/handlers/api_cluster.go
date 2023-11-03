@@ -1,16 +1,16 @@
 package handlers
 
 import (
-        "apiserver/cmd/server/helpers"
-        "apiserver/cmd/server/models"
-        "encoding/json"
-        "fmt"
-        "net/http"
-        "runtime"
-        "sort"
-        "time"
+    "apiserver/cmd/server/helpers"
+    "apiserver/cmd/server/models"
+    "encoding/json"
+    "fmt"
+    "net/http"
+    "runtime"
+    "sort"
+    "time"
 
-        "github.com/labstack/echo/v4"
+    "github.com/labstack/echo/v4"
 )
 
 const QUERY_LIMIT_ONE string = "select ts, value, details " +
@@ -22,35 +22,61 @@ func (c *Container) GetCluster(ctx echo.Context) error {
         tabletServersFuture := make(chan helpers.TabletServersFuture)
         mastersFuture := make(chan helpers.MastersFuture)
         clusterConfigFuture := make(chan helpers.ClusterConfigFuture)
-        go helpers.GetTabletServersFuture(helpers.HOST, tabletServersFuture)
-        go helpers.GetMastersFuture(helpers.HOST, mastersFuture)
-        go helpers.GetClusterConfigFuture(helpers.HOST, clusterConfigFuture)
+        masterAddressesFuture := make(chan helpers.MasterAddressesFuture)
+        go c.helper.GetTabletServersFuture(helpers.HOST, tabletServersFuture)
+        go c.helper.GetMastersFuture(helpers.HOST, mastersFuture)
+        go c.helper.GetClusterConfigFuture(helpers.HOST, clusterConfigFuture)
+        go c.helper.GetMasterAddressesFuture(masterAddressesFuture)
 
         // Get response from tabletServersFuture
         tabletServersResponse := <-tabletServersFuture
         if tabletServersResponse.Error != nil {
+                c.logger.Errorf("[tabletServersResponse]: %s", tabletServersResponse.Error.Error())
                 return ctx.String(http.StatusInternalServerError,
                         tabletServersResponse.Error.Error())
+        }
+
+        masterAddressesResponse := <-masterAddressesFuture
+        if masterAddressesResponse.Error != nil {
+            c.logger.Errorf("[masterAddressesResponse]: %s", masterAddressesResponse.Error.Error())
+            return ctx.String(http.StatusInternalServerError, masterAddressesResponse.Error.Error())
         }
 
         // Now that we have tabletServersResponse, we can start doing
         // queries that need to be made to each node separately
         // - Getting gflags for each tserver/master
         // - Getting version information from each node
-        nodeList := helpers.GetNodesList(tabletServersResponse)
-        gFlagsTserverFutures := []chan helpers.GFlagsFuture{}
-        gFlagsMasterFutures := []chan helpers.GFlagsFuture{}
-        versionInfoFutures := []chan helpers.VersionInfoFuture{}
+        // - Getting ram limits from each tserver/master
+        nodeList := c.helper.GetNodesList(tabletServersResponse)
+        reducedNodeList := c.helper.RemoveLocalAddresses(nodeList)
+        reducedMasterList := c.helper.RemoveLocalAddresses(masterAddressesResponse.HostList)
+        gFlagsTserverFutures := map[string]chan helpers.GFlagsFuture{}
+        gFlagsMasterFutures := map[string]chan helpers.GFlagsFuture{}
+        versionInfoFutures := map[string]chan helpers.VersionInfoFuture{}
+        masterMemTrackersFutures := map[string]chan helpers.MemTrackersFuture{}
+        tserverMemTrackersFutures := map[string]chan helpers.MemTrackersFuture{}
         for _, nodeHost := range nodeList {
-                gFlagsTserverFuture := make(chan helpers.GFlagsFuture)
-                gFlagsTserverFutures = append(gFlagsTserverFutures, gFlagsTserverFuture)
-                go helpers.GetGFlagsFuture(nodeHost, false, gFlagsTserverFuture)
-                gFlagsMasterFuture := make(chan helpers.GFlagsFuture)
-                gFlagsMasterFutures = append(gFlagsMasterFutures, gFlagsMasterFuture)
-                go helpers.GetGFlagsFuture(nodeHost, true, gFlagsMasterFuture)
-                versionInfoFuture := make(chan helpers.VersionInfoFuture)
-                versionInfoFutures = append(versionInfoFutures, versionInfoFuture)
-                go helpers.GetVersionFuture(nodeHost, versionInfoFuture)
+            gFlagsTserverFuture := make(chan helpers.GFlagsFuture)
+            gFlagsTserverFutures[nodeHost] = gFlagsTserverFuture
+            go c.helper.GetGFlagsFuture(nodeHost, false, gFlagsTserverFuture)
+            versionInfoFuture := make(chan helpers.VersionInfoFuture)
+            versionInfoFutures[nodeHost] = versionInfoFuture
+            go c.helper.GetVersionFuture(nodeHost, versionInfoFuture)
+        }
+        for _, nodeHost := range masterAddressesResponse.HostList {
+            gFlagsMasterFuture := make(chan helpers.GFlagsFuture)
+            gFlagsMasterFutures[nodeHost] = gFlagsMasterFuture
+            go c.helper.GetGFlagsFuture(nodeHost, true, gFlagsMasterFuture)
+        }
+        for _, nodeHost := range reducedNodeList {
+            tserverMemTrackersFuture := make(chan helpers.MemTrackersFuture)
+            tserverMemTrackersFutures[nodeHost] = tserverMemTrackersFuture
+            go c.helper.GetMemTrackersFuture(nodeHost, false, tserverMemTrackersFuture)
+        }
+        for _, nodeHost := range reducedMasterList {
+            masterMemTrackersFuture := make(chan helpers.MemTrackersFuture)
+            masterMemTrackersFutures[nodeHost] = masterMemTrackersFuture
+            go c.helper.GetMemTrackersFuture(nodeHost, true, masterMemTrackersFuture)
         }
 
     // Getting relevant data from tabletServersResponse
@@ -92,7 +118,8 @@ func (c *Container) GetCluster(ctx echo.Context) error {
         // Getting response from mastersFuture
         mastersResponse := <-mastersFuture
         if mastersResponse.Error != nil {
-                return ctx.String(http.StatusInternalServerError, mastersResponse.Error.Error())
+            c.logger.Errorf("[mastersResponse]: %s", mastersResponse.Error.Error())
+            return ctx.String(http.StatusInternalServerError, mastersResponse.Error.Error())
         }
 
         // Getting relevant data from mastersResponse
@@ -126,9 +153,14 @@ func (c *Container) GetCluster(ctx echo.Context) error {
         // Checks cluster-config response encryption_info.encryption_enabled
         clusterConfigResponse := <-clusterConfigFuture
         isEncryptionAtRestEnabled := false
+        var clusterReplicationFactor int32
         if clusterConfigResponse.Error == nil {
                 resultConfig := clusterConfigResponse.ClusterConfig
                 isEncryptionAtRestEnabled = resultConfig.EncryptionInfo.EncryptionEnabled
+                clusterReplicationFactor = int32(resultConfig.ReplicationInfo.
+                                                   LiveReplicas.NumReplicas)
+        } else {
+            c.logger.Warnf("[clusterConfigResponse]: %s", clusterConfigResponse.Error.Error())
         }
         // Determine if encryption in transit is enabled
         // It is enabled if and only if each master and tserver has the flags:
@@ -138,39 +170,65 @@ func (c *Container) GetCluster(ctx echo.Context) error {
         //   --use_client_to_server_encryption=true
         // If any flag on any server does not match, we don't say encryption in transit is enabled.
         isEncryptionInTransitEnabled := true
-        for _, gFlagsTserverFuture := range gFlagsTserverFutures {
-                tserverFlags := <-gFlagsTserverFuture
-                if tserverFlags.Error != nil ||
-                        tserverFlags.GFlags["use_node_to_node_encryption"] != "true" ||
-                        tserverFlags.GFlags["allow_insecure_connections"] != "false" ||
-                        tserverFlags.GFlags["use_client_to_server_encryption"] != "true" {
-                        isEncryptionInTransitEnabled = false
-                        break
-                }
+        for host, gFlagsTserverFuture := range gFlagsTserverFutures {
+            tserverFlags := <-gFlagsTserverFuture
+            if tserverFlags.Error != nil ||
+               tserverFlags.GFlags["use_node_to_node_encryption"] != "true" ||
+               tserverFlags.GFlags["allow_insecure_connections"] != "false" ||
+               tserverFlags.GFlags["use_client_to_server_encryption"] != "true" {
+                    isEncryptionInTransitEnabled = false
+                    c.logger.Debugf("encryption in transit not enabled at tserver %s", host)
+                    if tserverFlags.Error != nil {
+                        c.logger.Debugf("tserverFlags error: %s", tserverFlags.Error.Error())
+                    } else {
+                        c.logger.Debugf("tserverFlags use_node_to_node_encryption: %s",
+                            tserverFlags.GFlags["use_node_to_node_encryption"])
+                        c.logger.Debugf("tserverFlags allow_insecure_connections: %s",
+                            tserverFlags.GFlags["allow_insecure_connections"])
+                        c.logger.Debugf("tserverFlags use_client_to_server_encryption: %s",
+                            tserverFlags.GFlags["use_client_to_server_encryption"])
+                    }
+                    break
+            }
         }
         // Only need to keep checking masters if it is still possible that in-transit encryption is
         // enabled.
         if isEncryptionInTransitEnabled {
-                for _, gFlagsMasterFuture := range gFlagsMasterFutures {
-                        masterFlags := <-gFlagsMasterFuture
-                        if masterFlags.Error != nil ||
-                                masterFlags.GFlags["use_node_to_node_encryption"] != "true" ||
-                                masterFlags.GFlags["allow_insecure_connections"] != "false" {
-                                isEncryptionInTransitEnabled = false
-                                break
+            for host, gFlagsMasterFuture := range gFlagsMasterFutures {
+                masterFlags := <-gFlagsMasterFuture
+                if masterFlags.Error != nil ||
+                   masterFlags.GFlags["use_node_to_node_encryption"] != "true" ||
+                   masterFlags.GFlags["allow_insecure_connections"] != "false" {
+                        isEncryptionInTransitEnabled = false
+                        c.logger.Debugf("encryption in transit not enabled because at master %s",
+                            host)
+                        if masterFlags.Error != nil {
+                            c.logger.Debugf("masterFlags error: %s", masterFlags.Error.Error())
+                        } else {
+                            c.logger.Debugf("masterFlags use_node_to_node_encryption: %s",
+                                masterFlags.GFlags["use_node_to_node_encryption"])
+                            c.logger.Debugf("masterFlags allow_insecure_connections: %s",
+                                masterFlags.GFlags["allow_insecure_connections"])
                         }
+                        break
                 }
+            }
         }
 
         // Use the session from the context.
-        session := c.Session
+        session, err := c.GetSession()
+        if err != nil {
+            c.logger.Errorf("[GetSession]: %s", err.Error())
+            return ctx.String(http.StatusInternalServerError, err.Error())
+        }
         averageCpu := float64(0)
         totalDiskGb := float64(0)
         freeDiskGb := float64(0)
-        hostToUuid, err := helpers.GetHostToUuidMap(helpers.HOST)
+        hostToUuid, err := c.helper.GetHostToUuidMap(helpers.HOST)
         if err == nil {
             sum := float64(0)
-            for _, uuid := range hostToUuid {
+            errorCount := 0
+            for host, uuid := range hostToUuid {
                 query := fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics", "cpu_usage_user", uuid)
                 iter := session.Query(query).Iter()
                 var ts int64
@@ -179,37 +237,94 @@ func (c *Container) GetCluster(ctx echo.Context) error {
                 iter.Scan(&ts, &value, &details)
                 detailObj := DetailObj{}
                 json.Unmarshal([]byte(details), &detailObj)
-                sum += detailObj.Value
                 if err := iter.Close(); err != nil {
+                    errorCount++
+                    c.logger.Errorf("error fetching cpu_usage_user data from %s: %s",
+                        host, err.Error())
                     continue
+                } else {
+                    sum += detailObj.Value
                 }
                 query = fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics", "cpu_usage_system", uuid)
                 iter = session.Query(query).Iter()
                 iter.Scan(&ts, &value, &details)
                 json.Unmarshal([]byte(details), &detailObj)
-                sum += detailObj.Value
                 if err := iter.Close(); err != nil {
+                    errorCount++
+                    c.logger.Errorf("error fetching cpu_usage_system data from %s: %s",
+                        host, err.Error())
                     continue
+                } else {
+                    sum += detailObj.Value
                 }
             }
-            averageCpu = (sum * 100) / float64(len(hostToUuid))
-            // Get the disk usage as well. Assume every node reports the same metrics for disk space
-            query :=
-              fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics", "total_disk", hostToUuid[helpers.HOST])
-            iter := session.Query(query).Iter()
-            var ts int64
-            var value int
-            var details string
-            iter.Scan(&ts, &value, &details)
-            totalDiskGb = float64(value) / helpers.BYTES_IN_GB
-            query =
-              fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics", "free_disk", hostToUuid[helpers.HOST])
-            iter = session.Query(query).Iter()
-            iter.Scan(&ts, &value, &details)
-            freeDiskGb = float64(value) / helpers.BYTES_IN_GB
+            // subtract errorCount to only take average of nodes that are up
+            averageCpu = (sum * 100) / float64(len(hostToUuid) - errorCount)
+
+            // Get the disk usage as well. We assume all nodes report the size of a different disk,
+            // unless the node has a 127.x.x.x address, which assume reports the disk size of the
+            // same machine. If all addresses are 127.x.x.x addresses, assume there is only
+            // one machine in the cluster. If there are a mix of 127.x.x.x and non 127.x.x.x
+            // addresses, assume the 127.x.x.x addresses share a machine with one of the non
+            // 127.x.x.x addresses.
+
+            // Thus, we will only count the metrics from non 127 addresses, unless all addresses
+            // are 127, in which case we count only one of them.
+            for _, host := range reducedNodeList {
+                query := fmt.Sprintf(
+                    QUERY_LIMIT_ONE, "system.metrics", "total_disk", hostToUuid[host])
+                iter := session.Query(query).Iter()
+                var ts int64
+                var value int
+                var details string
+                iter.Scan(&ts, &value, &details)
+                if err := iter.Close(); err != nil {
+                    c.logger.Errorf("error fetching total_disk data from %s: %s",
+                        host, err.Error())
+                    continue
+                } else {
+                    totalDiskGb += float64(value) / helpers.BYTES_IN_GB
+                }
+                query = fmt.Sprintf(
+                    QUERY_LIMIT_ONE, "system.metrics", "free_disk", hostToUuid[host])
+                iter = session.Query(query).Iter()
+                iter.Scan(&ts, &value, &details)
+                if err := iter.Close(); err != nil {
+                    c.logger.Errorf("error fetching free_disk data from %s: %s",
+                        host, err.Error())
+                    continue
+                } else {
+                    freeDiskGb += float64(value) / helpers.BYTES_IN_GB
+                }
+            }
+        } else {
+            c.logger.Errorf("[GetHostToUuidMap]: %s", err.Error())
         }
         // Get software version
-        smallestVersion := helpers.GetSmallestVersion(versionInfoFutures)
+        smallestVersion := c.helper.GetSmallestVersion(versionInfoFutures)
+        numCores := int32(len(reducedNodeList)) * int32(runtime.NumCPU())
+
+        // Get ram limits
+        ramProvisionedBytes := float64(0)
+        for host, memTrackersFuture := range tserverMemTrackersFutures {
+            memTrackersResult := <-memTrackersFuture
+            if memTrackersResult.Error != nil {
+                c.logger.Warnf("memTrackersResult from tserver at %s returned error: %s",
+                    host, memTrackersResult.Error.Error())
+            } else {
+                ramProvisionedBytes += float64(memTrackersResult.Limit)
+            }
+        }
+        for host, memTrackersFuture := range masterMemTrackersFutures {
+            memTrackersResult := <-memTrackersFuture
+            if memTrackersResult.Error != nil {
+                c.logger.Warnf("memTrackersResult from master at %s returned error: %s",
+                    host, memTrackersResult.Error.Error())
+            } else {
+                ramProvisionedBytes += float64(memTrackersResult.Limit)
+            }
+        }
+        ramProvisionedGb := ramProvisionedBytes / helpers.BYTES_IN_GB
 
     response := models.ClusterResponse{
         Data: models.ClusterData{
@@ -220,12 +335,14 @@ func (c *Container) GetCluster(ctx echo.Context) error {
                 ClusterInfo: models.ClusterInfo{
                     NumNodes:       numNodes,
                     FaultTolerance: faultTolerance,
+                    ReplicationFactor: clusterReplicationFactor,
                     NodeInfo: models.ClusterNodeInfo{
-                        MemoryMb:       ramUsageMb,
-                        DiskSizeGb:     totalDiskGb,
-                        DiskSizeUsedGb: totalDiskGb - freeDiskGb,
-                        CpuUsage:       averageCpu,
-                        NumCores:       int32(runtime.NumCPU()),
+                        MemoryMb:         ramUsageMb,
+                        DiskSizeGb:       totalDiskGb,
+                        DiskSizeUsedGb:   totalDiskGb - freeDiskGb,
+                        CpuUsage:         averageCpu,
+                        NumCores:         numCores,
+                        RamProvisionedGb: ramProvisionedGb,
                     },
                 },
                 ClusterRegionInfo: &clusterRegionInfo,

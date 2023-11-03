@@ -39,7 +39,7 @@ void YBPartition::AppendBytesToKey(const char *bytes, size_t len, std::string *e
   encoded_key->append(bytes, len);
 }
 
-uint16_t YBPartition::HashColumnCompoundValue(const std::string &compound) {
+uint16_t YBPartition::HashColumnCompoundValue(std::string_view compound) {
   // In the future, if you wish to change the hashing behavior, you must introduce a new hashing
   // method for your newly-created tables.  Existing tables must continue to use their hashing
   // methods that was define by their PartitionSchema.

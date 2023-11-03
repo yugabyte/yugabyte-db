@@ -26,6 +26,7 @@ export const MetricTypesWithOperations = {
       'ysql_server_rpc_per_second',
       'ysql_sql_latency',
       'ysql_connections',
+      'ysql_connections_per_sec',
       'ysql_server_advanced_rpc_per_second',
       'ysql_sql_advanced_latency'
       // TODO(bogdan): Add these in once we have histogram support, see #3630.
@@ -80,6 +81,8 @@ export const MetricTypesWithOperations = {
       'disk_iops',
       'disk_usage_percent',
       'disk_used_size_total',
+      'disk_volume_usage_percent',
+      'disk_volume_used',
       'disk_bytes_per_second_per_node',
       'network_packets',
       'network_bytes',
@@ -96,6 +99,7 @@ export const MetricTypesWithOperations = {
       'tserver_handler_latency',
       'tserver_threads_running',
       'tserver_threads_started',
+      'tserver_uptime_min',
       'tserver_consensus_rpcs_per_sec',
       'tserver_change_config',
       'tserver_remote_bootstraps',
@@ -107,13 +111,15 @@ export const MetricTypesWithOperations = {
       'tserver_log_bytes_written',
       'tserver_log_bytes_read',
       'tserver_log_ops_second',
+      'tserver_write_lock_latency',
       'tserver_tc_malloc_stats',
       'tserver_log_stats',
       'tserver_cache_reader_num_ops',
       'tserver_glog_info_messages',
       'tserver_rpc_queue_size_tserver',
       'tserver_cpu_util_secs',
-      'tserver_yb_rpc_connections'
+      'tserver_yb_rpc_connections',
+      'raft_leader'
     ]
   },
   master: {
@@ -121,6 +127,7 @@ export const MetricTypesWithOperations = {
     metrics: [
       'master_overall_rpc_rate',
       'master_latency',
+      'master_uptime_min',
       'master_get_tablet_location',
       'master_tsservice_reads',
       'master_tsservice_reads_latency',
@@ -134,7 +141,8 @@ export const MetricTypesWithOperations = {
       'master_multiraft_consensus_update_latency',
       'master_table_ops',
       'master_cpu_util_secs',
-      'master_yb_rpc_connections'
+      'master_yb_rpc_connections',
+      'master_leaderless_and_underreplicated_tablets'
     ]
   },
   master_advanced: {
@@ -180,6 +188,7 @@ export const MetricTypesWithOperations = {
       'lsm_rocksdb_compaction_tasks',
       'lsm_rocksdb_compaction_time',
       'lsm_rocksdb_compaction_numfiles',
+      'lsm_rocksdb_mem_tracker_db_memtable',
       'docdb_transaction',
       'docdb_transaction_pool_cache',
       'tablet_splitting_stats',
@@ -202,6 +211,7 @@ export const MetricTypesWithOperations = {
       'tserver_log_bytes_read',
       'tserver_log_ops_second',
       'tserver_log_stats',
+      'tserver_write_lock_latency',
       'tserver_cache_reader_num_ops'
     ]
   },
@@ -234,12 +244,14 @@ export const MetricTypesWithOperations = {
       'table_log_latency',
       'table_log_ops_second',
       'table_log_bytes_written',
+      'table_write_lock_latency',
       'table_seek_next_prev',
       'table_ops_in_flight',
       'table_write_rejections',
       'table_memory_rejections',
       'table_compaction',
-      'table_block_cache_hit_miss'
+      'table_block_cache_hit_miss',
+      'table_mem_tracker_db_memtable'
     ]
   }
 } as const;
@@ -300,16 +312,28 @@ export const MetricConsts = {
   PRIMARY: 'PRIMARY'
 } as const;
 
+export const NodeType = {
+  ALL: 'All',
+  MASTER: 'Master',
+  TSERVER: 'TServer'
+} as const;
+
 export enum MetricMeasure {
   OVERALL = 'Overall',
   OUTLIER = 'Outlier',
   OUTLIER_TABLES = "Outlier_Tables"
-};
+}
 
 export enum SplitType {
   NODE = 'NODE',
   TABLE = 'TABLE'
-};
+}
+
+export enum NodeAggregation {
+  AVERAGE = 'AVG',
+  MAX = 'MAX',
+  MIN = 'MIN'
+}
 
 export const DEFAULT_OUTLIER_NUM_NODES = 3;
 export const MIN_OUTLIER_NUM_NODES = 1;

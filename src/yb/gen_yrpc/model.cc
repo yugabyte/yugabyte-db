@@ -134,23 +134,35 @@ std::string RelativeClassPath(const std::string& clazz, const std::string& servi
   return "::" + ReplaceNamespaceDelimiters(clazz);
 }
 
-std::string UnnestedName(
-    const google::protobuf::Descriptor* message, Lightweight lightweight, FullPath full_path) {
-  auto name = lightweight ? MakeLightweightName(message->name()) : message->name();
-  if (message->options().map_entry()) {
+template <class Desc>
+std::string DoUnnestedName(
+    const Desc* desc, Lightweight lightweight, FullPath full_path, bool map_entry) {
+  auto name = lightweight ? MakeLightweightName(desc->name()) : desc->name();
+  if (map_entry) {
     name += "_DoNotUse";
   }
-  if (message->containing_type()) {
-    return UnnestedName(message->containing_type(), lightweight, full_path) + "_" + name;
+  if (desc->containing_type()) {
+    return UnnestedName(desc->containing_type(), lightweight, full_path) + "_" + name;
   }
   if (full_path) {
-    const auto& full_name = message->full_name();
+    const auto& full_name = desc->full_name();
     auto idx = full_name.find_last_of('.');
     if (idx != std::string::npos) {
       return full_name.substr(0, idx + 1) + name;
     }
   }
   return name;
+}
+
+std::string UnnestedName(
+    const google::protobuf::Descriptor* message, Lightweight lightweight, FullPath full_path) {
+  return DoUnnestedName(message, lightweight, full_path, message->options().map_entry());
+}
+
+std::string UnnestedName(
+    const google::protobuf::EnumDescriptor* enum_desc, Lightweight lightweight,
+    FullPath full_path) {
+  return DoUnnestedName(enum_desc, lightweight, full_path, false);
 }
 
 std::string MapFieldType(const google::protobuf::FieldDescriptor* field, Lightweight lightweight) {
@@ -257,6 +269,14 @@ std::vector<std::string> ListDependencies(const google::protobuf::FileDescriptor
     result.push_back(std::move(dependency_path));
   }
   return result;
+}
+
+std::optional<std::string> LightweightName(const google::protobuf::EnumDescriptor* enum_desc) {
+  const auto& options = enum_desc->options().GetExtension(rpc::lightweight_enum);
+  if (options.name().empty()) {
+    return std::nullopt;
+  }
+  return options.name();
 }
 
 } // namespace gen_yrpc

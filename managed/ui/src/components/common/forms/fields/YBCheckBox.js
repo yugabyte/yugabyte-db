@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import clsx from 'clsx';
 
 import { isValidObject } from '../../../../utils/ObjectUtils';
@@ -9,10 +9,10 @@ export default class YBCheckBox extends Component {
   render() {
     const { input, field, label, checkState, onClick, disabled } = this.props;
     const onCheckClick = (event) => {
-      if (input && input.onChange) {
+      if (input?.onChange) {
         input.onChange(event);
       }
-      if (field && field.onChange) {
+      if (field?.onChange) {
         field.onChange(event);
       }
       if (isValidObject(onClick)) {
@@ -26,20 +26,15 @@ export default class YBCheckBox extends Component {
             className="yb-input-checkbox__input"
             {...input}
             type="checkbox"
-            name={field && field.name}
+            name={field?.name}
             defaultChecked={checkState}
             id={this.props.id}
             onClick={onCheckClick}
             disabled={disabled}
           />
-          <span className={clsx(
-            "yb-input-checkbox__inner",
-            disabled && 'disabled'
-          )}></span>
+          <span className={clsx('yb-input-checkbox__inner', disabled && 'disabled')}></span>
         </span>
-        <span style={{marginLeft: '6px', verticalAlign: 'middle'}}>
-          {label}
-        </span>
+        <span style={{ marginLeft: '6px', verticalAlign: 'middle' }}>{label}</span>
       </label>
     );
   }

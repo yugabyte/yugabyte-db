@@ -28,11 +28,11 @@ $ ps aux | grep yb-master
 
 If the servers are not running, you can start them by using the following:
 
-- `yb-ctl` when using a local cluster.
+- `yugabyted` when using a local cluster.
 
 - `bin/yb-tserver` and `bin/yb-master` servers when using a multi-node cluster.
 
-Once the servers are running, yet they are not accessible from your client machine, it may indicate a network issue.
+If the servers are running, yet they are not accessible from your client machine, it may indicate a network issue.
 
 ## Are the YB-Master and YB-TServer endpoints accessible?
 
@@ -51,13 +51,13 @@ However, in some cases these endpoints may not be accessible, depending on the c
 
 ### IP not accessible
 
-Private versus Public IP: Consider setting up a VPN or using the node’s public IP (for example, get it from the machine status on your cloud-provider account).
+Private versus Public IP: Consider setting up a VPN or using the node's public IP (for example, get it from the machine status on your cloud-provider account).
 
 ### Ports closed
 
 - Cloud Account Configuration: Open the relevant ports, as per the following definition, for TCP traffic on your cloud provider account (for example, security group rules).
 
-- SELinux is enabled: If your host has SELinux enabled, run the following commands to open the ports using firewall exceptions.
+- Firewall is enabled: If your host has firewall enabled, run the following commands to open the ports using firewall exceptions.
 
   ```sh
   sudo firewall-cmd --zone=public --add-port=7000/tcp;

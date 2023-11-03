@@ -38,6 +38,7 @@
 #include <string>
 
 #include <google/protobuf/message.h>
+#include <google/protobuf/repeated_field.h>
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -73,6 +74,7 @@ struct ParsedRequestHeader {
   Slice remote_method;
   int32_t call_id = 0;
   uint32_t timeout_ms = 0;
+  boost::iterator_range<const uint32_t*> sidecar_offsets;
 
   std::string RemoteMethodAsString() const;
   void ToPB(RequestHeader* out) const;
@@ -83,14 +85,13 @@ struct ParsedRequestHeader {
 // Out: parsed_header PB initialized,
 //      parsed_main_message pointing to offset in original buffer containing
 //      the main payload.
-Status ParseYBMessage(const Slice& buf,
-                      google::protobuf::MessageLite* parsed_header,
-                      Slice* parsed_main_message);
+Status ParseYBMessage(
+    const CallData& call_data, ResponseHeader* header, Slice* serialized_pb,
+    ReceivedSidecars* sidecars);
 
-
-Status ParseYBMessage(const Slice& buf,
-                      ParsedRequestHeader* parsed_header,
-                      Slice* parsed_main_message);
+Status ParseYBMessage(
+    const CallData& call_data, ParsedRequestHeader* header, Slice* serialized_pb,
+    ReceivedSidecars* sidecars);
 
 struct ParsedRemoteMethod {
   Slice service;

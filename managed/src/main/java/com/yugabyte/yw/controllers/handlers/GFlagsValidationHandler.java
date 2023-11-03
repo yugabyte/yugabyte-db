@@ -6,12 +6,13 @@ import static java.util.regex.Pattern.CASE_INSENSITIVE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.GFlagsValidationFormData;
 import com.yugabyte.yw.forms.GFlagsValidationFormData.GFlagValidationDetails;
 import com.yugabyte.yw.forms.GFlagsValidationFormData.GFlagsValidationRequest;
@@ -25,10 +26,12 @@ import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import javax.inject.Singleton;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@Singleton
 public class GFlagsValidationHandler {
 
   @Inject private GFlagsValidation gflagsValidation;
@@ -41,6 +44,23 @@ public class GFlagsValidationHandler {
       ImmutableSet.of(
           Pattern.compile("^.*_test.*$", CASE_INSENSITIVE),
           Pattern.compile("^.*test_.*$", CASE_INSENSITIVE));
+
+  private static final Map<String, List<String>> TSERVER_GFLAG_PERMISSIBLE_VALUE =
+      ImmutableMap.<String, List<String>>builder()
+          .put(
+              "ysql_default_transaction_isolation",
+              ImmutableList.of("serializable", "read committed", "read repeatable"))
+          .build();
+
+  private static final Map<String, List<String>> MASTER_GFLAG_PERMISSIBLE_VALUE =
+      ImmutableMap.<String, List<String>>builder().build();
+
+  private static final Map<ServerType, Map<String, List<String>>>
+      GFLAGS_PERMISSIBLE_VALUES_PER_SERVER =
+          ImmutableMap.<ServerType, Map<String, List<String>>>builder()
+              .put(ServerType.MASTER, MASTER_GFLAG_PERMISSIBLE_VALUE)
+              .put(ServerType.TSERVER, TSERVER_GFLAG_PERMISSIBLE_VALUE)
+              .build();
 
   public List<GFlagDetails> listGFlags(
       String version, String gflag, String serverType, Boolean mostUsedGFlags) throws IOException {
@@ -71,15 +91,11 @@ public class GFlagsValidationHandler {
 
     // extract master gflags metadata.
     Map<String, GFlagDetails> masterGflagsMap =
-        gflagsValidation
-            .extractGFlags(version, ServerType.MASTER.toString(), false)
-            .stream()
+        gflagsValidation.extractGFlags(version, ServerType.MASTER.toString(), false).stream()
             .collect(Collectors.toMap(gflag -> gflag.name, Function.identity()));
     // extract tserver gflags metadata.
     Map<String, GFlagDetails> tserverGflagsMap =
-        gflagsValidation
-            .extractGFlags(version, ServerType.TSERVER.toString(), false)
-            .stream()
+        gflagsValidation.extractGFlags(version, ServerType.TSERVER.toString(), false).stream()
             .collect(Collectors.toMap(gflag -> gflag.name, Function.identity()));
 
     List<GFlagsValidationResponse> validationResponseArrayList = new ArrayList<>();
@@ -98,8 +114,7 @@ public class GFlagsValidationHandler {
     validateServerType(serverType);
     validateVersionFormat(version);
     List<GFlagDetails> gflagsList = gflagsValidation.extractGFlags(version, serverType, false);
-    return gflagsList
-        .stream()
+    return gflagsList.stream()
         .filter(flag -> flag.name.equals(gflag))
         .findFirst()
         .orElseThrow(
@@ -113,10 +128,16 @@ public class GFlagsValidationHandler {
     GFlagDetails gflagDetails = gflags.get(gflag.name);
     if (gflagDetails != null) {
       validationDetails.exist = true;
-      if (serverType == ServerType.MASTER) {
-        validationDetails.error = checkValueType(gflag.masterValue, gflagDetails.type);
-      } else {
-        validationDetails.error = checkValueType(gflag.tserverValue, gflagDetails.type);
+      String gflagValue = serverType == ServerType.MASTER ? gflag.masterValue : gflag.tserverValue;
+      validationDetails.error = checkValueType(gflagValue, gflagDetails.type);
+      if (StringUtils.isEmpty(validationDetails.error)) {
+        if (GFLAGS_PERMISSIBLE_VALUES_PER_SERVER.get(serverType).containsKey(gflag.name)
+            && !GFLAGS_PERMISSIBLE_VALUES_PER_SERVER
+                .get(serverType)
+                .get(gflag.name)
+                .contains(gflagValue)) {
+          validationDetails.error = "Given value is not valid";
+        }
       }
     }
     return validationDetails;
@@ -185,18 +206,15 @@ public class GFlagsValidationHandler {
   }
 
   private List<GFlagDetails> filterGFlagsList(List<GFlagDetails> gflagsList) {
-    return gflagsList
-        .stream()
+    return gflagsList.stream()
         .filter(
             flag ->
-                !GFLAGS_FILTER_PATTERN
-                        .stream()
+                !GFLAGS_FILTER_PATTERN.stream()
                         .anyMatch(
                             regexMatcher ->
                                 !StringUtils.isEmpty(flag.name)
                                     && regexMatcher.matcher(flag.name).find())
-                    && !GFLAGS_FILTER_TAGS
-                        .stream()
+                    && !GFLAGS_FILTER_TAGS.stream()
                         .anyMatch(
                             tags -> !StringUtils.isEmpty(flag.tags) && flag.tags.contains(tags)))
         .collect(Collectors.toList());

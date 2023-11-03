@@ -16,6 +16,8 @@
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
 
+#include "yb/common/wire_protocol.h"
+
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_error.h"
 
@@ -58,6 +60,14 @@ class ClientMasterRpcBase : public rpc::Rpc {
     return master_admin_proxy();
   }
 
+  std::shared_ptr<master::MasterBackupProxy> master_backup_proxy() {
+    return client_data_->master_backup_proxy();
+  }
+
+  auto master_proxy_helper(const master::MasterBackupProxy*) {
+    return master_backup_proxy();
+  }
+
   std::shared_ptr<master::MasterClusterProxy> master_cluster_proxy() {
     return client_data_->master_cluster_proxy();
   }
@@ -97,6 +107,23 @@ class ClientMasterRpcBase : public rpc::Rpc {
   auto master_proxy_helper(const master::MasterReplicationProxy*) {
     return master_replication_proxy();
   }
+
+  std::shared_ptr<master::MasterEncryptionProxy> master_encryption_proxy() {
+    return client_data_->master_encryption_proxy();
+  }
+
+  auto master_proxy_helper(const master::MasterEncryptionProxy*) {
+    return master_encryption_proxy();
+  }
+
+  std::shared_ptr<master::MasterTestProxy> master_test_proxy() {
+    return client_data_->master_test_proxy();
+  }
+
+  auto master_proxy_helper(const master::MasterTestProxy*) {
+    return master_test_proxy();
+  }
+
 
   virtual void CallRemoteMethod() = 0;
 

@@ -46,7 +46,7 @@ Where
 
 - `table_name` and `column_name` are identifiers (`table_name` may be qualified with a keyspace name).
 - `limit_expression` is an integer literal (or a bind variable marker for prepared statements).
-- Restrictions for `where_expression` are discussed in the Semantics section below.
+- Restrictions for `where_expression` are discussed in the Semantics section.
 - See [Expressions](..#expressions) for more information on syntax rules.
 
 ## Semantics
@@ -56,6 +56,7 @@ Where
 - `*` means all columns of the table will be retrieved.
 - `LIMIT` clause sets the maximum number of results (rows) to be returned.
 - `OFFSET` clause sets the number of rows to be skipped before returning results.
+- `ALLOW FILTERING` is provided for syntax compatibility with Cassandra. You can always filter on all columns.
 
 ### `ORDER BY` clause
 
@@ -208,7 +209,7 @@ ycqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_id 
 ### Select with condition on a regular column, using WHERE clause
 
 ```sql
-ycqlsh:example> SELECT * FROM employees WHERE department_id = 1 AND employee_name = 'John' ALLOW FILTERING;
+ycqlsh:example> SELECT * FROM employees WHERE employee_name = 'John';
 ```
 
 ```output

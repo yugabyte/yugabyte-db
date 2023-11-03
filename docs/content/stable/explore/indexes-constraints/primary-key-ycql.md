@@ -1,7 +1,9 @@
 ---
-title: Primary keys
+title: Primary keys in YugabyteDB YCQL
+headerTitle: Primary keys
 linkTitle: Primary keys
 description: Defining Primary key constraint in YCQL
+headContent: Explore primary keys in YugabyteDB using YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
@@ -37,7 +39,7 @@ Refer to the Grammar section for [CREATE TABLE](../../../api/ycql/ddl_create_tab
 
 ## Examples
 
-Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../../../yugabyte-cloud/cloud-basics/create-clusters-free/) and connect to the cluster using [ycqlsh](../../../admin/ycqlsh/) for local clusters, or [using cloud shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) for YugabyteDB Managed.
+{{% explore-setup-single %}}
 
 ### Column constraint
 

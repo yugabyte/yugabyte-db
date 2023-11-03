@@ -11,7 +11,6 @@ package com.yugabyte.yw.models;
 
 import io.ebean.BackgroundExecutor;
 import io.ebean.config.dbplatform.PlatformIdGenerator;
-import io.ebean.config.dbplatform.db2.DB2SequenceIdGenerator;
 import io.ebean.config.dbplatform.h2.H2Platform;
 import javax.sql.DataSource;
 

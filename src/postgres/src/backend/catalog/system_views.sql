@@ -506,6 +506,9 @@ CREATE VIEW pg_config AS
 REVOKE ALL on pg_config FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION pg_config() FROM PUBLIC;
 
+CREATE VIEW pg_backend_memory_contexts AS
+    SELECT * FROM pg_get_backend_memory_contexts();
+
 -- Statistics views
 
 CREATE VIEW pg_stat_all_tables AS

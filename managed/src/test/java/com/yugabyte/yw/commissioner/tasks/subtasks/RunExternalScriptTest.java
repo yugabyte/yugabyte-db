@@ -77,9 +77,9 @@ public class RunExternalScriptTest extends FakeDBApplication {
     RunExternalScript.Params params = new RunExternalScript.Params();
     params.platformUrl = PLATFORM_URL;
     params.timeLimitMins = TIME_LIMIT_MINS;
-    params.customerUUID = defaultCustomer.uuid;
-    params.universeUUID = defaultUniverse.universeUUID;
-    params.userUUID = defaultUser.uuid;
+    params.customerUUID = defaultCustomer.getUuid();
+    params.universeUUID = defaultUniverse.getUniverseUUID();
+    params.userUUID = defaultUser.getUuid();
     when(mockShellProcessHandler.run(anyList(), anyMap(), anyString()))
         .thenReturn(new ShellResponse());
     RunExternalScript externalScriptTask = AbstractTaskBase.createTask(RunExternalScript.class);
@@ -92,9 +92,9 @@ public class RunExternalScriptTest extends FakeDBApplication {
     RunExternalScript.Params params = new RunExternalScript.Params();
     params.platformUrl = PLATFORM_URL;
     params.timeLimitMins = TIME_LIMIT_MINS;
-    params.customerUUID = defaultCustomer.uuid;
-    params.universeUUID = defaultUniverse.universeUUID;
-    params.userUUID = defaultUser.uuid;
+    params.customerUUID = defaultCustomer.getUuid();
+    params.universeUUID = defaultUniverse.getUniverseUUID();
+    params.userUUID = defaultUser.getUuid();
     settableRuntimeConfigFactory
         .forUniverse(defaultUniverse)
         .deleteEntry(ExternalScriptHelper.EXT_SCRIPT_RUNTIME_CONFIG_PATH);

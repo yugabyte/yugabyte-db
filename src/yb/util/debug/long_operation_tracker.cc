@@ -54,7 +54,9 @@ struct TrackedOperationComparer {
 // operations.
 class LongOperationTrackerHelper {
  public:
-  LongOperationTrackerHelper() : thread_(std::bind(&LongOperationTrackerHelper::Execute, this)) {
+  LongOperationTrackerHelper() {
+    CHECK_OK(Thread::Create(
+        "long_operation_tracker", "tracker", &LongOperationTrackerHelper::Execute, this, &thread_));
   }
 
   LongOperationTrackerHelper(const LongOperationTrackerHelper&) = delete;
@@ -62,11 +64,13 @@ class LongOperationTrackerHelper {
 
   ~LongOperationTrackerHelper() {
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       stop_ = true;
     }
     cond_.notify_one();
-    thread_.join();
+    if (thread_) {
+      thread_->Join();
+    }
   }
 
   static LongOperationTrackerHelper& Instance() {
@@ -82,7 +86,7 @@ class LongOperationTrackerHelper {
     auto result = std::make_shared<LongOperationTracker::TrackedOperation>(
         Thread::CurrentThreadIdForStack(), message, start, start + duration * kTimeMultiplier);
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       queue_.push(result);
     }
 
@@ -114,9 +118,14 @@ class LongOperationTrackerHelper {
       queue_.pop();
       if (!operation.unique()) {
         lock.unlock();
-        LOG(WARNING) << operation->message << " running for " << MonoDelta(now - operation->start)
-                     << " in thread " << operation->thread_id << ":\n"
-                     << DumpThreadStack(operation->thread_id);
+        auto stack = DumpThreadStack(operation->thread_id);
+        // Make sure the task did not complete while we were dumping the stack. Else we could get
+        // some other innocent stack.
+        if (!operation.unique()) {
+          LOG(WARNING) << operation->message << " running for " << MonoDelta(now - operation->start)
+                       << " in thread " << operation->thread_id << ":\n"
+                       << stack;
+        }
         lock.lock();
       }
     }
@@ -128,7 +137,7 @@ class LongOperationTrackerHelper {
   std::mutex mutex_;
   std::condition_variable cond_;
   bool stop_;
-  std::thread thread_;
+  scoped_refptr<Thread> thread_;
 };
 
 } // namespace

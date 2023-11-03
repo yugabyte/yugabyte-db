@@ -19,13 +19,13 @@ Use the `CREATE SEQUENCE` statement to create a sequence in the current schema.
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
     <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
     <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
@@ -70,7 +70,7 @@ Specify the first value in the sequence. `start` cannot be less than `minvalue`.
 
 #### CACHE *cache*
 
-Specify how many numbers from the sequence to cache in the client. Default is `1`.
+Specify how many numbers from the sequence to cache in the client. Default is `100`.
 
 When YB-TServer [ysql_sequence_cache_minval](../../../../../reference/configuration/yb-tserver/#ysql-sequence-cache-minval) configuration flag is not explicitly turned off (set to `0`), the maximum value of the flag and the cache clause will be used.
 
@@ -95,13 +95,13 @@ By default (when `INCREMENT` is 1), each call to `nextval()` updates `last_val` 
 `SERIAL` types create a sequence with a cache with default value of 1. So `SERIAL` types should be avoided, and their equivalent statement should be used.
 Instead of creating a table with a `SERIAL` type like this:
 
-```
+```sql
 CREATE TABLE t(k SERIAL)
 ```
 
 You should create a sequence with a large enough cache first, and then set the column that you want to have a serial type to `DEFAULT` to `nextval()` of the sequence.
 
-```
+```sql
 CREATE SEQUENCE t_k_seq CACHE 10000;
 CREATE TABLE t(k integer NOT NULL DEFAULT nextval('t_k_seq'));
 ```
@@ -110,21 +110,21 @@ CREATE TABLE t(k integer NOT NULL DEFAULT nextval('t_k_seq'));
 
 Create a simple sequence that increments by 1 every time `nextval()` is called.
 
-```plpgsql
+```sql
 yugabyte=# CREATE SEQUENCE s;
 ```
 
-```
+```sql
 CREATE SEQUENCE
 ```
 
 Call `nextval()`.
 
-```plpgsql
+```sql
 yugabyte=# SELECT nextval('s');
 ```
 
-```
+```output
  nextval
 ---------
        1
@@ -133,21 +133,21 @@ yugabyte=# SELECT nextval('s');
 
 Create a sequence with a cache of 10,000 values.
 
-```plpgsql
+```sql
 yugabyte=# CREATE SEQUENCE s2 CACHE 10000;
 ```
 
-```
+```sql
 CREATE SEQUENCE
 ```
 
 In the same session, select `nextval()`.
 
-```plpgsql
+```sql
 SELECT nextval('s2');
 ```
 
-```
+```output
  nextval
 ---------
        1
@@ -156,11 +156,11 @@ SELECT nextval('s2');
 
 In a different session, select `nextval()`.
 
-```plpgsql
+```sql
 SELECT nextval('s2');
 ```
 
-```
+```output
 nextval
 ---------
    10001
@@ -169,19 +169,19 @@ nextval
 
 Create a sequence that starts at 0. MINVALUE also has to be changed from its default 1 to something less than or equal to 0.
 
-```plpgsql
+```sql
 CREATE SEQUENCE s3 START 0 MINVALUE 0;
 ```
 
-```
+```sql
 CREATE SEQUENCE
 ```
 
-```plpgsql
+```sql
 SELECT nextval('s3');
 ```
 
-```
+```output
 nextval
 ---------
        0

@@ -80,8 +80,10 @@
 #include "utils/tqual.h"
 
 /*  YB includes. */
+#include "commands/progress.h"
 #include "commands/ybccmds.h"
 #include "pg_yb_utils.h"
+#include "pgstat.h"
 
 /* Potentially set by pg_upgrade_support functions */
 Oid			binary_upgrade_next_index_pg_class_oid = InvalidOid;
@@ -206,6 +208,20 @@ relationHasPrimaryKey(Relation rel)
 	list_free(indexoidlist);
 
 	return result;
+}
+
+/*
+ * YBRelationHasPrimaryKey
+ *		See whether an existing relation has a primary key.
+ *
+ * Caller must have suitable lock on the relation.
+ *
+ * Note: It is just a wrapper over the relationHasPrimaryKey function above.
+ */
+bool
+YBRelationHasPrimaryKey(Relation rel)
+{
+	return relationHasPrimaryKey(rel);
 }
 
 /*
@@ -789,6 +805,7 @@ index_create(Relation heapRelation,
 			 Oid *constraintId,
 			 OptSplit *split_options,
 			 const bool skip_index_backfill,
+			 bool is_colocated,
 			 Oid tablegroupId,
 			 Oid colocationId)
 {
@@ -1003,6 +1020,7 @@ index_create(Relation heapRelation,
 					   heapRelation,
 					   split_options,
 					   skip_index_backfill,
+					   is_colocated,
 					   tablegroupId,
 					   colocationId,
 					   tableSpaceId);
@@ -1312,6 +1330,11 @@ index_create(Relation heapRelation,
 	}
 	else
 	{
+		if (IsYugaByteEnabled() && !concurrent && !invalid &&
+			yb_test_block_index_phase[0] != '\0')
+			YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+										"backfill",
+										"non-concurrent index backfill");
 		index_build(heapRelation, indexRelation, indexInfo, isprimary, false,
 					true);
 	}
@@ -1321,6 +1344,13 @@ index_create(Relation heapRelation,
 	 * of transaction.  Closing the heap is caller's responsibility.
 	 */
 	index_close(indexRelation, NoLock);
+
+	if (IsYugaByteEnabled() && !concurrent && !invalid &&
+		yb_test_block_index_phase[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+									"postbackfill",
+									"operations after a non-concurrent "
+									"index backfill");
 
 	return indexRelationId;
 }
@@ -2415,6 +2445,10 @@ index_build(Relation heapRelation,
 						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
 	save_nestlevel = NewGUCNestLevel();
 
+	if (IsYugaByteEnabled())
+		pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
+									 YB_PROGRESS_CREATEIDX_BACKFILLING);
+
 	/*
 	 * Call the access method's build procedure
 	 */
@@ -2494,11 +2528,24 @@ index_build(Relation heapRelation,
 	}
 
 	/*
-	 * Update heap and index pg_class rows
+	 * Sanity check to ensure concurrent index builds don't reach this
+	 * code-path. In YB, we don't compute stats during a concurrent index build
+	 * so we shouldn't update them here.
 	 */
+	if (IsYugaByteEnabled())
+		Assert(!indexInfo->ii_Concurrent);
+
+	/*
+	 * Update heap and index pg_class rows
+	 *
+	 * YB TODO(fizaa): Properly update reltuples for the indexed table
+	 * (see GH #16506). Currently, we don't compute this statistic during a
+	 * non-concurrent index build so we should not update it here.
+	 */
+
 	index_update_stats(heapRelation,
 					   true,
-					   stats->heap_tuples);
+					   IsYBRelation(heapRelation) ? -1 : stats->heap_tuples);
 
 	index_update_stats(indexRelation,
 					   false,
@@ -2732,6 +2779,7 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 	BlockNumber root_blkno = InvalidBlockNumber;
 	OffsetNumber root_offsets[MaxHeapTuplesPerPage];
 	MemoryContext oldcontext = GetCurrentMemoryContext();
+	int			yb_tuples_done = 0;
 
 	/*
 	 * sanity checks
@@ -3144,6 +3192,7 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 		{
 			/* In YugaByte mode DocDB will only send live tuples. */
 			tupleIsAlive = true;
+			reltuples += 1;
 		}
 
 		if (!IsYBRelation(indexRelation))
@@ -3159,7 +3208,12 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 		if (predicate != NULL)
 		{
 			if (!ExecQual(predicate, econtext))
+			{
+				if (IsYBRelation(indexRelation) && !indexInfo->ii_Concurrent)
+					pgstat_progress_update_param(PROGRESS_CREATEIDX_TUPLES_DONE,
+												 ++yb_tuples_done);
 				continue;
+			}
 		}
 
 		/*
@@ -3215,7 +3269,12 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 		}
 
 		if (IsYBRelation(indexRelation))
+		{
 			MemoryContextReset(econtext->ecxt_per_tuple_memory);
+			if (!indexInfo->ii_Concurrent)
+				pgstat_progress_update_param(PROGRESS_CREATEIDX_TUPLES_DONE,
+											 ++yb_tuples_done);
+		}
 	}
 
 	if (IsYBRelation(indexRelation))
@@ -4354,9 +4413,10 @@ reindex_relation(Oid relid, int flags, int options)
 				 */
 
 				Relation new_rel = heap_open(YbGetStorageRelid(rel), AccessExclusiveLock);
-				AttrNumber *new_to_old_attmap = convert_tuples_by_name_map(RelationGetDescr(new_rel),
-											  	RelationGetDescr(rel),
-											  	gettext_noop("could not convert row type"));
+				AttrNumber *new_to_old_attmap = convert_tuples_by_name_map(
+					RelationGetDescr(new_rel), RelationGetDescr(rel),
+					gettext_noop("could not convert row type"),
+					false /* yb_ignore_type_mismatch */);
 				heap_close(new_rel, AccessExclusiveLock);
 				YbDropAndRecreateIndex(indexOid, relid, rel, new_to_old_attmap);
 				RemoveReindexPending(indexOid);

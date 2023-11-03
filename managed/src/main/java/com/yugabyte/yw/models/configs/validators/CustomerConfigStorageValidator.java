@@ -66,13 +66,13 @@ public class CustomerConfigStorageValidator extends ConfigDataValidator {
         String host = uri.getHost();
         String scheme = uri.getScheme() + "://";
         String uriToValidate = scheme + host;
-        Integer port = Integer.valueOf(uri.getPort());
+        Integer port = uri.getPort();
         boolean validPort = true;
         if (!uri.toString().equals(uriToValidate)
             && (port < MIN_PORT_VALUE
                 || port > MAX_PORT_VALUE
-                || port == HTTPS_PORT
-                || port == HTTP_PORT)) {
+                || HTTPS_PORT.equals(port)
+                || HTTP_PORT.equals(port))) {
           validPort = false;
         }
         valid = validPort && urlValidator.isValid(uriToValidate);

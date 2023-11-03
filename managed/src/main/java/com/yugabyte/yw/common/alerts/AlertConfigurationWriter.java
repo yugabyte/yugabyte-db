@@ -162,17 +162,13 @@ public class AlertConfigurationWriter {
       Map<UUID, Set<UUID>> maintenanceWindowToAlertConfigs = new HashMap<>();
       for (MaintenanceWindow window : activeWindows) {
         AlertConfigurationFilter alertConfigurationFilter =
-            window
-                .getAlertConfigurationFilter()
-                .toFilter()
-                .toBuilder()
+            window.getAlertConfigurationFilter().toFilter().toBuilder()
                 .customerUuid(window.getCustomerUUID())
                 .build();
         List<AlertConfiguration> configurations =
             alertConfigurationService.list(alertConfigurationFilter);
         List<AlertConfiguration> toSave =
-            configurations
-                .stream()
+            configurations.stream()
                 .filter(
                     configuration ->
                         !configuration.getMaintenanceWindowUuidsSet().contains(window.getUuid())
@@ -180,7 +176,7 @@ public class AlertConfigurationWriter {
                 .map(configuration -> configuration.addMaintenanceWindowUuid(window.getUuid()))
                 .collect(Collectors.toList());
 
-        alertConfigurationService.save(toSave);
+        alertConfigurationService.save(window.getCustomerUUID(), toSave);
         maintenanceWindowToAlertConfigs.put(
             window.getUuid(),
             configurations.stream().map(AlertConfiguration::getUuid).collect(Collectors.toSet()));
@@ -215,7 +211,9 @@ public class AlertConfigurationWriter {
               toUnsuspend.add(configuration);
             }
           });
-      alertConfigurationService.save(toUnsuspend);
+      toUnsuspend.stream()
+          .collect(Collectors.groupingBy(AlertConfiguration::getCustomerUUID))
+          .forEach(alertConfigurationService::save);
 
       metricService.setOkStatusMetric(
           buildMetricTemplate(PlatformMetrics.ALERT_MAINTENANCE_WINDOW_PROCESSOR_STATUS));
@@ -252,8 +250,7 @@ public class AlertConfigurationWriter {
           new HashSet<>(alertDefinitionService.listIds(AlertDefinitionFilter.builder().build()));
 
       results.addAll(
-          configUuids
-              .stream()
+          configUuids.stream()
               .filter(uuid -> !definitionUuids.contains(uuid))
               .map(this::syncDefinition)
               .collect(Collectors.toList()));

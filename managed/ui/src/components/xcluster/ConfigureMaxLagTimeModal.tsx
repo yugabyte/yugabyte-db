@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Field, FormikFormProps, FormikProps } from 'formik';
 import { useQuery, useQueryClient } from 'react-query';
 import * as Yup from 'yup';
@@ -146,7 +146,7 @@ export function ConfigureMaxLagTimeModal({ onHide, visible, currentUniverseUUID 
                 />
                 <br />
                 <span className="alert-subtext">
-                  We'll email you if a replication lag exceeds the defined value above
+                  {"We'll email you if a replication lag exceeds the defined value above"}
                 </span>
               </Col>
             </Row>

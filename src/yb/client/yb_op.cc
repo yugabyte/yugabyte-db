@@ -39,8 +39,6 @@
 #include "yb/client/table.h"
 
 #include "yb/common/ql_protocol.pb.h"
-#include "yb/common/ql_rowblock.h"
-#include "yb/common/ql_scanspec.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/pgsql_protocol.messages.h"
@@ -50,10 +48,16 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_scanspec_util.h"
-#include "yb/docdb/primitive_value.h"
-#include "yb/docdb/primitive_value_util.h"
+#include "yb/dockv/primitive_value_util.h"
+
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/primitive_value.h"
+
+#include "yb/qlexpr/doc_scanspec_util.h"
+#include "yb/qlexpr/ql_expr_util.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/qlexpr/ql_scanspec.h"
+
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/tserver_service.proxy.h"
@@ -104,9 +108,49 @@ void SetKey(const Slice& value, PgsqlPartitionBound* bound) {
   bound->set_key(value.cdata(), value.size());
 }
 
+template <typename Req>
+void GetPartitionKey(const Req& request, std::string* partition_key) {
+  if (request.has_partition_key()) {
+    *partition_key = request.partition_key();
+  } else {
+    partition_key->clear();
+  }
+}
+
+template <typename Req>
+Result<const PartitionKey&> FindPartitionKeyByUpperBound(
+    std::reference_wrapper<const TablePartitionList> partition_list, const Req& request) {
+  const auto& partitions = partition_list.get();
+  if (!request.has_upper_bound()) {
+    return partitions.back();
+  }
+
+  auto idx = FindPartitionStartIndex(
+      partitions, static_cast<std::string_view>(request.upper_bound().key()));
+  if (!request.upper_bound().is_inclusive()) {
+    RSTATUS_DCHECK_NE(idx, 0U, InvalidArgument,
+                      "Upper bound must not be exclusive when it points to the first partition.");
+    --idx;
+  }
+  return partitions[idx];
+}
+
+template<class Req>
+bool IsNonIndexBackwardScan(const Req& request) {
+  return !request.has_index_request() && !request.is_forward_scan();
+}
+
+// Returns true if backward scan may depend on partitions change (for example, due to tablet
+// splitting). Currently, there's only one case: if table is range partitioned and a request
+// is non-index request, then additional action may be required to correctly handle a backward
+// scan (for example, to adjust partition key).
+bool IsPartitionsChangeDependantBackwardScan(const YBPgsqlReadOp& read_op) {
+  return !read_op.table()->IsHashPartitioned() && IsNonIndexBackwardScan(read_op.request());
+}
+
 template<class Req>
 Status InitHashPartitionKey(
-    const Schema& schema, const PartitionSchema& partition_schema, Req* request) {
+    const Schema& schema, const dockv::PartitionSchema& partition_schema, Req* request) {
   // Seek a specific partition_key from read_request.
   // 1. Not specified hash condition - Full scan.
   // 2. paging_state -- Set by server to continue current request.
@@ -133,7 +177,7 @@ Status InitHashPartitionKey(
 
     // Check that the paging state hash_code is within [ hash_code, max_hash_code ] bounds.
     if (schema.num_hash_key_columns() > 0 && !request->partition_key().empty()) {
-      uint16 paging_state_hash_code = PartitionSchema::DecodeMultiColumnHashValue(
+      uint16 paging_state_hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(
           request->partition_key());
       if ((request->has_hash_code() && paging_state_hash_code < request->hash_code()) ||
           (request->has_max_hash_code() && paging_state_hash_code > request->max_hash_code())) {
@@ -149,14 +193,14 @@ Status InitHashPartitionKey(
     }
   } else if (!request->partition_column_values().empty()) {
     // If hashed columns are set, use them to compute the exact key and set the bounds
-    std::string temp;
-    RETURN_NOT_OK(partition_schema.EncodePgsqlKey(request->partition_column_values(), &temp));
-    SetPartitionKey(temp, request);
+    SetPartitionKey(
+        VERIFY_RESULT(partition_schema.EncodePgsqlHash(request->partition_column_values())),
+        request);
 
     // Make sure given key is not smaller than lower bound (if any)
     if (request->has_hash_code()) {
       auto hash_code = static_cast<uint16>(request->hash_code());
-      auto lower_bound = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
+      auto lower_bound = dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code);
       if (request->partition_key() < lower_bound) {
         SetPartitionKey(std::move(lower_bound), request);
       }
@@ -165,7 +209,7 @@ Status InitHashPartitionKey(
     // Make sure given key is not bigger than upper bound (if any)
     if (request->has_max_hash_code()) {
       auto hash_code = static_cast<uint16>(request->max_hash_code());
-      auto upper_bound = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
+      auto upper_bound = dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code);
       if (request->partition_key() > upper_bound) {
         SetPartitionKey(std::move(upper_bound), request);
       }
@@ -174,44 +218,30 @@ Status InitHashPartitionKey(
     if (!request->partition_key().empty()) {
       // If one specific partition_key is found, set both bounds to equal partition key now because
       // this is a point get.
-      auto hash_code = PartitionSchema::DecodeMultiColumnHashValue(request->partition_key());
+      auto hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(request->partition_key());
       request->set_hash_code(hash_code);
       request->set_max_hash_code(hash_code);
     }
 
   } else if (request->has_lower_bound() || request->has_upper_bound()) {
-    // Batched requests contain the combination of lower and upper bounds (except during single
-    // tablet scenario). For example, ybctids are always prepared as batched requests grouping them
-    // into their respective tablets that they belong to.
-    // Here there are two components that are of importance.
-    // 1. partition key -- We start scanning from the tablet containing partition key.
-    // 2. upper bound -- We end scanning when we reach the upper bound.
-    // During automatic tablet splitting, batched request could be prepared before the tablets
-    // are split. In that case, if docDB's scanning iterator that starts scanning from the
-    // partition key does not reach the end of the tablet (upper bound), it will throw a paging
-    // state and continue from there.
+    // If the read request provides a scan boundary, use that to derive the partition key.
+    SetPartitionKey(request->lower_bound().key(), request);
 
-    // If the read request does not provide a specific partition key, but it does provide scan
-    // boundary, use the given boundary to setup the scan lower and upper bound.
+    // Translate to hash-code bounds as well.
     if (request->has_lower_bound()) {
-      auto hash = PartitionSchema::DecodeMultiColumnHashValue(request->lower_bound().key());
+      auto hash = dockv::PartitionSchema::DecodeMultiColumnHashValue(request->lower_bound().key());
       if (!request->lower_bound().is_inclusive()) {
         ++hash;
       }
       request->set_hash_code(hash);
-
     }
     if (request->has_upper_bound()) {
-      auto hash = PartitionSchema::DecodeMultiColumnHashValue(request->upper_bound().key());
+      auto hash = dockv::PartitionSchema::DecodeMultiColumnHashValue(request->upper_bound().key());
       if (!request->upper_bound().is_inclusive()) {
         --hash;
       }
       request->set_max_hash_code(hash);
     }
-    // Set partition key to lower bound. If lower bound is empty, then it is set to 0 which is the
-    // first potential hash_key from which table entries start. Lower bounds are empty for the
-    // first tablet or if it is a single tablet scenario.
-    SetPartitionKey(request->lower_bound().key(), request);
   } else {
     // Full scan. Default to empty key.
     request->clear_partition_key();
@@ -220,41 +250,9 @@ Status InitHashPartitionKey(
   return Status::OK();
 }
 
-template <class Req>
-Status SetRangePartitionBounds(const Schema& schema,
-                               const std::string& last_partition,
-                               Req* request,
-                               std::string* key_upper_bound) {
-  vector<docdb::KeyEntryValue> range_components, range_components_end;
-  RETURN_NOT_OK(GetRangePartitionBounds(
-      schema, *request, &range_components, &range_components_end));
-  if (range_components.empty() && range_components_end.empty()) {
-    if (request->is_forward_scan()) {
-      request->clear_partition_key();
-    } else {
-      // In case of backward scan process must be start from the last partition.
-      SetPartitionKey(last_partition, request);
-    }
-    key_upper_bound->clear();
-    return Status::OK();
-  }
-  auto upper_bound_key = docdb::DocKey(std::move(range_components_end)).Encode().ToStringBuffer();
-  if (request->is_forward_scan()) {
-    SetPartitionKey(docdb::DocKey(std::move(range_components)).Encode().AsSlice(), request);
-    *key_upper_bound = std::move(upper_bound_key);
-  } else {
-    // Backward scan should go from upper bound to lower. But because DocDB can check upper bound
-    // only it is not set here. Lower bound will be checked on client side in the
-    // ReviewResponsePagingState function.
-    SetPartitionKey(upper_bound_key, request);
-    key_upper_bound->clear();
-  }
-  return Status::OK();
-}
-
 template<class Req>
 Status InitRangePartitionKey(
-    const Schema& schema, const std::string& last_partition, Req* request) {
+    const Schema& schema, const TablePartitionList& partitions, Req* request) {
   // Seek a specific partition_key from read_request.
   // 1. Not specified range condition - Full scan.
   // 2. paging_state -- Set by server to continue the same request.
@@ -266,33 +264,39 @@ Status InitRangePartitionKey(
       request->paging_state().has_next_partition_key()) {
     // If this is a subsequent query, use the partition key from the paging state.
     SetPartitionKey(request->paging_state().next_partition_key(), request);
-  } else if (request->has_lower_bound()) {
-      // There are two cases here.
-      // Case 1: batching ybctids
-      // In this situation, requests belonging to the same tablets are batched. Here there are two
-      // components that are of importance.
-      // partition key --  We start scanning from the tablet containing partition key.
-      // upper bound -- We end scanning when we reach the upper bound.
-      // During automatic tablet splitting, batched request could be prepared before the tablets
-      // are split. In that case, if docDB's scanning iterator that starts scanning from the
-      // partition key does not reach the end of the tablet (upper bound), it will throw a paging
-      // state and continue from there.
-      //
-      // Case 2: Range expression optimization
-      //
-      // When PgGate optimizes RANGE expressions, it will set lower_bound and upper_bound by itself.
-      // In that case, we use them without recompute them here.
-      //
-      // NOTE: Currently, PgGate uses this optimization ONLY for COUNT operator and backfill
-      // requests. It has not done any optimization on RANGE values yet.
-      SetPartitionKey(request->lower_bound().key(), request);
+  } else if (IsNonIndexBackwardScan(*request)) {
+    // A special case for backward scan: partition is selected on base of upper bound.
+    const auto& key = VERIFY_RESULT_REF(FindPartitionKeyByUpperBound(partitions, *request));
+    SetPartitionKey(key, request);
+  } else if (request->has_lower_bound() || request->has_upper_bound()) {
+    // If the read request provides a scan boundary, use that to derive the partition key.
+    SetPartitionKey(request->lower_bound().key(), request);
   } else {
-    // Evaluate condition to return partition_key and set the upper bound.
-    string max_key;
-    RETURN_NOT_OK(SetRangePartitionBounds(schema, last_partition, request, &max_key));
-    if (!max_key.empty()) {
-      SetKey(max_key, request->mutable_upper_bound());
-      request->mutable_upper_bound()->set_is_inclusive(true);
+    // Inspect filters in the request to produce scan boundaries; fall back to full scan, otherwise.
+    vector<dockv::KeyEntryValue> lower_range_components, upper_range_components;
+    RETURN_NOT_OK(GetRangePartitionBounds(
+        schema, *request, &lower_range_components, &upper_range_components));
+    if (lower_range_components.empty() && upper_range_components.empty()) {
+      // Full scan: start from first or last partition depending on scan direction.
+      if (request->is_forward_scan()) {
+        request->clear_partition_key();
+      } else {
+        SetPartitionKey(partitions.back(), request);
+      }
+      return Status::OK();
+    }
+    auto upper_bound = dockv::DocKey(std::move(upper_range_components)).Encode().ToStringBuffer();
+    if (request->is_forward_scan()) {
+      SetPartitionKey(dockv::DocKey(std::move(lower_range_components)).Encode().AsSlice(), request);
+      if (!upper_bound.empty()) {
+        SetKey(upper_bound, request->mutable_upper_bound());
+        request->mutable_upper_bound()->set_is_inclusive(true);
+      }
+    } else {
+      // Backward scan should go from upper bound to lower. But because DocDB can check upper bound
+      // only, lower bound is not set here. Lower bound will be checked on client side in the
+      // ReviewResponsePagingState function.
+      SetPartitionKey(upper_bound, request);
     }
   }
 
@@ -300,12 +304,12 @@ Status InitRangePartitionKey(
 }
 
 template <class Col>
-Result<std::vector<docdb::KeyEntryValue>> GetRangeComponents(
+Result<std::vector<dockv::KeyEntryValue>> GetRangeComponents(
     const Schema& schema, const Col& range_cols, const bool lower_bound) {
   size_t column_idx = 0;
   auto range_cols_it = range_cols.begin();
   const auto num_range_key_columns = schema.num_range_key_columns();
-  std::vector<docdb::KeyEntryValue> result;
+  dockv::KeyEntryValues result;
   for (const auto& col_id : schema.column_ids()) {
     if (!schema.is_range_column(col_id)) {
       continue;
@@ -315,19 +319,19 @@ Result<std::vector<docdb::KeyEntryValue>> GetRangeComponents(
 
     if (schema.table_properties().partitioning_version() > 0) {
       if (column_idx < static_cast<size_t>(range_cols.size())) {
-        result.push_back(docdb::KeyEntryValue::FromQLValuePBForKey(
+        result.push_back(dockv::KeyEntryValue::FromQLValuePBForKey(
             range_cols_it->value(), column_schema.sorting_type()));
       } else {
         result.emplace_back(
-            lower_bound ? docdb::KeyEntryType::kLowest : docdb::KeyEntryType::kHighest);
+            lower_bound ? dockv::KeyEntryType::kLowest : dockv::KeyEntryType::kHighest);
       }
     } else {
       if (column_idx >= static_cast<size_t>(range_cols.size()) ||
           range_cols_it->value().value_case() == QLValuePB::VALUE_NOT_SET) {
         result.emplace_back(
-            lower_bound ? docdb::KeyEntryType::kLowest : docdb::KeyEntryType::kHighest);
+            lower_bound ? dockv::KeyEntryType::kLowest : dockv::KeyEntryType::kHighest);
       } else {
-        result.push_back(docdb::KeyEntryValue::FromQLValuePB(
+        result.push_back(dockv::KeyEntryValue::FromQLValuePB(
             range_cols_it->value(), column_schema.sorting_type()));
       }
     }
@@ -339,7 +343,7 @@ Result<std::vector<docdb::KeyEntryValue>> GetRangeComponents(
   }
 
   if (!lower_bound) {
-    result.emplace_back(docdb::KeyEntryType::kHighest);
+    result.emplace_back(dockv::KeyEntryType::kHighest);
   }
   return result;
 }
@@ -351,36 +355,36 @@ Result<std::string> GetRangePartitionKey(
       "Cannot get range partition key for hash partitioned table");
 
   auto range_components = VERIFY_RESULT(GetRangeComponents(schema, range_cols, true));
-  return docdb::DocKey(std::move(range_components)).Encode().ToStringBuffer();
+  return dockv::DocKey(std::move(range_components)).Encode().ToStringBuffer();
 }
 
 template<class Req>
 Status InitReadPartitionKey(
-    const Schema& schema, const PartitionSchema& partition_schema,
-    const std::string& last_partition, Req* request) {
+    const Schema& schema, const dockv::PartitionSchema& partition_schema,
+    const TablePartitionList& partitions, Req* request) {
   if (schema.num_hash_key_columns() > 0) {
     return InitHashPartitionKey(schema, partition_schema, request);
   }
 
-  return InitRangePartitionKey(schema, last_partition, request);
+  return InitRangePartitionKey(schema, partitions, request);
 }
 
 template<class Req>
 Status InitWritePartitionKey(
-    const Schema& schema, const PartitionSchema& partition_schema, Req* request) {
+    const Schema& schema, const dockv::PartitionSchema& partition_schema, Req* request) {
   const auto& ybctid = request->ybctid_column_value().value();
   if (schema.num_hash_key_columns() > 0) {
     if (!IsNull(ybctid)) {
-      const uint16 hash_code = VERIFY_RESULT(docdb::DocKey::DecodeHash(ybctid.binary_value()));
+      const uint16 hash_code = VERIFY_RESULT(dockv::DocKey::DecodeHash(ybctid.binary_value()));
       request->set_hash_code(hash_code);
-      SetPartitionKey(PartitionSchema::EncodeMultiColumnHashValue(hash_code), request);
+      SetPartitionKey(dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code), request);
       return Status::OK();
     }
 
     // Computing the partition_key.
-    std::string temp;
-    RETURN_NOT_OK(partition_schema.EncodePgsqlKey(request->partition_column_values(), &temp));
-    SetPartitionKey(temp, request);
+    SetPartitionKey(
+        VERIFY_RESULT(partition_schema.EncodePgsqlHash(request->partition_column_values())),
+        request);
     return Status::OK();
   } else {
     // Range partitioned table
@@ -400,20 +404,20 @@ Status InitWritePartitionKey(
 template <class Req>
 Status DoGetRangePartitionBounds(const Schema& schema,
                                  const Req& request,
-                                 vector<docdb::KeyEntryValue>* lower_bound,
-                                 vector<docdb::KeyEntryValue>* upper_bound) {
+                                 vector<dockv::KeyEntryValue>* lower_bound,
+                                 vector<dockv::KeyEntryValue>* upper_bound) {
   SCHECK(!schema.num_hash_key_columns(), IllegalState,
          "Cannot set range partition key for hash partitioned table");
   const auto& range_cols = request.range_column_values();
   const auto& condition_expr = request.condition_expr();
   if (condition_expr.has_condition() &&
       implicit_cast<size_t>(range_cols.size()) < schema.num_range_key_columns()) {
-    auto prefixed_range_components = VERIFY_RESULT(docdb::InitKeyColumnPrimitiveValues(
+    auto prefixed_range_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
         range_cols, schema, schema.num_hash_key_columns()));
-    QLScanRange scan_range(schema, condition_expr.condition());
-    *lower_bound = docdb::GetRangeKeyScanSpec(
+    qlexpr::QLScanRange scan_range(schema, condition_expr.condition());
+    *lower_bound = qlexpr::GetRangeKeyScanSpec(
         schema, &prefixed_range_components, &scan_range, nullptr, true /* lower_bound */);
-    *upper_bound = docdb::GetRangeKeyScanSpec(
+    *upper_bound = qlexpr::GetRangeKeyScanSpec(
         schema, &prefixed_range_components, &scan_range, nullptr, false /* upper_bound */);
   } else if (!range_cols.empty()) {
     *lower_bound = VERIFY_RESULT(GetRangeComponents(schema, range_cols, true));
@@ -534,8 +538,8 @@ const std::string& YBRedisReadOp::GetKey() const {
 
 Status YBRedisReadOp::GetPartitionKey(std::string *partition_key) const {
   if (!redis_read_request_->key_value().has_key()) {
-    *partition_key =
-        PartitionSchema::EncodeMultiColumnHashValue(redis_read_request_->key_value().hash_code());
+    *partition_key = dockv::PartitionSchema::EncodeMultiColumnHashValue(
+        redis_read_request_->key_value().hash_code());
     return Status::OK();
   }
   const Slice& slice(redis_read_request_->key_value().key());
@@ -766,27 +770,27 @@ Status YBqlReadOp::GetPartitionKey(string* partition_key) const {
     // Make sure given key is not smaller than lower bound (if any)
     if (ql_read_request_->has_hash_code()) {
       uint16 hash_code = static_cast<uint16>(ql_read_request_->hash_code());
-      auto lower_bound = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
+      auto lower_bound = dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code);
       if (*partition_key < lower_bound) *partition_key = std::move(lower_bound);
     }
 
     // Make sure given key is not bigger than upper bound (if any)
     if (ql_read_request_->has_max_hash_code()) {
       uint16 hash_code = static_cast<uint16>(ql_read_request_->max_hash_code());
-      auto upper_bound = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
+      auto upper_bound = dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code);
       if (*partition_key > upper_bound) *partition_key = std::move(upper_bound);
     }
 
     // Set both bounds to equal partition key now, because this is a point get
     ql_read_request_->set_hash_code(
-          PartitionSchema::DecodeMultiColumnHashValue(*partition_key));
+          dockv::PartitionSchema::DecodeMultiColumnHashValue(*partition_key));
     ql_read_request_->set_max_hash_code(
-          PartitionSchema::DecodeMultiColumnHashValue(*partition_key));
+          dockv::PartitionSchema::DecodeMultiColumnHashValue(*partition_key));
   } else {
     // Otherwise, set the partition key to the hash_code (lower bound of the token range).
     if (ql_read_request_->has_hash_code()) {
       uint16 hash_code = static_cast<uint16>(ql_read_request_->hash_code());
-      *partition_key = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
+      *partition_key = dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code);
     } else {
       // Default to empty key, this will start a scan from the beginning.
       partition_key->clear();
@@ -802,7 +806,8 @@ Status YBqlReadOp::GetPartitionKey(string* partition_key) const {
     *partition_key = ql_read_request_->paging_state().next_partition_key();
 
     // Check that the partition key we got from the paging state is within bounds.
-    uint16 paging_state_hash_code = PartitionSchema::DecodeMultiColumnHashValue(*partition_key);
+    uint16 paging_state_hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(
+        *partition_key);
     if ((ql_read_request_->has_hash_code() &&
             paging_state_hash_code < ql_read_request_->hash_code()) ||
         (ql_read_request_->has_max_hash_code() &&
@@ -837,10 +842,10 @@ std::vector<ColumnSchema> YBqlReadOp::MakeColumnSchemasFromRequest() const {
   return MakeColumnSchemasFromColDesc(request().rsrow_desc().rscol_descs());
 }
 
-Result<QLRowBlock> YBqlReadOp::MakeRowBlock() const {
-  Schema schema(MakeColumnSchemasFromRequest(), 0);
-  QLRowBlock result(schema);
-  Slice data(rows_data_);
+Result<qlexpr::QLRowBlock> YBqlReadOp::MakeRowBlock() const {
+  Schema schema(MakeColumnSchemasFromRequest());
+  qlexpr::QLRowBlock result(schema);
+  auto data = rows_data_.AsSlice();
   if (!data.empty()) {
     RETURN_NOT_OK(result.Deserialize(request().client(), &data));
   }
@@ -852,9 +857,8 @@ Result<QLRowBlock> YBqlReadOp::MakeRowBlock() const {
 //--------------------------------------------------------------------------------------------------
 
 YBPgsqlOp::YBPgsqlOp(
-    const shared_ptr<YBTable>& table, std::string* partition_key, rpc::Sidecars* sidecars)
+    const shared_ptr<YBTable>& table, rpc::Sidecars* sidecars)
     : YBOperation(table), response_(new PgsqlResponsePB()),
-      partition_key_(partition_key ? std::move(*partition_key) : std::string()),
       sidecars_(*sidecars) {
 }
 
@@ -882,7 +886,7 @@ std::string ResponseSuffix(const PgsqlResponsePB& response) {
 
 YBPgsqlWriteOp::YBPgsqlWriteOp(
     const shared_ptr<YBTable>& table, rpc::Sidecars* sidecars, PgsqlWriteRequestPB* request)
-    : YBPgsqlOp(table, request ? request->mutable_partition_key() : nullptr, sidecars),
+    : YBPgsqlOp(table, sidecars),
       request_(request) {
   if (!request) {
     request_holder_ = std::make_unique<PgsqlWriteRequestPB>();
@@ -923,6 +927,11 @@ YBPgsqlWriteOpPtr YBPgsqlWriteOp::NewDelete(const YBTablePtr& table, rpc::Sideca
   return NewYBPgsqlWriteOp(table, sidecars, PgsqlWriteRequestPB::PGSQL_DELETE);
 }
 
+YBPgsqlWriteOpPtr YBPgsqlWriteOp::NewFetchSequence(const std::shared_ptr<YBTable>& table,
+                                                   rpc::Sidecars* sidecars) {
+  return NewYBPgsqlWriteOp(table, sidecars, PgsqlWriteRequestPB::PGSQL_FETCH_SEQUENCE);
+}
+
 std::string YBPgsqlWriteOp::ToString() const {
   return Format(
       "PGSQL_WRITE $0$1$2", request_->ShortDebugString(),
@@ -935,7 +944,8 @@ void YBPgsqlWriteOp::SetHashCode(const uint16_t hash_code) {
 
 Status YBPgsqlWriteOp::GetPartitionKey(std::string* partition_key) const {
   if (!request_holder_) {
-    return YBPgsqlOp::GetPartitionKey(partition_key);
+    client::GetPartitionKey(*request_, partition_key);
+    return Status::OK();
   }
   RETURN_NOT_OK(InitWritePartitionKey(
       table_->InternalSchema(), table_->partition_schema(), request_));
@@ -948,7 +958,7 @@ Status YBPgsqlWriteOp::GetPartitionKey(std::string* partition_key) const {
 
 YBPgsqlReadOp::YBPgsqlReadOp(
     const shared_ptr<YBTable>& table, rpc::Sidecars* sidecars, PgsqlReadRequestPB* request)
-    : YBPgsqlOp(table, request ? request->mutable_partition_key() : nullptr, sidecars),
+    : YBPgsqlOp(table, sidecars),
       request_(request),
       yb_consistency_level_(YBConsistencyLevel::STRONG) {
   if (!request) {
@@ -998,16 +1008,26 @@ OpGroup YBPgsqlReadOp::group() {
       ? OpGroup::kConsistentPrefixRead : OpGroup::kLeaderRead;
 }
 
-void YBPgsqlReadOp::SetUsedReadTime(const ReadHybridTime& used_time) {
+void YBPgsqlReadOp::SetUsedReadTime(const ReadHybridTime& used_time, const TabletId& tablet) {
   used_read_time_ = used_time;
+  used_tablet_ = tablet;
 }
 
 Status YBPgsqlReadOp::GetPartitionKey(std::string* partition_key) const {
-  if (!request_holder_) {
-    return YBPgsqlOp::GetPartitionKey(partition_key);
+  // This instance's partition_key may have stale value in case of backward scan and dynamically
+  // changed partitions. New key is calculated on-the-fly.
+  if (IsPartitionsChangeDependantBackwardScan(*this)) {
+    *partition_key = VERIFY_RESULT_REF(
+        FindPartitionKeyByUpperBound(*table_->GetPartitionsShared(), *request_));
+    return Status::OK();
   }
+  if (!request_holder_) {
+    client::GetPartitionKey(*request_, partition_key);
+    return Status::OK();
+  }
+
   RETURN_NOT_OK(InitReadPartitionKey(
-      table_->InternalSchema(), table_->partition_schema(), table_->GetPartitionsShared()->back(),
+      table_->InternalSchema(), table_->partition_schema(), *(table_->GetPartitionsShared()),
       request_));
   *partition_key = std::move(*request_->mutable_partition_key());
   return Status::OK();
@@ -1021,7 +1041,7 @@ YBNoOp::YBNoOp(const YBTablePtr& table)
   : table_(table) {
 }
 
-Status YBNoOp::Execute(YBClient* client, const YBPartialRow& key) {
+Status YBNoOp::Execute(YBClient* client, const dockv::YBPartialRow& key) {
   string encoded_key;
   RETURN_NOT_OK(table_->partition_schema().EncodeKey(key, &encoded_key));
   CoarseTimePoint deadline = CoarseMonoClock::Now() + 5s;
@@ -1101,34 +1121,45 @@ Status YBNoOp::Execute(YBClient* client, const YBPartialRow& key) {
   return Status::OK();
 }
 
-bool YBPgsqlReadOp::should_add_intents(IsolationLevel isolation_level) {
+bool YBPgsqlReadOp::should_apply_intents(IsolationLevel isolation_level) {
   return isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION ||
          IsValidRowMarkType(GetRowMarkTypeFromPB(*request_));
 }
 
 Status InitPartitionKey(
-    const Schema& schema, const PartitionSchema& partition_schema,
-    const std::string& last_partition, LWPgsqlReadRequestPB* request) {
-  return InitReadPartitionKey(schema, partition_schema, last_partition, request);
+    const Schema& schema, const dockv::PartitionSchema& partition_schema,
+    const TablePartitionList& partitions, LWPgsqlReadRequestPB* request) {
+  return InitReadPartitionKey(schema, partition_schema, partitions, request);
 }
 
 Status InitPartitionKey(
-    const Schema& schema, const PartitionSchema& partition_schema, LWPgsqlWriteRequestPB* request) {
+    const Schema& schema, const dockv::PartitionSchema& partition_schema,
+    LWPgsqlWriteRequestPB* request) {
   return InitWritePartitionKey(schema, partition_schema, request);
 }
 
 Status GetRangePartitionBounds(const Schema& schema,
                                const PgsqlReadRequestPB& request,
-                               vector<docdb::KeyEntryValue>* lower_bound,
-                               vector<docdb::KeyEntryValue>* upper_bound) {
+                               vector<dockv::KeyEntryValue>* lower_bound,
+                               vector<dockv::KeyEntryValue>* upper_bound) {
   return DoGetRangePartitionBounds(schema, request, lower_bound, upper_bound);
 }
 
 Status GetRangePartitionBounds(const Schema& schema,
                                const LWPgsqlReadRequestPB& request,
-                               vector<docdb::KeyEntryValue>* lower_bound,
-                               vector<docdb::KeyEntryValue>* upper_bound) {
+                               vector<dockv::KeyEntryValue>* lower_bound,
+                               vector<dockv::KeyEntryValue>* upper_bound) {
   return DoGetRangePartitionBounds(schema, request, lower_bound, upper_bound);
+}
+
+bool IsTolerantToPartitionsChange(const YBOperation& op) {
+  return (op.type() != YBOperation::PGSQL_READ) ||
+      !IsPartitionsChangeDependantBackwardScan(down_cast<const YBPgsqlReadOp&>(op));
+}
+
+Result<const PartitionKey&> TEST_FindPartitionKeyByUpperBound(
+    const TablePartitionList& partitions, const PgsqlReadRequestPB& request) {
+  return FindPartitionKeyByUpperBound(partitions, request);
 }
 
 }  // namespace client

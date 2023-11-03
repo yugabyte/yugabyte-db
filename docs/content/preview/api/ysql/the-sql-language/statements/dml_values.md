@@ -16,29 +16,10 @@ Use the `VALUES` statement to generate a row set specified as an explicitly writ
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/values,expression_list.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/values,expression_list.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  values,
+  expression_list
+{{%/ebnf%}}
 
 ## Semantics
 
@@ -72,7 +53,7 @@ This is the result:
        1 | 2019-06-25 12:05:30 | dog
        2 | 2020-07-30 13:10:45 | cat
 ```
-If an expression is written without a typecast, then its data type is inferred. For example, _'dog'_ is inferred to have datatype `text` and _4.2_ is inferred to have data type `numeric`.
+If an expression is written without a typecast, then its data type is inferred. For example, _'dog'_ is inferred to have data type `text` and _4.2_ is inferred to have data type `numeric`.
 
 Each successive parenthesized expression list must specify the same number of expressions with the same data types. Try this counter example:
 

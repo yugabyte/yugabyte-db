@@ -49,6 +49,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
@@ -62,10 +63,10 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/integration-tests/mini_cluster.h"
 
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/mini_master.h"
@@ -101,18 +102,14 @@
 namespace yb {
 namespace itest {
 
-using client::YBClient;
 using client::YBSchema;
 using client::YBSchemaBuilder;
-using client::YBTable;
 using client::YBTableName;
 using consensus::CONSENSUS_CONFIG_ACTIVE;
 using consensus::CONSENSUS_CONFIG_COMMITTED;
 using consensus::ChangeConfigRequestPB;
 using consensus::ChangeConfigResponsePB;
-using consensus::ConsensusConfigType;
 using consensus::ConsensusStatePB;
-using consensus::CountVoters;
 using consensus::GetConsensusStateRequestPB;
 using consensus::GetConsensusStateResponsePB;
 using consensus::GetLastOpIdRequestPB;
@@ -127,21 +124,17 @@ using consensus::LeaderLeaseCheckMode;
 using consensus::LeaderLeaseStatus;
 using master::ListTabletServersResponsePB;
 using master::TabletLocationsPB;
-using rpc::Messenger;
 using rpc::RpcController;
 using std::min;
 using std::shared_ptr;
 using std::string;
-using std::unordered_map;
 using std::vector;
 using strings::Substitute;
 using tserver::CreateTsClientProxies;
 using tserver::ListTabletsResponsePB;
 using tserver::DeleteTabletRequestPB;
 using tserver::DeleteTabletResponsePB;
-using tserver::TabletServerAdminServiceProxy;
 using tserver::TabletServerErrorPB;
-using tserver::TabletServerServiceProxy;
 using tserver::WriteRequestPB;
 using tserver::WriteResponsePB;
 
@@ -162,7 +155,7 @@ std::string TServerDetails::ToString() const {
 client::YBSchema SimpleIntKeyYBSchema() {
   YBSchema s;
   YBSchemaBuilder b;
-  b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
+  b.AddColumn("key")->Type(DataType::INT32)->PrimaryKey();
   CHECK_OK(b.Build(&s));
   return s;
 }
@@ -375,19 +368,19 @@ Status WaitForServersToAgree(const MonoDelta& timeout,
       tablet_id, minimum_index, timeout, must_be_committed, received_ids, committed_ids);
 }
 
-Status WaitForServerToBeQuite(const MonoDelta& timeout,
+Status WaitForServerToBeQuiet(const MonoDelta& timeout,
                               const TabletServerMap& tablet_servers,
                               const TabletId& tablet_id,
                               OpId* last_logged_opid,
                               MustBeCommitted must_be_committed) {
-  return WaitForServerToBeQuite(timeout,
+  return WaitForServerToBeQuiet(timeout,
                                 TServerDetailsVector(tablet_servers),
                                 tablet_id,
                                 last_logged_opid,
                                 must_be_committed);
 }
 
-Status WaitForServerToBeQuite(const MonoDelta& timeout,
+Status WaitForServerToBeQuiet(const MonoDelta& timeout,
                               const vector<TServerDetails*>& tablet_servers,
                               const TabletId& tablet_id,
                               OpId* last_logged_opid,
@@ -834,6 +827,41 @@ Status WaitUntilCommittedOpIdIndexIsAtLeast(int64_t* index,
   return s;
 }
 
+Status WaitForAllPeersToCatchup(const TabletId& tablet_id,
+                                const std::vector<TServerDetails*>& replicas,
+                                const MonoDelta& timeout) {
+  return WaitFor(
+      [&]() -> Result<bool> {
+        auto op_ids = VERIFY_RESULT(itest::GetLastOpIdForEachReplica(
+            tablet_id, replicas, consensus::OpIdType::COMMITTED_OPID,
+            timeout));
+        SCHECK_EQ(op_ids.size(), replicas.size(), IllegalState,
+                  Format("Expected $0 replicas", replicas.size()));
+        // All replicas should have the same op_id
+        yb::OpId first_op_id = *(op_ids.begin());
+        for (auto op_id : op_ids) {
+            if( op_id != first_op_id)
+              return false;
+        }
+        return true;
+      },
+      timeout, "Waiting for all replicas to have the same committed op id");
+}
+
+Status GetReplicaStatus(
+    const TServerDetails* replica, const string& tablet_id, const MonoDelta& timeout) {
+  ConsensusStatePB cstate;
+  LeaderLeaseStatus leader_lease_status;
+  Status s = GetConsensusState(
+      replica, tablet_id, CONSENSUS_CONFIG_ACTIVE, timeout, &cstate, &leader_lease_status);
+  if (PREDICT_FALSE(!s.ok())) {
+    VLOG(1) << "Error getting consensus state from replica: "
+            << replica->instance_id.permanent_uuid();
+    return STATUS(NotFound, "Error connecting to replica", s.ToString());
+  }
+  return Status::OK();
+}
+
 Status GetReplicaStatusAndCheckIfLeader(const TServerDetails* replica,
                                         const string& tablet_id,
                                         const MonoDelta& timeout,
@@ -943,6 +971,26 @@ Status FindTabletFollowers(const TabletServerMapUnowned& tablet_servers,
     }
   }
   return Status::OK();
+}
+
+Result<std::unordered_set<TServerDetails*>> FindTabletPeers(
+    const vector<TServerDetails*>& tservers, const string& tablet_id, const MonoDelta& timeout) {
+  MonoTime deadline = MonoTime::Now();
+  std::unordered_set<TServerDetails*> peers;
+  deadline.AddDelta(timeout);
+  for (auto& tserver : tservers) {
+    MonoDelta remaining_timeout = deadline.GetDeltaSince(MonoTime::Now());
+    auto s = GetReplicaStatus(tserver, tablet_id, remaining_timeout);
+    if (s.ok()) {
+      peers.insert(tserver);
+    }
+  }
+  return peers;
+}
+
+Result<std::unordered_set<TServerDetails*>> FindTabletPeers(
+    const TabletServerMap& tablet_servers, const std::string& tablet_id, const MonoDelta& timeout) {
+  return FindTabletPeers(TServerDetailsVector(tablet_servers), tablet_id, timeout);
 }
 
 Status StartElection(const TServerDetails* replica,
@@ -1167,6 +1215,38 @@ Status ListRunningTabletIds(const TServerDetails* ts,
   return Status::OK();
 }
 
+std::set<TabletId> GetClusterTabletIds(MiniCluster* cluster) {
+  std::set<TabletId> tablet_ids;
+  for (size_t i = 0; i < cluster->num_tablet_servers(); ++i) {
+    for (const auto& peer : cluster->GetTabletPeers(i)) {
+      tablet_ids.insert(peer->tablet_id());
+    }
+  }
+  return tablet_ids;
+}
+
+Result<vector<master::TabletLocationsPB::ReplicaPB>>
+GetTabletsOnTsAccordingToMaster(ExternalMiniCluster* cluster,
+                                const TabletServerId& ts_uuid,
+                                const YBTableName& table_name,
+                                const MonoDelta& timeout,
+                                const RequireTabletsRunning require_tablets_running) {
+  master::GetTableLocationsResponsePB table_locations;
+  RETURN_NOT_OK(GetTableLocations(
+      cluster, table_name, timeout, require_tablets_running, &table_locations));
+
+  vector<master::TabletLocationsPB::ReplicaPB> replicas;
+  for (auto& tablet_locs : table_locations.tablet_locations()) {
+    for (auto& replica : tablet_locs.replicas()) {
+      LOG(INFO) << "Replica has permanent uuid " << replica.ts_info().permanent_uuid();
+      if (replica.ts_info().permanent_uuid() == ts_uuid) {
+        replicas.push_back(std::move(replica));
+      }
+    }
+  }
+  return replicas;
+}
+
 Status GetTabletLocations(ExternalMiniCluster* cluster,
                           const string& tablet_id,
                           const MonoDelta& timeout,
@@ -1201,7 +1281,7 @@ Status GetTableLocations(ExternalMiniCluster* cluster,
   req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
   rpc::RpcController rpc;
   rpc.set_timeout(timeout);
-  RETURN_NOT_OK(cluster->GetMasterProxy<master::MasterClientProxy>().GetTableLocations(
+  RETURN_NOT_OK(cluster->GetLeaderMasterProxy<master::MasterClientProxy>().GetTableLocations(
       req, table_locations, &rpc));
   if (table_locations->has_error()) {
     return StatusFromPB(table_locations->error().status());
@@ -1226,11 +1306,17 @@ Status GetTableLocations(MiniCluster* cluster,
   return Status::OK();
 }
 
-int GetNumTabletsOfTableOnTS(tserver::TabletServer* const tserver, const TableId& table_id) {
-  const auto peers = tserver->tablet_manager()->GetTabletPeers();
-  int num = 0;
+size_t GetNumTabletsOfTableOnTS(
+    tserver::TabletServer* const tserver,
+    const TableId& table_id,
+    TabletPeerFilter filter) {
+  auto peers = tserver->tablet_manager()->GetTabletPeersWithTableId(table_id);
+  if (!filter) {
+    return peers.size();
+  }
+  size_t num = 0;
   for (const auto& peer : peers) {
-    if (peer->tablet_metadata()->table_id() == table_id) {
+    if (filter(peer)) {
       ++num;
     }
   }
@@ -1468,6 +1554,17 @@ Result<OpId> GetLastOpIdForReplica(
     consensus::OpIdType opid_type,
     const MonoDelta& timeout) {
   return VERIFY_RESULT(GetLastOpIdForEachReplica(tablet_id, {replica}, opid_type, timeout))[0];
+}
+
+Status WaitForTabletIsDeletedOrHidden(
+    master::CatalogManagerIf* catalog_manager, const TabletId& tablet_id, MonoDelta timeout) {
+  auto tablet_info = VERIFY_RESULT(catalog_manager->GetTabletInfo(tablet_id));
+  return LoggedWaitFor([&tablet_info] {
+      const auto tablet_lock = tablet_info->LockForRead();
+      return tablet_lock->is_deleted() || tablet_lock->is_hidden();
+    },
+    timeout,
+    Format("Wait for tablet is deleted or hidden: $0", tablet_id));
 }
 
 } // namespace itest

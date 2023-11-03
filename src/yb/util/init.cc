@@ -32,6 +32,7 @@
 
 #include "yb/util/init.h"
 
+#include <signal.h>
 #include <string>
 
 #include "yb/gutil/cpu.h"
@@ -39,6 +40,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
+#include "yb/util/errno.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
@@ -51,12 +53,13 @@
 
 using std::string;
 
-DEFINE_UNKNOWN_string(fs_data_dirs, "",
+DEFINE_NON_RUNTIME_string(fs_data_dirs, "",
               "Comma-separated list of data directories. This argument must be specified.");
 TAG_FLAG(fs_data_dirs, stable);
-DEFINE_UNKNOWN_bool(stop_on_parent_termination, false,
-            "When specified, this process will terminate when parent process terminates."
-            "Linux-only.");
+
+DEFINE_NON_RUNTIME_bool(stop_on_parent_termination, false,
+    "When specified, this process will terminate when parent process terminates."
+    "Linux-only.");
 
 namespace yb {
 
@@ -122,6 +125,14 @@ void SetGLogHeader(const std::string& server_info) {
   static std::mutex set_glog_header_mtx;
   std::lock_guard lock(set_glog_header_mtx);
   google::SetApplicationFingerprint(VersionInfo::GetShortVersionString() + server_info);
+}
+
+Status InstallSignalHandler(int signum, void (*handler)(int)) {
+  struct sigaction sig_action{};
+  sig_action.sa_handler = handler;
+  return STATUS_FROM_ERRNO_IF_NONZERO_RV(
+      Format("InstallSignalHandler failed for signal $0 ($1)", signum, strsignal(signum)),
+      sigaction(signum, &sig_action, nullptr));
 }
 
 Status InitYB(const std::string &server_type, const char* argv0) {

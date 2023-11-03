@@ -52,7 +52,6 @@ const std::string kCompactionClassPrefix = "org.apache.cassandra.db.compaction."
 }
 
 using strings::Substitute;
-using client::YBColumnSchema;
 
 // These property names need to be lowercase, since identifiers are converted to lowercase by the
 // scanner phase and as a result if we're doing string matching everything should be lowercase.
@@ -90,12 +89,6 @@ PTTableProperty::PTTableProperty(MemoryContext *memctx,
                                  const PTOrderBy::Direction direction)
     : PTProperty(memctx, loc), order_expr_(expr), direction_(direction),
       property_type_(PropertyType::kClusteringOrder) {}
-
-PTTableProperty::PTTableProperty(MemoryContext *memctx,
-                                 YBLocation::SharedPtr loc,
-                                 const PTQualifiedName::SharedPtr tname)
-    : PTProperty(memctx, loc), property_type_(PropertyType::kCoPartitionTable),
-      copartition_table_name_(tname) {}
 
 PTTableProperty::PTTableProperty(MemoryContext *memctx,
                                  YBLocation::SharedPtr loc)
@@ -142,46 +135,6 @@ string PTTableProperty::name() const {
 }
 
 Status PTTableProperty::Analyze(SemContext *sem_context) {
-
-  if (property_type_ == PropertyType::kCoPartitionTable) {
-    RETURN_NOT_OK(copartition_table_name_->AnalyzeName(sem_context, ObjectType::TABLE));
-
-    bool is_system; // ignored
-    MCVector<ColumnDesc> copartition_table_columns(sem_context->PTempMem());
-
-    // Permissions check happen in LookupTable if flag use_cassandra_authentication is enabled.
-    // TODO(hector): We need to revisit this once this feature is supported so we can decided
-    // which privileges will be needed.
-    RETURN_NOT_OK(sem_context->LookupTable(copartition_table_name_->ToTableName(),
-                                           copartition_table_name_->loc(), /* write_table = */ true,
-                                           PermissionType::CREATE_PERMISSION,
-                                           &copartition_table_, &is_system,
-                                           &copartition_table_columns));
-    if (sem_context->current_create_table_stmt()->hash_columns().size() !=
-        copartition_table_->schema().num_hash_key_columns()) {
-      return sem_context->Error(this, Substitute("The number of hash keys in the current table "
-                                "differ from the number of hash keys in '$0'.",
-                                copartition_table_name_->ToTableName().table_name()).c_str(),
-                                ErrorCode::INCOMPATIBLE_COPARTITION_SCHEMA);
-    }
-
-    int index = 0;
-    for (auto hash_col : sem_context->current_create_table_stmt()->hash_columns()) {
-      auto type = hash_col->ql_type();
-      auto base_type = copartition_table_columns[index].ql_type();
-      if (type != base_type) {
-        return sem_context->Error(this, Substitute("The hash key '$0' in the current table has a "
-                                  "different datatype from the corresponding hash key in '$1'",
-                                  hash_col->yb_name(),
-                                  copartition_table_name_->ToTableName().table_name()).c_str(),
-                                  ErrorCode::INCOMPATIBLE_COPARTITION_SCHEMA);
-      }
-      index++;
-    }
-
-    return Status::OK();
-  }
-
   // Verify we have a valid property name in the lhs.
   const auto& table_property_name = lhs_->c_str();
   auto iterator = kPropertyDataTypes.find(table_property_name);
@@ -305,9 +258,6 @@ std::ostream& operator<<(ostream& os, const PropertyType& property_type) {
     case PropertyType::kTablePropertyMap:
       os << "kTablePropertyMap";
       break;
-    case PropertyType::kCoPartitionTable:
-      os << "kCoPartitionTable";
-      break;
   }
   return os;
 }
@@ -336,10 +286,6 @@ Status PTTablePropertyListNode::Analyze(SemContext *sem_context) {
         }
         RETURN_NOT_OK(tnode->Analyze(sem_context));
         table_properties.insert(table_property_name);
-        break;
-      }
-      case PropertyType ::kCoPartitionTable: {
-        RETURN_NOT_OK(tnode->Analyze(sem_context));
         break;
       }
       case PropertyType::kClusteringOrder: {
@@ -403,11 +349,6 @@ Status PTTableProperty::SetTableProperty(yb::TableProperties *table_property) co
     return Status::OK();
   }
 
-  if (property_type_ == PropertyType::kCoPartitionTable) {
-    table_property->SetCopartitionTableId(copartition_table_id());
-    return Status::OK();
-  }
-
   string table_property_name;
   ToLowerCase(lhs_->c_str(), &table_property_name);
   auto iterator = kPropertyDataTypes.find(table_property_name);
@@ -453,11 +394,6 @@ Status PTTableProperty::SetTableProperty(yb::TableProperties *table_property) co
       break;
   }
   return Status::OK();
-}
-
-TableId PTTableProperty::copartition_table_id() const {
-  DCHECK_EQ(property_type_, PropertyType::kCoPartitionTable);
-  return copartition_table_->id();
 }
 
 const std::map<string, PTTablePropertyMap::PropertyMapType> PTTablePropertyMap::kPropertyDataTypes

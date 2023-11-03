@@ -14,42 +14,42 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/aws" class="nav-link">
+    <a href="../aws" class="nav-link">
       <i class="fa-brands fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/gcp" class="nav-link">
+    <a href="../gcp" class="nav-link">
        <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/azure" class="nav-link active">
+    <a href="../azure" class="nav-link active">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link">
+    <a href="../kubernetes" class="nav-link">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
 <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/openshift" class="nav-link">
+    <a href="../openshift" class="nav-link">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       OpenShift
     </a>
  </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
+    <a href="../on-premises" class="nav-link">
       <i class="fa-solid fa-building" aria-hidden="true"></i>
       On-premises
     </a>
@@ -62,15 +62,14 @@ type: docs
 You are going to need these details from your Azure Cloud tenant:
 
 * Active subscription and subscription ID for cost management
-* [Tenant ID](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#get-tenant-and-app-id-values-for-signing-in)
+* [Tenant ID](https://learn.microsoft.com/en-us/azure/active-directory/fundamentals/how-to-find-tenant)
 * You must have sufficient permissions
   * To [register an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#permissions-required-for-registering-an-app) with your Azure AD tenant, and
   * To [assign the application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#check-azure-subscription-permissions) roles in your Azure subscription
 
 ## Create resource group (optional)
 
-You can skip creating a new resource group and [use an existing one to manage Yugabyte Platform resources](
-https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/manage-resource-groups-portal#create-resource-groups)
+You can skip creating a new resource group and [use an existing one to manage Yugabyte Platform resources](https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/manage-resource-groups-portal#create-resource-groups)
 
 ## Create network security group (optional)
 
@@ -84,7 +83,7 @@ To access the Yugabyte Platform from outside the Azure environment, you would ne
 
 If you are using your own custom VPCs (self-managed configuration), the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 9300, 9042, 5433, and 6379. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
 
-Yugabyte platform will provision and access database nodes in a later step; you will need to provide a virtual network where the platform needs to create the database nodes. So you would need to ensure connectivity between the platform VM  virtual network and database VMs virtual network. You may need virtual network peering based on your network configuration. Please make sure the platform can access these nodes on the database VM’s virtual network.
+Yugabyte platform will provision and access database nodes in a later step; you will need to provide a virtual network where the platform needs to create the database nodes. So you would need to ensure connectivity between the platform VM virtual network and database VM virtual network. You may need virtual network peering based on your network configuration. Please make sure the platform can access these nodes on the database VM virtual network.
 
 To create a security group that enables these, go to Network Security Groups > Add> Choose subscription > Select resource group used in the previous step > Add name and region, click Create Security Group, and then add the following values:
 
@@ -144,11 +143,11 @@ Create an instance to run the Yugabyte Platform server. To do so, go to Virtual 
 * Choose a region where you want to deploy the platform.
 * Ignore the availability options.
 * Change the disk image to Ubuntu 16.04.
-* Choose “Standard_D4s_v3” - 4 CPU/16GB memory instance.
-* Select the authentication type as “ssh public key.”. Pick an existing key pair (or create a new one) to access the machine. Make sure you have the ssh access key. This is important for enabling ssh access to this machine.
-* Select public inbound ports based on network configuration. You can disable public access if you wish to access the instance from within a private network.
+* Choose "Standard_D4s_v3" - 4 CPU/16GB memory instance.
+* Select the authentication type as "ssh public key". Pick an existing key pair (or create a new one) to access the machine. Make sure you have the ssh access key. This is important for enabling ssh access to this machine.
+* Select public inbound ports based on network configuration. You can disable public access if you wish to access the instance from a private network.
 * On the disks page, you can select any OS disk type.
-* Increase the data disk size to at least 100GiB by creating an “attached new disk.”
+* Increase the data disk size to at least 100GiB by creating an "attached new disk".
 * Continue to the next networking section and fill out the details for the virtual network and security group created in the previous steps.
 
 Finally, click Review+create to launch the Yugabyte Platform VM.

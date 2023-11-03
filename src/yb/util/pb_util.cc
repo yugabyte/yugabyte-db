@@ -42,7 +42,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <google/protobuf/descriptor.pb.h>
 #include <google/protobuf/descriptor_database.h>
 #include <google/protobuf/dynamic_message.h>
@@ -105,8 +105,6 @@ using yb::operator"" _MB;
 
 DEFINE_test_flag(bool, fail_write_pb_container, false,
                  "Simulate a failure during WritePBContainer.");
-
-static const char* const kTmpTemplateSuffix = ".tmp.XXXXXX";
 
 // Protobuf container constants.
 static const int kPBContainerVersion = 1;
@@ -240,7 +238,7 @@ Status ParseFromArray(MessageLite* msg, const uint8_t* data, size_t length) {
 Status WritePBToPath(Env* env, const std::string& path,
                      const MessageLite& msg,
                      SyncMode sync) {
-  const string tmp_template = path + kTmpTemplateSuffix;
+  const string tmp_template = MakeTempPath(path);
   string tmp_path;
 
   std::unique_ptr<WritableFile> file;
@@ -640,8 +638,8 @@ Status ReadablePBContainerFile::ValidateAndRead(size_t length, EofOK eofOK,
       case EOF_NOT_OK:
         return STATUS(Corruption, "File size not large enough to be valid",
                                   Substitute("Proto container file $0: "
-                                      "tried to read $0 bytes at offset "
-                                      "$1 but file size is only $2",
+                                      "tried to read $1 bytes at offset "
+                                      "$2 but file size is only $3",
                                       reader_->filename(), length,
                                       offset_, file_size));
       default:
@@ -710,7 +708,7 @@ Status WritePBContainerToPath(Env* env, const std::string& path,
     return STATUS(AlreadyPresent, Substitute("File $0 already exists", path));
   }
 
-  const string tmp_template = path + kTmpTemplateSuffix;
+  const string tmp_template = MakeTempPath(path);
   string tmp_path;
 
   std::unique_ptr<WritableFile> file;

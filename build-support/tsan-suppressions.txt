@@ -99,6 +99,12 @@ deadlock:cds/intrusive/lazy_list_nogc.h
 # false: BronsonAVLTree potential deadlock
 deadlock:cds/container/impl/bronson_avltree_map_rcu.h
 
+# Until the third party fix for cassandra-cpp-driver lands.
+# TODO(#14710)
+deadlock:libcassandra
+# TODO(#14677)
+deadlock:MasterSnapshotCoordinator
+
 #TODO: temporarily suppressed. Must be researched later
 race:cds/container/impl/bronson_avltree_map_rcu.h
 
@@ -160,6 +166,19 @@ signal:src/postgres/src/backend/postmaster/postmaster.c
 # The implementation is correct but TSAN has false positive data races during SharedPtr
 # destruction.
 race:cass::RefCounted<cass::*>::dec_ref
+
+# In the C++ Cassandra driver there is a data race in 'cass::Metadata::update_partitions'.
+# Github issue: https://github.com/yugabyte/yugabyte-db/issues/13059
+#               [DocDB] Race condition in Cassandra C++ driver between
+#               cass::Metadata::update_partitions and cass::Metadata::clear_and_update_back
+# Github issue: https://github.com/yugabyte/yugabyte-db/issues/14977
+#               [YCQL][TSan Unit Test] Data race in
+#               CppCassandraDriverTest.TestCreateUniqueIndexPartial
+# The following lines should be removed from the supressions after the issues fixing.
+race:cass::Metadata::clear_and_update_back
+race:cass::Metadata::update_partitions
+race:cass::Metadata::update_keyspaces
+
 # Races in libuv.so
 race:uv__io_feed
 race:uv__update_time

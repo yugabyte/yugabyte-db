@@ -37,17 +37,15 @@ fi
 # Check schedule test ordering:
 # For ported tests (those beginning with "yb_pg_"), they should be ordered the
 # same way as in serial_schedule.  Ignore some tests:
-# - yb_pg_hint_plan*: these are ported from thirdparty-extension
 # - yb_pg_numeric_big: this is in GNUmakefile instead of serial_schedule
-# - yb_pg_orafce*: these are ported from thirdparty-extension
 # - yb_pg_stat: this is a YB test, not ported: prefix "yb_" + name "pg_stat"
-# - yb_pg_hypopg: this is ported from thirdparty-extension
+# - yb_pg_stat_backend: this is a YB test, not ported
 TESTS=$(diff \
           <(grep '^test: yb_pg_' "$schedule" | sed 's/: yb_pg_/: /') \
           serial_schedule \
         | grep '^<' \
         | sed 's/< test: /test: yb_pg_/' \
-        | grep -Ev '^test: yb_pg_(hint_plan|numeric_big$|orafce|stat$|hypopg$)')
+        | grep -Ev '^test: yb_pg_(numeric_big$|stat$|stat_backend$)')
 if [ -n "$TESTS" ]; then
   echo "$TESTS"
   exit 3

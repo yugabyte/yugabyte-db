@@ -3,15 +3,19 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistKubernetesOverrides;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistKubernetesOverrides;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 
+@Abortable
+@Retryable
 public class KubernetesOverridesUpgrade extends KubernetesUpgradeTaskBase {
 
   @Inject
@@ -47,16 +51,17 @@ public class KubernetesOverridesUpgrade extends KubernetesUpgradeTaskBase {
               cluster.userIntent.ybSoftwareVersion,
               // We don't know which overrides can affect masters or tservers so set both to true.
               /* isMasterChanged */ true,
-              /* isTServerChanged */ true);
+              /* isTServerChanged */ true,
+              universe.isYbcEnabled(),
+              universe.getUniverseDetails().getYbcSoftwareVersion());
         });
   }
 
   private SubTaskGroup addPersistKubernetesOverridesTask() {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("UpdateAndPersistKubernetesOverrides", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateAndPersistKubernetesOverrides");
     UpdateAndPersistKubernetesOverrides.Params params =
         new UpdateAndPersistKubernetesOverrides.Params();
-    params.universeUUID = taskParams().universeUUID;
+    params.setUniverseUUID(taskParams().getUniverseUUID());
     params.universeOverrides = taskParams().universeOverrides;
     params.azOverrides = taskParams().azOverrides;
     UpdateAndPersistKubernetesOverrides task =

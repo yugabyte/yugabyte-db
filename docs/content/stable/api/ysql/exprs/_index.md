@@ -8,7 +8,7 @@ menu:
   stable:
     identifier: api-ysql-exprs
     parent: api-ysql
-    weight: 200
+    weight: 60
 type: indexpage
 ---
 
@@ -20,7 +20,7 @@ YSQL supports all PostgreSQL-compatible built-in functions and operators. The fo
 | [currval()](func_currval) | Returns the value returned by the most recent call to _nextval()_ for the specified sequence in the current session |
 | [lastval()](func_lastval) | Returns the value returned by the most recent call to _nextval()_ for _any_ sequence in the current session |
 | [yb_hash_code()](func_yb_hash_code) | Returns the partition hash code for a given set of expressions |
-| [yb_is_local_table()](func_yb_is_local_table) | Returns whether the given 'oid' is a table replicated only in the local region |
+| [Geo-partitioning helper functions](./geo_partitioning_helper_functions/) | Detailed list of geo-partitioning helper functions |
 | [JSON functions and operators](../datatypes/type_json/functions-operators/) | Detailed list of JSON-specific functions and operators |
 | [Array functions and operators](../datatypes/type_array/functions-operators/) | Detailed list of array-specific functions and operators |
 | [Aggregate functions](./aggregate_functions/) | Detailed list of YSQL aggregate functions |

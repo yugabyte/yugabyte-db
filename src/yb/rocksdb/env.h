@@ -273,7 +273,8 @@ class Env {
   virtual Status DeleteFile(const std::string& fname) = 0;
 
   // Delete file, print warning on failure.
-  void CleanupFile(const std::string& fname);
+  // Returns true iff file has been deleted.
+  bool CleanupFile(const std::string& fname, const std::string& log_prefix = "");
 
   // Create the specified directory. Returns error if directory exists.
   virtual Status CreateDir(const std::string& dirname) = 0;
@@ -732,9 +733,5 @@ class EnvWrapper : public Env {
 // when it is no longer needed.
 // *base_env must remain live while the result is in use.
 Env* NewMemEnv(Env* base_env);
-
-// Returns a new environment that is used for HDFS environment.
-// This is a factory method for HdfsEnv declared in hdfs/env_hdfs.h
-Status NewHdfsEnv(Env** hdfs_env, const std::string& fsname);
 
 }  // namespace rocksdb

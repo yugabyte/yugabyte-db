@@ -12,7 +12,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -21,8 +20,8 @@ import lombok.extern.slf4j.Slf4j;
 public class SetNodeState extends NodeTaskBase {
 
   @Inject
-  protected SetNodeState(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected SetNodeState(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   public static class Params extends NodeTaskParams {
@@ -50,7 +49,7 @@ public class SetNodeState extends NodeTaskBase {
           "Updating node {} state to {} in universe {}.",
           taskParams().nodeName,
           taskParams().state,
-          taskParams().universeUUID);
+          taskParams().getUniverseUUID());
       setNodeState(taskParams().state);
     } catch (Exception e) {
       throw new RuntimeException(e);

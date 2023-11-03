@@ -15,6 +15,9 @@ package org.yb.cql;
 import com.datastax.driver.core.*;
 import org.junit.Test;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.text.DecimalFormat;
 import java.util.*;
 
 import static org.yb.AssertionWrappers.assertFalse;
@@ -282,6 +285,66 @@ public class TestUserDefinedTypes extends BaseCQLTest {
     // Invalid syntax: giving field names as strings.
     runInvalidStmt("INSERT INTO " + tableName + " (h, r, v) VALUES " +
         "(1, 1, {'first_name' : 'a', 'last_name' : 'b', 'ssn' : 3});");
+  }
+
+  private void verifyDecimalValues(int h) {
+    // Checking Row.
+    Iterator<Row> rows = runSelect("SELECT * FROM test_decimal WHERE h = " + h);
+    Row row = rows.next();
+    UDTValue val = row.getUDTValue("v");
+    assertEquals(10000000, val.getDecimal("d0").intValue());
+    assertEquals("1E+7", val.getDecimal("d0").toString());
+    assertEquals("10000000", val.getDecimal("d0").toPlainString());
+    assertEquals("1.23E+54", val.getDecimal("d1").toString());
+    assertEquals("1230000000000000000000000000000000000000000000000000000",
+        val.getDecimal("d1").toPlainString());
+    assertEquals("1.23E+54", val.getDecimal("d2").toString());
+    assertEquals("1.23E+54", val.getDecimal("d3").toString());
+    DecimalFormat df = new DecimalFormat("#.###########");
+    assertEquals("-2.061584302E-1080701410", val.getDecimal("d4").toString());
+    assertEquals("-0",  df.format(val.getDecimal("d4").doubleValue()));
+    assertEquals("4.656612595521636421835864894092082977294921875E-10",
+        val.getDecimal("d5").toString());
+    assertEquals("0.0000000004656612595521636421835864894092082977294921875",
+        val.getDecimal("d5").toPlainString());
+    assertEquals(4.656612595521636421835864894092082977294921875E-10,
+        val.getDecimal("d5").doubleValue());
+    assertEquals("0.00000000047",  df.format(val.getDecimal("d5").doubleValue()));
+    assertTrue(val.isNull("d6"));
+    assertFalse(rows.hasNext());
+  }
+
+  @Test
+  public void testDecimal() throws Exception {
+    createType("test_udt", "d0 decimal", "d1 decimal", "d2 decimal", "d3 decimal",
+                           "d4 decimal", "d5 decimal", "d6 decimal");
+
+    String createStmt = "CREATE TABLE test_decimal (h int primary key, v test_udt)";
+    LOG.info("createStmt: " + createStmt);
+    session.execute(createStmt);
+
+    session.execute("INSERT INTO test_decimal (h, v) VALUES (1, " +
+        "{ d0 : 1E+7, d1 : 1.23E54, d2 : 123E52," +
+        "  d3 : 1230000000000000000000000000000000000000000000000000000," +
+        "  d4 : -2.061584302E-1080701410," +
+        "  d5 : 0.4656612595521636421835864894092082977294921875E-9 })");
+    verifyDecimalValues(1);
+
+    // Test Prepared Statement.
+    UserType udt = cluster.getMetadata().getKeyspace(DEFAULT_TEST_KEYSPACE).getUserType("test_udt");
+    double d = 4.656612595521636421835864894092082977294921875E-10; // Float Hex: 0x2fffffff
+    UDTValue v_new = udt.newValue()
+        .setDecimal("d0", new BigDecimal(10000000))
+        .setDecimal("d1", new BigDecimal("1.23E54"))
+        .setDecimal("d2", new BigDecimal("123E52"))
+        .setDecimal("d3", new BigDecimal(
+            new BigInteger("1230000000000000000000000000000000000000000000000000000")))
+        .setDecimal("d4", new BigDecimal("-2.061584302E-1080701410"))
+        .setDecimal("d5", new BigDecimal(d));
+
+    PreparedStatement pstmt = session.prepare("UPDATE test_decimal SET v = :v WHERE h = :h");
+    session.execute(pstmt.bind().setInt("h", 2).setUDTValue("v", v_new));
+    verifyDecimalValues(2);
   }
 
   @Test
@@ -759,8 +822,6 @@ public class TestUserDefinedTypes extends BaseCQLTest {
                                        "{u:{{i:1,t:'a'},{i:2,t:'b'}}}]}, 1]",
                                "Row[{u:[{u:{{i:1,t:'a'},{i:2,t:'b'}}}]}, 3]");
 
-      session.execute("DROP TABLE " + tableName2);
-
       //--------------------------------------------------------------------------------------------
       // Test UDTs inside collections in table.
 
@@ -800,10 +861,26 @@ public class TestUserDefinedTypes extends BaseCQLTest {
       assertEquals(k, rows.get(0).getSet("k", UDTValue.class));
       assertEquals(v2, rows.get(0).getList("v", UDTValue.class));
 
-      session.execute("DROP TABLE " + tableName3);
-
       //--------------------------------------------------------------------------------------------
       // Test dropping types.
+
+      // udt4 is referenced in tableName & tableName2 & tableName3. Possible errors:
+      // tableName : It is used in column u4 of table test_coll_with_nested_udts
+      // tableName2: It is used in column u4 of table test_coll_with_nested_udts_pk
+      // tableName3: It is used in column k of table test_coll_with_nested_udts_coll
+      runInvalidStmt("DROP TYPE udt4", "is used in column");
+      // udt2 is referenced in tableName & tableName2 & tableName3. Possible errors:
+      // tableName : It is used in column u2 of table test_coll_with_nested_udts
+      // tableName2: It is used in column u4 of table test_coll_with_nested_udts_pk
+      // tableName3: It is used in column k of table test_coll_with_nested_udts_coll
+      runInvalidStmt("DROP TYPE udt2", "is used in column");
+      session.execute("DROP TABLE " + tableName3);
+
+      // udt4 is referenced in tableName & tableName2. Possible errors:
+      // tableName : It is used in column u4 of table test_coll_with_nested_udts
+      // tableName2: It is used in column u4 of table test_coll_with_nested_udts_pk
+      runInvalidStmt("DROP TYPE udt4", "is used in column u4 of table " + tableName);
+      session.execute("DROP TABLE " + tableName2);
 
       // Types cannot be dropped while they are used in a table.
       runInvalidStmt("DROP TYPE udt4", "is used in column u4 of table " + tableName);

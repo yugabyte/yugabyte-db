@@ -8,7 +8,6 @@ menu:
     parent: api-cassandra
     weight: 1470
 aliases:
-  - /preview/api/cassandra/type_jsonb
   - /preview/api/ycql/type_jsonb
 type: docs
 ---
@@ -29,7 +28,7 @@ a future version.
 
 ## Syntax
 
-```
+```output
 type_specification ::= { JSONB }
 ```
 
@@ -48,9 +47,7 @@ Due to the inherent imprecision in storing floating-point numbers, one should av
 Users can either use error bounds while querying for these values in order to perform the correct floating-point comparison, or store them as strings (e.g: `{'a': "3.14"}`).
 [#996 issue](https://github.com/yugabyte/yugabyte-db/issues/996)
 
-
 {{< /note >}}
-
 
 ## Operators and functions
 
@@ -66,187 +63,186 @@ type.
 
 ## Examples
 
-- Create table with a JSONB column
+- Create table with a JSONB column.
 
-```sql
-ycqlsh> CREATE KEYSPACE store;
-```
+    ```sql
+    ycqlsh> CREATE KEYSPACE store;
+    ```
 
-```sql
-ycqlsh> CREATE TABLE store.books ( id int PRIMARY KEY, details jsonb );
-```
+    ```sql
+    ycqlsh> CREATE TABLE store.books ( id int PRIMARY KEY, details jsonb );
+    ```
 
-- Insert JSONB documents
+- Insert JSONB documents.
 
-```sql
-INSERT INTO store.books (id, details) VALUES
-  (1, '{ "name": "Macbeth", "author": { "first_name": "William", "last_name": "Shakespeare" }, "year": 1623, "editors": ["John", "Elizabeth", "Jeff"] }');
-INSERT INTO store.books (id, details) VALUES
-  (2, '{ "name": "Hamlet", "author": { "first_name": "William", "last_name": "Shakespeare" }, "year": 1603, "editors": ["Lysa", "Mark", "Robert"] }');
-INSERT INTO store.books (id, details) VALUES
-  (3, '{ "name": "Oliver Twist", "author": { "first_name": "Charles", "last_name": "Dickens" }, "year": 1838, "genre": "novel", "editors": ["Mark", "Tony", "Britney"] }');
-INSERT INTO store.books (id, details) VALUES
-  (4, '{ "name": "Great Expectations", "author": { "first_name": "Charles", "last_name": "Dickens" }, "year": 1950, "genre": "novel", "editors": ["Robert", "John", "Melisa"] }');
-INSERT INTO store.books (id, details) VALUES
-  (5, '{ "name": "A Brief History of Time", "author": { "first_name": "Stephen", "last_name": "Hawking" }, "year": 1988, "genre": "science", "editors": ["Melisa", "Mark", "John"] }');
-```
+    ```sql
+    INSERT INTO store.books (id, details) VALUES
+      (1, '{ "name": "Macbeth", "author": { "first_name": "William", "last_name": "Shakespeare" }, "year": 1623, "editors": ["John", "Elizabeth", "Jeff"] }');
+    INSERT INTO store.books (id, details) VALUES
+      (2, '{ "name": "Hamlet", "author": { "first_name": "William", "last_name": "Shakespeare" }, "year": 1603, "editors": ["Lysa", "Mark", "Robert"] }');
+    INSERT INTO store.books (id, details) VALUES
+      (3, '{ "name": "Oliver Twist", "author": { "first_name": "Charles", "last_name": "Dickens" }, "year": 1838, "genre": "novel", "editors": ["Mark", "Tony", "Britney"] }');
+    INSERT INTO store.books (id, details) VALUES
+      (4, '{ "name": "Great Expectations", "author": { "first_name": "Charles", "last_name": "Dickens" }, "year": 1950, "genre": "novel", "editors": ["Robert", "John", "Melisa"] }');
+    INSERT INTO store.books (id, details) VALUES
+      (5, '{ "name": "A Brief History of Time", "author": { "first_name": "Stephen", "last_name": "Hawking" }, "year": 1988, "genre": "science", "editors": ["Melisa", "Mark", "John"] }');
+    ```
 
-- Select from JSONB column
+- Select from JSONB column.
 
-```sql
-ycqlsh> SELECT * FROM store.books;
-```
+    ```sql
+    ycqlsh> SELECT * FROM store.books;
+    ```
 
-```
- id | details
-----+-------------------------------------------------------------------------------------------------------------------------------------------------------------
-  5 | {"author":{"first_name":"Stephen","last_name":"Hawking"},"editors":["Melisa","Mark","John"],"genre":"science","name":"A Brief History of Time","year":1988}
-  1 |                            {"author":{"first_name":"William","last_name":"Shakespeare"},"editors":["John","Elizabeth","Jeff"],"name":"Macbeth","year":1623}
-  4 |      {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Robert","John","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
-  2 |                                {"author":{"first_name":"William","last_name":"Shakespeare"},"editors":["Lysa","Mark","Robert"],"name":"Hamlet","year":1603}
-  3 |             {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Mark","Tony","Britney"],"genre":"novel","name":"Oliver Twist","year":1838}
-```
+    ```output
+    id | details
+    ----+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+      5 | {"author":{"first_name":"Stephen","last_name":"Hawking"},"editors":["Melisa","Mark","John"],"genre":"science","name":"A Brief History of Time","year":1988}
+      1 |                            {"author":{"first_name":"William","last_name":"Shakespeare"},"editors":["John","Elizabeth","Jeff"],"name":"Macbeth","year":1623}
+      4 |      {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Robert","John","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
+      2 |                                {"author":{"first_name":"William","last_name":"Shakespeare"},"editors":["Lysa","Mark","Robert"],"name":"Hamlet","year":1603}
+      3 |             {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Mark","Tony","Britney"],"genre":"novel","name":"Oliver Twist","year":1838}
+    ```
 
-- Select with condition on JSONB object value
+- Select with condition on JSONB object value.
 
-```sql
-ycqlsh> SELECT * FROM store.books WHERE details->'author'->>'first_name' = 'William' AND details->'author'->>'last_name' = 'Shakespeare';
-```
+    ```sql
+    ycqlsh> SELECT * FROM store.books WHERE details->'author'->>'first_name' = 'William' AND details->'author'->>'last_name' = 'Shakespeare';
+    ```
 
-```
- id | details
-----+----------------------------------------------------------------------------------------------------------------------------------
-  1 | {"author":{"first_name":"William","last_name":"Shakespeare"},"editors":["John","Elizabeth","Jeff"],"name":"Macbeth","year":1623}
-  2 |     {"author":{"first_name":"William","last_name":"Shakespeare"},"editors":["Lysa","Mark","Robert"],"name":"Hamlet","year":1603}
-```
+    ```output
+    id | details
+    ----+----------------------------------------------------------------------------------------------------------------------------------
+      1 | {"author":{"first_name":"William","last_name":"Shakespeare"},"editors":["John","Elizabeth","Jeff"],"name":"Macbeth","year":1623}
+      2 |     {"author":{"first_name":"William","last_name":"Shakespeare"},"editors":["Lysa","Mark","Robert"],"name":"Hamlet","year":1603}
+    ```
 
-- Select with condition on JSONB array element
+- Select with condition on JSONB array element.
 
-```sql
-ycqlsh> SELECT * FROM store.books WHERE details->'editors'->>0 = 'Mark';
-```
+    ```sql
+    ycqlsh> SELECT * FROM store.books WHERE details->'editors'->>0 = 'Mark';
+    ```
 
-```
- id | details
-----+-------------------------------------------------------------------------------------------------------------------------------------------------
-  3 | {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Mark","Tony","Britney"],"genre":"novel","name":"Oliver Twist","year":1838}
-```
+    ```output
+    id | details
+    ----+-------------------------------------------------------------------------------------------------------------------------------------------------
+      3 | {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Mark","Tony","Britney"],"genre":"novel","name":"Oliver Twist","year":1838}
+    ```
 
-- Select with condition using on JSONB element
+- Select with condition using on JSONB element.
 
-```sql
-ycqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) = 1950;
-```
+    ```sql
+    ycqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) = 1950;
+    ```
 
-```
- id | details
-----+--------------------------------------------------------------------------------------------------------------------------------------------------------
-  4 | {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Robert","John","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
-```
+    ```output
+    id | details
+    ----+--------------------------------------------------------------------------------------------------------------------------------------------------------
+      4 | {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Robert","John","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
+    ```
 
-- Update entire JSONB document
+- Update entire JSONB document.
 
-You can do this as shown below.
+    ```sql
+    ycqlsh> UPDATE store.books SET details = '{"author":{"first_name":"Carl","last_name":"Sagan"},"editors":["Ann","Rob","Neil"],"genre":"science","name":"Cosmos","year":1980}' WHERE id = 1;
+    ```
 
-```sql
-ycqlsh> UPDATE store.books SET details = '{"author":{"first_name":"Carl","last_name":"Sagan"},"editors":["Ann","Rob","Neil"],"genre":"science","name":"Cosmos","year":1980}' WHERE id = 1;
-```
+    ```sql
+    ycqlsh> SELECT * FROM store.books WHERE id = 1;
+    ```
 
-```sql
-ycqlsh> SELECT * FROM store.books WHERE id = 1;
-```
-
-```
- id | details
-----+-----------------------------------------------------------------------------------------------------------------------------------
-  1 | {"author":{"first_name":"Carl","last_name":"Sagan"},"editors":["Ann","Rob","Neil"],"genre":"science","name":"Cosmos","year":1980}
-```
+    ```output
+    id | details
+    ----+-----------------------------------------------------------------------------------------------------------------------------------
+      1 | {"author":{"first_name":"Carl","last_name":"Sagan"},"editors":["Ann","Rob","Neil"],"genre":"science","name":"Cosmos","year":1980}
+    ```
 
 - Update a JSONB object value.
 
-```sql
-ycqlsh> UPDATE store.books SET details->'author'->>'first_name' = '"Steve"' WHERE id = 4;
-```
+    ```sql
+    ycqlsh> UPDATE store.books SET details->'author'->>'first_name' = '"Steve"' WHERE id = 4;
+    ```
 
-```sql
-ycqlsh> SELECT * FROM store.books WHERE id = 4;
-```
+    ```sql
+    ycqlsh> SELECT * FROM store.books WHERE id = 4;
+    ```
 
-```
- id | details
-----+------------------------------------------------------------------------------------------------------------------------------------------------------
-  4 | {"author":{"first_name":"Steve","last_name":"Dickens"},"editors":["Robert","John","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
-```
+    ```output
+    id | details
+    ----+------------------------------------------------------------------------------------------------------------------------------------------------------
+      4 | {"author":{"first_name":"Steve","last_name":"Dickens"},"editors":["Robert","John","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
+    ```
 
 - Update a JSONB array element.
 
-```sql
-ycqlsh> UPDATE store.books SET details->'editors'->>1 = '"Jack"' WHERE id = 4;
-```
+    ```sql
+    ycqlsh> UPDATE store.books SET details->'editors'->>1 = '"Jack"' WHERE id = 4;
+    ```
 
-```sql
-ycqlsh> SELECT * FROM store.books WHERE id = 4;
-```
+    ```sql
+    ycqlsh> SELECT * FROM store.books WHERE id = 4;
+    ```
 
-```
- id | details
-----+------------------------------------------------------------------------------------------------------------------------------------------------------
-  4 | {"author":{"first_name":"Steve","last_name":"Dickens"},"editors":["Robert","Jack","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
-```
+    ```output
+    id | details
+    ----+------------------------------------------------------------------------------------------------------------------------------------------------------
+      4 | {"author":{"first_name":"Steve","last_name":"Dickens"},"editors":["Robert","Jack","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
+    ```
 
 - Update a JSONB subdocument.
 
-```sql
-ycqlsh> UPDATE store.books SET details->'author' = '{"first_name":"John", "last_name":"Doe"}' WHERE id = 4;
-```
+    ```sql
+    ycqlsh> UPDATE store.books SET details->'author' = '{"first_name":"John", "last_name":"Doe"}' WHERE id = 4;
+    ```
 
-```sql
-ycqlsh> SELECT * FROM store.books WHERE id = 4;
-```
+    ```sql
+    ycqlsh> SELECT * FROM store.books WHERE id = 4;
+    ```
 
-```
- id | details
-----+-------------------------------------------------------------------------------------------------------------------------------------------------
-  4 | {"author":{"first_name":"John","last_name":"Doe"},"editors":["Robert","Jack","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
-```
+    ```output
+    id | details
+    ----+-------------------------------------------------------------------------------------------------------------------------------------------------
+      4 | {"author":{"first_name":"John","last_name":"Doe"},"editors":["Robert","Jack","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
+    ```
 
 - Upsert: Update a missing JSONB document resulting in an insert.
 
-```sql
-INSERT INTO store.books (id, details) VALUES
-  (6, '{}');
-ycqlsh> UPDATE store.books SET details->'editors' = '["Adam", "Bryan", "Charles"]' WHERE id = 6;
-```
+    ```sql
+    INSERT INTO store.books (id, details) VALUES
+      (6, '{}');
+    ycqlsh> UPDATE store.books SET details->'editors' = '["Adam", "Bryan", "Charles"]' WHERE id = 6;
+    ```
 
-```sql
-ycqlsh> SELECT * FROM store.books WHERE id = 6;
-```
+    ```sql
+    ycqlsh> SELECT * FROM store.books WHERE id = 6;
+    ```
 
-```
- id | details
-----+-------------------------------------------------------------------------------------------------------------------------------------------------
-  6 | {"editors":["Adam","Bryan","Charles"]}
-```
+    ```output
+    id | details
+    ----+-------------------------------------------------------------------------------------------------------------------------------------------------
+      6 | {"editors":["Adam","Bryan","Charles"]}
+    ```
 
 - Upsert: Update a missing JSONB document resulting in an insert of a subdocument.
 
-```sql
-ycqlsh> UPDATE store.books SET details->'author' = '{"first_name":"Jack", "last_name":"Kerouac"}' WHERE id = 6;
-```
+    ```sql
+    ycqlsh> UPDATE store.books SET details->'author' = '{"first_name":"Jack", "last_name":"Kerouac"}' WHERE id = 6;
+    ```
 
-```sql
-ycqlsh> SELECT * FROM store.books WHERE id = 6;
-```
+    ```sql
+    ycqlsh> SELECT * FROM store.books WHERE id = 6;
+    ```
 
-```
- id | details
-----+-------------------------------------------------------------------------------------------------------------------------------------------------
-  6 | {"author":{"first_name":"Jack","last_name":"Kerouac"},"editors":["Adam","Bryan","Charles"]}
-```
+    ```output
+    id | details
+    ----+-------------------------------------------------------------------------------------------------------------------------------------------------
+      6 | {"author":{"first_name":"Jack","last_name":"Kerouac"},"editors":["Adam","Bryan","Charles"]}
+    ```
 
-Note that JSONB upsert only works for JSON objects and not for other data types like arrays, integers, strings, etc. Additionally, only the leaf property of an object will be inserted if it is missing. We do not support upsert on non-leaf properties.
+Note that JSONB upsert only works for JSON objects and not for other data types like arrays, integers, strings, and so on. Additionally, only the leaf property of an object will be inserted if it is missing. Upsert on non-leaf properties is not supported.
 
 ## See also
 
-- [`Explore JSON documents`](../../../explore/transactional/json-documents)
+- [Explore JSON documents](../../../develop/learn/data-types-ycql/#jsonb)
 - [Data types](..#data-types)
+- [Secondary indexes with JSONB](../../../explore/indexes-constraints/secondary-indexes-with-jsonb-ycql/)

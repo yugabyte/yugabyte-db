@@ -19,6 +19,7 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/entity_ids.h"
+#include "yb/common/pg_types.h"
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -64,6 +65,7 @@ namespace master {
  */
 
 class YsqlTransactionDdl {
+ public:
   struct PgColumnFields {
     // Order determines the order in which the columns were created. This is equal to the
     // 'attnum' field in the pg_attribute table in PG catalog.
@@ -73,7 +75,6 @@ class YsqlTransactionDdl {
     PgColumnFields(int attnum, std::string name) : order(attnum), attname(name) {}
   };
 
- public:
   YsqlTransactionDdl(
       const SysCatalogTable* sys_catalog, std::shared_future<client::YBClient*> client_future,
       ThreadPool* thread_pool)
@@ -91,9 +92,24 @@ class YsqlTransactionDdl {
                          bool has_ysql_ddl_txn_state,
                          std::function<Status(bool /* is_success */)> complete_callback);
 
-  Result<bool> PgEntryExists(TableId tableId, Result<uint32_t> entry_oid, TableId relfilenode_oid);
+  Result<bool> PgEntryExists(const TableId& tableId,
+                             PgOid entry_oid,
+                             boost::optional<PgOid> relfilenode_oid);
+  Status PgEntryExistsWithReadTime(
+      const TableId& tableId,
+      PgOid entry_oid,
+      boost::optional<PgOid>
+          relfilenode_oid,
+      const ReadHybridTime& read_time,
+      bool* result,
+      HybridTime* read_restart_ht);
 
   Result<bool> PgSchemaChecker(const scoped_refptr<TableInfo>& table);
+  Status PgSchemaCheckerWithReadTime(
+      const scoped_refptr<TableInfo>& table,
+      const ReadHybridTime& read_time,
+      bool* result,
+      HybridTime* read_restart_ht);
 
  protected:
   void TransactionReceived(const TransactionMetadata& transaction,
@@ -108,16 +124,20 @@ class YsqlTransactionDdl {
                                  const std::vector<YsqlTransactionDdl::PgColumnFields>& pg_cols);
 
   Result<std::vector<PgColumnFields>> ReadPgAttribute(scoped_refptr<TableInfo> table);
+  Status ReadPgAttributeWithReadTime(
+      scoped_refptr<TableInfo> table,
+      const ReadHybridTime& read_time,
+      std::vector<PgColumnFields>* pg_cols,
+      HybridTime* read_restart_ht);
 
   // Scan table 'pg_table_id' for all rows that satisfy the SQL filter
   // 'WHERE old_col_name = oid_value'. Each returned row contains the columns specified in
   // 'col_names'.
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> GetPgCatalogTableScanIterator(
-      const TableId& pg_catalog_table_id,
-      const std::string& oid_col_name,
-      uint32_t oid_value,
-      std::vector<GStringPiece> col_names,
-      Schema *projection);
+      const PgTableReadData& read_data,
+      PgOid oid_value,
+      const dockv::ReaderProjection& projection,
+      RequestScope* request_scope);
 
   const SysCatalogTable* sys_catalog_;
   std::shared_future<client::YBClient*> client_future_;

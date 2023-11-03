@@ -46,10 +46,12 @@ extern YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id,
 // Construct virtual constant expression using the given datatype "type_id" and virtual "datum".
 extern YBCPgExpr YBCNewConstantVirtual(YBCPgStatement ybc_stmt, Oid type_id,
 									   YBCPgDatumKind kind);
+extern YBCPgExpr YBCNewTupleExpr(YBCPgStatement ybc_stmt, const YBCPgTypeAttrs *type_attrs,
+								 int num_elems, YBCPgExpr *elems);
 
 extern Expr *YbExprInstantiateParams(Expr* expr, EState *estate);
-extern PushdownExprs *YbInstantiateRemoteParams(PushdownExprs *remote,
-												EState *estate);
+extern PushdownExprs *YbInstantiatePushdownParams(PushdownExprs *pushdown,
+												  EState *estate);
 
 extern bool YbCanPushdownExpr(Expr *pg_expr, List **params);
 

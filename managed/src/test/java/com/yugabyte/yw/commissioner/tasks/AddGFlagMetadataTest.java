@@ -21,7 +21,6 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.UUID;
-import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -72,17 +71,6 @@ public class AddGFlagMetadataTest extends CommissionerBaseTest {
         .fetchGFlagFilesFromTarGZipInputStream(any(), any(), any(), any());
     TaskInfo taskInfo = submitTask(TaskType.AddGFlagMetadata, params, true);
     assertEquals(Success, taskInfo.getTaskState());
-  }
-
-  @Test
-  public void testFailureDueToMissingFilePath() {
-    AddGFlagMetadata.Params params = new AddGFlagMetadata.Params();
-    params.requiredGFlagsFileList = GFlagsValidation.GFLAG_FILENAME_LIST;
-    defaultReleaseMetadata.filePath = StringUtils.EMPTY;
-    params.releaseMetadata = defaultReleaseMetadata;
-    params.version = DEFAULT_VERSION;
-    TaskInfo taskInfo = submitTask(TaskType.AddGFlagMetadata, params, false);
-    assertEquals(Failure, taskInfo.getTaskState());
   }
 
   @Test

@@ -34,6 +34,7 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/ql_type.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
@@ -48,10 +49,9 @@ namespace yb {
 class WireProtocolTest : public YBTest {
  public:
   WireProtocolTest()
-    : schema_({ ColumnSchema("col1", STRING),
-                ColumnSchema("col2", STRING),
-                ColumnSchema("col3", UINT32, true /* nullable */) },
-              1) {
+    : schema_({ ColumnSchema("col1", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+                ColumnSchema("col2", DataType::STRING),
+                ColumnSchema("col3", DataType::UINT32, ColumnKind::VALUE, Nullable::kTrue) }) {
   }
 
  protected:
@@ -109,19 +109,19 @@ TEST_F(WireProtocolTest, TestSchemaRoundTrip) {
   // Column 0.
   EXPECT_TRUE(pbs.Get(0).is_key());
   EXPECT_EQ("col1", pbs.Get(0).name());
-  EXPECT_EQ(DataType::STRING, pbs.Get(0).type().main());
+  EXPECT_EQ(PersistentDataType::STRING, pbs.Get(0).type().main());
   EXPECT_FALSE(pbs.Get(0).is_nullable());
 
   // Column 1.
   EXPECT_FALSE(pbs.Get(1).is_key());
   EXPECT_EQ("col2", pbs.Get(1).name());
-  EXPECT_EQ(DataType::STRING, pbs.Get(1).type().main());
+  EXPECT_EQ(PersistentDataType::STRING, pbs.Get(1).type().main());
   EXPECT_FALSE(pbs.Get(1).is_nullable());
 
   // Column 2.
   EXPECT_FALSE(pbs.Get(2).is_key());
   EXPECT_EQ("col3", pbs.Get(2).name());
-  EXPECT_EQ(DataType::UINT32, pbs.Get(2).type().main());
+  EXPECT_EQ(PersistentDataType::UINT32, pbs.Get(2).type().main());
   EXPECT_TRUE(pbs.Get(2).is_nullable());
 
   // Convert back to a Schema object and verify they're identical.
@@ -139,19 +139,19 @@ TEST_F(WireProtocolTest, TestBadSchema_NonContiguousKey) {
   // Column 0: key
   ColumnSchemaPB* col_pb = pbs.Add();
   col_pb->set_name("c0");
-  QLType::Create(STRING)->ToQLTypePB(col_pb->mutable_type());
+  QLType::Create(DataType::STRING)->ToQLTypePB(col_pb->mutable_type());
   col_pb->set_is_key(true);
 
   // Column 1: not a key
   col_pb = pbs.Add();
   col_pb->set_name("c1");
-  QLType::Create(STRING)->ToQLTypePB(col_pb->mutable_type());
+  QLType::Create(DataType::STRING)->ToQLTypePB(col_pb->mutable_type());
   col_pb->set_is_key(false);
 
   // Column 2: marked as key. This is an error.
   col_pb = pbs.Add();
   col_pb->set_name("c2");
-  QLType::Create(STRING)->ToQLTypePB(col_pb->mutable_type());
+  QLType::Create(DataType::STRING)->ToQLTypePB(col_pb->mutable_type());
   col_pb->set_is_key(true);
 
   Schema schema;
@@ -167,19 +167,19 @@ TEST_F(WireProtocolTest, TestBadSchema_DuplicateColumnName) {
   // Column 0:
   ColumnSchemaPB* col_pb = pbs.Add();
   col_pb->set_name("c0");
-  QLType::Create(STRING)->ToQLTypePB(col_pb->mutable_type());
+  QLType::Create(DataType::STRING)->ToQLTypePB(col_pb->mutable_type());
   col_pb->set_is_key(true);
 
   // Column 1:
   col_pb = pbs.Add();
   col_pb->set_name("c1");
-  QLType::Create(STRING)->ToQLTypePB(col_pb->mutable_type());
+  QLType::Create(DataType::STRING)->ToQLTypePB(col_pb->mutable_type());
   col_pb->set_is_key(false);
 
   // Column 2: same name as column 0
   col_pb = pbs.Add();
   col_pb->set_name("c0");
-  QLType::Create(STRING)->ToQLTypePB(col_pb->mutable_type());
+  QLType::Create(DataType::STRING)->ToQLTypePB(col_pb->mutable_type());
   col_pb->set_is_key(false);
 
   Schema schema;

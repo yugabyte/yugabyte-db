@@ -19,7 +19,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.MiniYBDaemon;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import com.google.common.net.HostAndPort;
 
@@ -37,7 +37,7 @@ import static org.yb.AssertionWrappers.assertEquals;
 // But postgres client connections are not encrypted.
 // Some extra work required to adopt BasePgSQLTest for using encrypted connection.
 // Encrypted client connections are tested in pg_wrapper-test test now.
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestSecureCluster extends BasePgSQLTest {
   private String srcCertsDir;
   private String certsDir;
@@ -46,7 +46,7 @@ public class TestSecureCluster extends BasePgSQLTest {
     super();
     FileSystem fs = FileSystems.getDefault();
     srcCertsDir = fs.getPath(TestUtils.getBinDir()).resolve(
-        fs.getPath("../ent/test_certs")).toString();
+        fs.getPath("../test_certs")).toString();
     certsDir = fs.getPath(TestUtils.getBaseTmpDir()).toString();
     FileUtils.copyDirectory(new File(srcCertsDir), new File(certsDir));
     useIpWithCertificate = true;

@@ -1,17 +1,30 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import { Graph } from '../';
+import { NodeType } from '../../../redesign/utils/dtos';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
-import { YBResourceCount } from '../../../components/common/descriptors';
+
 import './MetricsPanel.scss';
 
 export default class DiskUsagePanel extends Component {
   static propTypes = {};
 
   render() {
-    const { metric } = this.props;
+    const {
+      metric,
+      masterMetric,
+      isDedicatedNodes,
+      isKubernetes,
+      useK8CustomResources
+    } = this.props;
     const space = {
+      free: undefined,
+      used: undefined,
+      size: undefined
+    };
+
+    const masterSpace = {
       free: undefined,
       used: undefined,
       size: undefined
@@ -20,7 +33,7 @@ export default class DiskUsagePanel extends Component {
       const diskUsedObj = metric.data.find((item) => item.name === 'used');
       const diskFreeObj = metric.data.find((item) => item.name === 'free');
       const diskSizeObj = metric.data.find((item) => item.name === 'size');
-      const getLastElement = (arr) => arr && arr.length && arr[arr.length - 1];
+      const getLastElement = (arr) => arr?.length && arr[arr.length - 1];
 
       // If at least two out of three objects are defined we can figure out the rest
       if (!!diskUsedObj && !!diskFreeObj) {
@@ -41,24 +54,102 @@ export default class DiskUsagePanel extends Component {
         );
       }
     }
+
+    if (masterMetric && isNonEmptyArray(masterMetric.data)) {
+      const diskUsedObj = masterMetric.data.find((item) => item.name === 'used');
+      const diskFreeObj = masterMetric.data.find((item) => item.name === 'free');
+      const diskSizeObj = masterMetric.data.find((item) => item.name === 'size');
+      const getLastElement = (arr) => arr && arr.length && arr[arr.length - 1];
+
+      // If at least two out of three objects are defined we can figure out the rest
+      if (!!diskUsedObj && !!diskFreeObj) {
+        masterSpace.used = getLastElement(diskUsedObj.y);
+        masterSpace.free = getLastElement(diskFreeObj.y);
+        masterSpace.size = masterSpace.used + masterSpace.free;
+      } else if (!!diskUsedObj && !!diskSizeObj) {
+        masterSpace.used = getLastElement(diskUsedObj.y);
+        masterSpace.size = getLastElement(diskSizeObj.y);
+        masterSpace.free = masterSpace.size - masterSpace.used;
+      } else if (!!diskFreeObj && !!diskSizeObj) {
+        masterSpace.free = getLastElement(diskFreeObj.y);
+        masterSpace.size = getLastElement(diskSizeObj.y);
+        masterSpace.used = masterSpace.size - masterSpace.free;
+      } else {
+        console.error(
+          `Master Metric missing properties. Free: ${diskFreeObj}, Used: ${diskUsedObj}, Size: ${diskSizeObj}`
+        );
+      }
+    }
+
     const value = space.size ? Math.round((space.used * 1000) / space.size) / 1000 : 0;
+    const masterValue = masterSpace.size
+      ? Math.round((masterSpace.used * 1000) / masterSpace.size) / 1000
+      : 0;
+    const customClassName = isDedicatedNodes ? 'dedicated' : null;
+
     return (
-      <div className="metrics-padded-panel disk-usage-panel">
+      <div className={`metrics-padded-panel disk-usage-panel  ${customClassName}-mode-panel`}>
         {isNaN(space.size) ? (
           <Fragment>
-            <YBResourceCount size={'No Data'} />
-            <span className="gray-text metric-subtitle">{'Data is unavailable'} </span>
-            <Graph value={0} unit={'percent'} />
+            <div
+              className={`centered text-light text-lightgray empty-state ${customClassName}-mode-empty`}
+            >
+              {isKubernetes && useK8CustomResources && (
+                <span className="node-type-label disk">{NodeType.TServer}</span>
+              )}
+              No Data
+            </div>
+            <Graph value={0} />
+            {isDedicatedNodes && (
+              <>
+                <div
+                  className={`centered text-light text-lightgray empty-state ${customClassName}-mode-empty`}
+                >
+                  No Data
+                </div>
+                <Graph value={0} />
+              </>
+            )}
           </Fragment>
         ) : (
           <Fragment>
-            <YBResourceCount size={Math.round(space.used * 10) / 10} unit="GB used" />
-            {space.free && (
-              <span className="gray-text metric-subtitle">
-                {Math.round(space.free)} GB free out of {Math.round(space.size)} GB
+            <div className={'tserver-section'}>
+              {space.used && (
+                <>
+                  <span className={`gray-text metric-left-subtitle ${customClassName}-mode-space`}>
+                    {(isKubernetes && useK8CustomResources) ||
+                      (isDedicatedNodes && (
+                        <span className={'metric-left-subtitle__label'}>{NodeType.TServer}</span>
+                      ))}
+                    {(value * 100).toFixed(1)}%
+                  </span>
+                </>
+              )}
+              <span className="gray-text metric-right-subtitle">
+                {Number(space.used).toFixed(2)} GB of {Math.round(space.size)} GB used
               </span>
-            )}
-            <Graph value={value} unit={'percent'} />
+              <Graph value={value} unit={'percent'} />
+            </div>
+
+            <div className={'master-section'}>
+              {isDedicatedNodes && (
+                <>
+                  {masterSpace.used && (
+                    <span
+                      className={`gray-text metric-left-subtitle ${customClassName}-mode-space`}
+                    >
+                      <span className={'metric-left-subtitle__label'}>{NodeType.Master}</span>
+                      {(masterValue * 100).toFixed(1)}%
+                    </span>
+                  )}
+                  <span className="gray-text metric-right-subtitle">
+                    {Number(masterSpace.used).toFixed(2)} GB of {Math.round(masterSpace.size)} GB
+                    used
+                  </span>
+                  <Graph value={masterValue} unit={'percent'} />
+                </>
+              )}
+            </div>
           </Fragment>
         )}
       </div>

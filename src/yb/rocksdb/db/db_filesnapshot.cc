@@ -38,8 +38,9 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/mutexlock.h"
-#include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/file_util.h"
+
+#include "yb/util/sync_point.h"
 
 namespace rocksdb {
 
@@ -111,8 +112,8 @@ Status DBImpl::GetLiveFiles(std::vector<std::string> &ret,
       cfd->Ref();
       mutex_.Unlock();
       status = FlushMemTable(cfd, FlushOptions());
-      TEST_SYNC_POINT("DBImpl::GetLiveFiles:1");
-      TEST_SYNC_POINT("DBImpl::GetLiveFiles:2");
+      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::GetLiveFiles:1");
+      DEBUG_ONLY_TEST_SYNC_POINT("DBImpl::GetLiveFiles:2");
       mutex_.Lock();
       cfd->Unref();
       if (!status.ok()) {

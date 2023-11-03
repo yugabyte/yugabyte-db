@@ -31,6 +31,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <random>
 #include <sstream>
 #include <string>
@@ -94,6 +95,7 @@
 #include "yb/util/file_system.h"
 #include "yb/util/format.h"
 #include "yb/util/io.h"
+#include "yb/util/kv_util.h"
 #include "yb/util/locks.h"
 #include "yb/util/math_util.h"
 #include "yb/util/monotime.h"
@@ -106,6 +108,7 @@
 #include "yb/util/rw_semaphore.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
+#include "yb/util/slice_parts.h"
 #include "yb/util/status.h"
 #include "yb/util/status_ec.h"
 #include "yb/util/status_format.h"

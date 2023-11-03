@@ -17,15 +17,18 @@ import type { HealthCheckInfo } from './HealthCheckInfo';
 
 
 /**
- *
+ * 
  * @export
  * @interface HealthCheckResponse
  */
 export interface HealthCheckResponse  {
   /**
-   *
+   * 
    * @type {HealthCheckInfo}
    * @memberof HealthCheckResponse
    */
   data?: HealthCheckInfo;
 }
+
+
+

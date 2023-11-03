@@ -17,6 +17,7 @@ import com.google.protobuf.Message;
 import io.netty.buffer.ByteBuf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.CommonTypes;
 import org.yb.cdc.CdcService.CreateCDCStreamRequestPB;
 import org.yb.cdc.CdcService.CreateCDCStreamResponsePB;
 import org.yb.cdc.CdcService;
@@ -31,6 +32,8 @@ public class CreateCDCStreamRequest extends YRpc<CreateCDCStreamResponse> {
   private final CdcService.CDCRecordFormat record_format;
   private final CdcService.CDCCheckpointType checkpoint_type;
   private CdcService.CDCRecordType recordType;
+
+  private CommonTypes.YQLDatabase dbType;
 
   public CreateCDCStreamRequest(YBTable masterTable, String tableId,
                                 String namespaceName, String format,
@@ -56,9 +59,15 @@ public class CreateCDCStreamRequest extends YRpc<CreateCDCStreamResponse> {
     if (recordType != null && !recordType.isEmpty()) {
       if (recordType.equalsIgnoreCase("ALL")) {
         this.recordType = CdcService.CDCRecordType.ALL;
+      } else if (recordType.equalsIgnoreCase("FULL_ROW_NEW_IMAGE")) {
+        this.recordType = CdcService.CDCRecordType.FULL_ROW_NEW_IMAGE;
+      } else if (recordType.equalsIgnoreCase("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES")) {
+        this.recordType = CdcService.CDCRecordType.MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES;
       } else {
         this.recordType = CdcService.CDCRecordType.CHANGE;
       }
+    } else {
+      this.recordType = CdcService.CDCRecordType.CHANGE;
     }
   }
 
@@ -66,6 +75,15 @@ public class CreateCDCStreamRequest extends YRpc<CreateCDCStreamResponse> {
                                 String namespaceName, String format,
                                 String checkpointType) {
     this(masterTable, tableId, namespaceName, format, checkpointType, null);
+  }
+
+  public CreateCDCStreamRequest(YBTable masterTable, String tableId,
+                                String namespaceName, String format,
+                                String checkpointType, String recordType,
+                                CommonTypes.YQLDatabase dbType) {
+
+    this(masterTable, tableId, namespaceName, format, checkpointType, recordType);
+    this.dbType = dbType;
   }
 
   @Override
@@ -83,6 +101,9 @@ public class CreateCDCStreamRequest extends YRpc<CreateCDCStreamResponse> {
       builder.setRecordType(this.recordType);
     }
 
+    if (dbType != null) {
+      builder.setDbType(this.dbType);
+    }
     return toChannelBuffer(header, builder.build());
   }
 

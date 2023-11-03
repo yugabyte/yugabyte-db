@@ -33,7 +33,7 @@
 #include <thread>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/util/mem_tracker.h"
@@ -42,9 +42,9 @@
 #include "yb/util/memory/memory.h"
 #include "yb/util/flags.h"
 
-DEFINE_UNKNOWN_int32(num_threads, 16, "Number of threads to test");
-DEFINE_UNKNOWN_int32(allocs_per_thread, 10000, "Number of allocations each thread should do");
-DEFINE_UNKNOWN_int32(alloc_size, 4, "number of bytes in each allocation");
+DEFINE_NON_RUNTIME_int32(num_threads, 16, "Number of threads to test");
+DEFINE_NON_RUNTIME_int32(allocs_per_thread, 10000, "Number of allocations each thread should do");
+DEFINE_NON_RUNTIME_int32(alloc_size, 4, "number of bytes in each allocation");
 
 namespace yb {
 

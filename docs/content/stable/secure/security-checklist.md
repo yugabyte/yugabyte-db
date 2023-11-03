@@ -11,19 +11,19 @@ menu:
 type: docs
 ---
 
-Below are a list of security measures that can be implemented to protect your YugabyteDB installation.
+There is a number of security measures that you can implement to protect your YugabyteDB installation.
 
 ## Enable authentication
 
 Authentication requires that all clients provide valid credentials before they can connect to a YugabyteDB cluster. YugabyteDB stores authentication credentials internally in the YB-Master system tables. The authentication mechanisms available to clients depend on what is supported and exposed by the YSQL, YCQL, and YEDIS APIs.
 
-Read more about [how to enable authentication in YugabyteDB](../authentication/).
+For more information, see [Authentication in YugabyteDB](../authentication/).
 
 ## Configure role-based access control
 
 Roles can be modified to grant users or applications only the essential privileges based on the operations they need to perform against the database. Typically, an administrator role is created first. The administrator then creates additional roles for users.
 
-Refer to [Role-based access control](../authorization/) to enable role-based access control in YugabyteDB.
+For more information, see [Role-based access control in YugabyteDB](../authorization/).
 
 ## Run as a dedicated user
 
@@ -53,14 +53,12 @@ Limit the interfaces on which YugabyteDB instances listen for incoming connectio
 
 ## Enable encryption in transit
 
-[TLS encryption](https://en.wikipedia.org/wiki/Transport_Layer_Security) ensures that network communication between servers is secure. You can configure YugabyteDB to use TLS to encrypt intra-cluster and client to server network communication. Yugabyte recommends enabling encryption in transit in YugabyteDB clusters and clients to ensure privacy and integrity of data transferred over the network.
+[TLS encryption](https://en.wikipedia.org/wiki/Transport_Layer_Security) ensures that network communication between servers is secure. You can configure YugabyteDB to use TLS to encrypt intra-cluster and client to server network communication. You should enable encryption in transit in YugabyteDB clusters and clients to ensure privacy and integrity of data transferred over the network.
 
-Read more about enabling [Encryption in transit](../tls-encryption/) in YugabyteDB.
+For more information, see [Encryption in transit in YugabyteDB](../tls-encryption/).
 
 ## Enable encryption at rest
 
-[Encryption at rest](https://en.wikipedia.org/wiki/Data_at_rest#Encryption) ensures that data
-at rest, stored on disk, is protected. You can configure YugabyteDB with a user generated symmetric key to
-perform cluster-wide encryption.
+[Encryption at rest](https://en.wikipedia.org/wiki/Data_at_rest#Encryption) ensures that data at rest, stored on disk, is protected. You can configure YugabyteDB with a self-generated symmetric key to perform cluster-wide encryption.
 
-Read more about enabling [Encryption at rest](../encryption-at-rest/) in YugabyteDB.
+For more information, see [Encryption at rest in YugabyteDB](../encryption-at-rest/).

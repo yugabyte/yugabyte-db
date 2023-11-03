@@ -76,6 +76,7 @@
 #include "utils/xml.h"
 
 /* YB includes. */
+#include "catalog/pg_rewrite.h"
 #include "commands/tablegroup.h"
 
 
@@ -95,6 +96,7 @@
 #define PRETTYFLAG_PAREN		0x0001
 #define PRETTYFLAG_INDENT		0x0002
 #define PRETTYFLAG_SCHEMA		0x0004
+#define YB_PRETTYFLAG_ARRAY	0x0008
 
 /* Default line length for pretty-print wrapping: 0 means wrap always */
 #define WRAP_COLUMN_DEFAULT		0
@@ -103,7 +105,10 @@
 #define PRETTY_PAREN(context)	((context)->prettyFlags & PRETTYFLAG_PAREN)
 #define PRETTY_INDENT(context)	((context)->prettyFlags & PRETTYFLAG_INDENT)
 #define PRETTY_SCHEMA(context)	((context)->prettyFlags & PRETTYFLAG_SCHEMA)
+#define YB_PRETTY_ARRAY(context) ((context)->prettyFlags & \
+									YB_PRETTYFLAG_ARRAY)
 
+#define YB_TRUNC_ARRAY_LIMIT 3
 
 /* ----------
  * Local data types
@@ -1094,7 +1099,7 @@ pg_get_triggerdef_worker(Oid trigid, bool pretty)
  * This includes "hidden" reloptions like colocation_id.
  */
 static void
-YbAppendIndexReloptions(StringInfoData buf,
+YbAppendIndexReloptions(StringInfo buf,
 						Oid index_oid,
 						YbTableProperties yb_table_properties)
 {
@@ -1107,23 +1112,22 @@ YbAppendIndexReloptions(StringInfoData buf,
 
 	if (has_reloptions || has_colocation_id)
 	{
-		appendStringInfo(&buf, " WITH (");
+		appendStringInfo(buf, " WITH (");
 
 		if (has_reloptions)
 		{
-			appendStringInfo(&buf, "%s", str);
+			appendStringInfo(buf, "%s", str);
 			pfree(str);
 		}
 
 		if (has_reloptions && has_colocation_id)
-			appendStringInfo(&buf, ", ");
+			appendStringInfo(buf, ", ");
 
 		if (has_colocation_id)
-			appendStringInfo(&buf, "colocation_id=%u", yb_table_properties->colocation_id);
+			appendStringInfo(buf, "colocation_id=%u", yb_table_properties->colocation_id);
 
-		appendStringInfo(&buf, ")");
+		appendStringInfo(buf, ")");
 	}
-
 }
 
 /* ----------
@@ -1344,7 +1348,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		if (!isConstraint)
 			appendStringInfo(&buf, "CREATE %sINDEX %s%s ON %s%s USING %s (",
 							 idxrec->indisunique ? "UNIQUE " : "",
-							 useNonconcurrently ? "NONCONCURRENTLY " : "",
+							 useNonconcurrently || includeYbMetadata ? "NONCONCURRENTLY " : "",
 							 quote_identifier(NameStr(idxrelrec->relname)),
 							 idxrelrec->relkind == RELKIND_PARTITIONED_INDEX
 							 && !inherits ? "ONLY " : "",
@@ -1494,7 +1498,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		if (includeYbMetadata && IsYBRelation(indexrel) &&
 			!idxrec->indisprimary)
 		{
-			YbAppendIndexReloptions(buf, indexrelid, YbGetTableProperties(indexrel));
+			YbAppendIndexReloptions(&buf, indexrelid, YbGetTableProperties(indexrel));
 		}
 
 		/*
@@ -2252,7 +2256,7 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 					Relation indexrel = index_open(indexId, AccessShareLock);
 
 					if (IsYBRelation(indexrel) && conForm->contype != CONSTRAINT_PRIMARY)
-						YbAppendIndexReloptions(buf, indexId, YbGetTableProperties(indexrel));
+						YbAppendIndexReloptions(&buf, indexId, YbGetTableProperties(indexrel));
 
 					Oid			tblspc;
 
@@ -3270,6 +3274,15 @@ deparse_expression(Node *expr, List *dpcontext,
 {
 	return deparse_expression_pretty(expr, dpcontext, forceprefix,
 									 showimplicit, 0, 0);
+}
+
+char *yb_deparse_expression(Node *expr, List *dpcontext,
+				   			bool forceprefix, bool showimplicit,
+							bool verbose)
+{
+	return deparse_expression_pretty(expr, dpcontext, forceprefix,
+									 showimplicit,
+									 verbose ? 0 : YB_PRETTYFLAG_ARRAY, 0);
 }
 
 /* ----------
@@ -8448,7 +8461,10 @@ get_rule_expr(Node *node, deparse_context *context,
 				ArrayExpr  *arrayexpr = (ArrayExpr *) node;
 
 				appendStringInfoString(buf, "ARRAY[");
+				int before_prettyflags = context->prettyFlags;
+
 				get_rule_expr((Node *) arrayexpr->elements, context, true);
+				context->prettyFlags = before_prettyflags;
 				appendStringInfoChar(buf, ']');
 
 				/*
@@ -9069,11 +9085,31 @@ get_rule_expr(Node *node, deparse_context *context,
 				ListCell   *l;
 
 				sep = "";
+				int limit = -1;
+				int cur_index = 0;
+				if (IsYugaByteEnabled() &&
+					YB_PRETTY_ARRAY(context) &&
+					YB_TRUNC_ARRAY_LIMIT < ((List *) node)->length)
+				{
+					limit = YB_TRUNC_ARRAY_LIMIT;
+				}
 				foreach(l, (List *) node)
 				{
 					appendStringInfoString(buf, sep);
 					get_rule_expr((Node *) lfirst(l), context, showimplicit);
 					sep = ", ";
+					if (limit > 0 && ++cur_index == limit)
+					{
+						appendStringInfoString(buf, ", ..., ");
+						break;
+					}
+				}
+
+				if (IsYugaByteEnabled() &&
+					limit > 0)
+				{
+					Node *last_elem = (Node *) lfirst(list_tail((List *) node));
+					get_rule_expr(last_elem, context, showimplicit);
 				}
 			}
 			break;
@@ -11395,4 +11431,113 @@ get_range_partbound_string(List *bound_datums)
 	appendStringInfoChar(buf, ')');
 
 	return buf->data;
+}
+
+/*
+ * Used in YB to retrieve a relation's dependant views' oids and queries.
+ * We first retrieve the relations' dependent rules' oids using
+ * SELECT objid FROM pg_depend WHERE refclassid = 'pg_class'::regclass
+ * AND refobjid = 16384 AND classid = 'pg_rewrite'::regclass AND deptype = 'n'.
+ * For each of these rules, we retrieve the relation that the rule is defined
+ * for (ev_class) and the rule's underlying query (ev_action) by using
+ * SELECT ev_class, ev_action FROM pg_rewrite WHERE oid = pg_depend.objid.
+ * If the ev_class relation is a view/materialized view, we have found a
+ * dependent view, so we track its oid and underlying query.
+ * Note:
+ * 1. It is possible for a single view to have multiple pg_depend records that
+ * point to the base table. Therefore, we must check for duplicates. Example:
+ * CREATE TABLE test_table (id int PRIMARY KEY, v int);
+ * CREATE VIEW test_view AS SELECT v FROM test_table WHERE id = 1;
+ * 2. We need to check if the dependent rule's ev_class is a view because it
+ * could also be a different type of relation. Example:
+ * CREATE TABLE test_table (id int PRIMARY KEY);
+ * CREATE RULE test_rule AS ON INSERT TO test_table DO NOTHING;
+ */
+void
+yb_get_dependent_views(Oid relid, List **view_oids, List **view_queries)
+{
+	Relation		pg_depend, pg_rewrite;
+	ScanKeyData		key[4];
+	SysScanDesc		pg_depend_scan, pg_rewrite_scan;
+	HeapTuple		pg_depend_tuple, pg_rewrite_tuple;
+
+	pg_depend = heap_open(DependRelationId, RowExclusiveLock);
+	pg_rewrite = heap_open(RewriteRelationId, RowExclusiveLock);
+
+	/* Only interested in objects that are dependent on the given relation. */
+	ScanKeyInit(&key[0],
+				Anum_pg_depend_refclassid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(RelationRelationId));
+	ScanKeyInit(&key[1], Anum_pg_depend_refobjid, BTEqualStrategyNumber,
+				F_OIDEQ, ObjectIdGetDatum(relid));
+	/* Only interested in dependent rules. */
+	ScanKeyInit(&key[2], Anum_pg_depend_classid, BTEqualStrategyNumber,
+				F_OIDEQ, ObjectIdGetDatum(RewriteRelationId));
+	/* Only interested in normal dependencies. */
+	ScanKeyInit(&key[3], Anum_pg_depend_deptype, BTEqualStrategyNumber,
+				F_OIDEQ, CharGetDatum(DEPENDENCY_NORMAL));
+
+	pg_depend_scan = systable_beginscan(pg_depend, InvalidOid, true,
+										NULL, 4, key);
+
+	while (HeapTupleIsValid(pg_depend_tuple = systable_getnext(pg_depend_scan)))
+	{
+		ScanKeyData		key;
+		Relation		r;
+		Form_pg_depend	depend_form =
+			(Form_pg_depend) GETSTRUCT(pg_depend_tuple);
+		Oid				view_oid;
+
+		ScanKeyInit(&key, ObjectIdAttributeNumber, BTEqualStrategyNumber,
+					F_OIDEQ, ObjectIdGetDatum(depend_form->objid));
+		pg_rewrite_scan = systable_beginscan(pg_rewrite, RewriteOidIndexId,
+											 true, NULL, 1, &key);
+		pg_rewrite_tuple = systable_getnext(pg_rewrite_scan);
+
+		/*
+		 * We are only looking at dependent rules, so the pg_rewrite tuple
+		 * must be valid.
+		 */
+		Assert(HeapTupleIsValid(pg_rewrite_tuple));
+
+		Form_pg_rewrite rewrite_form = 
+			(Form_pg_rewrite) GETSTRUCT(pg_rewrite_tuple);
+		view_oid = rewrite_form->ev_class;
+
+		/* Exclude duplicates. */
+		if (list_member_oid(*view_oids, view_oid))
+			continue;
+
+		r = heap_open(view_oid, NoLock);
+
+		/* If the relation is indeed a view, record its oid and query. */
+		if (r->rd_rel->relkind == RELKIND_VIEW ||
+			r->rd_rel->relkind == RELKIND_MATVIEW)
+		{
+			StringInfoData	buf;
+			bool			isnull;
+			Datum			ev_action_datum = heap_getattr(pg_rewrite_tuple,
+												Anum_pg_rewrite_ev_action,
+												RelationGetDescr(pg_rewrite),
+												&isnull);
+			if (isnull)
+				continue;
+
+			*view_oids = lappend_oid(*view_oids, view_oid);
+
+			List *actions =
+				(List *) stringToNode(TextDatumGetCString(ev_action_datum));
+			initStringInfo(&buf);
+			get_query_def(linitial(actions), &buf, NIL,
+						  RelationGetDescr(r), PRETTYFLAG_INDENT,
+						  WRAP_COLUMN_DEFAULT, 0);
+			*view_queries = lappend(*view_queries, pstrdup(buf.data));
+		}
+		systable_endscan(pg_rewrite_scan);
+		heap_close(r, NoLock);
+	}
+	systable_endscan(pg_depend_scan);
+	heap_close(pg_rewrite, RowExclusiveLock);
+	heap_close(pg_depend, RowExclusiveLock);
 }

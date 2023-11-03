@@ -49,13 +49,15 @@ public class RuntimeConfigFormData {
 
     @ApiModelProperty(value = "Scope UIID")
     public final UUID uuid;
+
     /**
      * global scope is mutable only if user is super admin other scopes can be mutated by the
      * customer
      */
     @ApiModelProperty(
         value =
-            "Mutability of the scope. Only super admin users can change global scope; other scopes are customer-mutable.")
+            "Mutability of the scope. Only super admin users can change global scope; other scopes"
+                + " are customer-mutable.")
     public final boolean mutableScope;
 
     @ApiModelProperty(value = "List of configurations")
@@ -73,13 +75,35 @@ public class RuntimeConfigFormData {
 
     public enum ScopeType {
       @EnumValue("GLOBAL")
-      GLOBAL,
+      GLOBAL {
+        @Override
+        public boolean isValid(UUID scopeUUID) {
+          return scopeUUID.equals(GLOBAL_SCOPE_UUID);
+        }
+      },
       @EnumValue("CUSTOMER")
-      CUSTOMER,
+      CUSTOMER {
+        @Override
+        public boolean isValid(UUID scopeUUID) {
+          return (scopeUUID.equals(GLOBAL_SCOPE_UUID) || Customer.get(scopeUUID) != null);
+        }
+      },
       @EnumValue("UNIVERSE")
-      UNIVERSE,
+      UNIVERSE {
+        @Override
+        public boolean isValid(UUID scopeUUID) {
+          return !Provider.maybeGet(scopeUUID).isPresent();
+        }
+      },
       @EnumValue("PROVIDER")
-      PROVIDER;
+      PROVIDER {
+        @Override
+        public boolean isValid(UUID scopeUUID) {
+          return !Universe.maybeGet(scopeUUID).isPresent();
+        }
+      };
+
+      public abstract boolean isValid(UUID scopeUUID);
     }
 
     public RuntimeConfig<? extends Model> runtimeConfig(SettableRuntimeConfigFactory factory) {

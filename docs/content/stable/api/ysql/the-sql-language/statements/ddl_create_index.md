@@ -18,24 +18,24 @@ Use the `CREATE INDEX` statement to create an index on the specified columns of 
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
 </ul>
 
 <div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_index,index_elem.grammar.md" %}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_index,index_elem.diagram.md" %}}
   </div>
 </div>
@@ -54,7 +54,7 @@ The following table explains some of the differences between creating an index o
 
 `CREATE INDEX CONCURRENTLY` is supported, though online index backfill is enabled by default. Some restrictions apply (see [CONCURRENTLY](#concurrently)).
 
-To disable online schema migration for YSQL `CREATE INDEX`, set the flag `ysql_disable_index_backfill=true` on **all** nodes and **both** master and tserver.
+To disable online schema migration for YSQL `CREATE INDEX`, set the flag `ysql_disable_index_backfill=true` on **all** nodes and **both** YB-Master and YB-TServer.
 
 To disable online schema migration for one `CREATE INDEX`, use `CREATE INDEX NONCONCURRENTLY`.
 
@@ -70,19 +70,21 @@ Regarding colocation, indexes follow their table. If the table is colocated, its
 
 Creating an index on a partitioned table automatically creates a corresponding index for every partition in the default tablespace. It's also possible to create an index on each partition individually, which you should do in the following cases:
 
-* Parallel writes are expected while creating the index, because concurrent builds for indexes on partitioned tables aren't supported. In this case, it's better to use concurrent builds to create indexes on each partition individually.
-* [Row-level geo-partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/) is being used. In this case, create the index separately on each partition to customize the tablespace in which each index is created.
-* `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables (see [CONCURRENTLY](#concurrently)).
+- Parallel writes are expected while creating the index, because concurrent builds for indexes on partitioned tables aren't supported. In this case, it's better to use concurrent builds to create indexes on each partition individually.
+- [Row-level geo-partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/) is being used. In this case, create the index separately on each partition to customize the tablespace in which each index is created.
+- `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables (see [CONCURRENTLY](#concurrently)).
 
 ### UNIQUE
 
 Enforce that duplicate values in a table are not allowed.
 
 ### CONCURRENTLY
+
 Enable online schema migration (see [Semantics](#semantics) for details), with some restrictions:
-* When creating an index on a temporary table, online schema migration is disabled.
-* `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables.
-* `CREATE INDEX CONCURRENTLY` is not supported inside a transaction block.
+
+- When creating an index on a temporary table, online schema migration is disabled.
+- `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables.
+- `CREATE INDEX CONCURRENTLY` is not supported inside a transaction block.
 
 ### NONCONCURRENTLY
 
@@ -110,8 +112,10 @@ Specify the name of the [tablespace](../../../../../explore/ysql-language-featur
 
 A [partial index](#partial-indexes) is an index that is built on a subset of a table and includes only rows that satisfy the condition specified in the `WHERE` clause.
 It can be used to exclude NULL or common values from the index, or include just the rows of interest.
-This will speed up any writes to the table since rows containing the common column values don't need to be indexed.
-It will also reduce the size of the index, thereby improving the speed for read queries that use the index.
+
+This speeds up any writes to the table because rows containing the common column values don't need to be indexed.
+
+It also reduces the size of the index, thereby improving the speed for read queries that use the index.
 
 #### *name*
 
@@ -140,6 +144,7 @@ Specify one or more columns of the table and must be surrounded by parentheses.
 ### SPLIT INTO
 
 For hash-sharded indexes, you can use the `SPLIT INTO` clause to specify the number of tablets to be created for the index. The hash range is then evenly split across those tablets.
+
 Presplitting indexes, using `SPLIT INTO`, distributes index workloads on a production cluster. For example, if you have 3 servers, splitting the index into 30 tablets can provide higher write throughput on the index. For an example, see [Create an index specifying the number of tablets](#create-an-index-specifying-the-number-of-tablets).
 
 {{< note title="Note" >}}
@@ -220,26 +225,99 @@ yugabyte=# create index shipment_delivery on shipments(delivery_status, address,
 
 ## Troubleshooting
 
-If the following troubleshooting tips don't resolve your issue, please ask for help in our [community Slack]({{<slack-invite>}}) or [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new?title=Index+backfill+failure).
+If the following troubleshooting tips don't resolve your issue, ask for help in our [community Slack]({{<slack-invite>}}) or [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new?title=Index+backfill+failure).
 
-**If online `CREATE INDEX` fails**, it likely failed in the backfill step.
-In that case, the index exists but is not usable.
-Drop the index and try again.
-If it still doesn't work, here are some troubleshooting steps:
+### Invalid index
 
-- **Did it time out?** Try increasing timeout flags:
-  - master `ysql_index_backfill_rpc_timeout_ms`
-  - tserver `backfill_index_client_rpc_timeout_ms`
-- **Did you get a "backfill failed to connect to DB" error?** You may be hitting an issue with authentication. If you're on a stable version prior to 2.4 or a latest (2.3.x or 2.5.x) version prior to 2.5.2, online `CREATE INDEX` does not work with authentication enabled.
-  - For version 2.5.1, you can use `CREATE INDEX NONCONCURRENTLY` as a workaround.
-  - If the version is at least 2.3, you can set `ysql_disable_index_backfill=false` as a workaround.
-  - In all supported versions, you can disable authentication (for example, by using `ysql_enable_auth`, `ysql_hba_conf`, or `ysql_hba_conf_csv`) as a workaround.
-- **Did you get a "duplicate key value" error?**
-  Then, you have a unique constraint violation.
+If online `CREATE INDEX` fails, an invalid index may be left behind. These indexes are not usable in queries and cause internal operations, so they should be dropped.
 
-**To prioritize keeping other transactions alive** during the index backfill, bump up the following:
+For example, the following commands can create an invalid index:
 
-- master flag `index_backfill_wait_for_old_txns_ms`
-- YSQL GUC variable `yb_index_state_flags_update_delay`
+```plpgsql
+yugabyte=# CREATE TABLE uniqueerror (i int);
+```
 
-**To speed up index creation** by a few seconds when you know there will be no online writes, set the YSQL GUC variable `yb_index_state_flags_update_delay` to zero.
+```output
+CREATE TABLE
+```
+
+```plpgsql
+yugabyte=# INSERT INTO uniqueerror VALUES (1), (1);
+```
+
+```output
+INSERT 0 2
+```
+
+```plpgsql
+yugabyte=# CREATE UNIQUE INDEX ON uniqueerror (i);
+```
+
+```output
+ERROR:  ERROR:  duplicate key value violates unique constraint "uniqueerror_i_idx"
+```
+
+```plpgsql
+yugabyte=# \d uniqueerror
+            Table "public.uniqueerror"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ i      | integer |           |          |
+Indexes:
+    "uniqueerror_i_idx" UNIQUE, lsm (i HASH) INVALID
+```
+
+Drop the invalid index as follows:
+
+```plpgsql
+yugabyte=# DROP INDEX uniqueerror_i_idx;
+```
+
+```output
+DROP INDEX
+```
+
+### Common errors and solutions
+
+- `ERROR:  duplicate key value violates unique constraint "uniqueerror_i_idx"`
+
+  **Reason**: When creating a [unique index](#unique), a unique constraint violation was found.
+
+  **Fix**: Resolve the conflicting row(s).
+
+- `ERROR:  Backfilling indexes { timeoutmaster_i_idx } for tablet 42e3857759f54733a47e3bb817636f60 from key '' in state kFailed`
+
+  **Reason**: Server-side backfill timeout is repeatedly hit.
+
+  **Fixes**
+
+  Do any or all of the following:
+
+  - Increase [YB-Master flag][yb-master] `ysql_index_backfill_rpc_timeout_ms` from 60000 (one minute) to 300000 (five minutes).
+  - Increase [YB-TServer flag][yb-tserver] `backfill_index_timeout_grace_margin_ms` from -1 (one second) to 60000 (one minute).
+  - Decrease [YB-TServer flag][yb-tserver] `backfill_index_write_batch_size` from 128 to 32.
+
+- `ERROR:  BackfillIndex RPC (request call id 123) to 127.0.0.1:9100 timed out after 86400.000s`
+
+  **Reason**: Client-side backfill timeout is hit.
+
+  **Fixes**
+
+  The master leader may have changed during backfill. This is currently [not supported][backfill-master-failover-issue]. Retry creating the index, and keep an eye on the master leader.
+
+  Try increasing parallelism. Index backfill happens in parallel across each tablet of the table. A one-tablet table in an [RF-3][rf] setup would not take advantage of the parallelism. (One-tablet tables are default for range-partitioned tables and colocated tables.) On the other hand, no matter how much parallelism there is, a one-tablet index would be a bottleneck for index backfill writes. Partitioning could be improved with [tablet splitting][tablet-splitting].
+
+  In case the backfill really needs more time, increase [YB-TServer flag][yb-tserver] `backfill_index_client_rpc_timeout_ms` to as long as you expect the backfill to take (for example, one week).
+
+**To prioritize keeping other transactions alive** during the index backfill, set each of the following to be longer than the longest transaction anticipated:
+
+- [YB-Master flag][yb-master] `index_backfill_wait_for_old_txns_ms`
+- YSQL parameter `yb_index_state_flags_update_delay`
+
+**To speed up index creation** by a few seconds when you know there will be no online writes, set the YSQL parameter `yb_index_state_flags_update_delay` to zero.
+
+[backfill-master-failover-issue]: https://github.com/yugabyte/yugabyte-db/issues/6218
+[rf]: ../../../../../architecture/docdb-replication/replication/#replication-factor
+[tablet-splitting]: ../../../../../architecture/docdb-sharding/tablet-splitting
+[yb-master]: ../../../../../reference/configuration/yb-master/
+[yb-tserver]: ../../../../../reference/configuration/yb-tserver/

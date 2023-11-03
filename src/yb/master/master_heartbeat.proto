@@ -17,8 +17,10 @@ package yb.master;
 option java_package = "org.yb.master";
 
 import "yb/cdc/cdc_consumer.proto";
+import "yb/cdc/xcluster_producer.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
+import "yb/consensus/consensus_types.proto";
 import "yb/encryption/encryption.proto";
 import "yb/master/master_types.proto";
 import "yb/tablet/tablet_types.proto";
@@ -98,11 +100,28 @@ message TabletDriveStorageMetadataPB {
   optional bool may_have_orphaned_post_split_data = 5 [default = true];
 }
 
+message TabletLeaderMetricsPB {
+  required bytes tablet_id = 1;
+  optional consensus.LeaderLeaseStatus
+      leader_lease_status = 2[default = NO_MAJORITY_REPLICATED_LEASE];
+  optional fixed64 ht_lease_expiration = 3;
+}
+
 message TabletReplicationStatusPB {
   required bytes tablet_id = 1;
 
   // Maps a stream id -> replication status.
   map<string, StreamReplicationStatusPB> stream_replication_statuses = 2;
+}
+
+message FullCompactionStatusPB {
+  optional bytes tablet_id = 1;
+    // Current full compaction state.
+  optional tablet.FullCompactionState full_compaction_state = 2;
+
+   // Time of completion of the last fully completed full compaction.
+   // Raw representation of a HybridTime.
+  optional fixed64 last_full_compaction_time = 3;
 }
 
 message ReportedTabletUpdatesPB {
@@ -206,6 +225,16 @@ message TSHeartbeatRequestPB {
   repeated TabletReplicationStatusPB replication_state = 16;
 
   optional uint32 auto_flags_config_version = 17;
+
+  optional uint32 xcluster_config_version = 18;
+
+  repeated TabletLeaderMetricsPB leader_info = 19;
+
+  repeated FullCompactionStatusPB full_compaction_statuses = 20;
+
+  optional uint64 ysql_db_catalog_versions_fingerprint = 21;
+
+  optional string universe_uuid = 22;
 }
 
 message TSHeartbeatResponsePB {
@@ -271,6 +300,12 @@ message TSHeartbeatResponsePB {
   map<string, fixed64> xcluster_namespace_to_safe_time = 21;
 
   optional AutoFlagsConfigPB auto_flags_config = 22;
+
+  optional xcluster.ProducerRegistryPB xcluster_producer_registry = 23;
+
+  optional uint32 xcluster_config_version = 24;
+
+  optional string universe_uuid = 25;
 }
 
 service MasterHeartbeat {

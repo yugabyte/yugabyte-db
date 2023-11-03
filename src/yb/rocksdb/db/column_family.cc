@@ -45,10 +45,8 @@
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/options_helper.h"
 #include "yb/rocksdb/util/statistics.h"
-#include "yb/rocksdb/util/xfunc.h"
 
 #include "yb/util/logging.h"
-#include <glog/logging.h>
 #include "yb/util/flags.h"
 
 DEFINE_UNKNOWN_int32(memstore_arena_size_kb, 64, "Size of each arena allocation for the memstore");
@@ -195,14 +193,6 @@ ColumnFamilyOptions SanitizeOptions(const DBOptions& db_options,
   if (result.max_write_buffer_number_to_maintain < 0) {
     result.max_write_buffer_number_to_maintain = result.max_write_buffer_number;
   }
-  XFUNC_TEST("memtablelist_history", "transaction_xftest_SanitizeOptions",
-             xf_transaction_set_memtable_history1,
-             xf_transaction_set_memtable_history,
-             &result.max_write_buffer_number_to_maintain);
-  XFUNC_TEST("memtablelist_history_clear", "transaction_xftest_SanitizeOptions",
-             xf_transaction_clear_memtable_history1,
-             xf_transaction_clear_memtable_history,
-             &result.max_write_buffer_number_to_maintain);
 
   if (!result.prefix_extractor) {
     DCHECK(result.memtable_factory);
@@ -733,15 +723,16 @@ const int ColumnFamilyData::kCompactAllLevels = -1;
 const int ColumnFamilyData::kCompactToBaseLevel = -2;
 
 std::unique_ptr<Compaction> ColumnFamilyData::CompactRange(
-    const MutableCFOptions& mutable_cf_options, int input_level,
-    int output_level, uint32_t output_path_id, const InternalKey* begin,
-    const InternalKey* end, CompactionReason compaction_reason,
-    InternalKey** compaction_end, bool* conflict) {
+    const MutableCFOptions& mutable_cf_options, int input_level, int output_level,
+    uint32_t output_path_id, const InternalKey* begin, const InternalKey* end,
+    CompactionReason compaction_reason, uint64_t file_number_upper_bound,
+    uint64_t input_size_limit, InternalKey** compaction_end, bool* conflict) {
   Version* const current_version = current();
   // TODO: do we need to check that current_version is not nullptr?
   auto result = compaction_picker_->CompactRange(
       GetName(), mutable_cf_options, current_version->storage_info(), input_level,
-      output_level, output_path_id, begin, end, compaction_reason, compaction_end, conflict);
+      output_level, output_path_id, begin, end, compaction_reason, file_number_upper_bound,
+      input_size_limit, compaction_end, conflict);
   if (result != nullptr) {
     result->SetInputVersion(current_version);
   }

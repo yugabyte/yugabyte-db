@@ -52,7 +52,7 @@ Connections to your cluster using YCQL require SSL and the cluster CA certificat
 
 The generated `ycqlsh` shell command uses the `--ssl` option and sets the SSL_CERTFILE environment variable. You set SSL_CERTFILE to the path of the cluster certificate.
 
-## Learn more
+## Next steps
 
-- For information on connecting to clusters from a client shell, refer to [Connect via client shells](../../cloud-connect/connect-client-shell/).
-- For information on connecting applications, refer to [Connect applications](../../cloud-connect/connect-applications/).
+- [Connect using a shell](../../cloud-connect/connect-client-shell/)
+- [Connect an application](../../cloud-connect/connect-applications/)

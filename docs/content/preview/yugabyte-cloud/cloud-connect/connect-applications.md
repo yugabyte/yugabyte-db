@@ -14,7 +14,7 @@ type: docs
 
 Applications connect to and interact with YugabyteDB using API client libraries, also known as client drivers. Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers. YugabyteDB also supports [smart drivers](../../../drivers-orms/smart-drivers/), which extend PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers.
 
-To connect to a YugabyteDB Managed cluster, you need to add the [cluster connection parameters](#connect-an-application) to your application code. How you update the application depends on the driver you are using.
+To connect to a YugabyteDB Managed cluster, you need to add the [cluster connection parameters](#get-the-cluster-connection-parameters) to your application code. How you update the application depends on the driver you are using.
 
 For examples of applications that connect to YugabyteDB Managed using common drivers, refer to [Build an application](../../../develop/build-apps/).
 
@@ -29,15 +29,25 @@ Before you can connect an application to a YugabyteDB Managed cluster, you need 
 
 ### Network access
 
-To enable inbound network access from your application environment to a cluster, you need to add the IP addresses to the cluster [IP allow list](../../cloud-secure-clusters/add-connections).
+#### IP allow list
 
-For best performance and security, use a [VPC network](../../cloud-basics/cloud-vpcs/) and deploy your application in a VPC that is peered with your cluster's VPC.
+To enable inbound network access from your application environment to a cluster, you need to add the IP addresses to the cluster IP allow list.
 
-To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For more information on smart drivers and using smart drivers with YugabyteDB Managed, refer to [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/).
+If your cluster is deployed in a peered VPC, you need to add the IP addresses of the peered application VPC to the cluster IP allow list.
 
-In addition, multi-region clusters, which must be deployed in a VPC, do not expose any publicly-accessible IP addresses. As a result, you can _only_ connect to multi-region clusters from applications that reside on a peered network, and the [peering connection](../../cloud-basics/cloud-vpcs/cloud-add-peering/) must be Active.
+By default, clusters deployed in a VPC do not expose any publicly-accessible IP addresses. To add public IP addresses, enable **Public Access** on the cluster **Settings > Network Access** tab.
 
-In addition, if your cluster is deployed in a VPC, you need to add the IP addresses of the peered application VPC to the cluster IP allow list.
+For more information, refer to [IP allow list](../../cloud-secure-clusters/add-connections).
+
+#### VPC network
+
+If your cluster is deployed in a VPC, deploy your application in a VPC that is [peered](../../cloud-basics/cloud-vpcs/cloud-add-peering/) or [linked](../../cloud-basics/cloud-vpcs/cloud-add-endpoint/) with your cluster's VPC. Peered application VPCs also need to be added to the cluster IP allow list.
+
+Clusters deployed in VPCs don't expose public IP addresses unless you explicitly turn on [Public Access](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access). If you are connecting from a public IP address (for example, for testing, development, or running sample applications), enable Public Access on the cluster **Settings > Network Access** tab. Then use the public address in your application connection string. (This configuration is not recommended for production.)
+
+#### Using smart drivers
+
+To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers _must_ be deployed in a VPC that has been peered with the cluster VPC. If not deployed in a peered VPC, the smart driver falls back to the upstream driver behavior. For more information on smart drivers and using smart drivers with YugabyteDB Managed, refer to [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/).
 
 ### Cluster certificate
 
@@ -45,7 +55,7 @@ YugabyteDB Managed clusters have TLS/SSL (encryption in-transit) enabled. Your d
 
 For information on SSL in YugabyteDB Managed, refer to [Encryption in transit](../../cloud-secure-clusters/cloud-authentication/).
 
-## Connect an application
+## Get the cluster connection parameters
 
 To connect an application to your cluster, add the cluster connection parameters to your application.
 
@@ -56,6 +66,7 @@ To get the connection parameters for your cluster:
 1. Click **Connect to your Application**.
 1. Click **Download CA Cert** and install the cluster certificate on the computer running the application.
 1. Choose the API used by your application, **YSQL** or **YCQL**, to display the corresponding connection parameters.
+1. If your cluster is deployed in a VPC, choose **Private Address** if your application is in a peered VPC. Choose **Private Service Endpoint** if your application is in a linked VPC. Otherwise, choose Public Address (only available if you have enabled [Public Access](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access); not recommended for production).
 
 ### Connection parameters
 
@@ -63,7 +74,7 @@ To get the connection parameters for your cluster:
 
   {{% tab header="YSQL" lang="YSQL" %}}
 
-Select **Connection String** to display the string YSQL applications can use to connect. Select **Parameters** to display the individual parameters.
+Select **Connection String** to display the string that YSQL applications can use to connect. Select **Parameters** to display the individual parameters.
 
 Here's an example of a generated `ysqlsh` string:
 
@@ -115,24 +126,6 @@ For an example of building a Java application connected to YugabyteDB Managed us
   {{% /tab %}}
 
 {{< /tabpane >}}
-
-<!--
-## Run the sample application
-
-YugabyteDB Managed comes configured with a sample application that you can use to test your cluster.
-
-Before you can connect from your computer, you must add the IP address of the computer to an IP allow list, and the IP allow list must be assigned to the cluster. Refer to [Assign IP Allow Lists](../add-connections/).
-
-You will also need Docker installed on you computer.
-
-To run the sample application:
-
-1. On the **Clusters** tab, select a cluster.
-1. Click **Connect**.
-1. Click **Run a Sample Application**.
-1. Copy the connect string for YSQL or YCQL.
-1. Run the command in docker from your computer, replacing `<path to CA cert>`, `<db user>`, and `<db password>` with the path to the CA certificate for the cluster and your database credentials.
--->
 
 ## Learn more
 

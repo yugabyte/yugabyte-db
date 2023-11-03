@@ -2,16 +2,21 @@
 
 package com.yugabyte.yw.common.alerts.impl;
 
+import static com.yugabyte.yw.common.ThrownMatcher.thrown;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
+import com.yugabyte.yw.common.alerts.AlertChannelTemplateService;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.Customer;
 import java.io.IOException;
 import java.nio.charset.Charset;
@@ -20,27 +25,31 @@ import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AlertChannelSlackTest extends FakeDBApplication {
 
-  @Rule public ExpectedException exceptionGrabber = ExpectedException.none();
-
   private static final String SLACK_TEST_PATH = "/here/is/path";
 
   private Customer defaultCustomer;
 
-  @InjectMocks private AlertChannelSlack ars;
+  private AlertChannelSlack alertChannelSlack;
+
+  AlertChannelTemplateService alertChannelTemplateService;
+
+  AlertChannelTemplatesExt alertChannelTemplatesExt;
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
+    alertChannelSlack = app.injector().instanceOf(AlertChannelSlack.class);
+
+    alertChannelTemplateService = app.injector().instanceOf(AlertChannelTemplateService.class);
+    alertChannelTemplatesExt =
+        alertChannelTemplateService.getWithDefaults(defaultCustomer.getUuid(), ChannelType.Slack);
   }
 
   @Test
@@ -57,17 +66,12 @@ public class AlertChannelSlackTest extends FakeDBApplication {
       channel.setParams(params);
 
       Alert alert = ModelFactory.createAlert(defaultCustomer);
-      ars.sendNotification(defaultCustomer, alert, channel);
+      alertChannelSlack.sendNotification(defaultCustomer, alert, channel, alertChannelTemplatesExt);
 
       RecordedRequest request = server.takeRequest();
       assertThat(request.getPath(), is(SLACK_TEST_PATH));
-      assertThat(
-          request.getBody().readString(Charset.defaultCharset()),
-          equalTo(
-              "{\"username\":\"Slack Bot\",\"text\":"
-                  + "\"alertConfiguration alert with severity level 'SEVERE' for"
-                  + " customer 'test@customer.com' is firing.\\n\\n"
-                  + "Universe on fire!\",\"icon_url\":null}"));
+      String expectedBody = TestUtils.readResource("alert/alert_notification_slack.json").trim();
+      assertThat(request.getBody().readString(Charset.defaultCharset()), equalTo(expectedBody));
     }
   }
 
@@ -86,8 +90,14 @@ public class AlertChannelSlackTest extends FakeDBApplication {
 
       Alert alert = ModelFactory.createAlert(defaultCustomer);
 
-      exceptionGrabber.expect(PlatformNotificationException.class);
-      ars.sendNotification(defaultCustomer, alert, channel);
+      assertThat(
+          () ->
+              alertChannelSlack.sendNotification(
+                  defaultCustomer, alert, channel, alertChannelTemplatesExt),
+          thrown(
+              PlatformNotificationException.class,
+              "Error sending Slack message for alert Alert 1: "
+                  + "error response 500 received with body {\"error\":\"not_ok\"}"));
     }
   }
 }

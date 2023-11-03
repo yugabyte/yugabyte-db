@@ -1,8 +1,8 @@
 ---
-title: Start YB-TServer servers
+title: YB-TServer manual start
 headerTitle: Start YB-TServers
 linkTitle: 4. Start YB-TServers
-description: Steps to start YB-TServers when deploying for a single region or data center in a multi-zone/multi-rack configuration.
+description: How to manually start the YB-TServers when deploying YugabyteDB database in a single region or data center.
 menu:
   preview:
     identifier: deploy-manual-deployment-start-tservers
@@ -15,6 +15,7 @@ type: docs
 
 - The number of nodes in a cluster running YB-TServers **must** equal or exceed the replication factor in order for any table to get created successfully.
 - For running a single cluster across multiple data centers or 2 clusters in 2 data centers, refer to the [Multi-DC Deployments](../../../deploy/multi-dc/) section.
+- Read more about the [yb-tserver service architecture](../../../architecture/concepts/yb-tserver/).
 
 {{< /note >}}
 
@@ -23,9 +24,10 @@ This section covers deployment for a single region or data center in a multi-zon
 ## Example scenario
 
 - Create a 6-node cluster with replication factor of 3.
-  - YB-TServer server should on all the six nodes, and the YB-Master server should run on only three of these nodes.
+  - YB-TServer servers should run on all six nodes, and YB-Master servers should run on only three nodes.
   - Assume the three YB-Master private IP addresses are `172.151.17.130`, `172.151.17.220`, and `172.151.17.140`.
-  - Cloud is AWS, region us-west, and the three availability zones us-west-2a, us-west-2b, and us-west-2c. Two nodes will be placed in each AZ in such a way that 1 replica for each tablet (aka shard) gets placed in any 1 node for each AZ.
+  - Cloud is AWS, region us-west, and the three availability zones us-west-2a, us-west-2b, and us-west-2c.
+  - Two nodes will be placed in each AZ in such a way that 1 replica for each tablet (aka shard) gets placed in any 1 node for each AZ.
 - Multiple data drives mounted on `/home/centos/disk1`, `/home/centos/disk2`.
 
 ## Run YB-TServer with command line flags
@@ -50,13 +52,13 @@ For the full list of configuration flags, see the [YB-TServer reference](../../.
 
 {{< note title="Note" >}}
 
-The number of comma-separated values in the [`--tserver_master_addrs`](../../../reference/configuration/yb-tserver/#tserver-master-addrs)) flag should match the total number of YB-Master servers (or the replication factor).
+The number of comma-separated values in the [`--tserver_master_addrs`](../../../reference/configuration/yb-tserver/#tserver-master-addrs) flag should match the total number of YB-Master servers (that is, the replication factor).
 
 {{< /note >}}
 
 ## Run YB-TServer with configuration file
 
-Alternatively, you can also create a `tserver.conf` file with the following flags and then run the `yb-tserver` with the [`--flagfile`](../../../reference/configuration/yb-tserver/#flagfile)) flag. For each YB-TServer server, replace the RPC bind address flags with the private IP address of the host running the YB-TServer server.
+Alternatively, you can also create a `tserver.conf` file with the following flags and then run the `yb-tserver` with the [`--flagfile`](../../../reference/configuration/yb-tserver/#flagfile) flag. For each YB-TServer server, replace the RPC bind address flags with the private IP address of the host running the YB-TServer server.
 
 ```sh
 --tserver_master_addrs=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
@@ -82,9 +84,9 @@ This step is required for only multi-AZ deployments and can be skipped for a sin
 
 {{< /note >}}
 
-The default replica placement policy when the cluster is first created is to treat all nodes as equal irrespective of the `--placement_*` configuration flags.  However, for the current deployment, you want to explicitly place one replica of each tablet in each AZ. The following command sets replication factor of `3` across `us-west-2a`, `us-west-2b`, `us-west-2c` leading to such a placement.
+The default replica placement policy when the cluster is first created is to treat all nodes as equal irrespective of the `--placement_*` configuration flags. However, for the current deployment, you want to explicitly place one replica of each tablet in each AZ. The following command sets replication factor of `3` across `us-west-2a`, `us-west-2b`, and `us-west-2c` leading to such a placement.
 
-On any host running the yb-master, run the following command.
+On any host running the yb-master, run the following command:
 
 ```sh
 $ ./bin/yb-admin \
@@ -93,13 +95,13 @@ $ ./bin/yb-admin \
     aws.us-west.us-west-2a,aws.us-west.us-west-2b,aws.us-west.us-west-2c 3
 ```
 
-Verify by running the following.
+Verify by running the following:
 
 ```sh
 $ curl -s http://<any-master-ip>:7000/cluster-config
 ```
 
-Confirm that the output looks similar to the following, with `min_num_replicas` set to `1` for each AZ.
+Confirm that the output looks similar to the following, with `min_num_replicas` set to `1` for each AZ:
 
 ```output.json
 replication_info {
@@ -143,7 +145,7 @@ You can do this as follows:
 $ cat /home/centos/disk1/yb-data/tserver/logs/yb-tserver.INFO
 ```
 
-In each of the four YB-TServer logs, you should see log messages similar to the following:
+In each of the YB-TServer logs, you should see log messages similar to the following:
 
 ```output
 I0912 16:27:18.296516  8168 heartbeater.cc:305] Connected to a leader master server at 172.151.17.140:7100

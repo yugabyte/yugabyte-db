@@ -1,4 +1,4 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .point-in-time-recovery {
   font-family: 'Inter';
@@ -27,6 +27,13 @@
 
   .action-danger a,
   .action-danger a:hover {
-    color: $YB_ORANGE;
+    color: colors.$YB_ORANGE;
   }
+}
+
+.point-in-time-recovery-err {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 300px;
 }

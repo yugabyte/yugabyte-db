@@ -11,7 +11,7 @@
     margin-top: 30px;
   }
 }
-
+.node-agent-panel,
 .graph-panel {
   .filter-container {
     float: left;
@@ -52,10 +52,12 @@
   .cluster-name {
     margin: 10px 0 0 20px;
   }
-
+  
   .live-queries-label,
   .universe-name,
+  .provider-name,
   .region-name,
+  .node-type-label,
   .node-ip-address,
   .node-name,
   .cluster-az-name {
@@ -69,6 +71,7 @@
   }
 
   .universe-name,
+  .provider-name,
   .region-name,
   .node-name {
     float: left;
@@ -77,6 +80,7 @@
     font-weight: 400;
   }
 
+  .node-type-label,
   .node-ip-address {
     font-weight: 400;
     font-size: 11.5px;
@@ -84,6 +88,10 @@
     float: right;
     margin-top: 2px;
     color: rgba(35, 35, 41, 0.4);
+  }
+
+  .node-type-label {
+    float: left !important;
   }
 
   .dropdown-menu .active a {
@@ -104,25 +112,32 @@
   }
 
   .node-filter-dropdown {
-    .dropdown-toggle-button {
+    &__border-topk {
       border-radius: 0px 8px 8px 0px;
+    }
+    &__border {
+      border-radius: 8px;
     }
   }
 
+  .region-filter-dropdown,
+  .provider-filter-dropdown,
   .universe-filter-dropdown {
     .dropdown-toggle-button {
       border-radius: 8px 0px 0px 8px;
     }
   }
 
-  .region-filter-dropdown {
+  .node-type-filter-dropdown {
     .dropdown-toggle-button {
       border-radius: 0px 0px 0px 0px;
     }
   }
 
+  .provider-filter-dropdown,
   .universe-filter-dropdown,
   .node-filter-dropdown,
+  .node-type-filter-dropdown,
   .region-filter-dropdown {
     width: 240px;
     background-color: #fff;
@@ -137,9 +152,7 @@
       overflow-y: scroll;
     }
 
-    .default-universe-value,
-    .default-node-value,
-    .default-region-value {
+    .default-value {
       font-family: 'Inter';
       font-style: normal;
       font-weight: 400;
@@ -233,12 +246,15 @@
   }
 
   .universe-picker-container,
-  .node-picker {
+  .provider-picker-container,
+  .node-type-picker-container,
+  .node-picker-container {
     float: left;
     vertical-align: middle;
   }
 
-  .node-picker {
+  .node-type-picker-container,
+  .node-picker-container {
     .dropdown-menu {
       width: max-content;
     }

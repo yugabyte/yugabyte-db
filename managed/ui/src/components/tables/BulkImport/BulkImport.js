@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Field } from 'redux-form';
 import { YBModal, YBTextInputWithLabel } from '../../common/forms/fields';
 import {

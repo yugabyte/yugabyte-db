@@ -1,5 +1,5 @@
 ---
-title: Security
+title: YugabyteDB Anywhere Security
 headerTitle: Security
 linkTitle: Security
 description: Secure YugabyteDB Anywhere and YugabyteDB universes.
@@ -9,7 +9,7 @@ menu:
   preview_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: security
-weight: 645
+weight: 650
 type: indexpage
 ---
 

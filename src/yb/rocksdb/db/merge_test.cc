@@ -32,16 +32,22 @@
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-#include "yb/rocksdb/utilities/db_ttl.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 
 #include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/flags/flag_tags.h"
 
 using std::unique_ptr;
+
+DEFINE_NON_RUNTIME_bool(merge_test_compact, false, "Run merge test with compaction");
 
 DECLARE_bool(never_fsync);
 
 namespace rocksdb {
+
+class MergeTest : public RocksDBTest {
+};
 
 namespace {
 size_t num_merge_operator_calls;
@@ -96,7 +102,7 @@ class CountMergeOperator: public AssociativeMergeOperator {
 };
 
 namespace {
-std::shared_ptr<DB> OpenDb(const std::string &dbname, const bool ttl = false,
+std::shared_ptr<DB> OpenDb(const std::string &dbname,
                            const size_t max_successive_merges = 0,
                            const uint32_t min_partial_merge_operands = 2) {
   DB *db;
@@ -107,14 +113,7 @@ std::shared_ptr<DB> OpenDb(const std::string &dbname, const bool ttl = false,
   options.min_partial_merge_operands = min_partial_merge_operands;
   Status s;
   CHECK_OK(DestroyDB(dbname, Options()));
-  if (ttl) {
-    std::cout << "Opening database with TTL\n";
-    DBWithTTL *db_with_ttl;
-    s = DBWithTTL::Open(options, dbname, &db_with_ttl);
-    db = db_with_ttl;
-  } else {
-    s = DB::Open(options, dbname, &db);
-  }
+  s = DB::Open(options, dbname, &db);
   if (!s.ok()) {
     std::cerr << s.ToString() << std::endl;
     assert(false);
@@ -193,7 +192,7 @@ class Counters {
     } else if (s.ok()) {
       // deserialization
       if (str.size() != sizeof(uint64_t)) {
-        std::cerr << "value corruption\n";
+        std::cerr << "value corruption";
         return false;
       }
       *value = DecodeFixed64(&str[0]);
@@ -301,7 +300,7 @@ void testCounters(Counters* counters_ptr, DB *db, bool test_compaction) {
 
   dumpDb(db);
 
-  std::cout << "1\n";
+  LOG(INFO) << "1";
 
   // 1+...+49 = ?
   uint64_t sum __attribute__((__unused__)) = 0;
@@ -311,17 +310,17 @@ void testCounters(Counters* counters_ptr, DB *db, bool test_compaction) {
   }
   assert(counters.assert_get("b") == sum);
 
-  std::cout << "2\n";
+  LOG(INFO) << "2";
   dumpDb(db);
 
-  std::cout << "3\n";
+  LOG(INFO) << "3";
 
   if (test_compaction) {
     ASSERT_OK(db->Flush(o));
 
-    std::cout << "Compaction started ...\n";
+    LOG(INFO) << "Compaction started ...";
     ASSERT_OK(db->CompactRange(CompactRangeOptions(), nullptr, nullptr));
-    std::cout << "Compaction ended\n";
+    LOG(INFO) << "Compaction ended";
 
     dumpDb(db);
 
@@ -430,66 +429,80 @@ void testSingleBatchSuccessiveMerge(DB *db, size_t max_num_merges,
       static_cast<size_t>((num_merges % (max_num_merges + 1))));
 }
 
-void runTest(int argc, const std::string &dbname, const bool use_ttl = false) {
+void RunTest() {
   bool compact = false;
-  if (argc > 1) {
+  if (FLAGS_merge_test_compact) {
     compact = true;
-    std::cout << "Turn on Compaction\n";
+    LOG(INFO) << "Turn on Compaction";
   }
 
+  auto db_path_prefix = rocksdb::test::TmpDir() + "/merge_testdb";
+
   {
-    auto db = OpenDb(dbname, use_ttl);
-
+    auto db_path = db_path_prefix + "1";
     {
-      std::cout << "Test read-modify-write counters... \n";
-      Counters counters(db, 0);
-      testCounters(&counters, db.get(), true);
+      auto db = OpenDb(db_path);
+
+      {
+        LOG(INFO) << "Test read-modify-write counters... ";
+        Counters counters(db, 0);
+        testCounters(&counters, db.get(), true);
+      }
+
+      {
+        LOG(INFO) << "Test merge-based counters... ";
+        MergeBasedCounters counters(db, 0);
+        testCounters(&counters, db.get(), compact);
+      }
     }
+    ASSERT_OK(DestroyDB(db_path, Options()));
+  }
 
+
+  {
+    auto db_path = db_path_prefix + "2";
+    LOG(INFO) << "Test merge in memtable... ";
+    size_t max_merge = 5;
     {
-      std::cout << "Test merge-based counters... \n";
+      auto db = OpenDb(db_path, max_merge);
       MergeBasedCounters counters(db, 0);
       testCounters(&counters, db.get(), compact);
+      testSuccessiveMerge(&counters, max_merge, max_merge * 2);
+      testSingleBatchSuccessiveMerge(db.get(), 5, 7);
     }
-  }
-
-  ASSERT_OK(DestroyDB(dbname, Options()));
-
-  {
-    std::cout << "Test merge in memtable... \n";
-    size_t max_merge = 5;
-    auto db = OpenDb(dbname, use_ttl, max_merge);
-    MergeBasedCounters counters(db, 0);
-    testCounters(&counters, db.get(), compact);
-    testSuccessiveMerge(&counters, max_merge, max_merge * 2);
-    testSingleBatchSuccessiveMerge(db.get(), 5, 7);
-    ASSERT_OK(DestroyDB(dbname, Options()));
+    ASSERT_OK(DestroyDB(db_path, Options()));
   }
 
   {
-    std::cout << "Test Partial-Merge\n";
+    auto db_path = db_path_prefix + "3";
+    LOG(INFO) << "Test Partial-Merge";
     size_t max_merge = 100;
     for (uint32_t min_merge = 5; min_merge < 25; min_merge += 5) {
       for (uint32_t count = min_merge - 1; count <= min_merge + 1; count++) {
-        auto db = OpenDb(dbname, use_ttl, max_merge, min_merge);
-        MergeBasedCounters counters(db, 0);
-        testPartialMerge(&counters, db.get(), max_merge, min_merge, count);
-        ASSERT_OK(DestroyDB(dbname, Options()));
+        {
+          auto db = OpenDb(db_path, max_merge, min_merge);
+          MergeBasedCounters counters(db, 0);
+          testPartialMerge(&counters, db.get(), max_merge, min_merge, count);
+        }
+        ASSERT_OK(DestroyDB(db_path, Options()));
       }
       {
-        auto db = OpenDb(dbname, use_ttl, max_merge, min_merge);
-        MergeBasedCounters counters(db, 0);
-        testPartialMerge(&counters, db.get(), max_merge, min_merge,
-            min_merge * 10);
-        ASSERT_OK(DestroyDB(dbname, Options()));
+        {
+          auto db = OpenDb(db_path, max_merge, min_merge);
+          MergeBasedCounters counters(db, 0);
+          testPartialMerge(&counters, db.get(), max_merge, min_merge,
+              min_merge * 10);
+        }
+        ASSERT_OK(DestroyDB(db_path, Options()));
       }
     }
   }
 
   {
-    std::cout << "Test merge-operator not set after reopen\n";
+    auto db_path = db_path_prefix + "4";
+    LOG(INFO) << "Test merge-operator not set after reopen";
     {
-      auto db = OpenDb(dbname);
+      auto db = OpenDb(db_path);
       MergeBasedCounters counters(db, 0);
       counters.add("test-key", 1);
       counters.add("test-key", 1);
@@ -497,17 +510,19 @@ void runTest(int argc, const std::string &dbname, const bool use_ttl = false) {
       ASSERT_OK(db->CompactRange(CompactRangeOptions(), nullptr, nullptr));
     }
 
-    DB *reopen_db;
-    ASSERT_OK(DB::Open(Options(), dbname, &reopen_db));
-    std::string value;
-    ASSERT_TRUE(!(reopen_db->Get(ReadOptions(), "test-key", &value).ok()));
-    delete reopen_db;
-    ASSERT_OK(DestroyDB(dbname, Options()));
+    {
+      DB *reopen_db;
+      ASSERT_OK(DB::Open(Options(), db_path, &reopen_db));
+      std::unique_ptr<DB> reopen_db_holder(reopen_db);
+      std::string value;
+      ASSERT_TRUE(!(reopen_db->Get(ReadOptions(), "test-key", &value).ok()));
+    }
+    ASSERT_OK(DestroyDB(db_path, Options()));
   }
 
-  /* Temporary remove this test
+  /* Temporarily remove this test
   {
-    std::cout << "Test merge-operator not set after reopen (recovery case)\n";
+    LOG(INFO) << "Test merge-operator not set after reopen (recovery case)";
     {
       auto db = OpenDb(dbname);
       MergeBasedCounters counters(db, 0);
@@ -522,18 +537,10 @@ void runTest(int argc, const std::string &dbname, const bool use_ttl = false) {
   */
 }
 }  // namespace
-} // namespace rocksdb
 
-int main(int argc, char *argv[]) {
-  // TODO: Make this test like a general rocksdb unit-test
-  // This is set by default in RocksDBTest and YBTest, and can be removed once this test is a
-  // general rocksdb unit-test
-  FLAGS_never_fsync = true;
-  rocksdb::port::InstallStackTraceHandler();
-  rocksdb::runTest(argc, rocksdb::test::TmpDir() + "/merge_testdb");
-  rocksdb::runTest(argc,
-                   rocksdb::test::TmpDir() + "/merge_testdbttl",
-                   true); // Run test on TTL database
+TEST_F(MergeTest, TestMerge) {
+  rocksdb::RunTest();
   printf("Passed all tests!\n");
-  return 0;
 }
+
+} // namespace rocksdb

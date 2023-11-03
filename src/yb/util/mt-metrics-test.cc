@@ -45,7 +45,7 @@
 #include "yb/util/thread.h"
 #include "yb/util/flags.h"
 
-DEFINE_UNKNOWN_int32(mt_metrics_test_num_threads, 4,
+DEFINE_NON_RUNTIME_int32(mt_metrics_test_num_threads, 4,
              "Number of threads to spawn in mt metrics tests");
 
 METRIC_DEFINE_entity(test_entity);

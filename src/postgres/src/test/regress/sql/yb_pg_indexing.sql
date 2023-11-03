@@ -91,8 +91,6 @@ create index idxpart1_tst3 on idxpart1 (a, b) where a > 10;
 alter index idxpart attach partition idxpart1;
 alter index idxpart_a_b_idx attach partition idxpart1;
 alter index idxpart_a_b_idx attach partition idxpart_a_b_idx;
--- Re-enable after fixing #14529
-/*
 alter index idxpart_a_b_idx attach partition idxpart1_b_idx;
 alter index idxpart_a_b_idx attach partition idxpart1_tst1;
 alter index idxpart_a_b_idx attach partition idxpart1_tst2;
@@ -104,7 +102,6 @@ alter index idxpart_a_b_idx attach partition idxpart1_a_b_idx; -- quiet
 -- reject dupe
 create index idxpart1_2_a_b on idxpart1 (a, b);
 alter index idxpart_a_b_idx attach partition idxpart1_2_a_b;
-*/
 drop table idxpart;
 -- make sure everything's gone
 select indexrelid::regclass, indrelid::regclass
@@ -152,8 +149,6 @@ select indexrelid::regclass, indrelid::regclass, inhparent::regclass
 where indexrelid::regclass::text like 'idxpart%'
   order by indexrelid::regclass::text collate "C";
 alter index idxpart2_a_idx attach partition idxpart22_a_idx;
--- Re-enable after fixing #14529
-/*
 select indexrelid::regclass, indrelid::regclass, inhparent::regclass
   from pg_index idx left join pg_inherits inh on (idx.indexrelid = inh.inhrelid)
 where indexrelid::regclass::text like 'idxpart%'
@@ -165,7 +160,6 @@ alter index idxpart2_a_idx attach partition idxpart22_a_idx;
 create index on idxpart21 (a);
 alter index idxpart2_a_idx attach partition idxpart21_a_idx;
 \d idxpart2
-*/
 drop table idxpart;
 
 -- When a table is attached a partition and it already has an index, a
@@ -202,8 +196,6 @@ select relname, indisvalid from pg_class join pg_index on indexrelid = oid
    where relname like 'idxpart%' order by relname;
 -- idxpart1_a_idx is not valid, so idxpart_a_idx should not become valid:
 alter index idxpart_a_idx attach partition idxpart1_a_idx;
--- Re-enable after fixing #14529
-/*
 select relname, indisvalid from pg_class join pg_index on indexrelid = oid
    where relname like 'idxpart%' order by relname;
 -- after creating and attaching this, both idxpart1_a_idx and idxpart_a_idx
@@ -212,7 +204,6 @@ create index on idxpart11 (a);
 alter index idxpart1_a_idx attach partition idxpart11_a_idx;
 select relname, indisvalid from pg_class join pg_index on indexrelid = oid
    where relname like 'idxpart%' order by relname;
-*/
 drop table idxpart;
 
 -- verify dependency handling during ALTER TABLE DETACH PARTITION
@@ -305,8 +296,7 @@ select relname as child, inhparent::regclass as parent, pg_get_indexdef as child
 drop index idxpart_a_idx;
 create index on only idxpart (a text_pattern_ops);
 -- must reject
--- Re-enable after fixing #14529
--- alter index idxpart_a_idx attach partition idxpart2_a_idx;
+alter index idxpart_a_idx attach partition idxpart2_a_idx;
 drop table idxpart;
 
 -- Verify that attaching indexes maps attribute numbers correctly
@@ -324,8 +314,6 @@ create index idxpart1_2_idx on idxpart1 ((b + a)) where a > 1;
 create index idxpart1_2b_idx on idxpart1 ((a + b)) where a > 1;
 create index idxpart1_2c_idx on idxpart1 ((b + a)) where b > 1;
 alter index idxpart_1_idx attach partition idxpart1_1b_idx;	-- fail
--- Re-enable after fixing #14529
-/*
 alter index idxpart_1_idx attach partition idxpart1_1_idx;
 alter index idxpart_2_idx attach partition idxpart1_2b_idx;	-- fail
 alter index idxpart_2_idx attach partition idxpart1_2c_idx;	-- fail
@@ -334,7 +322,6 @@ select relname as child, inhparent::regclass as parent, pg_get_indexdef as child
   from pg_class left join pg_inherits on inhrelid = oid,
   lateral pg_get_indexdef(pg_class.oid)
   where relkind in ('i', 'I') and relname like 'idxpart%' order by relname;
-*/
 drop table idxpart;
 
 -- Make sure the partition columns are mapped correctly
@@ -757,8 +744,7 @@ create table idxpart21 partition of idxpart2 for values from (100) to (200);
 create table idxpart22 partition of idxpart2 for values from (200) to (300);
 create index on idxpart22 (a);
 create index on only idxpart2 (a);
--- Re-enable after fixing #14529
---alter index idxpart2_a_idx attach partition idxpart22_a_idx;
+alter index idxpart2_a_idx attach partition idxpart22_a_idx;
 create index on idxpart (a);
 create table idxpart_another (a int, b int, primary key (a, b)) partition by range (a);
 create table idxpart_another_1 partition of idxpart_another for values from (0) to (100);
@@ -797,6 +783,14 @@ alter table parted_uniq_detach_test detach partition parted_uniq_detach_test1;
 alter table parted_uniq_detach_test1 drop constraint parted_uniq_detach_test1_a_key;
 drop table parted_uniq_detach_test, parted_uniq_detach_test1;
 
+-- Test range indexes with both IN queries and range filters
+create table range_in_inequality(r1 int, r2 int, primary key(r1 asc, r2 asc));
+insert into range_in_inequality select i/5, i%5 from generate_series(1,20) i;
+select * from range_in_inequality;
+select * from range_in_inequality where r1 in (1, 3) and r2 > 2;
+select * from range_in_inequality where r1 in (0, 1, 3) and r2 > 2;
+
 -- YB Note: Adding cleanup, just in case.
+drop table range_in_inequality;
 drop table idxpart cascade;
 drop table idxpart_another cascade;

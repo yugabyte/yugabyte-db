@@ -1,7 +1,9 @@
 ---
-title: Unique indexes
-linkTitle:  Unique indexes
+title: Unique indexes in YugabyteDB YSQL
+headerTitle: Unique indexes
+linkTitle: Unique indexes
 description: Using Unique indexes in YSQL
+headContent: Explore unique indexes in YugabyteDB using YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
@@ -10,7 +12,6 @@ menu:
     weight: 230
 aliases:
   - /preview/explore/ysql-language-features/indexes-1/
-  - /preview/explore/indexes-constraints/indexes-1/
 type: docs
 ---
 
@@ -137,5 +138,5 @@ northwind=# SELECT * FROM categories;
 - [Unique index with HASH column ordering](../../../api/ysql/the-sql-language/statements/ddl_create_index/#unique-index-with-hash-column-ordering)
 - [UNIQUE constraint](../other-constraints/#unique-constraint)
 - [Indexes on JSON attributes](../../../explore/json-support/jsonb-ysql/#6-indexes-on-json-attributes)
-- [Benefits of Index-only scan](https://blog.yugabyte.com/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
+- [Benefits of Index-only scan](https://www.yugabyte.com/blog/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
 - [CREATE TABLE](../../../api/ysql/the-sql-language/statements/ddl_create_table/)

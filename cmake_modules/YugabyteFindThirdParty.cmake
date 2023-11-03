@@ -143,6 +143,10 @@ macro(yb_find_third_party_dependencies)
     SHARED_LIB "${GFLAGS_SHARED_LIB}")
   list(APPEND YB_BASE_LIBS gflags)
 
+  ## JwtCpp
+  find_package(JwtCpp REQUIRED)
+  include_directories(SYSTEM ${JWTCPP_INCLUDE_DIR})
+
   ## GTest
   find_package(GTest REQUIRED)
   include_directories(SYSTEM ${GTEST_INCLUDE_DIR})
@@ -213,12 +217,19 @@ macro(yb_find_third_party_dependencies)
   include_directories(SYSTEM ${HIREDIS_INCLUDE_DIR})
   ADD_THIRDPARTY_LIB(hiredis STATIC_LIB "${HIREDIS_STATIC_LIB}")
 
+  # Abseil
+  if (NOT APPLE)
+    find_package(Abseil REQUIRED)
+    ADD_THIRDPARTY_LIB(abseil
+      STATIC_LIB "${ABSEIL_STATIC_LIB}"
+      SHARED_LIB "${ABSEIL_SHARED_LIB}")
+    ADD_CXX_FLAGS("-DYB_ABSL_ENABLED")
+  endif()
   # -------------------------------------------------------------------------------------------------
   # Deciding whether to use tcmalloc
   # -------------------------------------------------------------------------------------------------
 
-  # Do not use tcmalloc for ASAN/TSAN but also temporarily for gcc8 and gcc9, because initdb crashes
-  # with bad deallocation with those compilers. That needs to be properly investigated.
+  # Do not use tcmalloc for ASAN/TSAN.
   if ("${YB_TCMALLOC_ENABLED}" STREQUAL "")
     if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
       set(YB_TCMALLOC_ENABLED "0")
@@ -239,22 +250,27 @@ macro(yb_find_third_party_dependencies)
   endif()
 
   if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
-    message("Using tcmalloc")
-    ## Google PerfTools
-    ##
-    find_package(GPerf REQUIRED)
+    if ("${YB_GOOGLE_TCMALLOC}" STREQUAL "1")
+      message("Using google/tcmalloc")
+      find_package(TCMalloc REQUIRED)
+      ADD_CXX_FLAGS("-DYB_GOOGLE_TCMALLOC")
+    else()
+      ## Google PerfTools
+      ##
+      message("Using gperftools/tcmalloc")
+      find_package(GPerf REQUIRED)
+
+      # libprofiler can be linked dynamically into non-LTO executables.
+      ADD_THIRDPARTY_LIB(profiler
+        STATIC_LIB "${PROFILER_STATIC_LIB}"
+        SHARED_LIB "${PROFILER_SHARED_LIB}")
+      ADD_CXX_FLAGS("-DYB_GPERFTOOLS_TCMALLOC")
+    endif()
 
     # We link tcmalloc statically into every executable, so we are not interested in the shared
     # tcmalloc library here.
-    ADD_THIRDPARTY_LIB(tcmalloc
-      STATIC_LIB "${TCMALLOC_STATIC_LIB}")
-
-    # libprofiler can be linked dynamically into non-LTO executables.
-    ADD_THIRDPARTY_LIB(profiler
-      STATIC_LIB "${PROFILER_STATIC_LIB}"
-      SHARED_LIB "${PROFILER_SHARED_LIB}")
-
-    ADD_CXX_FLAGS("-DTCMALLOC_ENABLED")
+    ADD_THIRDPARTY_LIB(tcmalloc STATIC_LIB "${TCMALLOC_STATIC_LIB}")
+    ADD_CXX_FLAGS("-DYB_TCMALLOC_ENABLED")
   else()
     message("Not using tcmalloc, YB_TCMALLOC_ENABLED is '${YB_TCMALLOC_ENABLED}'")
   endif()
@@ -374,4 +390,9 @@ macro(yb_find_third_party_dependencies)
   find_package(Cassandra REQUIRED)
   include_directories(SYSTEM ${LIBCASSANDRA_INCLUDE_DIR})
   ADD_THIRDPARTY_LIB(cassandra SHARED_LIB "${LIBCASSANDRA_SHARED_LIB}")
+
+  ## Hdr Histogram
+  find_package(HdrHistogram REQUIRED)
+  include_directories(SYSTEM ${LIBHDR__HISTOGRAM_INCLUDE_DIR})
+  ADD_THIRDPARTY_LIB(hdr_histogram STATIC_LIB "${LIBHDR_HISTOGRAM_STATIC_LIB}")
 endmacro()

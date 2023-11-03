@@ -9,5 +9,5 @@ create_database_options ::= [ WITH ] [ OWNER [ = ] user_name ]
                             [ ALLOW_CONNECTIONS [ = ] allowconn ]  
                             [ CONNECTION LIMIT [ = ] connlimit ]  
                             [ IS_TEMPLATE [ = ] istemplate ]  
-                            [ COLOCATED [ = ] { 'true' | 'false' } ]
+                            [ COLOCATION [ = ] { 'true' | 'false' } ]
 ```

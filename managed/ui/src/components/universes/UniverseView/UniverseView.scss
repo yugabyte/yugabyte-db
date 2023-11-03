@@ -1,6 +1,7 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
+@use '../../../_style/mixins.scss';
 
 .universe-action-bar {
   display: flex;
@@ -11,9 +12,9 @@
       border-radius: 8px;
     }
     .autocomplete-wrapper {
-      background: $YB_WHITE;
+      background: colors.$YB_WHITE;
       z-index: 700;
-      border: 1px solid $YB_GRAY_BORDER;
+      border: 1px solid colors.$YB_GRAY_BORDER;
       position: relative;
       width: 200px;
 
@@ -21,9 +22,9 @@
         position: absolute;
         padding: 0;
         margin: 5px 0;
-        background-color: $YB_WHITE;
-        box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05),
-          0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
+        background-color: colors.$YB_WHITE;
+        box-shadow: 0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05),
+          0 0.5em 10px rgba(colors.$YB_DARK_GRAY_2, 0.07);
         li {
           padding: 5px 15px;
           cursor: pointer;
@@ -59,8 +60,8 @@
   height: 100px;
   margin: 15px 0 15px 0;
   padding: 0 50px 0 50px;
-  background-color: $YB_WHITE;
-  border: 1px solid $YB_GRAY_BORDER;
+  background-color: colors.$YB_WHITE;
+  border: 1px solid colors.$YB_GRAY_BORDER;
   border-radius: 8px;
   .yb-resource-count {
     display: flex;
@@ -79,7 +80,7 @@
       height: 1px;
       width: 50%;
       margin: 5px 0 5px 0;
-      background-color: $YB_DARK_GRAY;
+      background-color: colors.$YB_DARK_GRAY;
     }
     .yb-resource-count-kind {
       .fa {
@@ -98,9 +99,10 @@
   background-color: white;
   border-radius: 8px !important;
   border: none;
-  box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
-  color: $YB_TEXT_COLOR;
-  @include transition(0.125s);
+  box-shadow: 0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05),
+    0 0.5em 10px rgba(colors.$YB_DARK_GRAY_2, 0.07);
+  color: colors.$YB_TEXT_COLOR;
+  @include mixins.transition(0.125s);
   .list-group-item {
     border: none;
   }
@@ -109,17 +111,17 @@
 .universe-name-cell {
   font-size: 18px;
   font-weight: 500;
-  color: $YB_VIOLET_TEXT !important;
+  color: colors.$YB_VIOLET_TEXT !important;
   padding: 17px 0 0 0;
-  @include transition(0.35s);
+  @include mixins.transition(0.35s);
 }
 a:hover .universe-name-cell {
-  color: $YB_ORANGE !important;
-  @include transition(0.125s);
+  color: colors.$YB_ORANGE !important;
+  @include mixins.transition(0.125s);
 }
 
 .universe-list-item-detail {
-  border-top: 1px solid $YB_GRAY_HOVER;
+  border-top: 1px solid colors.$YB_GRAY_HOVER;
   padding: 10px 15px;
   margin: 0;
 }
@@ -222,7 +224,7 @@ a:hover .universe-name-cell {
 }
 
 .status-success-container {
-  color: $YB_SUCCESS_COLOR;
+  color: colors.$YB_SUCCESS_COLOR;
   float: right;
   padding-top: 6px;
 }
@@ -233,7 +235,7 @@ a:hover .universe-name-cell {
   height: 26px;
   padding: 0;
   color: white;
-  background-color: $YB_SUCCESS_COLOR;
+  background-color: colors.$YB_SUCCESS_COLOR;
   display: inline-block;
   margin-right: 6px;
 
@@ -257,7 +259,7 @@ a:hover .universe-name-cell {
 
 .status-failure-item {
   display: inline-block;
-  color: $YB_FAIL_COLOR;
+  color: colors.$YB_FAIL_COLOR;
 
   i {
     padding: 0;
@@ -271,7 +273,7 @@ a:hover .universe-name-cell {
 
 .status-failure-name {
   display: inline-block;
-  color: $YB_FAIL_COLOR;
+  color: colors.$YB_FAIL_COLOR;
   font-size: 15px;
   font-weight: 500;
   padding-left: 6px;
@@ -296,7 +298,7 @@ a:hover .universe-name-cell {
 }
 
 .status-pending-progress-container .progress-bar {
-  background-color: $YB_ORANGE;
+  background-color: colors.$YB_ORANGE;
 }
 
 .status-pending {
@@ -357,16 +359,25 @@ a:hover .universe-name-cell {
   font-weight: 400;
 }
 
+.inline-flex {
+  display: inline-flex;
+}
+
+.mr-5 {
+  margin-right: 40px;
+}
+
+.universe-create-version-container,
 .universe-create-date-container {
   font-weight: 300;
-  color: $YB_TEXT_COLOR;
+  color: colors.$YB_TEXT_COLOR;
   font-size: 12px;
   padding-top: 14px;
   div {
     font-weight: 500;
     font-size: 12px;
     opacity: 0.5;
-    color: $YB_DARK_GRAY;
+    color: colors.$YB_DARK_GRAY;
   }
 }
 
@@ -412,7 +423,7 @@ a:hover .universe-name-cell {
     display: flex;
     align-items: center;
     .fa {
-      color: $YB_DARK_GRAY_2;
+      color: colors.$YB_DARK_GRAY_2;
     }
     padding: 12px;
   }
@@ -440,7 +451,8 @@ a:hover .universe-name-cell {
 
 .universe-table {
   position: relative;
-  box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
+  box-shadow: 0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05),
+    0 0.5em 10px rgba(colors.$YB_DARK_GRAY_2, 0.07);
   border: none;
   background-color: #fff;
   padding: 20px 25px 25px 25px;
@@ -481,24 +493,24 @@ a:hover .universe-name-cell {
             padding: 3px 3px 0 0;
           }
           &.good {
-            color: $YB_SUCCESS_COLOR;
+            color: colors.$YB_SUCCESS_COLOR;
           }
           &.paused {
-            color: $YB_WARNING_COLOR;
+            color: colors.$YB_WARNING_COLOR;
           }
           &.pending {
-            color: $YB_PENDING_COLOR;
+            color: colors.$YB_PENDING_COLOR;
           }
           &.bad {
-            color: $YB_FAIL_COLOR;
+            color: colors.$YB_FAIL_COLOR;
           }
           &.warning {
-            color: $YB_WARNING_COLOR;
+            color: colors.$YB_WARNING_COLOR;
           }
           &.unknown {
-            color: $YB_PENDING_COLOR;
+            color: colors.$YB_PENDING_COLOR;
           }
-          &>div {
+          & > div {
             display: flex;
           }
         }
@@ -516,18 +528,18 @@ a:hover .universe-name-cell {
           background-color: transparent;
         }
         .btn:hover {
-          background-color: $YB_GRAY_HOVER;
+          background-color: colors.$YB_GRAY_HOVER;
         }
       }
     }
     tbody {
       a {
-        color: $YB_VIOLET_TEXT;
-        @include transition(0.125s);
+        color: colors.$YB_VIOLET_TEXT;
+        @include mixins.transition(0.125s);
       }
       a:hover {
-        color: $YB_ORANGE;
-        @include transition(0.125s);
+        color: colors.$YB_ORANGE;
+        @include mixins.transition(0.125s);
       }
     }
   }

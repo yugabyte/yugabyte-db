@@ -18,9 +18,10 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Universe;
-import javax.inject.Inject;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.ArrayList;
 import java.util.List;
+import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.ListTablesResponse;
@@ -54,10 +55,10 @@ public class DeleteKeyspace extends UniverseTaskBase {
   @Override
   public void run() {
     TableType tableType = taskParams().backupType;
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     final String keyspaceName = taskParams().getKeyspace();
     YBClient client = null;
-    final String masterAddresses = universe.getMasterAddresses(true);
+    final String masterAddresses = universe.getMasterAddresses();
     if (tableType == TableType.PGSQL_TABLE_TYPE) {
       try {
         // Build the query to run.
@@ -104,7 +105,10 @@ public class DeleteKeyspace extends UniverseTaskBase {
             tableName -> {
               try {
                 finalClient.deleteTable(keyspaceName, tableName);
-                log.info("Dropped table {} from keyspace {}", tableName, keyspaceName);
+                log.info(
+                    "Dropped table {} from keyspace {}",
+                    CommonUtils.logTableName(tableName),
+                    keyspaceName);
               } catch (Exception e) {
                 throw new RuntimeException(e);
               }
@@ -123,7 +127,7 @@ public class DeleteKeyspace extends UniverseTaskBase {
     } else {
       String errMsg =
           String.format(
-              "Invalid table type: %s. Cannot delete keyspace {}", tableType, keyspaceName);
+              "Invalid table type: %s. Cannot delete keyspace %s", tableType, keyspaceName);
       throw new RuntimeException(errMsg);
     }
   }

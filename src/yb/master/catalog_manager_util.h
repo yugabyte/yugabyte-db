@@ -16,12 +16,14 @@
 #include <unordered_map>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_snapshot_coordinator.h"
+#include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/ts_descriptor.h"
 
 // Utility functions that can be shared between test and code for catalog manager.
@@ -41,19 +43,19 @@ class CatalogManagerUtil {
   // multi AZ setup, else checks load distribution across tservers (single AZ).
   static Status IsLoadBalanced(const TSDescriptorVector& ts_descs);
 
-  // For the given set of descriptors, checks if every tserver that shouldn't have leader load
-  // actually has no leader load.
-  // If transaction_tables_use_preferred_zones = false, then we also check if txn status tablet
-  // leaders are spread evenly based on the information in `tables`.
+  static ReplicationInfoPB GetTableReplicationInfo(
+      const scoped_refptr<const TableInfo>& table,
+      const std::shared_ptr<const YsqlTablespaceManager>
+          tablespace_manager,
+      const ReplicationInfoPB& cluster_replication_info);
+
+  // For the given set of descriptors, checks if every tserver does not have an excess tablet leader
+  // load given the preferred zones.
   static Status AreLeadersOnPreferredOnly(
       const TSDescriptorVector& ts_descs,
-      const ReplicationInfoPB& replication_info,
+      const ReplicationInfoPB& cluster_replication_info,
+      const std::shared_ptr<const YsqlTablespaceManager> tablespace_manager = nullptr,
       const std::vector<scoped_refptr<TableInfo>>& tables = {});
-
-  // Creates a mapping from tserver uuid to the number of transaction leaders present.
-  static void CalculateTxnLeaderMap(std::map<std::string, int>* txn_map,
-                                    int* num_txn_tablets,
-                                    std::vector<scoped_refptr<TableInfo>> tables);
 
   // For the given set of descriptors, returns the map from each placement AZ to list of tservers
   // running in that zone.
@@ -109,7 +111,8 @@ class CatalogManagerUtil {
       const SetPreferredZonesRequestPB* req, ReplicationInfoPB* replication_info);
 
   static void GetAllAffinitizedZones(
-      const ReplicationInfoPB& replication_info, std::vector<AffinitizedZonesSet>* affinitized_zones);
+      const ReplicationInfoPB& replication_info,
+      std::vector<AffinitizedZonesSet>* affinitized_zones);
 
   static Status CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info);
 
@@ -172,8 +175,13 @@ class CatalogManagerUtil {
 
   static void FillTableInfoPB(
       const TableId& table_id, const std::string& table_name, const TableType& table_type,
-      const Schema& schema, uint32_t schema_version, const PartitionSchema& partition_schema,
+      const Schema& schema, uint32_t schema_version, const dockv::PartitionSchema& partition_schema,
       tablet::TableInfoPB* pb);
+
+  static bool RetainTablet(
+      const google::protobuf::RepeatedPtrField<std::string>& retaining_snapshot_schedules,
+      const ScheduleMinRestoreTime& schedule_to_min_restore_time,
+      HybridTime hide_hybrid_time, const TabletId& tablet_id);
 
  private:
   CatalogManagerUtil();
@@ -228,6 +236,20 @@ struct Comparator {
 
   CMPerTableLoadState* state_;
 };
+
+template <class PB>
+bool IsIndex(const PB& pb) {
+  return pb.has_index_info() || !pb.indexed_table_id().empty();
+}
+
+inline bool IsTable(const SysTablesEntryPB& pb) {
+  return !IsIndex(pb);
+}
+
+// Gets the number of tablet replicas for the placement specified in the PlacementInfoPB.  If the
+// PlacementInfoPB does not set the number of tablet replicas to create for the placement, default
+// to the replication_factor flag.
+int32_t GetNumReplicasOrGlobalReplicationFactor(const PlacementInfoPB& placement_info);
 
 } // namespace master
 } // namespace yb

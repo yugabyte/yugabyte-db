@@ -34,7 +34,7 @@
 #include <utility>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/common/hybrid_time.h"
@@ -71,6 +71,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
+#include "yb/consensus/log_index.h"
 
 METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);
@@ -99,9 +100,9 @@ YB_STRONGLY_TYPED_BOOL(AppendSync);
 // Append a single batch of 'count' NoOps to the log.  If 'size' is not nullptr, increments it by
 // the expected increase in log size.  Increments 'op_id''s index once for each operation logged.
 static Status AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
-                                           Log* log, OpIdPB* op_id,
-                                           int count,
-                                           ssize_t* size = nullptr) {
+                                   Log* log, OpIdPB* op_id,
+                                   int count,
+                                   ssize_t* size = nullptr) {
   ReplicateMsgs replicates;
   for (int i = 0; i < count; i++) {
     auto replicate = rpc::MakeSharedMessage<consensus::LWReplicateMsg>();
@@ -149,10 +150,10 @@ class LogTestBase : public YBTest {
   typedef std::tuple<int, int, std::string> TupleForAppend;
 
   LogTestBase()
-      : schema_({ ColumnSchema("key", INT32, false, true),
-                  ColumnSchema("int_val", INT32),
-                  ColumnSchema("string_val", STRING, true) },
-                1),
+      : schema_({
+            ColumnSchema("key", DataType::INT32, ColumnKind::HASH),
+            ColumnSchema("int_val", DataType::INT32),
+            ColumnSchema("string_val", DataType::STRING, ColumnKind::VALUE, Nullable::kTrue) }),
         log_anchor_registry_(new LogAnchorRegistry()) {
   }
 
@@ -169,7 +170,7 @@ class LogTestBase : public YBTest {
     tablet_wal_path_ = fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet);
     clock_.reset(new server::HybridClock());
     ASSERT_OK(clock_->Init());
-    FLAGS_log_min_seconds_to_retain = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
     ASSERT_OK(ThreadPoolBuilder("log")
                  .unlimited_threads()
                  .Build(&log_thread_pool_));
@@ -396,6 +397,34 @@ Status CorruptLogFile(Env* env, const std::string& log_path,
                         "Couldn't rewrite corrupt log file");
 
   return Status::OK();
+}
+
+Result<SegmentSequence> GetReadableSegments(const std::string& wal_dir_path) {
+  SegmentSequence segments;
+  std::unique_ptr<LogReader> reader;
+  RETURN_NOT_OK(LogReader::Open(Env::Default(), nullptr, "Log reader", wal_dir_path,
+                                 nullptr, nullptr, &reader));
+  RETURN_NOT_OK(reader->GetSegmentsSnapshot(&segments));
+  return segments;
+}
+
+Result<uint32_t> GetEntries(const SegmentSequence& segments) {
+  uint32_t num_entries = 0;
+  for (const scoped_refptr<log::ReadableLogSegment>& segment : segments) {
+    auto read_entries = segment->ReadEntries();
+    num_entries += read_entries.entries.size();
+  }
+  return num_entries;
+}
+
+Result<uint32_t> GetEntries(const std::string& wal_dir_path) {
+  SegmentSequence segments = VERIFY_RESULT(GetReadableSegments(wal_dir_path));
+  return GetEntries(segments);
+}
+
+Result<size_t> GetSegmentsCount(const std::string& wal_dir_path) {
+  SegmentSequence segments = VERIFY_RESULT(GetReadableSegments(wal_dir_path));
+  return segments.size();
 }
 
 } // namespace log

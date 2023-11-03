@@ -63,11 +63,12 @@ if(IS_GCC)
 endif()
 
 if(IS_CLANG)
-  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "13.0.0" AND NOT IS_APPLE_CLANG)
+  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "14.0.0")
     add_pg_c_cxx_flags(-Wno-error=unused-but-set-variable)
   endif()
 
-  if("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "15.0.0")
+  if(("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "15.0.0") OR
+     (IS_APPLE_CLANG AND "${COMPILER_VERSION}" VERSION_GREATER_EQUAL "14.0.3"))
     add_pg_c_cxx_flags(-Wno-error=deprecated-non-prototype)
   endif()
 endif()
@@ -86,13 +87,7 @@ endif()
 get_filename_component(OPENSSL_LIB_DIR "${OPENSSL_CRYPTO_LIBRARY}" DIRECTORY)
 message("OPENSSL_LIB_DIR=${OPENSSL_LIB_DIR}")
 
-set(POSTGRES_PKG_CONFIG_PATH "${YB_THIRDPARTY_INSTALLED_DEPS_DIR}/lib/pkgconfig")
-
-set(build_postgres_args
-    "${CMAKE_COMMAND}"
-    -E
-    env "YB_BUILD_ROOT=$ENV{YB_BUILD_ROOT}"
-    env "PKG_CONFIG_PATH=${POSTGRES_PKG_CONFIG_PATH}")
+set(build_postgres_args "")
 
 if (APPLE AND "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "arm64")
   list(APPEND build_postgres_args arch -arm64)
@@ -104,8 +99,31 @@ if(APPLE AND NOT "${MACOS_SDK_INCLUDE_DIR}" STREQUAL "")
          " -isystem ${MACOS_SDK_INCLUDE_DIR}")
 endif()
 
-set(PG_INCLUDE_DIRS "${YB_PREFIX_COMMON}/include")
-set(PG_LIB_DIRS "${YB_PREFIX_COMMON}/lib")
+if(NOT "$ENV{YB_VALGRIND_PATH}" STREQUAL "")
+
+  string(APPEND POSTGRES_EXTRA_PREPROCESSOR_FLAGS " -DUSE_VALGRIND")
+
+  find_path(VALGRIND_INCLUDE_PATH "valgrind/valgrind.h"
+            "/usr/include"
+            "/usr/local/include"
+            $ENV{CPATH})
+
+  if (${VALGRIND_INCLUDE_PATH} STREQUAL "VALGRIND_INCLUDE_PATH-NOTFOUND")
+    message(FATAL_ERROR "Compiling with Valgrind support, but could not find Valgrind's header"
+      " files. If you have Valgrind installed in an atypical location, add the include directory"
+      " to CPATH and retry.")
+  endif()
+endif()
+
+concat_thirdparty_prefix_dirs_with_suffix(PG_INCLUDE_DIRS " " "/include")
+concat_thirdparty_prefix_dirs_with_suffix(PG_LIB_DIRS " " "/lib")
+
+# We only use YB_ADD_LIB_DIR("${YB_THIRDPARTY_MAYBE_INSTRUMENTED_DIR}/lib") in the top-level
+# CMakeLists because the corresponding RPATH ends up on the linker command line in some other way,
+# presumably, due to library dependencies. However, for Postgres, we have to add this RPATH
+# explicitly.
+add_pg_ld_flags("${YB_THIRDPARTY_MAYBE_INSTRUMENTED_RPATH_ARG}")
+
 if(APPLE AND NOT IS_APPLE_CLANG)
   add_pg_ld_flags("-L${CMAKE_OSX_SYSROOT}/usr/lib")
   add_pg_c_cxx_flags("-isysroot ${CMAKE_OSX_SYSROOT}")
@@ -126,6 +144,12 @@ yb_deduplicate_arguments(POSTGRES_FINAL_EXE_LD_FLAGS)
 
 set(PG_EXE_LD_FLAGS_AFTER_YB_LIBS "")
 if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
+  # We link with tcmalloc statically, but tcmalloc depends on some other shared libraries being
+  # present on the linker command line.
+  #
+  # The libraries we add here should be kept consistent with the libraries added in
+  # the add_executable wrapper in YugabyteFunctions.cmake.
+  #
   # We don't add libtcmalloc and libprofiler to POSTGRES_FINAL_EXE_LD_FLAGS because when building
   # with GCC we use the standard ld linker, which cares about the order of libraries when using
   # static libraries. Symbols from libtcmalloc and libprofiler are needed by e.g. libyb_util, so
@@ -134,7 +158,11 @@ if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
   # The special variable PG_EXE_LD_FLAGS_AFTER_YB_LIBS eventually gets propagated to a
   # YB_PG_EXE_LD_FLAGS_AFTER_YB_LIBS environment variable used in Postgres makefiles that build
   # an executable. It gets included after all C++ YB libs that the relevant executable depends on.
-  set(PG_EXE_LD_FLAGS_AFTER_YB_LIBS "${TCMALLOC_STATIC_LIB_LD_FLAGS} -lprofiler")
+  if ("${YB_GOOGLE_TCMALLOC}" STREQUAL "1")
+    set(PG_EXE_LD_FLAGS_AFTER_YB_LIBS "${TCMALLOC_STATIC_LIB_LD_FLAGS} -labsl")
+  else()
+    set(PG_EXE_LD_FLAGS_AFTER_YB_LIBS "${TCMALLOC_STATIC_LIB_LD_FLAGS} -lprofiler")
+  endif()
 
   if(IS_CLANG)
     string(APPEND PG_EXE_LD_FLAGS_AFTER_YB_LIBS " -lc++")
@@ -147,7 +175,7 @@ if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
   endif()
 endif()
 
-yb_put_vars_into_cache(
+yb_put_string_vars_into_cache(
   POSTGRES_FINAL_C_FLAGS
   POSTGRES_FINAL_CXX_FLAGS
   POSTGRES_FINAL_LD_FLAGS
@@ -177,7 +205,11 @@ add_custom_target(configure_postgres ALL COMMAND ${build_postgres_args} --step c
 add_custom_target(
     postgres ALL
     COMMAND ${build_postgres_args} --step make
-    BYPRODUCTS "${LIBPQ_SHARED_LIB}" "${YB_PGBACKEND_SHARED_LIB}")
+    BYPRODUCTS
+      "${LIBPQ_SHARED_LIB}"
+      "${YB_PGBACKEND_SHARED_LIB}"
+      "${PG_COMMON_STATIC_LIB}"
+      "${PG_PORT_STATIC_LIB}")
 
 add_dependencies(postgres configure_postgres)
 
@@ -186,4 +218,4 @@ add_dependencies(postgres configure_postgres)
 # ------------------------------------------------------------------------------------------------
 
 # Libraries that we link into the postgres binary.
-add_dependencies(postgres yb_pggate server_process)
+add_dependencies(postgres yb_pggate server_process yb_pggate_webserver hdr_histogram)

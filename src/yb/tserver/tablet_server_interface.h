@@ -53,7 +53,8 @@ class TabletServerIf : public LocalTabletServer {
                                            uint64_t* last_breaking_version) const = 0;
 
   virtual Status get_ysql_db_oid_to_cat_version_info_map(
-      bool size_only, tserver::GetTserverCatalogVersionInfoResponsePB *resp) const = 0;
+      const tserver::GetTserverCatalogVersionInfoRequestPB& req,
+      tserver::GetTserverCatalogVersionInfoResponsePB *resp) const = 0;
 
   virtual const scoped_refptr<MetricEntity>& MetricEnt() const = 0;
 

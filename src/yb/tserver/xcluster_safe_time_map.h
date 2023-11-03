@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 
 #include <google/protobuf/map.h>
@@ -30,7 +31,10 @@ class XClusterSafeTimeMap {
  public:
   XClusterSafeTimeMap();
 
-  Result<HybridTime> GetSafeTime(const NamespaceId& namespace_id) const
+  // Gets the xcluster safe time for the given namespace. If the namespace does not have a xcluster
+  // safe time, either because it is not part of replication or because the cluster is in ACTIVE
+  // role, then this will return nullopt. System namespace will always return nullopt.
+  Result<std::optional<HybridTime>> GetSafeTime(const NamespaceId& namespace_id) const
       EXCLUDES(xcluster_safe_time_map_mutex_);
 
   void Update(XClusterNamespaceToSafeTimePBMap safe_time_map)

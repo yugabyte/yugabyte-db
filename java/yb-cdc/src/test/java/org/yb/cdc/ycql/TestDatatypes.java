@@ -25,8 +25,8 @@ import org.yb.cdc.CDCConsoleSubscriber;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.cdc.common.ExpectedRecordYCQLGeneric;
-import org.yb.cdc.util.TestUtils;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.cdc.util.CDCTestUtils;
+import org.yb.YBTestRunner;
 
 import java.math.BigInteger;
 import java.net.InetSocketAddress;
@@ -40,13 +40,13 @@ import java.util.*;
  * <a href="https://github.com/yugabyte/yugabyte-db/issues/11320">GitHub issue</a>
  */
 @Ignore("Disabled until fix for YCQL lands")
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestDatatypes {
   private CqlSession session;
 
   public void assertRecords(ExpectedRecordYCQLGeneric<?>[] expectedRecords) throws Exception{
     List<CdcService.CDCSDKProtoRecordPB> outputList = new ArrayList<>();
-    CDCConsoleSubscriber cdcSubscriberObj = TestUtils.initJavaClient(outputList);
+    CDCConsoleSubscriber cdcSubscriberObj = CDCTestUtils.initJavaClient(outputList);
 
     assertEquals(expectedRecords.length, outputList.size());
 
@@ -59,7 +59,7 @@ public class TestDatatypes {
 
   @Before
   public void setUp() {
-    TestUtils.clearStreamId("");
+    CDCTestUtils.clearStreamId("");
     String createKeyspace = "create keyspace if not exists yugabyte;";
     String dropTable = "drop table if exists yugabyte.test;";
 

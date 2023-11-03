@@ -72,8 +72,8 @@ TEST_F(TabletRpcTest, TabletInvokerSelectTabletServerRace) {
     ts_map.emplace(uuid, std::make_unique<RemoteTabletServer>(uuid, nullptr, nullptr));
   }
 
-  Partition partition;
-  Partition::FromPB(tablet_locations.partition(), &partition);
+  dockv::Partition partition;
+  dockv::Partition::FromPB(tablet_locations.partition(), &partition);
   internal::RemoteTabletPtr remote_tablet = new internal::RemoteTablet(
       tablet_locations.tablet_id(), partition, /* partition_list_version = */ 0,
       /* split_depth = */ 0, /* split_parent_id = */ "");

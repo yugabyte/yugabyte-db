@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
@@ -15,11 +16,11 @@ import lombok.extern.slf4j.Slf4j;
 public class DeleteRootVolumes extends NodeTaskBase {
 
   @Inject
-  protected DeleteRootVolumes(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected DeleteRootVolumes(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
-  public static class Params extends AnsibleCreateServer.Params {
+  public static class Params extends NodeTaskParams {
     // Flag to be set if errors will be ignored.
     public boolean isForceDelete;
     // Specific volume IDs to be deleted.
@@ -33,7 +34,7 @@ public class DeleteRootVolumes extends NodeTaskBase {
 
   @Override
   public void run() {
-    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     UserIntent userIntent =
         u.getUniverseDetails()
             .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid)

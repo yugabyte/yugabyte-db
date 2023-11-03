@@ -1,18 +1,19 @@
 package com.yugabyte.yw.cloud;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
 import com.yugabyte.yw.models.helpers.NodeID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.inject.Inject;
-import javax.inject.Singleton;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import javax.inject.Inject;
+import javax.inject.Singleton;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public interface CloudAPI {
 
@@ -53,7 +54,7 @@ public interface CloudAPI {
    * @param config The credentials info.
    * @return true if credentials are valid otherwise return false.
    */
-  boolean isValidCreds(Map<String, String> config, String region);
+  boolean isValidCreds(Provider provider, String region);
 
   /**
    * Check whether cloud provider's credentials are valid to do KMS operations.
@@ -67,8 +68,19 @@ public interface CloudAPI {
       Provider provider,
       String regionCode,
       String lbName,
-      List<String> nodeNames,
-      List<NodeID> nodeIDs,
-      String protocol,
-      List<Integer> ports);
+      Map<AvailabilityZone, Set<NodeID>> azToNodesMap,
+      List<Integer> ports,
+      NLBHealthCheckConfiguration healthCheckConfig);
+
+  void validateInstanceTemplate(Provider provider, String instanceTemplate);
+
+  // Helper function to extract Resource name from resource URL
+  // It only works for URls that end with the resource Name.
+  static String getResourceNameFromResourceUrl(String resourceUrl) {
+    if (resourceUrl != null && !resourceUrl.isEmpty()) {
+      String[] urlParts = resourceUrl.split("/", 0);
+      return urlParts[urlParts.length - 1];
+    }
+    return null;
+  }
 }

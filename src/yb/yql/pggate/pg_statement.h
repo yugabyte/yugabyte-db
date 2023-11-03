@@ -22,7 +22,6 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_types.h"
-#include "yb/common/ybc_util.h"
 
 #include "yb/gutil/ref_counted.h"
 
@@ -31,6 +30,7 @@
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_memctx.h"
 #include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 namespace yb {
 namespace pggate {
@@ -60,6 +60,10 @@ enum class StmtOp {
   STMT_CREATE_TABLEGROUP,
   STMT_DROP_TABLEGROUP,
   STMT_SAMPLE,
+  STMT_DROP_SEQUENCE,
+  STMT_DROP_DB_SEQUENCES,
+  STMT_CREATE_REPLICATION_SLOT,
+  STMT_DROP_REPLICATION_SLOT,
 };
 
 class PgStatement : public PgMemctx::Registrable {
@@ -69,7 +73,7 @@ class PgStatement : public PgMemctx::Registrable {
   // pg_session is the session that this statement belongs to. If PostgreSQL cancels the session
   // while statement is running, pg_session::sharedptr can still be accessed without crashing.
   explicit PgStatement(PgSession::ScopedRefPtr pg_session)
-      : pg_session_(std::move(pg_session)), arena_(std::make_shared<Arena>()) {
+      : pg_session_(std::move(pg_session)), arena_(SharedArena()) {
   }
 
   virtual ~PgStatement() = default;
@@ -84,9 +88,9 @@ class PgStatement : public PgMemctx::Registrable {
     return (stmt != nullptr && stmt->stmt_op() == op);
   }
 
-  const std::shared_ptr<Arena>& arena_ptr() const { return arena_; }
+  const std::shared_ptr<ThreadSafeArena>& arena_ptr() const { return arena_; }
 
-  Arena& arena() const { return *arena_; }
+  ThreadSafeArena& arena() const { return *arena_; }
 
  protected:
   // YBSession that this statement belongs to.
@@ -96,7 +100,7 @@ class PgStatement : public PgMemctx::Registrable {
   Status status_;
   std::string errmsg_;
 
-  std::shared_ptr<Arena> arena_;
+  std::shared_ptr<ThreadSafeArena> arena_;
 };
 
 }  // namespace pggate

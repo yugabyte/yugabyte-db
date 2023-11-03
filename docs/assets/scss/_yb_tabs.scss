@@ -1,9 +1,11 @@
 .content-child {
   .td-content .nav-tabs-yb {
     li {
+      vertical-align: middle;
       margin: 0 !important;
 
       a.nav-link {
+        min-height: 24px;
         text-decoration: none;
         color: #25323d;
         background: #fff;
@@ -79,7 +81,7 @@ ul.nav.nav-tabs-yb:not(.yb-pills) {
   display: block;
   white-space: nowrap;
   width: calc(100%);
-  overflow: scroll;
+  overflow: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
 

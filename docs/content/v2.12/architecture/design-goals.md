@@ -37,7 +37,7 @@ YugabyteDB supports multi-row transactions with three isolation levels: `Seriali
 - The [YSQL](../../api/ysql/) API supports `Serializable`, `Snapshot` (default<sup>$</sup>), and `Read Committed` Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively.
 - The [YCQL](../../api/ycql/dml_transaction/) API supports only `Snapshot Isolation` (default) using the `BEGIN TRANSACTION` syntax.
 
-<sup>$</sup> Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). `READ COMMITTED` is the default isolation level in PostgreSQL and YSQL. If the tserver gflag `yb_enable_read_committed_isolation=true`, `READ COMMITTED` is mapped to Read Committed of YugabyteDB's transactional layer (that is, a statement will see all rows that are committed before it begins). But, by default the tserver gflag `yb_enable_read_committed_isolation=false` and in this case Read Committed of YugabyteDB's transactional layer maps to Snapshot Isolation. Essentially this boils down to the fact that Snapshot Isolation is the default in YSQL.
+<sup>$</sup> Read Committed support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability). `READ COMMITTED` is the default isolation level in PostgreSQL and YSQL. If the tserver gflag `yb_enable_read_committed_isolation=true`, `READ COMMITTED` is mapped to Read Committed of YugabyteDB's transactional layer (that is, a statement will see all rows that are committed before it begins). But, by default the tserver gflag `yb_enable_read_committed_isolation=false` and in this case Read Committed of YugabyteDB's transactional layer maps to Snapshot Isolation. Essentially this boils down to the fact that Snapshot Isolation is the default in YSQL.
 
 {{< tip title="YSQL vs PostgreSQL isolation levels" >}}
 
@@ -60,7 +60,7 @@ YugabyteDB does not reinvent data client APIs. It is wire-compatible with existi
 
 ### YSQL
 
-[YSQL](../../api/ysql/) is a fully-relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). Note that YSQL [reuses the native query layer](https://blog.yugabyte.com/why-we-built-yugabytedb-by-reusing-the-postgresql-query-layer/) of the PostgreSQL open source project.
+[YSQL](../../api/ysql/) is a fully-relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). Note that YSQL [reuses the native query layer](https://www.yugabyte.com/blog/why-we-built-yugabytedb-by-reusing-the-postgresql-query-layer/) of the PostgreSQL open source project.
 
 - New changes do not break existing PostgreSQL functionality
 

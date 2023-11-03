@@ -18,7 +18,7 @@
 #include <string>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/util/random_util.h"
 
@@ -30,7 +30,7 @@ class RejectionScoreSource {
  public:
   double Get(int attempt_num) {
     size_t idx = std::min<size_t>(attempt_num - 1, 20);
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     while (scores_.size() <= idx) {
       scores_.push_back(RandomUniformReal<double>(0.01, 1.0));
     }

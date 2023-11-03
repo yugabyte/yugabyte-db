@@ -18,24 +18,24 @@ Use the `CREATE TABLE AS` statement to create a table using the output of a subq
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
 </ul>
 
 <div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_table_as.grammar.md" %}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_table_as.diagram.md" %}}
   </div>
 </div>
@@ -43,12 +43,6 @@ Use the `CREATE TABLE AS` statement to create a table using the output of a subq
 ## Semantics
 
 YugabyteDB may extend the syntax to allow specifying PRIMARY KEY for `CREATE TABLE AS` command.
-
-### *create_table_as*
-
-#### CREATE TABLE [ IF NOT EXISTS ] *table_name*
-
-Create a table.
 
 ##### *table_name*
 
@@ -62,6 +56,10 @@ Specify the name of a column in the new table. When not specified, column names 
 
 ##### *query*
 
+##### TEMPORARY or TEMP
+
+Using this qualifier will create a temporary table. Temporary tables are visible only in the current client session or transaction in which they are created and are automatically dropped at the end of the session or transaction. Any indexes created on temporary tables are temporary as well. See the section [Creating and using temporary schema-objects](../../creating-and-using-temporary-schema-objects/).
+
 ## Examples
 
 ```plpgsql
@@ -73,7 +71,7 @@ INSERT INTO sample VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 ```
 
 ```plpgsql
-CREATE TABLE selective_sample SELECT * FROM sample WHERE k1 > 1;
+CREATE TABLE selective_sample AS SELECT * FROM sample WHERE k1 > 1;
 ```
 
 ```plpgsql

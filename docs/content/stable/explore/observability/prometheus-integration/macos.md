@@ -11,65 +11,37 @@ menu:
 type: docs
 ---
 
-You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time-series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint. For details on the metrics targets for YugabyteDB, see [Prometheus monitoring](../../../../reference/configuration/default-ports/#prometheus-monitoring).
+You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint. For details on the metrics targets for YugabyteDB, see [Prometheus monitoring](../../../../reference/configuration/default-ports/#prometheus-monitoring).
 
-This tutorial uses the [yugabyted](../../../../reference/configuration/yugabyted/) cluster management utility.
+## Setup
 
-## Prerequisite
+### Download and install Prometheus
 
-Prometheus is installed on your local machine. If you have not done so already, follow the links below.
+[Download Prometheus](https://prometheus.io/download/) and refer to [Get Started with Prometheus](https://prometheus.io/docs/prometheus/latest/getting_started/) for installation instructions.
 
-- [Download Prometheus](https://prometheus.io/download/)
-- [Get Started with Prometheus](https://prometheus.io/docs/prometheus/latest/getting_started/)
+### Create a universe
 
-## 1. Create universe
+Follow the [setup instructions](../../../#set-up-yugabytedb-universe) to start a local multi-node universe.
 
-Start a new local three-node universe with a replication factor of `3`.
+### Run the YugabyteDB workload generator
 
-```sh
-$ ./bin/yugabyted start \
-                  --base_dir=node-1 \
-                  --listen=127.0.0.1 \
-                  --tserver_flags="start_redis_proxy=true"
-```
+Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) JAR file (`yb-sample-apps.jar`) using the following command:
 
-```sh
-$ ./bin/yugabyted start \
-                  --base_dir=node-2 \
-                  --listen=127.0.0.2 \
-                  --join=127.0.0.1 \
-                  --tserver_flags="start_redis_proxy=true"
-```
-
-```sh
-$ ./bin/yugabyted start \
-                  --base_dir=node-3 \
-                  --listen=127.0.0.3 \
-                  --join=127.0.0.1 \
-                  --tserver_flags="start_redis_proxy=true"
-```
-
-## 2. Run the YugabyteDB workload generator
-
-Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) JAR file (`yb-sample-apps.jar`) by running the following command.
-
-```sh
-$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
-```
+{{% yb-sample-apps-path %}}
 
 Run the `CassandraKeyValue` workload application in a separate shell.
 
 ```sh
-$ java -jar ./yb-sample-apps.jar \
+java -jar ./yb-sample-apps.jar \
     --workload CassandraKeyValue \
     --nodes 127.0.0.1:9042 \
     --num_threads_read 1 \
     --num_threads_write 1
 ```
 
-## 3. Prepare Prometheus configuration file
+### Prepare Prometheus configuration file
 
-Copy the following into a file called `yugabytedb.yml`.
+From your Prometheus home directory, create a file `yugabytedb.yml` and add the following:
 
 ```yaml
 global:
@@ -77,7 +49,7 @@ global:
   evaluation_interval: 5s # Evaluate rules every 5 seconds. The default is every 1 minute.
   # scrape_timeout is set to the global default (10s).
 
-# YugabyteDB configuration to scrape Prometheus time-series metrics
+# YugabyteDB configuration to scrape Prometheus time series metrics
 scrape_configs:
   - job_name: "yugabytedb"
     metrics_path: /prometheus-metrics
@@ -130,27 +102,27 @@ scrape_configs:
           export_type: "redis_export"
 ```
 
-## 4. Start Prometheus server
+### Start Prometheus server
 
-Go to the directory where Prometheus is installed and start the Prometheus server as below.
+Start the Prometheus server from the Prometheus home directory as follows:
 
 ```sh
-$ ./prometheus --config.file=yugabytedb.yml
+./prometheus --config.file=yugabytedb.yml
 ```
 
-Open the Prometheus UI at <http://localhost:9090> and then navigate to the Targets page under Status.
+Open the Prometheus UI at <http://localhost:9090> and then navigate to the **Targets** page under **Status**.
 
 ![Prometheus Targets](/images/ce/prom-targets.png)
 
-## 5. Analyze key metrics
+## Analyze key metrics
 
-On the Prometheus Graph UI, you can now plot the read/write throughput and latency for the `CassandraKeyValue` sample app. As you can see from the [source code](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraKeyValue.java) of the app, it uses only SELECT statements for reads and INSERT statements for writes (aside from the initial CREATE TABLE). This means you can measure throughput and latency by simply using the metrics corresponding to the SELECT and INSERT statements.
+On the Prometheus Graph UI, you can plot the read or write throughput and latency for the `CassandraKeyValue` sample application. Because the [source code](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraKeyValue.java) of the application uses only SELECT statements for reads and INSERT statements for writes (aside from the initial CREATE TABLE), you can measure throughput and latency by using the metrics corresponding to the SELECT and INSERT statements.
 
 Paste the following expressions into the **Expression** box and click **Execute** followed by **Add Graph**.
 
 ### Throughput
 
-> Read IOPS
+**Read IOPS**
 
 ```sh
 sum(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcessor", service_method="SelectStmt"}[1m]))
@@ -158,52 +130,33 @@ sum(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcess
 
 ![Prometheus Read IOPS](/images/ce/prom-read-iops.png)
 
-> Write IOPS
+**Write IOPS**
 
 ```sh
 sum(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcessor", service_method="InsertStmt"}[1m]))
 ```
 
-![Prometheus Read IOPS](/images/ce/prom-write-iops.png)
+![Prometheus Write IOPS](/images/ce/prom-write-iops.png)
 
 ### Latency
 
-> Read Latency (in microseconds)
+**Read Latency (in microseconds)**
 
 ```sh
 avg(irate(rpc_latency_sum{server_type="yb_cqlserver", service_type="SQLProcessor", service_method="SelectStmt"}[1m])) /
 avg(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcessor", service_method="SelectStmt"}[1m]))
 ```
 
-![Prometheus Read IOPS](/images/ce/prom-read-latency.png)
+![Prometheus Read Latency](/images/ce/prom-read-latency.png)
 
-> Write Latency (in microseconds)
+**Write Latency (in microseconds)**
 
 ```sh
 avg(irate(rpc_latency_sum{server_type="yb_cqlserver", service_type="SQLProcessor", service_method="InsertStmt"}[1m])) /
 avg(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcessor", service_method="InsertStmt"}[1m]))
 ```
 
-![Prometheus Read IOPS](/images/ce/prom-write-latency.png)
-
-## 6. Clean up (optional)
-
-Optionally, you can shut down the local cluster created in Step 1.
-
-```sh
-$ ./bin/yugabyted destroy \
-                  --base_dir=node-1
-```
-
-```sh
-$ ./bin/yugabyted destroy \
-                  --base_dir=node-2
-```
-
-```sh
-$ ./bin/yugabyted destroy \
-                  --base_dir=node-3
-```
+![Prometheus Write Latency](/images/ce/prom-write-latency.png)
 
 ## What's next?
 

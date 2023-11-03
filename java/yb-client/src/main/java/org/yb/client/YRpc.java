@@ -77,6 +77,7 @@ public abstract class YRpc<R> {
   protected static final String GENERIC_SERVICE_NAME = "yb.server.GenericService";
   protected static final String MASTER_SERVICE_NAME = "yb.master.MasterService";
   protected static final String TABLET_SERVER_SERVICE_NAME = "yb.tserver.TabletServerService";
+  protected static final String TABLET_SERVER_ADMIN_SERVICE = "yb.tserver.TabletServerAdminService";
   protected static final String CONSENSUS_SERVICE_NAME = "yb.consensus.ConsensusService";
   protected static final String CDC_SERVICE_NAME = "yb.cdc.CDCService";
   protected static final String MASTER_BACKUP_SERVICE_NAME = "yb.master.MasterBackup";
@@ -114,10 +115,10 @@ public abstract class YRpc<R> {
    * that access this attribute will have a happens-before relationship with
    * the rest of the code, due to other existing synchronization.
    */
-  byte attempt;  // package-private for TabletClient and AsyncYBClient only.
+  int attempt;  // package-private for TabletClient and AsyncYBClient only.
 
   // Maximum number of attempts to try the RPC. Default 100 times.
-  byte maxAttempts = 100;
+  int maxAttempts = 100;
 
   // Whether or not retries for this RPC should always go to the same server. This is required in
   // some cases where we do not want the RPC retries to hit a different server serving the same

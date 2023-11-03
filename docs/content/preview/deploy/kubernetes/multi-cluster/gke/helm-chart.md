@@ -17,7 +17,7 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../helm-chart/" class="nav-link active">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
@@ -531,4 +531,4 @@ kubectl scale statefulset yb-master --replicas=0 -n yb-demo-us-central1-b \
  --context gke_yugabyte_us-central1-b_yugabytedb2
 ```
 
-Now rerun the queries from [Connect using YSQL and YCQL shells](#connect-using-ysql-and-ycql-shells) after reconnecting to the nodes in the `us-west1` region to see that there is no impact to the availability of the cluster and the data stored therein. However, there is higher latency for some of the transactions, since the farthest `us-east1` region has to be involved in the write path. In other words, the database cluster is fully protected against region failures but may temporarily experience higher latency, which is a better outcome than a complete outage of the business-critical database service. See [Understanding How YugabyteDB Runs on Kubernetes](https://blog.yugabyte.com/understanding-how-yugabyte-db-runs-on-kubernetes/) for details on how YugabyteDB self-heals the replicas when subjected to the failure of a fault domain (the cloud region, in this case) by auto-electing a new leader for each of the impacted shards in the remaining fault domains. The cluster goes back to its original configuration as soon as the nodes in the lost region become available again.
+Now rerun the queries from [Connect using YSQL and YCQL shells](#connect-using-ysql-and-ycql-shells) after reconnecting to the nodes in the `us-west1` region to see that there is no impact to the availability of the cluster and the data stored therein. However, there is higher latency for some of the transactions, since the farthest `us-east1` region has to be involved in the write path. In other words, the database cluster is fully protected against region failures but may temporarily experience higher latency, which is a better outcome than a complete outage of the business-critical database service. See [Understanding How YugabyteDB Runs on Kubernetes](https://www.yugabyte.com/blog/understanding-how-yugabyte-db-runs-on-kubernetes/) for details on how YugabyteDB self-heals the replicas when subjected to the failure of a fault domain (the cloud region, in this case) by auto-electing a new leader for each of the impacted shards in the remaining fault domains. The cluster goes back to its original configuration as soon as the nodes in the lost region become available again.

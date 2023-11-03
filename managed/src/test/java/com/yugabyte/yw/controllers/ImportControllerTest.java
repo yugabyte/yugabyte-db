@@ -9,8 +9,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValueAtPath;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.core.StringContains.containsString;
@@ -105,7 +103,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
 
   public void testImportUniverse(boolean singleStep) {
 
-    String url = "/api/customers/" + customer.uuid + "/universes/import";
+    String url = "/api/customers/" + customer.getUuid() + "/universes/import";
     String univUUID = "2565538e-b7b3-4065-8eb9-7e96ddcb863c";
     ObjectNode bodyJson =
         Json.newObject()
@@ -190,10 +188,10 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
 
     int numAuditsExpected = (singleStep ? 1 : 3);
-    assertAuditEntry(numAuditsExpected, customer.uuid);
+    assertAuditEntry(numAuditsExpected, customer.getUuid());
 
     // Confirm customer knows about this universe and has correct node names/ips.
-    String universeUrl = "/api/customers/" + customer.uuid + "/universes/" + univUUID;
+    String universeUrl = "/api/customers/" + customer.getUuid() + "/universes/" + univUUID;
     result = doRequestWithAuthToken("GET", universeUrl, authToken);
     assertOk(result);
     json = Json.parse(contentAsString(result));
@@ -214,10 +212,10 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertEquals(3, numNodes);
 
     // Provider should have the instance type.
-    UUID provUUID = Provider.get(customer.uuid, CloudType.local).get(0).uuid;
+    UUID provUUID = Provider.get(customer.getUuid(), CloudType.local).get(0).getUuid();
     url =
         "/api/customers/"
-            + customer.uuid
+            + customer.getUuid()
             + "/providers/"
             + provUUID
             + "/instance_types/"
@@ -232,7 +230,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     ObjectNode editUnivBody = Json.newObject();
     ObjectNode userIntentJson =
         Json.newObject()
-            .put("universeName", universe.name)
+            .put("universeName", universe.getName())
             .put("numNodes", 5)
             .put("replicationFactor", 3);
     editUnivBody.set(
@@ -245,7 +243,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     // Node ops should fail.
     String nodeUrl =
         "/api/customers/"
-            + customer.uuid
+            + customer.getUuid()
             + "/universes/"
             + univUUID
             + "/nodes/"
@@ -267,7 +265,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     }
     assertNotNull(deleteTaskInfo);
     assertValue(Json.toJson(deleteTaskInfo), "taskState", "Success");
-    assertAuditEntry(numAuditsExpected + 1, customer.uuid);
+    assertAuditEntry(numAuditsExpected + 1, customer.getUuid());
 
     result = assertPlatformException(() -> doRequestWithAuthToken("GET", universeUrl, authToken));
     String expectedResult = String.format("Cannot find universe %s", univUUID);
@@ -278,7 +276,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
 
   @Test
   public void testInvalidAddressImport() {
-    String url = "/api/customers/" + customer.uuid + "/universes/import";
+    String url = "/api/customers/" + customer.getUuid() + "/universes/import";
     ObjectNode bodyJson =
         Json.newObject()
             .put("universeName", "importUniv")
@@ -287,12 +285,12 @@ public class ImportControllerTest extends CommissionerBaseTest {
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Could not parse host:port from masterAddresseses: incorrect_format");
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testInvalidStateImport() {
-    String url = "/api/customers/" + customer.uuid + "/universes/import";
+    String url = "/api/customers/" + customer.getUuid() + "/universes/import";
     ObjectNode bodyJson =
         Json.newObject()
             .put("universeName", "importUniv")
@@ -302,13 +300,13 @@ public class ImportControllerTest extends CommissionerBaseTest {
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Valid universe uuid needs to be set.");
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testFailedMasterImport() throws Exception {
     when(mockClient.waitForMaster(any(), anyLong())).thenThrow(IllegalStateException.class);
-    String url = "/api/customers/" + customer.uuid + "/universes/import";
+    String url = "/api/customers/" + customer.getUuid() + "/universes/import";
     ObjectNode bodyJson =
         Json.newObject().put("universeName", "importUniv").put("masterAddresses", MASTER_ADDRS);
     // Master phase
@@ -328,6 +326,6 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertEquals(universe.getUniverseDetails().importedState, ImportedState.STARTED);
     assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
     assertFalse(universe.getUniverseDetails().isUniverseEditable());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 }

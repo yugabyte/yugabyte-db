@@ -49,6 +49,8 @@ The following table describes the fields and their values:
 | `backend_xmin` | xid | The current backend's xmin horizon. |
 | `query` | text | The last executed query. If `state` is `active`, this is the currently executing query. If `state` has a different value, this is the last executed query. By default, the query text is limited to the first 1,024 characters. Adjust the `track_activity_query_size` parameter to change the character limit. |
 | `backend_type` | text | The current backend's type. Possible values are _autovacuum launcher_, _autovacuum worker_, _background worker_, _background writer_, _client backend_, _checkpointer_, _startup_, _walreceiver_, _walsender_, and _walwriter_. |
+| `allocated_mem_bytes` | bigint | Heap memory usage in bytes of the backend process. |
+| `rss_mem_bytes` | bigint | Resident Set Size of the backend process in bytes. It shows how much memory is allocated to the process and is in RAM. It does not include memory that is swapped out. |
 
 ## Examples
 

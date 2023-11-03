@@ -7,7 +7,7 @@ menu:
   preview_yugabyte-platform:
     identifier: create-universe-multi-region
     parent: create-deployments
-    weight: 20
+    weight: 30
 type: docs
 ---
 
@@ -31,9 +31,11 @@ After you have configured a cloud provider, such as, for example [Google Cloud P
 
 - In the **Instance Type** field, select **n1-standard-8**.
 
-- Provide any other desired settings.
+  ![Create multi-region universe1 on GCP](/images/yp/create-deployments/create-multi-region-uni1.png)
 
-- Click **Add Flags** and add the following flags for Master:
+- Provide any other desired settings for **Security Configurations**, and **Advanced Configuration**.
+
+- For **G-Flags**, click **Add Flags**, **Add to Master**, and add the following flags for Master:
 
   ```properties
   leader_failure_max_missed_heartbeat_periods 5
@@ -49,9 +51,9 @@ After you have configured a cloud provider, such as, for example [Google Cloud P
   leader_lease_duration_ms 6000
   ```
 
-  Note that since the data is globally replicated, RPC latencies are higher; these flags are used for increasing the failure detection interval in a higher RPC latency deployment.<br>
+  Note that because the data is globally replicated, RPC latencies are higher; these flags are used for increasing the failure detection interval in a higher RPC latency deployment.
 
-  ![Create multi-region universe on GCP](/images/ee/multi-region-create-universe3.png)
+  ![Create multi-region universe on GCP](/images/yp/create-deployments/create-multi-region-uni2.png)
 
 - Click **Create**.
 

@@ -21,7 +21,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
@@ -206,7 +206,7 @@ TableIterator::TableIterator(const TableHandle* table, const TableIteratorOption
     : table_(table), error_handler_(options.error_handler) {
   auto client = table->client();
 
-  session_ = client->NewSession();
+  session_ = client->NewSession(options.timeout);
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   REPORT_AND_RETURN_IF_NOT_OK(client->GetTablets(
@@ -228,7 +228,7 @@ TableIterator::TableIterator(const TableHandle* table, const TableIteratorOption
 
     const auto& key_start = tablet.partition().partition_key_start();
     if (!key_start.empty()) {
-      req->set_hash_code(PartitionSchema::DecodeMultiColumnHashValue(key_start));
+      req->set_hash_code(dockv::PartitionSchema::DecodeMultiColumnHashValue(key_start));
     }
 
     if (options.filter) {
@@ -283,7 +283,7 @@ TableIterator& TableIterator::operator++() {
   return *this;
 }
 
-const QLRow& TableIterator::operator*() const {
+const qlexpr::QLRow& TableIterator::operator*() const {
   return current_block_->rows()[row_index_];
 }
 
@@ -391,6 +391,18 @@ template <>
 void FilterEqualImpl<std::string>::operator()(
     const TableHandle& table, QLConditionPB* condition) const {
   table.SetBinaryCondition(condition, column_, QL_OP_EQUAL, t_);
+}
+
+void UpdateMapUpsertKeyValue(
+    QLWriteRequestPB* req, const int32_t column_id, const string& entry_key,
+    const string& entry_value) {
+  auto column_value = req->add_column_values();
+  column_value->set_column_id(column_id);
+  QLValuePB* elem = column_value->mutable_expr()->mutable_value();
+  elem->set_string_value(entry_value);
+  auto sub_arg = column_value->add_subscript_args();
+  elem = sub_arg->mutable_value();
+  elem->set_string_value(entry_key);
 }
 
 QLMapValuePB* AddMapColumn(QLWriteRequestPB* req, const int32_t& column_id) {

@@ -13,12 +13,21 @@
 
 #pragma once
 
-#include "yb/common/ql_expr.h"
-#include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/schema.h"
+#include <functional>
+#include <memory>
+#include <vector>
+
+#include "yb/common/pgsql_protocol.fwd.h"
+#include "yb/dockv/dockv_fwd.h"
+
+#include "yb/qlexpr/ql_expr.h"
+
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 
 namespace yb {
+class Schema;
+
 namespace docdb {
 
 // DocPgExprExecutor is optimized for repeatable execution of serialized postgres expressions.
@@ -26,8 +35,10 @@ namespace docdb {
 // Evaluations are supposed to happen in context of single relation scan, and expected
 // DocPgExprExecutor object's lifespan is the duration of that scan. It is also can be used to
 // evaluate expressions for a single row operation, such as insert or update.
-// Constructor takes relation's schema as a parameter, it is needed to extract column values
-// referenced by the expressions and convert to Postgres format they expect.
+// Constructor takes relation's schema and its projection as parameters. They are needed to look
+// up column references. If column reference provides the column id, it can be found in the
+// projection, otherwise column id should be looked up by the attno in the schema. Column id is
+// expected in most cases, however some legacy structures provide the attno only.
 //
 // After object has been constructed, the expressions and column references should be added, in
 // any order. Column references, where clause and target expressions are treated differently and
@@ -37,26 +48,47 @@ namespace docdb {
 // Then Exec method should be called to evaluate expressions per relation row. After Exec was called
 // for the first time, column references or expressions can no longer be added to the executor.
 class DocPgExprExecutor {
+  class State;
+
  public:
-  // Create new executor to evaluate expressions for a relation with specified schema.
-  explicit DocPgExprExecutor(const Schema *schema) : schema_(schema) {}
+  DocPgExprExecutor(DocPgExprExecutor&&);
+  DocPgExprExecutor& operator=(DocPgExprExecutor&&);
+  ~DocPgExprExecutor();
 
-  // Destroy the executor and release all allocated resources.
-  virtual ~DocPgExprExecutor() {}
+  // Evaluate the expression in the context of single row.
+  // Method extracts values from the row according to the column references added to the executor.
+  // Extracted values are converted to Postgres format (datum and is_null pairs). The case if no
+  // columns are referenced is possible, but not very practical, it means that all expressions are
+  // constants.
+  // Then where clause expressions are evaluated, if any, in the order they are added. If a where
+  // clause expression is evaluated to false, execution stops and match is returned as false
+  // (results is not changed in this case).
+  // Then target expressions are evaluated in the order they were added. Execution results are
+  // converted to DocDB values and written into the next element of the results vector. This is a
+  // caller's responsibility to track target expressions added to the executor.
+  Result<bool> Exec(
+      const dockv::PgTableRow& row, std::vector<qlexpr::QLExprResult>* results = nullptr);
 
-  // Add column reference to the executor.
-  // Column id, attribute number, type information is extracted from the protobuf element and
-  // stored in a data structure allowing to quickly locate the value in the row, convert it from
-  // DocDB data format to Postgres and then locate it by attribute number when evaluating
-  // expressions.
-  Status AddColumnRef(const PgsqlColRefPB& column_ref);
+ private:
+  explicit DocPgExprExecutor(std::unique_ptr<State> state);
+
+  friend class DocPgExprExecutorBuilder;
+
+  std::unique_ptr<State> state_;
+};
+
+class DocPgExprExecutorBuilder {
+ public:
+  DocPgExprExecutorBuilder(
+      std::reference_wrapper<const Schema> schema,
+      std::reference_wrapper<const dockv::ReaderProjection> projection);
+  ~DocPgExprExecutorBuilder();
 
   // Add a where clause expression to the executor.
-  // Expression is deserialized and stored in the list of where clause expressions.
   // Where clause expression must return boolean value. Where clause expressions are implicitly
   // AND'ed. If any is evaluated to false, no further evaluation happens and row is considered
   // filtered out. Empty where clause means no rows filtered out.
-  Status AddWhereExpression(const PgsqlExpressionPB& ql_expr);
+  Status AddWhere(std::reference_wrapper<const PgsqlExpressionPB> expr);
 
   // Add a target expression to the executor.
   // Expression is deserialized and stored in the list of the target expressions. Function prepares
@@ -64,38 +96,24 @@ class DocPgExprExecutor {
   // Each expression produces single value to be returned to client (like in SELECT), stored to
   // DocDB table (like in UPDATE), or both (like in UPDATE with RETURNING clause). Target
   // expressions are evaluated unless where clause was evaluated to false.
-  Status AddTargetExpression(const PgsqlExpressionPB& ql_expr);
+  Status AddTarget(const PgsqlExpressionPB& expr);
 
-  // Evaluate the expression in the context of single row.
-  // The results vector is expected to have at least as many entries as the number of target
-  // expressions added to the executor. If no target expressions were added it is OK to pass null.
-  // The match parameter is mandatory. It returns true if the where clause is empty or evaluated to
-  // true, false otherwise. If function returns false it does not modify the results.
-  // Method extracts values from the row according to the column references added to the executor.
-  // Extracted values are converted to Postgres format (datum and is_null pairs). The case if no
-  // columns are referenced is possible, but not very practical, it means that all expressions are
-  // constants.
-  // Then where clause expressions are evaluated, if any, in the order they are added. If a where
-  // clause expression is evaluated to false, execution stops and match is returned as false.
-  // Then target expressions are evaluated in the order they are added. Execution results are
-  // converted to DocDB values and written into the next element of the results vector. This is a
-  // caller's responsibility to track target expressions added to the executor, provide sufficiently
-  // long results vector and match the results.
-  Status Exec(const QLTableRow& table_row,
-              std::vector<QLExprResult>* results,
-              bool* match);
+  template<class ColumnRefs>
+  Result<DocPgExprExecutor> Build(const ColumnRefs& refs) {
+    if (IsColumnRefsRequired()) {
+      for (const auto& column_ref : refs) {
+        RETURN_NOT_OK(AddColumnRef(column_ref));
+      }
+    }
+    return DoBuild();
+  }
 
  private:
-  // The relation schema
-  const Schema *schema_;
-  // Private object hides implementation details, heavily based on the ybgate.
-  // We do not want ybgate data types and functions to appear in this header file, and therefore
-  // included everywhere where we may want to use the executor.
-  class Private;
-  // The Private object's size is not known here, so explicit deleter is needed.
-  // The implementation in the .cc file has all the information compiler needs.
-  struct private_deleter { void operator()(Private*) const; };
-  std::unique_ptr<Private, private_deleter> private_;
+  bool IsColumnRefsRequired() const;
+  Status AddColumnRef(const PgsqlColRefPB& column_ref);
+  DocPgExprExecutor DoBuild();
+
+  std::unique_ptr<DocPgExprExecutor::State> state_;
 };
 
 } // namespace docdb

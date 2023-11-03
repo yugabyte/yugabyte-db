@@ -22,14 +22,12 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/stringpiece.h"
 
-
-
-
 #pragma once
 
 namespace strings {
 
-// ----------------------------------------------------------------------
+//    *** DEPRECATED: Use Format() (see yb/util/format.h) in new code ***
+//
 // strings::Substitute()
 // strings::SubstituteAndAppend()
 //   Kind of like StringPrintf, but different.

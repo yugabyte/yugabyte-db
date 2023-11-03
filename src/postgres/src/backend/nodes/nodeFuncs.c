@@ -4275,3 +4275,25 @@ planstate_walk_members(PlanState **planstates, int nplans,
 
 	return false;
 }
+
+/*
+ * Given PlanState, return pointer to aggrefs field if it exists, NULL
+ * otherwise.
+ */
+List **
+YbPlanStateTryGetAggrefs(PlanState *ps)
+{
+	switch (nodeTag(ps))
+	{
+		case T_ForeignScanState:
+			return &castNode(ForeignScanState, ps)->yb_fdw_aggrefs;
+		case T_IndexOnlyScanState:
+			return &castNode(IndexOnlyScanState, ps)->yb_ioss_aggrefs;
+		case T_IndexScanState:
+			return &castNode(IndexScanState, ps)->yb_iss_aggrefs;
+		case T_YbSeqScanState:
+			return &castNode(YbSeqScanState, ps)->aggrefs;
+		default:
+			return NULL;
+	}
+}

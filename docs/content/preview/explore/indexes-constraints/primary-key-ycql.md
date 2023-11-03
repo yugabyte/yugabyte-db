@@ -1,7 +1,9 @@
 ---
-title: Primary keys
+title: Primary keys in YugabyteDB YCQL
+headerTitle: Primary keys
 linkTitle: Primary keys
 description: Defining Primary key constraint in YCQL
+headContent: Explore primary keys in YugabyteDB using YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
@@ -11,7 +13,6 @@ menu:
 aliases:
   - /preview/explore/ysql-language-features/constraints/
   - /preview/explore/indexes-constraints/constraints/
-  - /preview/explore/indexes-constraints/indexes-1/
 type: docs
 ---
 

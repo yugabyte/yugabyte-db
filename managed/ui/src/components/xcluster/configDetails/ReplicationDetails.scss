@@ -1,4 +1,4 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .replication-details {
   .content-title {
@@ -13,7 +13,7 @@
   }
   .graph-container {
     .plot-container.plotly {
-      background: $YB_BG_WHITE_3;
+      background: colors.$YB_BG_WHITE_3;
     }
   }
   .replication-label {
@@ -69,7 +69,7 @@
     }
 
     .replication-status {
-      background: $YB_WHITE;
+      background: colors.$YB_WHITE;
       padding: 12px;
       border: 1px solid #dde1e6;
       border-radius: 8px;
@@ -88,7 +88,7 @@
       .replication-target-universe {
         margin-left: 35px;
         padding: 20px 5px;
-        background: $YB_WHITE;
+        background: colors.$YB_WHITE;
         border: 1px solid #e8e8e8;
       }
     }
@@ -144,6 +144,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+
+  padding: 8px;
   .delete-config-button {
     margin-top: 24px;
   }

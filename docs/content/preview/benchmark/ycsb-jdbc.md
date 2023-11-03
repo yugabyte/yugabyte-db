@@ -1,9 +1,9 @@
 ---
-title: Benchmark YSQL performance with YCSB
+title: Benchmark YSQL performance using YCSB and JDBC
 headerTitle: YCSB
 linkTitle: YCSB
-description: Benchmark YSQL performance with YCSB using the standard JDBC binding.
-headcontent: Benchmark YSQL performance with YCSB using the standard JDBC binding.
+description: Learn how to test the YSQL API using the YCSB benchmark.
+headcontent: Benchmark YSQL performance using YCSB with standard JDBC binding
 menu:
   preview:
     identifier: ycsb-1-ysql
@@ -17,21 +17,21 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="{{< relref "./ycsb-jdbc.md" >}}" class="nav-link active">
+    <a href="../ycsb-jdbc/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       JDBC Binding
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./ycsb-ysql.md" >}}" class="nav-link">
+    <a href="../ycsb-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL Binding
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./ycsb-ycql.md" >}}" class="nav-link">
+    <a href="../ycsb-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL Binding
     </a>

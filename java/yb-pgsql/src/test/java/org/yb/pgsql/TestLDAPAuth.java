@@ -13,7 +13,9 @@
 package org.yb.pgsql;
 
 
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.sql.Connection;
 import java.sql.Statement;
@@ -29,15 +31,18 @@ import org.apache.directory.server.core.integ.CreateLdapServerRule;
 import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.YBTestRunner;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.util.SystemUtil;
+import org.yb.YBParameterizedTestRunner;
 import com.yugabyte.util.PSQLException;
 
 import static org.yb.AssertionWrappers.*;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBParameterizedTestRunner.class)
 @CreateDS(name = "myDS",
     partitions = {
         @CreatePartition(name = "test", suffix = "dc=myorg,dc=com")
@@ -100,6 +105,28 @@ public class TestLDAPAuth extends BasePgSQLTest {
       "LDAP authentication failed for user";
   private static final String INCORRECT_ENV_PASSWORD_AUTH_MSG =
       "Check that the hostname and port are correct";
+  private final ConnectionEndpoint connectionEndpoint;
+
+  @Parameterized.Parameters
+  public static List<ConnectionEndpoint> parameters() {
+    if (SystemUtil.IS_LINUX)
+      return Arrays.asList(ConnectionEndpoint.POSTGRES, ConnectionEndpoint.YSQL_CONN_MGR);
+    else
+      return Arrays.asList(ConnectionEndpoint.POSTGRES);
+  }
+
+  public TestLDAPAuth(ConnectionEndpoint connectionEndpoint) {
+    this.connectionEndpoint = connectionEndpoint;
+  }
+
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    if (connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR)
+      builder.enableYsqlConnMgr(true);
+      builder.addCommonTServerFlag("ysql_conn_mgr_dowarmup", "false");
+
+  }
 
   @ClassRule
   public static CreateLdapServerRule serverRule = new CreateLdapServerRule();
@@ -127,12 +154,14 @@ public class TestLDAPAuth extends BasePgSQLTest {
     ConnectionBuilder passRoleUserConnBldr = getConnectionBuilder().withUser("testuser1");
 
     // Basic LDAP login should work.
-    try (Connection connection = passRoleUserConnBldr.withPassword("12345").connect()) {
+    try (Connection connection = passRoleUserConnBldr.withPassword("12345")
+        .withConnectionEndpoint(connectionEndpoint).connect()) {
       // No-op.
     }
 
     // Basic LDAP login with incorrect password.
-    try (Connection connection = passRoleUserConnBldr.withPassword("123").connect()) {
+    try (Connection connection = passRoleUserConnBldr.withPassword("123")
+        .withConnectionEndpoint(connectionEndpoint).connect()) {
       // No-op.
     } catch (PSQLException e) {
       if (StringUtils.containsIgnoreCase(e.getMessage(), INCORRECT_PASSWORD_AUTH_MSG)) {
@@ -169,7 +198,8 @@ public class TestLDAPAuth extends BasePgSQLTest {
     ConnectionBuilder passRoleUserConnBldr = getConnectionBuilder().withUser("testuser1");
 
     // Basic LDAP login should work.
-    try (Connection connection = passRoleUserConnBldr.withPassword("12345").connect()) {
+    try (Connection connection = passRoleUserConnBldr.withPassword("12345")
+        .withConnectionEndpoint(connectionEndpoint).connect()) {
       // No-op.
     }
 
@@ -181,7 +211,8 @@ public class TestLDAPAuth extends BasePgSQLTest {
         "YSQL_LDAP_BIND_PWD_ENV", "incorrectPasswd"));
 
     // Basic LDAP login should not work since admin password is incorrect.
-    try (Connection connection = passRoleUserConnBldr.withPassword("12345").connect()) {
+    try (Connection connection = passRoleUserConnBldr.withPassword("12345")
+        .withConnectionEndpoint(connectionEndpoint).connect()) {
       // No-op.
     } catch (PSQLException e) {
       if (StringUtils.containsIgnoreCase(e.getMessage(), INCORRECT_ENV_PASSWORD_AUTH_MSG)) {
@@ -215,7 +246,8 @@ public class TestLDAPAuth extends BasePgSQLTest {
 
     ConnectionBuilder passRoleUserConnBldr = getConnectionBuilder().withUser("testuser1");
     // Basic LDAP login
-    try (Connection connection = passRoleUserConnBldr.withPassword("12345").connect()) {
+    try (Connection connection = passRoleUserConnBldr.withPassword("12345")
+        .withConnectionEndpoint(connectionEndpoint).connect()) {
       // No-op.
     } catch (PSQLException e) {
       if (StringUtils.containsIgnoreCase(e.getMessage(), UNDEFINED_TSERVER_FLAG_ERROR_MSG)) {

@@ -7,7 +7,6 @@ menu:
     parent: api-yedis
     weight: 2218
 aliases:
-  - /preview/api/redis/monitor
   - /preview/api/yedis/monitor
 type: docs
 ---

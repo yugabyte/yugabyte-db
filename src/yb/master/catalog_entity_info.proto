@@ -17,6 +17,7 @@ package yb.master;
 option java_package = "org.yb.master";
 
 import "yb/cdc/cdc_consumer.proto";
+import "yb/cdc/xcluster_producer.proto";
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
@@ -74,6 +75,15 @@ message BackfillJobPB {
 
   optional uint64 backfilling_timestamp = 3;
 }
+
+  message YsqlDdlTxnVerifierStatePB {
+    optional bool contains_create_table_op = 1;
+    optional bool contains_alter_table_op = 2;
+    optional bool contains_drop_table_op = 3;
+
+    optional SchemaPB previous_schema = 4;
+    optional string previous_table_name = 5;
+  }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
 // tables entries.
@@ -154,6 +164,9 @@ message SysTablesEntryPB {
 
   // True if the table is colocated (including tablegroups, excluding YSQL system tables).
   optional bool colocated = 25 [ default = false ];
+  // If the table is colocated and is not the parent table of the colocated tablet,
+  // contains the table id of the parent table.
+  optional bytes parent_table_id = 40;
 
   // For materialized views:
   optional bytes matview_pg_table_id = 36; // The PG OID of a materialized view
@@ -183,23 +196,19 @@ message SysTablesEntryPB {
   // Time when the table was hidden.
   optional fixed64 hide_hybrid_time = 35;
 
-  message YsqlDdlTxnVerifierState {
-    optional bool contains_create_table_op = 1;
-    optional bool contains_alter_table_op = 2;
-    optional bool contains_drop_table_op = 3;
-
-    optional SchemaPB previous_schema = 4;
-    optional string previous_table_name = 5;
-  }
-
   // State that indicates that this table is being changed by a YSQL transaction.
   // This repeated field contains only a single element as of now. When we support DDL + Savepoints,
   // we will have one element for every savepoint modifying this table in this field.
-  repeated YsqlDdlTxnVerifierState ysql_ddl_txn_verifier_state = 38;
+  repeated YsqlDdlTxnVerifierStatePB ysql_ddl_txn_verifier_state = 38;
 
   // YSQL transaction that is currently modifying this table state. The changes being performed by
   // it are detailed in 'ysql_ddl_txn_state' above.
   optional TransactionMetadataPB transaction = 29;
+
+  repeated StatefulServiceKind hosted_stateful_services = 39;
+
+  // Time when an admin compaction was last requested. Raw representation of a HybridTime.
+  optional fixed64 last_full_compaction_request_time = 41;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -252,8 +261,9 @@ message SysTabletsEntryPB {
   // the DocKey for the next row to be backfilled.
   map<string, bytes> backfilled_until = 12;
 
-  // Tablet IDs for the children of this tablet after splitting, if they have been registered in
-  // master.
+  // Tablet IDs for the children of this tablet after splitting. It is possible for a tablet to
+  // temporarily exist in this field but not be registered as part of the table or the catalog
+  // manager's tablet map.
   repeated bytes split_tablet_ids = 14;
 
   // Time when tablet was hidden.
@@ -262,17 +272,44 @@ message SysTabletsEntryPB {
   // If tablet was hidden instead of deleting, here we keep list of schedule ids that prevented
   // actual deletion.
   repeated bytes retained_by_snapshot_schedules = 17;
+
+  // Describes the persisted mapping scheme for colocated tablets. If set, the table_ids field of
+  // this tablet is empty and child tables on this tablet have their parent_table_id field
+  // filled. The table_id field of all tablets is filled with the parent table id. So the list of
+  // tables hosted on this tablet is computed at load time by finding all child tables of the
+  // parent table of this tablet.
+  optional bool hosted_tables_mapped_by_parent_id = 18;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
 message SysNamespaceEntryPB {
+  // There are significant differences between the state machines for YSQL vs non-YSQL.
+  // The additional complexity for YSQL is due to the amount of work required for
+  // database creation and deletion, requiring async tasks and additional states.
+
+  // For YSQL:
+  // PREPARING is the initial state.
+  // PREPARING -> RUNNING - happy path of creation.
+  // PREPARING -> FAILED  - unhappy path of creation.
+  // RUNNING -> DELETING  - deletion requested.
+  // DELETING -> DELETED  - happy path of deletion.
+  // DELETING -> FAILED   - unhappy path of deletion.
+  // FAILED -> DELETING   - deletion requested.
+
+  // For non-YSQL:
+  // PREPARING is the initial state.
+  // PREPARING -> RUNNING - happy path of database creation.
+  // PREPARING -> FAILED  - unhappy path of database creation.
+
+  // During the deletion flow a non-YSQL namespace is removed from the maps and sys catalog table
+  // directly instead of transitioning to any deletion states.
   enum State {
-    UNKNOWN = 0;    // Unset or bad data. Unexpected state.
-    PREPARING = 1;  // Creating. Transitive State. Possible Next States: [RUNNING, FAILED].
-    FAILED = 2;     // Creation Failed. Permanent State.
-    RUNNING = 3;    // Live. Permanent State. Possible Next States: [FAILED, DELETING].
-    DELETING = 4;   // Delete Requested. Transitive State. Possible Next States: [DELETED].
-    DELETED = 5;    // Delete Finished on TServers or Tombstone. Final State before erasure.
+    UNKNOWN = 0;
+    PREPARING = 1;
+    FAILED = 2;
+    RUNNING = 3;
+    DELETING = 4;
+    DELETED = 5;
   }
   // Note: The id of the namespace is not stored here as it is already part of
   // SysRowEntry's id component.
@@ -335,6 +372,15 @@ message SysClusterConfigEntryPB {
   optional BlacklistPB leader_blacklist = 7;
   optional EncryptionInfoPB encryption_info = 5;
   optional cdc.ConsumerRegistryPB consumer_registry = 6;
+  // This field is only generated internally by the master leader in PrepareDefaultClusterConfig (as
+  // opposed to cluster_uuid which can be passed in as a flag). If not already set, it is set on
+  // the VisitSysCatalog path.
+  optional string universe_uuid = 8;
+}
+
+message SysXClusterConfigEntryPB {
+  optional uint32 version = 1;
+  optional xcluster.ProducerRegistryPB xcluster_producer_registry = 2;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for Redis Config.
@@ -462,6 +508,8 @@ message SysCDCStreamEntryPB {
   repeated CDCStreamOptionsPB options = 2;
   optional State state = 3 [default = ACTIVE];
   optional string namespace_id = 4;
+  optional bool transactional = 5; // [default = false]
+  optional string cdcsdk_ysql_replication_slot_name = 6;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for snapshots entries.
@@ -500,6 +548,26 @@ message SysSnapshotEntryPB {
   optional bytes schedule_id = 6;
 
   optional fixed64 previous_snapshot_hybrid_time = 7;
+
+  // Number of hours the snapshot needs to be kept around
+  // before it is deleted. Set to -1 to retain indefinitely until
+  // an explicit delete_snapshot.
+  optional int32 retention_duration_hours = 8;
+}
+
+message SchemaVersionMappingPB {
+  required uint32 producer_schema_version = 1;
+  required uint32 consumer_schema_version = 2;
+}
+
+message ColocatedSchemaVersionMappingPB {
+  required uint32 colocation_id = 1;
+  required SchemaVersionMappingPB schema_version_mapping = 2;
+}
+
+message SchemaVersionMappingEntryPB {
+  optional SchemaVersionMappingPB schema_version_mapping = 1;
+  repeated ColocatedSchemaVersionMappingPB colocated_schema_versions = 2;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a universe replication record.
@@ -546,9 +614,127 @@ message SysUniverseReplicationEntryPB {
   optional bool is_ns_replication = 7 [default = false];
   optional NamespaceIdentifierPB producer_namespace = 8;
   optional NamespaceIdentifierPB consumer_namespace = 9;
+
+  // Mapping from Producer Table ID to Producer->Consumer schema version mappings
+  map<string, SchemaVersionMappingEntryPB> schema_version_mappings = 10;
+
+  // Set when consistent transactions are enabled for a replication group.
+  optional bool transactional = 11; // [default = false]
 }
 
 message XClusterSafeTimePB {
   // Map[Local NamespaceId]: xCluster safe read HybridTime
   map<string, fixed64> safe_time_map = 1;
+}
+
+// The data part of a SysRowEntry in the sys.catalog table for a universe
+// replication record.
+message SysUniverseReplicationBootstrapEntryPB {
+  enum State {
+    // Setting up replication.
+    INITIALIZING = 0;
+
+    // Bootstrapping CDC streams on producer universe.
+    BOOTSTRAP_PRODUCER = 1;
+
+    // Creating snapshot on producer universe.
+    CREATE_PRODUCER_SNAPSHOT = 2;
+
+    // ImportSnapshotMeta on consumer universe.
+    IMPORT_SNAPSHOT = 3;
+
+    // CreateSnapshot on consumer universe, marking it as imported. This is the
+    // same logic that occurs in the yb-admin import_snapshot command.
+    CREATE_CONSUMER_SNAPSHOT = 4;
+
+    // Downloading snapshot files from producer to consumer.
+    TRANSFER_SNAPSHOT = 5;
+
+    // Restore snapshot on consumer universe.
+    RESTORE_SNAPSHOT = 6;
+
+    // Call SetupUniverseReplication on consumer universe.
+    SETUP_REPLICATION = 7;
+
+    // Bootstrap is complete.
+    DONE = 8;
+
+    // Bootstrap failed on some task.
+    FAILED = 9;
+
+    // Deleted.
+    DELETED = 10;
+    // Error while cleaning up state of deleted entry. This indicates that universe replication has
+    // been deleted but there is still some uncleaned up state - for example, there may be left over
+    // CDC streams.
+    DELETED_ERROR = 11;
+
+    // Unfinished Delete
+    DELETING = 12;
+  }
+
+  // The following PBs are used to represent the newly created objects during
+  // CatalogManager::ImportSnapshotMeta. Specifically, these are all the
+  // required fields used in CatalogManager::DeleteNewSnapshotObjects. We store
+  // these PBs in case we need to cleanup on failure.
+  message IdPairPB {
+    optional string old_id = 1;
+    optional string new_id = 2;
+  }
+
+  message TableDataPB {
+    optional IdPairPB ids = 1;
+    optional TableType table_type = 2;
+    optional bytes indexed_table_id = 3; // Indexed table id of this index.
+  }
+
+  message UDTypeDataPB {
+    optional IdPairPB ids = 1;
+    optional bool existing = 2;
+  }
+
+  message NamespaceDataPB {
+    optional IdPairPB ids = 1;
+    optional YQLDatabase db_type = 2;
+    optional bool existing = 3;
+  }
+
+  message NewSnapshotObjectsPB {
+    repeated TableDataPB tables = 1;
+    repeated UDTypeDataPB ud_types = 2;
+    repeated NamespaceDataPB namespaces = 3;
+  }
+
+  optional State state = 1 [ default = INITIALIZING ];
+
+  // There's different cleanup tasks depending on which state the flow failed
+  // on, and so we store this on failure so that we can cleanup properly.
+  optional State failed_on = 2 [ default = INITIALIZING ];
+
+  optional string replication_group_id = 3;
+  repeated HostPortPB producer_master_addresses = 4;
+
+  // producer table ID -> producer CDC stream ID map.
+  map<string, string> table_bootstrap_ids = 5;
+
+  // In the xCluster native bootstrap flow, during the ImportSnapshot step the
+  // consumer universe actually creates its own snapshot with a unique ID. In
+  // this case, old_snapshot_id is the producer snapshot ID and new_snapshot_id
+  // is the consumer snapshot ID.
+  optional bytes old_snapshot_id = 6;
+  optional bytes new_snapshot_id = 7;
+  optional bytes restoration_id = 8;
+
+  // Keeps track of newly created objects in case we need to cleanup on failure.
+  optional NewSnapshotObjectsPB new_snapshot_objects = 9;
+
+  // Set when consistent transactions are enabled for a replication group.
+  optional bool transactional = 10; // [default = false]
+
+  // According to https://phorge.dev.yugabyte.com/D24796, async tasks that
+  // require epoch should retrieve it from the context that initiated the work.
+  // These values store the epoch values passed from the initial RPC call to
+  // SetupNamespaceReplicationWithBootstrap.
+  optional int64 leader_term = 11;
+  optional int32 pitr_count = 12;
 }

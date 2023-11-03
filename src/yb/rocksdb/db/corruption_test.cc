@@ -27,9 +27,9 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include <gtest/gtest.h>
-
 #include <memory>
+
+#include <gtest/gtest.h>
 
 #include "yb/rocksdb/db.h"
 
@@ -45,7 +45,10 @@
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 
+#include "yb/rocksutil/yb_rocksdb_logger.h"
+
 #include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 using std::unique_ptr;
 using std::shared_ptr;
@@ -70,6 +73,7 @@ class CorruptionTest : public RocksDBTest {
 
     db_ = nullptr;
     options_.create_if_missing = true;
+    options_.info_log = std::make_shared<yb::YBRocksDBLogger>(options_.log_prefix);
     BlockBasedTableOptions table_options;
     table_options.block_size_deviation = 0;  // make unit test pass for now
     options_.table_factory.reset(NewBlockBasedTableFactory(table_options));
@@ -126,7 +130,7 @@ class CorruptionTest : public RocksDBTest {
     }
   }
 
-  void Check(int min_expected, int max_expected) {
+  Status Check(int min_expected, int max_expected) {
     uint64_t next_expected = 0;
     uint64_t missed = 0;
     int bad_keys = 0;
@@ -156,13 +160,19 @@ class CorruptionTest : public RocksDBTest {
         correct++;
       }
     }
+    // We still can have corruption error even with option to not verify checksums because
+    // metadata could be corrupted or due to index block reader always verifying checksums.
+    SCHECK_FORMAT(
+        iter->status().ok() || iter->status().IsCorruption(), InternalError,
+        "Expected OK or corruption error, but got: $0", iter->status());
     delete iter;
 
     fprintf(stderr,
       "expected=%d..%d; got=%d; bad_keys=%d; bad_values=%d; missed=%" PRIu64 "\n",
             min_expected, max_expected, correct, bad_keys, bad_values, missed);
-    ASSERT_LE(min_expected, correct);
-    ASSERT_GE(max_expected, correct);
+    SCHECK_LE(min_expected, correct, InternalError, "Number of correct keys is too low");
+    SCHECK_GE(max_expected, correct, InternalError, "Number of correct keys is too high");
+    return Status::OK();
   }
 
   // Corrupts specified number of bytes in SST starting at specified offset.
@@ -170,7 +180,7 @@ class CorruptionTest : public RocksDBTest {
   // space where data files go first and metadata file goes after data files.
   // This method doesn't support the case when area to be corrupted spans both base and data file.
   // We have assert to avoid such cases, since they are not required for tests as of 2017-03-09.
-  void CorruptFile(const std::string& base_fname, int offset, int bytes_to_corrupt) {
+  void CorruptSST(const std::string& base_fname, int offset, int bytes_to_corrupt) {
     std::string fname;
 
     {
@@ -215,15 +225,7 @@ class CorruptionTest : public RocksDBTest {
       }
     }
 
-    // Do it
-    std::string contents;
-    Status s = ReadFileToString(Env::Default(), fname, &contents);
-    ASSERT_TRUE(s.ok()) << s.ToString();
-    for (int i = 0; i < bytes_to_corrupt; i++) {
-      contents[i + offset] ^= 0x80;
-    }
-    s = WriteStringToFile(Env::Default(), contents, fname);
-    ASSERT_TRUE(s.ok()) << s.ToString();
+    ASSERT_OK(yb::CorruptFile(fname, offset, bytes_to_corrupt, yb::CorruptionType::kXor55));
   }
 
   void Corrupt(FileType filetype, int offset, int bytes_to_corrupt) {
@@ -244,7 +246,7 @@ class CorruptionTest : public RocksDBTest {
     }
     ASSERT_TRUE(!fname.empty()) << filetype;
 
-    CorruptFile(fname, offset, bytes_to_corrupt);
+    CorruptSST(fname, offset, bytes_to_corrupt);
   }
 
   // corrupts exactly one file at level `level`. if no file found at level,
@@ -254,7 +256,7 @@ class CorruptionTest : public RocksDBTest {
     db_->GetLiveFilesMetaData(&metadata);
     for (const auto& m : metadata) {
       if (m.level == level) {
-        CorruptFile(dbname_ + m.Name(), offset, bytes_to_corrupt);
+        CorruptSST(dbname_ + m.Name(), offset, bytes_to_corrupt);
         return;
       }
     }
@@ -298,7 +300,7 @@ class CorruptionTest : public RocksDBTest {
 
 TEST_F(CorruptionTest, Recovery) {
   Build(100);
-  Check(100, 100);
+  ASSERT_OK(Check(100, 100));
 #ifdef OS_WIN
   // On Wndows OS Disk cache does not behave properly
   // We do not call FlushBuffers on every Flush. If we do not close
@@ -316,7 +318,7 @@ TEST_F(CorruptionTest, Recovery) {
   Reopen(&options_);
 
   // The 64 records in the first two log blocks are completely lost.
-  Check(36, 36);
+  ASSERT_OK(Check(36, 36));
 }
 
 TEST_F(CorruptionTest, RecoverWriteError) {
@@ -356,7 +358,7 @@ TEST_F(CorruptionTest, TableFile) {
   ASSERT_OK(dbi->TEST_CompactRange(1, nullptr, nullptr));
 
   Corrupt(kTableFile, 100, 1);
-  Check(99, 99);
+  ASSERT_OK(Check(99, 99));
 }
 
 TEST_F(CorruptionTest, TableFileIndexData) {
@@ -374,14 +376,14 @@ TEST_F(CorruptionTest, TableFileIndexData) {
   Reopen();
   // one full file should be readable, since only one was corrupted
   // the other file should be fully non-readable, since index was corrupted
-  Check(5000, 5000);
+  ASSERT_OK(Check(5000, 5000));
 }
 
 TEST_F(CorruptionTest, MissingDescriptor) {
   Build(1000);
   RepairDB();
   Reopen();
-  Check(1000, 1000);
+  ASSERT_OK(Check(1000, 1000));
 }
 
 TEST_F(CorruptionTest, SequenceNumberRecovery) {
@@ -433,11 +435,11 @@ TEST_F(CorruptionTest, CompactionInputError) {
   ASSERT_EQ(1, Property("rocksdb.num-files-at-level2"));
 
   Corrupt(kTableFile, 100, 1);
-  Check(9, 9);
+  ASSERT_OK(Check(9, 9));
 
   // Force compactions by writing lots of values
   Build(10000);
-  Check(10000, 10000);
+  ASSERT_OK(Check(10000, 10000));
 }
 
 TEST_F(CorruptionTest, CompactionInputErrorParanoid) {
@@ -468,7 +470,7 @@ TEST_F(CorruptionTest, CompactionInputErrorParanoid) {
   ASSERT_EQ(1, Property("rocksdb.num-files-at-level0"));
 
   CorruptTableFileAtLevel(0, 100, 1);
-  Check(9, 9);
+  ASSERT_OK(Check(9, 9));
 
   // Write must eventually fail because of corrupted table
   Status s;
@@ -538,5 +540,6 @@ TEST_F(CorruptionTest, FileSystemStateCorrupted) {
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
+  google::ParseCommandLineNonHelpFlags(&argc, &argv, /* remove_flags */ true);
   return RUN_ALL_TESTS();
 }

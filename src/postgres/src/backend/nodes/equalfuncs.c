@@ -1794,6 +1794,22 @@ _equalDiscardStmt(const DiscardStmt *a, const DiscardStmt *b)
 }
 
 static bool
+_equalCreateProfileStmt(const YbCreateProfileStmt *a, const YbCreateProfileStmt *b)
+{
+	COMPARE_STRING_FIELD(prfname);
+	COMPARE_SCALAR_FIELD(prffailedloginattempts);
+	return true;
+}
+
+static bool
+_equalDropProfileStmt(const YbDropProfileStmt *a, const YbDropProfileStmt *b)
+{
+	COMPARE_STRING_FIELD(prfname);
+	COMPARE_SCALAR_FIELD(missing_ok);
+	return true;
+}
+
+static bool
 _equalCreateTableGroupStmt(const CreateTableGroupStmt *a, const CreateTableGroupStmt *b)
 {
 	COMPARE_STRING_FIELD(tablegroupname);
@@ -3026,7 +3042,7 @@ _equalRowBounds(const RowBounds *a, const RowBounds *b)
 }
 
 static bool
-_equalYbExprParamDesc(const YbExprParamDesc *a, const YbExprParamDesc *b)
+_equalYbExprColrefDesc(const YbExprColrefDesc *a, const YbExprColrefDesc *b)
 {
 	COMPARE_SCALAR_FIELD(attno);
 	COMPARE_SCALAR_FIELD(typid);
@@ -3480,6 +3496,12 @@ equal(const void *a, const void *b)
 		case T_DiscardStmt:
 			retval = _equalDiscardStmt(a, b);
 			break;
+		case T_YbCreateProfileStmt:
+			retval = _equalCreateProfileStmt(a, b);
+			break;
+		case T_YbDropProfileStmt:
+			retval = _equalDropProfileStmt(a, b);
+			break;
 		case T_CreateTableGroupStmt:
 			retval = _equalCreateTableGroupStmt(a, b);
 			break;
@@ -3778,8 +3800,8 @@ equal(const void *a, const void *b)
 			retval = _equalRowBounds(a, b);
 			break;
 
-		case T_YbExprParamDesc:
-			retval = _equalYbExprParamDesc(a, b);
+		case T_YbExprColrefDesc:
+			retval = _equalYbExprColrefDesc(a, b);
 			break;
 
 		default:

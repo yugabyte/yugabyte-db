@@ -43,7 +43,7 @@
 #include <vector>
 
 #include <boost/signals2/dummy_mutex.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/logging-inl.h"
@@ -171,6 +171,11 @@ class ArenaBase {
   template<class T, class... Args>
   T *NewObject(Args&&... args);
 
+  template<class T, class... Args>
+  T *NewArenaObject(Args&&... args) {
+    return NewObject<T>(this, std::forward<Args>(args)...);
+  }
+
   // Allocate shared_ptr object.
   template<class TObject, typename... TypeArgs>
   std::shared_ptr<TObject> AllocateShared(TypeArgs&&... args);
@@ -203,6 +208,15 @@ class ArenaBase {
     return static_cast<T*>(AllocateBytesAligned(size * sizeof(T), alignof(T)));
   }
 
+  template <class TObject, typename... Args>
+  TObject* CreateArray(size_t size, Args&&... args) {
+    auto result = AllocateArray<TObject>(size);
+    for (size_t idx = 0; idx != size; ++idx) {
+      new (result + idx) TObject(std::forward<Args>(args)...);
+    }
+    return result;
+  }
+
   // Removes all data from the arena. (Invalidates all pointers returned by
   // AddSlice and AllocateBytes). Does not cause memory allocation.
   // May reduce memory footprint, as it discards all allocated buffers but
@@ -216,6 +230,10 @@ class ArenaBase {
   // all buffer sizes. Always greater or equal to the total number of
   // bytes allocated out of the arena.
   size_t memory_footprint() const;
+
+  // Returns how many bytes are used by this arena. This excludes any empty space in the last
+  // component.
+  size_t UsedBytes();
 
  private:
   typedef typename Traits::mutex_type mutex_type;
@@ -370,6 +388,8 @@ class ArenaComponent {
   size_t size() { return end() - begin(); }
   size_t full_size() { return end() - begin_of_this(); }
 
+  size_t free_bytes() { return end() - position_; }
+
   // Resets used memory of this component, destroys the rest of the component chain.
   // `allocator` should be the same as the one used to allocate memory for this component chain.
   void Reset(BufferAllocator* allocator) {
@@ -468,74 +488,7 @@ std::shared_ptr<Result> ArenaMakeShared(
   return std::shared_ptr<Result>(arena, result);
 }
 
-struct AllocatedBuffer {
-  char* address = nullptr;
-  size_t size = std::numeric_limits<size_t>::max();
-
-  char* Allocate(size_t bytes, size_t alignment);
-};
-
-template <class T>
-class SharedArenaAllocator {
- public:
-  using value_type = T;
-  using size_type = size_t;
-  using difference_type = ptrdiff_t;
-
-  using pointer = T*;
-  using const_pointer = const T*;
-  using reference = T&;
-  using const_reference = const T&;
-
-  template <class U>
-  struct rebind {
-    using other = SharedArenaAllocator<U>;
-  };
-
-  explicit SharedArenaAllocator(AllocatedBuffer* buffer) : buffer_(buffer) {}
-
-  template<class U>
-  SharedArenaAllocator(const SharedArenaAllocator<U>& other) : buffer_(other.buffer()) {
-  }
-
-  pointer allocate(size_type n) {
-    return pointer_cast<pointer>(buffer_->Allocate(n * sizeof(T), alignof(T)));
-  }
-
-  void deallocate(pointer p, size_type n) {
-    free(p);
-  }
-
-  template<class... Args>
-  void construct(pointer p, Args&&... args) {
-    new (static_cast<void*>(p)) T(std::forward<Args>(args)...);
-  }
-
-  void destroy(pointer p) { p->~T(); }
-
-  AllocatedBuffer* buffer() const {
-    return buffer_;
-  }
-
- private:
-  AllocatedBuffer* buffer_;
-};
-
-class PreallocatedArena {
- public:
-  explicit PreallocatedArena(const AllocatedBuffer& buffer)
-      : allocator_(HeapBufferAllocator::Get(), buffer.address, buffer.size),
-        arena_(&allocator_, buffer.size) {
-  }
-
-  Arena& arena() {
-    return arena_;
-  }
-
- private:
-  PreallocatedBufferAllocator allocator_;
-  Arena arena_;
-};
+std::shared_ptr<ThreadSafeArena> SharedArena();
 
 } // namespace yb
 

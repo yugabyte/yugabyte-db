@@ -32,18 +32,15 @@
 
 #include "yb/util/monotime.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/sysinfo.h"
+#include "yb/gutil/walltime.h"
 
 #include "yb/util/result.h"
 #include "yb/util/thread_restrictions.h"
-
-#if defined(__APPLE__)
-#include "yb/gutil/walltime.h"
-#endif
 
 using namespace std::literals;
 
@@ -64,6 +61,20 @@ bool SafeToAdd64(int64_t a, int64_t b) {
   return negativeSum == negativeA;
 }
 
+using SystemClock = std::chrono::system_clock;
+
+std::chrono::system_clock::time_point ToSystemClockTimeBase() {
+  auto now_system = SystemClock::now();
+  auto coarse_since_epoch = CoarseMonoClock::now().time_since_epoch();
+  return now_system - std::chrono::duration_cast<SystemClock::duration>(coarse_since_epoch);
+}
+
+time_t ToTimeT(const MonoTime& monotime) {
+  static SystemClock::time_point base = ToSystemClockTimeBase();
+  return std::chrono::system_clock::to_time_t(
+      base + std::chrono::duration_cast<SystemClock::duration>(
+                 monotime.ToSteadyTimePoint().time_since_epoch()));
+}
 } // namespace
 
 ///
@@ -344,6 +355,17 @@ std::string MonoTime::ToString() const {
   return StringPrintf("%.3fs", ToSeconds());
 }
 
+std::string MonoTime::ToFormattedString(const std::string& format) const {
+  if (!Initialized()) return "<Uninitialized>";
+  if (IsMax()) return "<Max>";
+  if (IsMin()) return "<Min>";
+
+  std::string ret;
+  StringAppendStrftime(&ret, format.c_str(), ToTimeT(*this), true);
+
+  return ret;
+}
+
 bool MonoTime::Equals(const MonoTime& other) const {
   return value_ == other.value_;
 }
@@ -408,6 +430,12 @@ CoarseMonoClock::Duration ClockResolution<CoarseMonoClock>() {
 }
 
 std::string ToString(CoarseMonoClock::TimePoint time_point) {
+  if (time_point == CoarseTimePoint::min()) {
+    return "-inf";
+  }
+  if (time_point == CoarseTimePoint::max()) {
+    return "+inf";
+  }
   return MonoDelta(time_point.time_since_epoch()).ToString();
 }
 
@@ -421,6 +449,33 @@ std::chrono::steady_clock::time_point ToSteady(CoarseTimePoint time_point) {
 
 bool IsInitialized(CoarseTimePoint time_point) {
   return MonoDelta(time_point.time_since_epoch()).Initialized();
+}
+
+bool IsExtremeValue(CoarseTimePoint time_point) {
+  return time_point == CoarseTimePoint::min() || time_point == CoarseTimePoint::max();
+}
+
+std::string ToStringRelativeToNow(CoarseTimePoint t, CoarseTimePoint now) {
+  if (IsExtremeValue(t) || IsExtremeValue(now)) {
+    return ToString(t);
+  }
+  return Format("$0 ($1)", t, ToStringRelativeToNowOnly(t, now));
+}
+
+std::string ToStringRelativeToNow(CoarseTimePoint t, std::optional<CoarseTimePoint> now) {
+  if (now)
+    return ToStringRelativeToNow(t, *now);
+  return ToString(t);
+}
+
+std::string ToStringRelativeToNowOnly(CoarseTimePoint t, CoarseTimePoint now) {
+  if (t < now) {
+    return Format("$0 ago", now - t);
+  }
+  if (t > now) {
+    return Format("$0 from now", t - now);
+  }
+  return "now";
 }
 
 } // namespace yb

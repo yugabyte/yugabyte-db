@@ -32,9 +32,7 @@ public class UniverseDefinitionTaskParamsResp {
       nodeDetailsSet = null;
     } else {
       nodeDetailsSet =
-          universeDefinitionTaskParams
-              .nodeDetailsSet
-              .stream()
+          universeDefinitionTaskParams.nodeDetailsSet.stream()
               .map(nodeDetails -> new NodeDetailsResp(nodeDetails, universe))
               .collect(Collectors.toSet());
     }

@@ -4,9 +4,9 @@ linkTitle: JanusGraph
 description: JanusGraph
 aliases:
 menu:
-  preview:
+  preview_integrations:
     identifier: janusgraph
-    parent: integrations
+    parent: integrations-other
     weight: 571
 type: docs
 ---
@@ -18,15 +18,15 @@ This tutorial describes how to set up [JanusGraph](https://janusgraph.org/) to w
 To use JanusGraph with YugabyteDB, you need the following:
 
 - Install YugabyteDB and start a single node local cluster. Refer to [Quick start](../../quick-start/).
-- JanusGraph. You can download from the [JanusGraph downloads page](https://github.com/JanusGraph/janusgraph/releases). This tutorial uses v0.2.0.
+- JanusGraph. You can download from the [JanusGraph downloads page](https://github.com/JanusGraph/janusgraph/releases). This tutorial uses v0.6.2.
 
   ```sh
-  $ wget https://github.com/JanusGraph/janusgraph/releases/download/v0.2.0/janusgraph-0.2.0-hadoop2.zip
-  $ unzip janusgraph-0.2.0-hadoop2.zip
-  $ cd janusgraph-0.2.0-hadoop2/lib
+  $ wget https://github.com/JanusGraph/janusgraph/releases/download/v0.6.2/janusgraph-0.6.2.zip
+  $ unzip janusgraph-0.6.2.zip
+  $ cd janusgraph-0.6.2/lib
   ```
 
-- Download [cassandra-driver-core-3.8.0-yb-6.jar](https://repo1.maven.org/maven2/com/yugabyte/cassandra-driver-core/3.8.0-yb-6/cassandra-driver-core-3.8.0-yb-6.jar) and copy it into `janusgraph-0.2.0-hadoop2/lib`.
+- Download [cassandra-driver-core-3.8.0-yb-6.jar](https://repo1.maven.org/maven2/com/yugabyte/cassandra-driver-core/3.8.0-yb-6/cassandra-driver-core-3.8.0-yb-6.jar) and copy it into `janusgraph-0.6.2/lib`.
 
   Rename the existing Cassandra driver:
 
@@ -256,7 +256,7 @@ gremlin> g.V(pluto).out('brother').as('god').out('lives').as('place').select('go
 
 ### Global graph index
 
-Show all events that happened within 50 kilometers of Athens (latitude:37.97 and long:23.72).
+Show all events that occurred in 50 kilometers of Athens (latitude:37.97 and long:23.72).
 
 ```sql
 gremlin> g.E().has('place', geoWithin(Geoshape.circle(37.97, 23.72, 50)))
@@ -267,7 +267,7 @@ gremlin> g.E().has('place', geoWithin(Geoshape.circle(37.97, 23.72, 50)))
 ==>e[3yb-36g-7x1-9io][4120-battled->12336]
 ```
 
-For events that happened within 50 kilometers of Athens, show who battled whom.
+For events that occurred in 50 kilometers of Athens, show who battled whom.
 
 ```sql
 gremlin> g.E().has('place', geoWithin(Geoshape.circle(37.97, 23.72, 50))).as('source').inV().as('god2').select('source').outV().as('god1').select('god1', 'god2').by('name')

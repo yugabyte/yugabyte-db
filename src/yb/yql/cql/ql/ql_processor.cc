@@ -20,7 +20,7 @@
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
 
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 
 #include "yb/gutil/bind.h"
 
@@ -34,60 +34,60 @@
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_require_drop_privs_for_truncate);
 
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_ParseRequest,
     "Time spent parsing the SQL query", yb::MetricUnit::kMicroseconds,
     "Time spent parsing the SQL query", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_AnalyzeRequest,
     "Time spent to analyze the parsed SQL query", yb::MetricUnit::kMicroseconds,
     "Time spent to analyze the parsed SQL query", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_ExecuteRequest,
     "Time spent executing the parsed SQL query", yb::MetricUnit::kMicroseconds,
     "Time spent executing the parsed SQL query", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_NumRoundsToAnalyze,
     "Number of rounds to successfully parse a SQL query", yb::MetricUnit::kOperations,
     "Number of rounds to successfully parse a SQL query", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_NumRetriesToExecute,
     "Number of retries to successfully execute a SQL query", yb::MetricUnit::kOperations,
     "Number of retries to successfully execute a SQL query", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_NumFlushesToExecute,
     "Number of flushes to successfully execute a SQL query", yb::MetricUnit::kOperations,
     "Number of flushes to successfully execute a SQL query", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_SelectStmt,
     "Time spent processing a SELECT statement", yb::MetricUnit::kMicroseconds,
     "Time spent processing a SELECT statement", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_InsertStmt,
     "Time spent processing an INSERT statement", yb::MetricUnit::kMicroseconds,
     "Time spent processing an INSERT statement", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_UpdateStmt,
     "Time spent processing an UPDATE statement", yb::MetricUnit::kMicroseconds,
     "Time spent processing an UPDATE statement", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_DeleteStmt,
     "Time spent processing a DELETE statement", yb::MetricUnit::kMicroseconds,
     "Time spent processing a DELETE statement", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_UseStmt,
     "Time spent processing a USE statement", yb::MetricUnit::kMicroseconds,
     "Time spent processing a USE statement", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_OtherStmts,
     "Time spent processing any statement other than SELECT/INSERT/UPDATE/DELETE",
     yb::MetricUnit::kMicroseconds,
     "Time spent processing any statement other than SELECT/INSERT/UPDATE/DELETE", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_Transaction,
     "Time spent processing a transaction", yb::MetricUnit::kMicroseconds,
     "Time spent processing a transaction", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_SQLProcessor_ResponseSize,
     "Size of the returned response blob (in bytes)", yb::MetricUnit::kBytes,
     "Size of the returned response blob (in bytes)", 60000000LU, 2);
@@ -97,7 +97,6 @@ namespace ql {
 
 using std::shared_ptr;
 using std::string;
-using client::YBClient;
 using client::YBMetaDataCache;
 using client::YBTableName;
 using ql::audit::IsPrepare;
@@ -311,11 +310,8 @@ Status QLProcessor::CheckNodePermissions(const TreeNode* tnode) {
     case TreeNodeOpcode::kPTGrantRevokeRole: {
       const auto grant_revoke_role_stmt = static_cast<const PTGrantRevokeRole*>(tnode);
       const string granted_role = grant_revoke_role_stmt->granted_role_name();
-      const string recipient_role = grant_revoke_role_stmt->recipient_role_name();
       s = ql_env_.HasRolePermission(granted_role, PermissionType::AUTHORIZE_PERMISSION);
-      if (s.ok()) {
-        s = ql_env_.HasRolePermission(recipient_role, PermissionType::AUTHORIZE_PERMISSION);
-      }
+      // Access to 'recipient_role_name' is not reqired.
       break;
     }
     case TreeNodeOpcode::kPTGrantRevokePermission: {
@@ -436,19 +432,22 @@ void QLProcessor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCal
   executor_.ExecuteAsync(batch, std::move(cb));
 }
 
-void QLProcessor::RunAsync(const string& stmt, const StatementParameters& params,
-                           StatementExecutedCallback cb, const bool reparsed) {
+TreeNodeOpcode QLProcessor::RunAsync(const string& stmt, const StatementParameters& params,
+                                     StatementExecutedCallback cb, const bool reparsed) {
   ParseTree::UniPtr parse_tree;
   const Status s = Prepare(stmt, &parse_tree, reparsed);
   if (PREDICT_FALSE(!s.ok())) {
-    return cb.Run(s, nullptr /* result */);
+    cb.Run(s, nullptr /* result */);
+    return TreeNodeOpcode::kNoOp;
   }
   const ParseTree* ptree = parse_tree.release();
+  const TreeNodeOpcode op_code = ptree->root() ? ptree->root()->opcode() : TreeNodeOpcode::kNoOp;
   // Do not make a copy of stmt and params when binding to the RunAsyncDone callback because when
   // error occurs due to stale matadata, the statement needs to be reexecuted. We should pass the
   // original references which are guaranteed to still be alive when the statement is reexecuted.
   ExecuteAsync(*ptree, params, Bind(&QLProcessor::RunAsyncDone, Unretained(this), ConstRef(stmt),
                                     ConstRef(params), Owned(ptree), cb));
+  return op_code;
 }
 
 void QLProcessor::RunAsyncDone(const string& stmt, const StatementParameters& params,

@@ -1,7 +1,8 @@
 ---
-title: C# Drivers
+title: PostgreSQL Npgsql Driver
+headerTitle: C# Drivers
 linkTitle: C# Drivers
-description: C# Drivers for YSQL
+description: C# PostgreSQL Npgsql Driver for YSQL
 headcontent: C# Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
@@ -9,28 +10,35 @@ menu:
     name: C# Drivers
     identifier: ref-postgres-npgsql-driver
     parent: drivers
-    weight: 600
+    weight: 620
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
+    <a href="../yb-npgsql-reference/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YugabyteDB Npgsql Smart Driver
+    </a>
+  </li>
+
+  <li >
     <a href="../postgres-npgsql-reference/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PostgreSQL Npgsql
+      PostgreSQL Npgsql Driver
     </a>
   </li>
 
 </ul>
 
-Npgsql is an open source ADO.NET Data Provider for PostgreSQL; it allows programs written in C#, Visual Basic, and F# to access the YugabyteDB server.
+Npgsql is an open source ADO.NET Data Provider for PostgreSQL; it allows programs written in C#, Visual Basic, and F# to access the YugabyteDB server. Npgsql is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../../secure/authentication/password-authentication/#scram-sha-256).
 
-## Fundamentals
+For details on Npgsql, refer to the [Npgsql documentation](https://www.npgsql.org/doc/).
 
-Learn how to perform common tasks required for C# application development using the Npgsql driver.
+For building a sample C# application with Npgsql, see [Connect an application](../../../../drivers-orms/csharp/postgres-npgsql/).
 
-### Download the driver dependency
+## Download the driver dependency
 
 If you are using Visual Studio IDE, add the Npgsql package to your project as follows:
 
@@ -44,6 +52,10 @@ dotnet add package Npgsql
 ```
 
 or any of the other methods mentioned on the [nuget page](https://www.nuget.org/packages/Npgsql/) for Npgsql.
+
+## Fundamentals
+
+Learn how to perform common tasks required for C# application development using the Npgsql driver.
 
 ### Connect to YugabyteDB database
 
@@ -67,6 +79,16 @@ The following is a basic example connection string for connecting to YugabyteDB.
 var connStringBuilder = "Host=localhost;Port=5433;Database=yugabyte;Username=yugabyte;Password=password"
 NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder);
 ```
+
+{{< warning title="Warning" >}}
+
+On every new connection, the NpgSQL driver also makes [extra system table queries to map types](https://github.com/npgsql/npgsql/issues/1486), which adds significant overhead. To turn off this behavior, set the following option in your connection string builder:
+
+```csharp
+connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoading;
+```
+
+{{< /warning >}}
 
 ### Create table
 

@@ -105,9 +105,6 @@ Result<rpc::ProcessCallsResult> CQLConnectionContext::ProcessCalls(
 
 Status CQLConnectionContext::HandleCall(
     const rpc::ConnectionPtr& connection, rpc::CallData* call_data) {
-  auto reactor = connection->reactor();
-  DCHECK(reactor->IsCurrentThread());
-
   auto call = rpc::InboundCall::Create<CQLInboundCall>(connection, this, ql_session_);
 
   Status s = call->ParseFrom(call_tracker_, call_data);
@@ -123,7 +120,7 @@ Status CQLConnectionContext::HandleCall(
         // We did not store call yet, so should not notify that it was processed.
         call->ResetCallProcessedListener();
         call->RespondFailure(rpc::ErrorStatusPB::ERROR_SERVER_TOO_BUSY, Status::OK());
-      } // Otherwise silently drop the call without queueing it. Clients will get a timeout.
+      } // Otherwise silently drop the call without queuing it. Clients will get a timeout.
       return Status::OK();
     }
   }
@@ -133,7 +130,7 @@ Status CQLConnectionContext::HandleCall(
     return s;
   }
 
-  reactor->messenger()->Handle(call, rpc::Queue::kTrue);
+  connection->reactor()->messenger().Handle(call, rpc::Queue::kTrue);
 
   return Status::OK();
 }
@@ -166,7 +163,6 @@ Status CQLInboundCall::ParseFrom(const MemTrackerPtr& call_tracker, rpc::CallDat
   consumption_ = ScopedTrackedConsumption(call_tracker, call_data->size());
 
   // Parsing of CQL message is deferred to CQLServiceImpl::Handle. Just save the serialized data.
-  request_data_memory_usage_.store(call_data->size(), std::memory_order_release);
   request_data_ = std::move(*call_data);
   serialized_request_ = Slice(request_data_.data(), request_data_.size());
 
@@ -331,6 +327,7 @@ void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_p
 void CQLInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now();
   auto total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
+  auto trace_ = trace();
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces
           // rpcs with an invalid request may have a null request_
           || (trace_ && request_ && request_->trace_requested())
@@ -353,6 +350,7 @@ std::string CQLInboundCall::ToString() const {
 bool CQLInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
                             rpc::RpcCallInProgressPB* resp) {
 
+  auto trace_ = trace();
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
   }

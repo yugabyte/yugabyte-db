@@ -3,15 +3,17 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
-import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.List;
@@ -32,6 +34,7 @@ public class RebootUniverseTest extends UpgradeTaskTest {
   private static final List<TaskType> ROLLING_REBOOT_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.RunHooks,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
@@ -46,8 +49,8 @@ public class RebootUniverseTest extends UpgradeTaskTest {
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.ModifyBlackList,
-          TaskType.WaitForFollowerLag, // master
-          TaskType.WaitForFollowerLag, // tserver
+          TaskType.CheckFollowerLag, // master
+          TaskType.CheckFollowerLag, // tserver
           TaskType.RunHooks,
           TaskType.SetNodeState);
 
@@ -57,6 +60,9 @@ public class RebootUniverseTest extends UpgradeTaskTest {
     super.setUp();
     attachHooks("RebootUniverse");
     rebootUniverse.setUserTaskUUID(UUID.randomUUID());
+
+    setUnderReplicatedTabletsMock();
+    setFollowerLagMock();
   }
 
   private TaskInfo submitTask(UpgradeTaskParams requestParams) {
@@ -80,18 +86,16 @@ public class RebootUniverseTest extends UpgradeTaskTest {
   public void testNonRollingReboot() {
     UpgradeTaskParams taskParams = new UpgradeTaskParams();
     taskParams.upgradeOption = UpgradeOption.NON_ROLLING_UPGRADE;
-    TaskInfo taskInfo = submitTask(taskParams);
+    assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(Failure, taskInfo.getTaskState());
   }
 
   @Test
   public void tesNonRestartUpgradeReboot() {
     UpgradeTaskParams taskParams = new UpgradeTaskParams();
     taskParams.upgradeOption = UpgradeOption.NON_RESTART_UPGRADE;
-    TaskInfo taskInfo = submitTask(taskParams);
+    assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(Failure, taskInfo.getTaskState());
   }
 
   @Test
@@ -104,14 +108,32 @@ public class RebootUniverseTest extends UpgradeTaskTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
     position = assertSequence(subTasksByPosition, position);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
-    assertEquals(62, position);
+    assertEquals(66, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testRollingRebootRetries() {
+    UpgradeTaskParams taskParams = new UpgradeTaskParams();
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.creatingUser = defaultUser;
+    TestUtils.setFakeHttpContext(defaultUser);
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.RebootUniverse,
+        CustomerTask.TargetType.Universe,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.RebootUniverse,
+        taskParams,
+        false);
   }
 }

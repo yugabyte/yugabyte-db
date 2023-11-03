@@ -18,6 +18,8 @@
 
 #include "yb/gen_yrpc/model.h"
 
+#include "yb/gutil/stl_util.h"
+
 using google::protobuf::internal::WireFormatLite;
 using namespace std::literals;
 
@@ -89,10 +91,10 @@ class Message {
     ScopedIndent public_scope(printer);
 
     printer(
-        "explicit $message_lw_name$(::yb::Arena* arena);\n"
-        "$message_lw_name$(::yb::Arena* arena, const $message_lw_name$& rhs);\n"
+        "explicit $message_lw_name$(::yb::ThreadSafeArena* arena);\n"
+        "$message_lw_name$(::yb::ThreadSafeArena* arena, const $message_lw_name$& rhs);\n"
         "\n"
-        "$message_lw_name$(::yb::Arena* arena, const $message_pb_name$& rhs) \n"
+        "$message_lw_name$(::yb::ThreadSafeArena* arena, const $message_pb_name$& rhs) \n"
         "    : $message_lw_name$(arena) {\n"
         "  CopyFrom(rhs);\n"
         "}\n"
@@ -290,20 +292,51 @@ class Message {
         }
         printer("}\n\n");
       }
-      if (field->is_repeated() && IsMessage(field)) {
-        printer(
-            "$field_type$* add_$field_name$() {\n"
-            "  return &");
-        printer(IsPointerField(field) ? "mutable_$field_name$()->" : "$field_accessor$.");
-        printer("emplace_back();\n"
-            "}\n\n"
+      if (field->is_repeated()) {
+        printer("size_t $field_name$_size() const {\n"
+                "  return "
         );
+        printer(IsPointerField(field) ? "$field_name$()" : "$field_accessor$");
+        printer(".size();\n"
+                "}\n\n"
+        );
+        if (IsMessage(field)) {
+          printer(
+              "$field_type$* add_$field_name$() {\n"
+              "  return &");
+          printer(IsPointerField(field) ? "mutable_$field_name$()->" : "$field_accessor$.");
+          printer("emplace_back();\n"
+                  "}\n\n"
+          );
+        } else if (StoredAsSlice(field)) {
+          printer(
+              "void add_dup_$field_name$(const ::yb::Slice& value) {\n"
+              "  $field_accessor$.push_back(arena_.DupSlice(value));\n"
+              "}\n\n"
+              "void add_ref_$field_name$(const ::yb::Slice& value) {\n"
+              "  $field_accessor$.push_back(value);\n"
+              "}\n\n"
+          );
+        } else {
+          printer(
+              "void add_$field_name$($field_type$ value) {\n"
+              "  $field_accessor$.push_back(value);\n"
+              "}\n\n"
+          );
+        }
+        if (!StoreAsPointer(field)) {
+          printer(
+              "void clear_$field_name$() {\n"
+              "  $field_accessor$.clear();\n"
+              "}\n\n"
+          );
+        }
       }
     }
 
     if (NeedArena(message_)) {
       printer(
-          "::yb::Arena& arena() const {\n"
+          "::yb::ThreadSafeArena& arena() const {\n"
           "  return arena_;\n"
           "}\n\n"
       );
@@ -323,7 +356,7 @@ class Message {
 
     if (NeedArena(message_)) {
       printer(
-          "::yb::Arena& arena_;\n"
+          "::yb::ThreadSafeArena& arena_;\n"
       );
     }
     if (need_has_fields_enum_) {
@@ -431,7 +464,7 @@ class Message {
 
  private:
   void Ctor(YBPrinter printer) const {
-    printer("$message_lw_name$::$message_lw_name$(::yb::Arena* arena)");
+    printer("$message_lw_name$::$message_lw_name$(::yb::ThreadSafeArena* arena)");
     bool first = true;
     if (NeedArena(message_)) {
       NextCtorField(printer, &first);
@@ -451,7 +484,8 @@ class Message {
 
   void CopyCtor(YBPrinter printer) const {
     printer(
-        "$message_lw_name$::$message_lw_name$(::yb::Arena* arena, const $message_lw_name$& rhs)"
+        "$message_lw_name$::$message_lw_name$("
+            "::yb::ThreadSafeArena* arena, const $message_lw_name$& rhs)"
     );
     bool first = true;
     if (NeedArena(message_)) {
@@ -1025,6 +1059,22 @@ class Message {
   std::unordered_set<const google::protobuf::FieldDescriptor*> cycle_dependencies_;
 };
 
+std::vector<const google::protobuf::EnumValueDescriptor*> EnumValues(
+    const google::protobuf::EnumDescriptor* enum_desc) {
+  std::vector<const google::protobuf::EnumValueDescriptor*> values;
+  for (int i = 0; i != enum_desc->value_count(); ++i) {
+    values.push_back(enum_desc->value(i));
+  }
+  std::sort(values.begin(), values.end(), [](const auto* lhs, const auto* rhs) {
+    return lhs->number() < rhs->number() ||
+           (lhs->number() == rhs->number() && lhs->index() < rhs->index());
+  });
+  Unique(&values, [](const auto* lhs, const auto* rhs) {
+    return lhs->number() == rhs->number();
+  });
+  return values;
+}
+
 } // namespace
 
 class MessagesGenerator::Impl {
@@ -1046,11 +1096,15 @@ class MessagesGenerator::Impl {
     }
 
     if (generating_any) {
-      printer("#include <google/protobuf/any.pb.h>\n");
+      printer("#include <google/protobuf/any.pb.h>\n\n");
     }
 
+    printer("#include \"yb/rpc/lightweight_message.h\"\n\n");
+
+    if (file->enum_type_count()) {
+      printer("#include \"yb/util/enums.h\"\n");
+    }
     printer(
-        "#include \"yb/rpc/lightweight_message.h\"\n"
         "#include \"yb/util/memory/arena.h\"\n"
         "#include \"yb/util/memory/arena_list.h\"\n"
         "#include \"yb/util/memory/mc_types.h\"\n"
@@ -1071,6 +1125,10 @@ class MessagesGenerator::Impl {
     printer(
         "$open_namespace$\n"
     );
+
+    for (int i = 0; i != file->enum_type_count(); ++i) {
+      EnumDeclaration(printer, file->enum_type(i));
+    }
 
     for (int i = 0; i != file->message_type_count(); ++i) {
       MessageForward(printer, file->message_type(i));
@@ -1103,6 +1161,10 @@ class MessagesGenerator::Impl {
         "\n"
         "$open_namespace$\n"
     );
+
+    for (int i = 0; i != file->enum_type_count(); ++i) {
+      EnumDefinition(printer, file->enum_type(i));
+    }
 
     for (int i = 0; i != file->message_type_count(); ++i) {
       MessageDefinition(printer, file->message_type(i));
@@ -1169,6 +1231,61 @@ class MessagesGenerator::Impl {
     }
 
     messages_[message]->Definition(printer);
+  }
+
+  void EnumDeclaration(YBPrinter printer, const google::protobuf::EnumDescriptor* enum_desc) {
+    auto name = LightweightName(enum_desc);
+    if (!name) {
+      return;
+    }
+
+    ScopedSubstituter enum_substituter(printer, enum_desc);
+
+    printer("YB_DEFINE_ENUM($enum_lw_name$,\n");
+    {
+      ScopedIndent enum_scope(printer);
+      for (const auto* value : EnumValues(enum_desc)) {
+        printer(Format("($0) // $1\n", value->name(), value->number()));
+      }
+    }
+    printer(");\n\n");
+    printer("$enum_name$ ToPB($enum_lw_name$ value);\n");
+    printer("$enum_lw_name$ ToLW($enum_name$ value);\n\n");
+  }
+
+  void EnumDefinition(YBPrinter printer, const google::protobuf::EnumDescriptor* enum_desc) {
+    auto name = LightweightName(enum_desc);
+    if (!name) {
+      return;
+    }
+
+    ScopedSubstituter enum_substituter(printer, enum_desc);
+    auto values = EnumValues(enum_desc);
+    GenEnumConverter(printer, enum_desc, "ToPB", "enum_lw_name", "enum_name");
+    GenEnumConverter(printer, enum_desc, "ToLW", "enum_name", "enum_lw_name");
+  }
+
+  void GenEnumConverter(
+      YBPrinter printer, const google::protobuf::EnumDescriptor* enum_desc,
+      const std::string& name, const std::string& from_type, const std::string& to_type) {
+    printer(Format("$$$2$$ $0($$$1$$ value) {\n", name, from_type, to_type));
+    {
+      ScopedIndent function_scope(printer);
+      printer("switch (value) {\n");
+      for (const auto* value : EnumValues(enum_desc)) {
+        printer(Format("case $$$0$$::$1:\n", from_type, value->name()));
+        printer(Format("  return $$$0$$::$1;\n", to_type, value->name()));
+      }
+      if (enum_desc->file()->syntax() == google::protobuf::FileDescriptor::SYNTAX_PROTO3 &&
+          name == "ToLW") {
+        printer(Format("case $$$0$$::$$$0$$_INT_MIN_SENTINEL_DO_NOT_USE_:\n", from_type));
+        printer(Format("case $$$0$$::$$$0$$_INT_MAX_SENTINEL_DO_NOT_USE_:\n", from_type));
+        printer("  break;\n");
+      }
+      printer("};\n");
+      printer(Format("FATAL_INVALID_ENUM_VALUE($$$0$$, value);\n", from_type));
+    }
+    printer("}\n\n");
   }
 
   std::unordered_map<const google::protobuf::Descriptor*, std::unique_ptr<Message>> messages_;

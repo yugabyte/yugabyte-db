@@ -36,8 +36,6 @@
 #include <memory>
 #include <vector>
 
-#include <glog/logging.h>
-
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/schema.h"
@@ -70,12 +68,9 @@ namespace tools {
 using std::string;
 using std::vector;
 
-using client::YBClient;
 using client::YBClientBuilder;
-using client::YBColumnSchema;
 using client::YBSchema;
 using client::YBSession;
-using client::YBTable;
 using client::YBTableName;
 using std::shared_ptr;
 
@@ -109,8 +104,7 @@ static int WriteRandomDataToTable(int argc, char** argv) {
   CHECK_OK(table.Open(table_name, client.get()));
   YBSchema schema = table->schema();
 
-  shared_ptr<YBSession> session = client->NewSession();
-  session->SetTimeout(5s); // Time out after 5 seconds.
+  auto session = client->NewSession(5s);  // Time out after 5 seconds.
 
   Random random(GetRandomSeed32());
 

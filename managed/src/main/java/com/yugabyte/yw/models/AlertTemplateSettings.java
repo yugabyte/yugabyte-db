@@ -79,8 +79,11 @@ public class AlertTemplateSettings extends Model {
   private UUID customerUUID;
 
   @NotNull
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  @ApiModelProperty(value = "Creation time", accessMode = READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(
+      value = "Creation time",
+      accessMode = READ_ONLY,
+      example = "2022-12-12T13:07:18Z")
   private Date createTime;
 
   @DbJson

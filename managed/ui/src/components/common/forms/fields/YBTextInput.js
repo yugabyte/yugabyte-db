@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { FormControl } from 'react-bootstrap';
 import { isFunction } from 'lodash';
 import { YBLabel } from '../../../../components/common/descriptors';
@@ -26,7 +26,8 @@ export class YBTextInput extends Component {
       placeHolder,
       onValueChanged,
       isReadOnly,
-      normalizeOnBlur
+      normalizeOnBlur,
+      autocomplete = 'on'
     } = this.props;
 
     function onChange(event) {
@@ -59,6 +60,7 @@ export class YBTextInput extends Component {
         onChange={onChange}
         readOnly={isReadOnly}
         onBlur={onBlur}
+        autocomplete={autocomplete}
       />
     );
   }

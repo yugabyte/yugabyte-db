@@ -22,13 +22,24 @@ type: docs
 
 By default, password authentication is disabled, allowing users and clients to connect to and interact with YugabyteDB with minimal effort. For production clusters, password authentication is important for maximizing security. The password authentication methods work similarly, but differ in how user passwords are stored on the server and how the password provided by the client is sent across the connection.
 
+## YugabyteDB database passwords
+
+YugabyteDB database passwords are separate from operating system passwords. The password for each database user is stored in the `pg_authid` system catalog.
+
+Database passwords can be managed using the following:
+
+- YSQL API: [CREATE ROLE](../../../api/ysql/the-sql-language/statements/dcl_create_role) and [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role)
+- `ysqlsh` meta-command: [\password](../../../admin/ysqlsh-meta-commands/#password-username)
+
+The [passwordcheck extension](../../../explore/ysql-language-features/pg-extensions/#passwordcheck-example) can be used to enforce strong passwords whenever they are set with `CREATE ROLE` or `ALTER ROLE`. passwordcheck only works for passwords that are provided in plain text. For more information, refer to the [PostgreSQL passwordcheck documentation](https://www.postgresql.org/docs/11/passwordcheck.html).
+
 ## Password authentication methods
 
 The following password authentication methods are supported by YugabyteDB.
 
 ### MD5
 
-The MD5 method (`md5`) prevents password sniffing and avoids storing passwords on the server in plain text, but provides no protection if an attacker obtains password hashes from the server or from clients (by sniffing, man-in-the-middle, or by brute force).  This method is the default password encryption for YugabyteDB clusters.
+The MD5 method (`md5`) prevents password sniffing and avoids storing passwords on the server in plain text, but provides no protection if an attacker obtains password hashes from the server or from clients (by sniffing, man-in-the-middle, or by brute force). MD5 is the default password encryption for YugabyteDB clusters.
 
 The MD5 hash algorithm is not considered secure against determined attacks. Some of the security risks include:
 
@@ -47,15 +58,6 @@ The SCRAM-SHA-256 method (`scram-sh-256`) performs SCRAM-SHA-256 authentication,
 For additional security, SCRAM-SHA-256 password encryption can also be used with [encryption in transit (TLS encryption)](../../../secure/tls-encryption/).
 
 {{< /note >}}
-
-## YugabyteDB database passwords
-
-YugabyteDB database passwords are separate from operating system passwords. The password for each database user is stored in the `pg_authid` system catalog.
-
-Database passwords can be managed using the following:
-
-- YSQL API: [CREATE ROLE](../../../api/ysql/the-sql-language/statements/dcl_create_role) and [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role)
-- `ysqlsh` meta-command: [`\password`](../../../admin/ysqlsh/#password-username)
 
 ## Enable SCRAM-SHA-256 authentication
 

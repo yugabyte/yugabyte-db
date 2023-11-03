@@ -17,6 +17,7 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck.Details;
+import com.yugabyte.yw.models.HealthCheck.Details.NodeData;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
@@ -140,24 +141,21 @@ public class HealthCheckMetrics {
   }
 
   public static List<Metric> getNodeMetrics(
-      Customer customer, Universe universe, String nodeName, List<Details.Metric> metrics) {
+      Customer customer, Universe universe, NodeData nodeData, List<Details.Metric> metrics) {
     if (CollectionUtils.isEmpty(metrics)) {
       return Collections.emptyList();
     }
-    return metrics
-        .stream()
-        .flatMap(m -> buildNodeMetric(m, customer, universe, nodeName).stream())
+    return metrics.stream()
+        .flatMap(m -> buildNodeMetric(m, customer, universe, nodeData).stream())
         .collect(Collectors.toList());
   }
 
   private static List<Metric> buildNodeMetric(
-      Details.Metric metric, Customer customer, Universe universe, String nodeName) {
+      Details.Metric metric, Customer customer, Universe universe, NodeData nodeData) {
     if (CollectionUtils.isEmpty(metric.getValues())) {
       return Collections.emptyList();
     }
-    return metric
-        .getValues()
-        .stream()
+    return metric.getValues().stream()
         .map(
             value -> {
               Metric result =
@@ -172,7 +170,9 @@ public class HealthCheckMetrics {
                       .setSourceUuid(universe.getUniverseUUID())
                       .setLabels(
                           MetricLabelsBuilder.create().appendSource(universe).getMetricLabels())
-                      .setKeyLabel(KnownAlertLabels.NODE_NAME, nodeName)
+                      .setKeyLabel(KnownAlertLabels.NODE_NAME, nodeData.getNodeName())
+                      .setLabel(KnownAlertLabels.NODE_ADDRESS, nodeData.getNode())
+                      .setLabel(KnownAlertLabels.NODE_IDENTIFIER, nodeData.getNodeIdentifier())
                       .setValue(value.getValue());
               if (CollectionUtils.isNotEmpty(value.getLabels())) {
                 value
@@ -193,7 +193,7 @@ public class HealthCheckMetrics {
         .setHelp("Boolean result of health checks")
         .setCustomerUUID(customer.getUuid())
         .setSourceUuid(universe.getUniverseUUID())
-        .setLabel(kUnivNameLabel, universe.name)
+        .setLabel(kUnivNameLabel, universe.getName())
         .setLabel(kUnivUUIDLabel, universe.getUniverseUUID().toString())
         .setKeyLabel(kNodeLabel, node)
         .setKeyLabel(kCheckLabel, checkName)

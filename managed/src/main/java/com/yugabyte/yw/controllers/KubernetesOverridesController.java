@@ -5,10 +5,16 @@ package com.yugabyte.yw.controllers;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase.KubernetesPlacement;
-import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.helm.HelmUtils;
+import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
+import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.KubernetesOverridesResponse;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -17,13 +23,18 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
-import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.Authorization;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -31,9 +42,10 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -56,10 +68,18 @@ public class KubernetesOverridesController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.UniverseConfigureTaskParams",
           required = true))
-  public Result validateKubernetesOverrides(UUID customerUUID) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation =
+            @Resource(path = Util.UNIVERSE_UUID, sourceType = SourceType.REQUEST_BODY))
+  })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
+  public Result validateKubernetesOverrides(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     UniverseConfigureTaskParams taskParams =
-        parseJsonAndValidate(UniverseConfigureTaskParams.class);
+        parseJsonAndValidate(request, UniverseConfigureTaskParams.class);
     return PlatformResults.withData(validateKubernetesOverrides(taskParams));
   }
 
@@ -93,9 +113,9 @@ public class KubernetesOverridesController extends AuthenticatedController {
       try {
         universeOverrides = HelmUtils.convertYamlToMap(userIntent.universeOverrides);
       } catch (Exception e) {
-        String errMsg = String.format("Error in parsing universe overrides: %s", e.getMessage());
         LOG.error("Error in convertYamlToMap: ", e);
-        overrideErrorsSet.add(errMsg);
+        overrideErrorsSet.add(
+            "Error: Unable to parse overrides structure, incorrect format specified");
       }
       Set<String> providersAZSet = new HashSet<>();
       Set<String> placementAZSet = new HashSet<>();
@@ -104,9 +124,9 @@ public class KubernetesOverridesController extends AuthenticatedController {
         String ybSoftwareVersion = cluster.userIntent.ybSoftwareVersion;
         PlacementInfo pi = cluster.placementInfo;
         Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-        for (Region r : provider.regions) {
-          for (AvailabilityZone az : r.zones) {
-            providersAZSet.add(az.code);
+        for (Region r : provider.getRegions()) {
+          for (AvailabilityZone az : r.getZones()) {
+            providersAZSet.add(az.getCode());
           }
         }
         KubernetesPlacement placement =
@@ -114,7 +134,7 @@ public class KubernetesOverridesController extends AuthenticatedController {
         for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
           UUID azUUID = entry.getKey();
           boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
-          String azName = AvailabilityZone.getOrBadRequest(azUUID).code;
+          String azName = AvailabilityZone.getOrBadRequest(azUUID).getCode();
           String azCode = isMultiAz ? azName : null;
           placementAZSet.add(azName);
           Map<String, String> config = entry.getValue();
@@ -131,7 +151,7 @@ public class KubernetesOverridesController extends AuthenticatedController {
           }
 
           String namespace =
-              PlacementInfoUtil.getKubernetesNamespace(
+              KubernetesUtil.getKubernetesNamespace(
                   taskParams.nodePrefix,
                   azCode,
                   config,
@@ -167,7 +187,7 @@ public class KubernetesOverridesController extends AuthenticatedController {
       return KubernetesOverridesResponse.convertErrorsToKubernetesOverridesResponse(
           overrideErrorsSet);
     } catch (Exception e) {
-      LOG.error("Exception in validating kubernetes overrides: " + e);
+      LOG.error("Exception in validating kubernetes overrides: ", e);
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
   }

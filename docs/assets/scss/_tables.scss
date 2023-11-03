@@ -7,11 +7,25 @@ main {
       overflow: auto;
       scrollbar-width: thin;
       margin: 20px 0;
-
-      > table {
+      max-width: 828px;
+  
+      > table{
         margin: 0 !important;
         border: none;
         box-shadow: none;
+    @media(max-width:900px){
+      min-width:650px;
+    }
+        tbody{
+          border-bottom:0;
+          
+          tr:last-child{
+            //background: red;
+            td{
+              border-bottom:0px;
+            }
+          }
+        }
       }
 
       &::-webkit-scrollbar-thumb {
@@ -33,10 +47,6 @@ main {
       margin: 1em 0;
       width: 100%;
 
-      @media (max-width: 1199px) {
-        display: block;
-      }
-
       &.no-alter-colors {
         display: block;
         overflow-x: auto;
@@ -50,6 +60,12 @@ main {
         &::-webkit-scrollbar-thumb {
           background: #b7c3cb;
           border-radius: 6px;
+        }
+      }
+
+      &.sno-1 {
+        tr th:first-child, tr td:first-child {
+          width: 1%;
         }
       }
 
@@ -109,12 +125,14 @@ main {
   }
 }
 
+
+
 @media (min-width: 1024px) {
   main {
     .td-content {
       table {
-        max-width: 828px;
-        margin-left: 0 !important;
+        max-width: 827px;
+        margin-left: 1px !important;
         overflow: hidden;
       }
     }

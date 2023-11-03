@@ -18,9 +18,12 @@
 
 #include "yb/server/server_base_options.h"
 
+#include "yb/server/server_fwd.h"
 #include "yb/util/atomic.h"
 
 namespace yb {
+class Thread;
+
 namespace client {
 
 YB_STRONGLY_TYPED_BOOL(AutoStart);
@@ -37,7 +40,7 @@ class AsyncClientInitialiser {
 
   void Shutdown() { stopping_ = true; }
 
-  void Start();
+  void Start(const server::ClockPtr& clock = nullptr);
 
   YBClient* client() const;
 
@@ -54,7 +57,7 @@ class AsyncClientInitialiser {
   }
 
  private:
-  void InitClient();
+  void InitClient(const server::ClockPtr& clock);
 
   std::unique_ptr<YBClientBuilder> client_builder_;
   rpc::Messenger* messenger_ = nullptr;
@@ -63,7 +66,7 @@ class AsyncClientInitialiser {
   AtomicUniquePtr<client::YBClient> client_holder_;
   std::vector<std::function<void(client::YBClient*)>> post_create_hooks_;
 
-  std::thread init_client_thread_;
+  scoped_refptr<Thread> init_client_thread_;
   std::atomic<bool> stopping_ = {false};
 };
 

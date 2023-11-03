@@ -1,5 +1,5 @@
 ---
-title: Bulk import
+title: Bulk import YCQL
 headerTitle: Bulk import for YCQL
 linkTitle: Bulk import
 description: Import data from Apache Cassandra to YugabyteDB.
@@ -73,9 +73,9 @@ then
 fi
 
 > $2 # clearing file
-for i in `seq 1 $1`
-do
-  echo customer$((i%10)),$((i%3)),2017-11-11 12:30:$((i%60)).000000+0000,\"{temp:$i, humidity:$i}\" >> $2
+for i in $(seq 1 "$1"); do
+  timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.000000+0000")
+  echo "customer${i},${i},${timestamp},\"{temp:${i}, humidity:${i}}\"" >> "$2"
 done
 ```
 

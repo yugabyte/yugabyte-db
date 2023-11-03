@@ -74,14 +74,12 @@ TAG_FLAG(max_backoff_ms_exponent, advanced);
 
 namespace yb {
 
-using std::shared_ptr;
 using std::string;
-using strings::Substitute;
 using strings::SubstituteAndAppend;
 
 namespace rpc {
 
-RpcCommand::RpcCommand() : trace_(Trace::NewTraceForParent(Trace::CurrentTrace())) {
+RpcCommand::RpcCommand() : trace_(Trace::MaybeGetNewTraceForParent(Trace::CurrentTrace())) {
 }
 
 RpcCommand::~RpcCommand() {}
@@ -152,33 +150,33 @@ Status RpcRetrier::DoDelayedRetry(RpcCommand* rpc, const Status& why_status) {
   RpcRetrierState expected_state = RpcRetrierState::kIdle;
   while (!state_.compare_exchange_strong(expected_state, RpcRetrierState::kScheduling)) {
     if (expected_state == RpcRetrierState::kFinished) {
-      auto result = STATUS_FORMAT(IllegalState, "Retry of finished command: $0", rpc);
-      LOG(WARNING) << result;
-      return result;
+      auto status = STATUS_FORMAT(IllegalState, "Retry of finished command: $0", rpc);
+      LOG(WARNING) << status;
+      return status;
     }
     if (expected_state == RpcRetrierState::kWaiting) {
-      auto result = STATUS_FORMAT(IllegalState, "Retry of already waiting command: $0", rpc);
-      LOG(WARNING) << result;
-      return result;
+      auto status = STATUS_FORMAT(IllegalState, "Retry of already waiting command: $0", rpc);
+      LOG(WARNING) << status;
+      return status;
     }
   }
 
   auto retain_rpc = rpc->shared_from_this();
-  task_id_ = messenger_->ScheduleOnReactor(
+  auto task_id_result = messenger_->ScheduleOnReactor(
       std::bind(&RpcRetrier::DoRetry, this, rpc, _1),
       retry_delay_ + MonoDelta::FromMilliseconds(RandomUniformInt(0, 4)),
-      SOURCE_LOCATION(), messenger_);
+      SOURCE_LOCATION());
 
-  // Scheduling state can be changed only in this method, so we expected both
-  // exchanges below to succeed.
+  // Scheduling state can be changed only in this method, so we expected both exchanges below to
+  // succeed.
   expected_state = RpcRetrierState::kScheduling;
-  if (task_id_.load(std::memory_order_acquire) == kInvalidTaskId) {
-    auto result = STATUS_FORMAT(Aborted, "Failed to schedule: $0", rpc);
-    LOG(WARNING) << result;
+  if (!task_id_result.ok()) {
+    task_id_.store(kInvalidTaskId, std::memory_order_release);
     CHECK(state_.compare_exchange_strong(
         expected_state, RpcRetrierState::kFinished, std::memory_order_acq_rel));
-    return result;
+    return task_id_result.status();
   }
+  task_id_.store(*task_id_result, std::memory_order_release);
   CHECK(state_.compare_exchange_strong(
       expected_state, RpcRetrierState::kWaiting, std::memory_order_acq_rel));
   return Status::OK();
@@ -305,7 +303,7 @@ Rpcs::Rpcs(std::mutex* mutex) {
 CoarseTimePoint Rpcs::DoRequestAbortAll(RequestShutdown shutdown) {
   std::vector<Calls::value_type> calls;
   {
-    std::lock_guard<std::mutex> lock(*mutex_);
+    std::lock_guard lock(*mutex_);
     if (!shutdown_) {
       shutdown_ = shutdown;
       calls.reserve(calls_.size());
@@ -346,7 +344,7 @@ void Rpcs::Register(RpcCommandPtr call, Handle* handle) {
 }
 
 Rpcs::Handle Rpcs::Register(RpcCommandPtr call) {
-  std::lock_guard<std::mutex> lock(*mutex_);
+  std::lock_guard lock(*mutex_);
   if (shutdown_) {
     call->Abort();
     return InvalidHandle();
@@ -380,7 +378,7 @@ RpcCommandPtr Rpcs::Unregister(Handle* handle) {
   }
   auto result = **handle;
   {
-    std::lock_guard<std::mutex> lock(*mutex_);
+    std::lock_guard lock(*mutex_);
     calls_.erase(*handle);
     cond_.notify_one();
   }
@@ -389,7 +387,7 @@ RpcCommandPtr Rpcs::Unregister(Handle* handle) {
 }
 
 Rpcs::Handle Rpcs::Prepare() {
-  std::lock_guard<std::mutex> lock(*mutex_);
+  std::lock_guard lock(*mutex_);
   if (shutdown_) {
     return InvalidHandle();
   }

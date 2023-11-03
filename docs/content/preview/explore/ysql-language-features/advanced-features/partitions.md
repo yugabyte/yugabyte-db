@@ -8,8 +8,6 @@ menu:
     identifier: advanced-features-partitions
     parent: advanced-features
     weight: 225
-aliases:
-  - /preview/explore/ysql-language-features/partitions/
 type: docs
 ---
 

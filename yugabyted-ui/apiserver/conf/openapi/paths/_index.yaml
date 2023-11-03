@@ -1,3 +1,109 @@
+'/migrations':
+  get:
+    summary: Get the list of Voyager migrations
+    description: Get the list of Voyager migrations
+    operationId: GetVoyagerMigrationTasks
+    tags:
+      - voyager-info
+    parameters:
+      - name: uuid
+        in: query
+        description: uuid of the voyager migration task
+        required: false
+        style: form
+        explode: false
+        schema:
+          type: string
+          format: uuid
+      - name: migration_phase
+        in: query
+        description: specify the migration phase for which details are required
+        required: false
+        style: form
+        explode: false
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/VoyagerMigrationsResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/migration_assesment':
+  get:
+    summary: Get Voyager data migration metrics
+    description: Get Voyager data migration metrics
+    operationId: GetVoyagerMigrationAssesmentDetails
+    tags:
+      - voyager-info
+    parameters:
+      - name: uuid
+        in: query
+        description: uuid of the voyager migration task
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+          format: uuid
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/VoyagerAssesmentResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/migrate_schema':
+  get:
+    summary: Get Voyager data migration metrics
+    description: Get Voyager data migration metrics
+    operationId: GetVoyagerMigrateSchemaTasks
+    tags:
+      - voyager-info
+    parameters:
+      - name: uuid
+        in: query
+        description: uuid of the voyager migration task
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+          format: uuid
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/MigrateSchemaResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/migration_metrics':
+  get:
+    summary: Get Voyager data migration metrics
+    description: Get Voyager data migration metrics
+    operationId: GetVoyagerDataMigrationMetrics
+    tags:
+      - voyager-metrics
+    parameters:
+      - name: uuid
+        in: query
+        description: uuid of the voyager migration task
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+          format: uuid
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/VoyagerDataMigrationMetricsResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
 '/cluster':
   get:
     summary: Get a cluster
@@ -118,6 +224,14 @@
       explode: false
       schema:
         type: string
+    - name: zone
+      in: query
+      description: Zone to filter for the given cluster
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: string
     - name: start_time
       in: query
       description: Start of range of time series data (in epoch seconds)
@@ -138,6 +252,14 @@
         type: integer
         format: int64
         minimum: 0
+    - name: cluster_type
+      in: query
+      description: Cluster type (primary or read replica)
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: string
   get:
     summary: Get a metric for a cluster
     description: Get metrics for a Yugabyte cluster
@@ -147,6 +269,45 @@
     responses:
       '200':
         $ref: '../responses/_index.yaml#/MetricResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/activities':
+  parameters:
+    - name: activities
+      in: query
+      description: Which activities data to retrieve
+      required: true
+      style: form
+      explode: false
+      schema:
+        type: string
+    - name: status
+      in: query
+      description: Completed or In-Progress
+      required: true
+      style: form
+      explode: false
+      schema:
+        type: string
+    - name: database
+      in: query
+      description: Which database's activities data is to be retrived.
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: string
+  get:
+    summary: Get a activities data for a cluster
+    description: Get activities data for a Yugabyte cluster
+    operationId: getClusterActivities
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ActivityResponse'
       '400':
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
@@ -171,6 +332,37 @@
     responses:
       '200':
         $ref: '../responses/_index.yaml#/ClusterTableListResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/table:
+  get:
+    description: Get info on a single table, given table uuid
+    operationId: getTableInfo
+    summary: Get info on a single table, given table uuid
+    tags:
+      - cluster-info
+    parameters:
+      - name: id
+        in: query
+        description: UUID of the table
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+      - name: node_address
+        in: query
+        description: Specify the node ip-address from where the table info is retrieved
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/TableInfoResponse'
       '400':
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
@@ -213,6 +405,68 @@
     responses:
       '200':
         $ref: '../responses/_index.yaml#/VersionInfo'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/is_load_balancer_idle:
+  get:
+    summary: Check if cluster load balancer is idle
+    description: Check if cluster load balancer is idle
+    tags:
+      - cluster-info
+    operationId: getIsLoadBalancerIdle
+    responses:
+      '200':
+        description: Is load balancer idle
+        content:
+          application/json:
+            schema:
+              title: Is load balancer idle
+              description: Is load balancer idle
+              type: object
+              properties:
+                is_idle:
+                  type: boolean
+              required:
+                - is_idle
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/gflags:
+  get:
+    summary: Get gflags of master and tserver process
+    description: Retrieve gflags of master and tserver process
+    operationId: getGflags
+    tags:
+      - cluster-info
+    parameters:
+      - name: node_address
+        in: query
+        description: Specify the node ip-address from where gflags are retrieved
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/GflagsResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/alerts:
+  get:
+    summary: Get any alerts for the cluster
+    description: Get any alerts for the cluster
+    operationId: getClusterAlerts
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/AlertsResponse'
       '400':
         $ref: '../responses/_index.yaml#/ApiError'
       '500':

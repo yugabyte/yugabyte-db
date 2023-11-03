@@ -95,6 +95,7 @@ yb_readonly_virtualenv=true
 
 detect_architecture
 activate_virtualenv
+set_pythonpath
 
 if [[ -n ${YB_LIST_CTEST_TESTS_ONLY:-} ]]; then
   # This has to match CTEST_TEST_PROGRAM_RE in run_tests_on_spark.py.
@@ -117,7 +118,7 @@ trap cleanup EXIT
 readonly process_supervisor_log_path=\
 ${TEST_TMPDIR:-/tmp}/yb_process_supervisor_for_pid_$$__$RANDOM.log
 
-"$YB_SRC_ROOT/python/yb/process_tree_supervisor.py" \
+"$YB_SCRIPT_PATH_PROCESS_TREE_SUPERVISOR" \
   --pid $$ \
   --terminate-subtree \
   --timeout-sec "$PROCESS_TREE_SUPERVISOR_TEST_TIMEOUT_SEC" \
@@ -174,8 +175,15 @@ if [[ -z $TEST_PATH ]]; then
 fi
 shift
 
+if [[ -n ${BUILD_ROOT:-} ]]; then
+  if [[ ! -d $BUILD_ROOT ]]; then
+    fatal "The directory specified by $BUILD_ROOT does not exist"
+  fi
+  cd "$BUILD_ROOT"
+fi
+
 if [[ ! -f $TEST_PATH ]]; then
-  fatal "Test binary '$TEST_PATH' does not exist"
+  fatal "Test binary '$TEST_PATH' does not exist. Current directory: $PWD"
 fi
 
 if [[ -n ${YB_CHECK_TEST_EXISTENCE_ONLY:-} ]]; then

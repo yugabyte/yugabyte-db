@@ -41,8 +41,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "yb/util/logging.h"
-
 #include <signal.h>
 #include <stdio.h>
 
@@ -52,7 +50,7 @@
 
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
@@ -61,6 +59,8 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/util/symbolize.h"
+#include "yb/util/thread.h"
 
 DEFINE_UNKNOWN_string(log_filename, "",
     "Prefix of log filename - "
@@ -76,6 +76,8 @@ DEFINE_UNKNOWN_string(minicluster_daemon_id, "",
 DEFINE_UNKNOWN_string(ref_counted_debug_type_name_regex, "",
               "Regex for type names for debugging RefCounted / scoped_refptr based classes. "
               "An empty string disables RefCounted debug logging.");
+
+DECLARE_bool(TEST_running_test);
 
 const char* kProjName = "yb";
 
@@ -203,6 +205,10 @@ void InitializeGoogleLogging(const char *arg) {
   google::InitGoogleLogging(arg);
 
   google::InstallFailureFunction(DumpStackTraceAndExit);
+
+  if (FLAGS_TEST_running_test) {
+    google::SetLogPrefix(&TEST_GetThreadLogPrefix);
+  }
 
   log_fatal_handler_sink = std::make_unique<LogFatalHandlerSink>();
 }
@@ -478,7 +484,7 @@ bool LogRateThrottler::TooMany() {
   const auto now = CoarseMonoClock::Now();
   const auto drop_limit = now - duration_;
   const auto queue_size = queue_.size();
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   while (count_ > 0 && queue_[head_] < drop_limit) {
     ++head_;
     if (head_ >= queue_size) {

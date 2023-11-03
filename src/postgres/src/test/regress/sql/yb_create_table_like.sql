@@ -25,20 +25,27 @@ CREATE TABLE testsplitat (
   b TEXT,
   PRIMARY KEY(a ASC, b ASC));
 CREATE TABLE testlikesplitat(LIKE testsplitat INCLUDING INDEXES) SPLIT AT VALUES((-100, 'bar'), (250, 'foo'));
+CREATE INDEX ON testlikesplitat(a ASC) SPLIT AT VALUES ((10), (20));
 \d+ testlikesplitat
 SELECT yb_get_range_split_clause('testlikesplitat'::regclass);
+SELECT yb_get_range_split_clause('testlikesplitat_a_idx'::regclass);
 
 -- Test adding SPLIT INTO syntax with copied PK.
 CREATE TABLE testsplitinto(a INT, b text, PRIMARY KEY((a, b) HASH));
 CREATE TABLE testlikesplitinto(LIKE testsplitinto INCLUDING INDEXES) SPLIT INTO 2 TABLETS;
+CREATE INDEX ON testlikesplitinto(a) SPLIT INTO 5 TABLETS;
 \d+ testlikesplitinto
-SELECT * FROM yb_table_properties('testlikesplitinto'::regclass);
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('testlikesplitinto'::regclass);
+SELECT num_tablets, num_hash_key_columns
+    FROM yb_table_properties('testlikesplitinto_a_idx'::regclass);
 
 -- Split info is not copied.
 CREATE TABLE neg_splitat (LIKE testlikesplitat INCLUDING ALL);
 SELECT yb_get_range_split_clause('neg_splitat'::regclass);
+SELECT yb_get_range_split_clause('neg_splitat_a_idx'::regclass);
 CREATE TABLE neg_splitinto (LIKE testlikesplitinto INCLUDING ALL);
-SELECT * FROM yb_table_properties('neg_splitinto'::regclass);
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('neg_splitinto'::regclass);
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('neg_splitinto_a_idx'::regclass);
 DROP TABLE testsplitat, testlikesplitat, testsplitinto, testlikesplitinto, neg_splitat, neg_splitinto CASCADE;
 
 -- Test variations of unique key index.
@@ -159,7 +166,16 @@ CREATE TABLE liketemptest (LIKE temptest INCLUDING ALL);
 DROP TABLE liketemptest;
 -- Test using LIKE clause where source and target tables are temp tables.
 CREATE TEMP TABLE liketemptest (LIKE temptest INCLUDING ALL);
+-- \d liketemptest has unstable output due to temporary schemaname
+-- such as pg_temp_1, pg_temp_2, etc. Use regexp_replace to change
+-- it to pg_temp_xxx so that the result is stable.
+select current_setting('data_directory') || 'describe.out' as desc_output_file
+\gset
+\o :desc_output_file
 \d liketemptest
+\o
+select regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_\d+', 'pg_temp_xxx', 'g');
+
 -- Test using LIKE clause where the target table is a temp table.
 CREATE TEMP TABLE gin_test (a int[]);
 CREATE INDEX ON gin_test USING GIN (a);

@@ -12,6 +12,7 @@
     "bin": [
       "$BUILD_ROOT/bin/ldb",
       "$BUILD_ROOT/bin/log-dump",
+      "$BUILD_ROOT/bin/odyssey",
       "$BUILD_ROOT/bin/sst_dump",
       "$BUILD_ROOT/bin/yb-admin",
       "$BUILD_ROOT/bin/yb-bulk_load",
@@ -43,6 +44,7 @@
     "pylib": ["thirdparty/installed/common/cqlsh/pylib/*"],
     "share": [
       "$BUILD_ROOT/share/initial_sys_catalog_snapshot",
+      "$BUILD_ROOT/share/ysql_conn_mgr.template.conf",
       "$BUILD_ROOT/share/ysql_migrations",
       "sample/*.sql"
     ],
@@ -51,7 +53,8 @@
       "bin/print_stacks.sh",
       "bin/yb-check-failed-tablets.sh",
       "scripts/k8s_preflight.py",
-      "scripts/k8s_parent.py"
+      "scripts/k8s_parent.py",
+      "scripts/k8s_ybc_parent.py"
     ],
     "www": ["www/*"]
   },

@@ -15,7 +15,10 @@
 
 #include "access/htup_details.h"
 #include "access/sysattr.h"
+#include "access/yb_scan.h"
 #include "catalog/catalog.h"
+#include "catalog/namespace.h"
+#include "catalog/pg_authid_d.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_namespace_d.h"
 #include "catalog/pg_proc.h"
@@ -32,6 +35,7 @@
 #include "utils/rel.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "pg_yb_utils.h"
 
 YbCatalogVersionType yb_catalog_version_type = CATALOG_VERSION_UNSET;
@@ -79,10 +83,66 @@ uint64_t YbGetMasterCatalogVersion()
 /* Modify Catalog Version */
 
 static void
+YbCallSQLIncrementCatalogVersions(bool is_breaking_change)
+{
+	List* names =
+		list_make2(makeString("pg_catalog"),
+				   makeString("yb_increment_all_db_catalog_versions"));
+	FuncCandidateList clist = FuncnameGetCandidates(
+		names,
+		-1 /* nargs */,
+		NIL /* argnames */,
+		false /* expand_variadic */,
+		false /* expand_defaults */,
+		false /* missing_ok */);
+	/* We expect exactly one candidate. */
+	Assert(clist && clist->next == NULL);
+	Oid functionId = clist->oid;
+	FmgrInfo    flinfo;
+	FunctionCallInfoData fcinfo;
+	fmgr_info(functionId, &flinfo);
+	InitFunctionCallInfoData(fcinfo, &flinfo, 1, InvalidOid, NULL, NULL);
+	fcinfo.arg[0] = BoolGetDatum(is_breaking_change);
+	fcinfo.argnull[0] = false;
+
+	// Save old values and set new values to enable the call.
+	bool saved = yb_non_ddl_txn_for_sys_tables_allowed;
+	yb_non_ddl_txn_for_sys_tables_allowed = true;
+	Oid save_userid;
+	int save_sec_context;
+	GetUserIdAndSecContext(&save_userid, &save_sec_context);
+	SetUserIdAndSecContext(BOOTSTRAP_SUPERUSERID,
+						   SECURITY_RESTRICTED_OPERATION);
+	PG_TRY();
+	{
+		FunctionCallInvoke(&fcinfo);
+		/* Restore old values. */
+		yb_non_ddl_txn_for_sys_tables_allowed = saved;
+		SetUserIdAndSecContext(save_userid, save_sec_context);
+	}
+	PG_CATCH();
+	{
+		/* Restore old values. */
+		yb_non_ddl_txn_for_sys_tables_allowed = saved;
+		SetUserIdAndSecContext(save_userid, save_sec_context);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+}
+
+static void
 YbIncrementMasterDBCatalogVersionTableEntryImpl(
-	Oid db_oid, bool is_breaking_change)
+	Oid db_oid, bool is_breaking_change, bool is_global_ddl)
 {
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
+
+	if (is_global_ddl)
+	{
+		Assert(YBIsDBCatalogVersionMode());
+		/* Call yb_increment_all_db_catalog_versions(is_breaking_change). */
+		YbCallSQLIncrementCatalogVersions(is_breaking_change);
+		return;
+	}
 
 	YBCPgStatement update_stmt    = NULL;
 	YBCPgTypeAttrs type_attrs = { 0 };
@@ -91,9 +151,9 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(
 	/* The table pg_yb_catalog_version is in template1. */
 	HandleYBStatus(YBCPgNewUpdate(TemplateDbOid,
 								  YBCatalogVersionRelationId,
-								  false /* is_single_row_txn */,
 								  false /* is_region_local */,
-								  &update_stmt));
+								  &update_stmt,
+									YB_TRANSACTIONAL));
 
 	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 	Datum ybctid = YbGetMasterCatalogVersionTableEntryYbctid(rel, db_oid);
@@ -159,14 +219,28 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(
 						__func__, is_breaking_change ? "" : "non", tmpbuf)));
 	}
 	HandleYBStatus(YBCPgDmlExecWriteOp(update_stmt, &rows_affected_count));
-	Assert(rows_affected_count == 1);
+	/*
+	 * Under normal situation rows_affected_count should be exactly 1. However
+	 * when a connection is established in per-database catalog version mode,
+	 * if the table pg_yb_catalog_version is updated to only have one row
+	 * for database template1 which is part of the process of converting to
+	 * global catalog version mode, this connection remains in per-database
+	 * catalog version mode. In this case rows_affected_count will be 0 unless
+	 * MyDatabaseId is template1 because in pg_yb_catalog_version the row for
+	 * MyDatabaseId no longer exists.
+	 */
+	if (rows_affected_count == 0)
+		Assert(YBIsDBCatalogVersionMode());
+	else
+		Assert(rows_affected_count == 1);
 
 	/* Cleanup. */
 	update_stmt = NULL;
 	RelationClose(rel);
 }
 
-bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
+bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
+											   bool is_global_ddl)
 {
 	if (YbGetCatalogVersionType() != CATALOG_VERSION_CATALOG_TABLE)
 		return false;
@@ -175,7 +249,7 @@ bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
 	 */
 	YbIncrementMasterDBCatalogVersionTableEntryImpl(
 		YBIsDBCatalogVersionMode() ? MyDatabaseId : TemplateDbOid,
-		is_breaking_change);
+		is_breaking_change, is_global_ddl);
 	return true;
 }
 
@@ -227,9 +301,9 @@ void YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid)
 	YBCPgStatement insert_stmt = NULL;
 	HandleYBStatus(YBCPgNewInsert(TemplateDbOid,
 								  YBCatalogVersionRelationId,
-								  true /* is_single_row_txn */,
 								  false /* is_region_local */,
-								  &insert_stmt));
+								  &insert_stmt,
+								  YB_SINGLE_SHARD_TRANSACTION));
 
 	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 	Datum ybctid = YbGetMasterCatalogVersionTableEntryYbctid(rel, db_oid);
@@ -277,9 +351,9 @@ void YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid)
 	YBCPgStatement delete_stmt = NULL;
 	HandleYBStatus(YBCPgNewDelete(TemplateDbOid,
 								  YBCatalogVersionRelationId,
-								  true /* is_single_row_txn */,
 								  false /* is_region_local */,
-								  &delete_stmt));
+								  &delete_stmt,
+									YB_SINGLE_SHARD_TRANSACTION));
 
 	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 	Datum ybctid = YbGetMasterCatalogVersionTableEntryYbctid(rel, db_oid);
@@ -367,6 +441,14 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 	/* Add scan targets */
 	for (AttrNumber attnum = 1; attnum <= natts; attnum++)
 	{
+		/*
+		 * Before copying the following code, see if YbDmlAppendTargetRegular
+		 * or similar could be used instead.  Reason this doesn't use
+		 * YbDmlAppendTargetRegular is that it doesn't have access to
+		 * TupleDesc.  YbDmlAppendTargetRegular could be changed to take
+		 * Form_pg_attribute instead, but that would make it inconvenient for
+		 * other callers.
+		 */
 		Form_pg_attribute att = &Desc_pg_yb_catalog_version[attnum - 1];
 		YBCPgTypeAttrs type_attrs = { att->atttypmod };
 		YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, attnum, att->atttypid,
@@ -379,10 +461,7 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 	 * the ability to prefetch data from the pb_yb_catalog_version table via
 	 * PgSysTablePrefetcher.
 	 */
-	YBCPgExpr expr = YBCNewColumnRef(
-		ybc_stmt, YBTupleIdAttributeNumber, InvalidOid /* attr_typid */,
-		InvalidOid /* attr_collation */, NULL /* type_attrs */);
-	HandleYBStatus(YBCPgDmlAppendTarget(ybc_stmt, expr));
+	YbDmlAppendTargetSystem(YBTupleIdAttributeNumber, ybc_stmt);
 
 	HandleYBStatus(YBCPgExecSelect(ybc_stmt, NULL /* exec_params */));
 

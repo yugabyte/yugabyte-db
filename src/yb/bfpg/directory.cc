@@ -15,28 +15,30 @@
 
 #include "yb/bfpg/directory.h"
 
+#include "yb/common/value.messages.h"
+
 namespace yb {
 namespace bfpg {
 
-using std::initializer_list;
 using std::vector;
 
-const DataType VOID = DataType::UNKNOWN_DATA;
-const DataType ANYTYPE = DataType::NULL_VALUE_TYPE;
-const DataType INT8 = DataType::INT8;
-const DataType INT16 = DataType::INT16;
-const DataType INT32 = DataType::INT32;
-const DataType INT64 = DataType::INT64;
-const DataType STRING = DataType::STRING;
-const DataType BOOL = DataType::BOOL;
-const DataType FLOAT = DataType::FLOAT;
-const DataType DOUBLE = DataType::DOUBLE;
-const DataType TIMESTAMP = DataType::TIMESTAMP;
-const DataType DECIMAL = DataType::DECIMAL;
-const DataType VARINT = DataType::VARINT;
+constexpr DataType VOID = DataType::UNKNOWN_DATA;
+constexpr DataType ANYTYPE = DataType::NULL_VALUE_TYPE;
+using DataType::INT8;
+using DataType::INT16;
+using DataType::INT32;
+using DataType::INT64;
+using DataType::STRING;
+using DataType::BOOL;
+using DataType::FLOAT;
+using DataType::DOUBLE;
+using DataType::TIMESTAMP;
+using DataType::DECIMAL;
+using DataType::VARINT;
 // const DataType TYPEARGS = DataType::TYPEARGS;
-const DataType DATE = DataType::DATE;
-const DataType TIME = DataType::TIME;
+using DataType::DATE;
+using DataType::TIME;
+using DataType::TIMEUUID;
 
 // IMPORTANT NOTES:
 // - If your cpp_function is defined in a different name space, you must "#include" its header file

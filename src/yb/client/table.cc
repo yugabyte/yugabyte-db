@@ -22,6 +22,7 @@
 #include "yb/master/master_client.pb.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/memory/memory_usage.h"
 #include "yb/util/result.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
@@ -100,7 +101,7 @@ const Schema& YBTable::InternalSchema() const {
   return internal::GetSchema(info_->schema);
 }
 
-const IndexMap& YBTable::index_map() const {
+const qlexpr::IndexMap& YBTable::index_map() const {
   return info_->index_map;
 }
 
@@ -112,8 +113,8 @@ bool YBTable::IsUniqueIndex() const {
   return info_->index_info.is_initialized() && info_->index_info->is_unique();
 }
 
-const IndexInfo& YBTable::index_info() const {
-  static IndexInfo kEmptyIndexInfo;
+const qlexpr::IndexInfo& YBTable::index_info() const {
+  static qlexpr::IndexInfo kEmptyIndexInfo;
   if (info_->index_info) {
     return *info_->index_info;
   }
@@ -134,7 +135,7 @@ std::string YBTable::ToString() const {
       yb::ToString(index_info()), yb::ToString(index_map()));
 }
 
-const PartitionSchema& YBTable::partition_schema() const {
+const dockv::PartitionSchema& YBTable::partition_schema() const {
   return info_->partition_schema;
 }
 
@@ -176,7 +177,7 @@ int32_t YBTable::GetPartitionCount() const {
   return narrow_cast<int32_t>(partitions_->keys.size());
 }
 
-int32_t YBTable::GetPartitionListVersion() const {
+PartitionListVersion YBTable::GetPartitionListVersion() const {
   SharedLock<decltype(mutex_)> lock(mutex_);
   return partitions_->version;
 }
@@ -252,7 +253,7 @@ void YBTable::RefreshPartitions(YBClient* client, StdStatusCallback callback) {
     }
     const auto& partitions = *result;
     {
-      std::lock_guard<rw_spinlock> partitions_lock(mutex_);
+      std::lock_guard partitions_lock(mutex_);
       if (partitions->version < partitions_->version) {
         // This might happen if another split happens after we had fetched partition in the current
         // thread from master leader and partition list has been concurrently updated to version
@@ -286,6 +287,7 @@ void YBTable::FetchPartitions(
   client->GetTableLocations(
       table_id, /* max_tablets = */ std::numeric_limits<int32_t>::max(),
       RequireTabletsRunning::kTrue,
+      PartitionsOnly::kTrue,
       [table_id, callback = std::move(callback)]
           (const Result<master::GetTableLocationsResponsePB*>& result) {
         if (!result.ok()) {
@@ -310,14 +312,21 @@ void YBTable::FetchPartitions(
       });
 }
 
+size_t YBTable::DynamicMemoryUsage() const {
+  // Below presumes that every PK size is less than default string size of 22 bytes (i.e.
+  // kStdStringInternalCapacity).
+  return sizeof(*this) + info_->DynamicMemoryUsage() +
+         (GetPartitionCount() * kStdStringInternalCapacity);
+}
+
 //--------------------------------------------------------------------------------------------------
 
 size_t FindPartitionStartIndex(const TablePartitionList& partitions,
-                               const PartitionKey& partition_key,
+                               std::string_view partition_key,
                                size_t group_by) {
   auto it = std::lower_bound(partitions.begin(), partitions.end(), partition_key);
   if (it == partitions.end() || *it > partition_key) {
-    DCHECK(it != partitions.begin()) << "Could not find partition start while looking for "
+    CHECK(it != partitions.begin()) << "Could not find partition start while looking for "
         << partition_key << " in " << yb::ToString(partitions);
     --it;
   }

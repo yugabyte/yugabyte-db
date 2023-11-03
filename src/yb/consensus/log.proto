@@ -88,8 +88,8 @@ message LogSegmentHeaderPB {
   required int64 sequence_number = 6;
 
   // Schema used when appending entries to this log, and its version.
-  required SchemaPB schema = 7;
-  optional uint32 schema_version = 8;
+  required SchemaPB DEPRECATED_schema = 7;
+  optional uint32 DEPRECATED_schema_version = 8;
 }
 
 // A header for a log index block that are stored inside WAL segment file.

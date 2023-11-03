@@ -10,62 +10,57 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.controllers.RequestContext;
+import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.InstanceType.VolumeDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
-import java.io.BufferedInputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.math.BigDecimal;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.net.UnknownHostException;
+import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.Collection;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TimeZone;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
-import lombok.Getter;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Value;
+import lombok.extern.jackson.Jacksonized;
 import org.apache.commons.codec.binary.Hex;
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -74,6 +69,7 @@ public class Util {
   public static final Logger LOG = LoggerFactory.getLogger(Util.class);
   private static final Map<UUID, Process> processMap = new ConcurrentHashMap<>();
 
+  public static final UUID NULL_UUID = UUID.fromString("00000000-0000-0000-0000-000000000000");
   public static final String YSQL_PASSWORD_KEYWORD = "PASSWORD";
   public static final String DEFAULT_YSQL_USERNAME = "yugabyte";
   public static final String DEFAULT_YSQL_PASSWORD = "yugabyte";
@@ -94,9 +90,11 @@ public class Util {
   public static final String S3 = "S3";
   public static final String NFS = "NFS";
 
-  public static final String BLACKLIST_LEADERS = "yb.upgrade.blacklist_leaders";
-  public static final String BLACKLIST_LEADER_WAIT_TIME_MS =
-      "yb.upgrade.blacklist_leader_wait_time_ms";
+  public static final String CUSTOMERS = "customers";
+  public static final String UNIVERSES = "universes";
+  public static final String USERS = "users";
+  public static final String ROLE = "role";
+  public static final String UNIVERSE_UUID = "universeUUID";
 
   public static final String AVAILABLE_MEMORY = "MemAvailable";
 
@@ -104,7 +102,11 @@ public class Util {
 
   public static final double EPSILON = 0.000001d;
 
-  public static final String YBC_COMPATIBLE_DB_VERSION = "2.15.0.0-b1";
+  public static final String K8S_YBC_COMPATIBLE_DB_VERSION = "2.17.3.0-b62";
+
+  public static final String YBDB_ROLLBACK_DB_VERSION = "2.20.0.0-b1";
+
+  public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
 
   public static final String LIVE_QUERY_TIMEOUTS = "yb.query_stats.live_queries.ws";
 
@@ -114,6 +116,8 @@ public class Util {
 
   public static final String K8S_POD_FQDN_TEMPLATE =
       "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}";
+
+  public static final String YBA_VERSION_REGEX = "^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$";
 
   private static final Map<String, Long> GO_DURATION_UNITS_TO_NANOS =
       ImmutableMap.<String, Long>builder()
@@ -129,6 +133,17 @@ public class Util {
 
   private static final Pattern GO_DURATION_REGEX =
       Pattern.compile("(\\d+)(ms|us|\\u00b5s|ns|s|m|h|d)");
+
+  public static volatile String YBA_VERSION;
+
+  public static String getYbaVersion() {
+    return YBA_VERSION;
+  }
+
+  public static void setYbaVersion(String version) {
+    YBA_VERSION = version;
+  }
+
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
@@ -142,13 +157,6 @@ public class Util {
       inetAddrs.add(new InetSocketAddress(privateIp, yqlRPCPort));
     }
     return inetAddrs;
-  }
-
-  public static String redactString(String input) {
-    String length = ((Integer) input.length()).toString();
-    String regex = "(.)" + "{" + length + "}";
-    String output = input.replaceAll(regex, REDACT);
-    return output;
   }
 
   public static String redactYsqlQuery(String input) {
@@ -203,7 +211,7 @@ public class Util {
     if (c == null) {
       throw new RuntimeException("Invalid Customer Id: " + custId);
     }
-    return String.format("yb-%s-%s", c.code, univName);
+    return String.format("yb-%s-%s", c.getCode(), univName);
   }
 
   /**
@@ -400,22 +408,25 @@ public class Util {
   }
 
   @ApiModel(value = "UniverseDetailSubset", description = "A small subset of universe information")
-  @Getter
+  @Value
+  @Jacksonized
+  @Builder
+  @AllArgsConstructor
   public static class UniverseDetailSubset {
-    final UUID uuid;
-    final String name;
-    final boolean updateInProgress;
-    final boolean updateSucceeded;
-    final long creationDate;
-    final boolean universePaused;
+    UUID uuid;
+    String name;
+    boolean updateInProgress;
+    boolean updateSucceeded;
+    long creationDate;
+    boolean universePaused;
 
     public UniverseDetailSubset(Universe universe) {
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-      uuid = universe.universeUUID;
-      name = universe.name;
+      uuid = universe.getUniverseUUID();
+      name = universe.getName();
       updateInProgress = universeDetails.updateInProgress;
       updateSucceeded = universeDetails.updateSucceeded;
-      creationDate = universe.creationDate.getTime();
+      creationDate = universe.getCreationDate().getTime();
       universePaused = universeDetails.universePaused;
     }
   }
@@ -439,7 +450,17 @@ public class Util {
   // positive integer if v1 is newer than v2, a negative integer if v1
   // is older than v2.
   public static int compareYbVersions(String v1, String v2, boolean suppressFormatError) {
-    Pattern versionPattern = Pattern.compile("^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$");
+    // After the second dash, a user can add anything, and it will be ignored.
+    String[] v1Parts = v1.split("-", 3);
+    if (v1Parts.length > 2) {
+      v1 = v1Parts[0] + "-" + v1Parts[1];
+    }
+    String[] v2Parts = v2.split("-", 3);
+    if (v2Parts.length > 2) {
+      v2 = v2Parts[0] + "-" + v2Parts[1];
+    }
+
+    Pattern versionPattern = Pattern.compile(YBA_VERSION_REGEX);
     Matcher v1Matcher = versionPattern.matcher(v1);
     Matcher v2Matcher = versionPattern.matcher(v2);
 
@@ -489,6 +510,20 @@ public class Util {
     }
 
     throw new RuntimeException("Unable to parse YB version strings");
+  }
+
+  public static void ensureYbVersionFormatValidOrThrow(String ybVersion) {
+    // Phony comparison to check the version format.
+    compareYbVersions(ybVersion, "0.0.0.0-b0", false /* suppressFormatError */);
+  }
+
+  public static boolean isYbVersionFormatValid(String ybVersion) {
+    try {
+      ensureYbVersionFormatValidOrThrow(ybVersion);
+      return true;
+    } catch (Exception ignore) {
+      return false;
+    }
   }
 
   public static String escapeSingleQuotesOnly(String src) {
@@ -601,11 +636,23 @@ public class Util {
     return Hex.encodeHexString(bytes);
   }
 
-  // TODO(bhavin192): Helm allows the release name to be 53 characters
-  // long, and with new naming style this becomes 43 for our case.
-  // Sanitize helm release name.
-  public static String sanitizeHelmReleaseName(String name) {
-    return sanitizeKubernetesNamespace(name, 0);
+  // Converts input string to base36 string of length 4.
+  // return string will contain characters a-z, 0-9.
+  public static String base36hash(String inputStr) {
+    int hashCode = inputStr.hashCode();
+    byte[] bytes = new byte[4];
+    char[] chars = new char[4];
+    for (int i = 0; i < bytes.length; i++) {
+      // 1 byte.
+      int val = hashCode & 0xFF;
+      if (val >= 0 && val <= 9) {
+        chars[i] = (char) ('0' + val);
+      } else {
+        chars[i] = (char) ('a' + (val - 10) % 26);
+      }
+      hashCode >>= 8;
+    }
+    return new String(chars);
   }
 
   // Sanitize kubernetes namespace name. Additional suffix length can be reserved.
@@ -634,8 +681,9 @@ public class Util {
 
   public static boolean canConvertJsonNode(JsonNode jsonNode, Class<?> toValueType) {
     try {
-      new ObjectMapper().treeToValue(jsonNode, toValueType);
+      Json.mapper().treeToValue(jsonNode, toValueType);
     } catch (JsonProcessingException e) {
+      LOG.info(e.getMessage());
       return false;
     }
     return true;
@@ -660,9 +708,9 @@ public class Util {
     return dirPath;
   }
 
-  public static String getNodeHomeDir(UUID universeUUID, String nodeName) {
+  public static String getNodeHomeDir(UUID universeUUID, NodeDetails node) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    String providerUUID = Universe.getCluster(universe, nodeName).userIntent.provider;
+    String providerUUID = universe.getCluster(node.placementUuid).userIntent.provider;
     Provider provider = Provider.getOrBadRequest(UUID.fromString(providerUUID));
     return provider.getYbHome();
   }
@@ -670,17 +718,8 @@ public class Util {
   public static boolean isOnPremManualProvisioning(Universe universe) {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     if (userIntent.providerType == Common.CloudType.onprem) {
-      boolean manualProvisioning = false;
-      try {
-        AccessKey accessKey =
-            AccessKey.getOrBadRequest(
-                UUID.fromString(userIntent.provider), userIntent.accessKeyCode);
-        AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
-        manualProvisioning = keyInfo.skipProvisioning;
-      } catch (PlatformServiceException ex) {
-        // no access code
-      }
-      return manualProvisioning;
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+      return provider.getDetails().skipProvisioning;
     }
     return false;
   }
@@ -789,11 +828,11 @@ public class Util {
    * @param tarFile the archive we want to sasve to folderPath
    * @param folderPath the directory where we want to extract the archive to
    */
-  public static void extractFilesFromTarGZ(File tarFile, String folderPath) throws IOException {
+  public static void extractFilesFromTarGZ(Path tarFile, String folderPath) throws IOException {
     TarArchiveEntry currentEntry;
     Files.createDirectories(Paths.get(folderPath));
 
-    try (FileInputStream fis = new FileInputStream(tarFile);
+    try (FileInputStream fis = new FileInputStream(tarFile.toFile());
         GZIPInputStream gis = new GZIPInputStream(new BufferedInputStream(fis));
         TarArchiveInputStream tis = new TarArchiveInputStream(gis)) {
       while ((currentEntry = tis.getNextTarEntry()) != null) {
@@ -823,5 +862,148 @@ public class Util {
           isKubernetesUniverse || cluster.userIntent.providerType.equals(CloudType.kubernetes);
     }
     return isKubernetesUniverse;
+  }
+
+  public static String getYbcNodeIp(Universe universe) {
+    List<NodeDetails> nodeList = universe.getRunningTserversInPrimaryCluster();
+    return nodeList.get(0).cloudInfo.private_ip;
+  }
+
+  public static String computeFileChecksum(Path filePath, String checksumAlgorithm)
+      throws Exception {
+    checksumAlgorithm = checksumAlgorithm.toUpperCase();
+    if (checksumAlgorithm.equals("SHA1")) {
+      checksumAlgorithm = "SHA-1";
+    } else if (checksumAlgorithm.equals("SHA256")) {
+      checksumAlgorithm = "SHA-256";
+    }
+    MessageDigest md = MessageDigest.getInstance(checksumAlgorithm);
+    try (DigestInputStream dis =
+        new DigestInputStream(new FileInputStream(filePath.toFile()), md)) {
+      while (dis.read() != -1)
+        ; // Empty loop to clear the data
+      md = dis.getMessageDigest();
+      // Convert the digest to String.
+      StringBuilder result = new StringBuilder();
+      for (byte b : md.digest()) {
+        result.append(String.format("%02x", b));
+      }
+      return result.toString().toLowerCase();
+    }
+  }
+
+  public static String maybeGetEmailFromContext() {
+    return Optional.ofNullable(RequestContext.getIfPresent(TokenAuthenticator.USER))
+        .map(UserWithFeatures::getUser)
+        .map(Users::getEmail)
+        .map(Object::toString)
+        .orElse("Unknown");
+  }
+
+  public static Universe lockUniverse(Universe universe) {
+    UniverseUpdater updater =
+        u -> {
+          UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
+          universeDetails.updateInProgress = true;
+          universeDetails.updateSucceeded = false;
+          u.setUniverseDetails(universeDetails);
+        };
+    return Universe.saveDetails(universe.getUniverseUUID(), updater, false);
+  }
+
+  public static Universe unlockUniverse(Universe universe) {
+    UniverseUpdater updater =
+        u -> {
+          UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
+          universeDetails.updateInProgress = false;
+          universeDetails.updateSucceeded = true;
+          u.setUniverseDetails(universeDetails);
+        };
+    return Universe.saveDetails(universe.getUniverseUUID(), updater, false);
+  }
+
+  public static boolean isAddressReachable(String host, int port) {
+    try (Socket socket = new Socket()) {
+      socket.connect(new InetSocketAddress(host, port), 3000);
+      return true;
+    } catch (IOException e) {
+    }
+    return false;
+  }
+
+  public static long getExponentialBackoffDelayMs(
+      long initialDelayMs, long maxDelayMs, int iterationNumber) {
+    double multiplier = 2.0;
+    long delay =
+        (long) (initialDelayMs * Math.pow(multiplier, iterationNumber) + Math.random() * 1000);
+    if (delay > maxDelayMs) {
+      delay = maxDelayMs;
+    }
+    return delay;
+  }
+
+  /**
+   * Gets the path to "yb-data/" folder on the node (Ex: "/mnt/d0", "/mnt/disk0")
+   *
+   * @param universe
+   * @param node
+   * @param config
+   * @return the path to "yb-data/" folder on the node
+   */
+  public static String getDataDirectoryPath(Universe universe, NodeDetails node, Config config) {
+    String dataDirPath = config.getString("yb.support_bundle.default_mount_point_prefix") + "0";
+    UserIntent userIntent = universe.getCluster(node.placementUuid).userIntent;
+    CloudType cloudType = userIntent.providerType;
+
+    if (cloudType == CloudType.onprem) {
+      // On prem universes:
+      // Onprem universes have to specify the mount points for the volumes at the time of provider
+      // creation itself.
+      // This is stored at universe.cluster.userIntent.deviceInfo.mountPoints
+      try {
+        String mountPoints = userIntent.deviceInfo.mountPoints;
+        dataDirPath = mountPoints.split(",")[0];
+      } catch (Exception e) {
+        LOG.error(String.format("On prem invalid mount points. Defaulting to %s", dataDirPath), e);
+      }
+    } else if (cloudType == CloudType.kubernetes) {
+      // Kubernetes universes:
+      // K8s universes have a default mount path "/mnt/diskX" with X = {0, 1, 2...} based on number
+      // of volumes
+      // This is specified in the charts repo:
+      // https://github.com/yugabyte/charts/blob/master/stable/yugabyte/templates/service.yaml
+      String mountPoint = config.getString("yb.support_bundle.k8s_mount_point_prefix");
+      dataDirPath = mountPoint + "0";
+    } else {
+      // Other provider based universes:
+      // Providers like GCP, AWS have the mountPath stored in the instance types for the most part.
+      // Some instance types don't have mountPath initialized. In such cases, we default to
+      // "/mnt/d0"
+      try {
+        String nodeInstanceType = node.cloudInfo.instance_type;
+        String providerUUID = userIntent.provider;
+        InstanceType instanceType =
+            InstanceType.getOrBadRequest(UUID.fromString(providerUUID), nodeInstanceType);
+        List<VolumeDetails> volumeDetailsList =
+            instanceType.getInstanceTypeDetails().volumeDetailsList;
+        if (CollectionUtils.isNotEmpty(volumeDetailsList)) {
+          dataDirPath = volumeDetailsList.get(0).mountPath;
+        } else {
+          LOG.info("Mount point is not defined. Defaulting to {}", dataDirPath);
+        }
+      } catch (Exception e) {
+        LOG.error(String.format("Could not get mount points. Defaulting to %s", dataDirPath), e);
+      }
+    }
+    return dataDirPath;
+  }
+
+  public static String extractRegexValue(String input, String patternStr) {
+    Pattern pattern = Pattern.compile(patternStr);
+    Matcher matcher = pattern.matcher(input);
+    if (matcher.find()) {
+      return matcher.group(1);
+    }
+    return null;
   }
 }

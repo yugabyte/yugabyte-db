@@ -10,12 +10,13 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
-import com.yugabyte.yw.models.helpers.BundleDetails;
 import com.yugabyte.yw.forms.SupportBundleFormData;
+import com.yugabyte.yw.models.helpers.BundleDetails;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbEnumValue;
 import io.ebean.annotation.DbJson;
+import io.swagger.annotations.ApiModelProperty;
 import java.io.File;
 import java.io.InputStream;
 import java.nio.file.Path;
@@ -27,6 +28,7 @@ import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
+import javax.persistence.Transient;
 import lombok.Getter;
 import lombok.Setter;
 import org.slf4j.Logger;
@@ -50,12 +52,14 @@ public class SupportBundle extends Model {
 
   @Column
   @Getter
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+  @ApiModelProperty(value = "Support bundle start date.", example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   private Date startDate;
 
   @Column
   @Getter
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+  @ApiModelProperty(value = "Support bundle end date.", example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   private Date endDate;
 
   @Column(nullable = true)
@@ -69,6 +73,11 @@ public class SupportBundle extends Model {
   private SupportBundleStatusType status;
 
   @JsonIgnore @Setter @Getter private static int retentionDays;
+
+  @Transient
+  @ApiModelProperty(value = "Size in bytes of the support bundle", required = false)
+  // 0 is the only invalid size.
+  private long sizeInBytes;
 
   public enum SupportBundleStatusType {
     Running("Running"),
@@ -118,7 +127,7 @@ public class SupportBundle extends Model {
   public static SupportBundle create(SupportBundleFormData bundleData, Universe universe) {
     SupportBundle supportBundle = new SupportBundle();
     supportBundle.bundleUUID = UUID.randomUUID();
-    supportBundle.scopeUUID = universe.universeUUID;
+    supportBundle.scopeUUID = universe.getUniverseUUID();
     supportBundle.path = null;
     if (bundleData != null) {
       supportBundle.startDate = bundleData.startDate;
@@ -180,7 +189,8 @@ public class SupportBundle extends Model {
     return creationDate;
   }
 
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+  @ApiModelProperty(value = "Support bundle creation date.", example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   public Date getCreationDate() {
     if (this.status != SupportBundleStatusType.Success) {
       return null;
@@ -188,7 +198,8 @@ public class SupportBundle extends Model {
     return this.parseCreationDate();
   }
 
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+  @ApiModelProperty(value = "Support bundle expiration date.", example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   public Date getExpirationDate() {
     if (this.status != SupportBundleStatusType.Success) {
       return null;
@@ -196,6 +207,15 @@ public class SupportBundle extends Model {
     SupportBundleUtil sbutil = new SupportBundleUtil();
     Date expirationDate = sbutil.getDateNDaysAfter(this.parseCreationDate(), getRetentionDays());
     return expirationDate;
+  }
+
+  public long getSizeInBytes() {
+    if (this.status != SupportBundleStatusType.Success) {
+      return 0;
+    }
+
+    sizeInBytes = FileUtils.getFileSize(path);
+    return sizeInBytes;
   }
 
   public static List<SupportBundle> getAll(UUID universeUUID) {

@@ -16,7 +16,7 @@
 #include <array>
 #include <utility>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 using std::array;
 using std::make_pair;

@@ -1,7 +1,8 @@
 ---
-title: Use an ORM
+title: SQLAlchemy ORM
+headerTitle: Use an ORM
 linkTitle: Use an ORM
-description: SQLAlchemy ORM support for YugabyteDB
+description: Python SQLAlchemy ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:
@@ -12,18 +13,17 @@ type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../sqlalchemy/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      SQLAlchemy ORM
+    </a>
+  </li>
 
   <li >
     <a href="../django/" class="nav-link">
       <i class="fa-brands fa-java" aria-hidden="true"></i>
       Django ORM
-    </a>
-  </li>
-
-  <li >
-    <a href="../sqlalchemy/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      SQLAlchemy ORM
     </a>
   </li>
 
@@ -33,7 +33,7 @@ type: docs
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/python/ysql-sqlalchemy/) page under the Quick start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Python ORM example application](../../orms/python/ysql-sqlalchemy/) page.
 
 The following sections demonstrate how to perform common tasks required for Python application development using the SQLAlchemy ORM.
 
@@ -146,6 +146,7 @@ Name: John Age: 35 Language: Java
 Name: Ivy Age: 27 Language: C++
 ```
 
-## Next steps
+## Learn more
 
-- Explore [Scaling Python Applications](../../../explore/linear-scalability/) with YugabyteDB.
+- Build Python applications using [Django ORM](../django/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)

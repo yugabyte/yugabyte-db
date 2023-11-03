@@ -70,3 +70,288 @@ ALTER TABLE pk_tbl ADD COLUMN v2 SERIAL;
 ERROR:  Rewriting of YB table is not yet implemented
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
 DROP TABLE pk_tbl;
+-- Verify cache cleanup of table names when TABLE RENAME fails.
+CREATE TABLE rename_test (id int);
+SET yb_test_fail_next_ddl TO true;
+ALTER TABLE rename_test RENAME TO foobar;
+ERROR:  Failed DDL operation as requested
+-- The table name must be unchanged.
+SELECT * FROM rename_test;
+ id
+----
+(0 rows)
+
+-- The name 'foobar' must be invalid.
+SELECT * FROM foobar;
+ERROR:  relation "foobar" does not exist
+LINE 1: SELECT * FROM foobar;
+                      ^
+-- Rename operation must succeed now.
+ALTER TABLE rename_test RENAME TO foobar;
+DROP TABLE foobar;
+--
+-- ALTER TABLE ADD COLUMN ... DEFAULT tests.
+--
+CREATE TABLE foo(a int);
+INSERT INTO foo VALUES (1), (2), (3);
+-- Test add column with int default value.
+ALTER TABLE foo ADD COLUMN b int DEFAULT 6;
+INSERT INTO foo(a) VALUES (4);
+INSERT INTO foo VALUES (5, 7);
+INSERT INTO foo VALUES (6, null);
+SELECT * FROM foo ORDER BY a;
+ a | b 
+---+---
+ 1 | 6
+ 2 | 6
+ 3 | 6
+ 4 | 6
+ 5 | 7
+ 6 |  
+(6 rows)
+
+CREATE TYPE typefoo AS (a inet, b BIT(3));
+-- Test add column with a UDT default value.
+ALTER TABLE foo ADD COLUMN c typefoo DEFAULT ('127.0.0.1', B'010');
+SELECT * FROM foo ORDER BY a;
+ a | b |        c        
+---+---+-----------------
+ 1 | 6 | (127.0.0.1,010)
+ 2 | 6 | (127.0.0.1,010)
+ 3 | 6 | (127.0.0.1,010)
+ 4 | 6 | (127.0.0.1,010)
+ 5 | 7 | (127.0.0.1,010)
+ 6 |   | (127.0.0.1,010)
+(6 rows)
+
+CREATE FUNCTION functionfoo()
+RETURNS TIMESTAMP
+LANGUAGE plpgsql STABLE
+AS
+$$
+BEGIN
+RETURN '01-01-2023';
+END;
+$$;
+-- Test add column with a non-volatile expression default value.
+ALTER TABLE foo ADD COLUMN d TIMESTAMP DEFAULT functionfoo();
+SELECT * FROM foo ORDER BY a;
+ a | b |        c        |            d             
+---+---+-----------------+--------------------------
+ 1 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023
+ 2 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023
+ 3 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023
+ 4 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023
+ 5 | 7 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023
+ 6 |   | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023
+(6 rows)
+
+-- Test add column with default value and collation
+ALTER TABLE foo ADD COLUMN e varchar DEFAULT 'hi' COLLATE "en_US";
+INSERT INTO foo(a, e) VALUES(7, 'a');
+INSERT INTO foo(a, e) VALUES(8, 'zz');
+SELECT * FROM foo ORDER BY e, a;
+ a | b |        c        |            d             | e  
+---+---+-----------------+--------------------------+----
+ 7 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | a
+ 1 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 2 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 3 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 4 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 5 | 7 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 6 |   | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 8 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | zz
+(8 rows)
+
+SELECT * FROM foo WHERE e COLLATE "C" < 'hi' ORDER BY e;
+ a | b |        c        |            d             | e 
+---+---+-----------------+--------------------------+---
+ 7 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | a
+(1 row)
+
+-- Test add column with volatile default value fails.
+ALTER TABLE foo ADD COLUMN f FLOAT DEFAULT random();
+ERROR:  Rewriting of YB table is not yet implemented
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
+-- Test updating columns that have missing default values.
+UPDATE foo SET d = '01-01-2024' WHERE a = 1;
+SELECT * FROM foo ORDER BY a;
+ a | b |        c        |            d             | e  
+---+---+-----------------+--------------------------+----
+ 1 | 6 | (127.0.0.1,010) | Mon Jan 01 00:00:00 2024 | hi
+ 2 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 3 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 4 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 5 | 7 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 6 |   | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 7 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | a
+ 8 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | zz
+(8 rows)
+
+UPDATE foo SET b = 8 WHERE b is null;
+SELECT * FROM foo WHERE b = 8;
+ a | b |        c        |            d             | e  
+---+---+-----------------+--------------------------+----
+ 6 | 8 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+(1 row)
+
+UPDATE foo SET b = null WHERE b = 8;
+SELECT * FROM foo WHERE b is null;
+ a | b |        c        |            d             | e  
+---+---+-----------------+--------------------------+----
+ 6 |   | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+(1 row)
+
+-- Test expression pushdown on column with default value.
+EXPLAIN SELECT * FROM foo WHERE d = '01-01-2023';
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Seq Scan on foo  (cost=0.00..102.50 rows=1000 width=80)
+   Remote Filter: (d = 'Sun Jan 01 00:00:00 2023'::timestamp without time zone)
+(2 rows)
+
+SELECT * FROM foo WHERE b = 6 ORDER BY a;
+ a | b |        c        |            d             | e  
+---+---+-----------------+--------------------------+----
+ 1 | 6 | (127.0.0.1,010) | Mon Jan 01 00:00:00 2024 | hi
+ 2 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 3 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 4 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 7 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | a
+ 8 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | zz
+(6 rows)
+
+-- Verify that we do not set pg_attribute.atthasmissing and
+-- pg_attribute.attmissingval.
+SELECT atthasmissing, attmissingval FROM pg_attribute
+    WHERE attrelid='foo'::regclass;
+ atthasmissing | attmissingval 
+---------------+---------------
+ f             | 
+ f             | 
+ f             | 
+ f             | 
+ f             | 
+ f             | 
+ f             | 
+ f             | 
+ f             | 
+ f             | 
+ f             | 
+(11 rows)
+
+-- Verify that ALTER TABLE ... SET DEFAULT doesn't change missing values.
+ALTER TABLE foo ALTER COLUMN b SET DEFAULT 7;
+INSERT INTO foo(a) VALUES (9);
+SELECT * FROM foo ORDER BY a;
+ a | b |        c        |            d             | e  
+---+---+-----------------+--------------------------+----
+ 1 | 6 | (127.0.0.1,010) | Mon Jan 01 00:00:00 2024 | hi
+ 2 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 3 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 4 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 5 | 7 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 6 |   | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 7 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | a
+ 8 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | zz
+ 9 | 7 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+(9 rows)
+
+-- Verify that indexes on columns with missing default values work.
+CREATE INDEX ON foo(b);
+EXPLAIN SELECT b FROM foo WHERE b = 6;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Index Only Scan using foo_b_idx on foo  (cost=0.00..5.12 rows=10 width=4)
+   Index Cond: (b = 6)
+(2 rows)
+
+SELECT b FROM foo WHERE b = 6;
+ b 
+---
+ 6
+ 6
+ 6
+ 6
+ 6
+ 6
+(6 rows)
+
+EXPLAIN SELECT * FROM foo WHERE b = 6 ORDER BY a;
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Sort  (cost=5.39..5.42 rows=10 width=80)
+   Sort Key: a
+   ->  Index Scan using foo_b_idx on foo  (cost=0.00..5.22 rows=10 width=80)
+         Index Cond: (b = 6)
+(4 rows)
+
+SELECT * FROM foo WHERE b = 6 ORDER BY a;
+ a | b |        c        |            d             | e  
+---+---+-----------------+--------------------------+----
+ 1 | 6 | (127.0.0.1,010) | Mon Jan 01 00:00:00 2024 | hi
+ 2 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 3 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 4 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 7 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | a
+ 8 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | zz
+(6 rows)
+
+-- Verify that defaults are copied for tables created using CREATE TABLE LIKE
+-- clause.
+CREATE TABLE dummy (LIKE foo INCLUDING DEFAULTS);
+INSERT INTO dummy(a) VALUES (1);
+SELECT * FROM dummy;
+ a | b |        c        |            d             | e  
+---+---+-----------------+--------------------------+----
+ 1 | 7 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+(1 row)
+
+-- Verify that missing values work after table rewrite.
+ALTER TABLE foo ADD PRIMARY KEY (a);
+SELECT * FROM foo ORDER BY a;
+ a | b |        c        |            d             | e  
+---+---+-----------------+--------------------------+----
+ 1 | 6 | (127.0.0.1,010) | Mon Jan 01 00:00:00 2024 | hi
+ 2 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 3 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 4 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 5 | 7 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 6 |   | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+ 7 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | a
+ 8 | 6 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | zz
+ 9 | 7 | (127.0.0.1,010) | Sun Jan 01 00:00:00 2023 | hi
+(9 rows)
+
+-- Verify missing default values for partitioned tables.
+CREATE TABLE foo_part (a int) PARTITION BY RANGE (a);
+CREATE TABLE foo_part_1 PARTITION OF foo_part FOR VALUES FROM (1) TO (6);
+CREATE TABLE foo_part_2 PARTITION OF foo_part FOR VALUES FROM (6) TO (11);
+INSERT INTO foo_part VALUES (generate_series(1, 10));
+CREATE FUNCTION functionfoopart()
+RETURNS TEXT
+LANGUAGE plpgsql STABLE
+AS
+$$
+BEGIN
+RETURN 'default';
+END;
+$$;
+ALTER TABLE foo_part ADD COLUMN b TEXT default functionfoopart();
+INSERT INTO foo_part VALUES (1, null), (6, null);
+SELECT * FROM foo_part ORDER BY a, b;
+ a  |    b    
+----+---------
+  1 | default
+  1 | 
+  2 | default
+  3 | default
+  4 | default
+  5 | default
+  6 | default
+  6 | 
+  7 | default
+  8 | default
+  9 | default
+ 10 | default
+(12 rows)

@@ -1,17 +1,21 @@
 import React, { FC } from 'react';
-import { Grid, makeStyles } from '@material-ui/core';
+import { Box, Divider, makeStyles, Paper } from '@material-ui/core';
 
 // Local imports
 import type { ClusterData, HealthCheckInfo } from '@app/api/src';
 import { ClusterNodeWidget } from './ClusterNodeWidget';
-import { ClusterTabletWidget } from './ClusterTabletWidget';
-import { ClusterDiskWidget } from './ClusterDiskWidget';
+import { ClusterResourceWidget } from './ClusterResourceWidget';
+import { ClusterActivityWidget } from './ClusterActivityWidget';
 
 const useStyles = makeStyles((theme) => ({
   container: {
-    justifyContent: 'space-between',
-    columnGap: theme.spacing(2)
-  }
+    display: "flex",
+    gap: theme.spacing(2),
+    padding: theme.spacing(2),
+    flexGrow: 1,
+    overflow: 'auto',
+    border: `1px solid ${theme.palette.grey[200]}`
+  },
 }));
 
 interface ClusterStatusWidgetProps {
@@ -22,10 +26,18 @@ interface ClusterStatusWidgetProps {
 export const ClusterStatusWidget: FC<ClusterStatusWidgetProps> = ({ cluster, health }) => {
   const classes = useStyles();
   return (
-      <Grid container className={classes.container}>
-        <ClusterNodeWidget cluster={cluster} health={health}/>
-        <ClusterTabletWidget health={health}/>
-        <ClusterDiskWidget cluster={cluster}/>
-      </Grid>
+      <Paper className={classes.container}>
+        <Box flex={2}>
+          <ClusterNodeWidget health={health} />
+        </Box>
+        <Divider orientation="vertical" />
+        <Box flex={1}>
+          <ClusterActivityWidget />
+        </Box>
+        <Divider orientation="vertical" />
+        <Box flex={2}>
+          <ClusterResourceWidget cluster={cluster} />
+        </Box>
+      </Paper>
   );
 };

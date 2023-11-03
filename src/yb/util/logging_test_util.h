@@ -34,10 +34,11 @@
 
 #include <atomic>
 #include <chrono>
+#include <regex>
 #include <string>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
@@ -65,11 +66,12 @@ class StringVectorSink : public google::LogSink {
   std::vector<std::string> logged_msgs_;
 };
 
-// GLog sink that waits for specified string to appear in log.
-class StringWaiterLogSink : public google::LogSink {
+// GLog sink that waits for specified pattern to appear in log.
+template<class Pattern>
+class PatternWaiterLogSink : public google::LogSink {
  public:
-  explicit StringWaiterLogSink(const std::string& string_to_wait)
-      : string_to_wait_(string_to_wait) {
+  explicit PatternWaiterLogSink<Pattern>(const std::string& pattern)
+      : pattern_source_(pattern), pattern_to_wait_for_(pattern) {
     google::AddLogSink(this);
   }
 
@@ -82,13 +84,20 @@ class StringWaiterLogSink : public google::LogSink {
 
   bool IsEventOccurred() { return event_occurred_; }
 
-  ~StringWaiterLogSink() { google::RemoveLogSink(this); }
+  ~PatternWaiterLogSink() { google::RemoveLogSink(this); }
 
  private:
   static const char* kWaitingMessage;
-  std::string string_to_wait_;
+  // Stores the original pattern provided to constructor.
+  // For PatternWaiterLogSink<std::regex> this is raw (uncompiled) regex, for
+  // PatternWaiterLogSink<std::string> this is the same string pattern we are waiting for.
+  std::string pattern_source_;
+  Pattern pattern_to_wait_for_;
   std::atomic<bool> event_occurred_{false};
 };
+
+using StringWaiterLogSink = PatternWaiterLogSink<std::string>;
+using RegexWaiterLogSink = PatternWaiterLogSink<std::regex>;
 
 // RAII wrapper around registering a LogSink with GLog.
 struct ScopedRegisterSink {

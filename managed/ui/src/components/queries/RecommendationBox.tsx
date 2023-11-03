@@ -1,223 +1,260 @@
-import React, { useState, FC, ReactNode, useCallback, Fragment } from 'react';
+import { ChangeEvent, useState, FC, ReactNode, Fragment } from 'react';
+import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
-import { Panel } from 'react-bootstrap';
-
+import { Box } from '@material-ui/core';
+import { YBCheckbox } from '../../redesign/components';
 import { IndexSuggestion } from './advisor/IndexSuggestion';
 import { SchemaSuggestion } from './advisor/SchemaSuggestion';
 import { QueryLoadSkew } from './advisor/QueryLoadSkew';
 import { ConnectionSkew } from './advisor/ConnectionSkew';
 import { CpuSkew } from './advisor/CpuSkew';
-import { CpuUsage } from './advisor/CpuUsage';
-import { QueryData } from './helpers/perfQueryUtils';
-import { YBPanelItem } from '../panels';
-import { RecommendationTypeEnum } from '../../redesign/helpers/dtos';
-import './RecommendationBox.scss';
+import { HotShard } from './advisor/HotShard';
+import { CustomRecommendations } from './advisor/CustomRecommendation';
+import {
+  RecommendationType,
+  IndexAndShardingRecommendationData,
+  PerfRecommendationData
+} from '../../redesign/utils/dtos';
+import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
+import TraingleDownIcon from './images/traingle-down.svg';
+import TraingleUpIcon from './images/traingle-up.svg';
+import { useStyles } from './RecommendationStyles';
 
 interface RecommendationProps {
-  type: RecommendationTypeEnum;
-  data: QueryData;
+  type: RecommendationType;
+  data: PerfRecommendationData | IndexAndShardingRecommendationData;
   key: string;
+  idKey: string;
+  resolved: boolean;
+  onResolve: (key: string, value: boolean) => void;
 }
 
-const getRecommendation = (type: RecommendationTypeEnum, summary: ReactNode | string, data: QueryData) => {
-  if (type === RecommendationTypeEnum.IndexSuggestion) {
+const getRecommendation = (type: RecommendationType, summary: ReactNode | string, data: any) => {
+  if (type === RecommendationType.UNUSED_INDEX) {
     const indexSuggestionData = data.table?.data ?? [];
-    return (
-      <IndexSuggestion summary={summary} data={indexSuggestionData} />
-    );
+    return <IndexSuggestion summary={summary} data={indexSuggestionData} />;
   }
-  if (type === RecommendationTypeEnum.SchemaSuggestion) {
+  if (type === RecommendationType.RANGE_SHARDING) {
     const schemaSuggestionData = data.table?.data ?? [];
     return <SchemaSuggestion data={schemaSuggestionData} summary={summary} />;
   }
-  if (type === RecommendationTypeEnum.QueryLoadSkew) {
-    const graphData = data.graph;
-    const querySkewData = {
+  if (type === RecommendationType.QUERY_LOAD_SKEW) {
+    const highestNodeQueryCount =
+      data.recommendationInfo.node_with_highest_query_load_details.SelectStmt +
+      data.recommendationInfo.node_with_highest_query_load_details.InsertStmt +
+      data.recommendationInfo.node_with_highest_query_load_details.UpdateStmt +
+      data.recommendationInfo.node_with_highest_query_load_details.DeleteStmt;
+
+    const otherNodeQueryCount =
+      data.recommendationInfo.other_nodes_average_query_load_details.SelectStmt +
+      data.recommendationInfo.other_nodes_average_query_load_details.InsertStmt +
+      data.recommendationInfo.other_nodes_average_query_load_details.UpdateStmt +
+      data.recommendationInfo.other_nodes_average_query_load_details.DeleteStmt;
+    const percentDiff = Math.round(
+      (100 * (highestNodeQueryCount - otherNodeQueryCount)) / otherNodeQueryCount
+    );
+
+    const cpuSkewData = {
+      suggestion: data.suggestion,
       maxNodeName: data.target,
-      percentDiff: data.indicator,
+      percentDiff,
       maxNodeDistribution: {
-        numSelect: graphData?.max.num_select ?? 0,
-        numInsert: graphData?.max.num_insert ?? 0,
-        numUpdate: graphData?.max.num_update ?? 0,
-        numDelete: graphData?.max.num_delete ?? 0
+        numSelect: data.recommendationInfo.node_with_highest_query_load_details.SelectStmt,
+        numInsert: data.recommendationInfo.node_with_highest_query_load_details.InsertStmt,
+        numUpdate: data.recommendationInfo.node_with_highest_query_load_details.UpdateStmt,
+        numDelete: data.recommendationInfo.node_with_highest_query_load_details.DeleteStmt
       },
       otherNodesDistribution: {
-        numSelect: graphData?.other.num_select ?? 0,
-        numInsert: graphData?.other.num_insert ?? 0,
-        numUpdate: graphData?.other.num_update ?? 0,
-        numDelete: graphData?.other.num_delete ?? 0
+        numSelect: data.recommendationInfo.other_nodes_average_query_load_details.SelectStmt,
+        numInsert: data.recommendationInfo.other_nodes_average_query_load_details.InsertStmt,
+        numUpdate: data.recommendationInfo.other_nodes_average_query_load_details.UpdateStmt,
+        numDelete: data.recommendationInfo.other_nodes_average_query_load_details.DeleteStmt
       }
     };
-    return <QueryLoadSkew data={querySkewData} summary={summary} />;
+
+    return <QueryLoadSkew data={cpuSkewData} summary={summary} />;
   }
-  if (type === RecommendationTypeEnum.ConnectionSkew) {
+  if (type === RecommendationType.CONNECTION_SKEW) {
+    const maxConnectionsNodeName = data.recommendationInfo.node_with_highest_connection_count;
+    const recommendationInfoDetails = data.recommendationInfo.details;
+    const maxNodeValue = recommendationInfoDetails?.[maxConnectionsNodeName];
     const connectionSkewData = {
-      maxNodeName: data.target,
-      maxNodeValue: data.graph?.max.value ?? 0,
-      otherNodesAvgValue: data.graph?.other.value ?? 0,
+      suggestion: data.suggestion,
+      maxNodeName: maxConnectionsNodeName,
+      maxNodeValue: maxNodeValue ?? 0,
+      otherNodesAvgValue: data.recommendationInfo.avg_connection_count_of_other_nodes
     };
     return <ConnectionSkew data={connectionSkewData} summary={summary} />;
   }
-  if (type === RecommendationTypeEnum.CpuSkew) {
+  if (type === RecommendationType.CPU_SKEW) {
     const cpuSkewData = {
-      maxNodeName: data.target,
-      maxNodeValue: data.graph?.max.value ?? 0,
-      otherNodesAvgValue: data.graph?.other.value ?? 0
+      suggestion: data.suggestion,
+      maxNodeName: data.recommendationInfo.highestNodeName,
+      maxNodeValue: data.recommendationInfo.highestNodeCpu ?? 0,
+      otherNodesAvgValue: data.recommendationInfo.otherNodesAvgCpu ?? 0
     };
     return <CpuSkew data={cpuSkewData} summary={summary} />;
   }
-  if (type === RecommendationTypeEnum.CpuUsage) {
-    return <CpuUsage summary={summary} />;
+  if (type === RecommendationType.HOT_SHARD) {
+    const hotShardData = {
+      suggestion: data.suggestion,
+      maxNodeName: data.recommendationInfo.node_with_hot_shard,
+      maxNodeValue: data.recommendationInfo.hot_shard_node_operation_count ?? 0,
+      otherNodesAvgValue: data.recommendationInfo.avg_query_count_of_other_nodes ?? 0
+    };
+    return <HotShard data={hotShardData} summary={summary} />;
+  }
+  if (type === RecommendationType.CPU_USAGE || type === RecommendationType.REJECTED_CONNECTIONS) {
+    return <CustomRecommendations summary={summary} suggestion={data.suggestion} type={type} />;
   }
   return null;
 };
-export const RecommendationBox: FC<RecommendationProps> = ({ key, type, data }) => {
+
+export const RecommendationBox: FC<RecommendationProps> = ({
+  idKey,
+  type,
+  data,
+  resolved,
+  onResolve
+}) => {
+  const classes = useStyles();
   const { t } = useTranslation();
-  const getTypeTagColor = useCallback(
-    (recommendationType: RecommendationTypeEnum) => {
-      switch (recommendationType) {
-        case RecommendationTypeEnum.IndexSuggestion:
-          return (
-            <span className="recommendationTitle tagGreen">
-              {t('clusterDetail.performance.typeTag.IndexSuggestion')}
-            </span>
-          );
-        case RecommendationTypeEnum.SchemaSuggestion:
-          return (
-            <span className="recommendationTitle tagGreen">
-              {t('clusterDetail.performance.typeTag.SchemaSuggestion')}
-            </span>
-          );
-        case RecommendationTypeEnum.QueryLoadSkew:
-          return (
-            <span className="recommendationTitle tagBlue">
-              {t('clusterDetail.performance.typeTag.QueryLoadSkew')}
-            </span>
-          );
-        case RecommendationTypeEnum.ConnectionSkew:
-          return (
-            <span className="recommendationTitle tagBlue">
-              {t('clusterDetail.performance.typeTag.ConnectionSkew')}
-            </span>
-          );
-        case RecommendationTypeEnum.CpuSkew:
-          return (
-            <span className="recommendationTitle tagBlue">
-              {t('clusterDetail.performance.typeTag.CpuSkew')}
-            </span>
-          );
-        case RecommendationTypeEnum.CpuUsage:
-          return (
-            <span className="recommendationTitle tagBlue">
-              {t('clusterDetail.performance.typeTag.CpuUsage')}
-            </span>
-          );
-        default:
-          return null;
-      }
-    }, [t]
-  );
-  const getSummaryContent = (recommendationType: RecommendationTypeEnum, recommendationData: QueryData) => {
-    if (recommendationType === RecommendationTypeEnum.IndexSuggestion) {
+
+  const [open, setOpen] = useState(false);
+
+  const handleResolveRecommendation = (event: ChangeEvent<HTMLInputElement>) => {
+    const isChecked = event.target.checked;
+    onResolve(idKey, isChecked);
+    if (isChecked) {
+      setOpen(false);
+    }
+    event.stopPropagation();
+  };
+
+  const handleOpenBox = () => {
+    if (!resolved) {
+      setOpen((val) => !val);
+    }
+  };
+
+  const getTypeTagColor = (recommendationType: RecommendationType) => {
+    switch (recommendationType) {
+      case RecommendationType.UNUSED_INDEX:
+        return (
+          <span className={clsx(classes.recommendationTitle, classes.tagGreen)}>
+            {t('clusterDetail.performance.typeTag.IndexSuggestion')}
+          </span>
+        );
+      case RecommendationType.RANGE_SHARDING:
+        return (
+          <span className={clsx(classes.recommendationTitle, classes.tagGreen)}>
+            {t('clusterDetail.performance.typeTag.SchemaSuggestion')}
+          </span>
+        );
+      case RecommendationType.QUERY_LOAD_SKEW:
+        return (
+          <span className={clsx(classes.recommendationTitle, classes.tagBlue)}>
+            {t('clusterDetail.performance.typeTag.QueryLoadSkew')}
+          </span>
+        );
+      case RecommendationType.CONNECTION_SKEW:
+        return (
+          <span className={clsx(classes.recommendationTitle, classes.tagBlue)}>
+            {t('clusterDetail.performance.typeTag.ConnectionSkew')}
+          </span>
+        );
+      case RecommendationType.CPU_SKEW:
+        return (
+          <span className={clsx(classes.recommendationTitle, classes.tagBlue)}>
+            {t('clusterDetail.performance.typeTag.CpuSkew')}
+          </span>
+        );
+      case RecommendationType.CPU_USAGE:
+        return (
+          <span className={clsx(classes.recommendationTitle, classes.tagBlue)}>
+            {t('clusterDetail.performance.typeTag.CpuUsage')}
+          </span>
+        );
+      case RecommendationType.HOT_SHARD:
+        return (
+          <span className={clsx(classes.recommendationTitle, classes.tagBlue)}>
+            {t('clusterDetail.performance.typeTag.HotShard')}
+          </span>
+        );
+      case RecommendationType.REJECTED_CONNECTIONS:
+        return (
+          <span className={clsx(classes.recommendationTitle, classes.tagBlue)}>
+            {t('clusterDetail.performance.typeTag.RejectedConnections')}
+          </span>
+        );
+      case RecommendationType.ALL:
+        return null;
+      default:
+        return assertUnreachableCase(recommendationType);
+    }
+  };
+
+  const getSummaryContent = (recommendationType: RecommendationType, recommendationData: any) => {
+    if (recommendationType === RecommendationType.UNUSED_INDEX) {
       const { indicator: numIndexes, target: databaseName } = recommendationData;
       return (
         <Fragment>
-          <span className="recommendationHeaderDescription">
+          <span className={classes.recommendationHeaderDescription}>
             {`We found ${numIndexes} indexes in database `}
             <b>{databaseName}</b>
             {' that were never used.'}
           </span>
         </Fragment>
       );
-    }
-    if (recommendationType === RecommendationTypeEnum.SchemaSuggestion) {
+    } else if (recommendationType === RecommendationType.RANGE_SHARDING) {
       const { indicator: numIndexes, target: databaseName } = recommendationData;
       return (
         <Fragment>
-          <span className="recommendationHeaderDescription">
+          <span className={classes.recommendationHeaderDescription}>
             {`We found ${numIndexes} indexes in database `}
             <b> {databaseName} </b>
             {' where using range sharding instead of hash can improve query speed.'}
           </span>
         </Fragment>
       );
-    }
-    if (recommendationType === RecommendationTypeEnum.QueryLoadSkew) {
-      const { target: nodeName, indicator: percent, setSize: otherNodes } = recommendationData;
+    } else {
+      const { observation } = recommendationData;
       return (
         <Fragment>
-          <span className="recommendationHeaderDescription">
-            {`Node `}
-            <b> {nodeName} </b>
-            {`processed ${percent}% more queries than the other ${otherNodes} nodes`}
-          </span>
+          <span className={classes.recommendationHeaderDescription}>{observation}</span>
         </Fragment>
       );
     }
-    if (recommendationType === RecommendationTypeEnum.ConnectionSkew) {
-      const { target: nodeName, indicator: percent, setSize: otherNodes } = recommendationData;
-      return (
-        <Fragment>
-          <span className="recommendationHeaderDescription">
-            {`Node `}
-            <b> {nodeName} </b>
-            {` handled ${percent}% more connections than the other ${otherNodes} nodes in the past hour.`}
-          </span>
-        </Fragment>
-      );
-    }
-    if (recommendationType === RecommendationTypeEnum.CpuSkew) {
-      const { target: nodeName, indicator: percent, setSize: otherNodes } = recommendationData;
-      return (
-        <Fragment>
-          <span className="recommendationHeaderDescription">
-            {`Node `}
-            <b> {nodeName} </b>
-            {` CPU use is ${percent}% greater than the ${otherNodes} nodes in the past hour.`}
-          </span>
-        </Fragment>
-      );
-    }
-    if (recommendationType === RecommendationTypeEnum.CpuUsage) {
-      const { target: nodeName, indicator: percent, timeDurationSec: duration } = recommendationData;
-      const minuteDuration = Math.round((duration ?? 0) / 60);
-      return (
-        <Fragment>
-          <span className="recommendationHeaderDescription">
-            {`Node `}
-            <b> {nodeName} </b>
-            {` CPU use exceeded ${percent}% for ${minuteDuration} mins.`}
-          </span>
-        </Fragment>
-      );
-    }
-    return null;
   };
 
-  const [isPanelExpanded, setPanelExpanded] = useState(false);
   return (
-    <YBPanelItem
-      id="perfRecommendationBox"
-      className="perfAdvisorPanel"
-      body={
-        <Panel
-          id={`${key}-recommendation`}
-          eventKey={`${key}-recommendation`}
-          defaultExpanded={isPanelExpanded}
-          className="recommendationContainer"
-        >
-          <Panel.Heading>
-            <Panel.Title
-              toggle
-              onClick={() => setPanelExpanded(!isPanelExpanded)}
-            >
-              {getTypeTagColor(type)}
-              {!isPanelExpanded && getSummaryContent(type, data)}
-            </Panel.Title>
-          </Panel.Heading>
-          <Panel.Body collapsible>{isPanelExpanded && getRecommendation(type, getSummaryContent(type, data), data)}</Panel.Body>
-        </Panel>
-      } noBackground
-    />
+    <div className={classes.recommendation}>
+      <Box
+        onClick={handleOpenBox}
+        display="flex"
+        alignItems="center"
+        className={resolved ? classes.strikeThroughText : classes.itemHeader}
+      >
+        {getTypeTagColor(type)}
+        <span>{!open && getSummaryContent(type, data)}</span>
+        <Box ml="auto">
+          <YBCheckbox
+            label={'Resolved'}
+            onChange={handleResolveRecommendation}
+            checked={resolved}
+          />
+        </Box>
+        {open ? (
+          <img src={TraingleDownIcon} alt="expand" />
+        ) : (
+          <img
+            src={TraingleUpIcon}
+            alt="shrink"
+            className={clsx(resolved && classes.inactiveRecommendation)}
+          />
+        )}
+      </Box>
+      {open && getRecommendation(type, getSummaryContent(type, data), data)}
+    </div>
   );
 };

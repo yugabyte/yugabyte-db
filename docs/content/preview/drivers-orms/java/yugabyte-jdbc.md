@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: JDBC smart driver for YSQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: JDBC driver for YSQL
+description: Connect a Java application using YugabyteDB JDBC Smart Driver
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 aliases:
   - /develop/client-drivers/java/
@@ -53,9 +54,15 @@ type: docs
   </li>
 </ul>
 
-[YugabyteDB JDBC Smart Driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional [connection load balancing](../../smart-drivers/) features.
+[YugabyteDB JDBC Smart Driver](https://github.com/yugabyte/pgjdbc) is a JDBC driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional [connection load balancing](../../smart-drivers/) features.
 
 For Java applications, the JDBC driver provides database connectivity through the standard JDBC application program interface (APIs) available on the Java platform.
+
+{{< note title="YugabyteDB Managed" >}}
+
+To use smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from outside the VPC network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Managed](../../smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
+
+{{< /note >}}
 
 ## CRUD operations
 
@@ -97,30 +104,51 @@ implementation 'com.zaxxer:HikariCP:4.0.3'
 
 ### Step 2: Set up the database connection
 
-After setting up the dependencies, implement the Java client application that uses the YugabyteDB JDBC driver to connect to your YugabyteDB cluster and run query on the sample data.
+After setting up the dependencies, implement the Java client application using the YugabyteDB JDBC driver to connect to your YugabyteDB cluster and run queries on the sample data.
 
-Set up the driver properties to configure the credentials and SSL Certificates for connecting to your cluster. Java Apps can connect to and query the YugabyteDB database using the `java.sql.DriverManager` class. All the JDBC interfaces required for working with YugabyteDB database are part of `java.sql.*` package.
+Set up the driver properties to configure the credentials and SSL certificates for connecting to your cluster. Java applications can connect to and query the YugabyteDB database using the `java.sql.DriverManager` class. All the JDBC interfaces required for working with YugabyteDB database are part of the `java.sql.*` package.
 
-Use the `DriverManager.getConnection` method for getting connection object for the YugabyteDB database, which can be used for performing DDLs and DMLs against the database.
+Use the `DriverManager.getConnection` method to obtain the connection object for the YugabyteDB database, which can then be used to perform DDL and DML operations against the database.
 
 The following table describes the connection parameters required to connect, including [smart driver parameters](../../smart-drivers/) for uniform and topology load balancing.
 
 | JDBC Parameter | Description | Default |
 | :------------- | :---------- | :------ |
-| hostname  | Hostname of the YugabyteDB instance | localhost
+| hostname  | Host name of the YugabyteDB instance. You can also enter [multiple addresses](#use-multiple-addresses). | localhost
 | port |  Listen port for YSQL | 5433
 | database | Database name | yugabyte
 | user | User connecting to the database | yugabyte
 | password | User password | yugabyte
 | `load-balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
+| `yb-servers-refresh-interval` | If `load_balance` is true, the interval in seconds to refresh the servers list | 300
 | `topology-keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load-balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
 
-The following is an example JDBC URL for connecting to YugabyteDB.
+The following is an example JDBC URL for connecting to YugabyteDB:
 
 ```sh
-jdbc://yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
+jdbc:yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
+    yb-servers-refresh-interval=240& \
     topology-keys=cloud.region.zone1,cloud.region.zone2
 ```
+
+After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
+
+#### Use multiple addresses
+
+You can specify multiple hosts in the connection string to provide alternative options during the initial connection in case the primary address fails.
+
+{{< tip title="Tip">}}
+To obtain a list of available hosts, you can connect to any cluster node and use the `yb_servers()` YSQL function.
+{{< /tip >}}
+
+Delimit the addresses using commas, as follows:
+
+```sh
+jdbc:yugabytedb://hostname1:port,hostname2:port,hostname3:port/database?user=yugabyte&password=yugabyte&load-balance=true& \
+    topology-keys=cloud.region.zone1,cloud.region.zone2
+```
+
+The hosts are only used during the initial connection attempt. If the first host is down when the driver is connecting, the driver attempts to connect to the next host in the string, and so on.
 
 #### Use SSL
 
@@ -131,6 +159,7 @@ The following table describes the connection parameters required to connect usin
 | ssl  | Enable SSL client connection | false
 | sslmode | SSL mode | require
 | sslrootcert | Path to the root certificate on your computer | ~/.postgresql/
+| sslhostnameverifier | Address of host name verifier; only used for YugabyteDB Managed clusters where sslmode is verify-full. Driver v42.3.5-yb-2 and later only. | com.yugabyte.ysql.YBManagedHostnameVerifier
 
 The following is an example JDBC URL for connecting to a YugabyteDB cluster with SSL encryption enabled.
 
@@ -140,6 +169,8 @@ jdbc:yugabytedb://hostname:port/database?user=yugabyte&password=yugabyte&load-ba
 ```
 
 If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
+
+To use load balancing and SSL mode verify-full with a cluster in YugabyteDB Managed, you need to provide the additional `sslhostnameverifier` parameter, set to `com.yugabyte.ysql.YBManagedHostnameVerifier`. (Available in driver version 42.3.5-yb-2 or later. For previous versions of the driver, use `verify-ca`.)
 
 ### Step 3: Write your application
 
@@ -191,6 +222,8 @@ public class QuickStartApp {
   }
 }
 ```
+
+## Run the application
 
 Run the project `QuickStartApp.java` using the following command:
 

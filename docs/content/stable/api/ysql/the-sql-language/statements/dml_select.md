@@ -20,24 +20,24 @@ The same syntax rules govern a subquery, wherever you might use one—like, for 
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
 </ul>
 
 <div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/select,common_table_expression,fn_over_window,ordinary_aggregate_fn_invocation,within_group_aggregate_fn_invocation,grouping_element,order_expr.grammar.md" %}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/select,common_table_expression,fn_over_window,ordinary_aggregate_fn_invocation,within_group_aggregate_fn_invocation,grouping_element,order_expr.diagram.md" %}}
   </div>
 </div>
@@ -57,7 +57,7 @@ The `fn_over_window` rule denotes the special kind of `SELECT` list item that mu
 
 The `ordinary_aggregate_fn_invocation` rule and the `within_group_aggregate_fn_invocation` rule denote the special kinds of `SELECT` list item that are used to invoke an aggregate function (when it isn't invoked as a window function). When an aggregate function is invoked in either of these two ways, it's very common to do so in conjunction with the `GROUP BY` and `HAVING` clauses. All of this is explained in the [Aggregate function invocation—SQL syntax and semantics](../../../exprs/aggregate_functions/invocation-syntax-semantics/) section within the major section [Aggregate functions](../../../exprs/aggregate_functions/).
 
-When you understand the story of the invocation of these two kinds of functions from the accounts in the [Window functions](../../../exprs/window_functions/) section and the [Aggregate functions](../../../exprs/aggregate_functions/) section, you can use the `\df` metacommand in `ysqlsh` to discover the status of a particular function, thus:
+When you understand the story of the invocation of these two kinds of functions from the accounts in the [Window functions](../../../exprs/window_functions/) section and the [Aggregate functions](../../../exprs/aggregate_functions/) section, you can use the `\df` meta-command in `ysqlsh` to discover the status of a particular function, thus:
 
 ```
 \df row_number

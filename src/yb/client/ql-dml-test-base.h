@@ -22,7 +22,7 @@
 #include "yb/client/callbacks.h"
 #include "yb/client/table_handle.h"
 #include "yb/common/ql_protocol.pb.h"
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/server/server_fwd.h"
 
@@ -65,9 +65,7 @@ namespace kv_table_test {
 constexpr const auto kKeyColumn = "key";
 constexpr const auto kValueColumn = "value";
 
-YB_DEFINE_ENUM(Partitioning, (kHash)(kRange))
-
-void BuildSchema(Partitioning partitioning, Schema* schema);
+void BuildSchema(test::Partitioning partitioning, Schema* schema);
 
 Status CreateTable(
     const Schema& schema, int num_tablets, YBClient* client,
@@ -178,6 +176,12 @@ extern template class KeyValueTableTest<MiniCluster>;
 extern template class KeyValueTableTest<ExternalMiniCluster>;
 
 Status CheckOp(YBqlOp* op);
+
+// Select rows count without intermediate conversion of rows to string vector as CountTableRows
+// does.
+Result<size_t> CountRows(
+    const YBSessionPtr& session, const TableHandle& table,
+    MonoDelta timeout = MonoDelta::FromSeconds(10) * kTimeMultiplier);
 
 }  // namespace client
 }  // namespace yb

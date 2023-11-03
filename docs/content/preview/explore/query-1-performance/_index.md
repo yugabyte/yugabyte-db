@@ -55,7 +55,7 @@ type: indexpage
     <a class="section-link icon-offset" href="yb-pg-stat-get-queries/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="title">View terminated queries with yb_pg_stat_get_queries</div>
+        <div class="title">View terminated queries with yb_terminated_queries</div>
       </div>
       <div class="body">
         Identify terminated queries with the get queries function.
@@ -71,6 +71,18 @@ type: indexpage
       </div>
       <div class="body">
         Get the COPY command status, number of tuples processed, and other COPY progress reports with this view.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="pg-stat-progress-create-index/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
+        <div class="title">View CREATE INDEX status with pg_stat_progress_create_index</div>
+      </div>
+      <div class="body">
+        Get the CREATE INDEX command status, including the status of an ongoing concurrent index backfill, and the index build's progress reports.
       </div>
     </a>
   </div>

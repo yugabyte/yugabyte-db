@@ -70,7 +70,7 @@ The following examples demonstrate the possible stages (IN PROGRESS, ERROR, SUCC
 
 ### Prerequisites
 
-- Make sure you have YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../quick-start/) to have YugabyteDB up and running in minutes.
+{{% explore-setup-single-local %}}
 
 - Run the following script from your YugabyteDB installation directory to generate data to a file `test_data.csv`.
 

@@ -1,11 +1,8 @@
 ---
-title: Explore follower reads in YSQL
+title: Explore follower reads - YSQL
 headerTitle: Follower reads
 linkTitle: Follower reads
-description: Learn how you can use follower reads to lower read latencies in local YugabyteDB clusters.
-aliases:
-  - /preview/explore/multi-region-deployments/read-replicas
-  - /preview/explore/multi-region-deployments/follower-reads-ysql/
+description: Learn how to use follower reads to lower read latencies in local YugabyteDB clusters in YSQL.
 menu:
   preview:
     identifier: follower-reads-ysql
@@ -26,12 +23,13 @@ type: docs
   </li>
 </ul>
 
-## Leader leases
+## Leaders and leader leases
 
-In a distributed environment, when one node in a cluster is elected as the leader holding the latest data, it is possible that another node may assume that it is the leader, and that it holds the latest data. This could result in serving stale reads to a client. To avoid this confusion, YugabyteDB provides a _leader lease_ mechanism where an elected node member is guaranteed to be the leader until its lease expires.
+In a distributed environment, when one node in a cluster is elected as the leader holding the latest data, it is possible that another node may assume that it is the leader, and that it holds the latest data. This could result in serving stale reads to a client. To avoid this confusion, YugabyteDB provides a [leader lease mechanism](../../../../architecture/transactions/single-row-transactions/#leader-leases-reading-the-latest-data-in-case-of-a-network-partition) where an elected node member is guaranteed to be the leader until its lease expires.
 
 The leader lease mechanism guarantees to serve strongly consistent reads where a client can fetch reads directly from the leader, because the leader under lease will have the latest data.
-The interactive animations in this [blog post](https://blog.yugabyte.com/low-latency-reads-in-geo-distributed-sql-with-raft-leader-leases/) explain the performance improvements using leader leases.
+
+For an illustration of the performance improvements using leader leases, see [Low Latency Reads in Geo-Distributed SQL with Raft Leader Leases](https://www.yugabyte.com/blog/low-latency-reads-in-geo-distributed-sql-with-raft-leader-leases/).
 
 ## Follower reads
 
@@ -45,17 +43,17 @@ Suppose the end-user starts a donation page to raise money for a personal cause 
 
 Suppose a social media post gets a million likes and more continuously. For a post with massive likes such as this one, slightly stale reads are acceptable, and immediate updates are not necessary because the absolute number may not really matter to the end-user reading the post. Such applications do not need to always make requests directly to the leader. Instead, a slightly older value from the closest replica can achieve improved performance with lower latency.
 
-Follower reads are applicable for applications that can tolerate staleness. Replicas may not be completely up-to-date with all updates, so this design may respond with stale data. You can specify how much staleness the application can tolerate. When enabled, read-only operations may be handled by the closest replica, instead of having to go to the leader. The Grand Unified Configuration (GUC) session variables that PostgreSQL supports can be used to enable follower reads.
+Follower reads are applicable for applications that can tolerate staleness. Replicas may not be completely up-to-date with all updates, so this design may respond with stale data. You can specify how much staleness the application can tolerate. When enabled, read-only operations may be handled by the closest replica, instead of having to go to the leader.
 
 ## Surface area
 
-Two session variables control the behavior of follower reads:
+Two YSQL parameters control the behavior of follower reads:
 
 - `yb_read_from_followers` controls whether or not reading from followers is enabled. The default value is false.
 
-- `yb_follower_read_staleness_ms` sets the maximum allowable staleness. The default value is 30000 (30 seconds). 
+- `yb_follower_read_staleness_ms` sets the maximum allowable staleness. The default value is 30000 (30 seconds).
 
-  Note that even if the tablet leader is on the closest node, you would still read from `Now()-yb_follower_read_staleness_ms`. Therefore, when follower reads are used, the read is always stale, even if you are reading from a tablet leader. 
+  Note that even if the tablet leader is on the closest node, you would still read from `Now()-yb_follower_read_staleness_ms`. Therefore, when follower reads are used, the read is always stale, even if you are reading from a tablet leader.
 
 ### Expected behavior
 
@@ -63,8 +61,8 @@ The following table provides information on the expected behavior when a read ha
 
 | Conditions | Expected behavior |
 | :--------- | :---------------- |
-| yb_read_from_followers is true AND transaction is marked read-only | Read happens from the closest replica of the tablet, which could be leader or follower. |
-| yb_read_from_followers is false OR transaction or statement is not read-only | Read happens from the leader. |
+| `yb_read_from_followers` is true AND transaction is marked read-only | Read happens from the closest replica of the tablet, which could be leader or follower. |
+| `yb_read_from_followers` is false OR transaction or statement is not read-only | Read happens from the leader. |
 
 ### Read from follower conditions
 
@@ -79,7 +77,8 @@ You can mark a transaction as read-only by applying the following guidelines:
 - `SET TRANSACTION READ ONLY` applies only to the current transaction block.
 - `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` applies the read-only setting to all statements and transaction blocks that follow.
 - `SET default_transaction_read_only = TRUE` applies the read-only setting to all statements and transaction blocks that follow.
-- Tthe `pg_hint_plan` mechanism embeds the hint along with the `SELECT` statement. For example, `/*+ Set(transaction_read_only true) */ SELECT ...` applies only to the current `SELECT` statement.
+
+Note: The use of `pg_hint_plan` to mark a statement as read-only is not recommended. It may work in some cases, but relies on side effects and has known issues (see [GH17024](https://github.com/yugabyte/yugabyte-db/issues/17024) and  [GH17135](https://github.com/yugabyte/yugabyte-db/issues/17135)).
 
 ## Examples
 
@@ -112,53 +111,6 @@ SELECT * from t WHERE k='k1';
  k1 | v1
 (1 row)
 ```
-
-The following examples use follower reads because the `pg_hint_plan` mechanism is used during `SELECT`, `PREPARE`, and `CREATE FUNCTION` to perform follower reads:
-
-```sql
-set yb_read_from_followers = true;
-/*+ Set(transaction_read_only on) */
-SELECT * from t WHERE k='k1';
-```
-
-```output
-----+----
- k1 | v1
-(1 row)
-```
-
-```sql
-set yb_read_from_followers = true;
-PREPARE select_stmt(text) AS
-/*+ Set(transaction_read_only on) */
-SELECT * from t WHERE k=$1;
-EXECUTE select_stmt(‘k1’);
-```
-
-```output
- k  | v
-----+----
- k1 | v1
-(1 row)
-```
-
-```sql
-set yb_read_from_followers = true;
-CREATE FUNCTION func() RETURNS text AS
-$$ /*+ Set(transaction_read_only on) */
-SELECT * from t WHERE k=1 $$ LANGUAGE SQL;
-CREATE FUNCTION
-SELECT func();
-```
-
-```output
- k  | v
-----+----
- k1 | v1
-(1 row)
-```
-
-Note that `pg_hint_plan` hint needs to be applied at the function-definition stage and not at the `execute` stage.
 
 The following is a `JOIN` example that uses follower reads:
 

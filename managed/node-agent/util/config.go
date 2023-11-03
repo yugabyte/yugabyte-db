@@ -1,13 +1,14 @@
-/*
- * Copyright (c) YugaByte, Inc.
- */
+// Copyright (c) YugaByte, Inc.
+
 package util
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"reflect"
 	"sync"
 
 	"github.com/spf13/cobra"
@@ -58,7 +59,7 @@ func ConfigWithName(name string) (*Config, error) {
 	// Create config directory if not exists.
 	err := os.MkdirAll(configDir, os.ModePerm)
 	if err != nil {
-		fmt.Errorf("Error while creating config: %s", err.Error())
+		fmt.Errorf("Error while creating config - %s", err.Error())
 		return nil, err
 	}
 	// Create config file if not exists.
@@ -66,12 +67,12 @@ func ConfigWithName(name string) (*Config, error) {
 	if _, err = os.Stat(filename); os.IsNotExist(err) {
 		file, err := os.Create(filename)
 		if err != nil {
-			fmt.Errorf("Error while creating config file: %s", err.Error())
+			fmt.Errorf("Error while creating config file - %s", err.Error())
 			return nil, err
 		}
 		file.Close()
 	} else if err != nil {
-		fmt.Errorf("Error while creating config: %s", err.Error())
+		fmt.Errorf("Error while creating config - %s", err.Error())
 		return nil, err
 	}
 	config.viperInstance = viper.New()
@@ -80,7 +81,7 @@ func ConfigWithName(name string) (*Config, error) {
 	config.viperInstance.SetConfigName(name)
 	err = config.viperInstance.ReadInConfig()
 	if err != nil {
-		fmt.Errorf("Error reading the config file, %s", err)
+		fmt.Errorf("Error reading the config file - %s", err.Error())
 		return nil, err
 	}
 	syncMap.Store(name, config)
@@ -128,7 +129,7 @@ func (config *Config) Int(key string) int {
 }
 
 // Creates or updates a value for a key in the config.
-func (config *Config) Update(key, val string) error {
+func (config *Config) Update(key string, val any) error {
 	config.rwLock.Lock()
 	defer config.rwLock.Unlock()
 	config.viperInstance.Set(key, val)
@@ -136,11 +137,11 @@ func (config *Config) Update(key, val string) error {
 }
 
 // Creates or updates a value for a key in the config.
-func (config *Config) CompareAndUpdate(key, expected, val string) (bool, error) {
+func (config *Config) CompareAndUpdate(key string, expected, val any) (bool, error) {
 	var err error
 	config.rwLock.Lock()
 	defer config.rwLock.Unlock()
-	if config.viperInstance.GetString(key) == expected {
+	if reflect.DeepEqual(config.viperInstance.Get(key), expected) {
 		config.viperInstance.Set(key, val)
 		err = config.viperInstance.WriteConfig()
 		if err == nil {
@@ -154,11 +155,33 @@ func (config *Config) CompareAndUpdate(key, expected, val string) (bool, error) 
 func (config *Config) Remove(key string) error {
 	config.rwLock.Lock()
 	defer config.rwLock.Unlock()
-	config.viperInstance.Set(key, nil)
+	config.viperInstance.Set(key, "")
 	return config.viperInstance.WriteConfig()
 }
 
+func (config *Config) StoreCommandFlagBool(
+	ctx context.Context,
+	cmd *cobra.Command,
+	flagName, configKey string) (bool, error) {
+	isPassed := cmd.Flags().Changed(flagName)
+	if isPassed {
+		value, err := cmd.Flags().GetBool(flagName)
+		if err != nil {
+			FileLogger().Errorf(ctx, "Unable to get %s - %s", flagName, err.Error())
+			return value, err
+		}
+		err = config.Update(configKey, value)
+		if err != nil {
+			FileLogger().Errorf(ctx, "Unable to save %s - %s", configKey, err.Error())
+			return value, err
+		}
+		return value, nil
+	}
+	return config.Bool(configKey), nil
+}
+
 func (config *Config) StoreCommandFlagString(
+	ctx context.Context,
 	cmd *cobra.Command,
 	flagName, configKey string,
 	isRequired bool,
@@ -166,20 +189,20 @@ func (config *Config) StoreCommandFlagString(
 ) (string, error) {
 	value, err := cmd.Flags().GetString(flagName)
 	if err != nil {
-		FileLogger().Errorf("Unable to get %s - %s", flagName, err.Error())
+		FileLogger().Errorf(ctx, "Unable to get %s - %s", flagName, err.Error())
 		return value, err
 	}
 	if value != "" {
 		if validator != nil {
-			value, err := validator(value)
+			value, err = validator(value)
 			if err != nil {
-				FileLogger().Errorf("Error in validating value for %s - %s", flagName, err.Error())
+				FileLogger().Errorf(ctx, "Error in validating value for %s - %s", flagName, err.Error())
 				return value, err
 			}
 		}
 		err = config.Update(configKey, value)
 		if err != nil {
-			FileLogger().Errorf("Unable to save %s - %s", configKey, err.Error())
+			FileLogger().Errorf(ctx, "Unable to save %s - %s", configKey, err.Error())
 			return value, err
 		}
 		return value, nil
@@ -188,17 +211,26 @@ func (config *Config) StoreCommandFlagString(
 		value = config.String(configKey)
 		if value == "" {
 			err = fmt.Errorf("Unable to get %s from config", configKey)
-			FileLogger().Error(err.Error())
+			FileLogger().Error(ctx, err.Error())
 			return value, err
 		}
 	}
 	return value, nil
 }
 
-func Version() string {
+func MustVersion() string {
+	version, err := Version()
+	if err != nil {
+		FileLogger().Fatalf(nil, "Error in getting version - %s", err.Error())
+	}
+	return version
+}
+
+func Version() (string, error) {
+	var version string
 	content, err := ioutil.ReadFile(VersionFile())
 	if err != nil {
-		FileLogger().Fatal("Error when opening file: ", err)
+		return version, fmt.Errorf("Error when opening file - %s", err.Error())
 	}
 	data := struct {
 		Version  string `json:"version_number"`
@@ -206,11 +238,12 @@ func Version() string {
 	}{}
 	err = json.Unmarshal(content, &data)
 	if err != nil {
-		FileLogger().Fatal("Error in parsing version file")
+		return version, fmt.Errorf("Error in parsing verson file - %s", err.Error())
 	}
 	format := "%s-%s"
 	if IsDigits(data.BuildNum) {
 		format = "%s-b%s"
 	}
-	return fmt.Sprintf(format, data.Version, data.BuildNum)
+	version = fmt.Sprintf(format, data.Version, data.BuildNum)
+	return version, nil
 }

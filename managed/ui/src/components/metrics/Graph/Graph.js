@@ -1,10 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import PropTypes from 'prop-types';
+import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 
 import './Graph.scss';
-import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 
 const ProgressBar = require('progressbar.js');
 const GraphPath = ProgressBar.Path;
@@ -168,28 +168,12 @@ export default class Graph extends Component {
   };
 
   render() {
-    const value =
-      this.props.unit === 'percent' || this.props.unit === '%'
-        ? Math.round(this.props.value * 1000) / 10
-        : this.props.value;
-    const unit = this.props.unit
-      ? this.props.unit === 'percent' || this.props.unit === '%'
-        ? '%'
-        : ' ' + this.props.unit
-      : null;
     return (
       <div
         id={this.props.metricKey}
         className={`graph-container graph-${this.props.type || 'linear'}`}
       >
         {this.getGraphByType(this.props.type)}
-
-        {unit && (
-          <label ref={(div) => (this.label = div)}>
-            {value}
-            {unit}
-          </label>
-        )}
       </div>
     );
   }

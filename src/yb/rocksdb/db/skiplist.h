@@ -49,7 +49,7 @@
 
 #include <atomic>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/rocksdb/util/allocator.h"
 #include "yb/rocksdb/util/random.h"
@@ -84,7 +84,7 @@ class SkipListBase {
   uint64_t EstimateCount(Key key) const;
 
   // Iteration over the contents of a skip list
-  class Iterator {
+  class Iterator final {
    public:
     // Initialize an iterator over the specified list.
     // The returned iterator is not valid.
@@ -95,31 +95,29 @@ class SkipListBase {
     // an old one and then allocating a new one
     void SetList(const SkipListBase* list);
 
-    // Returns true iff the iterator is positioned at a valid node.
-    bool Valid() const;
-
     // Returns the key at the current position.
     // REQUIRES: Valid()
-    Key key() const;
+    Key Entry() const;
 
     // Advances to the next position.
     // REQUIRES: Valid()
-    void Next();
+    // Returns the same value as would be returned by Entry after this method is invoked.
+    Key Next();
 
     // Advances to the previous position.
     // REQUIRES: Valid()
-    void Prev();
+    Key Prev();
 
     // Advance to the first entry with a key >= target
-    void Seek(Key target);
+    Key Seek(Key target);
 
     // Position at the first entry in list.
     // Final state of iterator is Valid() iff list is not empty.
-    void SeekToFirst();
+    Key SeekToFirst();
 
     // Position at the last entry in list.
     // Final state of iterator is Valid() iff list is not empty.
-    void SeekToLast();
+    Key SeekToLast();
 
    private:
     const SkipListBase* list_;
@@ -241,10 +239,10 @@ struct SkipListNode {
 // Generic skip list implementation - allows any key comparable with specified comparator.
 // Please note thread safety at top of this file.
 template<typename Key, class Comparator>
-class SkipList : public SkipListBase<const Key&, Comparator, SkipListNode<Key>> {
+class SkipList : public SkipListBase<Key, Comparator, SkipListNode<Key>> {
  private:
-  typedef SkipListNode<Key> Node;
-  typedef SkipListBase<const Key&, Comparator, SkipListNode<Key>> Base;
+  using Node = SkipListNode<Key>;
+  using Base = SkipListBase<Key, Comparator, Node>;
 
  public:
   template<class... Args>
@@ -282,49 +280,51 @@ void SkipListBase<Key, Comparator, NodeType>::Iterator::SetList(const SkipListBa
 }
 
 template<class Key, class Comparator, class NodeType>
-bool SkipListBase<Key, Comparator, NodeType>::Iterator::Valid() const {
-  return node_ != nullptr;
+Key SkipListBase<Key, Comparator, NodeType>::Iterator::Entry() const {
+  return node_ != nullptr ? node_->key : Key();
 }
 
 template<class Key, class Comparator, class NodeType>
-Key SkipListBase<Key, Comparator, NodeType>::Iterator::key() const {
-  DCHECK(Valid());
-  return node_->key;
+Key SkipListBase<Key, Comparator, NodeType>::Iterator::Next() {
+  DCHECK(Entry());
+  auto node = node_->Next(0);
+  node_ = node;
+  return node != nullptr ? node->key : Key();
 }
 
 template<class Key, class Comparator, class NodeType>
-void SkipListBase<Key, Comparator, NodeType>::Iterator::Next() {
-  DCHECK(Valid());
-  node_ = node_->Next(0);
-}
-
-template<class Key, class Comparator, class NodeType>
-void SkipListBase<Key, Comparator, NodeType>::Iterator::Prev() {
+Key SkipListBase<Key, Comparator, NodeType>::Iterator::Prev() {
   // Instead of using explicit "prev" links, we just search for the
   // last node that falls before key.
-  DCHECK(Valid());
+  DCHECK(Entry());
   node_ = list_->FindLessThan(node_->key);
-  if (node_ == list_->head_) {
-    node_ = nullptr;
+  if (node_ != list_->head_) {
+    return node_->key;
   }
+  node_ = nullptr;
+  return Key();
 }
 
 template<class Key, class Comparator, class NodeType>
-void SkipListBase<Key, Comparator, NodeType>::Iterator::Seek(Key target) {
+Key SkipListBase<Key, Comparator, NodeType>::Iterator::Seek(Key target) {
   node_ = list_->FindGreaterOrEqual(target);
+  return Entry();
 }
 
 template<class Key, class Comparator, class NodeType>
-void SkipListBase<Key, Comparator, NodeType>::Iterator::SeekToFirst() {
+Key SkipListBase<Key, Comparator, NodeType>::Iterator::SeekToFirst() {
   node_ = list_->head_->Next(0);
+  return Entry();
 }
 
 template<class Key, class Comparator, class NodeType>
-void SkipListBase<Key, Comparator, NodeType>::Iterator::SeekToLast() {
+Key SkipListBase<Key, Comparator, NodeType>::Iterator::SeekToLast() {
   node_ = list_->FindLast();
-  if (node_ == list_->head_) {
-    node_ = nullptr;
+  if (node_ != list_->head_) {
+    return node_->key;
   }
+  node_ = nullptr;
+  return Key();
 }
 
 template<class Key, class Comparator, class NodeType>

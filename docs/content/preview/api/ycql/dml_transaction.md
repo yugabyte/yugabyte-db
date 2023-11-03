@@ -56,8 +56,10 @@ transaction_block ::= START TRANSACTION ';'
 - An error is raised if transactions are not enabled in any of the tables inserted, updated, or deleted.
 - Currently, an error is raised if any of the `INSERT`, `UPDATE`, or `DELETE` statements contains an `IF` clause.
 - If transactions are enabled for a table, its indexes must have them enabled as well, and vice versa.
-- There is no explicit rollback.
+- There is no explicit rollback. To rollback a transaction, abort, or interrupt the client session.
 - DDLs are always executed outside of a transaction block, and like DMLs outside a transaction block, are committed immediately.
+- Inside a transaction block only insert, update, and delete statements are allowed. Select statements are not allowed.
+- The insert, update, and delete statements inside a transaction block cannot have any [if_expression](../grammar_diagrams/#if-expression).
 
 ## Examples
 
@@ -99,7 +101,7 @@ ycqlsh:example> SELECT account_name, account_type, balance, writetime(balance) F
 
 ### Update 2 rows with the same partition key
 
-You can do this as shown below.
+You can do this as follows:
 
 ```sql
 ycqlsh:example> BEGIN TRANSACTION
@@ -143,7 +145,7 @@ ycqlsh:example> SELECT account_name, account_type, balance, writetime(balance) F
         Smith |      savings |    2000 |   1523313964363056
 ```
 
-{{< note Type="Note" >}}
+{{< note title="Note" >}}
 `BEGIN/END TRANSACTION` doesn't currently support `RETURNS STATUS AS ROW`.
 {{< /note >}}
 

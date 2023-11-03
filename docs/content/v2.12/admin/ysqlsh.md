@@ -32,7 +32,7 @@ If you prefer, you can install a standalone version using any of the following m
 - Using Homebrew:
 
     ```sh
-    brew tap yugabyte/yugabytedb
+    brew tap yugabyte/tap
     brew install yugabytedb-client
     ysqlsh
     ```

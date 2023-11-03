@@ -35,8 +35,6 @@
 #include <algorithm>
 #include <mutex>
 
-#include <glog/logging.h>
-
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.messages.h"
@@ -56,7 +54,7 @@
 
 using std::string;
 
-DEFINE_UNKNOWN_bool(enable_log_retention_by_op_idx, true,
+DEFINE_RUNTIME_bool(enable_log_retention_by_op_idx, true,
             "If true, logs will be retained based on an op id passed by the cdc service");
 
 DEFINE_UNKNOWN_int32(log_max_seconds_to_retain, 24 * 3600, "Log files that are older will be "
@@ -76,7 +74,7 @@ METRIC_DEFINE_counter(tablet, log_reader_entries_read, "Entries Read From Log",
                       yb::MetricUnit::kEntries,
                       "Number of entries read from the WAL since tablet start");
 
-METRIC_DEFINE_coarse_histogram(table, log_reader_read_batch_latency, "Log Read Latency",
+METRIC_DEFINE_event_stats(table, log_reader_read_batch_latency, "Log Read Latency",
                         yb::MetricUnit::kBytes,
                         "Microseconds spent reading log entry batches");
 
@@ -107,8 +105,6 @@ struct LogSegmentSeqnoComparator {
 };
 }
 
-using consensus::ReplicateMsg;
-using env_util::ReadFully;
 using strings::Substitute;
 
 const int64_t LogReader::kNoSizeLimit = -1;
@@ -144,7 +140,7 @@ LogReader::LogReader(Env* env,
     bytes_read_ = METRIC_log_reader_bytes_read.Instantiate(tablet_metric_entity);
     entries_read_ = METRIC_log_reader_entries_read.Instantiate(tablet_metric_entity);
   }
-  if (PREDICT_FALSE(FLAGS_enable_log_retention_by_op_idx &&
+  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_enable_log_retention_by_op_idx) &&
                         (FLAGS_TEST_record_segments_violate_max_time_policy ||
                          FLAGS_TEST_record_segments_violate_min_space_policy))) {
     TEST_segments_violate_max_time_policy_ = std::make_unique<std::vector<ReadableLogSegmentPtr>>();
@@ -158,7 +154,7 @@ LogReader::~LogReader() {
 
 Status LogReader::Init(const string& tablet_wal_path) {
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     CHECK_EQ(state_, kLogReaderInitialized) << "bad state for Init(): " << state_;
   }
   VLOG_WITH_PREFIX(1) << "Reading wal from path:" << tablet_wal_path;
@@ -190,13 +186,6 @@ Status LogReader::Init(const string& tablet_wal_path) {
     }
     CHECK(segment->IsInitialized()) << "Uninitialized segment at: " << segment->path();
 
-    if (!segment->HasFooter()) {
-      LOG_WITH_PREFIX(WARNING)
-          << "Log segment " << fqp << " was likely left in-progress "
-             "after a previous crash. Will try to rebuild footer by scanning data.";
-      RETURN_NOT_OK(segment->RebuildFooterByScanning());
-    }
-
     read_segments.push_back(segment);
   }
 
@@ -204,24 +193,38 @@ Status LogReader::Init(const string& tablet_wal_path) {
   std::sort(read_segments.begin(), read_segments.end(), LogSegmentSeqnoComparator());
 
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
 
     string previous_seg_path;
     int64_t previous_seg_seqno = -1;
     for (const auto& segment : read_segments) {
-      VLOG_WITH_PREFIX(1) << " Log Reader Indexed: " << segment->footer().ShortDebugString();
       // Check that the log segments are in sequence.
+      const auto current_seg_seqno = segment->header().sequence_number();
       if (previous_seg_seqno != -1 &&
-          segment->header().sequence_number() != previous_seg_seqno + 1) {
+          current_seg_seqno != previous_seg_seqno + 1) {
         return STATUS(Corruption, Substitute("Segment sequence numbers are not consecutive. "
             "Previous segment: seqno $0, path $1; Current segment: seqno $2, path $3",
-            previous_seg_seqno, previous_seg_path, segment->header().sequence_number(),
+            previous_seg_seqno, previous_seg_path, current_seg_seqno,
                 segment->path()));
-        previous_seg_seqno++;
-      } else {
-        previous_seg_seqno = segment->header().sequence_number();
       }
+      previous_seg_seqno = current_seg_seqno;
       previous_seg_path = segment->path();
+
+      if (!segment->HasFooter()) {
+        const auto no_footer_warning_prefix = Format("Log segment $0 was likely left in-progress"
+                                        "after a previous crash.", segment->path());
+        if(current_seg_seqno == read_segments.back()->header().sequence_number()) {
+          LOG_WITH_PREFIX(WARNING) << no_footer_warning_prefix
+                                   << " Will try to reuse this segment as writable active segment";
+          RETURN_NOT_OK(AppendUnclosedSegmentUnlocked(segment));
+          continue;
+        }
+        LOG_WITH_PREFIX(WARNING) << no_footer_warning_prefix
+                                 << " Will try to rebuild footer by scanning data.";
+        RETURN_NOT_OK(segment->RebuildFooterByScanning());
+        VLOG_WITH_PREFIX(1) << " Log Reader Indexed: " << segment->footer().ShortDebugString();
+      }
+
       RETURN_NOT_OK(AppendSegmentUnlocked(segment));
     }
 
@@ -231,7 +234,7 @@ Status LogReader::Init(const string& tablet_wal_path) {
 }
 
 Status LogReader::InitEmptyReaderForTests() {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   state_ = kLogReaderReading;
   return Status::OK();
 }
@@ -297,7 +300,7 @@ Status LogReader::GetSegmentPrefixNotIncluding(int64_t index, int64_t cdc_max_re
   DCHECK(segments);
   segments->clear();
 
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   CHECK_EQ(state_, kLogReaderReading);
 
   int64_t reclaimed_space = 0;
@@ -315,9 +318,8 @@ Status LogReader::GetSegmentPrefixNotIncluding(int64_t index, int64_t cdc_max_re
     // This log segment contains cdc unreplicated entries. Don't GC it unless the file is too old
     // (controlled by flag FLAGS_log_max_seconds_to_retain) or we don't have enough space for the
     // logs (controlled by flag FLAGS_log_stop_retaining_min_disk_mb).
-    if (FLAGS_enable_log_retention_by_op_idx &&
+    if (GetAtomicFlag(&FLAGS_enable_log_retention_by_op_idx) &&
         segment->footer().max_replicate_index() >= cdc_max_replicated_index) {
-
       // Since this log file contains cdc unreplicated entries, we don't want to GC it unless
       // it's too old, or we don't have enough space to store log files.
       if (!ViolatesMaxTimePolicy(segment) && !ViolatesMinSpacePolicy(segment, &reclaimed_space)) {
@@ -335,7 +337,7 @@ Status LogReader::GetSegmentPrefixNotIncluding(int64_t index, int64_t cdc_max_re
 }
 
 int64_t LogReader::GetMinReplicateIndex() const {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   int64_t min_remaining_op_idx = -1;
 
   for (const scoped_refptr<ReadableLogSegment>& segment : segments_) {
@@ -351,7 +353,7 @@ int64_t LogReader::GetMinReplicateIndex() const {
 
 Result<scoped_refptr<ReadableLogSegment>> LogReader::GetSegmentBySequenceNumber(
     const int64_t seq) const {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   const scoped_refptr<ReadableLogSegment> segment = VERIFY_RESULT(segments_.Get(seq));
   SCHECK_FORMAT(
       segment->header().sequence_number() == seq, InternalError,
@@ -371,7 +373,7 @@ Result<std::shared_ptr<LWLogEntryBatchPB>> LogReader::ReadBatchUsingIndexEntry(
 
   CHECK_GT(index_entry.offset_in_segment, 0);
   int64_t offset = index_entry.offset_in_segment;
-  ScopedLatencyMetric scoped(read_batch_latency_.get());
+  ScopedLatencyMetric<EventStats> scoped(read_batch_latency_.get());
   auto result = segment->ReadEntryHeaderAndBatch(&offset);
   RETURN_NOT_OK_PREPEND(
       result,
@@ -392,8 +394,6 @@ Status LogReader::ReadReplicatesInRange(
     int64_t max_bytes_to_read,
     ReplicateMsgs* replicates,
     int64_t* starting_op_segment_seq_num,
-    yb::SchemaPB* modified_schema,
-    uint32_t* modified_schema_version,
     CoarseTimePoint deadline) const {
   DCHECK_GT(starting_at, 0);
   DCHECK_GE(up_to, starting_at);
@@ -460,11 +460,6 @@ Status LogReader::ReadReplicatesInRange(
           max_bytes_to_read <= 0 ||
           total_size + space_required < max_bytes_to_read) {
         total_size += space_required;
-        if (entry.replicate().op_type() == consensus::OperationType::CHANGE_METADATA_OP &&
-            modified_schema != nullptr && modified_schema_version != nullptr) {
-          entry.replicate().change_metadata_request().schema().ToGoogleProtobuf(modified_schema);
-          *modified_schema_version = entry.replicate().change_metadata_request().schema_version();
-        }
         replicates_tmp.emplace_back(batch, entry.mutable_replicate());
       } else {
         limit_exceeded = true;
@@ -491,14 +486,14 @@ Result<int64_t> LogReader::LookupOpWalSegmentNumber(int64_t op_index) const {
 }
 
 Status LogReader::GetSegmentsSnapshot(SegmentSequence* segments) const {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   CHECK_EQ(state_, kLogReaderReading);
   segments->assign(segments_);
   return Status::OK();
 }
 
 Status LogReader::TrimSegmentsUpToAndIncluding(const int64_t segment_sequence_number) {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   CHECK_EQ(state_, kLogReaderReading);
   std::vector<int64_t> deleted_segments;
 
@@ -517,7 +512,7 @@ Status LogReader::TrimSegmentsUpToAndIncluding(const int64_t segment_sequence_nu
 }
 
 Status LogReader::UpdateLastSegmentOffset(int64_t readable_to_offset) {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   CHECK_EQ(state_, kLogReaderReading);
   DCHECK(!segments_.empty());
   // Get the last segment
@@ -532,7 +527,7 @@ Status LogReader::ReplaceLastSegment(const scoped_refptr<ReadableLogSegment>& se
   // have a footer.
   DCHECK(segment->HasFooter());
 
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   CHECK_EQ(state_, kLogReaderReading);
 
   CHECK(!segments_.empty());
@@ -545,7 +540,7 @@ Status LogReader::AppendSegment(const scoped_refptr<ReadableLogSegment>& segment
   if (PREDICT_FALSE(!segment->HasFooter())) {
     RETURN_NOT_OK(segment->RebuildFooterByScanning());
   }
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   return AppendSegmentUnlocked(segment);
 }
 
@@ -556,20 +551,27 @@ Status LogReader::AppendSegmentUnlocked(const scoped_refptr<ReadableLogSegment>&
   return segments_.push_back(segment->header().sequence_number(), segment);
 }
 
+Status LogReader::AppendUnclosedSegmentUnlocked(const scoped_refptr<ReadableLogSegment>& segment) {
+  DCHECK(segment->IsInitialized());
+  SCHECK(!segment->HasFooter(), IllegalState, "unclosed segment shouldn't have a footer");
+
+  return segments_.push_back(segment->header().sequence_number(), segment);
+}
+
 Status LogReader::AppendEmptySegment(const scoped_refptr<ReadableLogSegment>& segment) {
   DCHECK(segment->IsInitialized());
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   CHECK_EQ(state_, kLogReaderReading);
   return segments_.push_back(segment->header().sequence_number(), segment);
 }
 
 size_t LogReader::num_segments() const {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   return segments_.size();
 }
 
 string LogReader::ToString() const {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   string ret = "Reader's SegmentSequence: \n";
   for (const SegmentSequence::value_type& entry : segments_) {
     ret.append(Substitute("Segment: $0 Footer: $1\n",
@@ -636,12 +638,12 @@ Result<LogIndexEntry> LogReader::GetIndexEntry(const int64_t op_index) const {
 
   {
     // Prevent concurrent lazy loading of the index.
-    std::lock_guard<std::mutex> lock(load_index_mutex_);
+    std::lock_guard lock(load_index_mutex_);
 
     SegmentSequence segments_to_load_index;
     // Detect segments to cover op_index for lazy loading index from them.
     {
-      std::lock_guard<simple_spinlock> lock(lock_);
+      std::lock_guard lock(lock_);
 
       const auto min_indexed_segment_number = log_index_->GetMinIndexedSegmentNumber();
       SegmentSequence::const_reverse_iterator it;
@@ -670,7 +672,8 @@ Result<LogIndexEntry> LogReader::GetIndexEntry(const int64_t op_index) const {
 
         // Stop loading at the segment in which all operations have Raft indexes lower than
         // op_index.
-        if (segment->HasFooter() && segment->footer().max_replicate_index() < op_index) {
+        if (segment->HasFooter() && segment->footer().has_max_replicate_index() &&
+            segment->footer().max_replicate_index() < op_index) {
           VLOG_WITH_PREFIX(2) << "Will stop loading at segment "
                               << seg_num << ", max_replicate_index: "
                               << segment->footer().max_replicate_index();

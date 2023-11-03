@@ -21,11 +21,11 @@
 #include "yb/master/state_with_tablets.h"
 
 #include "yb/util/async_task_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/tostring.h"
 
 DECLARE_int64(max_concurrent_restoration_rpcs);
 DECLARE_int64(max_concurrent_restoration_rpcs_per_tserver);
-
 
 namespace yb {
 namespace master {
@@ -131,14 +131,17 @@ class RestorationState : public StateWithTablets {
       TabletRestoreOperations* operations, const std::unordered_set<TabletId>& snapshot_tablets,
       std::optional<int64_t> db_oid);
 
+  Status Abort();
+
   Status StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_batch);
 
   Status StoreToKeyValuePair(docdb::KeyValuePairPB* pair);
 
  private:
-  bool IsTerminalFailure(const Status& status) override;
+  std::optional<SysSnapshotEntryPB::State> GetTerminalStateForStatus(const Status& status) override;
+  Status ToEntryPB(ForClient for_client, SysRestorationEntryPB* out);
 
-  Status ToEntryPB(SysRestorationEntryPB* out);
+  SysSnapshotEntryPB::State MigrateInitialStateIfNeeded(SysSnapshotEntryPB::State initial_state);
 
   const TxnSnapshotRestorationId restoration_id_;
   TxnSnapshotId snapshot_id_ = TxnSnapshotId::Nil();

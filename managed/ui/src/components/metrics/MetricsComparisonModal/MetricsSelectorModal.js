@@ -1,4 +1,4 @@
-import React, { useState, useContext, useEffect } from 'react';
+import { useState, useContext, useEffect } from 'react';
 import { YBCheckBox, YBModal } from '../../common/forms/fields';
 import './MetricsComparisonModal.scss';
 import { Col, Panel, Row } from 'react-bootstrap';
@@ -51,7 +51,7 @@ export const MetricsSelectorModal = ({ visible, onHide, selectedUniverse }) => {
       if (!invalidPanelType) {
         MetricTypesWithOperations[key].metrics.forEach((filter) => {
           if (filter.replace('_', '').toLowerCase().includes(lowerSearchString)) {
-            if (!(newMetricsToDisplay.hasOwnProperty(key))) {
+            if (!Object.prototype.hasOwnProperty.call(newMetricsToDisplay, key)) {
               newMetricsToDisplay[key] = [];
             }
             newMetricsToDisplay[key].push(filter);
@@ -61,7 +61,6 @@ export const MetricsSelectorModal = ({ visible, onHide, selectedUniverse }) => {
     });
     setMetricsToDisplay(newMetricsToDisplay);
   }, [searchString, selectedUniverse]);
-
 
   const submitSelectedMetrics = () => {
     dispatch({

@@ -17,7 +17,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -27,7 +27,7 @@ import java.util.regex.Pattern;
 import com.yugabyte.util.PSQLException;
 import static org.yb.AssertionWrappers.*;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgReadTimeout extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgReadTimeout.class);
   private static final long kPgYbSessionTimeoutMs = 2000;

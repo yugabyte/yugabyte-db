@@ -1,28 +1,22 @@
-import React, { FC, useEffect, useState } from 'react';
+import { FC, useEffect, useState } from 'react';
 import { MenuItem, Dropdown } from 'react-bootstrap';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
-
 import { fetchUniversesList } from '../../../actions/xClusterReplication';
-import { RunTimeConfigScope } from '../../../redesign/helpers/dtos';
+import { RunTimeConfigScope, RuntimeConfigScopeProps } from '../../../redesign/utils/dtos';
 import { ConfigData } from '../ConfigData';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 
 import '../AdvancedConfig.scss';
 
-interface UniverseRuntimeConfigProps {
-  fetchRuntimeConfigs: (scope?: string) => void;
-  setRuntimeConfig: (key: string, value: string, scope?: string) => void;
-  deleteRunTimeConfig: (key: string, scope?: string) => void;
-  resetRuntimeConfigs: () => void;
-}
-
-export const UniverseRuntimeConfig: FC<UniverseRuntimeConfigProps> = ({
+export const UniverseRuntimeConfig: FC<RuntimeConfigScopeProps> = ({
+  configTagFilter,
   fetchRuntimeConfigs,
   setRuntimeConfig,
   deleteRunTimeConfig,
-  resetRuntimeConfigs,
+  resetRuntimeConfigs
 }) => {
-  // const universesList = useSelector((state: any) => state.universe.universeList);
+  const { t } = useTranslation();
   const universes = useQuery(['universes'], () =>
     fetchUniversesList().then((res: any) => res.data)
   );
@@ -43,7 +37,7 @@ export const UniverseRuntimeConfig: FC<UniverseRuntimeConfigProps> = ({
 
   if (universes.isError) {
     return (
-      <YBErrorIndicator customErrorMessage="Please try again" />
+      <YBErrorIndicator customErrorMessage={t('admin.advanced.globalConfig.GenericConfigError')} />
     );
   }
   if (universes.isLoading || (universes.isIdle && universes.data === undefined)) {
@@ -51,6 +45,11 @@ export const UniverseRuntimeConfig: FC<UniverseRuntimeConfigProps> = ({
   }
 
   const universesList = universes.data;
+  if (universesList.length <= 0) {
+    return (
+      <YBErrorIndicator customErrorMessage={t('admin.advanced.globalConfig.UniverseConfigError')} />
+    );
+  }
   if (universesList.length > 0 && universeDropdownValue === undefined) {
     setUniverseDropdownValue(universesList[0].name);
   }
@@ -60,40 +59,43 @@ export const UniverseRuntimeConfig: FC<UniverseRuntimeConfigProps> = ({
 
   return (
     <div className="universe-runtime-config-container">
-      <div className="universe-runtime-config-container__display">
-        <span className="universe-runtime-config-container__label"> {"Select Universe:"}</span>
-        &nbsp;&nbsp;
-        <Dropdown
-          id="universeRuntimeConfigDropdown"
-          className="universe-runtime-config-dropdown"
-        >
-          <Dropdown.Toggle>
-            <span className="universe-config-dropdown-value">{universeDropdownValue}</span>
-          </Dropdown.Toggle>
-          <Dropdown.Menu>
-            {universesList?.length > 0 &&
-              universesList.map((universe: any, universeIdx: number) => {
-                return (
-                  <MenuItem
-                    eventKey={`universe-${universeIdx}`}
-                    key={`${universe.universeUUID}`}
-                    active={universeDropdownValue === universe.name}
-                    onSelect={() => onUniverseDropdownChanged?.(universe.name, universe.universeUUID)}
-                  >
-                    {universe.name}
-                  </MenuItem>
-                );
-              })
-            }
-          </Dropdown.Menu>
-        </Dropdown>
-      </div>
+      {universesList.length > 0 && (
+        <div className="universe-runtime-config-container__display">
+          <span className="universe-runtime-config-container__label">
+            {t('admin.advanced.globalConfig.SelectUniverse')}
+          </span>
+          &nbsp;&nbsp;
+          <Dropdown id="universeRuntimeConfigDropdown" className="universe-runtime-config-dropdown">
+            <Dropdown.Toggle>
+              <span className="universe-config-dropdown-value">{universeDropdownValue}</span>
+            </Dropdown.Toggle>
+            <Dropdown.Menu>
+              {universesList?.length > 0 &&
+                universesList.map((universe: any, universeIdx: number) => {
+                  return (
+                    <MenuItem
+                      eventKey={`universe-${universeIdx}`}
+                      key={`${universe.universeUUID}`}
+                      active={universeDropdownValue === universe.name}
+                      onSelect={() =>
+                        onUniverseDropdownChanged?.(universe.name, universe.universeUUID)
+                      }
+                    >
+                      {universe.name}
+                    </MenuItem>
+                  );
+                })}
+            </Dropdown.Menu>
+          </Dropdown>
+        </div>
+      )}
 
       <ConfigData
         setRuntimeConfig={setRuntimeConfig}
         deleteRunTimeConfig={deleteRunTimeConfig}
         scope={RunTimeConfigScope.UNIVERSE}
         universeUUID={universeUUID}
+        configTagFilter={configTagFilter}
       />
     </div>
   );

@@ -113,3 +113,28 @@ EXPLAIN EXECUTE myplan(null);
 EXECUTE myplan(null);
 EXECUTE myplan(0);
 EXECUTE myplan(1);
+
+--
+-- For https://github.com/YugaByte/yugabyte-db/issues/10254
+--
+CREATE TABLE t(h INT, r INT, PRIMARY KEY(h, r ASC));
+INSERT INTO t VALUES(1, 1), (1, 3);
+SELECT * FROM t WHERE h = 1 AND r in(1, 3) FOR KEY SHARE;
+-- On this query postgres process stucked in an infinite loop.
+SELECT * FROM t WHERE h = 1 AND r IN (1, 2, 3) FOR KEY SHARE;
+
+-- Testing distinct pushdown, see #16552
+-- TODO(tanuj): add back ANALYZE when #16633 is fixed.
+EXPLAIN (SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT DISTINCT att.attname as name, att.attnum as OID, pg_catalog.format_type(ty.oid,NULL) AS datatype,
+	att.attnotnull as not_null, att.atthasdef as has_default_val
+	FROM pg_catalog.pg_attribute att
+	    JOIN pg_catalog.pg_type ty ON ty.oid=atttypid
+	WHERE
+	    att.attnum > 0
+	    AND att.attisdropped IS FALSE
+	ORDER BY att.attnum LIMIT 1;
+
+-- check system columns in YbSeqScan(#18485)
+explain (costs off)
+/*+ SeqScan(nr2) */ SELECT tableoid::regclass, * from nr2 where i = 1;
+/*+ SeqScan(nr2) */ SELECT tableoid::regclass, * from nr2 where i = 1;

@@ -68,4 +68,19 @@ public class ServerInfo {
     }
     return sb.toString();
   }
+
+  @Override
+  public String toString() {
+    return "ServerInfo "
+        + "for server="
+        + uuid
+        + " host="
+        + host
+        + ", port="
+        + port
+        + ", isLeader="
+        + isLeader
+        + ", state="
+        + state;
+  }
 }

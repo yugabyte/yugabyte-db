@@ -1,6 +1,40 @@
 import { YBTableRelationType } from './constants';
 import { DeepPartial } from './types';
 
+export interface HostInfo {
+  aws:
+    | {
+        'instance-id': string;
+        privateIp: string;
+        region: string;
+        'vpc-id': string;
+      }
+    | string;
+  gcp:
+    | {
+        network: string;
+        project: string;
+      }
+    | string;
+}
+
+export interface SuggestedKubernetesConfig {
+  config: {
+    KUBECONFIG_PULL_SECRET_NAME: string;
+    KUBECONFIG_PULL_SECRET_CONTENT: any;
+    KUBECONFIG_IMAGE_REGISTRY: string;
+    KUBECONFIG_PROVIDER: string;
+  };
+  regionList: {
+    code: string;
+    name: string;
+    latitude: number;
+    longitude: number;
+    zoneList: { config: { STORAGE_CLASS: string }; name: string }[];
+  }[];
+  name: string;
+}
+
 export interface PlacementAZ {
   uuid: string;
   name: string;
@@ -33,6 +67,28 @@ export enum CloudType {
   kubernetes = 'kubernetes',
   cloud = 'cloud-1',
   other = 'other'
+}
+
+// PublicCloudConstants.java
+export enum StorageType {
+  IO1 = 'IO1',
+  GP2 = 'GP2',
+  GP3 = 'GP3',
+  Scratch = 'Scratch',
+  Persistent = 'Persistent',
+  StandardSSD_LRS = 'StandardSSD_LRS',
+  Premium_LRS = 'Premium_LRS',
+  UltraSSD_LRS = 'UltraSSD_LRS'
+}
+
+export interface DeviceInfo {
+  volumeSize: number;
+  numVolumes: number;
+  diskIops: number | null;
+  throughput: number | null;
+  storageClass: 'standard'; // hardcoded in DeviceInfo.java
+  mountPoints: string | null;
+  storageType: StorageType | null;
 }
 
 // UniverseTaskParams.java
@@ -83,10 +139,11 @@ export interface UserIntent {
   instanceTags: FlagsObject | FlagsArray;
 }
 
-export enum ClusterType {
-  PRIMARY = 'PRIMARY',
-  ASYNC = 'ASYNC'
-}
+export const ClusterType = {
+  PRIMARY: 'PRIMARY',
+  ASYNC: 'ASYNC'
+} as const;
+export type ClusterType = typeof ClusterType[keyof typeof ClusterType];
 
 export interface Cluster {
   placementInfo: {
@@ -123,28 +180,6 @@ export interface EncryptionAtRestConfig {
   type?: 'DATA_KEY' | 'CMK';
 }
 
-// PublicCloudConstants.java
-export enum StorageType {
-  IO1 = 'IO1',
-  GP2 = 'GP2',
-  GP3 = 'GP3',
-  Scratch = 'Scratch',
-  Persistent = 'Persistent',
-  StandardSSD_LRS = 'StandardSSD_LRS',
-  Premium_LRS = 'Premium_LRS',
-  UltraSSD_LRS = 'UltraSSD_LRS'
-}
-
-export interface DeviceInfo {
-  volumeSize: number;
-  numVolumes: number;
-  diskIops: number | null;
-  throughput: number | null;
-  storageClass: 'standard'; // hardcoded in DeviceInfo.java
-  mountPoints: string | null;
-  storageType: StorageType | null;
-}
-
 // NodeDetails.java
 export enum NodeState {
   ToBeAdded = 'ToBeAdded',
@@ -179,11 +214,13 @@ export interface UniverseDetails {
   clusterOperation?: 'CREATE' | 'EDIT' | 'DELETE';
   allowInsecure: boolean;
   backupInProgress: boolean;
+  mastersInDefaultRegion?: boolean;
   capability: 'READ_ONLY' | 'EDITS_ALLOWED';
   clusters: Cluster[];
   communicationPorts: CommunicationPorts;
   cmkArn: string;
   deviceInfo: DeviceInfo | null;
+  masterDeviceInfo: DeviceInfo | null;
   encryptionAtRestConfig: EncryptionAtRestConfig;
   extraDependencies: {
     installNodeExporter: boolean;
@@ -196,7 +233,9 @@ export interface UniverseDetails {
   nodeDetailsSet: NodeDetails[];
   nodePrefix: string;
   resetAZConfig: boolean;
-  rootCA: string | null;
+  rootCA: string;
+  clientRootCA: string;
+  rootAndClientRootCASame: boolean;
   xclusterInfo: {
     sourceRootCertDirPath: string;
     sourceXClusterConfigs: string[];
@@ -206,12 +245,17 @@ export interface UniverseDetails {
   updateInProgress: boolean;
   updateSucceeded: boolean;
   userAZSelected: boolean;
+  enableYbc: boolean;
+  updateOptions: string[];
+  useSpotInstance: boolean;
 }
 
 export type UniverseConfigure = DeepPartial<UniverseDetails>;
 
 export interface Universe {
   creationDate: string;
+  drConfigUuidsAsSource: string[];
+  drConfigUuidsAsTarget: string[];
   name: string;
   resources: Resources;
   universeConfig: UniverseConfig;
@@ -219,6 +263,14 @@ export interface Universe {
   universeUUID: string;
   version: number;
 }
+
+export const TableType = {
+  YQL_TABLE_TYPE: 'YQL_TABLE_TYPE',
+  REDIS_TABLE_TYPE: 'REDIS_TABLE_TYPE',
+  PGSQL_TABLE_TYPE: 'PGSQL_TABLE_TYPE',
+  TRANSACTION_STATUS_TABLE_TYPE: 'TRANSACTION_STATUS_TABLE_TYPE'
+} as const;
+export type TableType = typeof TableType[keyof typeof TableType];
 
 export interface YBTable {
   isIndexTable: boolean;
@@ -229,6 +281,12 @@ export interface YBTable {
   tableName: string;
   tableType: TableType;
   tableUUID: string;
+}
+
+export interface UniverseNamespace {
+  namespaceUUID: string;
+  name: string;
+  tableType: TableType;
 }
 
 // Provider.java
@@ -263,13 +321,13 @@ export interface Region {
 }
 
 // InstanceType.java
-interface VolumeDetails {
+export interface VolumeDetails {
   volumeSizeGB: number;
   volumeType: 'EBS' | 'SSD' | 'HDD' | 'NVME';
   mountPath: string;
 }
 
-interface InstanceTypeDetails {
+export interface InstanceTypeDetails {
   tenancy: 'Shared' | 'Dedicated' | 'Host' | null;
   volumeDetailsList: VolumeDetails[];
 }
@@ -333,6 +391,19 @@ export interface KmsConfig {
   };
 }
 
+export interface PitrConfig {
+  createTime: string;
+  customerUUID: string;
+  dbName: string;
+  maxRecoverTimeInMillis: number;
+  minRecoverTimeInMillis: number;
+  retentionPeriod: number;
+  scheduleInterval: number;
+  tableType: TableType;
+  updateTime: string;
+  uuid: string;
+}
+
 export interface HAPlatformInstance {
   uuid: string;
   config_uuid: string;
@@ -354,26 +425,12 @@ export interface HAReplicationSchedule {
   is_running: boolean;
 }
 
-export enum TableType {
-  YQL_TABLE_TYPE = 'YQL_TABLE_TYPE',
-  REDIS_TABLE_TYPE = 'REDIS_TABLE_TYPE',
-  PGSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE'
-}
-
 export const TableTypeLabel: Record<TableType, string> = {
   YQL_TABLE_TYPE: 'YCQL',
   PGSQL_TABLE_TYPE: 'YSQL',
-  REDIS_TABLE_TYPE: 'REDIS'
+  REDIS_TABLE_TYPE: 'REDIS',
+  TRANSACTION_STATUS_TABLE_TYPE: 'SYSTEM'
 } as const;
-
-export interface MetricsData {
-  type: string;
-  metricsKey: string[];
-  nodePrefixes: string;
-  selectedUniverse: any;
-  title: string;
-  tableName?: string;
-}
 
 export interface GraphFilter {
   startMoment: any;
@@ -389,6 +446,7 @@ export interface GraphFilter {
   selectedRegionClusterUUID?: string | null;
   selectedRegionCode?: string | null;
   selectedZoneName?: string | null;
+  currentSelectedNodeType: string | null;
 }
 
 export interface MetricSettings {
@@ -403,70 +461,47 @@ export interface MetricQueryParams {
   nodePrefix: string;
   nodeNames: string[];
 }
-export interface CpuMeasureQueryData {
-  maxNodeName: string;
-  maxNodeValue: number;
-  otherNodesAvgValue: number;
-}
-export interface CpuMeasureRecommendation {
-  data: CpuMeasureQueryData;
-  summary: React.ReactNode | string;
+
+// TODO: Need to move the above enums to global dtos file under src/redesign/utils as part of PLAT-7010
+
+// ---------------------------------------------------------------------------
+// Platform Result Types
+// Sources:
+// src/main/java/com/yugabyte/yw/forms/PlatformResults.java
+// src/main/java/com/yugabyte/yw/models/helpers/BaseBeanValidator.java
+// ---------------------------------------------------------------------------
+export interface YBPTask {
+  taskUUID: string;
+
+  resourceUUID?: string;
 }
 
-export interface CpuUsageRecommendation {
-  summary: React.ReactNode | string;
+export interface YBPSuccess {
+  message: string;
+  success: true;
 }
 
-export interface IndexSchemaQueryData {
-  table_name: string;
-  index_name: string;
-  index_command: string;
+export type YBPError = {
+  error: string;
+  httpMethod: string;
+  requestUri: string;
+  success: false;
+
+  errorJson?: {};
+};
+
+// TODO: Remove when YBPStructuredError is replaced by YBPError(json)
+export interface YBPStructuredError {
+  error: {};
+  success: false;
 }
 
-export interface IndexSchemaRecommendation {
-  data: IndexSchemaQueryData[];
-  summary: React.ReactNode | string;
+export interface YBPBeanValidationError extends YBPStructuredError {
+  error: {
+    errorSource: string[];
+    [x: string]: string[];
+  };
+  success: false;
 }
 
-export interface NodeDistributionData {
-  numSelect: number;
-  numInsert: number;
-  numUpdate: number;
-  numDelete: number;
-}
-
-export interface QueryLoadData {
-  maxNodeName: string;
-  percentDiff: number;
-  maxNodeDistribution: NodeDistributionData;
-  otherNodesDistribution: NodeDistributionData;
-}
-
-export interface QueryLoadRecommendation {
-  data: QueryLoadData;
-  summary: React.ReactNode | string;
-}
-
-export enum RecommendationTypeEnum {
-  All = 'All',
-  SchemaSuggestion = 'SchemaSuggestion',
-  QueryLoadSkew = 'QueryLoadSkew',
-  IndexSuggestion = 'IndexSuggestion',
-  ConnectionSkew = 'ConnectionSkew',
-  CpuSkew = 'CpuSkew',
-  CpuUsage = 'CpuUsage'
-}
-
-export interface RunTimeConfigData {
-  configID: number;
-  configKey: string;
-  configValue: string;
-  isConfigInherited: boolean;
-}
-
-export enum RunTimeConfigScope {
-  GLOBAL = 'GLOBAL',
-  UNIVERSE = 'UNIVERSE',
-  PROVIDER = 'PROVIDER',
-  CUSTOMER = 'CUSTOMER'
-}
+// ---------------------------------------------------------------------------

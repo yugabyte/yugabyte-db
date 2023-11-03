@@ -12,16 +12,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../row-level-geo-partitioning/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-</ul>
-
-Row-level geo-partitioning allows fine-grained control over pinning data in a user table (at a per-row level) to geographic locations, thereby allowing the data residency to be managed at the table-row level. Use-cases requiring low latency multi-region deployments, transactional consistency semantics and transparent schema change propagation across the regions would benefit from this feature.
+Row-level geo-partitioning allows fine-grained control over pinning data in a user table (at a per-row level) to geographic locations, thereby allowing the data residency to be managed at the table-row level. Use-cases requiring low latency multi-region deployments, transactional consistency semantics, and transparent schema change propagation across the regions would benefit from this feature.
 
 Geo-partitioning allows you to move data closer to users to:
 
@@ -86,6 +77,12 @@ First, create tablespaces for each geographic region you wish to partition data 
     );
     ```
 
+To view your tablespaces, you can enter the following command:
+
+```sql
+SELECT * FROM pg_tablespace;
+```
+
 ## Step 2. Create table with partitions
 
 Next, create the parent table that contains a `geo_partition` column which is used to create list-based partitions for each geographic region you want to partition data into as shown in the following diagram:
@@ -105,6 +102,10 @@ Next, create the parent table that contains a `geo_partition` column which is us
         created_at TIMESTAMP DEFAULT NOW()
     ) PARTITION BY LIST (geo_partition);
     ```
+
+{{< note title="Note" >}}
+You can set geo_partition to be **DEFAULT [yb_server_region()](../../../api/ysql/exprs/geo_partitioning_helper_functions/func_yb_server_region)** to partition based on regions. This way, insertions to the local partitioned table don't have to specify the geo_partition column value.
+{{< /note >}}
 
 1. Next, create one partition per desired geography under the parent table, and assign each to the  applicable tablespace. Here, you create three table partitions: one for the EU region called `bank_transactions_eu`, another for the India region called `bank_transactions_india,` and a third partition for US region called `bank_transactions_us`. Create any required indexes for each partition, making sure to associate each index with the same tablespace as that of the partition table.
 
@@ -166,7 +167,7 @@ When you create tables using a tablespace with a placement set, YugabyteDB autom
 
 ## Step 3. Pin user partitions specific to geographic locations
 
-Now, the setup should automatically be able to pin rows to the appropriate regions based on the  value set in the `geo_partition` column. This is shown in the following diagram:
+Now, the setup should automatically be able to pin rows to the appropriate regions based on the value set in the `geo_partition` column. This is shown in the following diagram:
 
 ![Row-level geo-partitioning](/images/explore/multi-region-deployments/geo-partitioning-3.png)
 
@@ -209,7 +210,7 @@ Expanded display is used automatically.
     created_at    | 2020-11-07 21:28:11.056236
     ```
 
-Additionally, the row must be present only in the `bank_transactions_eu` partition, which can be verified by running the select statement directly against that partition. The other partitions should contain no rows.
+Additionally, the row must be present only in the `bank_transactions_eu` partition, which can be easily verified by running the select statement directly against that partition. The other partitions should contain no rows.
 
 ```sql
 yugabyte=# select * from bank_transactions_eu;
@@ -306,7 +307,7 @@ txn_type      | debit
 created_at    | 2020-11-07 21:45:26.067444
 ```
 
-However, if you need to query the local partition without specifying the partition column, you can use the function [yb_is_local_table](../../../api/ysql/exprs/func_yb_is_local_table). To implement the same query as above using `yb_is_local_table`, you can do the following:
+However, if you need to query the local partition without specifying the partition column, you can use the function [yb_is_local_table](../../../api/ysql/exprs/geo_partitioning_helper_functions/func_yb_is_local_table). To implement the same query as above using `yb_is_local_table`, you can do the following:
 
 ```sql
 yugabyte=# select * from bank_transactions where yb_is_local_table(tableoid);

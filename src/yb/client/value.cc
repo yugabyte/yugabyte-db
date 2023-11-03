@@ -32,7 +32,7 @@
 
 #include "yb/client/value.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/client/value-internal.h"
 #include "yb/common/ql_type.h"
@@ -122,28 +122,28 @@ Status YBValue::Data::CheckTypeAndGetPointer(const string& col_name,
                                              void** val_void) {
   const TypeInfo* ti = tp->type_info();
   switch (ti->physical_type) {
-    case yb::INT8:
-    case yb::INT16:
-    case yb::INT32:
-    case yb::INT64:
+    case DataType::INT8:
+    case DataType::INT16:
+    case DataType::INT32:
+    case DataType::INT64:
       RETURN_NOT_OK(CheckAndPointToInt(col_name, ti->size, val_void));
       break;
 
-    case yb::BOOL:
+    case DataType::BOOL:
       RETURN_NOT_OK(CheckAndPointToBool(col_name, val_void));
       break;
 
-    case yb::FLOAT:
+    case DataType::FLOAT:
       RETURN_NOT_OK(CheckValType(col_name, YBValue::Data::FLOAT, "float"));
       *val_void = &float_val_;
       break;
 
-    case yb::DOUBLE:
+    case DataType::DOUBLE:
       RETURN_NOT_OK(CheckValType(col_name, YBValue::Data::DOUBLE, "double"));
       *val_void = &double_val_;
       break;
 
-    case yb::BINARY:
+    case DataType::BINARY:
       RETURN_NOT_OK(CheckAndPointToString(col_name, val_void));
       break;
 

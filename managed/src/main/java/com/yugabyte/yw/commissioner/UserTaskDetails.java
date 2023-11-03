@@ -27,8 +27,11 @@ public class UserTaskDetails {
     // newly deployed machines, etc.
     Provisioning,
 
-    // Running software upgrade on YugaByte clusters.
+    // Running software upgrade on Yugabyte clusters.
     UpgradingSoftware,
+
+    // Finalizing Yugabyte db software upgrade on Yugabyte clusters.
+    FinalizingUpgrade,
 
     // Download YB software locally but not install it.
     DownloadingSoftware,
@@ -40,6 +43,12 @@ public class UserTaskDetails {
     // Start the masters to create a new universe configuration, wait for leader elections, set
     // placement info, wait for the tservers to start up, etc.
     ConfigureUniverse,
+
+    // Querying the upstream LDAP server
+    QueryLdapServer,
+
+    // Db-Ldap Sync
+    DbLdapSync,
 
     // Increasing disk size
     ResizingDisk,
@@ -70,6 +79,9 @@ public class UserTaskDetails {
 
     // Deleting all the xCluster replications and cleaning up their states on the universes.
     DeleteXClusterReplication,
+
+    // Deleting DR config.
+    DeleteDrConfig,
 
     // Rotate access key to all nodes of a universe
     RotateAccessKey,
@@ -164,6 +176,9 @@ public class UserTaskDetails {
     // Fetch the Kubernetes pod information.
     KubernetesPodInfo,
 
+    // Delete all server type pods
+    DeleteAllServerTypePods,
+
     // Wait for Kubernetes pod deployment
     KubernetesWaitForPod,
 
@@ -175,6 +190,12 @@ public class UserTaskDetails {
 
     // Upgrade pod in Kubernetes.
     KubernetesUpgradePod,
+
+    // Copy package to YBC
+    KubernetesCopyPackage,
+
+    // Perform YBC Action
+    KubernetesYbcAction,
 
     // Run the initdb script in a tserver pod. (Deprecated)
     KubernetesInitYSQL,
@@ -190,6 +211,9 @@ public class UserTaskDetails {
 
     // Add certificates and toggle TLS gflags
     ToggleTls,
+
+    // Configure DB Apis
+    ConfigureDBApis,
 
     // Rebooting the node.
     RebootingNode,
@@ -213,7 +237,16 @@ public class UserTaskDetails {
     KubernetesVolumeInfo,
 
     // Install Third Party Packages
-    InstallingThirdPartySoftware
+    InstallingThirdPartySoftware,
+
+    // Promote Auto Flags
+    PromoteAutoFlags,
+
+    // Rollback Auto Flags
+    RollbackAutoFlags,
+
+    // Validate configurations.
+    ValidateConfigurations
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -243,6 +276,10 @@ public class UserTaskDetails {
         title = "Upgrading software";
         description = "Upgrading YugaByte software on existing clusters.";
         break;
+      case FinalizingUpgrade:
+        title = "Finalizing upgrade";
+        description = "Finalizing Yugabyte DB Software version upgrade on universe";
+        break;
       case InstallingSoftware:
         title = "Installing software";
         description =
@@ -254,6 +291,16 @@ public class UserTaskDetails {
         description =
             "Creating and populating the universe config, waiting for the various"
                 + " machines to discover one another.";
+        break;
+      case QueryLdapServer:
+        title = "Querying LDAP Server";
+        description = "Querying the LDAP Server for user-group mapping";
+        break;
+      case DbLdapSync:
+        title = "Syncing DB roles with LDAP groups";
+        description =
+            "Performing a manual sync of user groups and roles between the Universe DB nodes and"
+                + " the upstream LDAP Server.";
         break;
       case ResizingDisk:
         title = "Increasing disk size";
@@ -312,6 +359,10 @@ public class UserTaskDetails {
         description =
             "Deleting xCluster replications and cleaning up their corresponding states "
                 + "on the participating universes.";
+        break;
+      case DeleteDrConfig:
+        title = "Deleting Dr Config";
+        description = "Deleting the disaster recovery config.";
         break;
       case InitializeCloudMetadata:
         title = "Initializing Cloud Metadata";
@@ -417,6 +468,9 @@ public class UserTaskDetails {
         title = "Delete Kubernetes Namespace";
         description = "Delete Kubernetes Namespace";
         break;
+      case DeleteAllServerTypePods:
+        title = "Delete all pods of server type in AZ";
+        description = "Delete all pods of server type in AZ";
       case KubernetesWaitForPod:
         title = "Wait for Kubernetes pod to run";
         description = "Wait for Kubernetes pod to run";
@@ -428,6 +482,14 @@ public class UserTaskDetails {
       case KubernetesUpgradePod:
         title = "Upgrade Kubernetes Pod";
         description = "Upgrade Kubernetes Pod";
+        break;
+      case KubernetesCopyPackage:
+        title = "Copy Package to Kubernetes Pod";
+        description = "Copy Package to Kubernetes Pod";
+        break;
+      case KubernetesYbcAction:
+        title = "Perform YBC Action in the Container";
+        description = "Perform YBC Action in the Container";
         break;
       case KubernetesInitYSQL:
         title = "Initialize YSQL in Kubernetes Universe";
@@ -465,6 +527,10 @@ public class UserTaskDetails {
         title = "Toggle TLS";
         description = "Add certificates and toggle TLS gflags";
         break;
+      case ConfigureDBApis:
+        title = "Configure DB APIs";
+        description = "Configuring DB APIs";
+        break;
       case RotateAccessKey:
         title = "Rotate Access Key";
         description = "Rotate the access key for a universe";
@@ -496,6 +562,18 @@ public class UserTaskDetails {
       case InstallingThirdPartySoftware:
         title = "Install Third Party Software Packages";
         description = "Installing Third party Software packages";
+        break;
+      case PromoteAutoFlags:
+        title = "Promote Auto flags";
+        description = "Promote Auto flags for a universe";
+        break;
+      case RollbackAutoFlags:
+        title = "Rollback Auto flags";
+        description = "Rollback Auto flags for a universe";
+        break;
+      case ValidateConfigurations:
+        title = "Validating configurations";
+        description = "Validating configurations before proceeding";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

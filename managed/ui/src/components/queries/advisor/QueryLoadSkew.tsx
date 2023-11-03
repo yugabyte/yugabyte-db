@@ -1,13 +1,14 @@
-import React, { FC, useEffect } from 'react';
+import { FC, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePrevious } from 'react-use';
 import _ from 'lodash';
 
 import lightBulbIcon from '../images/lightbulb.svg';
-import { EXTERNAL_LINKS, CONST_VAR } from '../helpers/const';
-import { QueryLoadRecommendation } from '../../../redesign/helpers/dtos';
+import { EXTERNAL_LINKS, CONST_VAR } from '../helpers/constants';
+import { QueryLoadRecommendation } from '../../../redesign/utils/dtos';
 import './styles.scss';
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const Plotly = require('plotly.js/lib/index-basic.js');
 
 export const QueryLoadSkew: FC<QueryLoadRecommendation> = ({ data, summary }) => {
@@ -19,13 +20,13 @@ export const QueryLoadSkew: FC<QueryLoadRecommendation> = ({ data, summary }) =>
       data.maxNodeDistribution.numSelect,
       data.maxNodeDistribution.numInsert,
       data.maxNodeDistribution.numUpdate,
-      data.maxNodeDistribution.numDelete,
+      data.maxNodeDistribution.numDelete
     ],
     // <extra></extra> removes the trace information on hover
     hovertemplate: '%{y}<extra></extra>',
     width: 0.2,
     type: 'bar',
-    name: data.maxNodeName,
+    name: data.maxNodeName
   };
 
   const otherNodeData = {
@@ -34,21 +35,19 @@ export const QueryLoadSkew: FC<QueryLoadRecommendation> = ({ data, summary }) =>
       data.otherNodesDistribution.numSelect,
       data.otherNodesDistribution.numInsert,
       data.otherNodesDistribution.numUpdate,
-      data.otherNodesDistribution.numDelete,
+      data.otherNodesDistribution.numDelete
     ],
     hovertemplate: '%{y}<extra></extra>',
     width: 0.2,
     marker: {
-      color: '#262666',
+      color: '#262666'
     },
     type: 'bar',
     name: CONST_VAR.AVG_NODES
   };
 
   useEffect(() => {
-    if (
-      !_.isEqual(previousData, data)
-    ) {
+    if (!_.isEqual(previousData, data)) {
       const chartData = [maxNodeData, otherNodeData];
       const layout = {
         showlegend: true,
@@ -59,7 +58,7 @@ export const QueryLoadSkew: FC<QueryLoadRecommendation> = ({ data, summary }) =>
         margin: {
           l: 55,
           b: 30,
-          t: 10,
+          t: 10
         }
       };
       Plotly.newPlot('querySkewLoadGraph', chartData, layout, { displayModeBar: false });
@@ -75,19 +74,21 @@ export const QueryLoadSkew: FC<QueryLoadRecommendation> = ({ data, summary }) =>
           <span className="learnPerfAdvisorText">
             {t('clusterDetail.performance.advisor.Recommendation')}
             {t('clusterDetail.performance.advisor.Separator')}
+            {data.suggestion}
             <a
               target="_blank"
               rel="noopener noreferrer"
-              className="learnSchemaSuggestion"
-              href={EXTERNAL_LINKS.SUPPORT_TICKET_LINK}
+              className="learnRecommendationSuggestions"
+              href={EXTERNAL_LINKS.QUERY_LOAD_SKEW}
             >
-              {t('clusterDetail.performance.advisor.OpenSupportTicket')}
+              {t('clusterDetail.performance.advisor.LearnHow')}
             </a>
           </span>
         </div>
       </div>
-      <span className="query-text">{t('clusterDetail.performance.chartTitle.Queries')}</span>
-      <div id="querySkewLoadGraph" >
+      <div className="chartBox">
+        <span className="queryText">{t('clusterDetail.performance.chartTitle.Queries')}</span>
+        <div id="querySkewLoadGraph"></div>
       </div>
     </div>
   );

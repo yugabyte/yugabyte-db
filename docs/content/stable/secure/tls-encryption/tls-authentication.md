@@ -72,7 +72,7 @@ $ CERTS=`pwd`
 $ ENABLE_TLS="use_client_to_server_encryption=true,certs_for_client_dir=$CERTS"
 ```
 
-`node.127.0.0.1.crt` and `node.127.0.0.1.key` are the default values for the `ssl_cert_file` and `ssl_key_file` server-side configuration for a YSQL node. If your local IP is not 127.0.0.1, then use the appropriate local IP to name the two files. Alternatively use `ysql_pg_conf` to set `ssl_cert_file` and `ssl_key_file` to the appropriate values.
+`node.127.0.0.1.crt` and `node.127.0.0.1.key` are the default values for the `ssl_cert_file` and `ssl_key_file` server-side configuration for a YSQL node. If your local IP is not 127.0.0.1, then use the appropriate local IP to name the two files. Alternatively use `ysql_pg_conf_csv` to set `ssl_cert_file` and `ssl_key_file` to the appropriate values.
 
 ### TLS without authentication
 
@@ -106,7 +106,7 @@ SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 25
 Type "help" for help.
 ```
 
-The default `ysqlsh` SSL mode is `prefer` (see <https://www.postgresql.org/docs/11/libpq-ssl.html>), which tries SSL first, but falls back to no-ssl if the server does not support it.
+The default `ysqlsh` SSL mode is `prefer` (refer to [SSL Support](https://www.postgresql.org/docs/11/libpq-ssl.html) in the PostgreSQL documentation), which tries SSL first, but falls back to `disable` if the server does not support it.
 
 In this case, a plain `ysqlsh` with no options will work and use encryption:
 

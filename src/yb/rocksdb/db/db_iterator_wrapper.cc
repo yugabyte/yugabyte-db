@@ -15,7 +15,6 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/logging.h"
 
-using yb::FormatSliceAsStr;
 using yb::Format;
 
 namespace rocksdb {
@@ -33,26 +32,31 @@ void TransitionLoggingIteratorWrapper::LogBeforeAndAfter(
   }
 }
 
-void TransitionLoggingIteratorWrapper::SeekToFirst() {
+const KeyValueEntry& TransitionLoggingIteratorWrapper::SeekToFirst() {
   LogBeforeAndAfter(__func__, [this]() { DBIteratorWrapper::SeekToFirst(); });
+  return Entry();
 }
 
-void TransitionLoggingIteratorWrapper::SeekToLast() {
+const KeyValueEntry& TransitionLoggingIteratorWrapper::SeekToLast() {
   LogBeforeAndAfter(__func__, [this]() { DBIteratorWrapper::SeekToLast(); });
+  return Entry();
 }
 
-void TransitionLoggingIteratorWrapper::Seek(const Slice& target) {
+const KeyValueEntry& TransitionLoggingIteratorWrapper::Seek(Slice target) {
   LogBeforeAndAfter(
       Format("Seek($0)", target.ToDebugString()),
       [this, target]() { DBIteratorWrapper::Seek(target); });
+  return Entry();
 }
 
-void TransitionLoggingIteratorWrapper::Next() {
+const KeyValueEntry& TransitionLoggingIteratorWrapper::Next() {
   LogBeforeAndAfter(__func__, [this]() { DBIteratorWrapper::Next(); });
+  return Entry();
 }
 
-void TransitionLoggingIteratorWrapper::Prev() {
+const KeyValueEntry& TransitionLoggingIteratorWrapper::Prev() {
   LogBeforeAndAfter(__func__, [this]() { DBIteratorWrapper::Prev(); });
+  return Entry();
 }
 
 std::string TransitionLoggingIteratorWrapper::LogPrefix() const {

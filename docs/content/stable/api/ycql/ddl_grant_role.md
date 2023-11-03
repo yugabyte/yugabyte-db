@@ -27,7 +27,8 @@ This statement is enabled by setting the YB-TServer flag [`--use_cassandra_authe
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="305" height="35" viewbox="0 0 305 35"><path class="connector" d="M0 22h5m61 0h10m84 0h10m36 0h10m84 0h5"/><rect class="literal" x="5" y="5" width="61" height="25" rx="7"/><text class="text" x="15" y="22">GRANT</text><a xlink:href="../grammar_diagrams#role-name"><rect class="rule" x="76" y="5" width="84" height="25"/><text class="text" x="86" y="22">role_name</text></a><rect class="literal" x="170" y="5" width="36" height="25" rx="7"/><text class="text" x="180" y="22">TO</text><a xlink:href="../grammar_diagrams#role-name"><rect class="rule" x="216" y="5" width="84" height="25"/><text class="text" x="226" y="22">role_name</text></a></svg>
 
 ### Grammar
-```
+
+```ebnf
 grant_role ::= GRANT ROLE role_name TO role_name
 ```
 

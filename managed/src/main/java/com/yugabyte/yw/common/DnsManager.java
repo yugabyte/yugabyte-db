@@ -45,7 +45,11 @@ public class DnsManager extends DevopsBase {
     commandArgs.add("--node_ips");
     commandArgs.add(nodeIpCsv);
     return execCommand(
-        null, providerUUID, null, type.toString().toLowerCase(), commandArgs, new ArrayList<>());
+        DevopsCommand.builder()
+            .providerUUID(providerUUID)
+            .command(type.toString().toLowerCase())
+            .commandArgs(commandArgs)
+            .build());
   }
 
   public ShellResponse listDnsRecord(UUID providerUUID, String hostedZoneId) {
@@ -53,11 +57,10 @@ public class DnsManager extends DevopsBase {
     commandArgs.add("--hosted_zone_id");
     commandArgs.add(hostedZoneId);
     return execCommand(
-        null,
-        providerUUID,
-        null,
-        DnsCommandType.List.toString().toLowerCase(),
-        commandArgs,
-        new ArrayList<>());
+        DevopsCommand.builder()
+            .providerUUID(providerUUID)
+            .command(DnsCommandType.List.toString().toLowerCase())
+            .commandArgs(commandArgs)
+            .build());
   }
 }

@@ -172,6 +172,9 @@ typedef struct IndexScanDescData
 	Scan *yb_scan_plan;
 	PushdownExprs *yb_rel_pushdown;
 	PushdownExprs *yb_idx_pushdown;
+	List *yb_aggrefs;				/* aggregate information for aggregate pushdown */
+	TupleTableSlot *yb_agg_slot;	/* scan slot used by aggregate pushdown */
+	int yb_distinct_prefixlen; /* prefix length, in columns, of a distinct index scan */
 }			IndexScanDescData;
 
 /* Generic structure for parallel scans */
@@ -191,7 +194,7 @@ typedef struct SysScanDescData
 	HeapScanDesc scan;			/* only valid in heap-scan case */
 	IndexScanDesc iscan;		/* only valid in index-scan case */
 	Snapshot	snapshot;		/* snapshot to unregister at end of scan */
-	YbScanDesc	ybscan;			/* only valid in yb-scan case */
+	YbSysScanBase	ybscan;			/* only valid in yb-scan case */
 }			SysScanDescData;
 
 #endif							/* RELSCAN_H */

@@ -1,9 +1,8 @@
-import React from 'react';
 import _ from 'lodash';
 import clsx from 'clsx';
 import { useQueries, useQuery, useQueryClient, UseQueryResult } from 'react-query';
-import { useSelector } from 'react-redux';
 import { useInterval } from 'react-use';
+import { Typography } from '@material-ui/core';
 
 import { fetchXClusterConfig } from '../../actions/xClusterReplication';
 import { YBErrorIndicator, YBLoading, YBLoadingCircleIcon } from '../common/indicators';
@@ -12,9 +11,15 @@ import {
   XCLUSTER_METRIC_REFETCH_INTERVAL_MS
 } from './constants';
 import { XClusterConfigCard } from './XClusterConfigCard';
-import { api } from '../../redesign/helpers/api';
+import {
+  api,
+  runtimeConfigQueryKey,
+  universeQueryKey,
+  xClusterQueryKey
+} from '../../redesign/helpers/api';
+import { RuntimeConfigKey } from '../../redesign/helpers/constants';
 
-import { XClusterConfig } from './XClusterTypes';
+import { XClusterConfig } from './dtos';
 
 import styles from './XClusterConfigList.module.scss';
 
@@ -23,12 +28,15 @@ interface Props {
 }
 
 export function XClusterConfigList({ currentUniverseUUID }: Props) {
-  const currentUserTimezone = useSelector(
-    (state: any) => state?.customer?.currentUser?.data?.timezone
-  );
   const queryClient = useQueryClient();
 
-  const universeQuery = useQuery(['universe', currentUniverseUUID], () =>
+  const customerUUID = localStorage.getItem('customerId') ?? '';
+  const customerRuntimeConfigQuery = useQuery(
+    runtimeConfigQueryKey.customerScope(customerUUID),
+    () => api.fetchRuntimeConfigs(customerUUID, true)
+  );
+
+  const universeQuery = useQuery(universeQueryKey.detail(currentUniverseUUID), () =>
     api.fetchUniverse(currentUniverseUUID)
   );
 
@@ -47,7 +55,7 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
   // Upgrading react-query to v3.28 may solve this issue: https://github.com/TanStack/query/issues/1675
   const xClusterConfigQueries = useQueries(
     universeXClusterConfigUUIDs.map((uuid: string) => ({
-      queryKey: ['Xcluster', uuid],
+      queryKey: xClusterQueryKey.detail(uuid),
       queryFn: () => fetchXClusterConfig(uuid),
       enabled: universeQuery.data?.universeDetails !== undefined
     }))
@@ -56,55 +64,85 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
   useInterval(() => {
     xClusterConfigQueries.forEach((xClusterConfig) => {
       if (
-        xClusterConfig?.data?.status &&
+        !xClusterConfig.data?.usedForDr &&
+        xClusterConfig.data?.status &&
         _.includes(TRANSITORY_XCLUSTER_CONFIG_STATUSES, xClusterConfig.data.status)
       ) {
-        queryClient.invalidateQueries(['Xcluster', xClusterConfig.data.uuid]);
+        queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.data.uuid));
       }
     });
   }, XCLUSTER_METRIC_REFETCH_INTERVAL_MS);
 
-  if (universeQuery.isLoading || universeQuery.isIdle) {
-    return <YBLoading />;
-  }
   if (universeQuery.isError) {
     return <YBErrorIndicator />;
   }
+  if (customerRuntimeConfigQuery.isError) {
+    return (
+      <YBErrorIndicator message="Error fetching runtime configurations for current customer." />
+    );
+  }
+  if (
+    universeQuery.isLoading ||
+    universeQuery.isIdle ||
+    customerRuntimeConfigQuery.isLoading ||
+    customerRuntimeConfigQuery.isIdle
+  ) {
+    return <YBLoading />;
+  }
 
+  const runtimeConfigEntries = customerRuntimeConfigQuery.data.configEntries ?? [];
+  const shouldShowDrXClusterConfigs = runtimeConfigEntries.some(
+    (config: any) =>
+      config.key === RuntimeConfigKey.SHOW_DR_XCLUSTER_CONFIG && config.value === 'true'
+  );
+  const shownXClusterConfigQueries = shouldShowDrXClusterConfigs
+    ? xClusterConfigQueries
+    : xClusterConfigQueries.filter((xClusterConfigQuery) => !xClusterConfigQuery.data?.usedForDr);
   return (
-    <ul className={styles.listContainer}>
-      {xClusterConfigQueries.length === 0 ? (
-        <div className={clsx(styles.configCard, styles.emptyConfigListPlaceholder)}>
-          No replications to show.
-        </div>
-      ) : (
-        xClusterConfigQueries.map((xClusterConfigQuery, index) => {
-          if (xClusterConfigQuery.isLoading) {
-            return (
-              <li
-                className={clsx(styles.listItem, styles.loading)}
-                key={universeXClusterConfigUUIDs[index]}
-              >
-                <div className={styles.configCard}>
-                  <YBLoadingCircleIcon />
-                </div>
-              </li>
-            );
-          }
-          if (!xClusterConfigQuery.isError && xClusterConfigQuery.data) {
-            return (
-              <li className={styles.listItem} key={xClusterConfigQuery.data.uuid}>
-                <XClusterConfigCard
-                  xClusterConfig={xClusterConfigQuery.data}
-                  currentUniverseUUID={currentUniverseUUID}
-                  currentUserTimezone={currentUserTimezone}
-                />
-              </li>
-            );
-          }
-          return null;
-        })
-      )}
-    </ul>
+    <>
+      <ul className={styles.listContainer}>
+        {shownXClusterConfigQueries.length === 0 ? (
+          <div className={clsx(styles.configCard, styles.emptyConfigListPlaceholder)}>
+            No replications to show.
+          </div>
+        ) : (
+          shownXClusterConfigQueries.map((xClusterConfigQuery, index) => {
+            const xClusterConfigUUID = universeXClusterConfigUUIDs[index];
+            if (xClusterConfigQuery.isLoading) {
+              return (
+                <li className={clsx(styles.listItem)} key={xClusterConfigUUID}>
+                  <div className={clsx(styles.configCard, styles.loading)}>
+                    <YBLoadingCircleIcon />
+                  </div>
+                </li>
+              );
+            }
+            if (xClusterConfigQuery.isError) {
+              return (
+                <li className={styles.listItem} key={xClusterConfigUUID}>
+                  <div className={clsx(styles.configCard, styles.error)}>
+                    <i className="fa fa-exclamation-triangle" />
+                    <Typography variant="h5">
+                      {`Error fetching xCluster configuration: ${xClusterConfigUUID}`}
+                    </Typography>
+                  </div>
+                </li>
+              );
+            }
+            if (!xClusterConfigQuery.isError && xClusterConfigQuery.data) {
+              return (
+                <li className={styles.listItem} key={xClusterConfigQuery.data.uuid}>
+                  <XClusterConfigCard
+                    xClusterConfig={xClusterConfigQuery.data}
+                    currentUniverseUUID={currentUniverseUUID}
+                  />
+                </li>
+              );
+            }
+            return null;
+          })
+        )}
+      </ul>
+    </>
   );
 }

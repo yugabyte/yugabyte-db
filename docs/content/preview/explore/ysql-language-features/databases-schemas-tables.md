@@ -23,7 +23,7 @@ Using `ysqlsh`, you can:
 
 - interactively enter SQL queries and see the query results
 - input from a file or the command line
-- use [meta-commands](../../../admin/ysqlsh/#meta-commands) for scripting and administration
+- use [meta-commands](../../../admin/ysqlsh-meta-commands/) for scripting and administration
 
 `ysqlsh` is installed with YugabyteDB and is located in the `bin` directory of the YugabyteDB home directory.
 

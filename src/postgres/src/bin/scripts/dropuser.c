@@ -12,6 +12,7 @@
 
 #include "postgres_fe.h"
 #include "common.h"
+#include "common/string.h"
 #include "fe_utils/string_utils.h"
 
 
@@ -47,7 +48,6 @@ main(int argc, char *argv[])
 	ConnParams	cparams;
 	bool		echo = false;
 	bool		interactive = false;
-	char		dropuser_buf[128];
 
 	PQExpBufferData sql;
 
@@ -111,9 +111,7 @@ main(int argc, char *argv[])
 	{
 		if (interactive)
 		{
-			simple_prompt("Enter name of role to drop: ",
-						  dropuser_buf, sizeof(dropuser_buf), true);
-			dropuser = dropuser_buf;
+			dropuser = simple_prompt("Enter name of role to drop: ", true);
 		}
 		else
 		{

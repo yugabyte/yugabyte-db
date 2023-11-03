@@ -37,12 +37,13 @@
 #include <memory>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/client/auto_flags_manager.h"
 #include "yb/client/async_initializer.h"
 #include "yb/client/client.h"
 
+#include "yb/common/pg_catversions.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_meta.h"
@@ -54,18 +55,26 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/flush_manager.h"
 #include "yb/master/master-path-handlers.h"
+#include "yb/master/master_backup.service.h"
+#include "yb/master/master_backup_service.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_service.h"
 #include "yb/master/master_tablet_service.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_constants.h"
+#include "yb/master/test_async_rpc_manager.h"
+#include "yb/master/ysql_backends_manager.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/secure_stream.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/service_pool.h"
 #include "yb/rpc/yb_rpc.h"
 
 #include "yb/server/rpc_server.h"
+#include "yb/server/secure.h"
+#include "yb/server/hybrid_clock.h"
+
 
 #include "yb/tablet/maintenance_manager.h"
 
@@ -78,6 +87,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/ntp_clock.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
@@ -91,6 +101,12 @@ TAG_FLAG(master_rpc_timeout_ms, experimental);
 DEFINE_UNKNOWN_int32(master_yb_client_default_timeout_ms, 60000,
              "Default timeout for the YBClient embedded into the master.");
 
+DEFINE_NON_RUNTIME_int32(master_backup_svc_queue_length, 50,
+             "RPC queue length for master backup service");
+TAG_FLAG(master_backup_svc_queue_length, advanced);
+
+DECLARE_string(cert_node_filename);
+
 METRIC_DEFINE_entity(cluster);
 
 using namespace std::literals;
@@ -101,7 +117,6 @@ using std::string;
 using yb::consensus::RaftPeerPB;
 using yb::rpc::ServiceIf;
 using yb::tserver::ConsensusServiceImpl;
-using strings::Substitute;
 
 DEFINE_UNKNOWN_int32(master_tserver_svc_num_threads, 10,
              "Number of RPC worker threads to run for the master tserver service");
@@ -142,7 +157,7 @@ DECLARE_int64(inbound_rpc_memory_limit);
 
 DECLARE_int32(master_ts_rpc_timeout_ms);
 
-DECLARE_bool(TEST_enable_db_catalog_version_mode);
+DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 namespace yb {
 namespace master {
@@ -152,9 +167,11 @@ Master::Master(const MasterOptions& opts)
       state_(kStopped),
       auto_flags_manager_(new AutoFlagsManager("yb-master", fs_manager_.get())),
       ts_manager_(new TSManager()),
-      catalog_manager_(new enterprise::CatalogManager(this)),
+      catalog_manager_(new CatalogManager(this)),
+      ysql_backends_manager_(new YsqlBackendsManager(this, catalog_manager_->AsyncTaskPool())),
       path_handlers_(new MasterPathHandlers(this)),
       flush_manager_(new FlushManager(this, catalog_manager())),
+      test_async_rpc_manager_(new TestAsyncRpcManager(this, catalog_manager())),
       init_future_(init_status_.get_future()),
       opts_(opts),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
@@ -162,8 +179,7 @@ Master::Master(const MasterOptions& opts)
           METRIC_ENTITY_cluster.Instantiate(metric_registry_.get(), "yb.cluster")),
       master_tablet_server_(new MasterTabletServer(this, metric_entity())) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
-      GetAtomicFlag(&FLAGS_inbound_rpc_memory_limit),
-      mem_tracker()));
+      GetAtomicFlag(&FLAGS_inbound_rpc_memory_limit), mem_tracker()));
 
   LOG(INFO) << "yb::master::Master created at " << this;
   LOG(INFO) << "yb::master::TSManager created at " << ts_manager_.get();
@@ -231,7 +247,11 @@ Status Master::InitAutoFlags() {
     }
   }
 
-  return Status::OK();
+  return RpcAndWebServerBase::InitAutoFlags();
+}
+
+Result<std::unordered_set<std::string>> Master::GetAvailableAutoFlagsForServer() const {
+  return auto_flags_manager_->GetAvailableAutoFlagsForServer();
 }
 
 Status Master::InitAutoFlagsFromMasterLeader(const HostPort& leader_address) {
@@ -269,6 +289,15 @@ Status Master::Start() {
 }
 
 Status Master::RegisterServices() {
+#if !defined(__APPLE__)
+  server::HybridClock::RegisterProvider(NtpClock::Name(), [](const std::string&) {
+    return std::make_shared<NtpClock>();
+  });
+#endif
+
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_master_backup_svc_queue_length, std::make_shared<MasterBackupServiceImpl>(this)));
+
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterAdminService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterClientService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterClusterService(this)));
@@ -277,30 +306,29 @@ Status Master::RegisterServices() {
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterEncryptionService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterHeartbeatService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterReplicationService(this)));
+  RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterTestService(this)));
 
-  std::unique_ptr<ServiceIf> master_tablet_service(
-      new MasterTabletServiceImpl(master_tablet_server_.get(), this));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_tserver_svc_queue_length,
-                                                     std::move(master_tablet_service)));
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_master_tserver_svc_queue_length,
+      std::make_shared<MasterTabletServiceImpl>(master_tablet_server_.get(), this)));
 
-  std::unique_ptr<ServiceIf> consensus_service(
-      new ConsensusServiceImpl(metric_entity(), catalog_manager_.get()));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_consensus_svc_queue_length,
-                                                     std::move(consensus_service),
-                                                     rpc::ServicePriority::kHigh));
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_master_consensus_svc_queue_length,
+      std::make_shared<ConsensusServiceImpl>(metric_entity(), catalog_manager_.get()),
+      rpc::ServicePriority::kHigh));
 
-  std::unique_ptr<ServiceIf> remote_bootstrap_service(new tserver::RemoteBootstrapServiceImpl(
-      fs_manager_.get(), catalog_manager_.get(), metric_entity(), opts_.MakeCloudInfoPB(),
-      &this->proxy_cache()));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_remote_bootstrap_svc_queue_length,
-                                                     std::move(remote_bootstrap_service)));
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_master_remote_bootstrap_svc_queue_length,
+      std::make_shared<tserver::RemoteBootstrapServiceImpl>(
+          fs_manager_.get(), catalog_manager_.get(), metric_entity(), opts_.MakeCloudInfoPB(),
+          &this->proxy_cache())));
 
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+  RETURN_NOT_OK(RegisterService(
       FLAGS_master_svc_queue_length,
-      std::make_unique<tserver::PgClientServiceImpl>(
-          *master_tablet_server_,
-          client_future(), clock(), std::bind(&Master::TransactionPool, this), metric_entity(),
-          &messenger()->scheduler(), nullptr /* xcluster_safe_time_map */)));
+      std::make_shared<tserver::PgClientServiceImpl>(
+          *master_tablet_server_, client_future(), clock(),
+          std::bind(&Master::TransactionPool, this), mem_tracker(), metric_entity(),
+          &messenger()->scheduler(), std::nullopt /* xcluster_context */)));
 
   return Status::OK();
 }
@@ -312,6 +340,7 @@ void Master::DisplayGeneralInfoIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-clone", "Replica Info", "/tablet-replication");
   DisplayIconTile(output, "fa-clock-o", "TServer Clocks", "/tablet-server-clocks");
   DisplayIconTile(output, "fa-tasks", "Load Balancer", "/load-distribution");
+  DisplayIconTile(output, "fa-list-alt", "XCluster Config", "/xcluster-config");
 }
 
 Status Master::StartAsync() {
@@ -544,7 +573,7 @@ scoped_refptr<Histogram> Master::GetMetric(
       (type == TaskMetric ? "Task" : "Attempt"));
   EscapeMetricNameForPrometheus(&temp_metric_identifier);
   {
-    std::lock_guard<std::mutex> lock(master_metrics_mutex_);
+    std::lock_guard lock(master_metrics_mutex_);
     std::map<std::string, scoped_refptr<Histogram>>* master_metrics_ptr = master_metrics();
     auto it = master_metrics_ptr->find(temp_metric_identifier);
     if (it == master_metrics_ptr->end()) {
@@ -552,7 +581,7 @@ scoped_refptr<Histogram> Master::GetMetric(
           "server", temp_metric_identifier, description, yb::MetricUnit::kMicroseconds,
           description, yb::MetricLevel::kInfo, 0, 10000000, 2);
       scoped_refptr<Histogram> temp =
-          metric_entity()->FindOrCreateHistogram(std::move(histogram));
+          metric_entity()->FindOrCreateMetric<Histogram>(std::move(histogram));
       (*master_metrics_ptr)[temp_metric_identifier] = temp;
       return temp;
     }
@@ -578,6 +607,14 @@ CatalogManagerIf* Master::catalog_manager() const {
   return catalog_manager_.get();
 }
 
+XClusterManagerIf* Master::xcluster_manager() const {
+  return catalog_manager_->GetXClusterManager();
+}
+
+XClusterManager* Master::xcluster_manager_impl() const {
+  return catalog_manager_->GetXClusterManagerImpl();
+}
+
 SysCatalogTable& Master::sys_catalog() const {
   return *catalog_manager_->sys_catalog();
 }
@@ -597,15 +634,24 @@ uint32_t Master::GetAutoFlagConfigVersion() const {
 AutoFlagsConfigPB Master::GetAutoFlagsConfig() const { return auto_flags_manager_->GetConfig(); }
 
 Status Master::get_ysql_db_oid_to_cat_version_info_map(
-    bool size_only, tserver::GetTserverCatalogVersionInfoResponsePB *resp) const {
+    const tserver::GetTserverCatalogVersionInfoRequestPB& req,
+    tserver::GetTserverCatalogVersionInfoResponsePB *resp) const {
   DCHECK(FLAGS_create_initial_sys_catalog_snapshot);
-  DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+  DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
   // This function can only be called during initdb time.
   DbOidToCatalogVersionMap versions;
-  RETURN_NOT_OK(catalog_manager_->GetYsqlAllDBCatalogVersions(&versions));
-  if (size_only) {
+  // We do not use cache/fingerprint which is only used for filling heartbeat
+  // response. The heartbeat mechanism is already subject to a heartbeat delay.
+  // In other situation where we are not already subject to any delay, we want
+  // the latest reading from the table pg_yb_catalog_version.
+  RETURN_NOT_OK(catalog_manager_->GetYsqlAllDBCatalogVersions(
+      false /* use_cache */, &versions, nullptr /* fingerprint */));
+  if (req.size_only()) {
     resp->set_num_entries(narrow_cast<uint32_t>(versions.size()));
   } else {
+    const auto db_oid = req.db_oid();
+    // If db_oid is kInvalidOid, we ask for catalog version map for all databases. Otherwise
+    // we only ask for catalog version info for given database.
     // We assume that during initdb:
     // (1) we only create databases, not drop databases;
     // (2) databases OIDs are allocated increasingly.
@@ -617,18 +663,50 @@ Status Master::get_ysql_db_oid_to_cat_version_info_map(
     // which is a superset of the result of the first call. This is to ensure that the
     // shm_index assigned to a DB oid remains the same during the lifetime of the DB.
     int shm_index = 0;
-    uint32_t db_oid = kInvalidOid;
+    uint32_t current_db_oid = kInvalidOid;
     for (const auto& it : versions) {
-      auto* entry = resp->add_entries();
-      CHECK_LT(db_oid, it.first);
-      db_oid = it.first;
-      entry->set_db_oid(db_oid);
-      entry->set_current_version(it.second.first);
-      entry->set_shm_index(shm_index++);
+      CHECK_LT(current_db_oid, it.first);
+      current_db_oid = it.first;
+      if (db_oid == kInvalidOid || db_oid == current_db_oid) {
+        auto* entry = resp->add_entries();
+        entry->set_db_oid(current_db_oid);
+        entry->set_shm_index(shm_index);
+        if (db_oid != kInvalidOid) {
+          break;
+        }
+      }
+      shm_index++;
     }
   }
   LOG(INFO) << "resp: " << resp->ShortDebugString();
   return Status::OK();
+}
+
+Status Master::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
+  RETURN_NOT_OK(DbServerBase::SetupMessengerBuilder(builder));
+
+  secure_context_ = VERIFY_RESULT(
+      server::SetupInternalSecureContext(options_.HostsString(), *fs_manager_, builder));
+
+  return Status::OK();
+}
+
+Status Master::ReloadKeysAndCertificates() {
+  if (!secure_context_) {
+    return Status::OK();
+  }
+
+  return server::ReloadSecureContextKeysAndCertificates(
+        secure_context_.get(),
+        fs_manager_->GetDefaultRootDir(),
+        server::SecureContextType::kInternal,
+        options_.HostsString());
+}
+
+std::string Master::GetCertificateDetails() {
+  if(!secure_context_) return "";
+
+  return secure_context_.get()->GetCertificateDetails();
 }
 
 } // namespace master

@@ -23,8 +23,8 @@
 #include "yb/client/table.h"
 
 #include "yb/common/common.pb.h"
-#include "yb/common/index.h"
-#include "yb/common/index_column.h"
+#include "yb/qlexpr/index.h"
+#include "yb/qlexpr/index_column.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
@@ -62,7 +62,6 @@ using std::string;
 using std::unordered_map;
 using std::vector;
 using std::max;
-using yb::bfql::TSOpcode;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -118,7 +117,7 @@ class Selectivity {
   // Selectivity of a SECONDARY index.
   Selectivity(MemoryContext *memctx,
               const PTSelectStmt& stmt,
-              const IndexInfo& index_info,
+              const qlexpr::IndexInfo& index_info,
               bool is_forward_scan,
               int predicate_len,
               const MCUnorderedMap<int32, uint16> &column_ref_cnts,
@@ -367,7 +366,7 @@ class Selectivity {
   bool ends_with_range_ = false; // Is there a range clause after prefix?
   size_t num_non_key_ops_ = 0; // How many non-primary-key column operators needs to be evaluated?
   bool covers_fully_ = false;  // Does the index cover the read fully? (true for indexed table)
-  const IndexInfo* index_info_ = nullptr;
+  const qlexpr::IndexInfo* index_info_ = nullptr;
   bool is_forward_scan_ = true;
   int predicate_len_ = 0; // Length of index predicate. 0 if not a partial index.
   bool has_in_on_hash_column_ = false;
@@ -679,7 +678,7 @@ Status PTSelectStmt::AnalyzeReferences(SemContext *sem_context) {
   //   after an INDEX is chosen.
   if (where_clause_) {
     // Walk the <where_expr> tree, which is expected to be of BOOL type.
-    SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
+    SemState sem_state(sem_context, QLType::Create(DataType::BOOL), InternalType::kBoolValue);
     select_scan_info_->set_analyze_where(true);
     RETURN_NOT_OK(where_clause_->Analyze(sem_context));
     select_scan_info_->set_analyze_where(false);
@@ -687,7 +686,7 @@ Status PTSelectStmt::AnalyzeReferences(SemContext *sem_context) {
 
   if (if_clause_) {
     // Walk the <if_expr> tree, which is expected to be of BOOL type.
-    SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
+    SemState sem_state(sem_context, QLType::Create(DataType::BOOL), InternalType::kBoolValue);
     select_scan_info_->set_analyze_if(true);
     RETURN_NOT_OK(if_clause_->Analyze(sem_context));
     select_scan_info_->set_analyze_if(false);
@@ -759,7 +758,7 @@ Status PTSelectStmt::AnalyzeIndexes(SemContext *sem_context, SelectScanSpec *sca
   // - When SELECT statement uses token(), querying by partition_key_ops_ on the <primary table> is
   //   more efficient than using secondary index scan.
   if (!table_->index_map().empty() && partition_key_ops_.empty()) {
-    for (const std::pair<TableId, IndexInfo> index : table_->index_map()) {
+    for (const auto& index : table_->index_map()) {
       if (!index.second.HasReadPermission()) {
         continue;
       }
@@ -879,6 +878,8 @@ Status PTSelectStmt::SetupScanPath(SemContext *sem_context, const SelectScanSpec
     // the LIMIT and OFFSET should be applied to the PRIMARY ReadRequest.
     child_select_->limit_clause_ = nullptr;
     child_select_->offset_clause_ = nullptr;
+    // Pass is_aggregate_ flag to allow the child ignore PAGING.
+    child_select_->is_parent_aggregate_ = is_aggregate_;
   }
 
   // Compile the child tree.
@@ -892,7 +893,7 @@ Status PTSelectStmt::SetupScanPath(SemContext *sem_context, const SelectScanSpec
 // - Use ColumnID to check if a column in a query is covered by the index.
 // - The list "column_refs_" contains IDs of all columns that are referred to by SELECT.
 // - The list "IndexInfo::columns_" contains the IDs of all columns in the INDEX.
-bool PTSelectStmt::CoversFully(const IndexInfo& index_info,
+bool PTSelectStmt::CoversFully(const qlexpr::IndexInfo& index_info,
                                const MCUnorderedMap<int32, uint16> &column_ref_cnts) const {
   // First, check covering by ID.
   bool all_ref_id_covered = true;
@@ -1112,7 +1113,7 @@ Status PTSelectStmt::AnalyzeLimitClause(SemContext *sem_context) {
 
   RETURN_NOT_OK(limit_clause_->CheckRhsExpr(sem_context));
 
-  SemState sem_state(sem_context, QLType::Create(INT32), InternalType::kInt32Value);
+  SemState sem_state(sem_context, QLType::Create(DataType::INT32), InternalType::kInt32Value);
   sem_state.set_bindvar_name(PTBindVar::limit_bindvar_name());
   RETURN_NOT_OK(limit_clause_->Analyze(sem_context));
 
@@ -1126,7 +1127,7 @@ Status PTSelectStmt::AnalyzeOffsetClause(SemContext *sem_context) {
 
   RETURN_NOT_OK(offset_clause_->CheckRhsExpr(sem_context));
 
-  SemState sem_state(sem_context, QLType::Create(INT32), InternalType::kInt32Value);
+  SemState sem_state(sem_context, QLType::Create(DataType::INT32), InternalType::kInt32Value);
   sem_state.set_bindvar_name(PTBindVar::offset_bindvar_name());
   RETURN_NOT_OK(offset_clause_->Analyze(sem_context));
 
@@ -1290,6 +1291,8 @@ Status SelectScanInfo::AddWhereExpr(SemContext *sem_context,
       break;
     }
 
+    case QL_OP_CONTAINS_KEY: FALLTHROUGH_INTENDED;
+    case QL_OP_CONTAINS: FALLTHROUGH_INTENDED;
     case QL_OP_NOT_EQUAL: FALLTHROUGH_INTENDED;
     case QL_OP_NOT_IN: FALLTHROUGH_INTENDED;
     case QL_OP_IN: {

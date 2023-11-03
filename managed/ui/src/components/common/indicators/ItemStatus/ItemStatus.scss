@@ -1,4 +1,4 @@
-@import '../../../../_style/colors.scss';
+@use '../../../../_style/colors.scss';
 
 .universe-status {
   display: inline-block;
@@ -6,13 +6,13 @@
   margin-left: 24px;
 
   &.good {
-    color: $YB_SUCCESS_COLOR;
+    color: colors.$YB_SUCCESS_COLOR;
   }
   &.pending {
-    color: $YB_PENDING_COLOR;
+    color: colors.$YB_PENDING_COLOR;
   }
   &.bad {
-    color: $YB_FAIL_COLOR;
+    color: colors.$YB_FAIL_COLOR;
   }
 
   span {

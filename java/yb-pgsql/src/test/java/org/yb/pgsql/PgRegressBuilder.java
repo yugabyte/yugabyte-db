@@ -12,12 +12,6 @@
 //
 package org.yb.pgsql;
 
-import org.apache.commons.io.FileUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.client.TestUtils;
-import org.yb.util.SystemUtil;
-
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -29,6 +23,12 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+
+import org.apache.commons.io.FileUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.client.TestUtils;
+import org.yb.util.SystemUtil;
 
 /**
  * Build a ProcessBuilder for pg_regress.  Also, set up the output directory.
@@ -99,6 +99,10 @@ public class PgRegressBuilder {
       // TODO(dmitry): Workaround for #1721, remove after fix.
       try {
         for (File f : (new File(outputDir, "sql")).listFiles()) {
+          if (f.isDirectory()) {
+            LOG.info("Skipping " + f.getAbsolutePath() + " because it is a directory");
+            continue;
+          }
           if (!f.setWritable(true)) {
             throw new IOException("Couldn't set write permissions for " + f.getAbsolutePath());
           }
@@ -136,10 +140,15 @@ public class PgRegressBuilder {
         String line;
         while ((line = scheduleReader.readLine()) != null) {
           line = line.trim();
-          if (line.equals("test: yb_pg_inet") && !SystemUtil.IS_LINUX) {
-            // We only support IPv6-specific tests in yb_pg_inet.sql on Linux, not on macOS.
-            line = "test: yb_pg_inet_ipv4only";
-          }
+          // If need to make a change for a schedule line, add code here.
+          // For example, we used to check for MacOS (!SystemUtil.IS_LINUX)
+          // and change the schedule line
+          // "test: yb_pg_inet"
+          // to
+          // "test: yb_pg_inet_ipv4only"
+          // This was done in order to run yb_pg_inet.sql on Linux but
+          // yb_pg_inet_ipv4only.sql on MacOS when we only supported
+          // IPv6-specific tests on Linux but not MacOS.
           LOG.info("Schedule output line: " + line);
           scheduleWriter.println(line);
         }
@@ -183,7 +192,7 @@ public class PgRegressBuilder {
 
   private void addPostProcessEnvVar() throws IOException {
     File postprocessScript = new File(
-        TestUtils.findYbRootDir() + "/build-support/pg_regress_postprocess_output.py");
+        TestUtils.findYbRootDir() + "/python/yugabyte/pg_regress_postprocess_output.py");
 
     if (!postprocessScript.exists()) {
       throw new IOException("File does not exist: " + postprocessScript);

@@ -253,7 +253,7 @@ void CheckBlockContents(
     iter->Seek(higher_key);
     ASSERT_OK(iter->status());
     if (j == keys.size()) {
-      ASSERT_FALSE(iter->Valid());
+      ASSERT_FALSE(ASSERT_RESULT(iter->CheckedValid()));
       continue;
     }
     ASSERT_TRUE(iter->Valid());
@@ -638,7 +638,7 @@ TEST_F(BlockTest, EncodeThreeSharedPartsSizes) {
     EXPECT_EQ(result, buffer.data() + encoded_sizes_end_offset);
 
     if (testing::Test::HasFailure()) {
-      FLAGS_v = 4;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_v) = 4;
       EncodeThreeSharedPartsSizes(
           shared_prefix_size, last_internal_component_reuse_size, is_last_internal_component_inc,
           rest_sizes, prev_key_size, key_size, value_size, &buffer);

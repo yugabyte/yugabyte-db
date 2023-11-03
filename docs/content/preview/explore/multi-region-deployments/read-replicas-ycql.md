@@ -1,42 +1,24 @@
 ---
-title: Read replicas
+title: Read replicas and follower reads in YugabyteDB YCQL
 headerTitle: Read replicas
 linkTitle: Read replicas
-description: Read replicas
+description: Explore read replicas in YugabyteDB using YCQL
 headContent: Replicate data asynchronously to one or more read replica clusters
-aliases:
-  - /preview/explore/multi-region-deployments/read-replicas
 menu:
   preview:
     name: Read replicas
     identifier: explore-multi-region-deployments-read-replicas-ycql
     parent: explore-multi-region-deployments
-    weight: 750
+    weight: 755
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-
-  <li >
-    <a href="../read-replicas-ysql/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-  <li >
-    <a href="../read-replicas-ycql/" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-
-</ul>
+{{<api-tabs>}}
 
 YugabyteDB supports the following types of reads:
 
 - [Follower reads](../../ysql-language-features/going-beyond-sql/follower-reads-ycql/) that enable spreading the read workload across all replicas in the primary cluster.
-- Observer reads that use read replicas. The latter obtain their data via [xCluster replication](../asynchronous-replication-ycql/) which allows for the read workload to be offloaded from the primary cluster. Read replicas are created as a separate cluster that may be located in a different region, possibly closer to the consumers of the data which would result in lower-latency access and enhanced support of analytics workloads.
+- Observer reads that use read replicas. Read replicas are created as a separate cluster that may be located in a different region, possibly closer to the consumers of the data which would result in lower-latency access and enhanced support of analytics workloads.
 
 A data center (also known as a [universe](../../../architecture/concepts/universe/#universe-vs-cluster)) can have one primary cluster and several read replica clusters.
 
@@ -297,3 +279,8 @@ The following illustration demonstrates that the entire read load moved to the o
 ![Primary cluster with two stopped nodes](/images/explore/multi-region-deployments/read-replicas11.png)
 
 For additional information, see [Fault Tolerance](../../fault-tolerance/macos/).
+
+## Learn more
+
+- [Read replica architecture](../../../architecture/docdb-replication/read-replicas)
+- [Follower reads](../../ysql-language-features/going-beyond-sql/follower-reads-ycql/)

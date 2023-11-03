@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Pagination } from 'react-bootstrap';
 import clsx from 'clsx';
 

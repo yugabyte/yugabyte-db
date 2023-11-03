@@ -42,6 +42,8 @@ public class SetUniverseKey {
 
   private static final int YB_SET_UNIVERSE_KEY_INTERVAL = 2;
 
+  private static final int KEY_IN_MEMORY_TIMEOUT_MS = 500;
+
   @Inject
   public SetUniverseKey(
       EncryptionAtRestManager keyManager,
@@ -61,25 +63,32 @@ public class SetUniverseKey {
   }
 
   private void setKeyInMaster(Universe u, HostAndPort masterAddr, byte[] keyRef, byte[] keyVal) {
-
     YBClient client = null;
-
-    // If the resume task is in progress the universe keys must be set for encryption to work.
-    // Today on a paused universe, the only task which can run is Resume.
-    if (u.getUniverseDetails().universePaused && !(u.getUniverseDetails().updateInProgress)) {
-      log.info(
-          "Skipping setting universe keys as {} is paused and no task is running",
-          u.universeUUID.toString());
-      return;
-    }
-
     String hostPorts = u.getMasterAddresses();
     String certificate = u.getCertificateNodetoNode();
+
     try {
+      String dbKeyId = EncryptionAtRestUtil.getKmsHistory(u.getUniverseUUID(), keyRef).dbKeyId;
       client = ybService.getClient(hostPorts, certificate);
-      String encodedKeyRef = Base64.getEncoder().encodeToString(keyRef);
-      if (!client.hasUniverseKeyInMemory(encodedKeyRef, masterAddr)) {
-        client.addUniverseKeys(ImmutableMap.of(encodedKeyRef, keyVal), masterAddr);
+      if (!client.hasUniverseKeyInMemory(dbKeyId, masterAddr)) {
+        client.addUniverseKeys(ImmutableMap.of(dbKeyId, keyVal), masterAddr);
+        log.info(
+            "Sent universe key to universe '{}' and DB node '{}' with key ID: '{}'.",
+            u.getUniverseUUID(),
+            masterAddr,
+            dbKeyId);
+        // Wait for the masters to get the universe key.
+        if (!client.waitForMasterHasUniverseKeyInMemory(
+            KEY_IN_MEMORY_TIMEOUT_MS, dbKeyId, masterAddr)) {
+          throw new RuntimeException(
+              "Timeout occurred waiting for universe encryption key to be set in memory");
+        }
+      } else {
+        log.info(
+            "DB node '{}' from universe '{}' already has universe key in memory with key ID: '{}'.",
+            masterAddr,
+            u.getUniverseUUID(),
+            dbKeyId);
       }
     } catch (Exception e) {
       String errMsg =
@@ -97,32 +106,49 @@ public class SetUniverseKey {
   public void setUniverseKey(Universe u, boolean force) {
     try {
       if ((!u.universeIsLocked() || force)
-          && EncryptionAtRestUtil.getNumKeyRotations(u.universeUUID) > 0) {
+          && EncryptionAtRestUtil.getNumUniverseKeys(u.getUniverseUUID()) > 0) {
+        // If the resume task is in progress the universe keys must be set for encryption to work.
+        // Today on a paused universe, the only task which can run is Resume.
+        if (u.getUniverseDetails().universePaused && !(u.getUniverseDetails().updateInProgress)) {
+          log.info(
+              "Skipping setting universe keys as {} is paused and no task is running",
+              u.getUniverseUUID().toString());
+          return;
+        }
         log.debug(
             String.format(
-                "Setting universe encryption key for universe %s", u.universeUUID.toString()));
+                "Setting universe encryption key for universe %s", u.getUniverseUUID().toString()));
 
-        KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(u.universeUUID);
+        // Need to set only the active universe key.
+        // Masters take care of seeding the rest.
+        KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(u.getUniverseUUID());
         if (activeKey == null
-            || activeKey.uuid.keyRef == null
-            || activeKey.uuid.keyRef.length() == 0) {
+            || activeKey.getUuid().keyRef == null
+            || activeKey.getUuid().keyRef.length() == 0) {
           final String errMsg =
-              String.format("No active key found for universe %s", u.universeUUID.toString());
+              String.format("No active key found for universe %s", u.getUniverseUUID().toString());
           log.debug(errMsg);
           return;
         }
 
-        byte[] keyRef = Base64.getDecoder().decode(activeKey.uuid.keyRef);
-        byte[] keyVal = keyManager.getUniverseKey(u.universeUUID, activeKey.configUuid, keyRef);
+        byte[] keyRef = Base64.getDecoder().decode(activeKey.getUuid().keyRef);
+        byte[] keyVal =
+            keyManager.getUniverseKey(u.getUniverseUUID(), activeKey.getConfigUuid(), keyRef);
         Arrays.stream(u.getMasterAddresses().split(","))
             .map(HostAndPort::fromString)
             .forEach(addr -> setKeyInMaster(u, addr, keyRef, keyVal));
+      } else if (EncryptionAtRestUtil.getNumUniverseKeys(u.getUniverseUUID()) == 0) {
+        log.info(
+            "Skipping setting universe keys as {} does not have EAR enabled.",
+            u.getUniverseUUID().toString());
       }
     } catch (Exception e) {
       String errMsg =
           String.format(
-              "Error setting universe encryption key for universe %s", u.universeUUID.toString());
+              "Error setting universe encryption key for universe %s",
+              u.getUniverseUUID().toString());
       log.error(errMsg, e);
+      throw new RuntimeException(errMsg, e);
     }
   }
 
@@ -149,7 +175,7 @@ public class SetUniverseKey {
                 try {
                   setCustomerUniverseKeys(c);
                 } catch (Exception e) {
-                  handleCustomerError(c.uuid, e);
+                  handleCustomerError(c.getUuid(), e);
                 }
               });
     } catch (Exception e) {

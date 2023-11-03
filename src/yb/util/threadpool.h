@@ -85,13 +85,13 @@ class RunnableImpl : public Runnable {
 // ThreadPoolBuilder) or to individual tokens.
 struct ThreadPoolMetrics {
   // Measures the queue length seen by tasks when they enter the queue.
-  scoped_refptr<Histogram> queue_length_histogram;
+  scoped_refptr<EventStats> queue_length_stats;
 
   // Measures the amount of time that tasks spend waiting in a queue.
-  scoped_refptr<Histogram> queue_time_us_histogram;
+  scoped_refptr<EventStats> queue_time_us_stats;
 
   // Measures the amount of time that tasks spend running.
-  scoped_refptr<Histogram> run_time_us_histogram;
+  scoped_refptr<EventStats> run_time_us_stats;
 
   ~ThreadPoolMetrics();
 };
@@ -109,15 +109,15 @@ struct ThreadPoolMetrics {
 //   ...
 //   .Build(...);
 #define THREAD_POOL_METRICS_DEFINE(entity, name, label) \
-    METRIC_DEFINE_coarse_histogram(entity, BOOST_PP_CAT(name, _queue_length), \
+    METRIC_DEFINE_event_stats(entity, BOOST_PP_CAT(name, _queue_length), \
         label " Queue Length", yb::MetricUnit::kMicroseconds, \
-        label " - queue length histogram."); \
-    METRIC_DEFINE_coarse_histogram(entity, BOOST_PP_CAT(name, _queue_time_us), \
+        label " - queue length event stats."); \
+    METRIC_DEFINE_event_stats(entity, BOOST_PP_CAT(name, _queue_time_us), \
         label " Queue Time", yb::MetricUnit::kMicroseconds, \
-        label " - queue time histogram, microseconds."); \
-    METRIC_DEFINE_coarse_histogram(entity, BOOST_PP_CAT(name, _run_time_us), \
+        label " - queue time event stats, microseconds."); \
+    METRIC_DEFINE_event_stats(entity, BOOST_PP_CAT(name, _run_time_us), \
         label " Run Time", yb::MetricUnit::kMicroseconds, \
-        label " - run time histogram, microseconds.")
+        label " - run time event stats, microseconds.")
 
 #define THREAD_POOL_METRICS_INSTANCE(entity, name) { \
       BOOST_PP_CAT(METRIC_, BOOST_PP_CAT(name, _run_time_us)).Instantiate(entity), \
@@ -303,7 +303,7 @@ class ThreadPool {
   // Initialize the thread pool by starting the minimum number of threads.
   Status Init();
 
-  // Dispatcher responsible for dequeueing and executing the tasks
+  // Dispatcher responsible for dequeuing and executing the tasks
   void DispatchThread(bool permanent);
 
   // Create new thread. Required that lock_ is held.

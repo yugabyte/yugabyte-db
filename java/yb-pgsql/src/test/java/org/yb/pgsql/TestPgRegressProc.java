@@ -16,17 +16,25 @@ import java.util.Map;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 
 /**
  * Runs the pg_regress test suite on YB code.
  */
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgRegressProc extends BasePgSQLTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1200;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    // Setting the below flag stabilizes yb_lock_status tests.
+    flagMap.put("TEST_delay_before_get_old_transactions_heartbeat_intervals", "2");
+    return flagMap;
   }
 
   @Test

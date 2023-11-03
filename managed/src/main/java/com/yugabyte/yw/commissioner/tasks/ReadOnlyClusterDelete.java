@@ -12,7 +12,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.DnsManager.DnsCommandType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
@@ -44,7 +44,7 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
-    log.info("Started {} task for uuid={}", getName(), params().universeUUID);
+    log.info("Started {} task for uuid={}", getName(), params().getUniverseUUID());
 
     try {
 
@@ -60,7 +60,7 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
       if (Collections.isEmpty(roClusters)) {
         String msg =
             "Unable to delete RO cluster from universe \""
-                + universe.name
+                + universe.getName()
                 + "\" as it doesn't have any RO clusters.";
         log.error(msg);
         throw new RuntimeException(msg);
@@ -90,9 +90,8 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
       createPlacementInfoTask(null /* blacklistNodes */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      // Remove the DNS entry for this cluster.
-      createDnsManipulationTask(
-              DnsManager.DnsCommandType.Delete, params().isForceDelete, cluster.userIntent)
+      // Remove read replica nodes from the DNS entry.
+      createDnsManipulationTask(DnsCommandType.Edit, false, universe)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Update the swamper target file.

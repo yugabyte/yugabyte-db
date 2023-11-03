@@ -16,24 +16,12 @@
 //
 
 import React, { FC, useState } from 'react';
+import { findIndex, has } from 'lodash';
 import { Alert, Col, Row } from 'react-bootstrap';
-import {
-  getKMSConfigs,
-  IBackup,
-  ITable,
-  IUniverse,
-  Keyspace_Table,
-  restoreEntireBackup,
-  fetchIncrementalBackup,
-  Backup_States,
-  ICommonBackupInfo
-} from '..';
+import { IBackup, ITable, IUniverse, Keyspace_Table, Backup_States, ICommonBackupInfo } from '..';
+import { getKMSConfigs, restoreEntireBackup, fetchIncrementalBackup } from '../common/BackupAPI';
 import { YBModalForm } from '../../common/forms';
-import {
-  FormatUnixTimeStampTimeToTimezone,
-  KEYSPACE_VALIDATION_REGEX,
-  SPINNER_ICON
-} from '../common/BackupUtils';
+import { KEYSPACE_VALIDATION_REGEX, SPINNER_ICON } from '../common/BackupUtils';
 
 import { Field, FieldArray } from 'formik';
 import { useMutation, useQuery } from 'react-query';
@@ -57,6 +45,8 @@ import { TableType } from '../../../redesign/helpers/dtos';
 import clsx from 'clsx';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import { handleCACertErrMsg } from '../../customCACerts';
 import './BackupRestoreModal.scss';
 
 interface RestoreModalProps {
@@ -81,6 +71,7 @@ const STEPS = [
     title: 'Restore Backup',
     submitLabel: TEXT_RESTORE,
     component: RenameKeyspace,
+    // eslint-disable-next-line react/display-name
     footer: (onClick: Function) => (
       <YBButton
         btnClass={`btn btn-default pull-right restore-wth-rename-but`}
@@ -171,7 +162,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
       onError: (resp: any) => {
         onHide();
         setCurrentStep(0);
-        toast.error(resp.response.data.error);
+        !handleCACertErrMsg(resp) && toast.error(resp.response.data.error);
       }
     }
   );
@@ -193,9 +184,13 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
     parallelThreads: 1,
     backup: backup_details,
     keyspaces: Array(backup_details?.commonBackupInfo.responseList.length).fill(''),
-    kmsConfigUUID: null,
+    kmsConfigUUID:
+      kmsConfigList.find(
+        (config: any) => config.value === backup_details?.commonBackupInfo.kmsConfigUUID
+      ) ?? null,
     should_rename_keyspace: false,
-    disable_keyspace_rename: false
+    disable_keyspace_rename: false,
+    allow_YCQL_conflict_keyspace: false
   };
 
   const validateTablesAndRestore = async (
@@ -215,19 +210,44 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
       }
       return;
     }
+    // find if the user has entered the duplicate keyspace name
+    // we could have just find uniq(user_entered_keyspace), but in table by table backup
+    // we can have duplicate keyspace, so we make sure that single keyspace entered by user map with single keyspace
+    // in the backup_details
+    const renamedKeyspacemap = {};
+    let hasduplicateName = false;
+    values['keyspaces'].forEach((k: string, i: number) => {
+      if (!k) return;
+      const keyspaceToMatch = backup_details?.commonBackupInfo.responseList[i].keyspace;
+      if (!renamedKeyspacemap[k]) {
+        renamedKeyspacemap[k] = keyspaceToMatch;
+      } else if (renamedKeyspacemap[k] !== keyspaceToMatch) {
+        isFunction(options.setFieldError) &&
+          options.setFieldError(`keyspaces[${i}]`, 'Duplicate keyspace name');
+        hasduplicateName = true;
+      }
+    });
+    // return if duplicate keyspace name is found.
+    if (hasduplicateName) {
+      isFunction(options.setSubmitting) && options.setSubmitting(false);
+      return;
+    }
 
-    // find if the duplicate values is present in rename values
-    const duplicatesInRenameValues: boolean[] = values.keyspaces
-      .filter(Boolean)
-      .map((item: string, index: number) => values.keyspaces.indexOf(item) === index);
+    // for YCQL, we skip the table overwriding check in front end and defer it to the backend
+    // see https://yugabyte.atlassian.net/browse/PLAT-6460
+    if (values['backup']['backupType'] === BACKUP_API_TYPES.YCQL) {
+      if (options.doRestore) {
+        restore.mutate({
+          backup_details: backup_details as IBackup,
+          values
+        });
+        return;
+      }
 
-    if (!duplicatesInRenameValues.every((val) => val)) {
-      duplicatesInRenameValues.forEach(
-        (val, index) =>
-          !val &&
-          options.setFieldError &&
-          options.setFieldError(`keyspaces[${index}]`, 'Duplicate name')
-      );
+      options.setFieldValue('allow_YCQL_conflict_keyspace', true, false);
+      options.setFieldValue('should_rename_keyspace', false, false);
+      options.setFieldValue('disable_keyspace_rename', false, false);
+      isFunction(options.setSubmitting) && options.setSubmitting(false);
       return;
     }
 
@@ -319,7 +339,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
         if (values['should_rename_keyspace'] && currentStep !== STEPS.length - 1) {
           setCurrentStep(currentStep + 1);
           setOverrideSubmitLabel(TEXT_RESTORE);
-        } else if (currentStep === STEPS.length - 1) {
+        } else if (currentStep === STEPS.length - 1 || values['allow_YCQL_conflict_keyspace']) {
           await validateTablesAndRestore(values, {
             setFieldValue,
             setFieldError,
@@ -382,7 +402,7 @@ function RestoreChooseUniverseForm({
 }: {
   backup_details: IBackup;
   universeList: IUniverse[];
-  kmsConfigList: any;
+  kmsConfigList: Record<string, any>[];
   setFieldValue: Function;
   values: Record<string, any>;
   validateTablesAndRestore: Function;
@@ -391,6 +411,24 @@ function RestoreChooseUniverseForm({
   errors: Record<string, string>;
 }) {
   let sourceUniverseNameAtFirst: IUniverse[] = [];
+
+  const universe = find(universeList, { universeUUID: backup_details.universeUUID });
+  let currentActiveKMS = '';
+  if (universe && universe?.universeDetails?.encryptionAtRestConfig?.encryptionAtRestEnabled)
+    currentActiveKMS = universe?.universeDetails?.encryptionAtRestConfig?.kmsConfigUUID;
+
+  //kms config used in the universe while taking backup
+  const isEncryptedBackup = has(backup_details.commonBackupInfo, 'kmsConfigUUID');
+  const kmsIdDuringBackup = kmsConfigList.find(
+    (config: Record<string, any>) => config?.value === backup_details.commonBackupInfo.kmsConfigUUID
+  );
+  if (kmsIdDuringBackup) {
+    //move currently active kms to top of the list
+    kmsConfigList = kmsConfigList.filter(
+      (config: Record<string, any>) => config.value !== kmsIdDuringBackup.value
+    );
+    kmsConfigList.unshift(kmsIdDuringBackup);
+  }
 
   if (universeList && universeList.length > 0) {
     sourceUniverseNameAtFirst = [...universeList.filter((u) => u.universeUUID)];
@@ -429,9 +467,7 @@ function RestoreChooseUniverseForm({
         </Col>
         <Col lg={6} className="no-padding align-right">
           <div className="title">Created at</div>
-          <FormatUnixTimeStampTimeToTimezone
-            timestamp={backup_details.commonBackupInfo.createTime}
-          />
+          {ybFormatDate(backup_details.commonBackupInfo.createTime)}
         </Col>
       </Row>
       <Row>
@@ -459,6 +495,7 @@ function RestoreChooseUniverseForm({
               };
             })}
             components={{
+              // eslint-disable-next-line react/display-name
               Option: (props: any) => {
                 if (props.data.value === backup_details.universeUUID) {
                   return (
@@ -523,8 +560,86 @@ function RestoreChooseUniverseForm({
             component={YBFormSelect}
             label={'KMS Configuration (Optional)'}
             options={kmsConfigList}
+            components={{
+              // eslint-disable-next-line react/display-name
+              Option: (props: any) => {
+                if (isEncryptedBackup && props.data.value === kmsIdDuringBackup?.value) {
+                  return (
+                    <components.Option {...props} className="active-kms">
+                      <span className="kms-used">{props.data.label}</span>{' '}
+                      <StatusBadge
+                        statusType={Badge_Types.DELETED}
+                        customLabel="Used during backup"
+                      />{' '}
+                      {props.data.value === currentActiveKMS && (
+                        <StatusBadge statusType={Badge_Types.COMPLETED} customLabel="Active" />
+                      )}
+                    </components.Option>
+                  );
+                }
+                return (
+                  <components.Option {...props}>
+                    <span>{props.data.label}</span>{' '}
+                    {props.data.value === currentActiveKMS && (
+                      <StatusBadge statusType={Badge_Types.COMPLETED} customLabel="Active" />
+                    )}
+                  </components.Option>
+                );
+              },
+              SingleValue: ({ data }: { data: any }) => {
+                if (isEncryptedBackup && data.value === kmsIdDuringBackup?.value) {
+                  return (
+                    <>
+                      <span className="storage-cfg-name">{data.label}</span> &nbsp;
+                      <StatusBadge
+                        statusType={Badge_Types.DELETED}
+                        customLabel="Used during backup"
+                      />
+                    </>
+                  );
+                }
+                return data.label;
+              }
+            }}
+            styles={{
+              singleValue: (props: any) => {
+                return { ...props, display: 'flex' };
+              }
+            }}
             isClearable
           />
+
+          {isEncryptedBackup && !kmsIdDuringBackup ? (
+            // kms used during backup is deleted
+            <div className="deleted-kms-warning">
+              <Alert bsStyle="warning" className="pre-provision-message">
+                <div>
+                  <i className="fa fa-exclamation-triangle warning-icon md-icon" /> &nbsp;
+                </div>
+                <div>
+                  <div className="helper-text">
+                    KMS configuration file for this backup has been deleted. In order to restore
+                    <br /> this backup first create a KMS configuration with the exact settings.
+                    Once
+                    <br /> created, come back and select the newly created KMS configuration from
+                    the
+                    <br /> list above.
+                  </div>
+                  <br />
+                  <div className="deleted-key-title">Deleted KMS configuration UUID:</div>
+                  <div className="deleted-key">
+                    {backup_details?.commonBackupInfo?.kmsConfigUUID}
+                  </div>
+                </div>
+              </Alert>
+            </div>
+          ) : (
+            <span className="kms-helper-text">
+              For a successful restore, the KMS configuration used for restore should be the same{' '}
+              <br />
+              KMS configuration used during backup creation.
+            </span>
+          )}
         </Col>
       </Row>
       {backup_details.backupType !== TableType.REDIS_TABLE_TYPE && (
@@ -587,6 +702,7 @@ export function RenameKeyspace({
   };
   setFieldValue: Function;
 }) {
+  const isTableByTableBackup = values.backup.commonBackupInfo.tableByTableBackup;
   return (
     <div className="rename-keyspace-step">
       <Row>
@@ -610,9 +726,12 @@ export function RenameKeyspace({
         render={({ form: { errors } }) =>
           values.backup.commonBackupInfo.responseList.map(
             (keyspace: Keyspace_Table, index: number) =>
-              values['searchText'] &&
-              keyspace.keyspace &&
-              keyspace.keyspace.indexOf(values['searchText']) === -1 ? null : (
+              (values['searchText'] &&
+                keyspace.keyspace &&
+                !keyspace.keyspace.includes(values['searchText'])) ||
+              findIndex(values.backup.commonBackupInfo.responseList, {
+                keyspace: keyspace.keyspace
+              }) !== index ? null : (
                 // eslint-disable-next-line react/jsx-indent
                 <Row key={index}>
                   <Col lg={6} className="keyspaces-input no-padding">
@@ -635,7 +754,23 @@ export function RenameKeyspace({
                       input={{
                         value: values['keyspaces'][`${index}`]
                       }}
-                      onValueChanged={(val: any) => setFieldValue(`keyspaces[${index}]`, val)}
+                      onValueChanged={(val: any) => {
+                        if (isTableByTableBackup) {
+                          // if the tableByTable option is enabled, keyspaces with duplicate
+                          // names can be present. So, we show unique keyspaces in the rename form.
+                          // and update the new names for all the duplicate keyspaces
+                          // See, https://yugabyte.atlassian.net/browse/PLAT-8319
+                          values.backup.commonBackupInfo.responseList.forEach(
+                            (table: any, i: number) => {
+                              if (table.keyspace === keyspace.keyspace) {
+                                setFieldValue(`keyspaces[${i}]`, val);
+                              }
+                            }
+                          );
+                        } else {
+                          setFieldValue(`keyspaces[${index}]`, val);
+                        }
+                      }}
                       placeHolder="Add new name"
                     />
                     {errors['keyspaces']?.[index] && values['keyspaces']?.[index] && (

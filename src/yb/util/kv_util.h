@@ -15,7 +15,9 @@
 
 #include <string>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
+
 #include "yb/util/byte_buffer.h"
 #include "yb/util/slice.h"
 
@@ -81,18 +83,28 @@ void AppendDoubleToKey(double val, Buffer* dest, bool descending = false) {
   dest->append(buf, sizeof(buf));
 }
 
-inline int32_t DecodeInt32FromKey(const rocksdb::Slice& slice) {
-  uint32_t v = BigEndian::Load32(slice.data());
-  return v ^ kInt32SignBitFlipMask;
+inline int32_t DecodeInt32FromKey(const char* data) {
+  return BigEndian::Load32(data) ^ kInt32SignBitFlipMask;
 }
 
-inline int64_t DecodeInt64FromKey(const rocksdb::Slice& slice) {
-  uint64_t v = BigEndian::Load64(slice.data());
-  return v ^ kInt64SignBitFlipMask;
+inline int32_t DecodeInt32FromKey(const uint8_t* data) {
+  return BigEndian::Load32(data) ^ kInt32SignBitFlipMask;
 }
 
-inline double DecodeDoubleFromKey(const rocksdb::Slice& slice, bool descending = false) {
-  uint64_t v = BigEndian::Load64(slice.data());
+inline int32_t DecodeInt32FromKey(const Slice& slice) {
+  return DecodeInt32FromKey(slice.cdata());
+}
+
+inline int64_t DecodeInt64FromKey(const char* data) {
+  return BigEndian::Load64(data) ^ kInt64SignBitFlipMask;
+}
+
+inline int64_t DecodeInt64FromKey(const Slice& slice) {
+  return DecodeInt64FromKey(slice.cdata());
+}
+
+inline double DecodeDoubleFromKey(const char* data, bool descending = false) {
+  uint64_t v = BigEndian::Load64(data);
   if (descending) {
     // Flip the bits.
     v = ~v;
@@ -103,11 +115,15 @@ inline double DecodeDoubleFromKey(const rocksdb::Slice& slice, bool descending =
   } else {
     v = ~v;
   }
-  return *(reinterpret_cast<double*>(&v));
+  return bit_cast<double>(v);
 }
 
-inline float DecodeFloatFromKey(const rocksdb::Slice& slice, bool descending = false) {
-  uint32_t v = BigEndian::Load32(slice.data());
+inline double DecodeDoubleFromKey(const Slice& slice, bool descending = false) {
+  return DecodeDoubleFromKey(slice.cdata(), descending);
+}
+
+inline float DecodeFloatFromKey(const char* data, bool descending = false) {
+  uint32_t v = BigEndian::Load32(data);
   if (descending) {
     // Flip the bits.
     v = ~v;
@@ -118,7 +134,11 @@ inline float DecodeFloatFromKey(const rocksdb::Slice& slice, bool descending = f
   } else {
     v = ~v;
   }
-  return *(reinterpret_cast<float*>(&v));
+  return bit_cast<float>(v);
+}
+
+inline float DecodeFloatFromKey(const Slice& slice, bool descending = false) {
+  return DecodeFloatFromKey(slice.cdata(), descending);
 }
 
 // Encode and append the given signed 64-bit integer to the destination string holding a RocksDB

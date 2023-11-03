@@ -12,12 +12,9 @@ menu:
 type: docs
 ---
 
-In addition to the compatible upstream PostgreSQL drivers, YugabyteDB also supports **smart drivers**, which extend the PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers. YugabyteDB smart drivers have the following features:
+In addition to the compatible upstream PostgreSQL drivers, YugabyteDB also supports smart drivers, which extend PostgreSQL drivers to enable client applications to connect to YugabyteDB clusters without the need for external load balancers.
 
-- **Cluster-aware**. Drivers know about all the data nodes in a YugabyteDB cluster, eliminating the need for an external load balancer.
-- **Topology-aware**. For geographically-distributed applications, the driver can seamlessly connect to the geographically nearest regions and availability zones for lower latency.
-
-Yugabyte has developed the following smart drivers, available as open source software under the Apache 2.0 license.
+Yugabyte has developed the following smart drivers for YSQL, available as open source software under the Apache 2.0 license.
 
 | GitHub project | Based on | Learn more |
 | :--- | :--- | :--- |
@@ -25,12 +22,25 @@ Yugabyte has developed the following smart drivers, available as open source sof
 | [YugabyteDB PGX Driver for Go](https://github.com/yugabyte/pgx) | jackc/pgx | [Documentation](../go/yb-pgx/) |
 | [YugabyteDB Psycopg2 Driver for Python](https://github.com/yugabyte/psycopg2) | PostgreSQL psycopg2 | [Documentation](../python/yugabyte-psycopg2/) |
 | [YugabyteDB node-postgres Driver for Node.js](https://github.com/yugabyte/node-postgres) | node-postgres | [Documentation](../nodejs/yugabyte-node-driver/) |
+| [YugabyteDB Npgsql Driver for C#](https://github.com/yugabyte/npgsql) | PostgreSQL Npgsql Driver | [Documentation](../csharp/ysql/) |
 
 All YugabyteDB smart driver libraries are actively maintained, and receive bug fixes, performance enhancements, and security patches.
 
+## Key features
+
+YugabyteDB smart drivers have the following key features.
+
+| Feature | Notes |
+| :--- | :--- |
+| Multiple hosts | As with the upstream driver (with the exception of node.js), you can specify multiple hosts for the initial connection, to avoid dropping connections in the case where the primary host is unavailable. |
+| [Cluster aware](#cluster-aware-connection-load-balancing) | Smart drivers perform automatic uniform connection load balancing<br/>After the driver establishes an initial connection, it fetches the list of available servers from the cluster and distributes connections evenly across these servers. |
+| [Topology aware](#topology-aware-connection-load-balancing) | If you want to restrict connections to particular geographies to achieve lower latency, you can target specific regions, zones, and fallback zones across which to balance connections. |
+| [Configurable refresh interval](#servers-refresh-interval) | By default, the driver refreshes the list of available servers every five minutes. The interval is configurable (with the exception of Python). |
+| [Connection pooling](#connection-pooling) | Like the upstream driver, smart drivers support popular connection pooling solutions. |
+
 ## Overview
 
-YugabyteDB is a distributed, fault tolerant and highly available database with low latencies for reads and writes. Data in YugabyteDB is automatically sharded, replicated, and balanced across multiple nodes that can potentially be in different availability zones and regions. For better performance and fault tolerance, you can also balance application traffic (that is, connections to the database) across the nodes in the cluster to avoid excessive load (CPU and memory) on any single node (that is, hot nodes).
+YugabyteDB is a distributed, fault tolerant, and highly available database with low latencies for reads and writes. Data in YugabyteDB is automatically sharded, replicated, and balanced across multiple nodes that can potentially be in different availability zones and regions. For better performance and fault tolerance, you can also balance application traffic (database connections) across the nodes in the universe to avoid excessive CPU and memory load on any single node.
 
 You can load balance application connections to the database in the following ways:
 
@@ -70,57 +80,134 @@ In both cases, the driver attempts to connect to the least loaded server from th
 
 With cluster-aware (also referred to as uniform) connection load balancing, connections are distributed uniformly across all the YB-TServers in the cluster, irrespective of their placement.
 
-For example, if a client application creates 100 connections to a YugabyteDB cluster consisting of 10 nodes, then the driver creates 10 connections to each node. If the number of connections is not exactly divisible by the number of servers, then a few may have 1 less or 1 more connection than the others. This is the client view of the load, so the servers may not be well balanced if other client applications are not using the smart driver.
+For example, if a client application creates a hundred connections to a YugabyteDB universe consisting of ten nodes, then the driver creates ten connections to each node. If the number of connections is not exactly divisible by the number of servers, then some servers may have one less or one more connection than the others. This is the client view of the load, so the servers may not be well-balanced if other client applications are not using a smart driver
 
-To enable cluster-aware load balancing, you set the load balance connection parameter to true in the connection URL or the connection string (DSN style).
+A connection works as follows:
 
-For example, using the Go smart driver, you would turn on load balancing as follows:
+- The driver makes an initial connection to the host specified in the URL or connection string. You can designate multiple hosts to act as backups if the connection to the primary host fails.
+- The driver fetches information about the universe nodes using the `yb_servers()` function. By default, this list is refreshed every 5 minutes, and this time is checked when a new connection request is received.
+- The driver then connects to the least-loaded node before returning the connection to the application.
+
+#### Enable load balancing
+
+To enable cluster-aware load balancing, you set the load balance connection parameter to `true` in the connection URL or the connection string (DSN style).
+
+For example, using the Go smart driver, you would enable load balancing as follows:
 
 ```go
 "postgres://username:password@host:5433/database_name?load_balance=true"
 ```
 
-With this parameter specified in the URL, the driver fetches and maintains a list of nodes from the given endpoint (localhost in preceding example) available in the YugabyteDB cluster and distributes the connections equally across them.
-
-A connection works as follows:
-
-- The driver makes an initial connection to the host specified in the URL/connection string and fetches information about the cluster nodes. This list is refreshed every 5 minutes, when a new connection request is received.
-- The driver then connects to the least-loaded node before returning the connection to the application.
+With this parameter specified in the URL, the driver fetches and maintains a list of nodes from the given endpoint available in the YugabyteDB universe and distributes the connections equally across these nodes.
 
 After the connection is established with a node, if that node fails, then the request is not retried.
 
-The application must use the same connection URL to create every connection it needs, so that the distribution happens equally.
+For connections to be distributed equally, the application must use the same connection URL to create every connection it needs.
+
+Note that, for load balancing, the nodes in the universe must be accessible. If, for example, the cluster has multiple regions deployed in separate VPCs, your application would need access to all the regions, typically via peering.
+
+#### Servers refresh interval
+
+To change the frequency with which the driver fetches an updated list of servers, specify the server refresh interval parameter.
+
+For example, using the Go smart driver, you can change the interval to four minutes (specified in seconds) as follows:
+
+```go
+"postgres://username:password@host:5433/database_name?load_balance=true&yb_servers_refresh_interval=240"
+```
+
+(Note that currently this feature is not available in the YugabyteDB Python Smart Driver.)
 
 ### Topology-aware connection load balancing
 
-With topology-aware connection load balancing, you can target nodes in specified geo-locations. The driver then distributes connections uniformly among the nodes in the specified locations. If no servers are available, the request may return with a failure.
+For a database deployment that spans multiple regions, evenly distributing requests across all database nodes may not be optimal. With topology-aware connection load balancing, you can target nodes in specified geo-locations. The driver then distributes connections uniformly among the nodes in the specified locations. This is beneficial in the following situations:
 
-You specify the locations as topology keys, with values in the format `cloud.region.zone`. Multiple zones can be specified as comma-separated values. You specify the topology keys in the connection URL or the connection string (DSN style).
+- For connecting to the geographically nearest regions and zones for lower latency and fewer network hops. Typically you would co-locate applications in the regions where your universe is located. Topology balancing allows you to target only regions where the applications are hosted.
+
+- The universe has [preferred locations](../../admin/yb-admin/#set-preferred-zones) assigned, where all the [tablet leaders](../../architecture/docdb-sharding/sharding/) are hosted. In this case, for best performance you want your application to target the preferred locations.
+
+You can also specify fallback locations, and the order in which they should be attempted. When no nodes are available in the primary location, the driver tries to connect to nodes in the fallback locations in the order specified. This way you can, for example, target the next geographically nearest location in case the first location is unavailable.
+
+If you don't provide fallback locations, when no nodes are available in the primary locations, the driver falls back to nodes across the entire cluster.
+
+#### Topology keys
+
+You specify the locations as topology keys, with values in the format `cloud.region.zone`. Multiple zones can be specified as comma-separated values. You specify the topology keys in the connection URL or the connection string (DSN style). You still need to specify load balance as `true` to enable the topology-aware connection load balancing.
 
 For example, using the Go driver, you would set the parameters as follows:
 
 ```go
-"postgres://username:password@localhost:5433/database_name?load_balance=true& \
-    topology_keys=cloud1.region1.zone1,cloud1.region1.zone2"
+"postgres://username:password@localhost:5433/database_name?load_balance=true&topology_keys=cloud1.region1.zone1,cloud1.region1.zone2"
 ```
 
-You still need to specify load balance as true to enable the topology-aware connection load balancing.
+Use an asterisk (*) to specify all zones in a region. (You can't do this for region or cloud.) For example:
+
+```go
+"postgres://username:password@localhost:5433/database_name?load_balance=true&topology_keys=cloud1.region1.*"
+```
+
+#### Fallback topology keys
+
+To specify fallback locations if a location is unavailable, add `:n` to the topology key, where `n` is an integer indicating priority. The following example sets `zone1` as the topology key, and zones 2 and 3 as fallbacks (in that order) if `zone1` can't be reached:
+
+```go
+"postgres://username:password@localhost:5433/database_name?load_balance=true&topology_keys=cloud1.region1.zone1:1,cloud1.region1.zone2:2,cloud1.region1.zone3:3"
+```
+
+Not specifying a priority is the equivalent of setting priority to 1.
+
+If no servers are available, the request may return with a failure.
+
+### Connection pooling
+
+Smart drivers can be configured with popular pooling solutions such as Hikari and Tomcat. Different pools can be configured with different load balancing policies if required. For example, an application can configure one pool with topology awareness for one region and its availability zones, and configure another pool to communicate with a completely different region.
+
+The appropriate connection timeout depends on the specific requirements of the application. In addition to the usual considerations, because YugabyteDB is distributed, you also want connections to move to recovered or newly-added nodes as quickly as possible.
+
+When a connection reaches the timeout period, the pool re-establishes a new connection to the node with the least amount of connections, which would likely be the new node. Set the timeout too long, and you risk not taking maximum advantage of a new node. For example, a timeout of 10 minutes means a new node might not receive connections for up to 10 minutes. (The node will still be used for YB-TServer operations, but not for new client connections.) Setting the timeout too short, however, degrades overall latency performance due to the high first connection latency. Experiment with different timeout values and monitor the performance of the application and the database to determine the optimal value.
+
+For an example of how connection pooling reduces latencies, see [Database Connection Management: Exploring Pools and Performance](https://www.yugabyte.com/blog/database-connection-management/).
 
 ## Using smart drivers with YugabyteDB Managed
 
 [YugabyteDB Managed](../../yugabyte-cloud/) clusters automatically use the uniform load balancing provided by the cloud provider where the cluster is provisioned. YugabyteDB Managed creates an external load balancer to distribute the load across the nodes in a particular region. For multi-region clusters, each region has its own external load balancer.
 
-For regular connections, you need to connect to the region of choice, and application connections are then uniformly distributed across the region without the need for any special coding.
+When connecting using an upstream driver, you connect to the region of choice, and application connections are then uniformly distributed across the region without the need for any special coding.
 
-If you are using a smart driver with topology awareness, you can connect to any region and the load balancer acts as a discovery endpoint, allowing the application to use connections to nodes in all regions.
+If you are using a smart driver, you can connect to any region and the load balancer acts as a discovery endpoint, allowing the application to use connections to nodes in all regions.
 
-Applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC networking in YugabyteDB Managed, refer to [VPC network](../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
+YugabyteDB Managed clusters also support topology-aware load balancing. If the cluster has a [preferred region](../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/#preferred-region), set the topology keys to a zone in that region for best performance.
 
-For applications that access the cluster from a non-peered network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from non-peered networks fall back to the upstream driver behavior automatically.
+### Deploying applications
 
-YugabyteDB Managed requires TLS/SSL. For more information on using TLS/SSL in YugabyteDB Managed, refer to [Encryption in transit](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
+To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC peering in YugabyteDB Managed, refer to [VPC network](../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
+
+Applications that use smart drivers from outside the peered network fall back to the upstream driver behavior automatically. You may see a warning similar to the following:
+
+```output
+WARNING [com.yug.Driver] (agroal-11) Failed to apply load balance. Trying normal connection
+```
+
+This indicates that the smart driver was unable to perform smart load balancing, and will fall back to the upstream behavior.
+
+For applications that access the cluster from outside the peered network or using private endpoints via a private link, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing.
+
+### SSL/TLS verify-full support
+
+YugabyteDB Managed requires TLS/SSL. Depending on the smart driver, using load balancing with a cluster in YugabyteDB Managed and SSL mode verify-full may require additional configuration. The following table describes support for verify-full for YugabyteDB smart drivers.
+
+| Smart Driver | Support | Notes |
+| :--- | :--- | :--- |
+| Java | Yes | Set the `sslhostnameverifier` connection parameter to `com.yugabyte.ysql.YBManagedHostnameVerifier`. |
+| Python | No | Use verify-ca or the upstream psycopg2 driver. |
+| Go | Yes | |
+| Node.js | Yes | In the ssl object, set `rejectUnauthorized` to true, `ca` to point to your cluster CA certificate, and `servername` to the cluster host name. |
+
+For more information on using TLS/SSL in YugabyteDB Managed, refer to [Encryption in transit](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
 ## Learn more
 
-- [Smart driver FAQ](../smart-drivers-faq/)
+- YugabyteDB Friday Tech Talk: [PostgreSQL Smart Drivers](https://youtu.be/FbXrRdB_4u0)
+- [Smart driver FAQ](../../faq/smart-drivers-faq/)
 - Smart driver [architecture documentation](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
+- Blog: [Node.js Smart Drivers for YugabyteDB: Why You Should Care](https://www.yugabyte.com/blog/node-js-smart-drivers-for-yugabytedb/)

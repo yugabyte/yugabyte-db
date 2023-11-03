@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import _ from 'lodash';
 
 import { NodeDetailsTable } from '../../universes';
@@ -15,17 +15,16 @@ import { getPromiseState } from '../../../utils/PromiseUtils';
 import {
   getPrimaryCluster,
   getReadOnlyCluster,
-  nodeComparisonFunction
+  nodeComparisonFunction,
+  hasLiveNodes
 } from '../../../utils/UniverseUtils';
-import { hasLiveNodes } from '../../../utils/UniverseUtils';
+
 import { YBLoading } from '../../common/indicators';
 
 export default class NodeDetails extends Component {
   componentDidMount() {
     const {
-      universe: { 
-        currentUniverse, 
-      },
+      universe: { currentUniverse }
     } = this.props;
     if (getPromiseState(currentUniverse).isSuccess()) {
       const uuid = currentUniverse.data.universeUUID;
@@ -94,11 +93,12 @@ export default class NodeDetails extends Component {
       let isLoading = universeCreated;
       let allowedNodeActions = nodeDetail.allowedActions;
       const nodeName = nodeDetail.nodeName;
-      const hasUniverseNodeDetails = getPromiseState(universeNodeDetails).isSuccess() && 
+      const hasUniverseNodeDetails =
+        getPromiseState(universeNodeDetails).isSuccess() &&
         isNonEmptyObject(universeNodeDetails.data);
 
       // When node operation is in progress and when user swicthes between different tabs,
-      // polling stops and when user comes back to the nodes tab, this gives current status 
+      // polling stops and when user comes back to the nodes tab, this gives current status
       // of all the nodes during mount
       if (
         getPromiseState(universePerNodeStatus).isSuccess() &&
@@ -116,14 +116,14 @@ export default class NodeDetails extends Component {
         allowedNodeActions = universeNodeDetails.data.allowedActions;
         masterAlive = universeNodeDetails.data.isMaster;
         tserverAlive = universePerNodeStatus.data.isTserver;
-        nodeStatus =  insertSpacesFromCamelCase(universeNodeDetails.data.state);
+        nodeStatus = insertSpacesFromCamelCase(universeNodeDetails.data.state);
         isLoading = false;
       }
 
       let instanceName = '';
 
       if (isDefinedNotNull(nodeInstanceList)) {
-        const matchingInstance = nodeInstanceList.data.filter(
+        const matchingInstance = nodeInstanceList.data?.filter(
           (instance) => instance.nodeName === nodeName
         );
         instanceName = _.get(matchingInstance, '[0]details.instanceName', '');
@@ -144,20 +144,20 @@ export default class NodeDetails extends Component {
       const metricsData = nodesMetrics
         ? nodesMetrics[`${nodeDetail.cloudInfo.private_ip}:${nodeDetail.tserverHttpPort}`]
         : {
-          active_tablets: null,
-          num_sst_files: null,
-          ram_used: null,
-          read_ops_per_sec: null,
-          system_tablets_leaders: null,
-          system_tablets_total: null,
-          time_since_hb: null,
-          total_sst_file_size: null,
-          uncompressed_sst_file_size: null,
-          uptime_seconds: null,
-          user_tablets_leaders: null,
-          user_tablets_total: null,
-          write_ops_per_sec: null
-        };
+            active_tablets: null,
+            num_sst_files: null,
+            ram_used: null,
+            read_ops_per_sec: null,
+            system_tablets_leaders: null,
+            system_tablets_total: null,
+            time_since_hb: null,
+            total_sst_file_size: null,
+            uncompressed_sst_file_size: null,
+            uptime_seconds: null,
+            user_tablets_leaders: null,
+            user_tablets_total: null,
+            write_ops_per_sec: null
+          };
       return {
         nodeIdx: nodeDetail.nodeIdx,
         nodeUuid: nodeDetail.nodeUuid,
@@ -167,10 +167,12 @@ export default class NodeDetails extends Component {
         regionItem: `${nodeDetail.cloudInfo.region}`,
         azItem: `${nodeDetail.cloudInfo.az}`,
         isMaster: nodeDetail.isMaster ? 'Details' : '-',
+        isMasterProcess: nodeDetail.isMaster,
         isMasterLeader: isMasterLeader,
         masterPort: nodeDetail.masterHttpPort,
         tserverPort: nodeDetail.tserverHttpPort,
         isTServer: nodeDetail.isTserver ? 'Details' : '-',
+        isTServerProcess: nodeDetail.isTserver,
         privateIP: nodeDetail.cloudInfo.private_ip,
         publicIP: nodeDetail.cloudInfo.public_ip,
         nodeStatus,
@@ -205,6 +207,7 @@ export default class NodeDetails extends Component {
           nodeDetails={primaryNodeDetails}
           providerUUID={primaryCluster.userIntent.provider}
           clusterType="primary"
+          isDedicatedNodes={primaryCluster.userIntent.dedicatedNodes}
           customer={customer}
           currentUniverse={currentUniverse}
           providers={providers}

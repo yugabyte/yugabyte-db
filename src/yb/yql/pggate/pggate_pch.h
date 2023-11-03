@@ -36,7 +36,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
-#include <cstring>
 #include <ctime>
 #include <deque>
 #include <functional>
@@ -82,6 +81,7 @@
 #include <boost/functional/hash/hash.hpp>
 #include <boost/icl/discrete_interval.hpp>
 #include <boost/icl/interval_set.hpp>
+#include <boost/interprocess/ipc/message_queue.hpp>
 #include <boost/intrusive/list.hpp>
 #include <boost/iterator/transform_iterator.hpp>
 #include <boost/lockfree/queue.hpp>
@@ -173,13 +173,14 @@
 #include "yb/util/algorithm_util.h"
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/blocking_queue.h"
 #include "yb/util/boost_mutex_utils.h"
 #include "yb/util/byte_buffer.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/cast.h"
-#include "yb/util/clone_ptr.h"
 #include "yb/util/coding_consts.h"
+#include "yb/util/col_group.h"
 #include "yb/util/compare_util.h"
 #include "yb/util/concurrent_pod.h"
 #include "yb/util/condition_variable.h"
@@ -262,6 +263,7 @@
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "yb/util/thread_annotations_util.h"
 #include "yb/util/threadlocal.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/timestamp.h"
@@ -273,5 +275,6 @@
 #include "yb/util/ulimit.h"
 #include "yb/util/uuid.h"
 #include "yb/util/varint.h"
+#include "yb/util/write_buffer.h"
 #include "yb/util/yb_partition.h"
 #include "yb/util/yb_pg_errcodes.h"

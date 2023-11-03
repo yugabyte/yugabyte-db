@@ -1,9 +1,10 @@
 ---
-title: Build a Python application using Apache Spark and YugabyteDB
+title: Build Python applications using Apache Spark and YugabyteDB YSQL
+headerTitle: Build a Python application using Apache Spark and YugabyteDB 
 linkTitle: YSQL
-description: Build a Python application using Apache Spark and YugabyteDB
+description: Learn how to build a Python application using Apache Spark and YugabyteDB YSQL
 menu:
-  preview:
+  preview_integrations:
     identifier: apache-spark-3-python-ysql
     parent: apache-spark
     weight: 575
@@ -189,7 +190,7 @@ The output will be similar to [SQL queries](#using-sql-queries).
 The following Spark query renames the column of the table `test` from `ceil` to `round_off` in the DataFrame, then creates a new table with the schema of the changed DataFrame, inserts all its data in the new table, and names it as `test_copy` using the JDBC connector.
 
 ```spark
->>> spark.table("test").withColumnRenamed("ceil", "round_off").write.jdbc(url=jdbcUrl, table="test_copy", poperties=connectionProperties)
+>>> spark.table("test").withColumnRenamed("ceil", "round_off").write.jdbc(url=jdbcUrl, table="test_copy", properties=connectionProperties)
 ```
 
 Verify that the new table `test_copy` is created with the changed schema, and all the data from `test` is copied to it using the following commands from your ysqlsh terminal:
@@ -234,9 +235,9 @@ ysql_pyspark=# SELECT COUNT(*) FROM test_copy;
 Use the `append` [SaveMode](https://spark.apache.org/docs/latest/sql-data-sources-load-save-functions.html#save-modes), to append data from `test_copy` to the `test` table as follows:
 
 ```spark
->>> test_copy_Df = spark.read.jdbc(url=jdbcUrl, table="(select * from test_copy) test_copy_alias"properties=connectionProperties)
+>>> test_copy_Df = spark.read.jdbc(url=jdbcUrl, table="(select * from test_copy) test_copy_alias", properties=connectionProperties)
 >>> test_copy_Df.createOrReplaceTempView("test_copy")
->>> spark.table("test_copy").write.mode("append").jdbc(url=jdbcUrl, table="test",   properties=connectionProperties)
+>>> spark.table("test_copy").write.mode("append").jdbc(url=jdbcUrl, table="test", properties=connectionProperties)
 ```
 
 Verify the changes using ysqlsh:
@@ -260,7 +261,7 @@ To maintain parallelism while fetching the table content, create a DataFrame for
 >>> new_test_df = spark.read.jdbc(url=jdbcUrl, table="test", properties=connectionProperties,numPartitions=5, column="ceil", lowerBound=0, upperBound=20)
 
 >>> new_test_df.createOrReplaceTempView("test")
->>> spark.sql("select sum(ceil) from test where id > 50000").show
+>>> spark.sql("select sum(ceil) from test where id > 50000").show()
 ```
 
 ```output

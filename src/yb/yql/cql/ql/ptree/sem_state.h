@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include "yb/util/logging.h"
 #include "yb/common/common_fwd.h"
 #include "yb/common/ql_datatype.h"
 
@@ -148,7 +149,11 @@ class SemState {
   const ColumnDesc *hash_col() const;
 
   void set_bindvar_name(std::string bindvar_name);
+  void add_alternate_bindvar_name(std::string bindvar_name);
   const MCSharedPtr<MCString>& bindvar_name() const { return bindvar_name_; }
+  const MCSharedPtr<MCVector<MCSharedPtr<MCString>>> &alternative_bindvar_names() const {
+    return alternative_bindvar_names_;
+  }
 
   PTDmlStmt *current_dml_stmt() const {
     return current_dml_stmt_;
@@ -220,7 +225,13 @@ class SemState {
   NullIsAllowed allow_null_ql_type_;         // Does the expected type accept NULL?
   InternalType expected_internal_type_;      // The expected internal type of an expression.
 
+  // For reasons such as backwards compatibility, we might want to allow multiple bindvar names for
+  // certain cases. The bindvar names present in alternative_bindvar_names_ can also be used when
+  // directly binding by name in the query. Note that the alternate names can only be supported for
+  // directing bindings since drivers have validations in place which prevents supporting multiple
+  // names for PreparedStatements.
   MCSharedPtr<MCString> bindvar_name_ = nullptr;
+  MCSharedPtr<MCVector<MCSharedPtr<MCString>>> alternative_bindvar_names_;
 
   // State variables for index analysis.
   SelectScanInfo *scan_state_ = nullptr;

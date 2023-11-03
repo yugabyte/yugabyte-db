@@ -48,7 +48,7 @@ WHERE i.indrelid = 'tbl_include_unique1'::regclass ORDER BY c.relname;
 CREATE TABLE tbl_include_unique2 (c1 int, c2 int, c3 int, c4 int);
 INSERT INTO tbl_include_unique2 SELECT 1, 2, 3*x, 4 FROM generate_series(1,10) AS x;
 CREATE UNIQUE INDEX tbl_include_unique2_idx_unique ON tbl_include_unique2 using lsm (c1, c2) INCLUDE (c3, c4);
-ERROR:  Aborted: ERROR:  duplicate key value violates unique constraint "tbl_include_unique2_idx_unique"
+ERROR:  ERROR:  duplicate key value violates unique constraint "tbl_include_unique2_idx_unique"
 ALTER TABLE tbl_include_unique2 add UNIQUE (c1, c2) INCLUDE (c3, c4);
 ERROR:  duplicate key value violates unique constraint "tbl_include_unique2_c1_c2_c3_c4_key"
 -- Unique index and unique constraint. Must fail setting non-unique index as constraint.
@@ -357,15 +357,23 @@ ERROR:  duplicate key value violates unique constraint "tbl_idx_unique"
 --
 DELETE FROM tbl WHERE c1 = 5 OR c3 = 12;
 DROP TABLE tbl;
--- NOT SUPPORTED
---
--- /*
---  * 9. Alter column type.
---  */
--- CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int, UNIQUE(c1, c2) INCLUDE(c3,c4));
--- INSERT INTO tbl SELECT x, 2*x, 3*x, 4 FROM generate_series(1,10) AS x;
--- ALTER TABLE tbl ALTER c1 TYPE bigint;
--- ALTER TABLE tbl ALTER c3 TYPE bigint;
--- \d tbl
--- DROP TABLE tbl;
---
+/*
+ * 9. Alter column type.
+ */
+CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 box, UNIQUE(c1, c2) INCLUDE(c3,c4));
+INSERT INTO tbl SELECT x, 2*x, 3*x, box('4,4,4,4') FROM generate_series(1,10) AS x;
+ALTER TABLE tbl ALTER c1 TYPE bigint;
+ALTER TABLE tbl ALTER c3 TYPE bigint;
+\d tbl
+                Table "public.tbl"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ c1     | bigint  |           |          |
+ c2     | integer |           |          |
+ c3     | bigint  |           |          |
+ c4     | box     |           |          |
+Indexes:
+    "tbl_c1_c2_c3_c4_key" UNIQUE CONSTRAINT, lsm (c1 HASH, c2 ASC) INCLUDE (c3, c4)
+
+DROP TABLE tbl;
+

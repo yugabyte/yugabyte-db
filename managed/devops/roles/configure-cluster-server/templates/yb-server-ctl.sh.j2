@@ -135,7 +135,11 @@ clean_data_paths() {
   for (( i=0; i<NUM_MOUNTS; ++i ))
   do
     rm -rf "${MOUNT_PATHS[i]}"/yb-data/$daemon
-    rm -rf "${MOUNT_PATHS[i]}"/pg_data
+    # Only the tserver creates and accesses the pg_data directory, so it
+    # should be cleaned only when the tserver files are cleaned.
+    if [ "$daemon" == "tserver" ]; then
+      rm -rf "${MOUNT_PATHS[i]}"/pg_data
+    fi
   done
 
   print_err_out "Cleaning core files on `hostname`"
@@ -301,14 +305,15 @@ case "$command" in
   ;;
   stop)
     print_err_out "Stopping yb-$daemon on `hostname`"
-    if [[ $(check_running) -ne 0 ]]; then
+    # Saving PID and deleting before KILL, to prevent race conditions with cron-check.
+    daemon_pid=$(cat ${daemon_pid_file} || true)
+    rm -f ${daemon_pid_file}
+
+    if [[ $(check_running "${daemon_pid}") -ne 0 ]]; then
       print_err_out "Process isn't running! Nothing to do"
       exit 0
     fi
 
-    # Saving PID and deleting before KILL, to prevent race conditions with cron-check.
-    daemon_pid=$(cat ${daemon_pid_file})
-    rm ${daemon_pid_file}
     kill -TERM "$daemon_pid"
     wait_pid "$daemon_pid"
 

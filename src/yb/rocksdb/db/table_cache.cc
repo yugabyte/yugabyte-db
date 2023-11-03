@@ -36,10 +36,10 @@
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
-#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/stats/perf_step_timer.h"
+#include "yb/util/sync_point.h"
 
 using std::unique_ptr;
 
@@ -164,7 +164,7 @@ Status TableCache::DoGetTableReader(
     }
     (*table_reader)->SetDataFileReader(std::move(data_file_reader));
   }
-  TEST_SYNC_POINT("TableCache::GetTableReader:0");
+  DEBUG_ONLY_TEST_SYNC_POINT("TableCache::GetTableReader:0");
   return s;
 }
 
@@ -178,8 +178,7 @@ Status TableCache::FindTable(const EnvOptions& env_options,
   uint64_t number = fd.GetNumber();
   Slice key = GetSliceForFileNumber(&number);
   *handle = cache_->Lookup(key, query_id);
-  TEST_SYNC_POINT_CALLBACK("TableCache::FindTable:0",
-      const_cast<bool*>(&no_io));
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("TableCache::FindTable:0", const_cast<bool*>(&no_io));
 
   if (*handle == nullptr) {
     if (no_io) {  // Don't do IO and return a not-found status
@@ -285,14 +284,14 @@ Status TableCache::GetTableReaderForIterator(
 }
 
 InternalIterator* TableCache::NewIterator(
-    const ReadOptions& options, TableReaderWithHandle* trwh, const Slice& filter,
+    const ReadOptions& options, TableReaderWithHandle* trwh, Slice filter,
     bool for_compaction, Arena* arena, bool skip_filters) {
   PERF_TIMER_GUARD(new_table_iterator_nanos);
   return DoNewIterator(options, trwh, filter, for_compaction, arena, skip_filters);
 }
 
 InternalIterator* TableCache::DoNewIterator(
-    const ReadOptions& options, TableReaderWithHandle* trwh, const Slice& filter,
+    const ReadOptions& options, TableReaderWithHandle* trwh, Slice filter,
     bool for_compaction, Arena* arena, bool skip_filters) {
   RecordTick(ioptions_.statistics, NO_TABLE_CACHE_ITERATORS);
 
@@ -319,10 +318,28 @@ InternalIterator* TableCache::DoNewIterator(
   return result;
 }
 
+InternalIterator* TableCache::NewIndexIterator(
+    const ReadOptions& options, TableReaderWithHandle* trwh) {
+  RecordTick(ioptions_.statistics, NO_TABLE_CACHE_ITERATORS);
+
+  InternalIterator* result = trwh->table_reader->NewIndexIterator(options);
+
+  if (trwh->created_new) {
+    DCHECK(trwh->handle == nullptr);
+    result->RegisterCleanup(&DeleteTableReader, trwh->table_reader, nullptr);
+  } else if (trwh->handle != nullptr) {
+    result->RegisterCleanup(&UnrefEntry, cache_, trwh->handle);
+  }
+
+  trwh->Release();
+
+  return result;
+}
+
 InternalIterator* TableCache::NewIterator(
     const ReadOptions& options, const EnvOptions& env_options,
-    const InternalKeyComparatorPtr& icomparator, const FileDescriptor& fd, const Slice& filter,
-    TableReader** table_reader_ptr, HistogramImpl* file_read_hist,
+    const InternalKeyComparatorPtr& icomparator, const FileDescriptor& fd,
+    Slice filter, TableReader** table_reader_ptr, HistogramImpl* file_read_hist,
     bool for_compaction, Arena* arena, bool skip_filters) {
   PERF_TIMER_GUARD(new_table_iterator_nanos);
 

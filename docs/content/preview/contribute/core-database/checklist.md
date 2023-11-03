@@ -22,7 +22,7 @@ type: docs
     ```
 
 * Next, [build the source code](../build-from-src).
-* Optionally, you may want to [run the unit tests](../run-unit-tests).
+* Optionally, you may want to [run the unit tests](../build-and-test#test).
 
 ## Step 2. Start a local cluster
 

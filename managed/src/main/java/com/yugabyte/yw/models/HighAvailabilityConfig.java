@@ -12,8 +12,8 @@ package com.yugabyte.yw.models;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
@@ -34,10 +34,14 @@ import javax.persistence.Id;
 import javax.persistence.OneToMany;
 import javax.persistence.Temporal;
 import javax.persistence.TemporalType;
+import lombok.Getter;
+import lombok.Setter;
 import play.data.validation.Constraints;
 
 @Entity
 @JsonPropertyOrder({"uuid", "cluster_key", "instances"})
+@Getter
+@Setter
 public class HighAvailabilityConfig extends Model {
 
   private static final Finder<UUID, HighAvailabilityConfig> find =
@@ -51,37 +55,17 @@ public class HighAvailabilityConfig extends Model {
   private UUID uuid;
 
   @Column(nullable = false, unique = true)
+  @JsonProperty("cluster_key")
   private String clusterKey;
 
   @Temporal(TemporalType.TIMESTAMP)
+  @JsonProperty("last_failover")
   private Date lastFailover;
 
   @OneToMany(mappedBy = "config", cascade = CascadeType.ALL)
   private List<PlatformInstance> instances;
 
-  public UUID getUUID() {
-    return this.uuid;
-  }
-
-  public void setUUID(UUID uuid) {
-    this.uuid = uuid;
-  }
-
-  @JsonGetter("cluster_key")
-  public String getClusterKey() {
-    return this.clusterKey;
-  }
-
-  public void setClusterKey(String clusterKey) {
-    this.clusterKey = clusterKey;
-  }
-
-  @JsonGetter("last_failover")
-  public Date getLastFailover() {
-    return this.lastFailover;
-  }
-
-  public void setLastFailover(Date lastFailover) {
+  public void updateLastFailover(Date lastFailover) {
     this.lastFailover = lastFailover;
     this.update();
   }
@@ -89,10 +73,6 @@ public class HighAvailabilityConfig extends Model {
   public void updateLastFailover() {
     this.lastFailover = new Date();
     this.update();
-  }
-
-  public List<PlatformInstance> getInstances() {
-    return this.instances;
   }
 
   @JsonIgnore
@@ -126,7 +106,7 @@ public class HighAvailabilityConfig extends Model {
   }
 
   public static void update(HighAvailabilityConfig config, String clusterKey) {
-    config.clusterKey = clusterKey;
+    config.setClusterKey(clusterKey);
     config.update();
   }
 

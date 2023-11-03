@@ -21,6 +21,12 @@
 
 namespace yb {
 
+namespace test {
+
+YB_DEFINE_ENUM(Partitioning, (kHash)(kRange))
+
+}
+
 template <class T>
 class YBMiniClusterTestBase: public YBTest {
  public:
@@ -57,6 +63,10 @@ class MiniClusterTestWithClient : public YBMiniClusterTestBase<T> {
 
  protected:
   virtual Status CreateClient();
+
+  // Creates the client only if it has not been created before.
+  virtual Status EnsureClientCreated();
+
   void DoTearDown() override;
 
   std::unique_ptr<client::YBClient> client_;

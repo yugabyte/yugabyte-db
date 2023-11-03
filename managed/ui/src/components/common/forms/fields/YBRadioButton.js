@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { isValidObject } from '../../../../utils/ObjectUtils';
 
 export default class YBRadioButton extends Component {
@@ -16,6 +16,7 @@ export default class YBRadioButton extends Component {
     const name = this.props.name || input.name;
     const id = this.props.id || `radio_button_${name}_${fieldValue}`;
     const onCheckClick = function (event) {
+      // eslint-disable-next-line no-unused-expressions
       input && input.onChange && input.onChange(event);
       return isValidObject(onClick) ? onClick(event) : true;
     };

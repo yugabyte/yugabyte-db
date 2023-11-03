@@ -1,9 +1,8 @@
-import React from 'react';
 import { useQuery } from 'react-query';
 import clsx from 'clsx';
 
 import { REPLICATION_LAG_ALERT_NAME, XClusterTableStatus } from './constants';
-import { assertUnreachableCase } from '../../utils/ErrorUtils';
+import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { queryLagMetricsForTable } from '../../actions/xClusterReplication';
 import { getAlertConfigurations } from '../../actions/universe';
 import { getLatestMaxNodeLag } from './ReplicationUtils';
@@ -13,6 +12,7 @@ import styles from './XClusterTableStatusLabel.module.scss';
 
 interface XClusterTableStatusProps {
   status: XClusterTableStatus;
+  streamId: string;
   tableUUID: string;
   nodePrefix: string;
   universeUUID: string;
@@ -60,9 +60,16 @@ const BOOTSTRAPPING_LABEL = (
     <i className="fa fa-spinner fa-spin" />
   </span>
 );
+const UNABLE_TO_FETCH_LABEL = (
+  <span className={clsx(styles.label, styles.warning)}>
+    Unable To Fetch
+    <i className="fa fa-exclamation-triangle" />
+  </span>
+);
 
 export const XClusterTableStatusLabel = ({
   status,
+  streamId,
   tableUUID,
   nodePrefix,
   universeUUID
@@ -74,12 +81,13 @@ export const XClusterTableStatusLabel = ({
   const maxAcceptableLagQuery = useQuery(['alert', 'configurations', alertConfigFilter], () =>
     getAlertConfigurations(alertConfigFilter)
   );
-  const tableLagQuery = useQuery(['xcluster-metric', nodePrefix, tableUUID, 'metric'], () =>
-    queryLagMetricsForTable(tableUUID, nodePrefix)
+  const tableLagQuery = useQuery(
+    ['xcluster-metric', nodePrefix, tableUUID, streamId, 'metric'],
+    () => queryLagMetricsForTable(streamId, tableUUID, nodePrefix)
   );
 
   switch (status) {
-    case XClusterTableStatus.RUNNING:
+    case XClusterTableStatus.RUNNING: {
       if (
         tableLagQuery.isLoading ||
         tableLagQuery.isIdle ||
@@ -101,6 +109,7 @@ export const XClusterTableStatusLabel = ({
       return maxNodeLag === undefined || maxNodeLag > maxAcceptableLag
         ? WARNING_LABEL
         : OPERATIONAL_LABEL;
+    }
     case XClusterTableStatus.WARNING:
       return WARNING_LABEL;
     case XClusterTableStatus.FAILED:
@@ -113,6 +122,8 @@ export const XClusterTableStatusLabel = ({
       return VALIDATED_LABEL;
     case XClusterTableStatus.BOOTSTRAPPING:
       return BOOTSTRAPPING_LABEL;
+    case XClusterTableStatus.UNABLE_TO_FETCH:
+      return UNABLE_TO_FETCH_LABEL;
     default:
       return assertUnreachableCase(status);
   }

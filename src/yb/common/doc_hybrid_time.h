@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <array>
 #include <string>
 
 #include "yb/common/hybrid_time.h"
@@ -41,22 +42,48 @@ class EncodedDocHybridTime {
  public:
   EncodedDocHybridTime() : size_(0) {}
   explicit EncodedDocHybridTime(const DocHybridTime& input);
+  explicit EncodedDocHybridTime(const Slice& src);
   EncodedDocHybridTime(HybridTime ht, IntraTxnWriteId write_id);
 
+  EncodedDocHybridTime(const EncodedDocHybridTime&) = default;
+  EncodedDocHybridTime& operator=(const EncodedDocHybridTime&) = default;
+
   void Assign(const Slice& input);
+  void Assign(const DocHybridTime& doc_ht);
+  void Reset();
 
   Slice AsSlice() const {
     return Slice(buffer_.data(), size_);
   }
 
+  bool empty() const {
+    return size_ == 0;
+  }
+
+  size_t size() const {
+    return size_;
+  }
+
+  void MakeAtLeast(const EncodedDocHybridTime& rhs);
+
   Result<DocHybridTime> Decode() const;
 
   std::string ToString() const;
+
+  bool is_min() const {
+    return AsSlice() == kMin;
+  }
+
+  static const Slice kMin;
 
  private:
   std::array<char, kMaxBytesPerEncodedHybridTime> buffer_;
   uint8_t size_;
 };
+
+inline std::ostream& operator<<(std::ostream& out, const EncodedDocHybridTime& value) {
+  return out << value.ToString();
+}
 
 inline std::strong_ordering operator<=>(
     const EncodedDocHybridTime& lhs, const EncodedDocHybridTime& rhs) {
@@ -126,6 +153,10 @@ class DocHybridTime {
   // And EncodedDocHybridTime merely big struct, it is more effective to return
   // Status and value separately, instead of wrapping it with Result.
   static Status EncodedFromEnd(const Slice& slice, EncodedDocHybridTime* out);
+
+  static Result<const char*> EncodedFromStart(const char* begin, const char* end);
+
+  static Result<Slice> EncodedFromStart(Slice* slice);
 
   // Decodes doc ht from end of slice, and removes corresponding bytes from provided slice.
   static Result<DocHybridTime> DecodeFromEnd(Slice* encoded_key_with_ht);

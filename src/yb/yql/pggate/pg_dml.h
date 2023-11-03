@@ -17,14 +17,12 @@
 #include <optional>
 #include <unordered_map>
 
-#include "yb/gutil/stl_util.h"
-
 #include "yb/yql/pggate/pg_doc_op.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_table.h"
 
-DECLARE_bool(TEST_enable_db_catalog_version_mode);
+DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 namespace yb {
 namespace pggate {
@@ -49,12 +47,13 @@ class PgDml : public PgStatement {
   // If any serialized Postgres expressions appended to other lists require explicit addition
   // of their column references. Those column references should have Postgres type information.
   // Other PgExpr kinds are automatically scanned and their column references are appended.
-  Status AppendColumnRef(PgExpr *colref, bool is_primary);
+  Status AppendColumnRef(PgColumnRef *colref, bool is_primary);
 
   // Prepare column for both ends.
   // - Prepare protobuf to communicate with DocDB.
   // - Prepare PgExpr to send data back to Postgres layer.
   Result<const PgColumn&> PrepareColumnForRead(int attr_num, LWPgsqlExpressionPB *target_pb);
+  Result<const PgColumn&> PrepareColumnForRead(int attr_num, LWQLExpressionPB *target_pb);
   Status PrepareColumnForWrite(PgColumn *pg_col, LWPgsqlExpressionPB *assign_pb);
 
   // Bind a column with an expression.
@@ -91,17 +90,13 @@ class PgDml : public PgStatement {
   // key, or neither.
   Result<YBCPgColumnInfo> GetColumnInfo(int attr_num) const;
 
-  bool has_aggregate_targets();
+  bool has_aggregate_targets() const;
+
+  bool has_system_targets() const;
 
   bool has_doc_op() const {
     return doc_op_ != nullptr;
   }
-
-  // RPC stats for EXPLAIN ANALYZE
-  void GetAndResetReadRpcStats(uint64_t* reads, uint64_t* read_wait);
-
-  void GetAndResetReadRpcStats(uint64_t* reads, uint64_t* read_wait,
-                               uint64_t* tbl_reads, uint64_t* tbl_read_wait);
 
  protected:
   // Method members.
@@ -123,16 +118,13 @@ class PgDml : public PgStatement {
   virtual LWPgsqlExpressionPB *AllocQualPB() = 0;
 
   // Allocate protobuf for expression whose value is bounded to a column.
-  virtual LWPgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) = 0;
+  virtual Result<LWPgsqlExpressionPB*> AllocColumnBindPB(PgColumn* col, PgExpr* expr) = 0;
 
   // Allocate protobuf for expression whose value is assigned to a column (SET clause).
   virtual LWPgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) = 0;
 
   // Specify target of the query in protobuf request.
   Status AppendTargetPB(PgExpr *target);
-
-  // Update bind values.
-  Status UpdateBindPBs();
 
   // Update set values.
   Status UpdateAssignPBs();
@@ -162,7 +154,7 @@ class PgDml : public PgStatement {
       Request* req, std::optional<PgOid> db_oid, uint64_t version) {
     auto& request = *DCHECK_NOTNULL(req);
     if (db_oid) {
-      DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+      DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
       request.set_ysql_db_catalog_version(version);
       request.set_ysql_db_oid(*db_oid);
     } else {
@@ -193,12 +185,9 @@ class PgDml : public PgStatement {
   // - "target_desc_" is the table descriptor where data will be read from.
   // - "targets_" are either selected or returned expressions by DML statements.
   PgTable target_;
-  std::vector<PgExpr*> targets_;
-
-  // Qual is a where clause condition pushed to the DocDB to filter scanned rows
-  // Qual supports PgExprs holding serialized Postgres expressions, and require the column
-  // references used in these Quals to be explicitly added with AppendColumnRef()
-  std::vector<PgExpr*> quals_;
+  std::vector<PgFetchedTarget*> targets_;
+  bool has_aggregate_targets_ = false;
+  bool has_system_targets_ = false;
 
   // bind_desc_ is the descriptor of the table whose key columns' values will be specified by the
   // the DML statement being executed.
@@ -244,10 +233,6 @@ class PgDml : public PgStatement {
   // * Set values are used to hold columns' new values in the selected rows.
   bool ybctid_bind_ = false;
 
-  template<class K, class V>
-  using PointerMap = std::unordered_map<K*, V, PointerHash<K>, PointerEqual<K>>;
-
-  PointerMap<LWPgsqlExpressionPB, PgExpr*> expr_binds_;
   std::unordered_map<LWPgsqlExpressionPB*, PgExpr*> expr_assigns_;
 
   // Used for colocated TRUNCATE that doesn't bind any columns.

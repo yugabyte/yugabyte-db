@@ -34,8 +34,7 @@ public class EditKMSConfig extends KMSConfigTaskBase {
     // keyValue.
     try {
       List<UUID> universeUUIDList =
-          EncryptionAtRestUtil.getUniverses(taskParams().configUUID)
-              .stream()
+          EncryptionAtRestUtil.getUniverses(taskParams().configUUID).stream()
               .map(UniverseDetailSubset::getUuid)
               .collect(Collectors.toList());
       for (UUID universeUUID : universeUUIDList) {
@@ -49,7 +48,7 @@ public class EditKMSConfig extends KMSConfigTaskBase {
                     + "as no active key was found");
             continue;
           }
-          byte[] keyRef = Base64.getDecoder().decode(activeKey.uuid.keyRef);
+          byte[] keyRef = Base64.getDecoder().decode(activeKey.getUuid().keyRef);
           if (kmsManager
                   .getServiceInstance(taskParams().kmsProvider.name())
                   .validateConfigForUpdate(
@@ -71,8 +70,7 @@ public class EditKMSConfig extends KMSConfigTaskBase {
     KmsConfig updateResult =
         kmsManager
             .getServiceInstance(taskParams().kmsProvider.name())
-            .updateAuthConfig(
-                taskParams().customerUUID, taskParams().configUUID, taskParams().providerConfig);
+            .updateAuthConfig(taskParams().configUUID, taskParams().providerConfig);
 
     if (updateResult == null) {
       throw new RuntimeException(

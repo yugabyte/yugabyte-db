@@ -34,7 +34,7 @@
 
 #include <string>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
@@ -45,11 +45,11 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/tunnel.h"
 #include "yb/util/status.h"
+#include "yb/util/thread.h"
 
 using std::string;
 using std::vector;
 
-using strings::Substitute;
 
 DECLARE_bool(TEST_simulate_fs_create_failure);
 DECLARE_bool(rpc_server_allow_ephemeral_ports);
@@ -77,6 +77,7 @@ MiniMaster::~MiniMaster() {
 
 Status MiniMaster::Start(bool TEST_simulate_fs_create_failure) {
   CHECK(!running_);
+
   FLAGS_rpc_server_allow_ephemeral_ports = true;
   FLAGS_TEST_simulate_fs_create_failure = TEST_simulate_fs_create_failure;
   // Disable WAL fsync for tests
@@ -92,6 +93,7 @@ Status MiniMaster::StartDistributedMaster(const vector<uint16_t>& peer_ports) {
 }
 
 void MiniMaster::Shutdown() {
+  TEST_SetThreadPrefixScoped prefix_se(Format("m-$0", index_));
   if (tunnel_) {
     tunnel_->Shutdown();
   }
@@ -133,6 +135,7 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port) {
 
 Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
                                 MasterOptions* opts) {
+  TEST_SetThreadPrefixScoped prefix_se(Format("m-$0", index_));
   if (use_custom_addresses_) {
     opts->rpc_opts.rpc_bind_addresses = Format(
         "$0:$1", custom_rpc_addresses_[0], rpc_port);
@@ -164,7 +167,7 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
         Format("rack$0", index_), "zone");
   }
 
-  std::unique_ptr<Master> server(new enterprise::Master(*opts));
+  std::unique_ptr<Master> server(new Master(*opts));
   RETURN_NOT_OK(server->Init());
 
   server::TEST_SetupConnectivity(server->messenger(), index_);

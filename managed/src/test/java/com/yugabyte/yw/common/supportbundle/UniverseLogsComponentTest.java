@@ -2,35 +2,38 @@
 
 package com.yugabyte.yw.common.supportbundle;
 
-import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.common.TestHelper.createTarGzipFiles;
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.when;
-import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.NodeUniverseManager;
-import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Paths;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Date;
-import java.util.List;
-import java.util.HashSet;
+import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.List;
+import java.util.stream.Collectors;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -45,10 +48,11 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
   @Mock public NodeUniverseManager mockNodeUniverseManager;
   @Mock public Config mockConfig;
   @Mock public SupportBundleUtil mockSupportBundleUtil = new SupportBundleUtil();
+  @Mock public RuntimeConfGetter MockConfGetter;
 
-  private final String testRegexPattern =
-      "(?:(?:.*)(?:yb-)(?:master|tserver)(?:.*)(\\d{8})-(?:\\d*)\\.(?:.*))"
-          + "|(?:(?:.*)(?:postgresql)-(.{10})(?:.*))";
+  private final String testUniverseLogsRegexPattern =
+      "((?:.*)(?:yb-)(?:master|tserver)(?:.*))(\\d{8})-(?:\\d*)\\.(?:.*)";
+  private final String testPostgresLogsRegexPattern = "((?:.*)(?:postgresql)-)(.{10})(?:.*)";
   private Universe universe;
   private Customer customer;
   private String fakeSupportBundleBasePath = "/tmp/yugaware_tests/support_bundle-universe_logs/";
@@ -62,13 +66,13 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
   public void setUp() throws Exception {
     // Setup fake temp files, universe, customer
     this.customer = ModelFactory.testCustomer();
-    this.universe = ModelFactory.createUniverse(customer.getCustomerId());
+    this.universe = ModelFactory.createUniverse(customer.getId());
 
     // Add a fake node to the universe with a node name
     node.nodeName = "u-n1";
     this.universe =
         Universe.saveDetails(
-            universe.universeUUID,
+            universe.getUniverseUUID(),
             (universe) -> {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
               universeDetails.nodeDetailsSet = new HashSet<>(Arrays.asList(node));
@@ -91,26 +95,34 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
     // Mock all the invocations with fake data
     when(mockSupportBundleUtil.getDataDirPath(any(), any(), any(), any()))
         .thenReturn(fakeSupportBundleBasePath);
-    when(mockConfig.getString("yb.support_bundle.universe_logs_regex_pattern"))
-        .thenReturn(testRegexPattern);
-    when(mockSupportBundleUtil.filterFilePathsBetweenDates(
-            any(), any(), any(), any(), anyBoolean()))
+    when(MockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.universeLogsRegexPattern)))
+        .thenReturn(testUniverseLogsRegexPattern);
+    when(MockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.postgresLogsRegexPattern)))
+        .thenReturn(testPostgresLogsRegexPattern);
+    when(mockSupportBundleUtil.extractFileTypeFromFileNameAndRegex(any(), any()))
         .thenCallRealMethod();
-    // lenient().when(mockSupportBundleUtil.getTodaysDate()).thenCallRealMethod();
+    when(mockSupportBundleUtil.extractDateFromFileNameAndRegex(any(), any())).thenCallRealMethod();
+    when(mockSupportBundleUtil.filterFilePathsBetweenDates(any(), any(), any(), any()))
+        .thenCallRealMethod();
     when(mockSupportBundleUtil.filterList(any(), any())).thenCallRealMethod();
     when(mockSupportBundleUtil.checkDateBetweenDates(any(), any(), any())).thenCallRealMethod();
+    when(mockSupportBundleUtil.unGzip(any(), any())).thenCallRealMethod();
+    when(mockSupportBundleUtil.unTar(any(), any())).thenCallRealMethod();
+    doCallRealMethod()
+        .when(mockSupportBundleUtil)
+        .batchWiseDownload(any(), any(), any(), any(), any(), any(), any(), any(), any());
 
     // Generate a fake shell response containing the entire list of file paths
     // Mocks the server response
-    String fakeShellOutput = "Command output:\n" + String.join("\n", fakeLogsList);
-    ShellResponse fakeShellResponse = ShellResponse.create(0, fakeShellOutput);
-    when(mockNodeUniverseManager.runCommand(any(), any(), any())).thenReturn(fakeShellResponse);
+    List<Path> fakeLogFilePathList =
+        fakeLogsList.stream().map(Paths::get).collect(Collectors.toList());
+    when(mockNodeUniverseManager.getNodeFilePaths(any(), any(), any(), eq(1), eq("f")))
+        .thenReturn(fakeLogFilePathList);
     // Generate a fake shell response containing the output of the "check file exists" script
     // Mocks the server response as "file existing"
-    String fakeShellRunScriptOutput = "Command output:\n1";
-    ShellResponse fakeShellRunScriptResponse = ShellResponse.create(0, fakeShellRunScriptOutput);
-    when(mockNodeUniverseManager.runScript(any(), any(), any(), any()))
-        .thenReturn(fakeShellRunScriptResponse);
+    when(mockNodeUniverseManager.checkNodeIfFileExists(any(), any(), any())).thenReturn(true);
 
     when(mockUniverseInfoHandler.downloadNodeFile(any(), any(), any(), any(), any(), any()))
         .thenAnswer(
@@ -137,7 +149,11 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
     // Calling the download function
     UniverseLogsComponent universeLogsComponent =
         new UniverseLogsComponent(
-            mockUniverseInfoHandler, mockNodeUniverseManager, mockConfig, mockSupportBundleUtil);
+            mockUniverseInfoHandler,
+            mockNodeUniverseManager,
+            mockConfig,
+            mockSupportBundleUtil,
+            MockConfGetter);
     universeLogsComponent.downloadComponentBetweenDates(
         customer, universe, Paths.get(fakeBundlePath), startDate, endDate, node);
 

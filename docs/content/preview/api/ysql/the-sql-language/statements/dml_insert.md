@@ -7,8 +7,6 @@ menu:
   preview:
     identifier: dml_insert
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/dml_insert/
 type: docs
 ---
 
@@ -18,29 +16,13 @@ Use the `INSERT` statement to add one or more rows to the specified table.
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/insert,returning_clause,column_values,conflict_target,conflict_action.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/insert,returning_clause,column_values,conflict_target,conflict_action.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  insert,
+  returning_clause,
+  column_values,
+  conflict_target,
+  conflict_action
+{{%/ebnf%}}
 
 See the section [The WITH clause and common table expressions](../../with-clause/) for mor information about the semantics of the `common_table_expression` grammar rule.
 

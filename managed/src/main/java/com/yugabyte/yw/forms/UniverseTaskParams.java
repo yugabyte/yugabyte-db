@@ -15,6 +15,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.Getter;
+import lombok.Setter;
 
 public class UniverseTaskParams extends AbstractTaskParams {
   public static final int DEFAULT_SLEEP_AFTER_RESTART_MS = 180000;
@@ -111,6 +113,14 @@ public class UniverseTaskParams extends AbstractTaskParams {
       node.ysqlServerRpcPort = ports.ysqlServerRpcPort;
       node.nodeExporterPort = ports.nodeExporterPort;
     }
+
+    public static void mergeCommunicationPorts(
+        CommunicationPorts ports, ConfigureDBApiParams params) {
+      ports.ysqlServerHttpPort = params.communicationPorts.ysqlServerHttpPort;
+      ports.ysqlServerRpcPort = params.communicationPorts.ysqlServerRpcPort;
+      ports.yqlServerHttpPort = params.communicationPorts.yqlServerHttpPort;
+      ports.yqlServerRpcPort = params.communicationPorts.yqlServerRpcPort;
+    }
   }
 
   @ApiModel(description = "Extra dependencies")
@@ -129,12 +139,11 @@ public class UniverseTaskParams extends AbstractTaskParams {
   @ApiModelProperty(value = "The target universe's xcluster replication relationships")
   @JsonProperty(value = "targetXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
   public List<UUID> getTargetXClusterConfigs() {
-    if (universeUUID == null) {
+    if (getUniverseUUID() == null) {
       return new ArrayList<>();
     }
-    return XClusterConfig.getByTargetUniverseUUID(universeUUID)
-        .stream()
-        .map(xClusterConfig -> xClusterConfig.uuid)
+    return XClusterConfig.getByTargetUniverseUUID(getUniverseUUID()).stream()
+        .map(xClusterConfig -> xClusterConfig.getUuid())
         .collect(Collectors.toList());
   }
 
@@ -147,12 +156,11 @@ public class UniverseTaskParams extends AbstractTaskParams {
   @ApiModelProperty(value = "The source universe's xcluster replication relationships")
   @JsonProperty(value = "sourceXClusterConfigs", access = JsonProperty.Access.READ_ONLY)
   public List<UUID> getSourceXClusterConfigs() {
-    if (universeUUID == null) {
+    if (getUniverseUUID() == null) {
       return Collections.emptyList();
     }
-    return XClusterConfig.getBySourceUniverseUUID(universeUUID)
-        .stream()
-        .map(xClusterConfig -> xClusterConfig.uuid)
+    return XClusterConfig.getBySourceUniverseUUID(getUniverseUUID()).stream()
+        .map(xClusterConfig -> xClusterConfig.getUuid())
         .collect(Collectors.toList());
   }
 
@@ -166,19 +174,21 @@ public class UniverseTaskParams extends AbstractTaskParams {
 
   // The universe against which this operation is being executed.
   @ApiModelProperty(value = "Associated universe UUID")
-  public UUID universeUUID;
+  @Getter
+  @Setter
+  private UUID universeUUID;
 
   // Previous version used for task info.
   @ApiModelProperty(value = "Previous software version")
   public String ybPrevSoftwareVersion;
 
-  @ApiModelProperty public boolean enableYbc = false;
+  @ApiModelProperty @Getter @Setter private boolean enableYbc = false;
 
-  @ApiModelProperty public String ybcSoftwareVersion = null;
+  @ApiModelProperty @Getter @Setter private String ybcSoftwareVersion = null;
 
   @ApiModelProperty public boolean installYbc = false;
 
-  @ApiModelProperty public boolean ybcInstalled = false;
+  @ApiModelProperty @Getter @Setter private boolean ybcInstalled = false;
 
   // Expected version of the universe for operation execution. Set to -1 if an operation should
   // not verify expected version of the universe.
@@ -190,7 +200,9 @@ public class UniverseTaskParams extends AbstractTaskParams {
   // If an AWS backed universe has chosen EBS volume encryption, this will be set to the
   // Amazon Resource Name (ARN) of the CMK to be used to generate data keys for volume encryption
   @ApiModelProperty(value = "Amazon Resource Name (ARN) of the CMK")
-  public String cmkArn;
+  @Getter
+  @Setter
+  private String cmkArn;
 
   // Store encryption key provider specific configuration/authorization values
   @ApiModelProperty(value = "Encryption at rest configation")
@@ -208,12 +220,6 @@ public class UniverseTaskParams extends AbstractTaskParams {
   // Dependencies that can be install on nodes or not
   @ApiModelProperty(value = "Extra dependencies")
   public ExtraDependencies extraDependencies = new ExtraDependencies();
-
-  // Whether this task has been tried before or not. Awkward naming because we cannot use
-  // `isRetry` due to play reading the "is" prefix differently.
-  @ApiModelProperty(value = "Whether this task has been tried before")
-  @Deprecated
-  public boolean firstTry = true;
 
   // The user that created the task
   public Users creatingUser;

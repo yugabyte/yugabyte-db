@@ -12,9 +12,7 @@ menu:
 type: docs
 ---
 
-There are no set-up charges or commitments to begin using YugabyteDB Managed. At the end of the month, you are automatically charged for that month's usage. You can view your charges for the current billing period at any time by selecting **Invoices** on the **Billing** tab of the **Admin** page. Refer to [Manage your billing profile and payment method](../cloud-billing-profile/).
-
-Only an Admin user (the user who created the YugabyteDB Managed account) can access the billing and payment details.
+There are no set-up charges or commitments to begin using YugabyteDB Managed. At the end of the month, you are automatically charged for that month's usage. You can view your charges for the current billing period at any time by selecting the **Invoices** tab on the **Billing** page. Refer to [Manage your billing profile and payment method](../cloud-billing-profile/).
 
 Your bill is calculated based on your usage of the following dimensions:
 
@@ -60,13 +58,15 @@ Assume you start a cluster with 3 nodes x 2 vCPUs (6 vCPUs) for the first 15 day
 
 At the end of September, you would calculate the cost as follows.
 
-**Total instance-minutes**\
-[(6 vCPUs x 15 days x 24 hours x 60 min) + (12 vCPUs x 15 days x 24 hours x 60 min)]\
-= 388800
+Total instance-minutes
+: [(6 vCPUs x 15 days x 24 hours x 60 min) + (12 vCPUs x 15 days x 24 hours x 60 min)]
+: = 388800
 
-**Total vCPU cost/month** = Total instance minutes x Per minute base rate \
-\
-**Total vCPU cost/month** = 388800 x $.00416666666 ~ $1619.99
+Total vCPU cost/month
+: Total instance minutes x Per minute base rate
+
+Total vCPU cost/month
+: 388800 x $.00416666666 ~ $1619.99
 
 ## Disk storage cost
 
@@ -104,34 +104,36 @@ Then scale up to the following configuration for the final 15 days in September:
 
 At the end of September, you would have the following total usage cost:
 
-**Total disk storage**\
-[(300 GB x 15 days x 24 hours) + (1500 GB x 15 days x 24 hours)]\
-= 648000 GB-hours
+Total disk storage
+: [(300 GB x 15 days x 24 hours) + (1500 GB x 15 days x 24 hours)]
+: = 648000 GB-hours
 
-**Total instance-minutes**\
-[(6 vCPUs x 15 days x 24 hours x 60 min) + (12 vCPUs x 15 days x 24 hours x 60 min)]\
-= 388800 instance-minutes
+Total instance-minutes
+: [(6 vCPUs x 15 days x 24 hours x 60 min) + (12 vCPUs x 15 days x 24 hours x 60 min)]
+: = 388800 instance-minutes
 
-**Total vCPUs**\
-388800 instance-minutes / ( 30 days x 24 hours x 60 minutes )\
-= 9 vCPUs
+Total vCPUs
+: 388800 instance-minutes / ( 30 days x 24 hours x 60 minutes )
+: = 9 vCPUs
 
-**Free allowance (GB/month)**\
-9 vCPUs x 50 GB/month = 450 GB
+Free allowance (GB/month)
+: 9 vCPUs x 50 GB/month = 450 GB
 
-**Free allowance (GB-hours)**\
-450 GB x 30 days x 24 hours = 324000 GB-hours
+Free allowance (GB-hours)
+: 450 GB x 30 days x 24 hours = 324000 GB-hours
 
-**Disk storage overages**\
-648000 GB-hours - 324000 GB-hours = 324000 GB-hours
+Disk storage overages
+: 648000 GB-hours - 324000 GB-hours = 324000 GB-hours
 
-**Total disk storage cost/month** = Total overages (GB-hours) x Per hour base rate
+Total disk storage cost/month
+: Total overages (GB-hours) x Per hour base rate
 
-**Total disk storage cost/month** = 324000 x 0.0001388888889 = $45
+Total disk storage cost/month
+: 324000 x 0.0001388888889 = $45
 
 ## Backup storage costs
 
-Backup storage costs are tied to the cost of storing the backup snapshots in the underlying IaaS storage services (that is, S3 on AWS or GCS on Google cloud). It's purely a function of total data backed up from your cluster and the retention period.
+Backup storage costs are tied to the cost of storing the backup snapshots in the underlying IaaS storage services (that is, S3 on AWS, blob on Azure, or GCS on Google cloud). It's purely a function of total data backed up from your cluster and the retention period.
 
 {{< tip title="Rate card" >}}
 
@@ -153,22 +155,22 @@ Assume you start a cluster with 3 nodes x 2 vCPUs (6 vCPUs) for the first 15 day
 
 At the end of September, you would have the following total backup cost.
 
-**Total instance-minutes**\
-[(6 vCPUs x 15 days x 24 hours x 60 min) + (12 vCPUs x 15 days x 24 hours x 60 min)]\
-= 388800 instance-minutes
+Total instance-minutes
+: [(6 vCPUs x 15 days x 24 hours x 60 min) + (12 vCPUs x 15 days x 24 hours x 60 min)]
+: = 388800 instance-minutes
 
-**Total vCPUs**\
-388800 instance-minutes / ( 30 days x 24 hours x 60 minutes )\
-= 9 vCPUs
+Total vCPUs
+: 388800 instance-minutes / ( 30 days x 24 hours x 60 minutes )
+: = 9 vCPUs
 
-**Free allowance (GB-month)**\
-9 vCPUs x 100 GB/month = 900 GB
+Free allowance (GB-month)
+: 9 vCPUs x 100 GB/month = 900 GB
 
-**Free allowance (GB-hours)**\
-900 GB x 30 days x 24 hours = 648000 GB-hours
+Free allowance (GB-hours)
+: 900 GB x 30 days x 24 hours = 648000 GB-hours
 
-**Backup storage overages**\
-720000 GB-hours - 648000 GB-hours = 72000 GB-hours
+Backup storage overages
+: 720000 GB-hours - 648000 GB-hours = 72000 GB-hours
 
 **Total backup storage cost/month** = Total overages (GB-hours) x Per hour base rate
 
@@ -196,7 +198,7 @@ The free allowance for same region transfers is 1000 GB per month for every 1 vC
 
 ### Cross region
 
-This accounts for all of the traffic coming out of the cluster to a different region. This happens if a client is using [VPC peering](../../cloud-basics/cloud-vpcs/) but is in different region than the cluster deployments. Different rate cards apply for clusters deployed in Asia-Pacific (APAC) vs other regions.
+This accounts for all of the traffic coming out of the cluster to a different region. This happens if a client is using [VPC networking](../../cloud-basics/cloud-vpcs/) but is in different region than the cluster deployments. Different rate cards apply for clusters deployed in Asia-Pacific (APAC) vs other regions.
 
 {{< tip title="Rate card" >}}
 
@@ -210,7 +212,7 @@ The free allowance for cross region transfers is 10 GB per month for every 1 vCP
 
 ### Data out (Internet)
 
-This accounts for all of the traffic coming out of the cluster to the internet. This happens when a client is not using VPC peering and connecting to the cluster over the internet.
+This accounts for all of the traffic coming out of the cluster to the internet. This happens when a client is not using VPC networking and connecting to the cluster over the internet.
 
 {{< tip title="Rate card" >}}
 
@@ -224,9 +226,9 @@ The free allowance for data out transfers is 10GB per month for every 1 vCPU per
 
 - Ensure that queries originate from the same cloud region and provider as your database deployment whenever possible.
 
-  - Avoid data out internet costs by using [VPC peering](../../cloud-basics/cloud-vpcs/) and not allowing any client applications to connect over the public internet.
+  - Avoid data out internet costs by using [VPC networking](../../cloud-basics/cloud-vpcs/) and not allowing any client applications to connect over the public internet.
 
-  - Minimize data out cross region costs by making sure your client application and database cluster are deployed in the same cloud and region and connected using VPC Peering.
+  - Minimize data out cross region costs by making sure your client application and database cluster are deployed in the same cloud and region and connected using VPC networking.
 
 - Ensure that queries do not:
 
@@ -253,11 +255,11 @@ While active, disk and backup storage are covered by the free allowance, and the
 
 When paused, instance vCPU capacity is no longer charged, while disk and backup storage are charged at the standard rate, as follows:
 
-**Disk storage (Paused)** = disk storage x hourly rate\
-200gb x 0.000138888889 = $0.0277777778/hour
+Disk storage (Paused) = disk storage x hourly rate
+: 200gb x 0.000138888889 = $0.0277777778/hour
 
-**Backup storage (Paused)**  = backup storage x hourly rate\
-400gb x 0.00003472222222 = $0.0138888889/hour
+Backup storage (Paused) = backup storage x hourly rate
+: 400gb x 0.00003472222222 = $0.0138888889/hour
 
 **Paused cluster hourly rate** = $0.0416666667/hour
 

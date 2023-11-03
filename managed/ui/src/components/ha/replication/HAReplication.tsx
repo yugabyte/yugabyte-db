@@ -1,4 +1,4 @@
-import React, { FC, useState } from 'react';
+import { FC, useState } from 'react';
 
 import { YBLoading } from '../../common/indicators';
 import { HAErrorPlaceholder } from '../compounds/HAErrorPlaceholder';
@@ -21,6 +21,7 @@ export const HAReplication: FC = () => {
   }
 
   if (error) {
+    // eslint-disable-next-line @typescript-eslint/no-non-null-asserted-optional-chain
     return <HAErrorPlaceholder error={error} configUUID={config?.uuid!} />;
   }
 

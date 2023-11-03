@@ -36,7 +36,6 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
-#include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/trace.h"
 
@@ -66,11 +65,6 @@ DEFINE_RUNTIME_bool(ysql_follower_reads_avoid_waiting_for_safe_time, true,
     "faster than waiting for safe time to catch up.");
 TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, advanced);
 
-METRIC_DEFINE_coarse_histogram(server, read_time_wait,
-                               "Read Time Wait",
-                               yb::MetricUnit::kMicroseconds,
-                               "Number of microseconds read queries spend waiting for safe time");
-
 namespace yb {
 namespace tserver {
 
@@ -78,13 +72,34 @@ namespace {
 
 void HandleRedisReadRequestAsync(
     tablet::AbstractTablet* tablet,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
+    const docdb::ReadOperationData& read_operation_data,
     const RedisReadRequestPB& redis_read_request,
     RedisResponsePB* response,
     const std::function<void(const Status& s)>& status_cb
 ) {
-  status_cb(tablet->HandleRedisReadRequest(deadline, read_time, redis_read_request, response));
+  status_cb(tablet->HandleRedisReadRequest(read_operation_data, redis_read_request, response));
+}
+
+Result<IsolationLevel> GetIsolationLevel(
+    const ReadRequestPB& req, TabletServerIf* server, TabletPeerTablet* peer_tablet) {
+  if (!req.has_transaction()) {
+    return IsolationLevel::NON_TRANSACTIONAL;
+  }
+
+  // Unfortunately, determining the isolation level is not as straightforward as it seems. All but
+  // the first request to a given tablet by a particular transaction assume that the tablet already
+  // has the transaction metadata, including the isolation level, and those requests expect us to
+  // retrieve the isolation level from that metadata. Failure to do so was the cause of a
+  // serialization anomaly tested by TestOneOrTwoAdmins
+  // (https://github.com/yugabyte/yugabyte-db/issues/1572).
+
+  const auto& transaction = req.transaction();
+  if (transaction.has_isolation()) {
+    // This must be the first request to this tablet by this particular transaction.
+    return transaction.isolation();
+  }
+  *peer_tablet = VERIFY_RESULT(LookupTabletPeer(server->tablet_peer_lookup(), req.tablet_id()));
+  return peer_tablet->tablet->GetIsolationLevel(transaction);
 }
 
 class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::ThreadPoolTask {
@@ -93,12 +108,7 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
       TabletServerIf* server, ReadTabletProvider* read_tablet_provider, const ReadRequestPB* req,
       ReadResponsePB* resp, rpc::RpcContext context)
       : server_(*server), read_tablet_provider_(*read_tablet_provider), req_(req), resp_(resp),
-        context_(std::move(context)) {
-    auto metric_entity = server->MetricEnt();
-    if (metric_entity) {
-      read_time_wait_ = METRIC_read_time_wait.Instantiate(metric_entity);
-    }
-  }
+        context_(std::move(context)) {}
 
   void Perform() {
     RespondIfFailed(DoPerform());
@@ -176,8 +186,6 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   bool reading_from_non_leader_ = false;
   RequestScope request_scope_;
   std::shared_ptr<ReadQuery> retained_self_;
-
-  scoped_refptr<Histogram> read_time_wait_;
 };
 
 bool ReadQuery::transactional() const {
@@ -226,27 +234,10 @@ Status ReadQuery::DoPerform() {
   TRACE("Start Read");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Read", "tablet_id", req_->tablet_id());
   VLOG(2) << "Received Read RPC: " << req_->DebugString();
-  // Unfortunately, determining the isolation level is not as straightforward as it seems. All but
-  // the first request to a given tablet by a particular transaction assume that the tablet already
-  // has the transaction metadata, including the isolation level, and those requests expect us to
-  // retrieve the isolation level from that metadata. Failure to do so was the cause of a
-  // serialization anomaly tested by TestOneOrTwoAdmins
-  // (https://github.com/yugabyte/yugabyte-db/issues/1572).
 
-  bool serializable_isolation = false;
   TabletPeerTablet peer_tablet;
-  if (req_->has_transaction()) {
-    IsolationLevel isolation_level;
-    if (req_->transaction().has_isolation()) {
-      // This must be the first request to this tablet by this particular transaction.
-      isolation_level = req_->transaction().isolation();
-    } else {
-      peer_tablet = VERIFY_RESULT(LookupTabletPeer(
-          server_.tablet_peer_lookup(), req_->tablet_id()));
-      isolation_level = VERIFY_RESULT(peer_tablet.tablet->GetIsolationLevelFromPB(*req_));
-    }
-    serializable_isolation = isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION;
-
+  const auto isolation_level = VERIFY_RESULT(GetIsolationLevel(*req_, &server_, &peer_tablet));
+  if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
     if (PREDICT_FALSE(FLAGS_TEST_transactional_read_delay_ms > 0)) {
       LOG(INFO) << "Delaying transactional read for "
                 << FLAGS_TEST_transactional_read_delay_ms << " ms.";
@@ -262,13 +253,15 @@ Status ReadQuery::DoPerform() {
 #endif
   }
 
+  const auto serializable_isolation = isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION;
+
   // Get the most restrictive row mark present in the batch of PostgreSQL requests.
   // TODO: rather handle individual row marks once we start batching read requests (issue #2495)
-  RowMarkType batch_row_mark = RowMarkType::ROW_MARK_ABSENT;
+  auto batch_row_mark = RowMarkType::ROW_MARK_ABSENT;
   CatalogVersionChecker catalog_version_checker(server_);
   for (const auto& pg_req : req_->pgsql_batch()) {
     RETURN_NOT_OK(catalog_version_checker(pg_req));
-    RowMarkType current_row_mark = GetRowMarkTypeFromPB(pg_req);
+    auto current_row_mark = GetRowMarkTypeFromPB(pg_req);
     if (IsValidRowMarkType(current_row_mark)) {
       if (!req_->has_transaction()) {
         return STATUS(
@@ -278,7 +271,7 @@ Status ReadQuery::DoPerform() {
       batch_row_mark = GetStrongestRowMarkType({current_row_mark, batch_row_mark});
     }
   }
-  const bool has_row_mark = IsValidRowMarkType(batch_row_mark);
+  const auto has_row_mark = IsValidRowMarkType(batch_row_mark);
 
   LeaderTabletPeer leader_peer;
   auto tablet_peer = peer_tablet.tablet_peer;
@@ -301,7 +294,8 @@ Status ReadQuery::DoPerform() {
 
   if (req_->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX) {
     if (abstract_tablet_) {
-      tablet()->metrics()->consistent_prefix_read_requests->Increment();
+      tablet()->metrics()->Increment(
+          tablet::TabletCounters::kConsistentPrefixReadRequests);
     }
   }
 
@@ -345,18 +339,33 @@ Status ReadQuery::DoPerform() {
   require_lease_ = tablet::RequireLease(req_->consistency_level() == YBConsistencyLevel::STRONG);
   // TODO: should check all the tables referenced by the requests to decide if it is transactional.
   const bool transactional = this->transactional();
+
   // Should not pick read time for serializable isolation, since it is picked after read intents
   // are added. Also conflict resolution for serializable isolation should be done without read time
   // specified. So we use max hybrid time for conflict resolution in such case.
   // It was implemented as part of #655.
-  if (!serializable_isolation) {
+  //
+  // Similarly, for explicit row locking, if no read time is specified by the query layer, we can
+  // avoid picking one before conflict resolution. Instead we can pick one while reading i.e., after
+  // writing intents (see PickReadTime() in Run()). This helps in Wait-on-Conflict concurrency
+  // control mode by allowing retrying of conflict resolution on the tserver once the waiting
+  // transaction exits a wait queue, instead of throwing a kConflict error and expecting the query
+  // layer to maybe retry. It also helps retry kReadRestart errors which might occur during the
+  // reading phase in the context of this operation.
+  if (!serializable_isolation && !has_row_mark) {
     RETURN_NOT_OK(PickReadTime(server_.Clock()));
   }
 
   if (transactional) {
+    // TODO(wait-queues) -- having this RequestScope live during conflict resolution may prevent
+    // intent cleanup for any transactions resolved after this is created and before it's destroyed.
+    // This may be especially problematic for operations which need to wait, as their waiting may
+    // now cause intents_db scans to become less performant. Moving this initialization to only
+    // cover cases where we avoid writes may cause inconsistency issues, as exposed by
+    // PgOnConflictTest.OnConflict which fails if we move this code below.
+    request_scope_ = VERIFY_RESULT(RequestScope::Create(tablet()->transaction_participant()));
     // Serial number is used to check whether this operation was initiated before
     // transaction status request. So we should initialize it as soon as possible.
-    request_scope_ = VERIFY_RESULT(RequestScope::Create(tablet()->transaction_participant()));
     read_time_.serial_no = request_scope_.request_id();
   }
 
@@ -365,15 +374,12 @@ Status ReadQuery::DoPerform() {
   host_port_pb_.set_port(remote_address.port());
 
   if (serializable_isolation || has_row_mark) {
-    auto deadline = context_.GetClientDeadline();
     auto query = std::make_unique<tablet::WriteQuery>(
         leader_peer.leader_term,
-        deadline,
+        context_.GetClientDeadline(),
         leader_peer.peer.get(),
         leader_peer.tablet,
-        nullptr /* rpc_context */,
-        nullptr /* response */,
-        docdb::OperationKind::kRead);
+        nullptr /* rpc_context */);
 
     auto& write = *query->operation().AllocateRequest();
     auto& write_batch = *write.mutable_write_batch();
@@ -392,8 +398,8 @@ Status ReadQuery::DoPerform() {
     // TODO(dtxn) write request id
 
     RETURN_NOT_OK(leader_peer.tablet->CreateReadIntents(
-        req_->transaction(), req_->subtransaction(), req_->ql_batch(), req_->pgsql_batch(),
-        &write_batch));
+        isolation_level, req_->transaction(), req_->subtransaction(),
+        req_->ql_batch(), req_->pgsql_batch(), &write_batch));
 
     query->AdjustYsqlQueryTransactionality(req_->pgsql_batch_size());
 
@@ -413,11 +419,14 @@ Status ReadQuery::DoPerform() {
 }
 
 Status ReadQuery::DoPickReadTime(server::Clock* clock) {
+  auto* metrics = abstract_tablet_->system() ? nullptr : tablet()->metrics();
   MonoTime start_time;
-  if (read_time_wait_) {
+  if (metrics) {
     start_time = MonoTime::Now();
   }
-  if (!read_time_) {
+
+  const auto read_time_was_empty = !read_time_;
+  if (read_time_was_empty) {
     safe_ht_to_read_ = VERIFY_RESULT(abstract_tablet_->SafeTime(require_lease_));
     // If the read time is not specified, then it is a single-shard read.
     // So we should restart it in server in case of failure.
@@ -434,7 +443,7 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
   } else {
     HybridTime current_safe_time = HybridTime::kMin;
     if (IsPgsqlFollowerReadAtAFollower()) {
-      auto current_safe_time = VERIFY_RESULT(abstract_tablet_->SafeTime(
+      current_safe_time = VERIFY_RESULT(abstract_tablet_->SafeTime(
           require_lease_, HybridTime::kMin, context_.GetClientDeadline()));
       if (GetAtomicFlag(&FLAGS_ysql_follower_reads_avoid_waiting_for_safe_time) &&
           current_safe_time < read_time_.read) {
@@ -449,9 +458,14 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
              : VERIFY_RESULT(abstract_tablet_->SafeTime(
                    require_lease_, read_time_.read, context_.GetClientDeadline())));
   }
-  if (read_time_wait_) {
+  if (metrics) {
     auto safe_time_wait = MonoTime::Now() - start_time;
-    read_time_wait_->Increment(safe_time_wait.ToMicroseconds());
+    metrics->Increment(
+         tablet::TabletEventStats::kReadTimeWait,
+         make_unsigned(safe_time_wait.ToMicroseconds()));
+    if (read_time_was_empty) {
+      metrics->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
+    }
   }
   return Status::OK();
 }
@@ -478,7 +492,7 @@ Status ReadQuery::Complete() {
     // (If a read restart was requested, then read_time would be set to the time at which we have
     // to restart.)
     if (!read_time_) {
-      // allow_retry means that that the read time was not set in the request and therefore we can
+      // allow_retry means that the read time was not set in the request and therefore we can
       // retry read restarts on the tablet server.
       if (!allow_retry_) {
         auto local_limit = std::min(safe_ht_to_read_, used_read_time_.global_limit);
@@ -496,7 +510,7 @@ Status ReadQuery::Complete() {
           read_time_.local_limit.ToUint64());
       restart_read_time->set_local_limit_ht(read_time_.local_limit.ToUint64());
       // Global limit is ignored by caller, so we don't set it.
-      tablet()->metrics()->restart_read_requests->Increment();
+      tablet()->metrics()->Increment(tablet::TabletCounters::kRestartReadRequests);
       break;
     }
 
@@ -565,16 +579,23 @@ Result<ReadHybridTime> ReadQuery::DoRead() {
 }
 
 Result<ReadHybridTime> ReadQuery::DoReadImpl() {
-  ReadHybridTime read_time;
+  docdb::ReadOperationData read_operation_data = {
+    .deadline = context_.GetClientDeadline(),
+    .read_time = {},
+  };
+
   tablet::ScopedReadOperation read_tx;
   if (IsForBackfill()) {
-    read_time = read_time_;
+    read_operation_data.read_time = read_time_;
   } else {
+    if (!read_time_) {
+      tablet()->metrics()->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
+    }
     read_tx = VERIFY_RESULT(
         tablet::ScopedReadOperation::Create(abstract_tablet_.get(), require_lease_, read_time_));
-    read_time = read_tx.read_time();
+    read_operation_data.read_time = read_tx.read_time();
   }
-  used_read_time_ = read_time;
+  used_read_time_ = read_operation_data.read_time;
   if (!req_->redis_batch().empty()) {
     // Assert the primary table is a redis table.
     DCHECK_EQ(abstract_tablet_->table_type(), TableType::REDIS_TABLE_TYPE);
@@ -592,8 +613,7 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
       auto func = Bind(
           &HandleRedisReadRequestAsync,
           Unretained(abstract_tablet_.get()),
-          context_.GetClientDeadline(),
-          read_time,
+          read_operation_data,
           redis_read_req,
           Unretained(resp_->add_redis_batch()),
           cb);
@@ -641,7 +661,7 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
       tablet::QLReadRequestResult result;
       TRACE("Start HandleQLReadRequest");
       RETURN_NOT_OK(abstract_tablet_->HandleQLReadRequest(
-          context_.GetClientDeadline(), read_time, ql_read_req, req_->transaction(), &result,
+          read_operation_data, ql_read_req, req_->transaction(), &result,
           &context_.sidecars().Start()));
       TRACE("Done HandleQLReadRequest");
       if (result.restart_read_ht.is_valid()) {
@@ -661,9 +681,8 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
       tablet::PgsqlReadRequestResult result(&context_.sidecars().Start());
       TRACE("Start HandlePgsqlReadRequest");
       RETURN_NOT_OK(abstract_tablet_->HandlePgsqlReadRequest(
-          context_.GetClientDeadline(), read_time,
-          !allow_retry_ /* is_explicit_request_read_time */, pgsql_read_req, req_->transaction(),
-          req_->subtransaction(), &result));
+          read_operation_data, !allow_retry_ /* is_explicit_request_read_time */, pgsql_read_req,
+          req_->transaction(), req_->subtransaction(), &result));
 
       total_num_rows_read += result.num_rows_read;
 
@@ -678,7 +697,8 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
 
     if (req_->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX &&
         total_num_rows_read > 0) {
-      tablet()->metrics()->pgsql_consistent_prefix_read_rows->IncrementBy(total_num_rows_read);
+      tablet()->metrics()->IncrementBy(
+          tablet::TabletCounters::kPgsqlConsistentPrefixReadRows, total_num_rows_read);
     }
     return ReadHybridTime();
   }

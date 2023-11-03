@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import { FC } from 'react';
 import { useSelector } from 'react-redux';
 
 import { YBConfirmModal } from '../../modals';
@@ -32,7 +32,7 @@ const DeleteReplicactionTableModal: FC<DeleteModalProps> = ({
         onCancel();
       }}
     >
-      Do you want to remove the table "{deleteTableName}"?
+      {`Do you want to remove the table "${deleteTableName}"?`}
     </YBConfirmModal>
   );
 };

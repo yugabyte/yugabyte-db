@@ -56,7 +56,7 @@ class TableIndex {
   TablesRange GetAllTables() const;
   TablesRange GetPrimaryTables() const;
 
-  void AddTable(scoped_refptr<TableInfo> table);
+  void AddOrReplace(const scoped_refptr<TableInfo>& table);
 
   void Clear();
 

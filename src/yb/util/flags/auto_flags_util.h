@@ -16,13 +16,15 @@
 #include <map>
 #include "yb/util/flags/auto_flags.h"
 #include "yb/util/status.h"
+#include "yb/util/strongly_typed_string.h"
 
 namespace yb {
 namespace server {
 class ServerBaseOptions;
 }
 
-YB_STRONGLY_TYPED_BOOL(RuntimeAutoFlag)
+YB_STRONGLY_TYPED_BOOL(RuntimeAutoFlag);
+using ProcessName = std::string;
 
 struct AutoFlagInfo {
   const std::string name;
@@ -35,10 +37,12 @@ struct AutoFlagInfo {
 
 YB_STRONGLY_TYPED_BOOL(PromoteNonRuntimeAutoFlags)
 
-typedef std::map<std::string, std::vector<AutoFlagInfo>> AutoFlagsInfoMap;
+typedef std::map<ProcessName, std::vector<AutoFlagInfo>> AutoFlagsInfoMap;
 
 namespace AutoFlagsUtil {
-std::string DumpAutoFlagsToJSON(const std::string& program_name);
+std::string DumpAutoFlagsToJSON(const ProcessName& program_name);
+
+Result<AutoFlagsInfoMap> GetAvailableAutoFlags();
 
 Result<AutoFlagsInfoMap> GetFlagsEligibleForPromotion(
     const AutoFlagClass max_flag_class, const PromoteNonRuntimeAutoFlags promote_non_runtime);

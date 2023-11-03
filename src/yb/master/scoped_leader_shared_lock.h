@@ -36,8 +36,9 @@
 #include <string>
 #include <unordered_map>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
+#include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
 
 #include "yb/rpc/service_if.h"
@@ -88,12 +89,6 @@ class ScopedLeaderSharedLock {
       int line_number,
       const char* function_name);
 
-  explicit ScopedLeaderSharedLock(
-      enterprise::CatalogManager* catalog,
-      const char* file_name,
-      int line_number,
-      const char* function_name);
-
   ~ScopedLeaderSharedLock();
 
   void Unlock();
@@ -135,6 +130,10 @@ class ScopedLeaderSharedLock {
     }
 
     return "Status success.";
+  }
+
+  const LeaderEpoch& epoch() const {
+    return epoch_;
   }
 
   // Check that the catalog manager is initialized. It may or may not be the
@@ -179,7 +178,7 @@ class ScopedLeaderSharedLock {
   Status catalog_status_;
   Status leader_status_;
   std::chrono::steady_clock::time_point start_;
-  int64_t leader_ready_term_;
+  LeaderEpoch epoch_;
 
   const char* file_name_;
   int line_number_;

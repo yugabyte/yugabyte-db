@@ -37,8 +37,10 @@
 
 namespace yb {
 
+template<class T>
+class AtomicGauge;
 class Counter;
-class Histogram;
+class EventStats;
 class MetricEntity;
 
 namespace log {
@@ -49,19 +51,19 @@ struct LogMetrics {
 
   // Global stats
   scoped_refptr<Counter> bytes_logged;
-  scoped_refptr<Counter> wal_size;
+  scoped_refptr<AtomicGauge<uint64_t>> wal_size;
 
   // Per-group group commit stats
-  scoped_refptr<Histogram> sync_latency;
-  scoped_refptr<Histogram> append_latency;
-  scoped_refptr<Histogram> group_commit_latency;
-  scoped_refptr<Histogram> roll_latency;
-  scoped_refptr<Histogram> entry_batches_per_group;
+  scoped_refptr<EventStats> sync_latency;
+  scoped_refptr<EventStats> append_latency;
+  scoped_refptr<EventStats> group_commit_latency;
+  scoped_refptr<EventStats> roll_latency;
+  scoped_refptr<EventStats> entry_batches_per_group;
 };
 
 // TODO extract and generalize this for all histogram metrics
 #define SCOPED_LATENCY_METRIC(_mtx, _h) \
-  ScopedLatencyMetric _h##_metric(_mtx ? _mtx->_h.get() : nullptr)
+  ScopedLatencyMetric<EventStats> _h##_metric(_mtx ? _mtx->_h.get() : nullptr)
 
 } // namespace log
 } // namespace yb

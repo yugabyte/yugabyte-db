@@ -21,10 +21,18 @@
 
 namespace yb {
 
+YB_STRONGLY_TYPED_BOOL(ExportHelpAndType);
+
 class PrometheusWriter {
  public:
+  struct MetricHelpAndType {
+    const char* type;
+    const char* help;
+  };
+
   explicit PrometheusWriter(
       std::stringstream* output,
+      ExportHelpAndType export_help_and_type,
       AggregationMetricLevel aggregation_Level = AggregationMetricLevel::kTable);
 
   virtual ~PrometheusWriter();
@@ -45,10 +53,13 @@ class PrometheusWriter {
 
   Status WriteSingleEntry(
       const MetricEntity::AttributeMap& attr, const std::string& name, int64_t value,
-      AggregationFunction aggregation_function);
+      AggregationFunction aggregation_function, const char* type = "unknown",
+      const char* description = "unknown");
 
   Status FlushAggregatedValues(
       uint32_t max_tables_metrics_breakdowns, const std::string& priority_regex);
+
+  AggregationMetricLevel GetAggregationMetricLevel() const { return aggregation_level_; }
 
  private:
   friend class MetricsTest;
@@ -58,13 +69,19 @@ class PrometheusWriter {
   virtual Status FlushSingleEntry(
       const MetricEntity::AttributeMap& attr, const std::string& name, int64_t value);
 
+  void FlushHelpAndType(
+      const std::string& name, const char* type, const char* description);
+
   void InvalidAggregationFunction(AggregationFunction aggregation_function);
 
   void AddAggregatedEntry(const std::string& key,
                           const MetricEntity::AttributeMap& attr,
                           const std::string& name, int64_t value,
-                          AggregationFunction aggregation_function);
+                          AggregationFunction aggregation_function,
+                          const char* type, const char* description);
 
+  // Map metric name to type and description.
+  std::unordered_map<std::string, MetricHelpAndType> metric_help_and_type_;
   // Map entity id to attributes
   std::unordered_map<std::string, MetricEntity::AttributeMap> aggregated_attributes_;
   // Map entity id to values
@@ -76,6 +93,8 @@ class PrometheusWriter {
   std::stringstream* output_;
   // Timestamp for all metrics belonging to this writer instance.
   int64_t timestamp_;
+
+  ExportHelpAndType export_help_and_type_;
 
   AggregationMetricLevel aggregation_level_;
 };

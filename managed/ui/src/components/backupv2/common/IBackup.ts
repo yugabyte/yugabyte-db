@@ -42,27 +42,32 @@ export interface Keyspace_Table {
   tablesList: string[];
   storageLocation?: string;
   defaultLocation?: string;
+  tableNameList?: string[];
+  tableUUIDList?: string[]
 }
 
 export interface ICommonBackupInfo {
   backupUUID: string;
   baseBackupUUID: string;
-  completionTime: number;
-  createTime: number;
+  completionTime: string;
+  createTime: string;
   responseList: Keyspace_Table[];
   sse: boolean;
   state: Backup_States;
   storageConfigUUID: string;
   taskUUID: string;
   totalBackupSizeInBytes?: number;
-  updateTime: number;
+  updateTime: string;
   parallelism: number;
+  kmsConfigUUID?: string;
+  tableByTableBackup: boolean;
 }
 
 export interface IBackup {
   commonBackupInfo: ICommonBackupInfo;
   isFullBackup: boolean;
   hasIncrementalBackups: boolean;
+  lastIncrementalBackupTime: number;
   lastBackupState: Backup_States;
   backupType: TableType;
   category: 'YB_BACKUP_SCRIPT' | 'YB_CONTROLLER';
@@ -71,12 +76,23 @@ export interface IBackup {
   customerUUID: string;
   universeName: string;
   isStorageConfigPresent: boolean;
+  isTableByTableBackup: boolean;
   isUniversePresent: boolean;
   onDemand: boolean;
-  updateTime: number;
-  expiryTime: number;
+  updateTime: string;
+  expiryTime: string;
+  expiryTimeUnit: string;
   fullChainSizeInBytes: number;
   kmsConfigUUID?: null | string;
+  scheduleName: string;
+  useTablespaces: boolean;
+}
+
+export interface IBackupEditParams {
+  backupUUID: string;
+  timeBeforeDeleteFromPresentInMillis: number;
+  storageConfigUUID: string;
+  expiryTimeUnit: string;
 }
 
 export interface IUniverse {
@@ -130,11 +146,21 @@ export enum Backup_Options_Type {
   CUSTOM = 'custom'
 }
 
+export type ThrottleParamsVal = {
+  currentValue: number;
+  presetValues: {
+    defaultValue: number;
+    minValue: number;
+    maxValue: number;
+  };
+};
 export interface ThrottleParameters {
-  max_concurrent_uploads: number;
-  per_upload_num_objects: number;
-  max_concurrent_downloads: number;
-  per_download_num_objects: number;
+  throttleParamsMap: {
+    per_download_num_objects: ThrottleParamsVal;
+    max_concurrent_downloads: ThrottleParamsVal;
+    max_concurrent_uploads: ThrottleParamsVal;
+    per_upload_num_objects: ThrottleParamsVal;
+  };
 }
 
 interface IOptionType extends OptionTypeBase {

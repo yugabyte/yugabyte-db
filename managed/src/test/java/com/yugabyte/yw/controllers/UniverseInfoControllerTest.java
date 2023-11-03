@@ -15,9 +15,8 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertNotFound;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.AssertHelper.assertUnauthorizedNoException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithCustomHeaders;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -36,17 +35,27 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.rbac.Permission;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.rbac.ResourceGroup;
+import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
+import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.Role.RoleType;
+import com.yugabyte.yw.models.rbac.RoleBinding;
+import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import com.yugabyte.yw.queries.QueryHelper;
 import java.io.File;
 import java.io.FileWriter;
@@ -58,19 +67,21 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
@@ -84,11 +95,29 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
   @Mock PlatformExecutorFactory mockPlatformExecutorFactory;
   @Mock WSClient mockWsClient;
 
+  Config config;
+  Role role;
+  ResourceDefinition rd1;
+
+  Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.CREATE);
+  Permission permission2 = new Permission(ResourceType.UNIVERSE, Action.READ);
+  Permission permission3 = new Permission(ResourceType.UNIVERSE, Action.UPDATE);
+  Permission permission4 = new Permission(ResourceType.UNIVERSE, Action.DELETE);
+
+  @Before
+  public void setUpTest() {
+    config = app.injector().instanceOf(Config.class);
+  }
+
   @Test
   public void testGetMasterLeaderWithValidParams() {
-    Universe universe = createUniverse(customer.getCustomerId());
+    Universe universe = createUniverse(customer.getId());
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID + "/leader";
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/leader";
     String host = "1.2.3.4";
     HostAndPort hostAndPort = HostAndPort.fromParts(host, 9000);
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(hostAndPort);
@@ -97,7 +126,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "privateIP", host);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -110,8 +139,8 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
   })
   public void testUniverseStatus(boolean masterAlive, boolean nodeExpAlive, boolean promError) {
 
-    Universe u = createUniverse("TestUniverse", customer.getCustomerId());
-    u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater("TestUniverse"));
+    Universe u = createUniverse("TestUniverse", customer.getId());
+    u = Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater("TestUniverse"));
 
     List<Integer> ports = new ArrayList<>();
     ports.add(9000);
@@ -141,11 +170,12 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     } else {
       when(mockMetricQueryHelper.queryDirect(anyString())).thenThrow(new RuntimeException());
     }
-    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/status";
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID() + "/status";
     Result result = doRequestWithAuthToken("GET", url, authToken);
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
-    assertValue(json, "universe_uuid", u.universeUUID.toString());
+    assertValue(json, "universe_uuid", u.getUniverseUUID().toString());
     assertEquals(ImmutableList.copyOf(json.fieldNames()).size(), 4);
 
     for (NodeDetails node : u.getNodes()) {
@@ -157,7 +187,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
           nodeJson.get("node_status").asText(),
           (!promError ? (nodeExpAlive ? "Live" : "Unreachable") : "MetricsUnavailable"));
     }
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -165,16 +195,16 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     when(mockShellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
         .thenReturn(new ShellResponse());
 
-    Universe u = createUniverse(customer.getCustomerId());
+    Universe u = createUniverse(customer.getId());
     String url =
         "/api/customers/"
-            + customer.uuid
+            + customer.getUuid()
             + "/universes/"
-            + u.universeUUID
+            + u.getUniverseUUID()
             + "/dummy_node/download_logs";
     Result result = assertPlatformException(() -> doRequestWithAuthToken("GET", url, authToken));
     assertNotFound(result, "dummy_node");
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   private byte[] createFakeLog(Path path) throws IOException {
@@ -192,8 +222,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
 
   @Test
   public void testDownloadNodeLogs() throws IOException {
-    Path logPath =
-        Paths.get(mockAppConfig.getString("yb.storage.path") + "/" + "10.0.0.1-logs.tar.gz");
+    Path logPath = Paths.get(config.getString("yb.storage.path") + "/" + "10.0.0.1-logs.tar.gz");
     byte[] fakeLog = createFakeLog(logPath);
     when(mockShellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
         .thenReturn(new ShellResponse());
@@ -201,21 +230,26 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     UniverseDefinitionTaskParams.UserIntent ui = getDefaultUserIntent(customer);
     String keyCode = "dummy_code";
     ui.accessKeyCode = keyCode;
-    UUID uUUID = createUniverse(customer.getCustomerId()).universeUUID;
+    UUID uUUID = createUniverse(customer.getId()).getUniverseUUID();
     Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater(ui));
 
-    Provider provider = Provider.get(customer.uuid, Common.CloudType.aws).get(0);
+    Provider provider = Provider.get(customer.getUuid(), Common.CloudType.aws).get(0);
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.sshPort = 1223;
-    AccessKey.create(provider.uuid, keyCode, keyInfo);
+    AccessKey.create(provider.getUuid(), keyCode, keyInfo);
 
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + uUUID + "/host-n1/" + "download_logs";
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + uUUID
+            + "/host-n1/"
+            + "download_logs";
     Result result = doRequestWithAuthToken("GET", url, authToken);
     assertEquals(OK, result.status());
     byte[] actualContent = contentAsBytes(result, mat).toArray();
     assertArrayEquals(fakeLog, actualContent);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
     assertFalse(logPath.toFile().exists());
   }
 
@@ -225,9 +259,13 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
         "{\"ysql\":{\"errorCount\":0,\"queries\":[]},"
             + "\"ycql\":{\"errorCount\":0,\"queries\":[]}}";
     when(mockQueryHelper.slowQueries(any())).thenReturn(Json.parse(jsonMsg));
-    Universe u = createUniverse(customer.getCustomerId());
+    Universe u = createUniverse(customer.getId());
     String url =
-        "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/slow_queries";
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + u.getUniverseUUID()
+            + "/slow_queries";
     Map<String, String> fakeRequestHeaders = new HashMap<>();
     fakeRequestHeaders.put("X-AUTH-TOKEN", authToken);
 
@@ -237,65 +275,194 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
   }
 
   @Test
-  public void testSlowQueryLimitWithoutBatchedNestedLoopJoin() {
+  public void testGetSlowQueriesUsingNewRbacAuthzWithPermissions() {
+    String jsonMsg =
+        "{\"ysql\":{\"errorCount\":0,\"queries\":[]},"
+            + "\"ycql\":{\"errorCount\":0,\"queries\":[]}}";
+    when(mockQueryHelper.slowQueries(any())).thenReturn(Json.parse(jsonMsg));
+    Universe u = createUniverse(customer.getId());
+    when(mockRuntimeConfig.getBoolean("yb.rbac.use_new_authz")).thenReturn(true);
+    role =
+        Role.create(
+            customer.getUuid(),
+            "FakeRole1",
+            "testDescription",
+            RoleType.Custom,
+            new HashSet<>(Arrays.asList(permission1, permission2, permission3, permission4)));
+    rd1 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.UNIVERSE)
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(u.getUniverseUUID())))
+            .build();
+    ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
+    RoleBinding.create(user, RoleBindingType.Custom, role, rG);
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + u.getUniverseUUID()
+            + "/slow_queries";
+    Map<String, String> fakeRequestHeaders = new HashMap<>();
+    fakeRequestHeaders.put("X-AUTH-TOKEN", authToken);
+
+    Result result = doRequestWithCustomHeaders("GET", url, fakeRequestHeaders);
+    assertOk(result);
+    assertEquals(jsonMsg, contentAsString(result));
+  }
+
+  @Test
+  public void testGetSlowQueriesUsingNewRbacAuthzWithAllUniversePermissions() {
+    String jsonMsg =
+        "{\"ysql\":{\"errorCount\":0,\"queries\":[]},"
+            + "\"ycql\":{\"errorCount\":0,\"queries\":[]}}";
+    when(mockQueryHelper.slowQueries(any())).thenReturn(Json.parse(jsonMsg));
+    Universe u = createUniverse(customer.getId());
+    when(mockRuntimeConfig.getBoolean("yb.rbac.use_new_authz")).thenReturn(true);
+    role =
+        Role.create(
+            customer.getUuid(),
+            "FakeRole1",
+            "testDescription",
+            RoleType.Custom,
+            new HashSet<>(Arrays.asList(permission1, permission2, permission3, permission4)));
+    rd1 = ResourceDefinition.builder().resourceType(ResourceType.UNIVERSE).allowAll(true).build();
+    ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
+    RoleBinding.create(user, RoleBindingType.Custom, role, rG);
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + u.getUniverseUUID()
+            + "/slow_queries";
+    Map<String, String> fakeRequestHeaders = new HashMap<>();
+    fakeRequestHeaders.put("X-AUTH-TOKEN", authToken);
+
+    Result result = doRequestWithCustomHeaders("GET", url, fakeRequestHeaders);
+    assertOk(result);
+    assertEquals(jsonMsg, contentAsString(result));
+  }
+
+  @Test
+  public void testGetSlowQueriesUsingNewRbacAuthzWithNoPermissions() {
+    String jsonMsg =
+        "{\"ysql\":{\"errorCount\":0,\"queries\":[]},"
+            + "\"ycql\":{\"errorCount\":0,\"queries\":[]}}";
+    when(mockQueryHelper.slowQueries(any())).thenReturn(Json.parse(jsonMsg));
+    Universe u = createUniverse(customer.getId());
+    when(mockRuntimeConfig.getBoolean("yb.rbac.use_new_authz")).thenReturn(true);
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + u.getUniverseUUID()
+            + "/slow_queries";
+    Map<String, String> fakeRequestHeaders = new HashMap<>();
+    fakeRequestHeaders.put("X-AUTH-TOKEN", authToken);
+
+    Result result = doRequestWithCustomHeaders("GET", url, fakeRequestHeaders);
+    assertUnauthorizedNoException(result, "Unable to authorize user");
+  }
+
+  @Test
+  public void testGetSlowQueriesUsingNewRbacAuthzWithIncorrectPermissions() {
+    String jsonMsg =
+        "{\"ysql\":{\"errorCount\":0,\"queries\":[]},"
+            + "\"ycql\":{\"errorCount\":0,\"queries\":[]}}";
+    when(mockQueryHelper.slowQueries(any())).thenReturn(Json.parse(jsonMsg));
+    Universe u = createUniverse(customer.getId());
+    when(mockRuntimeConfig.getBoolean("yb.rbac.use_new_authz")).thenReturn(true);
+    role =
+        Role.create(
+            customer.getUuid(),
+            "FakeRole1",
+            "testDescription",
+            RoleType.Custom,
+            new HashSet<>(Arrays.asList(permission1, permission3, permission4)));
+    rd1 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.UNIVERSE)
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(u.getUniverseUUID())))
+            .build();
+    ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd1)));
+    RoleBinding.create(user, RoleBindingType.Custom, role, rG);
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + u.getUniverseUUID()
+            + "/slow_queries";
+    Map<String, String> fakeRequestHeaders = new HashMap<>();
+    fakeRequestHeaders.put("X-AUTH-TOKEN", authToken);
+
+    Result result = doRequestWithCustomHeaders("GET", url, fakeRequestHeaders);
+    assertUnauthorizedNoException(result, "Unable to authorize user");
+  }
+
+  @Test
+  public void testSlowQueryLimitWithoutEnableNestloopOff() {
     when(mockRuntimeConfig.getString(QueryHelper.QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY))
         .thenReturn("total_time");
     when(mockRuntimeConfig.getInt(QueryHelper.QUERY_STATS_SLOW_QUERIES_LIMIT_KEY)).thenReturn(200);
-    Universe universe = createUniverse(customer.getCustomerId());
+    Universe universe = createUniverse(customer.getId());
     Universe.saveDetails(
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         u -> {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
           universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion = "2.15.1.0-b10";
           universe.setUniverseDetails(universeDetails);
         });
+    when(mockRuntimeConfigFactory.forUniverse(universe)).thenReturn(mockRuntimeConfig);
+    when(mockRuntimeConfig.getBoolean(QueryHelper.SET_ENABLE_NESTLOOP_OFF_KEY)).thenReturn(false);
     ExecutorService executor = Executors.newFixedThreadPool(1);
-    QueryHelper queryHelper = new QueryHelper(runtimeConfigFactory, executor, mockWsClient);
-    String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe);
+    QueryHelper queryHelper = new QueryHelper(mockRuntimeConfigFactory, executor, mockWsClient);
+    String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe, false);
     assertEquals(
-        "SELECT a.rolname, t.datname, t.queryid, t.query, t.calls, t.total_time, t.rows,"
-            + " t.min_time, t.max_time, t.mean_time, t.stddev_time, t.local_blks_hit,"
-            + " t.local_blks_written FROM pg_authid a JOIN (SELECT * FROM pg_stat_statements s"
-            + " JOIN pg_database d ON s.dbid = d.oid) t ON a.oid = t.userid ORDER BY"
-            + " t.total_time DESC LIMIT 200",
+        "/*+ Leading((d pg_stat_statements))  */ "
+            + "SELECT s.userid::regrole as rolname, d.datname, s.queryid, s.query, s.calls, "
+            + "s.total_time, s.rows, s.min_time, s.max_time, s.mean_time, s.stddev_time, "
+            + "s.local_blks_hit, s.local_blks_written "
+            + "FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid"
+            + " ORDER BY s.total_time DESC LIMIT 200",
         actualSql);
   }
 
   @Test
-  public void testSlowQueryLimitWithBatchedNestedLoopJoin() {
+  public void testSlowQueryLimitWithEnableNestloopOff() {
     when(mockRuntimeConfig.getString(QueryHelper.QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY))
         .thenReturn("total_time");
     when(mockRuntimeConfig.getInt(QueryHelper.QUERY_STATS_SLOW_QUERIES_LIMIT_KEY)).thenReturn(200);
-    Universe universe = createUniverse(customer.getCustomerId());
+    Universe universe = createUniverse(customer.getId());
     Universe.saveDetails(
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         u -> {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
           universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion = "2.17.1.0-b146";
           universe.setUniverseDetails(universeDetails);
         });
+    when(mockRuntimeConfigFactory.forUniverse(universe)).thenReturn(mockRuntimeConfig);
+    when(mockRuntimeConfig.getBoolean(QueryHelper.SET_ENABLE_NESTLOOP_OFF_KEY)).thenReturn(true);
     ExecutorService executor = Executors.newFixedThreadPool(1);
-    QueryHelper queryHelper = new QueryHelper(runtimeConfigFactory, executor, mockWsClient);
-    String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe);
+    QueryHelper queryHelper = new QueryHelper(mockRuntimeConfigFactory, executor, mockWsClient);
+    String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe, false);
     assertEquals(
-        "/*+Set(yb_bnl_batch_size 1024)*/SELECT a.rolname, t.datname, t.queryid, t.query, "
-            + "t.calls, t.total_time, t.rows,"
-            + " t.min_time, t.max_time, t.mean_time, t.stddev_time, t.local_blks_hit,"
-            + " t.local_blks_written FROM pg_authid a JOIN (SELECT * FROM pg_stat_statements s"
-            + " JOIN pg_database d ON s.dbid = d.oid) t ON a.oid = t.userid ORDER BY"
-            + " t.total_time DESC LIMIT 200",
+        "/*+ Leading((d pg_stat_statements)) Set(enable_nestloop off) */ "
+            + "SELECT s.userid::regrole as rolname, d.datname, s.queryid, s.query, s.calls, "
+            + "s.total_time, s.rows, s.min_time, s.max_time, s.mean_time, s.stddev_time, "
+            + "s.local_blks_hit, s.local_blks_written "
+            + "FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid"
+            + " ORDER BY s.total_time DESC LIMIT 200",
         actualSql);
   }
 
   @Test
   public void testTriggerHealthCheck() {
     when(mockRuntimeConfig.getBoolean("yb.health.trigger_api.enabled")).thenReturn(true);
-    Universe u = createUniverse(customer.getCustomerId());
+    Universe u = createUniverse(customer.getId());
     String url =
         "/api/customers/"
-            + customer.uuid
+            + customer.getUuid()
             + "/universes/"
-            + u.universeUUID
+            + u.getUniverseUUID()
             + "/trigger_health_check";
 
     OffsetDateTime before = OffsetDateTime.now(ZoneOffset.UTC);

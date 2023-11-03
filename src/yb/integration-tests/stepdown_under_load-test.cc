@@ -33,13 +33,8 @@
 namespace yb {
 namespace itest {
 
-using client::YBClient;
-using client::YBClientBuilder;
-using client::YBTable;
 using integration_tests::YBTableTestBase;
-using std::shared_ptr;
 using std::string;
-using std::unique_ptr;
 using std::vector;
 
 namespace {

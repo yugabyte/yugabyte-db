@@ -53,7 +53,7 @@ The source for the REST API-based applications is in the [Using ORMs with Yugaby
   <li>
     <a href="nodejs/ysql-sequelize/" class="orange">
       <i class="fa-brands fa-node-js"></i>
-      NodeJS
+      Node.js
     </a>
   </li>
 
@@ -70,4 +70,12 @@ The source for the REST API-based applications is in the [Using ORMs with Yugaby
       Rust
     </a>
   </li>
+
+  <li>
+    <a href="php/ysql-laravel/" class="orange">
+      <i class="fa-brands fa-php"></i>
+      PHP
+    </a>
+  </li>
+
 </ul>

@@ -15,11 +15,15 @@ import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -33,6 +37,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.perf_advisor.Utils;
 import play.libs.Json;
 import play.libs.ws.WSClient;
 
@@ -40,20 +45,33 @@ import play.libs.ws.WSClient;
 @Singleton
 public class QueryHelper {
   private static final String RESET_QUERY_SQL = "SELECT pg_stat_statements_reset()";
-  private static final String SLOW_QUERY_STATS_UNLIMITED_SQL =
-      "SELECT a.rolname, t.datname, t.queryid, "
-          + "t.query, t.calls, t.total_time, t.rows, t.min_time, t.max_time, t.mean_time, t.stddev_time, "
-          + "t.local_blks_hit, t.local_blks_written FROM pg_authid a JOIN (SELECT * FROM "
-          + "pg_stat_statements s JOIN pg_database d ON s.dbid = d.oid) t ON a.oid = t.userid";
+  private static final String SLOW_QUERY_STATS_UNLIMITED_SQL_1 =
+      "SELECT s.userid::regrole as rolname, d.datname, s.queryid, s.query, s.calls, s.total_time,"
+          + " s.rows, s.min_time, s.max_time, s.mean_time, s.stddev_time, "
+          + "s.local_blks_hit, s.local_blks_written ";
+  private static final String SLOW_QUERY_STATS_UNLIMITED_SQL_2 =
+      "FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid";
+  private static final String HISTOGRAM_QUERY = ", s.yb_latency_histogram ";
   public static final String QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY =
       "yb.query_stats.slow_queries.order_by";
   public static final String QUERY_STATS_SLOW_QUERIES_LIMIT_KEY =
       "yb.query_stats.slow_queries.limit";
-  public static final String SET_YB_BNL_BATCH_SIZE_STATEMENT = "/*+Set(yb_bnl_batch_size 1024)*/";
-  public static final String SET_BATCH_NESTED_LOOP_KEY =
-      "yb.query_stats.slow_queries.set_batch_nested_loop";
+  public static final String SET_ENABLE_NESTLOOP_OFF_STATEMENT = "Set(enable_nestloop off)";
+  public static final String SET_ENABLE_NESTLOOP_OFF_KEY =
+      "yb.query_stats.slow_queries.set_enable_nestloop_off";
 
   public static final String QUERY_STATS_TASK_QUEUE_SIZE_CONF_KEY = "yb.query_stats.queue_capacity";
+
+  public static final String LIST_USER_DATABASES_SQL =
+      "SELECT datname from pg_database where datname NOT IN "
+          + "('template1', 'template0', 'system_platform')";
+
+  /** YBDB 2.18 versions above this threshold support latency histogram. */
+  public static final String MINIMUM_VERSION_THRESHOLD_LATENCY_HISTOGRAM_SUPPORT_2_18 =
+      "2.18.1.0-b67";
+
+  /** YBDB versions above this threshold support latency histogram. */
+  public static final String MINIMUM_VERSION_THRESHOLD_LATENCY_HISTOGRAM_SUPPORT = "2.19.1.0-b80";
 
   private final RuntimeConfigFactory runtimeConfigFactory;
   private final ExecutorService threadPool;
@@ -90,6 +108,7 @@ public class QueryHelper {
   }
 
   @Inject YsqlQueryExecutor ysqlQueryExecutor;
+  @Inject RuntimeConfGetter confGetter;
 
   public JsonNode liveQueries(Universe universe) {
     return queryUniverseNodes(universe, QueryAction.FETCH_LIVE_QUERIES);
@@ -103,6 +122,25 @@ public class QueryHelper {
     return queryUniverseNodes(universe, QueryAction.RESET_STATS);
   }
 
+  public static boolean supportsLatencyHistogram(Universe universe) {
+    return universe.getVersions().stream()
+        .allMatch(
+            clusterVersion ->
+                Util.compareYbVersions(
+                            MINIMUM_VERSION_THRESHOLD_LATENCY_HISTOGRAM_SUPPORT,
+                            clusterVersion,
+                            true /* suppressFormatError */)
+                        < 0
+                    || (Util.compareYbVersions(
+                                MINIMUM_VERSION_THRESHOLD_LATENCY_HISTOGRAM_SUPPORT_2_18,
+                                clusterVersion,
+                                true /* suppressFormatError */)
+                            < 0
+                        && Util.compareYbVersions(
+                                clusterVersion, "2.19.0.0-b0", true /* suppressFormatError */)
+                            < 0));
+  }
+
   /** Runs provided {@link QueryAction QueryAction} on every node in the provided universe. */
   public JsonNode queryUniverseNodes(Universe universe, QueryAction queryAction)
       throws IllegalArgumentException {
@@ -111,6 +149,7 @@ public class QueryHelper {
       throw new PlatformServiceException(
           SERVICE_UNAVAILABLE, "Not enough room to queue the requested tasks");
     }
+    Boolean supportsLatencyHistogram = supportsLatencyHistogram(universe);
     int ysqlErrorCount = 0;
     int ycqlErrorCount = 0;
     ObjectNode responseJson = Json.newObject();
@@ -145,9 +184,15 @@ public class QueryHelper {
               callable =
                   () -> {
                     RunQueryFormData ysqlQuery = new RunQueryFormData();
-                    ysqlQuery.query = slowQuerySqlWithLimit(config, universe);
+                    ysqlQuery.query =
+                        slowQuerySqlWithLimit(config, universe, supportsLatencyHistogram);
                     ysqlQuery.db_name = "postgres";
-                    return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery, node);
+                    return ysqlQueryExecutor.executeQueryInNodeShell(
+                        universe,
+                        ysqlQuery,
+                        node,
+                        confGetter.getConfForScope(
+                            universe, UniverseConfKeys.slowQueryTimeoutSecs));
                   };
 
               Future<JsonNode> future = threadPool.submit(callable);
@@ -216,15 +261,15 @@ public class QueryHelper {
           }
         } else {
           if (queryAction == QueryAction.FETCH_SLOW_QUERIES) {
-            // TODO: PLAT-3977 group by queryid instead of query
             // TODO: PLAT-3986 Sort and limit the merged data
             JsonNode ysqlResponse = response.get("result");
             for (JsonNode queryObject : ysqlResponse) {
+              String queryID = queryObject.get("queryid").asText();
               String queryStatement = queryObject.get("query").asText();
-              if (!isExcluded(queryStatement, config)) {
-                if (queryMap.containsKey(queryStatement)) {
+              if (!isExcluded(queryStatement, config, supportsLatencyHistogram)) {
+                if (queryMap.containsKey(queryID)) {
                   // Calculate new query stats
-                  ObjectNode previousQueryObj = (ObjectNode) queryMap.get(queryStatement);
+                  ObjectNode previousQueryObj = (ObjectNode) queryMap.get(queryID);
                   // Defining values to reuse
                   double X_a = previousQueryObj.get("mean_time").asDouble();
                   double X_b = queryObject.get("mean_time").asDouble();
@@ -268,6 +313,7 @@ public class QueryHelper {
                           (n_a * (Math.pow(S_a, 2) + Math.pow(X_a - averageTime, 2))
                                   + n_b * (Math.pow(S_b, 2) + Math.pow(X_b - averageTime, 2)))
                               / totalCalls);
+
                   previousQueryObj.put("total_time", totalTime);
                   previousQueryObj.put("calls", totalCalls);
                   previousQueryObj.put("rows", rows);
@@ -276,11 +322,40 @@ public class QueryHelper {
                   previousQueryObj.put("mean_time", averageTime);
                   previousQueryObj.put("local_blks_written", tmpTables);
                   previousQueryObj.put("stddev_time", stdDevTime);
+
+                  if (supportsLatencyHistogram) {
+                    Histogram histogram_a =
+                        new Histogram(
+                            Json.fromJson(
+                                previousQueryObj.get("yb_latency_histogram"), List.class));
+                    Histogram histogram_b =
+                        new Histogram(
+                            Json.fromJson(queryObject.get("yb_latency_histogram"), List.class));
+                    histogram_a.merge(histogram_b);
+                    previousQueryObj.set("yb_latency_histogram", histogram_a.getArrayNode());
+                  }
+
                 } else {
-                  queryMap.put(queryStatement, queryObject);
+                  queryMap.put(queryID, queryObject);
                 }
               }
             }
+
+            if (supportsLatencyHistogram) {
+              queryMap.forEach(
+                  (queryId, queryObj) -> {
+                    ObjectNode objNode = (ObjectNode) queryObj;
+                    List<Map<String, Integer>> mapList = new ArrayList<>();
+                    mapList.addAll(Json.fromJson(objNode.get("yb_latency_histogram"), List.class));
+                    Histogram histogram = new Histogram(mapList);
+                    objNode.put("P25", histogram.getPercentile(25));
+                    objNode.put("P50", histogram.getPercentile(50));
+                    objNode.put("P90", histogram.getPercentile(90));
+                    objNode.put("P95", histogram.getPercentile(95));
+                    objNode.put("P99", histogram.getPercentile(99));
+                  });
+            }
+
             ArrayNode queryArr = Json.newArray();
             ysqlJson.set("queries", queryArr.addAll(queryMap.values()));
           } else {
@@ -328,37 +403,48 @@ public class QueryHelper {
   }
 
   @VisibleForTesting
-  public String slowQuerySqlWithLimit(Config config, Universe universe) {
+  public String slowQuerySqlWithLimit(
+      Config config, Universe universe, Boolean supportsLatencyHistogram) {
     String orderBy = config.getString(QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY);
     int limit = config.getInt(QUERY_STATS_SLOW_QUERIES_LIMIT_KEY);
-    String setYbBnlBatchSizeStatementOptional =
-        supportsBatchedNestedLoop(universe) ? SET_YB_BNL_BATCH_SIZE_STATEMENT : "";
+    String setEnableNestloopOffStatementOptional =
+        runtimeConfigFactory.forUniverse(universe).getBoolean(SET_ENABLE_NESTLOOP_OFF_KEY)
+            ? SET_ENABLE_NESTLOOP_OFF_STATEMENT
+            : "";
     return String.format(
-        "%s%s ORDER BY t.%s DESC LIMIT %d",
-        setYbBnlBatchSizeStatementOptional, SLOW_QUERY_STATS_UNLIMITED_SQL, orderBy, limit);
+        "/*+ Leading((d pg_stat_statements)) %s */ %s ORDER BY s.%s DESC LIMIT %d",
+        setEnableNestloopOffStatementOptional,
+        SLOW_QUERY_STATS_UNLIMITED_SQL_1
+            + (supportsLatencyHistogram ? HISTOGRAM_QUERY : "")
+            + SLOW_QUERY_STATS_UNLIMITED_SQL_2,
+        orderBy,
+        limit);
   }
 
-  private boolean isExcluded(String queryStatement, Config config) {
+  public JsonNode listDatabaseNames(Universe universe) {
+    NodeDetails randomTServer = CommonUtils.getARandomLiveTServer(universe);
+    RunQueryFormData ysqlQuery = new RunQueryFormData();
+    ysqlQuery.query = LIST_USER_DATABASES_SQL;
+    ysqlQuery.db_name = "postgres";
+    return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery, randomTServer);
+  }
+
+  private boolean isExcluded(
+      String queryStatement, Config config, Boolean supportsLatencyHistogram) {
     final List<String> excludedQueries = config.getStringList("yb.query_stats.excluded_queries");
+    final List<String> excludedPerfAdvisorQueries = Utils.getScriptQueryStatements();
     return excludedQueries.contains(queryStatement)
-        || queryStatement.contains(SLOW_QUERY_STATS_UNLIMITED_SQL);
+        || queryStatement.contains(
+            SLOW_QUERY_STATS_UNLIMITED_SQL_1
+                + (supportsLatencyHistogram ? HISTOGRAM_QUERY : "")
+                + SLOW_QUERY_STATS_UNLIMITED_SQL_2)
+        || queryStatement.contains(LIST_USER_DATABASES_SQL)
+        || excludedPerfAdvisorQueries.contains(queryStatement);
   }
 
   private void concatArrayNodes(ArrayNode destination, JsonNode source) {
     for (JsonNode node : source) {
       destination.add(node);
     }
-  }
-
-  private boolean supportsBatchedNestedLoop(Universe universe) {
-    if (!runtimeConfigFactory.forUniverse(universe).getBoolean(SET_BATCH_NESTED_LOOP_KEY)) {
-      return false;
-    }
-    // The minimum YBDB version that supports Batched Nested Loop is 2.17.1.0-b12.
-    return Util.compareYbVersions(
-            "2.17.1.0-b12",
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
-            true /* suppressFormatError */)
-        < 0;
   }
 }

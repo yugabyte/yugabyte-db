@@ -7,25 +7,29 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonIdentityInfo;
 import com.fasterxml.jackson.annotation.ObjectIdGenerators;
-import io.ebean.Model;
-import io.ebean.Finder;
-import io.ebean.ExpressionList;
-import io.ebean.annotation.EnumValue;
-import java.util.UUID;
-import java.util.Set;
-import java.util.List;
-import java.util.Optional;
-import javax.persistence.Entity;
-import javax.persistence.Column;
-import javax.persistence.Id;
-import javax.persistence.OneToMany;
 import com.yugabyte.yw.common.PlatformServiceException;
+import io.ebean.ExpressionList;
+import io.ebean.Finder;
+import io.ebean.Model;
+import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.Id;
+import javax.persistence.OneToMany;
+import lombok.Getter;
+import lombok.Setter;
 
 @JsonIdentityInfo(generator = ObjectIdGenerators.PropertyGenerator.class, property = "uuid")
 @Entity
 @ApiModel(description = "A custom hook's scope")
+@Getter
+@Setter
 public class HookScope extends Model {
 
   public enum TriggerType {
@@ -105,52 +109,48 @@ public class HookScope extends Model {
   @Id
   @Column(nullable = false, unique = true)
   @ApiModelProperty(value = "Hook scope UUID", accessMode = READ_ONLY)
-  public UUID uuid = UUID.randomUUID();
+  private UUID uuid = UUID.randomUUID();
 
   @Column(nullable = false)
   @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
-  public UUID customerUUID;
+  private UUID customerUUID;
 
   @Column(nullable = false)
   @ApiModelProperty(value = "Trigger", accessMode = READ_ONLY)
-  public TriggerType triggerType;
+  private TriggerType triggerType;
 
   @Column(nullable = true)
-  public UUID universeUUID;
+  private UUID universeUUID;
 
   @Column(nullable = true)
-  public UUID providerUUID;
+  private UUID providerUUID;
 
   @Column(nullable = true)
-  public UUID clusterUUID;
+  private UUID clusterUUID;
 
   @OneToMany private Set<Hook> hooks;
 
-  public Set<Hook> getHooks() {
-    return hooks;
-  }
-
   public void addHook(Hook hook) {
-    hook.hookScope = this;
+    hook.setHookScope(this);
     hook.update();
   }
 
   public static HookScope create(UUID customerUUID, TriggerType triggerType) {
     HookScope hookScope = new HookScope();
-    hookScope.customerUUID = customerUUID;
-    hookScope.triggerType = triggerType;
-    hookScope.universeUUID = null;
-    hookScope.providerUUID = null;
+    hookScope.setCustomerUUID(customerUUID);
+    hookScope.setTriggerType(triggerType);
+    hookScope.setUniverseUUID(null);
+    hookScope.setProviderUUID(null);
     hookScope.save();
     return hookScope;
   }
 
   public static HookScope create(UUID customerUUID, TriggerType triggerType, Provider provider) {
     HookScope hookScope = new HookScope();
-    hookScope.customerUUID = customerUUID;
-    hookScope.triggerType = triggerType;
-    hookScope.universeUUID = null;
-    hookScope.providerUUID = provider.uuid;
+    hookScope.setCustomerUUID(customerUUID);
+    hookScope.setTriggerType(triggerType);
+    hookScope.setUniverseUUID(null);
+    hookScope.setProviderUUID(provider.getUuid());
     hookScope.save();
     return hookScope;
   }
@@ -158,11 +158,11 @@ public class HookScope extends Model {
   public static HookScope create(
       UUID customerUUID, TriggerType triggerType, Universe universe, UUID clusterUUID) {
     HookScope hookScope = new HookScope();
-    hookScope.customerUUID = customerUUID;
-    hookScope.triggerType = triggerType;
-    hookScope.universeUUID = universe.universeUUID;
-    hookScope.providerUUID = null;
-    hookScope.clusterUUID = clusterUUID;
+    hookScope.setCustomerUUID(customerUUID);
+    hookScope.setTriggerType(triggerType);
+    hookScope.setUniverseUUID(universe.getUniverseUUID());
+    hookScope.setProviderUUID(null);
+    hookScope.setClusterUUID(clusterUUID);
     hookScope.save();
     return hookScope;
   }

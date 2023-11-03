@@ -1246,8 +1246,8 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 	List	   *pclauses;
 	double		rows;
 	ListCell   *lc;
-	Relids		batchedrelids = root->yb_curbatchedrelids;
-	Relids		unbatchedrelids = root->yb_curunbatchedrelids;
+	Relids		batchedrelids = root->yb_cur_batched_relids;
+	Relids		unbatchedrelids = root->yb_cur_unbatched_relids;
 
 	/* If rel has LATERAL refs, every path for it should account for them */
 	Assert(bms_is_subset(baserel->lateral_relids, required_outer));
@@ -1300,48 +1300,35 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 															joinrelids,
 															required_outer,
 															baserel));
+
+	List *sel_clauses = pclauses;
+	if (!bms_is_empty(batchedrelids) && yb_enable_base_scans_cost_model)
+	{
+		List *new_pclauses = NIL;
+		foreach (lc, pclauses)
+		{
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+			RestrictInfo *batched =
+				yb_get_batched_restrictinfo(rinfo, batchedrelids, baserel->relids);
+			if (batched)
+				rinfo = batched;
+			
+			new_pclauses = lappend(new_pclauses, rinfo);
+		}
+		sel_clauses = new_pclauses;
+	}
+
 	/* Estimate the number of rows returned by the parameterized scan */
-	rows = get_parameterized_baserel_size(root, baserel, pclauses);
+	rows = get_parameterized_baserel_size(root, baserel, sel_clauses);
 	/* And now we can build the ParamPathInfo */
 	ppi = makeNode(ParamPathInfo);
 	ppi->ppi_req_outer = required_outer;
 	ppi->ppi_rows = rows;
 	ppi->ppi_clauses = pclauses;
-	ppi->yb_ppi_req_outer_batched = NULL;
-	ppi->yb_ppi_req_outer_unbatched = NULL;
-
-	baserel->ppilist = lappend(baserel->ppilist, ppi);
-
-	if (!IsYugaByteEnabled() ||
-		(bms_is_empty(root->yb_curbatchedrelids) &&
-		 bms_is_empty(root->yb_curunbatchedrelids)))
-		return ppi;
-
-	/* See if we have any unbatchable filters. */
-	// foreach(lc, pclauses)
-	// {
-	// 	RestrictInfo *rinfo = lfirst(lc);
-	// 	RestrictInfo *batched =
-	// 		get_batched_restrictinfo(rinfo,
-	// 								 rinfo->required_relids,
-	// 								 baserel->relids);
-
-	// 	if (!batched ||
-	// 		!bms_equal(batched->left_relids, baserel->relids) ||
-	// 		!bms_is_subset(batched->right_relids, batchedrelids))
-	// 	{
-	// 		unbatchedrelids = bms_union(unbatchedrelids,
-	// 									rinfo->clause_relids);
-	// 	}
-	// }
-
-	unbatchedrelids = bms_del_member(unbatchedrelids,
-									 baserel->relid);
-
-	batchedrelids = bms_difference(batchedrelids, unbatchedrelids);
-
 	ppi->yb_ppi_req_outer_batched = batchedrelids;
 	ppi->yb_ppi_req_outer_unbatched = unbatchedrelids;
+
+	baserel->ppilist = lappend(baserel->ppilist, ppi);
 
 	return ppi;
 }
@@ -1661,6 +1648,27 @@ get_joinrel_parampathinfo(PlannerInfo *root, RelOptInfo *joinrel,
 	joinrel->ppilist = lappend(joinrel->ppilist, ppi);
 
 	return ppi;
+}
+
+void
+yb_accumulate_batching_info(List *paths, 
+							Relids *batchedrelids, Relids *unbatchedrelids)
+{
+	ListCell *lc;
+	foreach(lc, paths)
+	{
+		Path *path = (Path *) lfirst(lc);
+		ParamPathInfo *ppi = path->param_info;
+		if (ppi)
+		{
+			*batchedrelids =
+				bms_union(*batchedrelids, ppi->yb_ppi_req_outer_batched);
+			*unbatchedrelids =
+				bms_union(*unbatchedrelids, ppi->yb_ppi_req_outer_unbatched);
+		}
+	}
+
+	*batchedrelids = bms_difference(*batchedrelids, *unbatchedrelids);
 }
 
 /*

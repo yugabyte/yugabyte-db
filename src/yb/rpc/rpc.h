@@ -208,6 +208,9 @@ class Rpc : public RpcCommand {
   int num_attempts() const { return retrier().attempt_num(); }
   CoarseTimePoint deadline() const override { return retrier_.deadline(); }
 
+  // Abort this RPC by stopping any further retries from being executed. If an RPC is in-flight when
+  // this method is called, and a response comes in after this is called, the registered callback
+  // will still be executed.
   void Abort() override {
     retrier_.Abort();
   }
@@ -244,11 +247,15 @@ class Rpcs {
   void Register(RpcCommandPtr call, Handle* handle);
   bool RegisterAndStart(RpcCommandPtr call, Handle* handle);
   Status RegisterAndStartStatus(RpcCommandPtr call, Handle* handle);
+
+  // Unregisters the RPC associated with this handle and frees memory used by it. This should only
+  // be called if it is known that the callback will never be executed again, e.g. by only calling
+  // it from the callback itself, or before the RPC is ever started.
   RpcCommandPtr Unregister(Handle* handle);
 
   template <class Factory>
   Handle RegisterConstructed(const Factory& factory) {
-    std::lock_guard<std::mutex> lock(*mutex_);
+    std::lock_guard lock(*mutex_);
     if (shutdown_) {
       return InvalidHandle();
     }
@@ -294,7 +301,7 @@ template<class Iter>
 void Rpcs::Abort(Iter start, Iter end) {
   std::vector<RpcCommandPtr> to_abort;
   {
-    std::lock_guard<std::mutex> lock(*mutex_);
+    std::lock_guard lock(*mutex_);
     for (auto it = start; it != end; ++it) {
       auto& handle = *it;
       if (*handle != calls_.end()) {

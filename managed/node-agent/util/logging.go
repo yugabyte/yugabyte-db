@@ -4,6 +4,7 @@
 package util
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -50,22 +51,18 @@ func FileLogger() *AppLogger {
 		if err != nil {
 			panic("Unable to create logs dir.")
 		}
-		logFile := config.String(NodeLoggerKey)
-		if logFile == "" {
-			logFile = NodeAgentDefaultLog
-		}
-		logFilepath := filepath.Join(LogsDir(), logFile)
+		logFilepath := filepath.Join(LogsDir(), config.String(NodeLoggerKey))
 		writer := &lumberjack.Logger{
 			Filename:   logFilepath,
-			MaxSize:    500, // MB
-			MaxBackups: 5,
-			MaxAge:     15, // Days
+			MaxSize:    config.Int(NodeAgentLogMaxMbKey),
+			MaxBackups: config.Int(NodeAgentLogMaxBackupsKey),
+			MaxAge:     config.Int(NodeAgentLogMaxDaysKey),
 			Compress:   true,
 		}
 		fileLogger = &AppLogger{
 			logger: &log.Logger{
 				Handler: logfmt.New(writer),
-				Level:   1,
+				Level:   log.Level(config.Int(NodeAgentLogLevelKey)),
 			},
 			enableDebug: true,
 		}
@@ -73,63 +70,96 @@ func FileLogger() *AppLogger {
 	return fileLogger
 }
 
-func (l *AppLogger) getEntry() *log.Entry {
+func (l *AppLogger) getEntry(ctx context.Context) *log.Entry {
 	entry := log.NewEntry(l.logger)
 	if l.enableDebug {
 		config := CurrentConfig()
+		corrId := ""
+		if ctx != nil {
+			if v := ctx.Value(CorrelationId); v != nil {
+				corrId = v.(string)
+			}
+		}
 		// Get the line number from the runtime stack.
 		funcPtr, file, line, ok := runtime.Caller(2)
 		if ok {
 			entry = entry.WithFields(
 				log.Fields{
-					"function": runtime.FuncForPC(funcPtr).Name(),
-					"file":     file,
-					"line":     line,
+					"func": runtime.FuncForPC(funcPtr).Name(),
+					"file": file,
+					"line": line,
 				},
 			)
 		}
 		if version := config.String(PlatformVersionKey); version != "" {
-			entry.WithField("version", version)
+			entry = entry.WithField("version", version)
+		}
+		if corrId != "" {
+			entry = entry.WithField("corr", corrId)
 		}
 	}
 	return entry
 }
-func (l *AppLogger) Errorf(msg string, v ...interface{}) {
-	l.getEntry().Errorf(msg, v...)
+
+func (l *AppLogger) Error(ctx context.Context, msg string) {
+	l.getEntry(ctx).Error(msg)
 }
 
-func (l *AppLogger) Infof(msg string, v ...interface{}) {
-	l.getEntry().Infof(msg, v...)
+func (l *AppLogger) Errorf(ctx context.Context, msg string, v ...interface{}) {
+	l.getEntry(ctx).Errorf(msg, v...)
 }
 
-func (l *AppLogger) Error(msg string) {
-	l.getEntry().Error(msg)
+func (l *AppLogger) Info(ctx context.Context, msg string) {
+	if l.IsInfoEnabled() {
+		l.getEntry(ctx).Infof(msg)
+	}
 }
 
-func (l *AppLogger) Info(msg string) {
-	l.getEntry().Infof(msg)
+func (l *AppLogger) Infof(ctx context.Context, msg string, v ...interface{}) {
+	if l.IsInfoEnabled() {
+		l.getEntry(ctx).Infof(msg, v...)
+	}
 }
 
-func (l *AppLogger) Debug(msg string) {
-	l.getEntry().Debug(msg)
+func (l *AppLogger) Debug(ctx context.Context, msg string) {
+	if l.IsDebugEnabled() {
+		l.getEntry(ctx).Debug(msg)
+	}
 }
 
-func (l *AppLogger) Debugf(msg string, v ...interface{}) {
-	l.getEntry().Debugf(msg, v...)
+func (l *AppLogger) Debugf(ctx context.Context, msg string, v ...interface{}) {
+	if l.IsDebugEnabled() {
+		l.getEntry(ctx).Debugf(msg, v...)
+	}
 }
 
-func (l *AppLogger) Warn(msg string) {
-	l.getEntry().Warn(msg)
+func (l *AppLogger) Warn(ctx context.Context, msg string) {
+	l.getEntry(ctx).Warn(msg)
 }
 
-func (l *AppLogger) Warnf(msg string, v ...interface{}) {
-	l.getEntry().Warnf(msg, v...)
+func (l *AppLogger) Warnf(ctx context.Context, msg string, v ...interface{}) {
+	l.getEntry(ctx).Warnf(msg, v...)
 }
 
-func (l *AppLogger) Fatal(msg string, v ...interface{}) {
-	l.getEntry().Fatal(msg)
+func (l *AppLogger) Fatal(ctx context.Context, msg string, v ...interface{}) {
+	l.getEntry(ctx).Fatal(msg)
 }
 
-func (l *AppLogger) Fatalf(msg string, v ...interface{}) {
-	l.getEntry().Fatalf(msg, v...)
+func (l *AppLogger) Fatalf(ctx context.Context, msg string, v ...interface{}) {
+	l.getEntry(ctx).Fatalf(msg, v...)
+}
+
+// IsDebugEnabled returns true only if debug is enabled.
+func (l *AppLogger) IsDebugEnabled() bool {
+	return l.IsLevelEnabled(log.DebugLevel)
+}
+
+// IsInfoEnabled returns true only if info is enabled.
+func (l *AppLogger) IsInfoEnabled() bool {
+	return l.IsLevelEnabled(log.InfoLevel)
+}
+
+// IsLevelEnabled returns true only if the given level is enabled.
+func (l *AppLogger) IsLevelEnabled(level log.Level) bool {
+	return int(l.logger.Level) <= int(level)
 }

@@ -161,7 +161,7 @@ cqlsh:sample> SELECT * FROM test;
 (1 rows)
 ```
 
-{{< note Type="Note" >}}
+{{< note title="Note" >}}
 
 `BEGIN/END TRANSACTION` doesn't currently support `RETURNS STATUS AS ROW`.
 

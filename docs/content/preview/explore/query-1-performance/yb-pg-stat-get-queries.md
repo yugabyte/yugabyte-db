@@ -1,61 +1,58 @@
 ---
-title: View terminated queries with yb_pg_stat_get_queries
+title: View terminated queries with yb_terminated_queries
 linkTitle: View terminated queries
-description: Track planning and execution statistics for all SQL statements executed by a server.
-headerTitle: View terminated queries with yb_pg_stat_get_queries
+description: View terminated queries for all SQL statements executed by a server.
+headerTitle: View terminated queries with yb_terminated_queries
 headcontent: See why a query failed
 menu:
   preview:
-    identifier: yb-pg-stat-get-queries
+    identifier: yb-terminated-queries
     parent: query-tuning
     weight: 350
 type: docs
 ---
 
-Use the YugabyteDB `yb_pg_stat_get_queries` function to see terminated queries and the reason for their termination.
+Use the YugabyteDB `yb_terminated_queries` view to see terminated queries and the reason for their termination.
 
-When a query quits for unexpected reasons, information about the query and the responsible backend is stored. You can access this information by using yb_pg_stat_get_queries. Calling the function returns queries using the following criteria:
+When a query quits for unexpected reasons, information about the query and the responsible backend is stored. You can access this information by using `yb_terminated_queries` view which is built on top of the `yb_pg_stat_get_queries` function. The view returns queries using the following criteria:
 
 - Temporary file size exceeds `temp_file_limit`.
 - Terminated by SIGSEGV - the query terminated due to a crash in the PostgreSQL process.
 - Terminated by SIGKILL - the query was killed by the system's out of memory killer because the node is running out of memory.
 
-The function takes a single argument, the Object identifier (OID) of the database of interest. If no OID is provided, it returns terminated queries for all databases.
-
 {{% explore-setup-single %}}
 
 ## Supported fields
 
-At a `ysqlsh` prompt, run the following meta-commands to return the fields supported by `yb_pg_stat_get_queries`:
+At a `ysqlsh` prompt, run the following meta-commands to return the fields supported by `yb_terminated_queries`:
 
 ```sql
 yugabyte=# \x
-yugabyte=# \df yb_pg_stat_get_queries
+yugabyte=# \d yb_terminated_queries
 ```
 
 ```output
-List of functions
--[ RECORD 1 ]-------+-----------------------------------------------------
-Schema              | pg_catalog
-Name                | yb_pg_stat_get_queries
-Result data type    | SETOF record
-Argument data types | db_oid oid, OUT db_oid oid, OUT backend_pid integer, 
-                    | OUT query_text text, OUT termination_reason text, 
-                    | OUT query_start timestamp with time zone, 
-                    | OUT query_end timestamp with time zone
-Type                | func
+                    View "pg_catalog.yb_terminated_queries"
+       Column       |           Type           | Collation | Nullable | Default
+--------------------+--------------------------+-----------+----------+---------
+ databasename       | name                     |           |          |
+ backend_pid        | integer                  |           |          |
+ query_text         | text                     |           |          |
+ termination_reason | text                     |           |          |
+ query_start_time   | timestamp with time zone |           |          |
+ query_end_time     | timestamp with time zone |           |          |
 ```
 
-The following table describes the arguments and their values:
+The following table describes the fields and their values:
 
 | Field | Type | Description |
 | :---- | :--- | :---------- |
-| db_oid | OID | OID of the database to which the backend was connected when the query was terminated. |
+| databasename | Name | Name of the database to which the backend was connected when the query was terminated. |
 | backend_pid | Integer | Backend process ID. |
 | query_text | Text | The query that was executed, up to a maximum of 256 characters. |
 | termination_reason | Text | An explanation of why the query was terminated. One of:<br/>Terminated by SIGKILL<br/>Terminated by SIGSEGV<br/>temporary file size exceeds temp_file_limit (xxx kB)
-| query_start | Timestampz | Time at which the query started. |
-| query_end | Timestampz | Time at which the query was terminated. |
+| query_start_time | Timestampz | Time at which the query started. |
+| query_end_time | Timestampz | Time at which the query was terminated. |
 
 ## Examples
 
@@ -91,7 +88,7 @@ $ kill -SIGSEGV 4650 # the pid of the backend process
 Verify that the query is listed as a terminated query as follows:
 
 ```sql
-yugabyte=# SELECT backend_pid, query_text, termination_reason FROM yb_pg_stat_get_queries(NULL);
+yugabyte=# SELECT backend_pid, query_text, termination_reason FROM yb_terminated_queries;
 ```
 
 ```output
@@ -121,10 +118,10 @@ yugabyte=# SELECT * FROM generate_series(1, 123456789);
 ERROR:  temporary file size exceeds temp_file_limit (0kB)
 ```
 
-To find the query in `yb_pg_stat_get_queries`, enter the following command:
+To find the query in `yb_terminated_queries`, enter the following command:
 
 ```sql
-yugabyte=# SELECT backend_pid, query_text, termination_reason FROM yb_pg_stat_get_queries(NULL);
+yugabyte=# SELECT backend_pid, query_text, termination_reason FROM yb_terminated_queries;
 ```
 
 ```output
@@ -166,7 +163,7 @@ $ kill -KILL 4801 # the pid of the backend process
 Verify that the query is listed as a terminated query as follows:
 
 ```sql
-yugabyte=# SELECT backend_pid, query_text, termination_reason FROM yb_pg_stat_get_queries(NULL);
+yugabyte=# SELECT backend_pid, query_text, termination_reason FROM yb_terminated_queries;
 ```
 
 ```output
@@ -199,61 +196,43 @@ new_db=# SET temp_file_limit TO 0;
 new_db=# SELECT 'db2' FROM generate_series(1, 123456789);
 ```
 
-Running `yb_pg_stat_get_queries` without providing an OID returns both queries:
+Querying the `yb_terminated_queries` view without providing a database name returns both queries:
 
 ```sql
-new_db=# SELECT query_text FROM yb_pg_stat_get_queries(NULL);
+new_db=# SELECT query_text FROM yb_terminated_queries;
 ```
 
 ```output
-                    query_text 
+                    query_text
 --------------------------------------------------
  SELECT 'db1' FROM generate_series(1, 123456789);
  SELECT 'db2' FROM generate_series(1, 123456789);
 (2 rows)
 ```
 
-When you run `yb_pg_stat_get_queries` with the OID of the current database, you only see the entries for that database.
+When you query `yb_terminated_queries` with the name of the current database, you only see the entries for that database.
 
-To get the OIDs, enter the following command:
+Use the database name to get the terminated queries from the `yugabyte` database as follows:
 
 ```sql
-new_db=# SELECT oid, datname FROM pg_database;
+new_db=# SELECT query_text FROM yb_terminated_queries WHERE databasename='yugabyte';
 ```
 
 ```output
-  oid  |     datname
--------+-----------------
-     1 | template1
- 13285 | template0
- 13286 | postgres
- 13288 | yugabyte
- 13289 | system_platform
- 17920 | new_db
-(7 rows)
-```
-
-Use the OID to get the terminated queries from the `yugabyte` database as follows:
-
-```sql
-new_db=# SELECT query_text FROM yb_pg_stat_get_queries(13288)
-```
-
-```output
-                    query_text 
+                    query_text
 --------------------------------------------------
  SELECT 'db1' FROM generate_series(1, 123456789);
 (1 row)
 ```
 
-Use the OID to get the terminated queries from the new database as follows:
+Use the database name to get the terminated queries from the new database as follows:
 
 ```sql
-new_db=# SELECT query_text FROM yb_pg_stat_get_queries(17920)
+new_db=# SELECT query_text FROM yb_terminated_queries WHERE databasename='new_db';
 ```
 
 ```output
-                    query_text 
+                    query_text
 --------------------------------------------------
  SELECT 'db2' FROM generate_series(1, 123456789);
 (1 row)
@@ -261,7 +240,7 @@ new_db=# SELECT query_text FROM yb_pg_stat_get_queries(17920)
 
 ## Limitations
 
-- The underlying data returned by the function is refreshed at 500 ms intervals, so if a recently terminated query is not listed, try querying again.
+- The underlying data returned by the query is refreshed at 500 ms intervals, so if a recently terminated query is not listed, try querying again.
 - The backend holds up to 1000 failed queries before it starts to overwrite the first queries.
 - If the stat collector process is abruptly terminated, the underlying data may be corrupted and invalid.
 

@@ -56,8 +56,9 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   }
 
   MUST_USE_RESULT bool UpdateStatus(
-      TransactionStatus transaction_status, HybridTime time_of_status,
-      HybridTime coordinator_safe_time, AbortedSubTransactionSet aborted_subtxn_set);
+      const TabletId& status_tablet, TransactionStatus transaction_status,
+      HybridTime time_of_status, HybridTime coordinator_safe_time, SubtxnSet aborted_subtxn_set,
+      const Status& expected_deadlock_status);
 
   void UpdateAbortCheckHT(HybridTime now, UpdateAbortCheckHTMode mode);
 
@@ -81,15 +82,17 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
     return local_commit_time_;
   }
 
-  const AbortedSubTransactionSet& last_known_aborted_subtxn_set() const {
+  const SubtxnSet& last_known_aborted_subtxn_set() const {
     return last_known_aborted_subtxn_set_;
   }
 
-  const bool external_transaction() const {
-    return metadata_.external_transaction;
+  const HybridTime last_known_status_hybrid_time() const {
+    return last_known_status_hybrid_time_;
   }
 
-  void SetLocalCommitData(HybridTime time, const AbortedSubTransactionSet& aborted_subtxn_set);
+  const TransactionStatus last_known_status() const { return last_known_status_; }
+
+  void SetLocalCommitData(HybridTime time, const SubtxnSet& aborted_subtxn_set);
   void AddReplicatedBatch(
       size_t batch_idx, boost::container::small_vector_base<uint8_t>* encoded_replicated_batches);
   void BatchReplicated(const TransactionalBatchData& value);
@@ -102,6 +105,18 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   void Abort(client::YBClient* client,
              TransactionStatusCallback callback,
              std::unique_lock<std::mutex>* lock);
+
+  Status CheckPromotionAllowed() {
+    if (last_known_status_ == TransactionStatus::ABORTED) {
+      return STATUS_FORMAT(
+          IllegalState, Format("Transaction $0 in ABORTED state. Cannot be promoted.", id()));
+    }
+    if (abort_request_in_progress_) {
+      return STATUS_FORMAT(
+          IllegalState, Format("Request to abort txn $0 in progress. Cannot be promoted.", id()));
+    }
+    return Status::OK();
+  }
 
   std::string ToString() const;
   void ScheduleRemoveIntents(const RunningTransactionPtr& shared_self, RemoveReason reason);
@@ -131,17 +146,19 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   static boost::optional<TransactionStatus> GetStatusAt(
       HybridTime time,
       HybridTime last_known_status_hybrid_time,
-      TransactionStatus last_known_status,
-      bool external_transaction);
+      TransactionStatus last_known_status);
 
-  void SendStatusRequest(int64_t serial_no, const RunningTransactionPtr& shared_self);
+  void SendStatusRequest(
+      const TabletId& status_tablet, int64_t serial_no, const RunningTransactionPtr& shared_self);
 
-  void StatusReceived(const Status& status,
+  void StatusReceived(const TabletId& status_tablet,
+                      const Status& status,
                       const tserver::GetTransactionStatusResponsePB& response,
                       int64_t serial_no,
                       const RunningTransactionPtr& shared_self);
 
-  void DoStatusReceived(const Status& status,
+  void DoStatusReceived(const TabletId& status_tablet,
+                        const Status& status,
                         const tserver::GetTransactionStatusResponsePB& response,
                         int64_t serial_no,
                         const RunningTransactionPtr& shared_self);
@@ -154,14 +171,16 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   // Notify provided status waiters.
   void NotifyWaiters(int64_t serial_no, HybridTime time_of_status,
                      TransactionStatus transaction_status,
-                     const AbortedSubTransactionSet& aborted_subtxn_set,
-                     const std::vector<StatusRequest>& status_waiters);
+                     const SubtxnSet& aborted_subtxn_set,
+                     const std::vector<StatusRequest>& status_waiters,
+                     const Status& expected_deadlock_status);
 
   static Result<TransactionStatusResult> MakeAbortResult(
       const Status& status,
       const tserver::AbortTransactionResponsePB& response);
 
-  void AbortReceived(const Status& status,
+  void AbortReceived(const TabletId& status_tablet,
+                     const Status& status,
                      const tserver::AbortTransactionResponsePB& response,
                      const RunningTransactionPtr& shared_self);
 
@@ -174,7 +193,10 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   TransactionStatus last_known_status_ = TransactionStatus::CREATED;
   HybridTime last_known_status_hybrid_time_ = HybridTime::kMin;
-  AbortedSubTransactionSet last_known_aborted_subtxn_set_;
+  SubtxnSet last_known_aborted_subtxn_set_;
+  // Status containing the deadlock info if the transaction was aborted due to a deadlock.
+  // Defaults to Status::OK() in all other cases.
+  Status last_known_deadlock_status_ = Status::OK();
   std::vector<StatusRequest> status_waiters_;
   rpc::Rpcs::Handle get_status_handle_;
   rpc::Rpcs::Handle abort_handle_;
@@ -189,6 +211,13 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   // Time of the next check whether this transaction has been aborted.
   HybridTime abort_check_ht_;
+  // Is true if an external request to abort the transaction is in progress i.e. AbortTransaction
+  // rpc to the transaction coordinator is in progress. Gets set in RunningTransaction::Abort and
+  // reset in RunningTransaction::AbortReceived.
+  bool abort_request_in_progress_ = false;
+
+  // Number of outstanding status request rpcs.
+  std::atomic<int64_t> outstanding_status_requests_{0};
 };
 
 Status MakeAbortedStatus(const TransactionId& id);

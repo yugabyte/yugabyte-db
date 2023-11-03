@@ -7,6 +7,8 @@ type ClusterTable struct {
 
     Keyspace string `json:"keyspace"`
 
+    Uuid string `json:"uuid"`
+
     Type YbApiEnum `json:"type"`
 
     SizeBytes int64 `json:"size_bytes"`

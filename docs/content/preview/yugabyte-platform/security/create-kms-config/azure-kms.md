@@ -2,9 +2,7 @@
 title: Create a KMS configuration using Azure
 headerTitle: Create a KMS configuration using Azure
 linkTitle: Create a KMS configuration
-description: Use YugabyteDB Anywhere to create a KMS configuration for Azure KMS.
-aliases:
-  - /preview/yugabyte-platform/security/create-kms-config
+description: Use YugabyteDB Anywhere to create a KMS configuration for Azure Key Vault.
 menu:
   preview_yugabyte-platform:
     parent: security
@@ -29,7 +27,7 @@ type: docs
   <li >
     <a href="{{< relref "./azure-kms.md" >}}" class="nav-link active">
       <i class="icon-azure" aria-hidden="true"></i>
-      &nbsp;&nbsp;Azure KMS
+      Azure Key Vault
     </a>
   </li>
   <li >
@@ -39,9 +37,12 @@ type: docs
     </a>
   </li>
 </ul>
-<br>Encryption at rest uses universe keys to encrypt and decrypt universe data keys. You can use the YugabyteDB Anywhere UI to create key management service (KMS) configurations for generating the required universe keys for one or more YugabyteDB universes. Encryption at rest in YugabyteDB Anywhere supports the use of Microsoft Azure KMS.
 
-Conceptually, Azure KMS consists of a key vault containing one or more keys, with each key capable of having multiple versions.
+Encryption at rest uses a master key to encrypt and decrypt universe keys. The master key details are stored in YugabyteDB Anywhere in key management service (KMS) configurations. You enable encryption at rest for a universe by assigning the universe a KMS configuration. The master key designated in the configuration is then used for generating the universe keys used for encrypting the universe data.
+
+Encryption at rest in YugabyteDB Anywhere supports the use of Microsoft [Azure Key Vault](https://learn.microsoft.com/en-us/azure/key-vault/).
+
+Conceptually, Azure Key Vault consists of a key vault containing one or more keys, with each key capable of having multiple versions.
 
 Before defining a KMS configuration with YugabyteDB Anywhere, you need to create a key vault through the [Azure portal](https://docs.microsoft.com/en-us/azure/key-vault/general/quick-create-portal). The following settings are required:
 
@@ -56,7 +57,11 @@ If you are planning to use an existing cryptographic key with the same name, it 
 - Permitted operations should have at least WRAP_KEY and UNWRAP_KEY.
 - The key rotation policy should not be defined in order to avoid automatic rotation.
 
-You can create a KMS configuration that uses Azure KMS, as follows:
+Note that YugabyteDB Anywhere does not manage the key vault and deleting the KMS configuration does not delete the key vault, master key, or key versions on Azure Key Vault.
+
+## Create a KMS configuration
+
+You can create a KMS configuration that uses Azure Key Vault, as follows:
 
 1. Use the YugabyteDB Anywhere UI to navigate to **Configs > Security > Encryption At Rest** to access the list of existing configurations.
 
@@ -74,13 +79,10 @@ You can create a KMS configuration that uses Azure KMS, as follows:
     - **Key Algorithm** — The algorithm for the master key. Currently, only the RSA algorithm is supported.
     - **Key Size** — Select the size of the master key, in bits. Supported values are 2048 (default), 3072, and 4096.
 
-    ![img](/images/yp/security/azurekms-config.png)
+    ![Azure Key Vault configuration](/images/yp/security/azurekms-config.png)
 
-1. Click **Save**.<br>
+1. Click **Save**.
 
     Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
 
 1. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
-
-
-Note that YugabyteDB Anywhere does not manage the key vault and deleting the KMS configuration does not delete the key vault, master key, or key versions on Azure KMS.

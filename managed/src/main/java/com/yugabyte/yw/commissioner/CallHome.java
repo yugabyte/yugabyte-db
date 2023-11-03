@@ -57,7 +57,7 @@ public class CallHome {
         try {
           callHomeManager.sendDiagnostics(c);
         } catch (Exception e) {
-          log.error("Error sending callhome for customer: " + c.uuid, e);
+          log.error("Error sending callhome for customer: " + c.getUuid(), e);
         }
       }
     } catch (Exception e) {

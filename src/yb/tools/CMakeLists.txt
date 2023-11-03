@@ -33,8 +33,6 @@
 set(YB_PCH_PREFIX tools)
 set(YB_PCH_DEP_LIBS opid_proto yb_test_util boost_program_options)
 
-YB_INCLUDE_EXTENSIONS()
-
 set(LINK_LIBS
   yb_client
   log
@@ -59,8 +57,7 @@ target_link_libraries(insert-generated-rows
   ${LINK_LIBS})
 
 add_executable(yb-admin
-  yb-admin_cli.cc
-  ${YB_ADMIN_SRCS_EXTENSIONS})
+  yb-admin_cli.cc)
 target_link_libraries(yb-admin
   yb-admin_lib
   master_error
@@ -68,8 +65,7 @@ target_link_libraries(yb-admin
 
 add_library(yb-admin_lib
   yb-admin_client.cc
-  yb-admin_util.cc
-  ${YB_ADMIN_LIB_SRCS_EXTENSIONS})
+  yb-admin_util.cc)
 target_link_libraries(yb-admin_lib ${LINK_LIBS})
 
 add_executable(yb-ts-cli ts-cli.cc)
@@ -101,7 +97,8 @@ target_link_libraries(rocksdb_dump
 add_executable(sst_dump sst_dump.cc)
 target_link_libraries(sst_dump
   rocksdb_tools
-  yb_docdb)
+  yb_docdb
+  tablet_metadata)
 
 add_executable(yb-fs_list fs_list-tool.cc)
 target_link_libraries(yb-fs_list
@@ -174,6 +171,9 @@ target_link_libraries(tools_test_utils yb_util yb_test_util)
 add_library(test_admin_client test_admin_client.cc)
 target_link_libraries(test_admin_client master_proto integration-tests)
 
+add_library(yb-admin-test-base yb-admin-test-base.cc)
+target_link_libraries(yb-admin-test-base integration-tests ql-dml-test-base)
+
 set(YB_TEST_LINK_LIBS
   admin-test-base
   ysck
@@ -187,6 +187,9 @@ set(YB_TEST_LINK_LIBS
   ql-dml-test-base
   test_admin_client
   tools_test_utils
+  yb-backup-test_base
+  pg_wrapper_test_base
+  yb-admin-test-base
   ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(ysck-test)
 ADD_YB_TEST(yb-bulk_load-test)
@@ -211,31 +214,23 @@ ADD_YB_TEST(ldb_test)
 ADD_YB_TEST(rocksdb_dump_test)
 ADD_YB_TEST(data-patcher-test)
 ADD_YB_TEST_DEPENDENCIES(data-patcher-test data-patcher)
+ADD_YB_TEST(yb-backup/yb-backup-test)
+ADD_YB_TEST(yb-backup/yb-backup-cross-feature-test)
+ADD_YB_TEST(yb-admin-snapshot-test)
+ADD_YB_TEST(yb-admin-xcluster-test)
+ADD_YB_TEST(yb-admin_client-test)
 
-
-# Additional tests
-if(YB_ENT_CURRENT_SOURCE_DIR)
-  # Set the test source file folder.
-  set(CMAKE_CURRENT_LIST_DIR ${YB_ENT_CURRENT_SOURCE_DIR})
-
-  set(YB_TEST_LINK_LIBS
-    ${TOOLS_EXTENSIONS_TEST_LINK_LIBS}
-    ${YB_TEST_LINK_LIBS})
-
-  foreach(test ${TOOLS_EXTENSIONS_TESTS})
-    ADD_YB_TEST(${test})
-  endforeach()
-endif()
-
-set(YB_PCH_PREFIX util)
 add_executable(run-with-timeout run-with-timeout.cc)
 target_link_libraries(run-with-timeout yb_util)
 
+add_executable(sys-catalog-tool sys-catalog-tool.cc)
+target_link_libraries(sys-catalog-tool boost_program_options master)
+
 set(YB_BACKUP_TEST_BASE_SRCS
-    ${TOOLS_LIB_SRCS_EXTENSIONS})
+    yb-backup/yb-backup-test_base.cc)
 set(YB_BACKUP_TEST_BASE_DEPS
     pg_wrapper_test_base
     admin-test-base)
-ADD_YB_TEST_LIBRARY(yb-backup-test_base_ent
+ADD_YB_TEST_LIBRARY(yb-backup-test_base
                     SRCS ${YB_BACKUP_TEST_BASE_SRCS}
                     DEPS ${YB_BACKUP_TEST_BASE_DEPS})

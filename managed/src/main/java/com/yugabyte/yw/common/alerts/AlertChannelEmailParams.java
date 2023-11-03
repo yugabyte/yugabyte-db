@@ -7,6 +7,7 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import com.fasterxml.jackson.annotation.JsonTypeName;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.EmailHelper;
+import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.List;
@@ -34,6 +35,10 @@ public class AlertChannelEmailParams extends AlertChannelParams {
   @ApiModelProperty(value = "SMTP settings", accessMode = READ_WRITE)
   @Valid
   private SmtpData smtpData;
+
+  public AlertChannelEmailParams() {
+    setChannelType(ChannelType.Email);
+  }
 
   @Override
   public void validate(BeanValidator validator) {

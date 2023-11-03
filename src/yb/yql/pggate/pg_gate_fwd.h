@@ -33,14 +33,17 @@ namespace yb {
 namespace pggate {
 
 class PgClient;
-
+class PgDml;
+class PgExpr;
+class PgFetchedTarget;
 class PgTable;
 class PgTableDesc;
-using PgTableDescPtr = scoped_refptr<PgTableDesc>;
-
+class PgTuple;
 class PgsqlOp;
 class PgsqlReadOp;
 class PgsqlWriteOp;
+
+using PgTableDescPtr = scoped_refptr<PgTableDesc>;
 using PgsqlOpPtr = std::shared_ptr<PgsqlOp>;
 using PgsqlReadOpPtr = std::shared_ptr<PgsqlReadOp>;
 using PgsqlWriteOpPtr = std::shared_ptr<PgsqlWriteOp>;

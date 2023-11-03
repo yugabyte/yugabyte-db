@@ -102,7 +102,7 @@ class TabletSnapshots : public TabletComponent {
   // Only used when table_type_ == YQL_TABLE_TYPE.
   Status RestoreCheckpoint(
       const std::string& dir, HybridTime restore_at, const RestoreMetadata& metadata,
-      const docdb::ConsensusFrontier& frontier, bool is_pitr_restore);
+      const docdb::ConsensusFrontier& frontier, bool is_pitr_restore, const OpId& op_id);
 
   // Applies specified snapshot operation.
   Status Apply(SnapshotOperation* operation);
@@ -118,18 +118,50 @@ class TabletSnapshots : public TabletComponent {
   std::string TEST_last_rocksdb_checkpoint_dir_;
 };
 
+struct SequencesDataInfo {
+  SequencesDataInfo(std::optional<int64_t> last_value, std::optional<bool> is_called)
+    : last_value(last_value), is_called(is_called) {}
+
+  SequencesDataInfo(const SequencesDataInfo& other) {
+    last_value = other.last_value;
+    is_called = other.is_called;
+  }
+
+  std::optional<int64_t> last_value = std::nullopt;
+  std::optional<bool> is_called = std::nullopt;
+};
+
+std::ostream& operator<<(std::ostream& out, const SequencesDataInfo& value);
+
 class TabletRestorePatch : public RestorePatch {
  public:
   TabletRestorePatch(
       FetchState* existing_state, FetchState* restoring_state,
-      docdb::DocWriteBatch* doc_batch, int64_t db_oid)
-      : RestorePatch(existing_state, restoring_state, doc_batch),
+      docdb::DocWriteBatch* doc_batch, tablet::TableInfo* table_info, int64_t db_oid)
+      : RestorePatch(existing_state, restoring_state, doc_batch, table_info),
         db_oid_(db_oid) {}
+
+  Status Finish() override;
 
  private:
   Result<bool> ShouldSkipEntry(const Slice& key, const Slice& value) override;
 
+  Status ProcessCommonEntry(
+      const Slice& key, const Slice& existing_value, const Slice& restoring_value) override;
+
+  Status ProcessRestoringOnlyEntry(
+      const Slice& restoring_key, const Slice& restoring_value) override;
+
+  Status ProcessExistingOnlyEntry(
+      const Slice& existing_key, const Slice& existing_value) override;
+
+  Status UpdateColumnValueInMap(const Slice& key, const Slice& value,
+      std::map<dockv::DocKey, SequencesDataInfo>* key_to_seq_info_map);
+
   int64_t db_oid_;
+
+  std::map<dockv::DocKey, SequencesDataInfo> existing_key_to_seq_info_map_;
+  std::map<dockv::DocKey, SequencesDataInfo> restoring_key_to_seq_info_map_;
 };
 
 } // namespace tablet

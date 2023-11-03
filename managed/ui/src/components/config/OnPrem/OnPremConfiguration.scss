@@ -1,6 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
-@import '../../../_style/colors.scss';
-@import '../../../_style/mixins.scss';
+@use '../../../_style/colors.scss';
+@use '../../../_style/mixins.scss';
 
 .form-action-button-container {
   position: absolute;
@@ -24,8 +24,8 @@
 }
 
 .onprem-config__json {
-  background: $YB_CODE_BACKGROUND;
-  border: 1px solid $YB_GRAY;
+  background: colors.$YB_CODE_BACKGROUND;
+  border: 1px solid colors.$YB_GRAY;
   border-radius: 7px;
   padding: 0 15px;
   margin: 15px 0;
@@ -35,7 +35,7 @@
   cursor: pointer;
   margin-left: 8px;
   font-weight: 500;
-  color: $YB_ORANGE;
+  color: colors.$YB_ORANGE;
 }
 
 .remove-cell-container {
@@ -70,7 +70,7 @@
 }
 
 .editor-container {
-  padding-bottom: 40px;
+  padding-bottom: 60px;
 }
 
 .config-provider-row {
@@ -95,7 +95,7 @@
 .file-label {
   padding-top: 12px;
   font-size: 14px;
-  color: $YB_DARK_GRAY;
+  color: colors.$YB_DARK_GRAY;
 }
 
 .upload-file-button {
@@ -109,11 +109,11 @@
   background-color: #ddd;
   box-shadow: 0 0 5px -1px rgba(0, 0, 0, 0.2);
   vertical-align: middle;
-  @include transition(0.125s);
+  @include mixins.transition(0.125s);
 
   &:hover {
     background-color: hsl(0, 0%, 80%);
-    @include transition(0.35s);
+    @include mixins.transition(0.35s);
   }
 }
 
@@ -146,7 +146,7 @@
 }
 
 .remove-cell-active {
-  color: $YB_ORANGE;
+  color: colors.$YB_ORANGE;
 }
 
 .UniverseHealthCheckList {
@@ -193,14 +193,13 @@
   }
 }
 
-.on-prem-provider-form-container{
-  .form-item-label{
+.on-prem-provider-form-container {
+  .form-item-label {
     min-width: 200px !important;
   }
-  .form-right-aligned-labels
-  {
+  .form-right-aligned-labels {
     display: block;
-    &>.form-group{
+    & > .form-group {
       display: flex;
       align-items: center;
     }

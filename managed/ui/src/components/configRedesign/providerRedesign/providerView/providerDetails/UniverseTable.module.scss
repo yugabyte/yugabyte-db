@@ -1,0 +1,71 @@
+@use '../../../../../_style/colors.scss';
+
+.bootstrapTableContainer {
+  height: fit-content;
+
+  .bootstrapTable {
+    overflow-y: visible;
+
+    table > thead > tr > th {
+      vertical-align: middle;
+
+      border-bottom: 1px solid colors.$YB_GRAY_HOVER !important;
+    }
+    table > tbody > tr > td {
+      padding: 11px 8px 11px 0 !important;
+      vertical-align: middle;
+
+      border-bottom: 1px solid colors.$YB_GRAY_HOVER !important;
+
+      .universeNameContainer {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+
+        .universeName {
+          align-content: center;
+        }
+      }
+
+      .universeStatusCell {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+
+        font-weight: 500;
+
+        &.good {
+          color: colors.$YB_SUCCESS_COLOR;
+        }
+        &.paused {
+          color: colors.$YB_WARNING_COLOR;
+        }
+        &.pending {
+          color: colors.$YB_PENDING_COLOR;
+        }
+        &.bad {
+          color: colors.$YB_FAIL_COLOR;
+        }
+        &.warning {
+          color: colors.$YB_WARNING_COLOR;
+        }
+        &.unknown {
+          color: colors.$YB_PENDING_COLOR;
+        }
+        & > div {
+          display: flex;
+        }
+
+        .yb-loader-circle {
+          margin: 5px 5px 0 0;
+          width: 10px;
+          height: 10px;
+          position: relative;
+        }
+        i {
+          padding: 3px 3px 0 0;
+        }
+      }
+    }
+  }
+}

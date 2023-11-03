@@ -41,8 +41,17 @@ void TableIndex::Clear() {
   tables_.clear();
 }
 
-void TableIndex::AddTable(scoped_refptr<TableInfo> table) {
-  tables_.emplace(std::move(table));
+void TableIndex::AddOrReplace(const scoped_refptr<TableInfo>& table) {
+  auto [pos, insertion_successful] = tables_.insert(table);
+  if (!insertion_successful) {
+    std::string first_id = (*pos)->id();
+    auto replace_successful = tables_.replace(pos, table);
+    if (!replace_successful) {
+      LOG(ERROR) << Format(
+          "Multiple tables prevented inserting a new table with id $0. First id was $1",
+          table->id(), first_id);
+    }
+  }
 }
 
 size_t TableIndex::Erase(const TableId& id) {

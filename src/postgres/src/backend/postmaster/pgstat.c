@@ -70,6 +70,8 @@
 #include "utils/tqual.h"
 
 #include "catalog/pg_database.h"
+#include "catalog/yb_catalog_version.h"
+#include "commands/progress.h"
 #include "pg_yb_utils.h"
 #include "utils/syscache.h"
 
@@ -145,6 +147,12 @@ char	   *pgstat_ybstat_tmpname = NULL;
  * without needing to copy things around.  We assume this inits to zeroes.
  */
 PgStat_MsgBgWriter BgWriterStats;
+
+/*
+ * Used in YB to indicate whether the statuses for ongoing concurrent
+ * concurrent indexes have been retrieved in this transaction.
+ */
+bool yb_retrieved_concurrent_index_progress = false;
 
 /* ----------
  * Local data
@@ -2646,6 +2654,8 @@ static Size BackendActivityBufferSize = 0;
 static PgBackendSSLStatus *BackendSslStatusBuffer = NULL;
 #endif
 
+uint64_t *yb_new_conn = NULL;
+
 
 /*
  * Report shared-memory space needed by CreateSharedBackendStatus.
@@ -2672,6 +2682,10 @@ BackendStatusShmemSize(void)
 					mul_size(sizeof(PgBackendSSLStatus), NumBackendStatSlots));
 #endif
 	size = add_size(size, mul_size(NAMEDATALEN, NumBackendStatSlots));
+
+	/* yb_new_conn metric */
+	size = add_size(size, sizeof(uint64_t));
+
 	return size;
 }
 
@@ -2798,6 +2812,9 @@ CreateSharedBackendStatus(void)
 		}
 	}
 #endif
+
+	yb_new_conn = (uint64_t *) ShmemAlloc(sizeof(uint64_t));
+	(*yb_new_conn) = 0;
 }
 
 
@@ -2851,20 +2868,33 @@ void
 pgstat_report_query_termination(const char *termination_reason, int32 backend_pid)
 {
 	PgStat_MsgQueryTermination msg;
+	int			i;
+	volatile PgBackendStatus *beentry = BackendStatusArray;
 
-	if (pgStatSock == PGINVALID_SOCKET || !MyBEEntry)
+	if (beentry == NULL || pgStatSock == PGINVALID_SOCKET)
 		return;
 
-	pgstat_setheader(&msg.m_hdr, PGSTAT_MTYPE_QUERYTERMINATION);
-	msg.m_databaseoid = MyBEEntry->st_databaseid;
-	msg.backend_pid = backend_pid;
+	for (i = 0; i < MaxBackends; i++)
+	{
+		if (beentry->st_procpid == backend_pid)
+		{
+			pgstat_setheader(&msg.m_hdr, PGSTAT_MTYPE_QUERYTERMINATION);
+			msg.m_databaseoid = beentry->st_databaseid;
+			msg.backend_pid = backend_pid;
 
-	msg.activity_start_timestamp = MyBEEntry->st_activity_start_timestamp;
-	msg.m_st_userid = MyBEEntry->st_userid;
-	msg.activity_end_timestamp = GetCurrentTimestamp();
-	StrNCpy(msg.query_string, MyBEEntry->st_activity_raw, sizeof(msg.query_string));
-	StrNCpy(msg.termination_reason, termination_reason, sizeof(msg.termination_reason));
-	pgstat_send(&msg, sizeof(msg));
+			msg.activity_start_timestamp = beentry->st_activity_start_timestamp;
+			msg.m_st_userid = beentry->st_userid;
+			msg.activity_end_timestamp = GetCurrentTimestamp();
+			StrNCpy(msg.query_string, beentry->st_activity_raw, sizeof(msg.query_string));
+			StrNCpy(msg.termination_reason, termination_reason, sizeof(msg.termination_reason));
+			pgstat_send(&msg, sizeof(msg));
+
+			return;
+		}
+
+		beentry++;
+	}
+	elog(WARNING, "could not find BEEntry for pid %d to add to yb_terminated_queries", backend_pid);
 }
 
 /* ----------
@@ -2987,6 +3017,11 @@ pgstat_bestart(void)
 	lbeentry.st_xact_start_timestamp = 0;
 	lbeentry.st_databaseid = MyDatabaseId;
 
+	/* Increment the total connections counter */
+	if (lbeentry.st_procpid > 0 && lbeentry.st_backendType == B_BACKEND)
+		(*yb_new_conn)++;
+
+
 	if (YBIsEnabledInPostgresEnvVar() && lbeentry.st_databaseid > 0) {
 		HeapTuple tuple;
 		tuple = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(lbeentry.st_databaseid));
@@ -2997,6 +3032,35 @@ pgstat_bestart(void)
 
 		/* Initialization of allocated memory measurement value */
 		lbeentry.yb_st_allocated_mem_bytes = PgMemTracker.backend_cur_allocated_mem_bytes;
+	}
+
+	if (YBIsEnabledInPostgresEnvVar())
+	{
+		if (lbeentry.st_backendType == B_BACKEND)
+		{
+			/*
+			 * catalog_version should already be initialized by
+			 * RelationCacheInitializePhase2 unless this is initdb.  It may be
+			 * zero if it's a fresh, old-version cluster that uses the protobuf
+			 * method (e.g. tests that use
+			 * BasePgSQLTest.recreateWithYsqlVersion, so also account for
+			 * that).
+			 */
+			Assert(lbeentry.yb_st_catalog_version.version
+				   || IsBootstrapProcessingMode()
+				   || yb_catalog_version_type == CATALOG_VERSION_PROTOBUF_ENTRY);
+
+			lbeentry.yb_st_catalog_version.has_version = true;
+		}
+		else
+		{
+			/*
+			 * We don't care about the catalog version of non-client backend
+			 * processes, so treat them as always latest.
+			 * TODO(jason): double-check this.
+			 */
+			lbeentry.yb_st_catalog_version.has_version = false;
+		}
 	}
 
 	/* We have userid for client-backends, wal-sender and bgworker processes */
@@ -3111,6 +3175,7 @@ yb_pgstat_clear_entry_pid(int pid)
 		{
 			PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
 			beentry->st_procpid = 0;	/* mark invalid */
+			beentry->yb_session_id = 0;
 			PGSTAT_END_WRITE_ACTIVITY(beentry);
 			return;
 		}
@@ -3149,6 +3214,7 @@ pgstat_beshutdown_hook(int code, Datum arg)
 	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
 
 	beentry->st_procpid = 0;	/* mark invalid */
+	beentry->yb_session_id = 0;
 
 	PGSTAT_END_WRITE_ACTIVITY(beentry);
 }
@@ -3192,7 +3258,6 @@ pgstat_report_activity(BackendState state, const char *cmd_str)
 			PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
 			beentry->st_state = STATE_DISABLED;
 			beentry->st_state_start_timestamp = 0;
-			beentry->yb_new_conn = 0;
 			beentry->st_activity_raw[0] = '\0';
 			beentry->st_activity_start_timestamp = 0;
 			/* st_xact_start_timestamp and wait_event_info are also disabled */
@@ -3224,10 +3289,6 @@ pgstat_report_activity(BackendState state, const char *cmd_str)
 	 */
 	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
 
-	if ((state == STATE_RUNNING || state == STATE_FASTPATH) &&
-		beentry->st_state != state) {
-		beentry->yb_new_conn++;
-	}
 	beentry->st_state = state;
 	beentry->st_state_start_timestamp = current_timestamp;
 
@@ -3906,6 +3967,9 @@ pgstat_get_wait_timeout(WaitEventTimeout w)
 		case WAIT_EVENT_RECOVERY_APPLY_DELAY:
 			event_name = "RecoveryApplyDelay";
 			break;
+		case WAIT_EVENT_YB_TXN_CONFLICT_BACKOFF:
+			event_name = "YBTxnConflictBackoff";
+			break;
 			/* no default case, so that compiler will warn */
 	}
 
@@ -4280,7 +4344,6 @@ pgstat_get_crashed_backend_activity(int pid, char *buffer, int buflen)
 			 */
 			ascii_safe_strlcpy(buffer, activity,
 							   Min(buflen, pgstat_track_activity_query_size));
-			MyBEEntry = (PgBackendStatus *) beentry;
 
 			return buffer;
 		}
@@ -6130,6 +6193,7 @@ pgstat_clear_snapshot(void)
 	pgStatDBHash = NULL;
 	localBackendStatusTable = NULL;
 	localNumBackends = 0;
+	yb_retrieved_concurrent_index_progress = false;
 }
 
 
@@ -6908,10 +6972,10 @@ pgstat_clip_activity(const char *raw_activity)
 	return activity;
 }
 
-PgBackendStatus **
-getBackendStatusArrayPointer(void)
+PgBackendStatus *
+getBackendStatusArray(void)
 {
-	return &BackendStatusArray;
+  return BackendStatusArray;
 }
 
 /* ----------
@@ -6934,4 +6998,64 @@ yb_pgstat_report_allocated_mem_bytes(void)
 	beentry->yb_st_allocated_mem_bytes = PgMemTracker.backend_cur_allocated_mem_bytes;
 
 	PGSTAT_END_WRITE_ACTIVITY(beentry);
+}
+
+/* ----------
+ * yb_pgstat_set_catalog_version() -
+ *
+ *		Set yb_st_catalog_version.version for my backend
+ * ----------
+ */
+void
+yb_pgstat_set_catalog_version(uint64_t catalog_version)
+{
+	volatile PgBackendStatus *vbeentry = MyBEEntry;
+
+	PGSTAT_BEGIN_WRITE_ACTIVITY(vbeentry);
+
+	vbeentry->yb_st_catalog_version.version = catalog_version;
+
+	PGSTAT_END_WRITE_ACTIVITY(vbeentry);
+}
+
+/* ----------
+ * yb_pgstat_set_has_catalog_version() -
+ *
+ *		Set yb_st_catalog_version.has_version for my backend
+ * ----------
+ */
+void
+yb_pgstat_set_has_catalog_version(bool has_version)
+{
+	volatile PgBackendStatus *vbeentry = MyBEEntry;
+
+	PGSTAT_BEGIN_WRITE_ACTIVITY(vbeentry);
+
+	vbeentry->yb_st_catalog_version.has_version = has_version;
+
+	PGSTAT_END_WRITE_ACTIVITY(vbeentry);
+}
+
+void
+yb_pgstat_add_session_info(uint64_t session_id)
+{
+	volatile PgBackendStatus *vbeentry = NULL;
+
+	/* This code could be invoked either in a regular backend or in an
+	 * auxiliary process. In case of the latter, skip initializing shared
+	 * memory context. See note in pgstat_initalize() */
+	if (MyBEEntry == NULL)
+	{
+		/* Must be an auxiliary process */
+		Assert(MyAuxProcType != NotAnAuxProcess);
+		return;
+	}
+
+	vbeentry = MyBEEntry;
+
+	PGSTAT_BEGIN_WRITE_ACTIVITY(vbeentry);
+
+	vbeentry->yb_session_id = session_id;
+
+	PGSTAT_END_WRITE_ACTIVITY(vbeentry);
 }

@@ -62,7 +62,7 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 
 - The argument data types must be convertible to the expected type for that argument that was specified by the function definition.
 - Function execution will return a value of the specified type by the function definition.
-- YugabyteDB allows function calls to be used any where that expression is allowed.</li>
+- YugabyteDB allows function calls to be used any where that expression is allowed.
 
 ## CAST function
 
@@ -123,7 +123,7 @@ full-table operations into smaller sub-tasks that can be run in parallel.
 ### Querying a subset of the data
 
 One use of `partition_hash` is to query a subset of the data and get approximate count of rows in the table.
-For example, suppose you have a table `t` with partitioning columns `(h1,h2)`:
+For example, suppose you have a table `t` with partitioning columns `(h1,h2)` as follows:
 
 ```sql
 create table t (h1 int, h2 int, r1 int, r2 int, v int,
@@ -141,7 +141,7 @@ The value `512` comes from dividing the full hash partition range by the number 
 
 ### Parallel full table scans
 
-To do a distributed scan, you can issue, in this case, 128 queries each using a different hash range:
+To do a distributed scan, you can issue, in this case, 128 queries each using a different hash range as follows:
 
 ```sql
 .. where partition_hash(h1, h2) >= 0 and partition_hash(h1, h2) < 512;

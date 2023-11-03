@@ -1,21 +1,28 @@
 ---
-title: Covering indexes
+title: Covering indexes in YugabyteDB YSQL
+headerTitle: Covering indexes
 linkTitle: Covering indexes
 description: Using covering indexes in YSQL
+headContent: Explore covering indexes in YugabyteDB using YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
     identifier: covering-index-ysql
     parent: explore-indexes-constraints
-    weight: 255
+    weight: 250
 type: docs
 ---
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../covering-index-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
+    </a>
+  </li>
+  <li >
+    <a href="../covering-index-ycql/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
     </a>
   </li>
 </ul>
@@ -128,4 +135,4 @@ The following exercise demonstrates how to perform an index-only scan on an [exp
 
 ## Learn more
 
-Explore the [Benefits of an Index-only scan](https://blog.yugabyte.com/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/) in depth with a real world example.
+- Explore the [Benefits of an Index-only scan](https://www.yugabyte.com/blog/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/) in depth with a real world example.

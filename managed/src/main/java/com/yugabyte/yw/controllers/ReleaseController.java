@@ -9,14 +9,25 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -29,10 +40,12 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -54,17 +67,27 @@ public class ReleaseController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.ReleaseFormData",
         paramType = "body")
   })
-  public Result create(UUID customerUUID) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result create(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
-    Iterator<Map.Entry<String, JsonNode>> it = request().body().asJson().fields();
+    Iterator<Map.Entry<String, JsonNode>> it = request.body().asJson().fields();
     List<ReleaseFormData> versionDataList = new ArrayList<>();
     while (it.hasNext()) {
       Map.Entry<String, JsonNode> versionJson = it.next();
       ReleaseFormData formData =
           formFactory.getFormDataOrBadRequest(versionJson.getValue(), ReleaseFormData.class);
       formData.version = versionJson.getKey();
-      LOG.info("ReleaseController: Asked to add new release: {} ", formData.version);
+      if (!Util.isYbVersionFormatValid(formData.version)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, String.format("Version %s is not valid", formData.version));
+      }
+      LOG.info("Asked to add new release: {} ", formData.version);
       versionDataList.add(formData);
     }
 
@@ -83,11 +106,7 @@ public class ReleaseController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.Release,
-            versionDataList.toString(),
-            Audit.ActionType.Create,
-            request().body().asJson());
+            request, Audit.TargetType.Release, versionDataList.toString(), Audit.ActionType.Create);
     return YBPSuccess.empty();
   }
 
@@ -96,28 +115,52 @@ public class ReleaseController extends AuthenticatedController {
       response = Object.class,
       responseContainer = "Map",
       nickname = "getListOfReleases")
-  public Result list(UUID customerUUID, Boolean includeMetadata) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result list(UUID customerUUID, Boolean includeMetadata, @Nullable String arch) {
     Customer.getOrBadRequest(customerUUID);
     Map<String, Object> releases = releaseManager.getReleaseMetadata();
 
     // Filter out any deleted releases.
     Map<String, Object> filtered =
-        releases
-            .entrySet()
-            .stream()
+        releases.entrySet().stream()
             .filter(f -> !Json.toJson(f.getValue()).get("state").asText().equals("DELETED"))
+            .filter(
+                f -> {
+                  if (arch != null) {
+                    return releaseManager
+                        .metadataFromObject(f.getValue())
+                        .matchesArchitecture(Architecture.valueOf(arch));
+                  }
+                  return true;
+                })
             .collect(
                 Collectors.toMap(Entry::getKey, entry -> CommonUtils.maskObject(entry.getValue())));
     return PlatformResults.withData(includeMetadata ? filtered : filtered.keySet());
   }
 
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value = "List all releases valid in region",
+      value =
+          "Deprecated since YBA version 2.20.0.0, "
+              + "Use /api/v1/customers/{cUUID}/releases/:arch instead",
       response = Object.class,
       responseContainer = "Map",
       nickname = "getListOfRegionReleases")
+  @Deprecated
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result listByProvider(UUID customerUUID, UUID providerUUID, Boolean includeMetadata) {
     Customer.getOrBadRequest(customerUUID);
+    Provider.getOrBadRequest(customerUUID, providerUUID);
     List<Region> regionList = Region.getByProvider(providerUUID);
     if (CollectionUtils.isEmpty(regionList) || regionList.get(0) == null) {
       throw new PlatformServiceException(BAD_REQUEST, "No Regions configured for provider.");
@@ -129,15 +172,13 @@ public class ReleaseController extends AuthenticatedController {
     if (arch == null) {
       LOG.info(
           "ReleaseController: Could not determine region {} architecture. Listing all releases.",
-          region.code);
-      return list(customerUUID, includeMetadata);
+          region.getCode());
+      return list(customerUUID, includeMetadata, null);
     }
 
     // Filter for active and matching region releases.
     Map<String, Object> filtered =
-        releases
-            .entrySet()
-            .stream()
+        releases.entrySet().stream()
             .filter(f -> !Json.toJson(f.getValue()).get("state").asText().equals("DELETED"))
             .filter(f -> releaseManager.metadataFromObject(f.getValue()).matchesRegion(region))
             .collect(
@@ -157,7 +198,13 @@ public class ReleaseController extends AuthenticatedController {
         dataType = "Object",
         paramType = "body")
   })
-  public Result update(UUID customerUUID, String version) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result update(UUID customerUUID, String version, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
     ObjectNode formData;
@@ -165,7 +212,7 @@ public class ReleaseController extends AuthenticatedController {
     if (m == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid Release version: " + version);
     }
-    formData = (ObjectNode) request().body().asJson();
+    formData = (ObjectNode) request.body().asJson();
 
     // For now we would only let the user change the state on their releases.
     if (formData.has("state")) {
@@ -178,16 +225,18 @@ public class ReleaseController extends AuthenticatedController {
     }
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.Release,
-            version,
-            Audit.ActionType.Update,
-            Json.toJson(formData));
+            request, Audit.TargetType.Release, version, Audit.ActionType.Update);
     return PlatformResults.withData(m);
   }
 
   @ApiOperation(value = "Refresh a release", response = YBPSuccess.class)
-  public Result refresh(UUID customerUUID) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result refresh(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
     LOG.info("ReleaseController: refresh");
@@ -198,8 +247,7 @@ public class ReleaseController extends AuthenticatedController {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
     }
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.Release, null, Audit.ActionType.Refresh);
+        .createAuditEntry(request, Audit.TargetType.Release, null, Audit.ActionType.Refresh);
     return YBPSuccess.empty();
   }
 
@@ -207,7 +255,14 @@ public class ReleaseController extends AuthenticatedController {
       value = "Delete a release",
       response = ReleaseManager.ReleaseMetadata.class,
       nickname = "deleteRelease")
-  public Result delete(UUID customerUUID, String version) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result delete(UUID customerUUID, String version, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
     if (releaseManager.getReleaseByVersion(version) == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid Release version: " + version);
     }
@@ -221,8 +276,7 @@ public class ReleaseController extends AuthenticatedController {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
     }
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.Release, version, Audit.ActionType.Delete);
+        .createAuditEntry(request, Audit.TargetType.Release, version, Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 }

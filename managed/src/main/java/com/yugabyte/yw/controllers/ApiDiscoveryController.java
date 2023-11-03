@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.google.inject.Provider;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import java.util.List;
 import play.libs.Json;
 import play.mvc.Result;
@@ -15,6 +16,7 @@ public class ApiDiscoveryController extends AuthenticatedController {
 
   @Inject private Provider<Router> routesProvider;
 
+  @AuthzPath
   public Result index() {
     ArrayNode responseJson = Json.newArray();
     List<Router.RouteDocumentation> routeDocs = routesProvider.get().documentation();

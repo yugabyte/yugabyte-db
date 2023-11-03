@@ -33,8 +33,8 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/logging.h"
-#include "yb/rocksdb/util/sync_point.h"
 
+#include "yb/util/sync_point.h"
 #include "yb/util/test_kill.h"
 
 namespace rocksdb {
@@ -98,6 +98,10 @@ std::string ArchivedLogFileName(const std::string& name, uint64_t number) {
 
 std::string MakeTableFileName(const std::string& path, uint64_t number) {
   return MakeFileName(path, number, kRocksDbTFileExt);
+}
+
+std::string MakeTableDataFilePath(const std::string& path, uint64_t number) {
+  return MakeFileName(path, number, kRocksDbTSBlockFileExt);
 }
 
 std::string Rocks2LevelTableFileName(const std::string& fullname) {

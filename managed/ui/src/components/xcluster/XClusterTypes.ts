@@ -5,45 +5,19 @@ import {
   DROPDOWN_DIVIDER,
   MetricName,
   METRIC_TIME_RANGE_OPTIONS,
-  XClusterConfigStatus,
-  XClusterTableEligibility,
-  XClusterTableStatus
+  XClusterTableEligibility
 } from './constants';
 
 import { TableType, YBTable } from '../../redesign/helpers/dtos';
+import { XClusterTableDetails } from './dtos';
 
 /**
  * XCluster supported table type.
  */
-export type XClusterTableType = TableType.PGSQL_TABLE_TYPE | TableType.YQL_TABLE_TYPE;
-
-export interface XClusterConfig {
-  createTime: string;
-  modifyTime: string;
-  name: string;
-  paused: boolean;
-  sourceUniverseUUID?: string;
-  status: XClusterConfigStatus;
-  tableDetails: XClusterTableDetails[];
-  tables: string[];
-  targetUniverseUUID?: string;
-  uuid: string;
-}
-
-/**
- * Source: XClusterTableConfig.java
- */
-export interface XClusterTableDetails {
-  needBootstrap: boolean;
-  replicationSetupDone: true;
-  bootstrapCreateTime: string;
-  status: XClusterTableStatus;
-  restoreTime: string;
-  streamId: string;
-  tableId: string;
-}
+export type XClusterTableType = typeof TableType.PGSQL_TABLE_TYPE | typeof TableType.YQL_TABLE_TYPE;
 
 export type XClusterTable = YBTable & Omit<XClusterTableDetails, 'tableId'>;
+
 //------------------------------------------------------------------------------------
 // Table Selection Types
 
@@ -72,6 +46,7 @@ export interface XClusterTableCandidate extends YBTable {
  * Holds list of tables for a keyspace and provides extra metadata.
  */
 export interface KeyspaceItem {
+  name: string;
   tableEligibilityCount: {
     ineligible: number;
     eligibleInCurrentConfig: number;

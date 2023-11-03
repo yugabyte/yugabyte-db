@@ -23,12 +23,12 @@ Here are a few different criteria where YugabyteDB brings the best of SQL and No
 
 These can be loosely defined as the high-level concerns when choosing a database to build an application or a cloud service - such as its data model, the API it supports, its consistency semantics, and so on. The following table contrasts what YugabyteDB offers with SQL and NoSQL databases in general. Note that there are a number of different NoSQL databases each with their own nuanced behavior, and the table is not accurate for all NoSQL databases - it is just meant to give an idea.
 
-| Characteristic | SQL | NoSQL | YugabyteDB |
+| Characteristic  | SQL | NoSQL | YugabyteDB |
 | --------------- | ---------------- | ------------------ | ------------------ |
 | Data model | Well-defined schema (tables, rows, columns)  | Schema-less | Both |
 | API    | SQL | Various | Fully-relational SQL +<br/>Semi-relational SQL |
 | Consistency | Strong | Eventual | Strong |
-| Transactions | ACID transactions | None | ACID transactions |
+| Transactions | ACID | None | ACID |
 | High write throughput | No | Sometimes | Yes
 | Tunable read latency | No | Yes | Yes
 
@@ -70,13 +70,13 @@ Here is a table that lists some of the important features that YugabyteDB suppor
 
 ## Linear scalability
 
-In order to test the linear scalability of YugabyteDB, we have run some large cluster benchmarks (up to 50 nodes). We were able to scale YugabyteDB to millions of reads and writes per second while retaining low latencies. You can read more about our [large cluster tests and how we scaled YugabyteDB to millions of IOPS](https://www.yugabyte.com/blog/building-a-strongly-consistent-cassandra-with-better-performance/).
+To test the linear scalability of YugabyteDB, we ran some large cluster benchmarks (up to 50 nodes) and were able to scale YugabyteDB to millions of reads and writes per second while retaining low latencies. You can read more about our [large cluster tests and how we scaled YugabyteDB to millions of IOPS](https://www.yugabyte.com/blog/building-a-strongly-consistent-cassandra-with-better-performance/).
 
 ![Linear scalability at large cluster sizes](/images/develop/learn/yb-scale-out.png)
 
 ## High performance
 
-YugabyteDB was built to provide performance in a public cloud environment without sacrificing consistency. YugabyteDB is written in C++ for this very reason. The following chart shows how YugabyteDB compares with Apache Cassandra when running a YCSB benchmark.  Read more about the [YCSB benchmark results and what makes YugabyteDB performant](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
+YugabyteDB was built to provide performance in a public cloud environment without sacrificing consistency. YugabyteDB is written in C++ for this very reason. The following chart shows how YugabyteDB compares with Apache Cassandra when running a YCSB benchmark. Read more about the [YCSB benchmark results and what makes YugabyteDB performant](https://www.yugabyte.com/blog/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
 
 The following chart shows the total ops/second when running YBSB benchmark:
 

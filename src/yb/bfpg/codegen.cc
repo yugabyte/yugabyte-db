@@ -15,7 +15,7 @@
 #include <fstream>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/bfpg/directory.h"
 #include "yb/common/ql_type.h"
@@ -25,7 +25,6 @@ using std::endl;
 using std::map;
 using std::ofstream;
 using std::string;
-using std::to_string;
 using std::vector;
 
 namespace yb {
@@ -219,10 +218,6 @@ class BFCodegen {
             << "  }" << endl
             << endl;
 
-    GenerateExecFunc(entry, foper_h, BFApiParamOption::kSharedPtr);
-    foper_h << endl;
-    GenerateExecFunc(entry, foper_h, BFApiParamOption::kRawPtr);
-    foper_h << endl;
     GenerateExecFunc(entry, foper_h, BFApiParamOption::kRefAndRaw);
 
     // End operator class.
@@ -245,6 +240,7 @@ class BFCodegen {
     // When arguments are ref, character "&" is used to convert it to pointer. For argument that
     // are already pointers, no conversion is needed.
     const char *param_pointer = "params";
+    bool pass_result = true;
 
     switch (param_option) {
       case BFApiParamOption::kSharedPtr:
@@ -264,23 +260,22 @@ class BFCodegen {
         break;
       case BFApiParamOption::kRefAndRaw:
         // Reference of object.
-        foper_h << "  template<typename PType, typename RType>" << endl
-                << "  static Status ExecRefAndRaw(std::vector<PType> *params," << endl
-                << "                              RType *result) {" << endl;
+        foper_h << "  static Result<BFRetValue> ExecRefAndRaw(const BFParams& params) {" << endl;
 
         if (entry.param_types().size() == 1 && entry.param_types()[0] == DataType::TYPEARGS) {
           // If the caller used the kRefAndRaw option, we'll have to convert the params vector from
           // vector<object> to vector<object*>.
           param_pointer = "local_params";
-          foper_h << "    const auto count = params->size();" << endl
+          foper_h << "    const auto count = params.size();" << endl
                   << "    std::vector<PType*> local_params(count);" << endl
                   << "    for (size_t i = 0; i < count; i++) {" << endl
-                  << "      local_params[i] = &(*params)[i];" << endl
+                  << "      local_params[i] = &params[i];" << endl
                   << "    }" << endl;
           foper_h << "    return " << entry.cpp_name() << "(";
         } else {
-          param_pointer = "&(*params)";
+          param_pointer = "params";
           foper_h << "    return " << entry.cpp_name() << "(";
+          pass_result = false;
         }
     }
 
@@ -308,7 +303,7 @@ class BFCodegen {
       }
     }
     if (!QLType::IsUnknown(entry.return_type())) {
-      foper_h << param_end << "result";
+      foper_h << param_end << (pass_result ? "result" : "BFFactory()");
     }
     foper_h << ");" << endl;
 
@@ -325,6 +320,7 @@ class BFCodegen {
            << "#include \"yb/bfpg/base_operator.h\"" << endl
            << "#include \"yb/bfpg/directory.h\"" << endl
            << "#include \"yb/bfpg/gen_operator.h\"" << endl
+           << "#include \"yb/bfpg/gen_opcodes.h\"" << endl
            << endl
            << "#include <iostream>" << endl
            << "#include <vector>" << endl
@@ -357,56 +353,24 @@ class BFCodegen {
   void GenerateExecTable(string build_dir) {
     // File headers, includes, namespaces, and other declarations.
     ofstream ftable;
-    ftable.open(build_dir + "/gen_bfunc_table.h");
+    ftable.open(build_dir + "/gen_bfunc_table.cc");
 
     ftable << kFileStart
            << "#include <iostream>" << endl
            << "#include <vector>" << endl
            << "#include <functional>" << endl
            << endl
+           << "#include \"yb/bfpg/bfpg.h\"" << endl
            << "#include \"yb/bfpg/bfunc.h\"" << endl
            << "#include \"yb/bfpg/base_operator.h\"" << endl
            << "#include \"yb/bfpg/gen_operator.h\"" << endl
            << kFileNamespace;
 
-    // Generating table of functions whose outputs are shared pointers.
-    ftable << "template<typename PType, typename RType," << endl
-           << "         template<typename, typename> class CType," << endl
-           << "         template<typename> class AType>" << endl
-           << "const vector<std::function<Status(const std::vector<std::shared_ptr<PType>>&, "
-           << "const std::shared_ptr<RType>&)>>" << endl
-           << "    BFExecApi<PType, RType, CType, AType>::kBFExecFuncs = {" << endl;
-    for (size_t op_index = 0; op_index < operator_ids_.size(); op_index++) {
-      const BFClassInfo& bfclass = operator_ids_[op_index];
-      ftable << "  " << bfclass.class_name << "::" << "Exec<PType, RType>," << endl;
-    }
-    ftable << "};" << endl
-           << endl;
-
     // Generating table of functions whose outputs are raw pointers.
-    ftable << "template<typename PType, typename RType," << endl
-           << "         template<typename, typename> class CType," << endl
-           << "         template<typename> class AType>" << endl
-           << "const vector<std::function<Status(const std::vector<PType*>&, RType*)>>"
-           << endl
-           << "    BFExecApi<PType, RType, CType, AType>::kBFExecFuncsRaw = {" << endl;
+    ftable << "const BFFunctions BFExecApi::kBFExecFuncsRefAndRaw = {" << endl;
     for (size_t op_index = 0; op_index < operator_ids_.size(); op_index++) {
       const BFClassInfo& bfclass = operator_ids_[op_index];
-      ftable << "  " << bfclass.class_name << "::" << "ExecRaw<PType, RType>," << endl;
-    }
-    ftable << "};" << endl
-           << endl;
-
-    // Generating table of functions whose outputs are raw pointers.
-    ftable << "template<typename PType, typename RType," << endl
-           << "         template<typename, typename> class CType," << endl
-           << "         template<typename> class AType>" << endl
-           << "const vector<std::function<Status(std::vector<PType>*, RType*)>>"
-           << endl
-           << "    BFExecApi<PType, RType, CType, AType>::kBFExecFuncsRefAndRaw = {" << endl;
-    for (size_t op_index = 0; op_index < operator_ids_.size(); op_index++) {
-      const BFClassInfo& bfclass = operator_ids_[op_index];
-      ftable << "  " << bfclass.class_name << "::" << "ExecRefAndRaw<PType, RType>," << endl;
+      ftable << "  " << bfclass.class_name << "::" << "ExecRefAndRaw," << endl;
     }
     ftable << "};" << endl
            << endl;

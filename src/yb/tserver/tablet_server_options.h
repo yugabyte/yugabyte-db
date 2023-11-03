@@ -55,9 +55,6 @@ class TabletServerOptions : public yb::server::ServerBaseOptions {
 
   std::vector<std::shared_ptr<rocksdb::EventListener>> listeners;
 
-  rocksdb::Env* rocksdb_env;
-  encryption::UniverseKeyManager* universe_key_manager = nullptr;
-
  private:
   explicit TabletServerOptions(server::MasterAddressesPtr master_addresses);
 

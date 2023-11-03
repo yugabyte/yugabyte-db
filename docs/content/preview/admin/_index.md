@@ -15,35 +15,11 @@ type: indexpage
 
 {{< note title="Note" >}}
 
-Information about configuring the [YB-Master](../reference/configuration/yb-master/) and [YB-TServer](../reference/configuration/yb-tserver/) services is in the [Configuration](../reference/configuration/) section.
+For information about configuring [YB-Master](../reference/configuration/yb-master/) and [YB-TServer](../reference/configuration/yb-tserver/) services, refer to [Configuration](../reference/configuration/).
 
 {{< /note >}}
 
 <div class="row">
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="yb-ctl/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/admin/yb-ctl.png" aria-hidden="true" />
-        <div class="title">yb-ctl</div>
-      </div>
-      <div class="body">
-        Command line utility to create and manage local clusters on macOS or Linux.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="yb-docker-ctl/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/admin/yb-docker-ctl.png" aria-hidden="true" />
-        <div class="title">yb-docker-ctl</div>
-      </div>
-      <div class="body">
-        Command line utility to create and manage Docker-based local clusters.
-      </div>
-    </a>
-  </div>
-
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="ysqlsh/">
       <div class="head">
@@ -112,6 +88,30 @@ Information about configuring the [YB-Master](../reference/configuration/yb-mast
       </div>
       <div class="body">
         Extract all YugabyteDB databases into a SQL script file.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="yb-ctl/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/admin/yb-ctl.png" aria-hidden="true" />
+        <div class="title">yb-ctl</div>
+      </div>
+      <div class="body">
+        Command line utility to create and manage local clusters on macOS or Linux.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="yb-docker-ctl/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/admin/yb-docker-ctl.png" aria-hidden="true" />
+        <div class="title">yb-docker-ctl</div>
+      </div>
+      <div class="body">
+        Command line utility to create and manage Docker-based local clusters.
       </div>
     </a>
   </div>

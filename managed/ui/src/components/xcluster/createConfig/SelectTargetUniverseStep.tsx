@@ -6,10 +6,11 @@ import { YBFormInput, YBFormSelect } from '../../common/forms/fields';
 import { CreateXClusterConfigFormValues } from './CreateConfigModal';
 import { Universe } from '../../../redesign/helpers/dtos';
 import { Field, FormikProps } from 'formik';
-import { getUniverseStatus, universeState } from '../../universes/helpers/universeHelpers';
-import { fetchUniversesList } from '../../../actions/xClusterReplication';
+import { getUniverseStatus } from '../../universes/helpers/universeHelpers';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
-import { CollapsibleNote } from '../common/CollapsibleNote';
+import { UnavailableUniverseStates } from '../../../redesign/helpers/constants';
+import { CollapsibleNote } from '../sharedComponents/CollapsibleNote';
+import { api, universeQueryKey } from '../../../redesign/helpers/api';
 
 import styles from './SelectTargetUniverseStep.module.scss';
 
@@ -23,8 +24,7 @@ const NOTE_CONTENT = (
     <b>Note!</b> If the tables to replicate are not empty on this source universe, ensure that the
     <b> backup storage config can be accessed from both source and target universe </b>
     for bootstrapping. Particularly, <b>Network File System (NFS)</b> based storage configs may not
-    be accessible from universes in different regions. In that case, refer to the based storage
-    configs may not be accessible from universes in different regions. In that case, refer to the{' '}
+    be accessible from universes in different regions. In that case, refer to the{' '}
     <a href={YB_ADMIN_XCLUSTER_DOCUMENTATION_URL}>
       {'documentation for creating replication using yb-admin.'}
     </a>
@@ -54,8 +54,8 @@ export const SelectTargetUniverseStep = ({
   formik,
   currentUniverseUUID
 }: SelectTargetUniverseStepProps) => {
-  const universeListQuery = useQuery<Universe[]>(['universeList'], () =>
-    fetchUniversesList().then((res) => res.data)
+  const universeListQuery = useQuery<Universe[]>(universeQueryKey.ALL, () =>
+    api.fetchUniverseList()
   );
 
   if (universeListQuery.isLoading || universeListQuery.isIdle) {
@@ -84,7 +84,7 @@ export const SelectTargetUniverseStep = ({
             .filter(
               (universe) =>
                 universe.universeUUID !== currentUniverseUUID &&
-                getUniverseStatus(universe).state !== universeState.PAUSED
+                !UnavailableUniverseStates.includes(getUniverseStatus(universe).state)
             )
             .map((universe) => {
               return {

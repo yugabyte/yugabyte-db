@@ -18,8 +18,8 @@ import com.yugabyte.yw.controllers.HAAuthenticator;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
-import io.ebean.Ebean;
-import io.ebean.EbeanServer;
+import io.ebean.Database;
+import io.ebean.MockHelper;
 import java.util.List;
 import play.Application;
 import play.libs.Files;
@@ -30,20 +30,20 @@ import play.test.Helpers;
 public class FakeApi {
   private final String authToken;
   private final Application app;
-  private final EbeanServer appEBeanServer;
+  private final Database appEBeanServer;
 
   private static String getAuthToken() {
     Customer customer = Customer.find.query().where().eq("code", "tc").findOne();
     Users user;
     if (customer == null) {
       customer = Customer.create("vc", "Valid Customer");
-      Users.create("foo@bar.com", "password", Role.Admin, customer.uuid, false);
+      Users.create("foo@bar.com", "password", Role.Admin, customer.getUuid(), false);
     }
-    user = Users.find.query().where().eq("customer_uuid", customer.uuid).findOne();
+    user = Users.find.query().where().eq("customer_uuid", customer.getUuid()).findOne();
     return user.createAuthToken();
   }
 
-  public FakeApi(Application app, EbeanServer remoteEBenServer) {
+  public FakeApi(Application app, Database remoteEBenServer) {
     this.app = app;
     this.appEBeanServer = remoteEBenServer;
     authToken = getAuthToken();
@@ -60,12 +60,12 @@ public class FakeApi {
   }
 
   public Result route(Http.RequestBuilder request) {
-    EbeanServer currentDefaultServer = Ebean.getDefaultServer();
+    Database currentDefaultServer = null;
     try {
-      Ebean.register(appEBeanServer, true);
+      currentDefaultServer = MockHelper.mock(appEBeanServer, true);
       return Helpers.route(app, request);
     } finally {
-      Ebean.register(currentDefaultServer, true);
+      MockHelper.mock(currentDefaultServer, true);
     }
   }
 

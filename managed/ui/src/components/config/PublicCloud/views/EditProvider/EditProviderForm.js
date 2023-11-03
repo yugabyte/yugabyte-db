@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Alert } from 'react-bootstrap';
 import { YBButton, YBTextInputWithLabel } from '../../../../common/forms/fields';
 import { Field } from 'redux-form';
@@ -28,7 +28,8 @@ export default class EditProviderForm extends Component {
     const { editProvider, universeList, reloadCloudMetadata, switchToResultView } = this.props;
     const { providersInUse } = this.state;
     if (isNonEmptyObject(editProvider)) {
-      if(getPromiseState(editProvider).isSuccess() &&
+      if (
+        getPromiseState(editProvider).isSuccess() &&
         getPromiseState(prevProps.editProvider).isLoading()
       ) {
         reloadCloudMetadata();
@@ -63,7 +64,7 @@ export default class EditProviderForm extends Component {
     const { providersInUse } = this.state;
     let isHostedZoneIdValid = true;
     let verifyEditConditions = true;
-    
+
     if (!isNonEmptyString(hostedZoneId)) {
       isHostedZoneIdValid = false;
       verifyEditConditions = false;

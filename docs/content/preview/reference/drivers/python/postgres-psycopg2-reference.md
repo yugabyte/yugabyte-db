@@ -1,7 +1,8 @@
 ---
-title: Python Drivers
+title: PostgreSQL Psycopg2 Driver
+headerTitle: Python Drivers
 linkTitle: Python Drivers
-description: Python Drivers for YSQL
+description: PostgreSQL Psycopg2 Python Driver for YSQL
 headcontent: Python Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
@@ -28,7 +29,11 @@ type: docs
   </li>
 </ul>
 
-Psycopg is the most popular PostgreSQL database adapter for the Python programming language. Its main features are the complete implementation of the Python DB API 2.0 specification and the thread safety (several threads can share the same connection). YugabyteDB has full support for [Psycopg2](https://www.psycopg.org/).
+Psycopg is the most popular PostgreSQL database adapter for the Python programming language. Its main features are the complete implementation of the Python DB API 2.0 specification and the thread safety (several threads can share the same connection). YugabyteDB has full support for [Psycopg2](https://www.psycopg.org/). psycopg2 is based on libpq and supports the [SCRAM-SHA-256 authentication method](../../../../secure/authentication/password-authentication/#scram-sha-256).
+
+For details on using psycopg2, see [Psycopg documentation](https://www.psycopg.org/docs/).
+
+For a tutorial on building a sample Python application that uses psycopg2, see [Connect an application](../../../../drivers-orms/python/postgres-psycopg2/).
 
 ## Fundamentals
 

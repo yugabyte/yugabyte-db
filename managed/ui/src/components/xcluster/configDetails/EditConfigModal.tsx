@@ -1,19 +1,20 @@
-import React from 'react';
 import * as Yup from 'yup';
 import { Field } from 'formik';
 import { useMutation, useQueryClient } from 'react-query';
-import { toast } from 'react-toastify';
+import { AxiosError } from 'axios';
 
 import { editXclusterName } from '../../../actions/xClusterReplication';
 import { YBModalForm } from '../../common/forms';
-import { XClusterConfig } from '../XClusterTypes';
+import { XClusterConfig } from '../dtos';
 import { YBFormInput } from '../../common/forms/fields';
 import { XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN } from '../constants';
+import { handleServerError } from '../../../utils/errorHandlingUtils';
+import { xClusterQueryKey } from '../../../redesign/helpers/api';
 
 interface Props {
   visible: boolean;
   onHide: () => void;
-  replication: XClusterConfig;
+  xClusterConfig: XClusterConfig;
 }
 const validationSchema = Yup.object().shape({
   name: Yup.string()
@@ -25,9 +26,9 @@ const validationSchema = Yup.object().shape({
         value !== null && value !== undefined && !XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN.test(value)
     )
 });
-export function EditConfigModal({ onHide, visible, replication }: Props) {
+export function EditConfigModal({ onHide, visible, xClusterConfig }: Props) {
   const queryClient = useQueryClient();
-  const initialValues: any = { ...replication };
+  const initialValues: any = { ...xClusterConfig };
 
   const modifyXclusterOperation = useMutation(
     (values: XClusterConfig) => {
@@ -35,16 +36,11 @@ export function EditConfigModal({ onHide, visible, replication }: Props) {
     },
     {
       onSuccess: () => {
-        queryClient.invalidateQueries(['Xcluster', replication.uuid]);
+        queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
         onHide();
       },
-      onError: (err: any) => {
-        toast.error(
-          err.response.data.error instanceof String
-            ? err.response.data.error
-            : JSON.stringify(err.response.data.error)
-        );
-      }
+      onError: (error: Error | AxiosError) =>
+        handleServerError(error, { customErrorLabel: 'Create xCluster config request failed' })
     }
   );
 
@@ -69,7 +65,7 @@ export function EditConfigModal({ onHide, visible, replication }: Props) {
       initialValues={initialValues}
       submitLabel="Apply Changes"
       showCancelButton
-      render={(props: any) => {
+      render={() => {
         return (
           <Field
             name="name"

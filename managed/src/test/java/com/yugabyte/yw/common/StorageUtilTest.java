@@ -4,22 +4,21 @@ import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.data.CustomerConfigData;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.ybc.CloudStoreSpec;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.configs.CustomerConfig;
-import com.yugabyte.yw.models.configs.data.CustomerConfigData;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
-
-import junitparams.JUnitParamsRunner;
-import junitparams.Parameters;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -64,9 +63,16 @@ public class StorageUtilTest extends FakeDBApplication {
   @Before
   public void setup() {
     testCustomer = ModelFactory.testCustomer();
+    when(mockStorageUtilFactory.getStorageUtil(eq("NFS"))).thenReturn(mockNfsUtil);
+    when(mockStorageUtilFactory.getStorageUtil(eq("S3"))).thenReturn(mockAWSUtil);
+    when(mockStorageUtilFactory.getStorageUtil(eq("AZ"))).thenReturn(mockAZUtil);
+    when(mockStorageUtilFactory.getStorageUtil(eq("GCS"))).thenReturn(mockGCPUtil);
     doCallRealMethod().when(mockAWSUtil).checkStoragePrefixValidity(anyString(), anyString());
     when(mockAWSUtil.createRestoreCloudStoreSpec(anyString(), anyString(), any(), anyBoolean()))
         .thenCallRealMethod();
+    when(mockAWSUtil.getRegionLocationsMap(any())).thenCallRealMethod();
+    when(mockNfsUtil.getRegionLocationsMap(any())).thenCallRealMethod();
+    when(mockAWSUtil.createDsmCloudStoreSpec(anyString(), any())).thenCallRealMethod();
     when(mockAWSUtil.getBucketRegion(anyString(), any())).thenReturn("reg-1");
     when(mockAWSUtil.getOrCreateHostBase(any(), anyString(), anyString()))
         .thenReturn("s3.amazonaws.com");
@@ -74,13 +80,16 @@ public class StorageUtilTest extends FakeDBApplication {
     doCallRealMethod().when(mockNfsUtil).checkStoragePrefixValidity(anyString(), anyString());
     when(mockNfsUtil.createRestoreCloudStoreSpec(anyString(), anyString(), any(), anyBoolean()))
         .thenCallRealMethod();
+    when(mockNfsUtil.createDsmCloudStoreSpec(anyString(), any())).thenCallRealMethod();
     doCallRealMethod().when(mockAZUtil).checkStoragePrefixValidity(anyString(), anyString());
-    s3ConfigWithSlash = CustomerConfig.createWithFormData(testCustomer.uuid, s3FormDataWithSlash);
+    s3ConfigWithSlash =
+        CustomerConfig.createWithFormData(testCustomer.getUuid(), s3FormDataWithSlash);
     s3ConfigWithoutSlash =
-        CustomerConfig.createWithFormData(testCustomer.uuid, s3FormDataWithoutSlash);
+        CustomerConfig.createWithFormData(testCustomer.getUuid(), s3FormDataWithoutSlash);
     nfsConfigWithoutSlash =
-        CustomerConfig.createWithFormData(testCustomer.uuid, nfsFormDataNoSlash);
-    nfsConfigWithSlash = CustomerConfig.createWithFormData(testCustomer.uuid, nfsFormDataWithSlash);
+        CustomerConfig.createWithFormData(testCustomer.getUuid(), nfsFormDataNoSlash);
+    nfsConfigWithSlash =
+        CustomerConfig.createWithFormData(testCustomer.getUuid(), nfsFormDataWithSlash);
   }
 
   @Test(expected = Test.None.class)
@@ -108,7 +117,8 @@ public class StorageUtilTest extends FakeDBApplication {
       })
   public void testStoragePrefixValidityValid(
       String configType, String configLocation, String backupLocation) {
-    StorageUtil.getStorageUtil(configType)
+    mockStorageUtilFactory
+        .getStorageUtil(configType)
         .checkStoragePrefixValidity(configLocation, backupLocation);
   }
 
@@ -138,21 +148,24 @@ public class StorageUtilTest extends FakeDBApplication {
   public void testStoragePrefixValidityInvalid(
       String configType, String configLocation, String backupLocation)
       throws PlatformServiceException {
-    StorageUtil.getStorageUtil(configType)
+    mockStorageUtilFactory
+        .getStorageUtil(configType)
         .checkStoragePrefixValidity(configLocation, backupLocation);
   }
 
   private CloudStoreSpec createDsmSpec(
       String cloudType, String storageLocation, CustomerConfigData configData) {
-    return StorageUtil.getStorageUtil(cloudType)
-        .createRestoreCloudStoreSpec(storageLocation, "", configData, true);
+    return mockStorageUtilFactory
+        .getStorageUtil(cloudType)
+        .createDsmCloudStoreSpec(storageLocation, configData);
   }
 
   private CloudStoreSpec createRestoreSpec(
       String cloudType, String cloudDir, CustomerConfigData configData) {
-    return StorageUtil.getStorageUtil(cloudType)
+    return mockStorageUtilFactory
+        .getStorageUtil(cloudType)
         .createRestoreCloudStoreSpec(
-            ((CustomerConfigStorageData) configData).backupLocation, cloudDir, configData, false);
+            YbcBackupUtil.DEFAULT_REGION_STRING, cloudDir, configData, false);
   }
 
   @Test

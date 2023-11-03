@@ -14,18 +14,21 @@ type: docs
 
 The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Managed or locally. Refer to [Quick start](../../../quick-start-yugabytedb-managed/).
 
-In addition, **if you are using YugabyteDB Managed**, you need the following to run the sample applications:
+In addition, if you are using YugabyteDB Managed, you need the following to run the sample applications:
 
-- The cluster CA certificate
-- Your computer added to the cluster IP allow list
+- The cluster CA certificate.
+- Your computer added to the cluster IP allow list.
+- If your cluster is deployed in a VPC, you need Public Access enabled if you want to connect your application from a public IP address (this doesn't apply if you are using a Sandbox cluster).
 
 {{< note title="Note" >}}
 
-To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC networking in YugabyteDB Managed, refer to [VPC network](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
+To use smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC networking in YugabyteDB Managed, refer to [VPC network](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
 
-For applications that access the cluster from a non-peered network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from non-peered networks fall back to the upstream driver behaviour automatically.
+For applications that access the cluster from outside the VPC network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behavior automatically.
 
 {{< /note >}}
+
+For more information on connecting applications in YugabyteDB Managed, refer to [Connect applications](../../../yugabyte-cloud/cloud-connect/connect-applications/).
 
 ## Download your cluster certificate
 
@@ -53,3 +56,7 @@ To add your computer to the cluster IP allow list:
 1. Click **Save**.
 
 The allow list takes up to 30 seconds to become active.
+
+## Enable Public Access
+
+Clusters deployed in VPCs don't expose public IP addresses unless you explicitly turn on [Public Access](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access). If your cluster is in a VPC and you are connecting from a public IP address (such as your computer), enable Public Access on the cluster **Settings** tab.

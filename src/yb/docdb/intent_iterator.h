@@ -17,9 +17,9 @@
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
-#include "yb/docdb/intent.h"
+#include "yb/dockv/intent.h"
 #include "yb/docdb/intent_aware_iterator_interface.h"
-#include "yb/docdb/key_bytes.h"
+#include "yb/dockv/key_bytes.h"
 #include "yb/docdb/transaction_status_cache.h"
 
 #include "yb/rocksdb/db.h"
@@ -65,9 +65,9 @@ class IntentIterator {
 
   void Seek(const Slice& target);
 
-  void Seek(KeyBytes* target);
+  void Seek(dockv::KeyBytes* target);
 
-  void SeekForward(KeyBytes* target);
+  void SeekForward(dockv::KeyBytes* target);
 
   void Next();
 
@@ -75,7 +75,7 @@ class IntentIterator {
 
   Slice value() const;
 
-  void SeekOutOfSubKey(KeyBytes* target);
+  void SeekOutOfSubKey(dockv::KeyBytes* target);
 
   HybridTime max_seen_ht() { return max_seen_ht_; }
 
@@ -121,7 +121,10 @@ class IntentIterator {
 
   void UpdateResolvedIntentSubDocKeyEncoded();
 
-  inline void AppendStrongWriteAndPerformSeek(KeyBytes* key_bytes, bool seek_forward = false);
+  inline void AppendStrongWriteAndPerformSeek(
+      dockv::KeyBytes* key_bytes, bool seek_forward = false);
+
+  void HandleStatus(const Status& status);
 
  private:
   const ReadHybridTime read_time_;
@@ -137,25 +140,25 @@ class IntentIterator {
   Slice upperbound_;
 
   // SubDocKey (no HT).
-  KeyBytes resolved_intent_key_prefix_;
+  dockv::KeyBytes resolved_intent_key_prefix_;
 
   // DocHybridTime of resolved_intent_sub_doc_key_encoded_ is set to commit time or intent time in
   // case of intent is written by current transaction (stored in txn_op_context_).
   DocHybridTime resolved_intent_txn_dht_;
   DocHybridTime intent_dht_from_same_txn_ = DocHybridTime::kMin;
-  KeyBytes resolved_intent_sub_doc_key_encoded_;
+  dockv::KeyBytes resolved_intent_sub_doc_key_encoded_;
 
   mutable HybridTime max_seen_ht_;
 
-  KeyBytes resolved_intent_value_;
+  dockv::KeyBytes resolved_intent_value_;
 };
 
 struct DecodeStrongWriteIntentResult {
   Slice intent_prefix;
   Slice intent_value;
-  DocHybridTime intent_time;
-  DocHybridTime value_time;
-  IntentTypeSet intent_types;
+  EncodedDocHybridTime intent_time;
+  EncodedDocHybridTime value_time;
+  dockv::IntentTypeSet intent_types;
 
   // Whether this intent from the same transaction as specified in context.
   bool same_transaction = false;
@@ -181,7 +184,7 @@ struct DecodeStrongWriteIntentResult {
   //     must compare the intent's commit time with global_limit and potentially perform a read
   //     restart, because the transaction that wrote the intent might have been committed before our
   //     read transaction begin.
-  HybridTime MaxAllowedValueTime(const ReadHybridTime& read_time) const;
+  const EncodedDocHybridTime& MaxAllowedValueTime(const EncodedReadHybridTime& read_time) const;
 };
 
 inline std::ostream& operator<<(std::ostream& out, const DecodeStrongWriteIntentResult& result) {
@@ -199,8 +202,12 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
     rocksdb::Iterator* intent_iter,
     TransactionStatusCache* transaction_status_cache);
 
-Slice StrongWriteSuffix(const KeyBytes& key);
+Slice StrongWriteSuffix(Slice key);
 
-void AppendStrongWrite(KeyBytes* out);
+inline Slice StrongWriteSuffix(const dockv::KeyBytes& key) {
+  return StrongWriteSuffix(key.AsSlice());
+}
+
+void AppendStrongWrite(dockv::KeyBytes* out);
 
 }  // namespace yb::docdb

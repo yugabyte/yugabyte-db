@@ -30,8 +30,6 @@
 namespace yb {
 namespace ql {
 
-using std::shared_ptr;
-
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ColumnRefsToPB(const PTDmlStmt *tnode,
@@ -68,6 +66,12 @@ Status Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
       if(VERIFY_RESULT(exec_context_->params().IsBindVariableUnset(bind_pt->name()->c_str(),
                                                                    bind_pt->pos()))) {
         VLOG(3) << "Value unset for column: " << bind_pt->name()->c_str();
+        if (col_desc->is_primary()) {
+          VLOG(3) << "Unexpected value unset for primary key. Current request: "
+                  << req->DebugString();
+          return exec_context_->Error(tnode, ErrorCode::NULL_ARGUMENT_FOR_PRIMARY_KEY);
+        }
+
         continue;
       }
     }
@@ -77,7 +81,7 @@ Status Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
     RETURN_NOT_OK(PTExprToPB(expr, expr_pb));
 
     if (col_desc->is_primary()) {
-      RETURN_NOT_OK(EvalExpr(expr_pb, QLTableRow::empty_row()));
+      RETURN_NOT_OK(EvalExpr(expr_pb, qlexpr::QLTableRow::empty_row()));
     }
 
     // Null values not allowed for primary key: checking here catches nulls introduced by bind.

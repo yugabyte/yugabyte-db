@@ -30,10 +30,10 @@
 #include "yb/rocksdb/convenience.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/options_helper.h"
-#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/version_info.h"
 
 namespace rocksdb {
@@ -52,7 +52,7 @@ Status PersistRocksDBOptions(const DBOptions& db_opt,
                              const std::string& file_name, Env* env,
                              const IncludeHeader include_header,
                              const IncludeFileVersion include_file_version) {
-  TEST_SYNC_POINT("PersistRocksDBOptions:start");
+  DEBUG_ONLY_TEST_SYNC_POINT("PersistRocksDBOptions:start");
   if (cf_names.size() != cf_opts.size()) {
     return STATUS(InvalidArgument,
         "cf_names.size() and cf_opts.size() must be the same");

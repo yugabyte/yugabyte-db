@@ -3,8 +3,6 @@ title: Build a Node.js application that uses YSQL
 headerTitle: Build a Node.js application
 description: Build a simple Node.js application using the driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 headContent: "Client driver: node-postgres"
-aliases:
-  - /preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/
 menu:
   preview:
     parent: build-apps

@@ -45,6 +45,7 @@ class LightweightMessage {
 
   std::string ShortDebugString() const;
   std::string SerializeAsString() const;
+  void AppendToString(std::string* out) const;
 };
 
 template <class MsgPtr, class LWMsgPtr>
@@ -227,7 +228,7 @@ inline uint8_t* PackedWrite(const Value& value, size_t body_size, uint8_t* out) 
   return out;
 }
 
-Arena& empty_arena();
+ThreadSafeArena& empty_arena();
 
 template <class T>
 const T& empty_message() {
@@ -237,10 +238,8 @@ const T& empty_message() {
 
 template <class T, class... Args>
 std::shared_ptr<T> SharedMessage(Args&&... args) {
-  AllocatedBuffer buffer;
-  SharedArenaAllocator<Arena> allocator(&buffer);
-  auto arena = std::allocate_shared<PreallocatedArena>(allocator, buffer);
-  auto t = arena->arena().NewObject<T>(&arena->arena(), std::forward<Args>(args)...);
+  auto arena = SharedArena();
+  auto* t = arena->NewArenaObject<T>(std::forward<Args>(args)...);
   return std::shared_ptr<T>(std::move(arena), t);
 }
 

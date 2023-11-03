@@ -121,7 +121,7 @@ class SanityTestSpecialComparator : public SanityTest {
     const char* Name() const override {
       return "rocksdb.NewComparator";
     }
-    int Compare(const Slice& a, const Slice& b) const override {
+    int Compare(Slice a, Slice b) const override {
       return BytewiseComparator()->Compare(a, b);
     }
     virtual void FindShortestSeparator(std::string* s,

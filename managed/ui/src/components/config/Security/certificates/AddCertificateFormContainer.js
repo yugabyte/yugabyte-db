@@ -14,6 +14,7 @@ import {
 } from '../../../../actions/customers';
 import { closeDialog } from '../../../../actions/modal';
 import { toast } from 'react-toastify';
+import { handleCACertErrMsg } from '../../../customCACerts';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -29,6 +30,9 @@ const mapDispatchToProps = (dispatch) => {
             dispatch(getTlsCertificatesResponse(response.payload));
           });
         } else {
+          if(handleCACertErrMsg(response.payload)){
+            return;
+          }
           const errorMessage = response.payload?.response?.data?.error || response.payload.message;
           toast.error(`Certificate adding has been failed:  ${errorMessage}`);
         }
@@ -46,6 +50,9 @@ const mapDispatchToProps = (dispatch) => {
             dispatch(getTlsCertificatesResponse(response.payload));
           });
         } else {
+          if(handleCACertErrMsg(response.payload)){
+            return;
+          }
           const errorMessage = response.payload?.response?.data?.error || response.payload.message;
           toast.error(`Certificate updation failed:  ${errorMessage}`);
         }

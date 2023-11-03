@@ -17,7 +17,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.Statement;
 import java.util.Map;
@@ -25,14 +25,14 @@ import java.util.HashMap;
 
 import static org.yb.AssertionWrappers.assertEquals;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestPgIndexSelectiveUpdate extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgIndexSelectiveUpdate.class);
 
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("TEST_export_intentdb_metrics", "true");
+    flagMap.put("export_intentdb_metrics", "true");
     return flagMap;
   }
 
@@ -145,6 +145,60 @@ public class TestPgIndexSelectiveUpdate extends BasePgSQLTest {
 
       // column 8 is changed. No include columns hence just the table and index are updated.
       stmt.execute(String.format("update %s set col8=35 where pk=1", TABLE_NAME));
+      updateCounter();
+      checkWrites(0, 0, 0, 0, 2);
+    }
+  }
+
+  /**
+   * Test index updates with pushdown disabled and non-constant SET clause expressions.
+   * Not pushable expressions should not prevent index analysis.
+   *
+   * @throws Exception
+   */
+  @Test
+  public void testUpdateTableIndexWritesNoPushdown() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      prepareTest(stmt);
+
+      // Disable expression pushdown
+      stmt.execute("SET yb_enable_expression_pushdown to false");
+
+      // Add the value of metrics before updating the table test
+      updateCounter();
+
+      // column 4 is changed. this changes idx_col3, idx_col4_idx_col5_idx_col6.
+      stmt.execute(String.format("update %s set col4=col4+1 where pk=1", TABLE_NAME));
+      updateCounter();
+      checkWrites(3, 0, 0, 3, 0);
+
+      // column 6 is changed. this changes idx_col3, idx_col5, idx_col6, idx_col4_idx_col5_idx_col6.
+      stmt.execute(String.format("update %s set col6=col6+1 where pk=1", TABLE_NAME));
+      updateCounter();
+      checkWrites(3, 3, 3, 3, 0);
+
+      // column 5 is changed. this changes idx_col3, idx_col5, idx_col4_idx_col5_idx_col6.
+      stmt.execute(String.format("update %s set col5=col5+1 where pk=1", TABLE_NAME));
+      updateCounter();
+      checkWrites(3, 3, 0, 3, 0);
+
+      // column 9 is changed. this changes idx_col6.
+      stmt.execute(String.format("update %s set col9=col9+1 where pk=1", TABLE_NAME));
+      updateCounter();
+      checkWrites(0, 0, 3, 0, 0);
+
+      // column 2 is changed. this does not affect any index.
+      stmt.execute(String.format("update %s set col2=col2+1 where pk=1", TABLE_NAME));
+      updateCounter();
+      checkWrites(0, 0, 0, 0, 0);
+
+      // column 9 is changed for multiple rows.
+      stmt.execute(String.format("update %s set col9=col9+1 where pk>1", TABLE_NAME));
+      updateCounter();
+      checkWrites(0, 0, 7, 0, 0);
+
+      // column 8 is changed. No include columns hence just the table and index are updated.
+      stmt.execute(String.format("update %s set col8=col8+1 where pk=1", TABLE_NAME));
       updateCounter();
       checkWrites(0, 0, 0, 0, 2);
     }

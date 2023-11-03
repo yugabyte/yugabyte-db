@@ -9,9 +9,15 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.HashMap;
@@ -23,16 +29,18 @@ import play.mvc.Http.Status;
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(converter = VMImageUpgradeParams.Converter.class)
 public class VMImageUpgradeParams extends UpgradeTaskParams {
-
   public enum VmUpgradeTaskType {
     VmUpgradeWithBaseImages,
     VmUpgradeWithCustomImages,
     None
   }
 
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.0.0")
   @ApiModelProperty(
-      value = "Map  of region UUID to AMI name",
-      required = true,
+      value =
+          "Map of region UUID to AMI name. Deprecated since "
+              + "YBA version 2.18.0.0, Use imageBundle instead.",
+      required = false,
       example =
           "{\n"
               + "    'b28e0813-4866-4a2d-89f3-52265766d666':"
@@ -45,6 +53,20 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
               + "  }")
   public Map<UUID, String> machineImages = new HashMap<>();
 
+  // Use whenwe want to use a different SSH_USER instead of what is defined in the default
+  // accessKey.
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.0.0")
+  @ApiModelProperty(
+      value =
+          "Map of region UUID to SSH User override. Deprecated since "
+              + "YBA version 2.18.0.0, Use imageBundle instead.",
+      required = false,
+      example = "{\n" + "    'b28e0813-4866-4a2d-89f3-52265766d666':" + " 'ec2-user',\n" + "  }")
+  public Map<UUID, String> sshUserOverrideMap = new HashMap<>();
+
+  @ApiModelProperty("ImageBundle to be used for upgrade")
+  public UUID imageBundleUUID;
+
   public boolean forceVMImageUpgrade = false;
   public String ybSoftwareVersion = null;
 
@@ -56,15 +78,17 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
 
   @JsonCreator
   public VMImageUpgradeParams(
-      @JsonProperty(value = "machineImages", required = true) Map<UUID, String> machineImages) {
+      @JsonProperty(value = "machineImages", required = false) Map<UUID, String> machineImages,
+      @JsonProperty(value = "imageBundleUUID", required = false) UUID imageBundleUUID) {
     this.machineImages = machineImages;
+    this.imageBundleUUID = imageBundleUUID;
   }
 
   @Override
   // This method is not just doing verification. It is also setting instance members
   // which are used in other methods.
-  public void verifyParams(Universe universe) {
-    super.verifyParams(universe);
+  public void verifyParams(Universe universe, boolean isFirstTry) {
+    super.verifyParams(universe, isFirstTry);
 
     if (upgradeOption != UpgradeOption.ROLLING_UPGRADE) {
       throw new PlatformServiceException(
@@ -80,18 +104,19 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
         (StringUtils.isNotBlank(ybSoftwareVersion)
             && !ybSoftwareVersion.equals(userIntent.ybSoftwareVersion));
     CloudType provider = userIntent.providerType;
-    if (!(provider == CloudType.gcp || provider == CloudType.aws)) {
+    if (!(provider == CloudType.gcp || provider == CloudType.aws || provider == CloudType.azu)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
-          "VM image upgrade is only supported for AWS / GCP, got: " + provider.toString());
+          "VM image upgrade is only supported for cloud providers, got: " + provider.toString());
     }
-    if (UniverseDefinitionTaskParams.hasEphemeralStorage(userIntent)) {
+    if (UniverseDefinitionTaskParams.hasEphemeralStorage(universe.getUniverseDetails())) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "Cannot upgrade a universe with ephemeral storage.");
     }
 
-    if (machineImages.isEmpty()) {
-      throw new PlatformServiceException(Status.BAD_REQUEST, "machineImages param is required.");
+    if ((machineImages == null || machineImages.isEmpty()) && imageBundleUUID == null) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "machineImages/imageBundle param is required.");
     }
 
     nodeToRegion.clear();
@@ -99,19 +124,43 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
       if (node.isMaster || node.isTserver) {
         Region region =
             AvailabilityZone.maybeGet(node.azUuid)
-                .map(az -> az.region)
+                .map(az -> az.getRegion())
                 .orElseThrow(
                     () ->
                         new PlatformServiceException(
                             Status.BAD_REQUEST,
                             "Could not find region for AZ " + node.cloudInfo.az));
 
-        if (!machineImages.containsKey(region.uuid)) {
+        if (machineImages != null && !machineImages.containsKey(region.getUuid())) {
           throw new PlatformServiceException(
               Status.BAD_REQUEST, "No VM image was specified for region " + node.cloudInfo.region);
+        } else if (imageBundleUUID != null) {
+          ImageBundle bundle = ImageBundle.getOrBadRequest(imageBundleUUID);
+          if (bundle == null) {
+            throw new PlatformServiceException(
+                Status.BAD_REQUEST,
+                String.format("Image bundle with UUID %s does not exist", imageBundleUUID));
+          }
+          if (bundle.getProvider().getCloudCode().equals(CloudType.aws)
+              && !super.runtimeConfGetter.getStaticConf().getBoolean("yb.cloud.enabled")
+              && !super.runtimeConfGetter.getGlobalConf(
+                  GlobalConfKeys.disableImageBundleValidation)) {
+            Map<String, ImageBundleDetails.BundleInfo> regionsBundleInfo =
+                bundle.getDetails().getRegions();
+            // Validate that the provided image bundle contains all the regions
+            // that are present on the univserse being upgraded.
+            CloudSpecificInfo cloudSpecificInfo = node.cloudInfo;
+            if (!regionsBundleInfo.containsKey(cloudSpecificInfo.region)) {
+              throw new PlatformServiceException(
+                  Status.BAD_REQUEST,
+                  String.format(
+                      "Image Bundle %s is missing AMI ID for region %s",
+                      bundle.getName(), cloudSpecificInfo.region));
+            }
+          }
         }
 
-        nodeToRegion.putIfAbsent(node.nodeUuid, region.uuid);
+        nodeToRegion.putIfAbsent(node.nodeUuid, region.getUuid());
       }
     }
   }

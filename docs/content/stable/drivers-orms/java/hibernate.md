@@ -1,30 +1,35 @@
 ---
-title: Use an ORM
+title: Hibernate ORM
+headerTitle: Use an ORM
 linkTitle: Use an ORM
-description: Java ORM support for YugabyteDB
+description: Java Hibernate ORM support for YugabyteDB
 headcontent: Java ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:
     identifier: java-orm
     parent: java-drivers
-    weight: 600
+    weight: 500
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
+    <a href="../hibernate/" class="nav-link active">
+      Hibernate ORM
+    </a>
+  </li>
+
+  <li >
     <a href="../ebean/" class="nav-link ">
-      <i class="fa-brands fa-java" aria-hidden="true"></i>
       Ebean ORM
     </a>
   </li>
 
   <li >
-    <a href="../hibernate" class="nav-link active">
-      <i class="fa-brands fa-java" aria-hidden="true"></i>
-      Hibernate ORM
+    <a href="../mybatis/" class="nav-link ">
+      MyBatis
     </a>
   </li>
 
@@ -34,15 +39,15 @@ type: docs
 
 YugabyteDB YSQL API has full compatibility with Hibernate ORM for Data persistence in Java applications. This page provides details for getting started with Hibernate ORM for connecting to YugabyteDB.
 
-## Working with domain objects
+## CRUD operations
 
-This section describes how to use the Java objects (domain objects) to store and retrieve data from YugabyteDB databases.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Java ORM example application](../../orms/java/ysql-hibernate/) page.
 
-Java developers are often required to store the domain objects of a Java application into the database tables. An ORM tool is used by developers to handle database access, and to map their object-oriented domain classes into the database tables. It simplifies the CRUD operations on your domain objects and allows the evolution of domain objects to be applied to the database tables.
+The following sections demonstrate how to perform common tasks required for Java application development using the Hibernate ORM.
 
 ### Step 1: Add the Hibernate ORM dependency
 
-If you're using [Maven](https://maven.apache.org/guides/development/guide-building-maven.html/), add the following to your project's `pom.xml` file.
+If you're using [Maven](https://maven.apache.org/guides/development/guide-building-maven.html), add the following to your project's `pom.xml` file.
 
 ```xml
 <dependency>
@@ -58,14 +63,14 @@ If you're using [Maven](https://maven.apache.org/guides/development/guide-buildi
 </dependency>
 ```
 
-If you're using [Gradle](https://docs.gradle.org/current/samples/sample_building_java_applications.html/), add the following dependencies to your `build.gradle` file:
+If you're using [Gradle](https://docs.gradle.org/current/samples/sample_building_java_applications.html), add the following dependencies to your `build.gradle` file:
 
 ```java
 implementation 'org.hibernate:hibernate-core:5.4.19.Final'
 implementation 'org.hibernate:hibernate-annotations:3.5.6-Final'
 ```
 
-Note: Hibernate ORM can be used with the [YugabyteDB JDBC driver](../yugabyte-jdbc/) and the [PostgreSQL JDBC Driver](../postgres-jdbc/).
+Note: Hibernate ORM can be used with the [YugabyteDB JDBC driver](../yugabyte-jdbc) and the [PostgreSQL JDBC Driver](../postgres-jdbc).
 
 ### Step 2: Implementing ORM mapping for YugabyteDB
 
@@ -230,6 +235,7 @@ Inserted data: INSERT INTO employee (id, name, age, language) VALUES (1, 'John',
 Query returned: name=John, age=35, language: Java
 ```
 
-## Next Steps
+## Learn more
 
-- Explore [Scaling Java Applications](../../../explore/linear-scalability/) with YugabyteDB.
+- Build Java applications using [Ebean ORM](../ebean/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)

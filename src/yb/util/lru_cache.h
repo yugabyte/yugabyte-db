@@ -67,16 +67,28 @@ class LRUCache {
     return impl_.template get<IdTag>().erase(key);
   }
 
-  // Erase entry from cache. Returns true if entry was removed.
+  // Erase entry from cache. Returns number of removed entries.
   template <class Key>
   size_t Erase(const Key& key) {
     return erase(key);
   }
 
+  // Erase by usage order iterator
+  const_iterator erase(const_iterator pos) {
+    return impl_.erase(pos);
+  }
+
+  // Erase by usage order iterators
+  const_iterator erase(const_iterator first, const_iterator last) {
+    return impl_.erase(first, last);
+  }
+
+  // Begin of usage order
   const_iterator begin() const {
     return impl_.begin();
   }
 
+  // End of usage order
   const_iterator end() const {
     return impl_.end();
   }

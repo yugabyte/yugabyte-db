@@ -41,12 +41,12 @@ type: indexpage
   <li>
     <a href="nodejs/yugabyte-pg-reference/" class="orange">
       <i class="fa-brands fa-node-js"></i>
-      NodeJS
+      Node.js
     </a>
   </li>
 
   <li>
-    <a href="csharp/postgres-npgsql-reference/" class="orange">
+    <a href="csharp/yb-npgsql-reference/" class="orange">
       <i class="icon-csharp"></i>
       C#
     </a>
@@ -54,7 +54,7 @@ type: indexpage
 
 </ul>
 
-### Other languages
+### Additional drivers
 
 <div class="row">
 
@@ -62,7 +62,7 @@ type: indexpage
     <a class="section-link icon-offset" href="ysql-client-drivers/">
       <div class="head">
         <img class="icon" src="/images/section_icons/api/ysql.png" aria-hidden="true" />
-        <div class="title">Client drivers for YSQL API</div>
+        <div class="title">Additional drivers for YSQL API</div>
       </div>
       <div class="body">
         Find a supported client driver to connect to and interact with YugabyteDB using the YSQL API.

@@ -29,6 +29,7 @@
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/format.h"
+#include "yb/util/jsonwriter.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
@@ -63,6 +64,12 @@ DEFINE_UNKNOWN_int64(cql_processors_limit, -4000,
 DEFINE_UNKNOWN_bool(cql_check_table_schema_in_paging_state, true,
             "Return error for prepared SELECT statement execution if the table was altered "
             "during the prepared statement execution.");
+DEFINE_RUNTIME_bool(ycql_enable_stat_statements, true, "If enabled, it will track queries "
+            "and dump the metrics on http://localhost:12000/statements.");
+DEFINE_RUNTIME_int64(cql_dump_statement_metrics_limit, 5000,
+            "Limit the number of statements that are dumped at the /statements endpoint.");
+DEFINE_RUNTIME_int32(cql_unprepared_stmts_entries_limit, 500,
+            "Limit the number of unprepared statements that are being tracked.");
 
 namespace yb {
 namespace cqlserver {
@@ -72,11 +79,7 @@ const char* const kRoleColumnNameCanLogin = "can_login";
 
 using std::shared_ptr;
 using std::string;
-using std::unique_ptr;
-using std::vector;
 using strings::Substitute;
-using yb::client::YBSchema;
-using yb::client::YBSession;
 using yb::client::YBMetaDataCache;
 using yb::rpc::InboundCall;
 
@@ -128,9 +131,10 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts)
       parser_pool_(ParserFactory(cql_metrics_.get()), ParserDeleter(cql_metrics_.get())),
       messenger_(server->messenger()) {
 
-  // Setup prepared statements' memory tracker. Add garbage-collect function to delete least
-  // recently used statements when limit is hit.
-  prepared_stmts_mem_tracker_ = MemTracker::CreateTracker(
+  // Setup statements' memory tracker. Add garbage-collect function to delete least
+  // recently used statements when limit is hit. Tracks both the prepared as well as
+  // unprepared statements' memory usage.
+  stmts_mem_tracker_ = MemTracker::CreateTracker(
       FLAGS_cql_service_max_prepared_statement_size_bytes > 0 ?
       FLAGS_cql_service_max_prepared_statement_size_bytes : -1,
       "CQL prepared statements", server->mem_tracker());
@@ -138,6 +142,8 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts)
   LOG(INFO) << "CQL processors limit: " << CQLProcessorsLimit();
 
   processors_mem_tracker_ = MemTracker::CreateTracker("CQL processors", server->mem_tracker());
+
+  requests_mem_tracker_ = MemTracker::CreateTracker("CQL Requests", server->mem_tracker());
 
   auth_prepared_stmt_ = std::make_shared<ql::Statement>(
       "",
@@ -157,11 +163,13 @@ CQLServiceImpl::~CQLServiceImpl() {
 client::YBClient* CQLServiceImpl::client() const {
   auto client = server_->tserver()->client();
   if (client && !is_metadata_initialized_.load(std::memory_order_acquire)) {
-    std::lock_guard<std::mutex> l(metadata_init_mutex_);
+    std::lock_guard l(metadata_init_mutex_);
     if (!is_metadata_initialized_.load(std::memory_order_acquire)) {
+      auto meta_data_cache_mem_tracker =
+          MemTracker::FindOrCreateTracker(0, "CQL Metadata cache", server_->mem_tracker());
       // Create and save the metadata cache object.
-      metadata_cache_ = std::make_shared<YBMetaDataCache>(client,
-                                                          FLAGS_use_cassandra_authentication);
+      metadata_cache_ = std::make_shared<YBMetaDataCache>(
+          client, FLAGS_use_cassandra_authentication, meta_data_cache_mem_tracker);
       is_metadata_initialized_.store(true, std::memory_order_release);
     }
   }
@@ -175,13 +183,13 @@ const std::shared_ptr<client::YBMetaDataCache>& CQLServiceImpl::metadata_cache()
 }
 
 void CQLServiceImpl::CompleteInit() {
-  prepared_stmts_mem_tracker_->AddGarbageCollector(shared_from_this());
+  stmts_mem_tracker_->AddGarbageCollector(shared_from_this());
 }
 
 void CQLServiceImpl::Shutdown() {
   decltype(processors_) processors;
   {
-    std::lock_guard<std::mutex> guard(processors_mutex_);
+    std::lock_guard guard(processors_mutex_);
     processors.swap(processors_);
   }
   for (const auto& processor : processors) {
@@ -214,7 +222,7 @@ Result<CQLProcessor*> CQLServiceImpl::GetProcessor() {
   {
     // Retrieve the next available processor. If none is available, allocate a new slot in the list.
     // Then create the processor outside the mutex below.
-    std::lock_guard<std::mutex> guard(processors_mutex_);
+    std::lock_guard guard(processors_mutex_);
     if (next_available_processor_ != processors_.end()) {
       return (next_available_processor_++)->get();
     }
@@ -235,48 +243,73 @@ Result<CQLProcessor*> CQLServiceImpl::GetProcessor() {
 
 void CQLServiceImpl::ReturnProcessor(const CQLProcessorListPos& pos) {
   // Put the processor back before the next available one.
-  std::lock_guard<std::mutex> guard(processors_mutex_);
+  std::lock_guard guard(processors_mutex_);
   processors_.splice(next_available_processor_, processors_, pos);
   next_available_processor_ = pos;
 }
 
-shared_ptr<CQLStatement> CQLServiceImpl::AllocatePreparedStatement(
-    const ql::CQLMessage::QueryId& query_id, const string& query, ql::QLEnv* ql_env) {
-  // Get exclusive lock before allocating a prepared statement and updating the LRU list.
-  std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
-
+shared_ptr<CQLStatement> CQLServiceImpl::AllocateStatement(
+    const ql::CQLMessage::QueryId& query_id, const string& query,
+    ql::QLEnv* ql_env, IsPrepare is_prepare) {
   shared_ptr<CQLStatement> stmt;
-  const auto itr = prepared_stmts_map_.find(query_id);
-  bool is_new_stmt = (itr == prepared_stmts_map_.end());
+  if (!is_prepare &&
+      (!FLAGS_ycql_enable_stat_statements || FLAGS_cql_unprepared_stmts_entries_limit == 0)) {
+    return stmt;
+  }
+  // Get exclusive lock before allocating a statement and updating the LRU list.
+  std::lock_guard guard(is_prepare ? prepared_stmts_mutex_ : unprepared_stmts_mutex_);
+
+  CQLStatementMap& stmts_map = (is_prepare ? prepared_stmts_map_ : unprepared_stmts_map_);
+  CQLStatementList& stmts_list = (is_prepare ? prepared_stmts_list_ : unprepared_stmts_list_);
+
+  const auto itr = stmts_map.find(query_id);
+  bool is_new_stmt = (itr == stmts_map.end());
 
   if (!is_new_stmt) {
     stmt = itr->second;
-    const Result<bool> is_altered_res = stmt->IsYBTableAltered(ql_env);
-    // The table is not available if (!is_altered_res.ok()).
-    // Usually it happens if the table was deleted.
-    if (!is_altered_res.ok() || *is_altered_res) {
-      is_new_stmt = true;
-      DeletePreparedStatementUnlocked(stmt);
+    if (is_prepare) {
+      const Result<bool> is_altered_res = stmt->IsYBTableAltered(ql_env);
+      // The table is not available if (!is_altered_res.ok()).
+      // Usually it happens if the table was deleted.
+      if (!is_altered_res.ok() || *is_altered_res) {
+        is_new_stmt = true;
+        DeleteLruStatementUnlocked(stmt, &stmts_list, &stmts_map);
+      }
     }
   }
 
   if (is_new_stmt) {
+    // Before inserting, in case of unprepared statements, if the limit for the maximum number of
+    // statements stored in the cache is reached, delete the least recently used statement from
+    // the cache.
+    if (!is_prepare &&
+        static_cast<int>(stmts_list.size()) >= FLAGS_cql_unprepared_stmts_entries_limit) {
+      DeleteLruStatementUnlocked(stmts_list.back(), &stmts_list, &stmts_map);
+      VLOG(1) << "InsertStatement: deleted the least recent unprepared statement due to CQL cache"
+              << " limit = " << FLAGS_cql_unprepared_stmts_entries_limit;
+    }
+
     // Allocate the prepared statement placeholder that multiple clients trying to prepare the same
     // statement to contend on. The statement will then be prepared by one client while the rest
     // wait for the results.
-    stmt = prepared_stmts_map_.emplace(
-        query_id, std::make_shared<CQLStatement>(
-            DCHECK_NOTNULL(ql_env)->CurrentKeyspace(),
-            query, prepared_stmts_list_.end())).first->second;
-    InsertLruPreparedStatementUnlocked(stmt);
+    stmt = stmts_map
+               .emplace(
+                   query_id, std::make_shared<CQLStatement>(
+                                 DCHECK_NOTNULL(ql_env)->CurrentKeyspace(), query,
+                                 stmts_list.end(), stmts_mem_tracker_))
+               .first->second;
+    std::shared_ptr<StmtCounters> stmt_counters = std::make_shared<StmtCounters>(query);
+    stmt->SetCounters(stmt_counters);
+    InsertLruStatementUnlocked(stmt, &stmts_list);
   } else {
     // Return existing statement if found.
-    MoveLruPreparedStatementUnlocked(stmt);
+    LOG_IF(DFATAL, stmt == nullptr) << "Unexpected null cql statement.";
+    MoveLruStatementUnlocked(stmt, &stmts_list);
   }
 
-  VLOG(1) << "InsertPreparedStatement: CQL prepared statement cache count = "
-          << prepared_stmts_map_.size() << "/" << prepared_stmts_list_.size()
-          << ", memory usage = " << prepared_stmts_mem_tracker_->consumption();
+  VLOG(1) << "InsertStatement: CQL " << (is_prepare ? "" : "un") << "prepared "
+          << "statement cache count = " << stmts_map.size() << "/"
+          << stmts_list.size() << ", memory usage = " << stmts_mem_tracker_->consumption();
 
   return stmt;
 }
@@ -284,7 +317,7 @@ shared_ptr<CQLStatement> CQLServiceImpl::AllocatePreparedStatement(
 Result<std::shared_ptr<const CQLStatement>> CQLServiceImpl::GetPreparedStatement(
     const ql::CQLMessage::QueryId& query_id, SchemaVersion version) {
   // Get exclusive lock before looking up a prepared statement and updating the LRU list.
-  std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
+  std::lock_guard guard(prepared_stmts_mutex_);
 
   const auto itr = prepared_stmts_map_.find(query_id);
   if (itr == prepared_stmts_map_.end()) {
@@ -300,7 +333,7 @@ Result<std::shared_ptr<const CQLStatement>> CQLServiceImpl::GetPreparedStatement
   }
   // If the statement is stale, delete it.
   if (stmt->stale()) {
-    DeletePreparedStatementUnlocked(stmt);
+    DeleteLruStatementUnlocked(stmt, &prepared_stmts_list_, &prepared_stmts_map_);
     return ErrorStatus(ql::ErrorCode::UNPREPARED_STATEMENT);
   }
   // If the statement has a later schema version, return a error.
@@ -316,19 +349,21 @@ Result<std::shared_ptr<const CQLStatement>> CQLServiceImpl::GetPreparedStatement
     }
   }
 
-  MoveLruPreparedStatementUnlocked(stmt);
+  MoveLruStatementUnlocked(stmt, &prepared_stmts_list_);
   return stmt;
 }
 
-void CQLServiceImpl::DeletePreparedStatement(const shared_ptr<const CQLStatement>& stmt) {
+void CQLServiceImpl::DeleteStatement(
+    const shared_ptr<const CQLStatement>& stmt, const IsPrepare is_prepare) {
   // Get exclusive lock before deleting the prepared statement.
-  std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
+  std::lock_guard guard(is_prepare ? prepared_stmts_mutex_ : unprepared_stmts_mutex_);
+  CQLStatementList& stmts_list = (is_prepare ? prepared_stmts_list_ : unprepared_stmts_list_);
+  CQLStatementMap& stmts_map = (is_prepare ? prepared_stmts_map_ : unprepared_stmts_map_);
+  DeleteLruStatementUnlocked(stmt, &stmts_list, &stmts_map);
 
-  DeletePreparedStatementUnlocked(stmt);
-
-  VLOG(1) << "DeletePreparedStatement: CQL prepared statement cache count = "
-          << prepared_stmts_map_.size() << "/" << prepared_stmts_list_.size()
-          << ", memory usage = " << prepared_stmts_mem_tracker_->consumption();
+  VLOG(1) << "DeleteStatement: CQL " << (is_prepare ? "" : "un") << "prepared statement"
+          << " cache count = " << stmts_map.size() << "/" << stmts_list.size()
+          << ", memory usage = " << stmts_mem_tracker_->consumption();
 }
 
 bool CQLServiceImpl::CheckPassword(
@@ -351,7 +386,7 @@ bool CQLServiceImpl::CheckPassword(
   std::string key = sha_hash + ":" + expected_bcrypt_hash;
 
   {
-    std::lock_guard<std::mutex> guard(password_cache_mutex_);
+    std::lock_guard guard(password_cache_mutex_);
     auto entry = password_cache_.get(key);
     if (entry) {
       return true;
@@ -361,7 +396,7 @@ bool CQLServiceImpl::CheckPassword(
   // bcrypt_checkpw has stringcmp semantics.
   bool correct = util::bcrypt_checkpw(plain.c_str(), expected_bcrypt_hash.c_str()) == 0;
   if (correct) {
-    std::lock_guard<std::mutex> guard(password_cache_mutex_);
+    std::lock_guard guard(password_cache_mutex_);
     // Boost's LRU cache interprets insertion of a duplicate key as a no-op, so
     // even if two threads successfully log in to the same account, there should
     // not be a race condition here.
@@ -370,45 +405,54 @@ bool CQLServiceImpl::CheckPassword(
   return correct;
 }
 
-void CQLServiceImpl::InsertLruPreparedStatementUnlocked(const shared_ptr<CQLStatement>& stmt) {
+void CQLServiceImpl::InsertLruStatementUnlocked(
+    const shared_ptr<CQLStatement>& stmt, CQLStatementList* stmts_list) {
   // Insert the statement at the front of the LRU list.
-  stmt->set_pos(prepared_stmts_list_.insert(prepared_stmts_list_.begin(), stmt));
+  stmt->set_pos(stmts_list->insert(stmts_list->begin(), stmt));
 }
 
-void CQLServiceImpl::MoveLruPreparedStatementUnlocked(const shared_ptr<CQLStatement>& stmt) {
+void CQLServiceImpl::MoveLruStatementUnlocked(
+    const shared_ptr<CQLStatement>& stmt, CQLStatementList* stmts_list) {
   // Move the statement to the front of the LRU list.
-  prepared_stmts_list_.splice(prepared_stmts_list_.begin(), prepared_stmts_list_, stmt->pos());
+  stmts_list->splice(stmts_list->begin(), *stmts_list, stmt->pos());
 }
 
-void CQLServiceImpl::DeletePreparedStatementUnlocked(
-    const std::shared_ptr<const CQLStatement> stmt) {
+void CQLServiceImpl::DeleteLruStatementUnlocked(
+    const std::shared_ptr<const CQLStatement> stmt, CQLStatementList* stmts_list,
+    CQLStatementMap* stmts_map) {
   // Remove statement from cache by looking it up by query ID and only when it is same statement
   // object. Note that the "stmt" parameter above is not a ref ("&") intentionally so that we have
   // a separate copy of the shared_ptr and not the very shared_ptr in prepared_stmts_map_ or
   // prepared_stmt_list_ we are deleting.
-  const auto itr = prepared_stmts_map_.find(stmt->query_id());
-  if (itr != prepared_stmts_map_.end() && itr->second == stmt) {
-    prepared_stmts_map_.erase(itr);
+  const auto itr = stmts_map->find(stmt->query_id());
+  if (itr != stmts_map->end() && itr->second == stmt) {
+    stmts_map->erase(itr);
   }
   // Remove statement from LRU list only when it is in the list, i.e. pos() != end().
-  if (stmt->pos() != prepared_stmts_list_.end()) {
-    prepared_stmts_list_.erase(stmt->pos());
-    stmt->set_pos(prepared_stmts_list_.end());
+  if (stmt->pos() != stmts_list->end()) {
+    stmts_list->erase(stmt->pos());
+    stmt->set_pos(stmts_list->end());
   }
 }
 
 void CQLServiceImpl::CollectGarbage(size_t required) {
+  // Remove an element from a bigger collection.
+  const IsPrepare is_prepare(prepared_stmts_list_.size() > unprepared_stmts_list_.size());
+
   // Get exclusive lock before deleting the least recently used statement at the end of the LRU
   // list from the cache.
-  std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
+  std::lock_guard<std::mutex> guard(is_prepare ? prepared_stmts_mutex_ : unprepared_stmts_mutex_);
 
-  if (!prepared_stmts_list_.empty()) {
-    DeletePreparedStatementUnlocked(prepared_stmts_list_.back());
+  CQLStatementList& stmts_list = (is_prepare ? prepared_stmts_list_ : unprepared_stmts_list_);
+  CQLStatementMap& stmts_map = (is_prepare ? prepared_stmts_map_ : unprepared_stmts_map_);
+
+  if (!stmts_list.empty()) {
+    DeleteLruStatementUnlocked(stmts_list.back(), &stmts_list, &stmts_map);
   }
 
-  VLOG(1) << "DeleteLruPreparedStatement: CQL prepared statement cache count = "
-          << prepared_stmts_map_.size() << "/" << prepared_stmts_list_.size()
-          << ", memory usage = " << prepared_stmts_mem_tracker_->consumption();
+  VLOG(1) << "DeleteLruStatement: CQL "<< (is_prepare ? "" : "un") << "prepared statement cache "
+          << "count = "<< stmts_map.size() << "/" << stmts_list.size()
+          << ", memory usage = " << stmts_mem_tracker_->consumption();
 }
 
 client::TransactionPool& CQLServiceImpl::TransactionPool() {
@@ -421,6 +465,113 @@ server::Clock* CQLServiceImpl::clock() {
 
 void CQLServiceImpl::FillEndpoints(const rpc::RpcServicePtr& service, rpc::RpcEndpointMap* map) {
   map->emplace(CQLInboundCall::static_serialized_remote_method(), std::make_pair(service, 0ULL));
+}
+
+void CQLServiceImpl::DumpStatementMetricsAsJson(JsonWriter* jw) {
+  jw->StartObject();
+  for (const IsPrepare is_prepare : {IsPrepare::kTrue, IsPrepare::kFalse}) {
+    jw->String(is_prepare ? "prepared_statements" : "unprepared_statements");
+    jw->StartArray();
+    const StmtCountersMap stmt_counters = GetStatementCountersForMetrics(is_prepare);
+    for (auto& stmt : stmt_counters) {
+      stmt.second.WriteAsJson(jw, stmt.first);
+    }
+    jw->EndArray();
+  }
+  jw->EndObject();
+}
+
+StmtCountersMap CQLServiceImpl::GetStatementCountersForMetrics(const IsPrepare& is_prepare) {
+  auto const statement_limit = FLAGS_cql_dump_statement_metrics_limit;
+  int64_t num_statements = 0;
+  StmtCountersMap stmts_counters;
+  std::lock_guard<std::mutex> guard(is_prepare ? prepared_stmts_mutex_ : unprepared_stmts_mutex_);
+  const CQLStatementMap& stmts_map = (is_prepare ? prepared_stmts_map_ : unprepared_stmts_map_);
+  for (auto& stmt : stmts_map) {
+    shared_ptr<StmtCounters> stmt_counters = stmt.second->GetWritableCounters();
+    if (stmt_counters) {
+      if (stmt_counters->num_calls == 0) {
+        continue;
+      }
+      stmts_counters.emplace(stmt.first, *stmt_counters);
+      if (++num_statements >= statement_limit) {
+        break;
+      }
+    }
+  }
+  return stmts_counters;
+}
+
+void CQLServiceImpl::UpdateStmtCounters(const ql::CQLMessage::QueryId& query_id,
+    double execute_time_in_msec, IsPrepare is_prepare) {
+  std::lock_guard<std::mutex> guard(is_prepare ? prepared_stmts_mutex_ : unprepared_stmts_mutex_);
+  CQLStatementMap& stmts_map = (is_prepare ? prepared_stmts_map_ : unprepared_stmts_map_);
+
+  auto itr = stmts_map.find(query_id);
+  if (itr == stmts_map.end()) {
+    if (is_prepare) {
+      LOG(WARNING) << "Prepared Statement not found in LRU cache.";
+    } else {
+      VLOG(1) << "Unprepared Statement not found in LRU cache.";
+    }
+    return;
+  }
+  std::shared_ptr<StmtCounters> stmt_counters = itr->second->GetWritableCounters();
+  LOG_IF(DFATAL, stmt_counters == nullptr) << "Unexpected null statement counters.";
+  LOG_IF(WARNING, stmt_counters->query.empty()) << "Unexpected empty query string in the counters.";
+  UpdateCountersUnlocked(execute_time_in_msec, stmt_counters);
+}
+
+void CQLServiceImpl::UpdateCountersUnlocked(
+    double execute_time_in_msec,
+    std::shared_ptr<StmtCounters> stmt_counters) {
+  LOG_IF(DFATAL, stmt_counters == nullptr) << "Null pointer counters received.";
+  if (stmt_counters->num_calls == 0) {
+    stmt_counters->num_calls = 1;
+    stmt_counters->total_time_in_msec = execute_time_in_msec;
+    stmt_counters->min_time_in_msec = execute_time_in_msec;
+    stmt_counters->max_time_in_msec = execute_time_in_msec;
+  } else {
+    const double old_mean = stmt_counters->total_time_in_msec/stmt_counters->num_calls;
+    stmt_counters->num_calls += 1;
+    stmt_counters->total_time_in_msec += execute_time_in_msec;
+    const double new_mean = stmt_counters->total_time_in_msec/stmt_counters->num_calls;
+
+    // Welford's method for accurately computing variance. See
+    // <http://www.johndcook.com/blog/standard_deviation/>
+    stmt_counters->sum_var_time_in_msec +=
+        (execute_time_in_msec - old_mean)*(execute_time_in_msec - new_mean);
+
+    if (stmt_counters->max_time_in_msec < execute_time_in_msec) {
+      stmt_counters->max_time_in_msec = execute_time_in_msec;
+    }
+    if (stmt_counters->min_time_in_msec > execute_time_in_msec) {
+      stmt_counters->min_time_in_msec = execute_time_in_msec;
+    }
+  }
+}
+
+shared_ptr<StmtCounters> CQLServiceImpl::GetWritablePrepStmtCounters(const std::string& query_id) {
+  std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
+  auto itr = prepared_stmts_map_.find(query_id);
+  return itr == prepared_stmts_map_.end() ? nullptr : itr->second->GetWritableCounters();
+}
+
+void CQLServiceImpl::ResetStatementsCounters() {
+  ResetPreparedStatementsCounters();
+  // Clear the unprepared statements.
+  std::lock_guard<std::mutex> guard(unprepared_stmts_mutex_);
+  unprepared_stmts_map_.clear();
+}
+
+void CQLServiceImpl::ResetPreparedStatementsCounters() {
+  std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
+  // Reset the counters for prepared statements.
+  for (auto const & itr : prepared_stmts_map_) {
+    auto stmt_counters = itr.second->GetWritableCounters();
+    LOG_IF(DFATAL, stmt_counters == nullptr) << "Unexpected null pointer for statement counters";
+    stmt_counters->ResetCounters();
+  }
 }
 
 }  // namespace cqlserver

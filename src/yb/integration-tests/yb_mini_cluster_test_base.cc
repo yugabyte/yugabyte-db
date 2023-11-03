@@ -49,21 +49,21 @@ void YBMiniClusterTestBase<T>::SetUp() {
   // the default behaviour rather then overridden one we configure here.
   // Also see https://github.com/yugabyte/yugabyte-db/issues/8935.
   saved_use_priority_thread_pool_for_flushes_ = FLAGS_use_priority_thread_pool_for_flushes;
-  FLAGS_use_priority_thread_pool_for_flushes = true;
-  FLAGS_allow_preempting_compactions = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_priority_thread_pool_for_flushes) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_preempting_compactions) = true;
 
   // Note that if a test intends to use user enforced txns then this flag should be
   // updated accordingly, as having this to be smaller than the client timeout could
   // be unsafe. We do not want to have this be a large value in tests because it slows
   // down the normal create index flow.
-  FLAGS_index_backfill_upperbound_for_user_enforced_txn_duration_ms = 0;
-  FLAGS_index_backfill_wait_for_old_txns_ms = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_index_backfill_upperbound_for_user_enforced_txn_duration_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_index_backfill_wait_for_old_txns_ms) = 0;
 
-  FLAGS_index_backfill_rpc_timeout_ms = 6000;
-  FLAGS_index_backfill_rpc_max_delay_ms = 1000;
-  FLAGS_index_backfill_rpc_max_retries = 10;
-  FLAGS_retrying_ts_rpc_max_delay_ms = 1000;
-  FLAGS_master_ts_rpc_timeout_ms = 10000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_index_backfill_rpc_timeout_ms) = 6000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_index_backfill_rpc_max_delay_ms) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_index_backfill_rpc_max_retries) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retrying_ts_rpc_max_delay_ms) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ts_rpc_timeout_ms) = 10000;
 
   verify_cluster_before_next_tear_down_ = true;
 }
@@ -114,6 +114,14 @@ Status MiniClusterTestWithClient<T>::CreateClient() {
 }
 
 template <class T>
+Status MiniClusterTestWithClient<T>::EnsureClientCreated() {
+  if (!client_) {
+    return CreateClient();
+  }
+  return Status::OK();
+}
+
+template <class T>
 void MiniClusterTestWithClient<T>::DoTearDown() {
   client_.reset();
   YBMiniClusterTestBase<T>::DoTearDown();
@@ -121,8 +129,7 @@ void MiniClusterTestWithClient<T>::DoTearDown() {
 
 template <class T>
 client::YBSessionPtr MiniClusterTestWithClient<T>::NewSession() {
-  auto session = client_->NewSession();
-  session->SetTimeout(60s);
+  auto session = client_->NewSession(60s);
   return session;
 }
 

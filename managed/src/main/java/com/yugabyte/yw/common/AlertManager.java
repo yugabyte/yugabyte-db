@@ -18,23 +18,25 @@ import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelInterface;
 import com.yugabyte.yw.common.alerts.AlertChannelManager;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
+import com.yugabyte.yw.common.alerts.AlertChannelTemplateService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertNotificationContext;
 import com.yugabyte.yw.common.alerts.AlertNotificationReport;
 import com.yugabyte.yw.common.alerts.AlertService;
-import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
-import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
@@ -66,6 +68,7 @@ public class AlertManager {
   private final EmailHelper emailHelper;
   private final AlertConfigurationService alertConfigurationService;
   private final AlertChannelService alertChannelService;
+  private final AlertChannelTemplateService alertChannelTemplateService;
   private final AlertDestinationService alertDestinationService;
   private final AlertChannelManager channelsManager;
   private final AlertService alertService;
@@ -77,6 +80,7 @@ public class AlertManager {
       AlertService alertService,
       AlertConfigurationService alertConfigurationService,
       AlertChannelService alertChannelService,
+      AlertChannelTemplateService alertChannelTemplateService,
       AlertDestinationService alertDestinationService,
       AlertChannelManager channelsManager,
       MetricService metricService) {
@@ -84,6 +88,7 @@ public class AlertManager {
     this.alertService = alertService;
     this.alertConfigurationService = alertConfigurationService;
     this.alertChannelService = alertChannelService;
+    this.alertChannelTemplateService = alertChannelTemplateService;
     this.alertDestinationService = alertDestinationService;
     this.channelsManager = channelsManager;
     this.metricService = metricService;
@@ -216,8 +221,7 @@ public class AlertManager {
     Set<UUID> customerUuids =
         toNotify.stream().map(Alert::getCustomerUUID).collect(Collectors.toSet());
     Map<UUID, AlertingData> alertingConfigByCustomer =
-        CustomerConfig.getAlertConfigs(customerUuids)
-            .stream()
+        CustomerConfig.getAlertConfigs(customerUuids).stream()
             .filter(config -> config.getData() != null)
             .collect(
                 Collectors.toMap(
@@ -293,7 +297,7 @@ public class AlertManager {
     List<AlertChannel> channels = new ArrayList<>(strategy.getDestination().getChannelsList());
 
     if ((channels.size() == 1)
-        && ("Email".equals(AlertUtils.getJsonTypeName(channels.get(0).getParams())))
+        && (channels.get(0).getParams().getChannelType().equals(ChannelType.Email))
         && ((AlertChannelEmailParams) channels.get(0).getParams()).isDefaultRecipients()
         && CollectionUtils.isEmpty(emailHelper.getDestinations(customer.getUuid()))) {
 
@@ -335,9 +339,12 @@ public class AlertManager {
       }
 
       try {
-        AlertChannelInterface handler =
-            channelsManager.get(AlertUtils.getJsonTypeName(channel.getParams()));
-        handler.sendNotification(customer, tempAlert, channel);
+        ChannelType channelType = channel.getParams().getChannelType();
+        AlertChannelTemplatesExt channelTemplates =
+            alertChannelTemplateService.getWithDefaults(channel.getCustomerUUID(), channelType);
+
+        AlertChannelInterface handler = channelsManager.get(channelType.name());
+        handler.sendNotification(customer, tempAlert, channel, channelTemplates);
         atLeastOneSucceeded = true;
         perChannelStatus.put(channel.getName(), "Alert sent successfully");
         setOkChannelStatusMetric(PlatformMetrics.ALERT_MANAGER_CHANNEL_STATUS, channel);
@@ -358,9 +365,7 @@ public class AlertManager {
 
     String resultMessage =
         "Result: "
-            + perChannelStatus
-                .entrySet()
-                .stream()
+            + perChannelStatus.entrySet().stream()
                 .sorted(Entry.comparingByKey())
                 .map(e -> e.getKey() + " - " + e.getValue())
                 .collect(Collectors.joining("; "));

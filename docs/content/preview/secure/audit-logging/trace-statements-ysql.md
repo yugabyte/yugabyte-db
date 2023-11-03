@@ -30,7 +30,7 @@ Note that in a YugabyteDB cluster with multiple nodes, session identifier is not
 To log the appropriate session information, you need to set the following configuration flags for your YB-TServers:
 
 - Set [ysql_log_statement](../../../reference/configuration/yb-tserver/#ysql-log-statement) YB-TServer configuration flag to all to turn on statement logging in the PostgreSQL logs.
-- Set the [log_line_prefix](../../../reference/configuration/yb-tserver/#postgresql-logging-options) PostgreSQL logging option to log timestamp, PostgreSQL PID, and session identifier. `log_line_prefix` is set using the [ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) YB-TServer configuration flag.
+- Set the `log_line_prefix` PostgreSQL logging option to log timestamp, PostgreSQL PID, and session identifier. Refer to [PostgreSQL server options](../../../reference/configuration/yb-tserver/#postgresql-server-options).
 
 ## Review logs
 

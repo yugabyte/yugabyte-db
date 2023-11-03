@@ -35,7 +35,7 @@
 #include <mutex>
 #include <string>
 
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 
 #include "yb/consensus/log_fwd.h"
 
@@ -75,7 +75,7 @@ class ChangeMetadataOperation
 
   void SetIndexes(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes);
 
-  IndexMap& index_map() {
+  qlexpr::IndexMap& index_map() {
     return index_map_;
   }
 
@@ -117,11 +117,15 @@ class ChangeMetadataOperation
   //
   // TODO: need a schema lock?
 
-  Status Prepare() override;
+  Status Prepare(IsLeaderSide is_leader_side) override;
+
+  Status Apply(int64_t leader_term, Status* complete_status);
 
  private:
+
   // Starts the ChangeMetadataOperation by assigning it a timestamp.
   Status DoReplicated(int64_t leader_term, Status* complete_status) override;
+
   Status DoAborted(const Status& status) override;
 
   log::Log* const log_;
@@ -131,7 +135,7 @@ class ChangeMetadataOperation
   std::unique_ptr<Schema> schema_holder_;
 
   // Lookup map for the associated indexes.
-  IndexMap index_map_;
+  qlexpr::IndexMap index_map_;
 };
 
 Status SyncReplicateChangeMetadataOperation(

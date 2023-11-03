@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { connect } from 'react-redux';
 import moment from 'moment';
 
@@ -14,6 +14,8 @@ import {
   fetchUniverseInfo,
   fetchUniverseInfoResponse
 } from '../../../actions/universe';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 
 class UniverseAction extends Component {
   constructor(props) {
@@ -65,13 +67,13 @@ class UniverseAction extends Component {
       universe,
       universe: { universeConfig }
     } = this.props;
-  
+
     const universePaused = universe?.universeDetails?.universePaused;
     let btnLabel = null;
     let btnIcon = null;
     let modalForm = null;
     switch (actionType) {
-      case 'alert-config':
+      case 'alert-config': {
         let disablePeriodSecs = null;
         let alertsSnoozed = false;
         if (universeConfig) {
@@ -108,20 +110,26 @@ class UniverseAction extends Component {
           />
         );
         break;
+      }
       default:
         break;
     }
     return (
       <div>
-        {!universePaused &&
-          <YBButton
-            btnText={btnLabel}
-            btnIcon={btnIcon}
-            btnClass={`btn ${btnClass}`}
-            disabled={disabled}
-            onClick={disabled ? null : this.openModal}
-          />
-        }
+        {!universePaused && (
+          <RbacValidator
+            accessRequiredOn={{...UserPermissionMap.editUniverse, onResource: universe.universeUUID}}
+            isControl
+          >
+            <YBButton
+              btnText={btnLabel}
+              btnIcon={btnIcon}
+              btnClass={`btn ${btnClass}`}
+              disabled={disabled}
+              onClick={disabled ? null : this.openModal}
+            />
+          </RbacValidator>
+        )}
         {modalForm}
       </div>
     );

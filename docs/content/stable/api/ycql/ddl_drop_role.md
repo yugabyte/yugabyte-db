@@ -26,7 +26,7 @@ This statement is enabled by setting the YB-TServer flag [`use_cassandra_authent
 
 ### Grammar
 
-```
+```ebnf
 drop_role ::=  DROP ROLE [ IF EXISTS ] role_name
 ```
 

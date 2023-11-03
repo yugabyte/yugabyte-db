@@ -98,8 +98,10 @@ public class TestPrepareExecute extends BaseCQLTest {
   }
 
   protected enum MetadataInExecResp { ON, OFF; }
+  protected enum UseMetadataCache { ON, OFF; }
 
-  protected void doTestAlterAdd(MetadataInExecResp flag) throws Exception {
+  protected void doTestAlterAdd(MetadataInExecResp inResp,
+                                UseMetadataCache useCache) throws Exception {
     // Setup table.
     setupTable("test_prepare", 0 /* num_rows */);
     session.execute(
@@ -124,12 +126,21 @@ public class TestPrepareExecute extends BaseCQLTest {
 
     // The driver uses the incoming schema info from the CQL response with the new column.
     row = session.execute(prepared.bind()).one();
-    if (flag == MetadataInExecResp.ON) {
+    if (inResp == MetadataInExecResp.ON) {
       assertEquals(7, row.getColumnDefinitions().size());
       assertEquals("Row[1, a, 2, b, 3, c, 9]", row.toString());
     } else {
       assertEquals(6, row.getColumnDefinitions().size());
       assertEquals("Row[1, a, 2, b, 3, c]", row.toString());
+    }
+
+    if (useCache == UseMetadataCache.ON) {
+      // Run EXECUTE on all TSes to reset internal Table Metadata cache.
+      final int numTServers = miniCluster.getTabletServers().size();
+      // First TS was used above.
+      for (int i = 0; i < numTServers - 1; ++i) {
+        row = session.execute(prepared.bind()).one();
+      }
     }
 
     // Run a new "application" = new driver instance = new cluster object & connection.
@@ -145,15 +156,41 @@ public class TestPrepareExecute extends BaseCQLTest {
 
   @Test
   public void testAlterAdd() throws Exception {
-    // By default: cql_always_return_metadata_in_execute_response=false.
-    doTestAlterAdd(MetadataInExecResp.OFF);
+    try {
+      // By default: cql_always_return_metadata_in_execute_response=false.
+      restartClusterWithFlag("cql_use_metadata_cache_for_schema_version_check", "false");
+      doTestAlterAdd(MetadataInExecResp.OFF, UseMetadataCache.OFF);
+    } finally {
+      destroyMiniCluster(); // Destroy the recreated cluster when done.
+    }
   }
 
   @Test
   public void testAlterAdd_MetadataInExecResp() throws Exception {
     try {
+      Map<String, String> tserverFlags = new HashMap<>();
+      tserverFlags.put("cql_always_return_metadata_in_execute_response", "true");
+      tserverFlags.put("cql_use_metadata_cache_for_schema_version_check", "false");
+      restartClusterWithTSFlags(tserverFlags);
+      doTestAlterAdd(MetadataInExecResp.ON, UseMetadataCache.OFF);
+    } finally {
+      destroyMiniCluster(); // Destroy the recreated cluster when done.
+    }
+  }
+
+  @Test
+  public void testAlterAdd_UseMetadataCache() throws Exception {
+    // By default: cql_always_return_metadata_in_execute_response=false.
+    //             cql_use_metadata_cache_for_schema_version_check=true.
+    doTestAlterAdd(MetadataInExecResp.OFF, UseMetadataCache.ON);
+  }
+
+  @Test
+  public void testAlterAdd_MetadataInExecResp_UseMetadataCache() throws Exception {
+    try {
       restartClusterWithFlag("cql_always_return_metadata_in_execute_response", "true");
-      doTestAlterAdd(MetadataInExecResp.ON);
+      // By default: cql_use_metadata_cache_for_schema_version_check=true.
+      doTestAlterAdd(MetadataInExecResp.ON, UseMetadataCache.ON);
     } finally {
       destroyMiniCluster(); // Destroy the recreated cluster when done.
     }
@@ -380,19 +417,32 @@ public class TestPrepareExecute extends BaseCQLTest {
     assertEquals("Row[a, 1, NULL]", row.toString());
 
     // Run a new "application" = new driver instance = new cluster object & connection.
-    try (Session s3 = connectWithTestDefaults().getSession()) {
-      s3.execute("USE " + DEFAULT_TEST_KEYSPACE);
-      prepared = s3.prepare(insertStmt);
-      assertEquals(3, prepared.getVariables().size());
-      assertEquals("map<int, int>", prepared.getVariables().getType(2).toString());
+    // The cached schema can be updated after several seconds.
+    final long startTimeMs = System.currentTimeMillis();
+    boolean schemaIsUpdated = false;
+    while (!schemaIsUpdated && (System.currentTimeMillis() - startTimeMs) < 60000) {
+      try (Session s3 = connectWithTestDefaults().getSession()) {
+        s3.execute("USE " + DEFAULT_TEST_KEYSPACE);
+        prepared = s3.prepare(insertStmt);
+        assertEquals(3, prepared.getVariables().size());
+        final String typeName = prepared.getVariables().getType(2).toString();
 
-      // Ensure the new driver instance knows the new column.
-      s3.execute(prepared.bind(new String("a"), new Integer(1),
-          new HashMap<Integer, Integer>() {{ put(9, 9); }}));
-      row = session.execute("SELECT * FROM test_prepare WHERE h='a' AND r=1").one();
-      assertEquals(3, row.getColumnDefinitions().size());
-      assertEquals("Row[a, 1, {9=9}]", row.toString());
+        if (typeName.equals("map<int, int>")) {
+          schemaIsUpdated = true;
+          // Ensure the new driver instance knows the new column.
+          s3.execute(prepared.bind(new String("a"), new Integer(1),
+              new HashMap<Integer, Integer>() {{ put(9, 9); }}));
+          row = session.execute("SELECT * FROM test_prepare WHERE h='a' AND r=1").one();
+          assertEquals(3, row.getColumnDefinitions().size());
+          assertEquals("Row[a, 1, {9=9}]", row.toString());
+        } else {
+          LOG.warn("Got type: '" + typeName + "' Sleep...");
+          Thread.sleep(500);
+        }
+      }
     }
+
+    assertTrue(schemaIsUpdated);
   }
 
   @Test
@@ -443,18 +493,31 @@ public class TestPrepareExecute extends BaseCQLTest {
     assertEquals("Row[a, 1, 4.936E-321]", row.toString());
 
     // Run a new "application" = new driver instance = new cluster object & connection.
-    try (Session s3 = connectWithTestDefaults().getSession()) {
-      s3.execute("USE " + DEFAULT_TEST_KEYSPACE);
-      prepared = s3.prepare(insertStmt);
-      assertEquals(3, prepared.getVariables().size());
-      assertEquals("double", prepared.getVariables().getType(2).toString());
+    // The cached schema can be updated after several seconds.
+    final long startTimeMs = System.currentTimeMillis();
+    boolean schemaIsUpdated = false;
+    while (!schemaIsUpdated && (System.currentTimeMillis() - startTimeMs) < 60000) {
+      try (Session s3 = connectWithTestDefaults().getSession()) {
+        s3.execute("USE " + DEFAULT_TEST_KEYSPACE);
+        prepared = s3.prepare(insertStmt);
+        assertEquals(3, prepared.getVariables().size());
+        final String typeName = prepared.getVariables().getType(2).toString();
 
-      // Ensure the new driver instance knows the new column.
-      s3.execute(prepared.bind(new String("a"), new Integer(1), new Double(3.14)));
-      row = session.execute("SELECT * FROM test_prepare WHERE h='a' AND r=1").one();
-      assertEquals(3, row.getColumnDefinitions().size());
-      assertEquals("Row[a, 1, 3.14]", row.toString());
+        if (typeName.equals("double")) {
+          schemaIsUpdated = true;
+          // Ensure the new driver instance knows the new column.
+          s3.execute(prepared.bind(new String("a"), new Integer(1), new Double(3.14)));
+          row = session.execute("SELECT * FROM test_prepare WHERE h='a' AND r=1").one();
+          assertEquals(3, row.getColumnDefinitions().size());
+          assertEquals("Row[a, 1, 3.14]", row.toString());
+        } else {
+          LOG.warn("Got type: '" + typeName + "' Sleep...");
+          Thread.sleep(500);
+        }
+      }
     }
+
+    assertTrue(schemaIsUpdated);
   }
 
   protected class AlterDropAddThreadBody extends TestThreadBody {

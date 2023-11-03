@@ -18,6 +18,7 @@ import static org.yb.AssertionWrappers.*;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Arrays;
 
 import org.apache.commons.lang3.time.StopWatch;
 import org.junit.Test;
@@ -25,13 +26,15 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import org.yb.minicluster.MiniYBCluster;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestYsqlMetrics extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYsqlMetrics.class);
+
+  private static final String PEAK_MEM_FIELD = "Peak Memory Usage";
 
   @Test
   public void testMetrics() throws Exception {
@@ -436,7 +439,8 @@ public class TestYsqlMetrics extends BasePgSQLTest {
    * This test does memory stats verification in EXPLAIN ANALYZE's output.
    * First, it does a rough validation on the stats by comparing queries that consume different
    * amounts of memory and validating their max memory outputs.
-   * Second, it does a more accurate validation on the stats against the sorting memory, to validate
+   * Second, it runs a query many times, checking for consistency on the max memory output.
+   * Third, it does a more accurate validation on the stats against the sorting memory, to validate
    * that max memory is slightly higher than sorting's memory.
    * It also does basic tests to ensure the newly added cutomized logic
    * for memory stats doesn't break existing EXPLAIN ANALYZE's execution for DDLs.
@@ -477,16 +481,30 @@ public class TestYsqlMetrics extends BasePgSQLTest {
       // If the tracking logic is not accurate and has errors, it will accumulate and shows in the
       // output.
       {
-        final long maxMemSimpleStart = runExplainAnalyze(statement, 1000);
+        final int N_INITIAL_RUNS = 10;
+        final int N_UNMEASURED_RUNS = 80;
+        final int N_FINAL_RUNS = 10;
+        final int N_TOTAL_RUNS = N_INITIAL_RUNS + N_UNMEASURED_RUNS + N_FINAL_RUNS;
+        final int LIMIT = 1000;
 
-        final String query = buildExplainAnalyzeDemoQuery(1000);
-        int loopN = 100;
-        while (loopN-- > 0) {
-          statement.executeQuery(query);
+        long[] max_memories = new long[N_TOTAL_RUNS];
+        for (int i = 0; i < N_TOTAL_RUNS; i++) {
+          max_memories[i] = runExplainAnalyze(statement, LIMIT);
         }
 
-        final long maxMemSimpleEnd = runExplainAnalyze(statement, 1000);
-        assertEquals(maxMemSimpleEnd, maxMemSimpleStart);
+        String max_memory_str = Arrays.toString(max_memories);
+
+        // Sort the first chunk and last chunk to get their medians.
+        Arrays.sort(max_memories, 0, N_INITIAL_RUNS);
+        long initial_median_memory = max_memories[N_INITIAL_RUNS / 2];
+
+        Arrays.sort(max_memories, N_TOTAL_RUNS - N_FINAL_RUNS, N_TOTAL_RUNS);
+        long final_median_memory = max_memories[N_TOTAL_RUNS - (N_FINAL_RUNS / 2)];
+
+        assertEquals(String.format("Expected median memory to be consistent between first %d runs" +
+                                   " and last %d runs. Got measurements %s", N_INITIAL_RUNS,
+                                   N_FINAL_RUNS, max_memory_str),
+                     initial_median_memory, final_median_memory);
       }
 
       // Run an accurate max-memory validation by including a single memory consumption operator
@@ -522,6 +540,24 @@ public class TestYsqlMetrics extends BasePgSQLTest {
   }
 
   /**
+   * Test "Peak Memory" is not shown in EXPLAIN ANALYZE when yb_enable_memory_tracking
+   * flag is off.
+   * @throws Exception
+   */
+  @Test
+  public void testExplainPeakMemWhenMemoryTrackingOff() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("SET yb_enable_memory_tracking = OFF");
+      final String query = "EXPLAIN (ANALYZE) SELECT 1";
+      ResultSet result = statement.executeQuery(query);
+      while(result.next()) {
+        final String row = result.getString(1);
+        assertFalse(row.contains(PEAK_MEM_FIELD));
+      }
+    }
+  }
+
+  /**
    * Validate the EXPLAIN ANALYZE output, and return maximum memory consumption found.
    **/
   private long runExplainAnalyze(Statement statement, final int limit) throws Exception {
@@ -541,7 +577,7 @@ public class TestYsqlMetrics extends BasePgSQLTest {
   private long findMaxMemInExplain(final ResultSet result) throws Exception {
     while(result.next()) {
       final String row = result.getString(1);
-      if (row.contains("Peak Memory Usage")) {
+      if (row.contains(PEAK_MEM_FIELD)) {
         final String[] tks = row.split(" ");
         long maxMem = Long.valueOf(tks[tks.length - 2]);
         return maxMem;

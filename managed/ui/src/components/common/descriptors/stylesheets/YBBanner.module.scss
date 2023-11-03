@@ -1,16 +1,18 @@
-@import '../../../../_style/colors.scss';
+@use '../../../../_style/colors.scss';
 
 .bannerContainer {
   display: flex;
 
-  padding: 15px 18px;
+  padding: 12px 14px;
 
-  border: 1px solid $YB_GRAY_BORDER;
+  border: 1px solid colors.$YB_GRAY_BORDER;
   border-radius: 4px;
   font-size: 14px;
 
   .icon {
+    display: flex;
     align-self: center;
+    align-items: center;
 
     height: fit-content;
   }
@@ -23,21 +25,41 @@
     }
   }
 
-  &.warning {
-    background: $YB_BANNER_WARNING_BACKGROUND;
-    border: 1px solid $YB_BANNER_WARNING_BORDER;
+  &.info {
+    background: colors.$YB_BANNER_INFO_BACKGROUND;
+    border: 1px solid colors.$YB_BANNER_INFO_BORDER;
 
     .icon {
-      color: $YB_WARNING_ICON_COLOR;
+      color: colors.$YB_BANNER_INFO_BORDER;
+    }
+  }
+
+  &.warning {
+    background: colors.$YB_BANNER_WARNING_BACKGROUND;
+    border: 1px solid colors.$YB_BANNER_WARNING_BORDER;
+
+    .icon {
+      color: colors.$YB_WARNING_ICON_COLOR;
     }
   }
 
   &.danger {
-    background: $YB_BANNER_ERROR_BACKGROUND;
-    border: 1px solid $YB_BANNER_ERROR_BORDER;
+    background: colors.$YB_BANNER_ERROR_BACKGROUND;
+    border: 1px solid colors.$YB_BANNER_ERROR_BORDER;
 
     .icon {
-      color: $YB_ERROR_ICON_COLOR;
+      color: colors.$YB_ERROR_ICON_COLOR;
+    }
+  }
+
+  &.featureBanner {
+    padding: 8px 16px;
+
+    border: none;
+    border-radius: 8px;
+
+    .icon {
+      font-size: 18px;
     }
   }
 }

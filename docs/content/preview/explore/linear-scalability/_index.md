@@ -3,14 +3,11 @@ title: Horizontal scalability
 headerTitle: Horizontal scalability
 linkTitle: Horizontal scalability
 description: Horizontal scalability in YugabyteDB.
-headcontent: Dynamically add and remove nodes in a running cluster
+headcontent: Handle larger workloads by adding nodes to your cluster
 aliases:
   - /explore/linear-scalability/
-  - /preview/explore/linear-scalability/
-  - /preview/explore/cloud-native/linear-scalability/
   - /preview/explore/postgresql/linear-scalability/
   - /preview/explore/linear-scalability-macos/
-  - /preview/explore/linear-scalability/macos/
   - /preview/explore/linear-scalability/linux/
   - /preview/explore/linear-scalability/docker/
   - /preview/explore/linear-scalability/kubernetes/
@@ -24,54 +21,78 @@ menu:
     identifier: explore-scalability
     parent: explore
     weight: 220
+showRightNav: true
 type: indexpage
 ---
 
-A YugabyteDB cluster can be scaled horizontally (to increase the aggregate vCPUs, memory, and disk in the database cluster) by dynamically adding nodes to a running cluster, or by increasing the number of pods in the `yb-tserver` StatefulSet in the case of Kubernetes deployments.
-
-A YugabyteDB cluster is scaled out so that it can handle:
+YugabyteDB can be scaled either horizontally or vertically depending on your needs. YugabyteDB automatically splits user tables into multiple [shards](../../architecture/docdb-sharding/sharding/), called tablets. You can either add more nodes to distribute the tablets, or increase the specifications of your nodes to scale your universe efficiently and reliably to handle the following:
 
 * More transactions per second
-* Higher number of concurrent client connections
-* Larger datasets
+* High number of concurrent client connections
+* Large datasets
 
-A YugabyteDB cluster can also be *scaled in* dynamically by draining all the data from existing cluster nodes (or pods), and subsequently removing them from the cluster.
+## Horizontal scaling (scale out)
 
-### How scalability works
+Horizontal scaling, also referred to as scaling out, is the process of adding more nodes to a distributed database to handle increased load and data. In YugabyteDB, data is split (sharded) into tablets, and these multiple tablets are located on each node. When more nodes are added, some tablets are automatically moved to the new nodes. Tablets can be split dynamically as needed to use the newly added resource, which leads to each node managing fewer tablets. The entire cluster can therefore handle more transactions and queries in parallel, thus increasing its capacity to handle larger workloads.
 
-Every table in YugabyteDB is transparently sharded using the primary key of the table, and each of these shards are called *tablets*. Each tablet consists of a set of rows in a table. In YugabyteDB, tables are automatically split into tablets. This is done when creating the table if possible. Tablets can also be split dynamically.
+Horizontal scaling is the most common scaling model in YugabyteDB, and has several advantages, including:
 
-The following table summarizes the support for scalability and sharding across YSQL and YCQL APIs.
+* **Improved performance** - More nodes can process requests in parallel, reducing response times.
+* **Cost-effectiveness** - You can use commodity hardware, which is generally less expensive than high-end servers.
+* **Elastic scaling** - You can add new nodes as needed to accommodate growth. For example, scale-out temporarily to handle high traffic for special events such as Black Friday shopping or a major news outbreak. After the event, you can reduce the size of the cluster (*scale in*) by draining all the data from some of the nodes (or Kubernetes pods) and removing them from the universe.
 
-| Property | YSQL | YCQL | Comments |
-| :------- | :--- | :--- | :------- |
-| [Scale transactions per sec](scaling-transactions/) | Yes | Yes | Scale out the cluster to handle a higher number of concurrent transactions per second. |
-| [Data distribution support](sharding-data/) | Hash sharding<br/>Range sharding | Hash sharding | Sharding is used to distribute data across nodes of clusters.<br/>Tables can be pre-split at creation time, and dynamically split at runtime. |
+## Vertical scaling (scale up)
 
-<div class="row">
+Vertical scaling involves upgrading the existing hardware or resources of each of the nodes in your cluster. Instead of adding more machines, you enhance the capabilities of a single machine by increasing its CPU, memory, storage, and so on. Vertical scaling is often limited by the capacity of a single server and can get expensive as you move to more powerful hardware. Although you retain the same number of nodes, which could simplify your operations, eventually hardware resources reach their limits, and further scaling up might not be feasible.
 
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="scaling-transactions/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
-        <div class="title">Scaling transactions per second</div>
-      </div>
-      <div class="body">
-        Scale out the cluster to handle a higher number of concurrent transactions per sec.
-      </div>
-    </a>
-  </div>
+In some cases, depending on your application needs and budget constraints, a combination of both horizontal and vertical scaling may be used to achieve the desired performance and scalability goals.
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="sharding-data/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/auto_sharding.png" aria-hidden="true" />
-        <div class="title">Sharding (distributing) data across nodes</div>
-      </div>
-      <div class="body">
-        Automatic data distribution across nodes of the cluster using transparent sharding of tables.
-      </div>
-    </a>
-  </div>
+## Horizontal vs vertical scaling
 
-</div>
+The following table lists the pros and cons of horizontal and vertical scaling of a YugabyteDB cluster.
+
+|                     |         Horizontal (Scale out)          |                             Vertical (Scale up)                                |
+| ------------------- | --------------------------------------- | ------------------------------------------------------------------------------ |
+| Number of nodes     | Increases                               | Remains the same                                                               |
+| Ease of effort      | Add new nodes to the cluster            | Add more powerful nodes, drain the old nodes, and remove them from the cluster |
+| Fault tolerance     | Increases as more nodes are added       | Remains the same                                                               |
+| Cluster&nbsp;rebalancing | Faster                             | Slower                                                                         |
+| Future scaling      | More nodes can be added                 | Limited to the most powerful machines available today                          |
+| Added costs         | Cost of new (commodity) machines        | Difference in cost of the new and old machines                                 |
+| Disk | Same disks as other nodes can be used, as data and connections are distributed | Along with CPU and memory, disks should also be updgraded to handle increased workloads |
+
+## Learn more
+
+{{<index/block>}}
+
+  {{<index/item
+    title="Writes"
+    body="See how writes scale in YugabyteDB."
+    href="scaling-writes/"
+    icon="fa-solid fa-pen">}}
+
+  {{<index/item
+    title="Transactions"
+    body="See how transactions scale in YugabyteDB."
+    href="scaling-transactions/"
+    icon="/images/section_icons/explore/auto_sharding.png">}}
+
+  {{<index/item
+    title="Simple workloads"
+    body="See how large simple workloads scale in YugabyteDB."
+    href="scaling-simple-workloads/"
+    icon="fa-solid fa-truck-ramp-box">}}
+
+  {{<index/item
+    title="Large datasets"
+    body="See how large datasets scale in YugabyteDB."
+    href="scaling-large-datasets/"
+    icon="fa-solid fa-weight-hanging">}}
+
+  {{<index/item
+    title="Scale out a universe"
+    body="Add nodes to a universe to handle a greater number of concurrent transactions per second."
+    href="scaling-universe/"
+    icon="/images/section_icons/explore/linear_scalability.png">}}
+
+{{</index/block>}}

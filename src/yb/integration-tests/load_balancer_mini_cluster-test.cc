@@ -25,6 +25,7 @@
 #include "yb/integration-tests/yb_table_test_base.h"
 
 #include "yb/master/cluster_balance.h"
+#include "yb/master/master.h"
 
 #include "yb/tools/yb-admin_client.h"
 
@@ -36,10 +37,13 @@
 #include "yb/util/monotime.h"
 #include "yb/util/multi_drive_test_env.h"
 
+METRIC_DECLARE_event_stats(load_balancer_duration);
+
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(load_balancer_drive_aware);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_int32(TEST_slowdown_master_async_rpc_tasks_by_ms);
+DECLARE_int32(TEST_load_balancer_wait_ms);
 DECLARE_int32(TEST_load_balancer_wait_after_count_pending_tasks_ms);
 DECLARE_bool(tserver_heartbeat_metrics_add_drive_data);
 DECLARE_int32(load_balancer_max_concurrent_moves);
@@ -59,7 +63,7 @@ class StatEmuEnv : public EnvWrapper {
   StatEmuEnv() : EnvWrapper(Env::Default()) { }
 
   virtual Result<FilesystemStats> GetFilesystemStatsBytes(const std::string& f) override {
-    std::lock_guard<std::mutex> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     auto i = stats_.find(f);
     if (i == stats_.end()) {
       return target()->GetFilesystemStatsBytes(f);
@@ -68,7 +72,7 @@ class StatEmuEnv : public EnvWrapper {
   }
 
   void AddPathStats(const std::string& path, const Env::FilesystemStats& stats) {
-    std::lock_guard<std::mutex> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     ASSERT_TRUE(stats_.emplace(path, stats).second);
   }
 
@@ -236,6 +240,37 @@ class LoadBalancerMiniClusterTest : public LoadBalancerMiniClusterTestBase {
   }
 };
 
+class LoadBalancerMiniClusterRf3Test : public LoadBalancerMiniClusterTest {
+ protected:
+  size_t num_masters() override {
+    return 3;
+  }
+
+  size_t num_tablet_servers() override {
+    return 3;
+  }
+};
+
+TEST_F(LoadBalancerMiniClusterRf3Test, DurationMetric) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_load_balancer_wait_ms) = 5;
+  auto* mini_master = ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster());
+  auto master_metric_entity = mini_master->master()->metric_entity();
+  auto stats = master_metric_entity->FindOrCreateMetric<EventStats>(
+      &METRIC_load_balancer_duration);
+  // The metric should get a value.
+  ASSERT_OK(WaitFor([&] {
+    return stats->MeanValue() > 0;
+  }, 10s, "load_balancer_duration gets a value"));
+
+  ASSERT_OK(mini_cluster()->StepDownMasterLeader());
+
+  // The metric quantiles should be reset by the stepdown.
+  stats = master_metric_entity->FindOrCreateMetric<EventStats>(&METRIC_load_balancer_duration);
+  ASSERT_OK(WaitFor([&] {
+    return stats->MeanValue() == 0;
+  }, 10s, "load_balancer_duration value resets"));
+}
+
 // See issue #6278. This test tests the segfault that used to occur during a rare race condition,
 // where we would have an uninitialized TSDescriptor that we try to access.
 // To trigger the race condition, we need a pending add task that gets completed after
@@ -353,7 +388,7 @@ TEST_F(LoadBalancerMiniClusterTest, NoLBOnDeletedTables) {
 
     // 2) Should respond to GetTableSchema with a NotFound error.
     client::YBSchema schema;
-    PartitionSchema partition_schema;
+    dockv::PartitionSchema partition_schema;
     Status s = client_->GetTableSchema(
         client::YBTableName(YQL_DATABASE_CQL,
                             table_name().namespace_name(),

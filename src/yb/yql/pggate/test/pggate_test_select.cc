@@ -14,22 +14,39 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/common/constants.h"
-#include "yb/common/ybc-internal.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/strings/escaping.h"
 
+#include "yb/util/logging.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
 #include "yb/yql/pggate/test/pggate_test.h"
+#include "yb/yql/pggate/util/ybc-internal.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
+#include "yb/yql/pgwrapper/libpq_utils.h"
+
 using std::string;
+
+using namespace std::chrono_literals;
 
 namespace yb {
 namespace pggate {
 
 class PggateTestSelect : public PggateTest {
 };
+
+namespace {
+
+void InvokeFunctionWithKeyPtrAndSize(
+    void* func, const char* key, size_t key_size) {
+  (*pointer_cast<std::function<void(const char* key, size_t key_size)>*>(func))(key, key_size);
+}
+
+} // namespace
 
 TEST_F(PggateTestSelect, TestSelectOneTablet) {
   CHECK_OK(Init("TestSelectOneTablet"));
@@ -67,14 +84,15 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "oid", -2,
                                                DataType::INT32, false, false));
   ++col_count;
-  CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
+  ExecCreateTableTransaction(pg_stmt);
 
   pg_stmt = nullptr;
 
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
-  CHECK_YBC_STATUS(YBCPgNewInsert(kDefaultDatabaseOid, tab_oid, false /* is_single_row_txn */,
-                                  false /* is_region_local */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewInsert(
+      kDefaultDatabaseOid, tab_oid, false /* is_region_local */, &pg_stmt,
+      YBCPgTransactionSetting::YB_TRANSACTIONAL));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -278,6 +296,203 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   CommitTransaction();
 
   pg_stmt = nullptr;
+}
+
+class PggateTestSelectWithYsql : public PggateTestSelect {
+ protected:
+  void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
+    opts->enable_ysql = true;
+    opts->extra_tserver_flags.push_back("--db_block_size_bytes=4096");
+    opts->extra_tserver_flags.push_back("--db_write_buffer_size=204800");
+  }
+
+  auto PgConnect(const std::string& database_name) {
+    auto* ts = cluster_->tablet_server(0);
+    return pgwrapper::PGConnBuilder({
+      .host = ts->bind_host(),
+      .port = ts->pgsql_rpc_port(),
+      .dbname = database_name,
+    }).Connect();
+  }
+};
+
+namespace {
+
+Status CheckRanges(const std::vector<std::string>& end_keys) {
+  SCHECK_GT(end_keys.size(), 0, InternalError, "No key ranges");
+  for (size_t i = 0; i + 1 < end_keys.size() - 1; ++i) {
+    SCHECK_LT(end_keys[i], end_keys[i + 1], InternalError, "Wrong range keys order");
+  }
+  SCHECK_EQ(end_keys.back(), "", InternalError, "Wrong last range end key");
+  return Status::OK();
+}
+
+Status TestGetTableKeyRanges(
+    YBCPgOid database_oid, YBCPgOid table_oid, Slice lower_bound_key, Slice upper_bound_key,
+    uint64_t max_num_ranges, uint64_t range_size_bytes, uint32_t max_key_length,
+    std::vector<std::string>* end_keys) {
+  end_keys->clear();
+  std::function<void(const char* key, size_t key_size)> func =
+      [&end_keys](const char* key, size_t key_size) {
+        LOG(INFO) << "Range end key: " << Slice(key, key_size).ToDebugHexString();
+        end_keys->push_back(std::string(key, key_size));
+      };
+
+  CHECK_YBC_STATUS(YBCGetTableKeyRanges(
+      database_oid, table_oid, lower_bound_key.cdata(), lower_bound_key.size(),
+      upper_bound_key.cdata(), upper_bound_key.size(), max_num_ranges, range_size_bytes,
+      /* is_forward = */ true, max_key_length, &InvokeFunctionWithKeyPtrAndSize, &func));
+  LOG(INFO) << "Got " << end_keys->size() << " ranges";
+
+  RETURN_NOT_OK(CheckRanges(*end_keys));
+
+  max_num_ranges = end_keys->size() / 3;
+
+  if (max_num_ranges == 0) {
+    // Only test pagination when we have enough ranges to break them into 3 pieces.
+    return Status::OK();
+  }
+
+  end_keys->clear();
+
+  std::string lower_bound;
+
+  for (;;) {
+    const auto prev_size = end_keys->size();
+
+    LOG(INFO) << "Starting with: " << Slice(lower_bound).ToDebugHexString();
+
+    CHECK_YBC_STATUS(YBCGetTableKeyRanges(
+        database_oid, table_oid, lower_bound.data(), lower_bound.size(), nullptr, 0, max_num_ranges,
+        range_size_bytes, true, max_key_length, &InvokeFunctionWithKeyPtrAndSize, &func));
+
+    const auto size_diff = end_keys->size() - prev_size;
+
+    LOG(INFO) << "Got " << size_diff << " ranges";
+
+    SCHECK_GT(size_diff, 0, InternalError, "Expected some ranges");
+
+    if (end_keys->back().empty()) {
+      SCHECK_LE(
+          size_diff, max_num_ranges, InternalError,
+          "Expected no more than specified number of ranges");
+      break;
+    }
+
+    SCHECK_EQ(
+        size_diff, max_num_ranges, InternalError,
+        "Expected specified number of ranges except for the last response");
+
+    lower_bound = end_keys->back();
+  }
+
+  RETURN_NOT_OK(CheckRanges(*end_keys));
+
+  return Status::OK();
+}
+
+} // namespace
+
+TEST_F_EX(PggateTestSelect, GetTableKeyRanges, PggateTestSelectWithYsql) {
+  constexpr auto kDatabaseName = "yugabyte";
+  constexpr auto kMaxKeyLength = 1_KB;
+  constexpr auto kRangeSizeBytes = 16_KB;
+
+  ASSERT_OK(Init("GetTableKeyRanges", kNumOfTablets, /* replication_factor = */ 0, kDatabaseName));
+
+  LOG(INFO) << "Connecting to YSQL...";
+
+  auto conn = ASSERT_RESULT(PgConnect(kDatabaseName));
+
+  LOG(INFO) << "Connected to YSQL";
+
+  const auto db_oid = ASSERT_RESULT(conn.FetchValue<int32_t>(
+      Format("SELECT oid FROM pg_database WHERE datname = '$0'", kDatabaseName)));
+
+  ASSERT_OK(
+      conn.Execute("CREATE TABLE t(k INT, v INT, PRIMARY KEY (k ASC)) SPLIT AT VALUES((100), "
+                   "(200), (300), (3000));"));
+
+  const auto table_oid = ASSERT_RESULT(
+      conn.FetchValue<pgwrapper::PGOid>("SELECT oid from pg_class WHERE relname='t'"));
+
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t SELECT i, 1 FROM (SELECT generate_series(1, 10000) i) tmp;"));
+
+  ASSERT_OK(cluster_->WaitForAllIntentsApplied(30s * kTimeMultiplier));
+
+  std::vector<std::string> end_keys;
+
+  ASSERT_OK(TestGetTableKeyRanges(
+      db_oid, table_oid, Slice(), Slice(), std::numeric_limits<uint64_t>::max(), kRangeSizeBytes,
+      kMaxKeyLength, &end_keys));
+
+  std::string upper_bound;
+  ASSERT_TRUE(strings::ByteStringFromAscii("488000022C21", &upper_bound));
+
+  ASSERT_OK(TestGetTableKeyRanges(
+      db_oid, table_oid, Slice(), upper_bound, std::numeric_limits<uint64_t>::max(),
+      kRangeSizeBytes, kMaxKeyLength, &end_keys));
+}
+
+TEST_F_EX(PggateTestSelect, GetColocatedTableKeyRanges, PggateTestSelectWithYsql) {
+  constexpr auto kDatabaseName = "yugabyte";
+  constexpr auto kColocatedDatabaseName = "colocated";
+  constexpr auto kMaxKeyLength = 1_KB;
+  constexpr auto kRangeSizeBytes = 16_KB;
+  constexpr auto kNumTables = 3;
+
+  ASSERT_OK(Init(
+      "GetColocatedTableKeyRanges", kNumOfTablets, /* replication_factor = */ 0, kDatabaseName));
+
+  auto conn = ASSERT_RESULT(PgConnect(kDatabaseName));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", kColocatedDatabaseName));
+  conn = ASSERT_RESULT(PgConnect(kColocatedDatabaseName));
+
+  const auto db_oid = ASSERT_RESULT(conn.FetchValue<int32_t>(
+      Format("SELECT oid FROM pg_database WHERE datname = '$0'", kColocatedDatabaseName)));
+
+  for (int i = 0; i < kNumTables; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t$0(k INT, v INT, PRIMARY KEY (k ASC));", i));
+  }
+  for (int i = 0; i < kNumTables; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO t$0 SELECT i, 1 FROM (SELECT generate_series(1, 3000) i) tmp;", i));
+  }
+
+  ASSERT_OK(cluster_->WaitForAllIntentsApplied(30s * kTimeMultiplier));
+
+  std::vector<std::pair<std::string, std::string>> min_max_keys;
+
+  for (int i = 0; i < kNumTables; ++i) {
+    const auto table_oid = ASSERT_RESULT(conn.FetchValue<pgwrapper::PGOid>(
+        Format("SELECT oid from pg_class WHERE relname='t$0'", i)));
+
+    std::vector<std::string> end_keys;
+
+    ASSERT_OK(TestGetTableKeyRanges(
+        db_oid, table_oid, Slice(), Slice(), std::numeric_limits<uint64_t>::max(), kRangeSizeBytes,
+        kMaxKeyLength, &end_keys));
+
+    ASSERT_GT(end_keys.size(), 0);
+    if (end_keys.size() == 1) {
+      // If there is only one range covering the whole table we have nothing more to check.
+      continue;
+    }
+    std::string min_key = end_keys.front();
+    std::string max_key = end_keys[end_keys.size() - 2];
+    for (const auto& min_max_key : min_max_keys) {
+      ASSERT_TRUE(
+          (min_key < min_max_key.first || min_key > min_max_key.second) &&
+          (max_key < min_max_key.first || max_key > min_max_key.second))
+          << "Ranges for different tables intersected: [" << Slice(min_key).ToDebugHexString()
+          << ", " << Slice(max_key).ToDebugHexString() << "] and ["
+          << Slice(min_max_key.first).ToDebugHexString() << ", "
+          << Slice(min_max_key.second).ToDebugHexString() << "]";
+    }
+    min_max_keys.push_back({min_key, max_key});
+  }
 }
 
 } // namespace pggate

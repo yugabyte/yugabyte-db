@@ -46,10 +46,13 @@
 // should be avoided when possible.
 // String flags are not Runtime safe.
 
+#include <string_view>
+
 #include <gflags/gflags.h>
 
 #include "yb/util/enums.h"
 #include "yb/util/flags/flag_tags.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 
@@ -62,7 +65,10 @@ YB_DEFINE_ENUM(
     ((kLocalPersisted, 2))
     // Adds/modifies format of data which might be used outside the universe.
     // Example of external processes: XCluster and CDCServer.
-    ((kExternal, 3)));
+    ((kExternal, 3))
+    // Promotes a flag only for new installs, no promotions for upgrade workflow.
+    // Example: features that are not yet safe for upgrades.
+    ((kNewInstallsOnly, 4)));
 
 // Disable Auto Flag Promotion for a test file
 #define DISABLE_PROMOTE_ALL_AUTO_FLAGS_FOR_TEST \
@@ -87,25 +93,6 @@ YB_DEFINE_ENUM(
 #define DEFINE_RUNTIME_AUTO_string(name, flag_class, initial_val, target_val, txt) \
   _DEFINE_AUTO_string(name, flag_class, initial_val, target_val, RUNTIME, true, txt); \
 
-// Non Runtime AutoFlags
-#define DEFINE_NON_RUNTIME_AUTO_bool(name, flag_class, initial_val, target_val, txt) \
-  _DEFINE_AUTO(bool, name, flag_class, initial_val, target_val, NON_RUNTIME, false, txt)
-
-#define DEFINE_NON_RUNTIME_AUTO_int32(name, flag_class, initial_val, target_val, txt) \
-  _DEFINE_AUTO(int32, name, flag_class, initial_val, target_val, NON_RUNTIME, false, txt)
-
-#define DEFINE_NON_RUNTIME_AUTO_int64(name, flag_class, initial_val, target_val, txt) \
-  _DEFINE_AUTO(int64, name, flag_class, initial_val, target_val, NON_RUNTIME, false, txt)
-
-#define DEFINE_NON_RUNTIME_AUTO_uint64(name, flag_class, initial_val, target_val, txt) \
-  _DEFINE_AUTO(uint64, name, flag_class, initial_val, target_val, NON_RUNTIME, false, txt)
-
-#define DEFINE_NON_RUNTIME_AUTO_double(name, flag_class, initial_val, target_val, txt) \
-  _DEFINE_AUTO(double, name, flag_class, initial_val, target_val, NON_RUNTIME, false, txt)
-
-#define DEFINE_NON_RUNTIME_AUTO_string(name, flag_class, initial_val, target_val, txt) \
-  _DEFINE_AUTO_string(name, flag_class, initial_val, target_val, NON_RUNTIME, false, txt)
-
 struct AutoFlagDescription {
   std::string name;
   const void* flag_ptr; /* Pointer to the gFlag */
@@ -118,14 +105,23 @@ struct AutoFlagDescription {
 const AutoFlagDescription* GetAutoFlagDescription(const std::string& flag_name);
 std::vector<const AutoFlagDescription*> GetAllAutoFlagsDescription();
 
-Status PromoteAutoFlag(const std::string& flag_name);
-Status PromoteAllAutoFlags();
+void PromoteAutoFlag(const AutoFlagDescription& flag_desc);
+void PromoteAllAutoFlags();
+
+void DemoteAutoFlag(const AutoFlagDescription& flag_desc);
 
 bool IsFlagPromoted(
     const gflags::CommandLineFlagInfo& flag, const AutoFlagDescription& auto_flag_desc);
 
 // Should test promote all Auto Flags at startup?
 bool ShouldTestPromoteAllAutoFlags();
+
+const char* AutoFlagValueAsString(bool value);
+
+template <class T>
+auto AutoFlagValueAsString(const T& value) {
+  return AsString(value);
+}
 
 // Create the gFlag with appropriate tags and register it as an AutoFlag.
 // COMPILE_ASSERT is used to make sure initial_val and target_val are of the specified flag type.
@@ -141,16 +137,18 @@ bool ShouldTestPromoteAllAutoFlags();
       yb::auto_flags_internal::BOOST_PP_CAT(IsValid_, type)(target_val), \
       "Target value of AutoFlag " BOOST_PP_STRINGIZE(name) " '" BOOST_PP_STRINGIZE(target_val) \
       "' is not assignable to " BOOST_PP_STRINGIZE(type)); \
+  static_assert((initial_val) != (target_val), "Initial and target value of AutoFlag " \
+  BOOST_PP_STRINGIZE(name) " are the same"); \
   BOOST_PP_CAT(DEFINE_, BOOST_PP_CAT(runtime_prefix, BOOST_PP_CAT(_, type)))( \
     name, initial_val, txt); \
   namespace { \
   yb::auto_flags_internal::AutoFlagDescRegisterer \
       BOOST_PP_CAT(afr_, name)(BOOST_PP_STRINGIZE(name), /* name */ \
-        &BOOST_PP_CAT(FLAGS_, name),      /* flag_ptr */ \
-        yb::AutoFlagClass::flag_class,    /* flag_class */ \
-        BOOST_PP_STRINGIZE(initial_val),  /* initial_val */ \
-        BOOST_PP_STRINGIZE(target_val),   /* target_val */ \
-        is_runtime);                      /* is_runtime */ \
+        &BOOST_PP_CAT(FLAGS_, name),              /* flag_ptr */ \
+        ::yb::AutoFlagClass::flag_class,          /* flag_class */ \
+        ::yb::AutoFlagValueAsString(initial_val), /* initial_val */ \
+        ::yb::AutoFlagValueAsString(target_val),  /* target_val */ \
+        is_runtime);                              /* is_runtime */ \
   } \
   _TAG_FLAG(name, ::yb::FlagTag::kAuto, auto); \
   TAG_FLAG(name, stable)
@@ -165,6 +163,8 @@ bool ShouldTestPromoteAllAutoFlags();
       yb::auto_flags_internal::IsValid_string(target_val), \
       "Target value of AutoFlag " BOOST_PP_STRINGIZE(name) " '" target_val \
                                                            "' is not assignable to string"); \
+  static_assert(yb::auto_flags_internal::StringsNotEqual(initial_val, target_val), "Initial and " \
+  "target value of AutoFlag " BOOST_PP_STRINGIZE(name) " are the same"); \
   BOOST_PP_CAT(DEFINE_, BOOST_PP_CAT(runtime_prefix, _string))(name, initial_val, txt); \
   namespace { \
   yb::auto_flags_internal::AutoFlagDescRegisterer \
@@ -179,6 +179,10 @@ bool ShouldTestPromoteAllAutoFlags();
   TAG_FLAG(name, stable)
 
 namespace auto_flags_internal {
+
+constexpr bool StringsNotEqual(char const* a, char const* b) {
+    return std::string_view(a) != b;
+}
 
 template <typename T>
 constexpr bool IsValid_bool(T a) {

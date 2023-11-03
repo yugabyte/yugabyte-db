@@ -20,7 +20,7 @@
 #endif
 #include <fcntl.h>
 #include <string>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/casts.h"
 
@@ -31,6 +31,8 @@
 #include "yb/util/status_format.h"
 
 using std::string;
+
+DECLARE_string(tmp_dir);
 
 namespace yb {
 
@@ -69,7 +71,7 @@ Result<void*> MMap(int fd, SharedMemorySegment::AccessMode access_mode, size_t s
 
 // Returns the directory in which all shared memory files should be created.
 std::string GetSharedMemoryDirectory() {
-  std::string directory = "/tmp";
+  std::string directory = FLAGS_tmp_dir;
 
 #if defined(__linux__)
   auto* mount_file = fopen("/proc/mounts", "r");

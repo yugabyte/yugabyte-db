@@ -23,6 +23,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "yb/docdb/doc_operation.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_types.h"
 
@@ -33,10 +34,12 @@ namespace yb {
 namespace docdb {
 
 std::string EntryToString(
-    const rocksdb::Iterator& iterator, const SchemaPackingStorage& schema_packing_storage,
+    const rocksdb::Iterator& iterator,
+    SchemaPackingProvider* schema_packing_provider /*null ok*/,
     StorageDbType db_type = StorageDbType::kRegular);
 std::string EntryToString(
-    const Slice& key, const Slice& value, const SchemaPackingStorage& schema_packing_storage,
+    const Slice& key, const Slice& value,
+    SchemaPackingProvider* schema_packing_provider /*null ok*/,
     StorageDbType db_type = StorageDbType::kRegular);
 
 // Create a debug dump of the document database. Tries to decode all keys/values despite failures.
@@ -45,25 +48,31 @@ std::string EntryToString(
 void DocDBDebugDump(
     rocksdb::DB* rocksdb,
     std::ostream& out,
-    const SchemaPackingStorage& schema_packing_storage,
+    SchemaPackingProvider* schema_packing_provider /*null ok*/,
     StorageDbType db_type,
     IncludeBinary include_binary = IncludeBinary::kFalse);
 
 std::string DocDBDebugDumpToStr(
-    rocksdb::DB* rocksdb, const SchemaPackingStorage& schema_packing_storage,
+    rocksdb::DB* rocksdb,
+    SchemaPackingProvider* schema_packing_provider /*null ok*/,
     StorageDbType db_type = StorageDbType::kRegular,
     IncludeBinary include_binary = IncludeBinary::kFalse);
 
 std::string DocDBDebugDumpToStr(
-    DocDB docdb, const SchemaPackingStorage& schema_packing_storage,
+    DocDB docdb,
+    SchemaPackingProvider* schema_packing_provider /*null ok*/,
     IncludeBinary include_binary = IncludeBinary::kFalse);
 
+std::string DocDBDebugDumpToStr(const DocOperationApplyData& data);
+
 void DocDBDebugDumpToContainer(
-    DocDB docdb, const SchemaPackingStorage& schema_packing_storage,
+    DocDB docdb,
+    SchemaPackingProvider* schema_packing_provider /*null ok*/,
     std::unordered_set<std::string>* out);
 
 void DumpRocksDBToLog(
-    rocksdb::DB* rocksdb, const SchemaPackingStorage& schema_packing_storage,
+    rocksdb::DB* rocksdb,
+    SchemaPackingProvider* schema_packing_provider /*null ok*/,
     StorageDbType db_type = StorageDbType::kRegular, const std::string& log_prefix = std::string());
 
 }  // namespace docdb

@@ -150,4 +150,41 @@ TEST_F(EMCTest, TestUniquePorts) {
   }
 }
 
+TEST_F(EMCTest, TestYSQLShutdown) {
+  ExternalMiniClusterOptions opts;
+  opts.num_masters = master_peer_ports_.size();
+  opts.num_tablet_servers = 3;
+  opts.master_rpc_ports = master_peer_ports_;
+  opts.enable_ysql = true;
+
+  ExternalMiniCluster cluster(opts);
+  ASSERT_OK(cluster.Start());
+
+  cluster.Shutdown();
+  for (const auto& server : cluster.daemons()) {
+    if (server) {
+      ASSERT_FALSE(server->WasUnsafeShutdown());
+    }
+  }
+}
+
+TEST_F(EMCTest, TestCallHomeCrash) {
+  ExternalMiniClusterOptions opts;
+  opts.num_masters = 1;
+  opts.num_tablet_servers = 1;
+  for (auto* server_flags : {&opts.extra_master_flags, &opts.extra_tserver_flags}) {
+    server_flags->push_back("--callhome_interval_secs=1");
+    server_flags->push_back("--callhome_url=dummy_url");
+    server_flags->push_back("--callhome_enabled=true");
+    server_flags->push_back("--TEST_callhome_destructor_sleep_ms=10000");
+  }
+
+  ExternalMiniCluster cluster(opts);
+  ASSERT_OK(cluster.Start());
+
+  // Require exit code 0 from Shutdown to assert that we did not crash.
+  ASSERT_NO_FATALS(cluster.Shutdown(
+      ExternalMiniCluster::NodeSelectionMode::ALL, RequireExitCode0::kTrue));
+}
+
 } // namespace yb

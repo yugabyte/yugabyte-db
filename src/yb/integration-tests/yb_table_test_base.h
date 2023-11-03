@@ -19,7 +19,7 @@
 #include <future>
 
 #include "yb/util/flags.h"
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/client/schema.h"
 #include "yb/client/table_handle.h"
@@ -73,8 +73,11 @@ class YBTableTestBase : public YBTest {
   virtual void CreateTable();
   void OpenTable();
   virtual void DeleteTable();
-  virtual void PutKeyValue(yb::client::YBSession* session, std::string key, std::string value);
-  virtual void PutKeyValue(std::string key, std::string value);
+  virtual Status PutKeyValue(yb::client::YBSession* session,
+                             const std::string& key,
+                             const std::string& value);
+  virtual void PutKeyValue(const std::string& key, const std::string& value);
+  virtual void PutKeyValueIgnoreError(const std::string& key, const std::string& value);
   void RestartCluster();
   std::vector<std::pair<std::string, std::string>> GetScanResults(const client::TableRange& range);
   void FetchTSMetricsPage();
@@ -94,7 +97,7 @@ class YBTableTestBase : public YBTest {
 
   client::TableHandle table_;
   std::unique_ptr<client::YBClient> client_;
-  std::unique_ptr<tools::enterprise::ClusterAdminClient> yb_admin_client_;
+  std::unique_ptr<tools::ClusterAdminClient> yb_admin_client_;
   bool table_exists_ = false;
 
   yb::MiniCluster* mini_cluster() {

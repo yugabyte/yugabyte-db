@@ -15,7 +15,7 @@
 
 #include <memory>
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/doc_ttl_util.h"
+#include "yb/dockv/doc_ttl_util.h"
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/util/compare_util.h"
@@ -31,7 +31,7 @@ typedef enum {
 
 struct ExpirationTime {
   // Indicates value-level TTL expiration.
-  HybridTime ttl_expiration_ht = kNoExpiration;
+  HybridTime ttl_expiration_ht = dockv::kNoExpiration;
   // Indicates creation hybrid time, used to calculate table-level TTL expiration.
   HybridTime created_ht = HybridTime::kMax;
 

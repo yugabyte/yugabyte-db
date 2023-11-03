@@ -34,6 +34,9 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 
 /*
  * Specialized DestReceiver for collecting query output in a SQL function

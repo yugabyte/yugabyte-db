@@ -29,12 +29,17 @@ class LocalYBInboundCall;
 // A short-circuited outbound call.
 class LocalOutboundCall : public OutboundCall {
  public:
-  LocalOutboundCall(const RemoteMethod* remote_method,
+  LocalOutboundCall(const RemoteMethod& remote_method,
                     const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
-                    AnyMessagePtr response_storage, RpcController* controller,
-                    std::shared_ptr<RpcMetrics> rpc_metrics, ResponseCallback callback);
+                    AnyMessagePtr response_storage,
+                    RpcController* controller,
+                    std::shared_ptr<RpcMetrics> rpc_metrics,
+                    ResponseCallback callback,
+                    ThreadPool* callback_thread_pool);
 
-  Status SetRequestParam(AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker) override;
+  Status SetRequestParam(
+      AnyMessageConstPtr req, std::unique_ptr<Sidecars> sidecars,
+      const MemTrackerPtr& mem_tracker) override;
 
   const std::shared_ptr<LocalYBInboundCall>& CreateLocalInboundCall();
 
@@ -44,10 +49,12 @@ class LocalOutboundCall : public OutboundCall {
     return req_;
   }
 
+  bool is_local() const override { return true; }
+
  protected:
   void Serialize(ByteBlocks* output) override;
 
-  Status AssignSidecarTo(size_t idx, std::string* out) const override;
+  Result<RefCntSlice> ExtractSidecar(size_t idx) const override;
   size_t TransferSidecars(Sidecars* context) override;
 
  private:

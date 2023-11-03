@@ -7,6 +7,8 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -14,13 +16,17 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 
 @Singleton
+@Slf4j
 public class TemplateManager extends DevopsBase {
   private static final String COMMAND_TYPE = "instance";
   public static final String PROVISION_SCRIPT = "provision_instance.py";
 
-  @Inject play.Configuration appConfig;
+  @Inject Config appConfig;
+
+  @Inject NodeAgentClient nodeAgentClient;
 
   @Override
   protected String getCommandType() {
@@ -53,8 +59,8 @@ public class TemplateManager extends DevopsBase {
       String nodeExporterUser,
       boolean setUpChrony,
       List<String> ntpServers) {
-    AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
     String path = getOrCreateProvisionFilePath(accessKey.getProviderUUID());
+    AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
 
     // Construct template command.
     List<String> commandArgs = new ArrayList<>();
@@ -62,8 +68,19 @@ public class TemplateManager extends DevopsBase {
     commandArgs.add(PROVISION_SCRIPT);
     commandArgs.add("--destination");
     commandArgs.add(path);
+
+    Provider provider = Provider.getOrBadRequest(accessKey.getProviderUUID());
+    ProviderDetails details = provider.getDetails();
+
+    if (details.sshUser == null) {
+      log.warn(
+          "skip provision script templating, provider {} has no ssh user defined",
+          provider.getName());
+      return;
+    }
     commandArgs.add("--ssh_user");
-    commandArgs.add(keyInfo.sshUser);
+    commandArgs.add(details.sshUser);
+
     commandArgs.add("--vars_file");
     commandArgs.add(keyInfo.vaultFile);
     commandArgs.add("--vault_password_file");
@@ -72,8 +89,11 @@ public class TemplateManager extends DevopsBase {
     commandArgs.add(keyInfo.privateKey);
     commandArgs.add("--local_package_path");
     commandArgs.add(appConfig.getString("yb.thirdparty.packagePath"));
+
     commandArgs.add("--custom_ssh_port");
-    commandArgs.add(keyInfo.sshPort.toString());
+    commandArgs.add(details.sshPort.toString());
+    commandArgs.add("--provider_id");
+    commandArgs.add(provider.getUuid().toString());
 
     if (airGapInstall) {
       commandArgs.add("--air_gap");
@@ -101,12 +121,21 @@ public class TemplateManager extends DevopsBase {
       }
     }
 
+    if (nodeAgentClient.isClientEnabled(provider)) {
+      commandArgs.add("--install_node_agent");
+      commandArgs.add("--node_agent_port");
+      commandArgs.add(String.valueOf(confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort)));
+    }
+
     JsonNode result =
-        execAndParseCommandCloud(accessKey.getProviderUUID(), "template", commandArgs);
+        execAndParseShellResponse(
+            DevopsCommand.builder()
+                .providerUUID(accessKey.getProviderUUID())
+                .command("template")
+                .commandArgs(commandArgs)
+                .build());
 
     if (result.get("error") == null) {
-      final Provider provider = Provider.getOrBadRequest(accessKey.getProviderUUID());
-      final ProviderDetails details = provider.details;
       details.passwordlessSudoAccess = passwordlessSudoAccess;
       details.provisionInstanceScript = path + "/" + PROVISION_SCRIPT;
       details.airGapInstall = airGapInstall;
@@ -116,17 +145,6 @@ public class TemplateManager extends DevopsBase {
       details.setUpChrony = setUpChrony;
       details.ntpServers = ntpServers;
       provider.save();
-
-      // TODO: remove following redundant access_key data.
-      keyInfo.passwordlessSudoAccess = passwordlessSudoAccess;
-      keyInfo.provisionInstanceScript = path + "/" + PROVISION_SCRIPT;
-      keyInfo.airGapInstall = airGapInstall;
-      keyInfo.installNodeExporter = installNodeExporter;
-      keyInfo.nodeExporterPort = nodeExporterPort;
-      keyInfo.nodeExporterUser = nodeExporterUser;
-      keyInfo.setUpChrony = setUpChrony;
-      keyInfo.ntpServers = ntpServers;
-      accessKey.setKeyInfo(keyInfo);
     } else {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, result);
     }

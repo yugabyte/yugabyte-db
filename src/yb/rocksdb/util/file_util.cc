@@ -35,7 +35,6 @@ namespace rocksdb {
 using std::string;
 using std::vector;
 using std::unique_ptr;
-using strings::Substitute;
 
 // Utility function to copy a file up to a specified length
 Status CopyFile(Env* env, const string& source,

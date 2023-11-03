@@ -4,7 +4,7 @@
 //
 // This file will hold all the destination list of alerts.
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, DropdownButton, MenuItem } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
@@ -13,7 +13,10 @@ import { YBPanelItem } from '../../panels';
 import { AlertDestinationDetails } from './AlertDestinationDetails';
 import { isNonAvailable } from '../../../utils/LayoutUtils';
 
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+
 import './AlertDestinationConfiguration.scss';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 /**
  * This is the header for YB Panel Item.
  */
@@ -30,9 +33,14 @@ const header = (isReadOnly, destinationCount, onAddAlertDestination) => (
       </FlexShrink>
       <FlexShrink className="pull-right">
         {!isReadOnly && (
-          <Button bsClass="btn btn-orange btn-config" onClick={() => onAddAlertDestination(true)}>
-          Add Destination
-          </Button>
+          <RbacValidator
+            accessRequiredOn={ApiPermissionMap.CREATE_ALERT_DESTINATION}
+            isControl
+          >
+            <Button bsClass="btn btn-orange btn-config" onClick={() => onAddAlertDestination(true)}>
+              Add Destination
+            </Button>
+          </RbacValidator>
         )}
       </FlexShrink>
     </FlexContainer>
@@ -60,15 +68,14 @@ export const AlertDestinations = (props) => {
     sortName: 'name',
     sortOrder: 'asc'
   });
-  const isReadOnly = isNonAvailable(
-    customer.data.features, 'alert.destinations.actions');
+  const isReadOnly = isNonAvailable(customer.data.features, 'alert.destinations.actions');
 
   const setRsponseObject = () => {
     const result = new Map();
 
     alertDestinations().then((destinations) => {
       getAlertChannels().then((channels) => {
-        destinations.forEach((dest) => {
+        destinations?.forEach((dest) => {
           result.set(dest.uuid, {
             name: dest.name,
             uuid: dest.uuid,
@@ -167,7 +174,9 @@ export const AlertDestinations = (props) => {
 
   // This method will handle all the required actions for the particular row.
 
-  const editActionLabel = isReadOnly ? "Destination Details" : "Edit Destination";
+  const editActionLabel = isReadOnly ? 'Destination Details' : 'Edit Destination';
+  const canEditDestination = hasNecessaryPerm(ApiPermissionMap.MODIFY_ALERT_DESTINATION);
+  const canDeleteDestination = hasNecessaryPerm(ApiPermissionMap.DELETE_ALERT_DESTINATION);
   const formatConfigActions = (cell, row) => {
     return (
       <>
@@ -185,17 +194,25 @@ export const AlertDestinations = (props) => {
           >
             <i className="fa fa-info-circle"></i> Channels Details
           </MenuItem>
-
-          <MenuItem onClick={() => onEditDestination(row)}>
-            <i className="fa fa-pencil"></i> {editActionLabel}
-          </MenuItem>
-
-          {!isReadOnly && (
-            <MenuItem onClick={() => showDeleteModal(row.name)}>
-              <i className="fa fa-trash"></i> Delete Destination
+          <RbacValidator
+            accessRequiredOn={ApiPermissionMap.MODIFY_ALERT_DESTINATION}
+            isControl
+          >
+            <MenuItem disabled={!canEditDestination} onClick={() => canEditDestination && onEditDestination(row)}>
+              <i className="fa fa-pencil"></i> {editActionLabel}
             </MenuItem>
+          </RbacValidator>
+          {!isReadOnly && (
+            <RbacValidator
+              accessRequiredOn={ApiPermissionMap.DELETE_ALERT_DESTINATION}
+              isControl
+              overrideStyle={{ display: 'block' }}
+            >
+              <MenuItem onClick={() => canDeleteDestination && showDeleteModal(row.name)} disabled={!canDeleteDestination} >
+                <i className="fa fa-trash"></i> Delete Destination
+              </MenuItem>
+            </RbacValidator>
           )}
-
           {
             <YBConfirmModal
               name="delete-alert-destination"
@@ -214,59 +231,63 @@ export const AlertDestinations = (props) => {
   };
 
   return (
-    <>
-      <YBPanelItem
-        header={header(isReadOnly, alertDestination.length, onAddAlertDestination)}
-        body={
-          <>
-            <BootstrapTable
-              className="backup-list-table middle-aligned-table"
-              data={alertDestination}
-              options={options}
-              pagination
-            >
-              <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
-              <TableHeaderColumn
-                dataField="name"
-                columnClassName="no-border name-column"
-                className="no-border"
+    <RbacValidator
+      accessRequiredOn={ApiPermissionMap.GET_ALERT_DESTINATIONS}
+    >
+      <>
+        <YBPanelItem
+          header={header(isReadOnly, alertDestination.length, onAddAlertDestination)}
+          body={
+            <>
+              <BootstrapTable
+                className="backup-list-table middle-aligned-table"
+                data={alertDestination}
+                options={options}
+                pagination
               >
-                Destinations
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                dataField="channels"
-                dataFormat={getChannelNames}
-                columnClassName="no-border name-column"
-                className="no-border"
-              >
-                Channels
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                dataField="defaultDestination"
-                columnClassName="no-border name-column"
-                className="no-border"
-              >
-                Default Destination
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                dataField="configActions"
-                dataFormat={(cell, row) => formatConfigActions(cell, row)}
-                columnClassName="yb-actions-cell"
-                className="yb-actions-cell"
-              >
-                Actions
-              </TableHeaderColumn>
-            </BootstrapTable>
-          </>
-        }
-        noBackground
-      />
+                <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
+                <TableHeaderColumn
+                  dataField="name"
+                  columnClassName="no-border name-column"
+                  className="no-border"
+                >
+                  Destinations
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  dataField="channels"
+                  dataFormat={getChannelNames}
+                  columnClassName="no-border name-column"
+                  className="no-border"
+                >
+                  Channels
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  dataField="defaultDestination"
+                  columnClassName="no-border name-column"
+                  className="no-border"
+                >
+                  Default Destination
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  dataField="configActions"
+                  dataFormat={(cell, row) => formatConfigActions(cell, row)}
+                  columnClassName="yb-actions-cell"
+                  className="yb-actions-cell"
+                >
+                  Actions
+                </TableHeaderColumn>
+              </BootstrapTable>
+            </>
+          }
+          noBackground
+        />
 
-      <AlertDestinationDetails
-        visible={showModal && visibleModal === 'alertDestinationDetailsModal'}
-        onHide={closeModal}
-        details={alertDestinationDetails}
-      />
-    </>
+        <AlertDestinationDetails
+          visible={showModal && visibleModal === 'alertDestinationDetailsModal'}
+          onHide={closeModal}
+          details={alertDestinationDetails}
+        />
+      </>
+    </RbacValidator>
   );
 };

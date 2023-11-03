@@ -13,14 +13,12 @@
 
 #pragma once
 
-#include "yb/rpc/rpc_fwd.h"
+#include <memory>
+
+#include "yb/rpc/rpc_util.h"
 
 namespace yb {
 namespace rpc {
-
-struct MessengerShutdownDeleter {
-  void operator()(Messenger* messenger) const;
-};
 
 using AutoShutdownMessengerHolder = std::unique_ptr<Messenger, MessengerShutdownDeleter>;
 

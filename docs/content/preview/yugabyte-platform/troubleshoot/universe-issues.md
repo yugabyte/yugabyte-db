@@ -22,7 +22,7 @@ A universe's **Metrics** page displays graphs representing information on operat
 
 You access metrics by navigating to **Universes > Universe-Name > Metrics**, as shown in the following illustration:
 
-![Metrics Page](/images/yp/metrics_main.png)<br>
+![Metrics Page](/images/yp/metrics_main.png)
 
 You can chose to view metrics based on different criteria:
 
@@ -102,7 +102,7 @@ Resource metrics should be considered on a per-node basis.
 | YBClient Ops Local vs Remote  | The count of local and remote read and write requests.<br>Local requests are executed on the same node that has received the request.<br>Remote requests are re-routed internally to a different node for executing the operation. | If an application is using a Yugabyte driver that supports local query routing optimization and prepared statements, the expected value for this is close to 100% local for local reads and writes.<br>If using the Cassandra driver or not using prepared statements, expect to see a relatively even split (for example, ~33% local and ~66% remote for a 3-node cluster). | ![img](/images/yp/metrics16.png) |
 | YBClient Latency              | Latency of local and remote read and write requests.<br>Refer to the YBClient Ops Local vs Remote description regarding local and remote requests. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics17.png) |
 | Reactor Delays                | The number of microseconds the incoming CQL requests spend in the worker queue before the beginning of processing. <br><br>Note that Reactor is a software implementation of a ring queue. | This value should be close to zero. If it is increasing or stays high, you should treat it as an indicator of a network issue or that the queues are full. If this is the case, you should investigate throughput and queue size and latency metrics for tuning guidance. | ![img](/images/yp/metrics18.png) |
-| RPC Queue Size                | The number of RPCs in the service queue.                     | The queue size is an indicator of incoming traffic and throughput. Typically, it either shows very low values, which means that YugabyteDB Anywhere is processing requests at a healthy rate, or a flat line at the maximum-configured queue size, which means that YugabyteDB Anywhere has filled the queues and cannot process fast enough. | ![img](/images/yp/metrics19.png) |
+| RPC Queue Size                | The number of RPCs in the service queue.                     | The queue size is an indicator of incoming traffic and throughput. Typically, it either shows very low values, which means that YugabyteDB is processing requests at a healthy rate, or a flat line at the maximum-configured queue size, which means that YugabyteDB has filled the queues and cannot process fast enough. | ![img](/images/yp/metrics19.png) |
 | Response Size (bytes)         | The size of the RPC response.                                | The response size for RPCs should be relatively small.<br>This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics20.png) |
 | Transaction                   | The number of transactions.                                  | This value depends on the application or activity. Because transactions can have batched statements, it is not possible to provide a specific guidance for this metric, and it is purely informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![img](/images/yp/metrics21.png) |
 | Inbound RPC Connections Alive | The count of current connections at the CQL API level.       | If this spikes to a number much higher than your average, you should consider that there may be an active DDoS or a security incident. | ![img](/images/yp/metrics22.png) |
@@ -302,7 +302,7 @@ YugabyteDB Anywhere obtains the replication lag using Prometheus metrics from th
 
 {{< /note >}}
 
-You can also federate metrics from YugabyteDB Anywhere and configure alerting rules to trigger alerts in Prometheus. For details, see the following sections of [Alerts and Notifications in YugabyteDB Anywhere](https://blog.yugabyte.com/yugabytedb-2-8-alerts-and-notifications/):
+You can also federate metrics from YugabyteDB Anywhere and configure alerting rules to trigger alerts in Prometheus. For details, see the following sections of [Alerts and Notifications in YugabyteDB Anywhere](https://www.yugabyte.com/blog/yugabytedb-2-8-alerts-and-notifications/):
 
 - Scrape metrics from YugabyteDB Anywhere
 - Configurable alerting rules
@@ -374,7 +374,7 @@ A support bundle is an archive generated at a universe level. It contains all th
 - Universe logs, which are the YB-Master and YB-TServer log files from each node in the universe, as well as PostgreSQL logs available under the YB-TServer logs directory.
 - Output files ( `.out` ) files generated by the YB-Master and YB-TServer.
 - Error files ( `.err` ) generated by the YB-Master and YB-TServer.
-- Gflag configuration files containing the gflags set on the universe.
+- G-flag configuration files containing the gflags set on the universe.
 - Instance files that contain the metadata information from the YB-Master and YB-TServer.
 - Consensus meta files containing consensus metadata information from the YB-Master and YB-TServer.
 - Tablet meta files containing the tablet metadata from the YB-Master and YB-TServer.
@@ -401,22 +401,13 @@ You can create a support bundle as follows:
 
   The **Support Bundles** dialog allows you to either download the bundle or delete it if it is no longer needed. By default, bundles expire after ten days to free up space.
 
-## Configure storage class volume binding
+## Debug crashing YugabyteDB pods in Kubernetes
 
-On Kubernetes, it is recommended to set volume binding mode on a StorageClass to `WaitForFirstConsumer` for dynamically provisioned volumes. This will delay provisioning until a pod using the persistent volume claim (PVC) is created. The pod topology or scheduling constraints will be respected. However, scheduling might fail if the storage volume is not accessible from all the nodes in a cluster and the default volume binding mode is set to `Immediate` for certain regional cloud deployments.
+If the YugabyteDB pods of your universe are crashing, you can debug them with the help of following instructions.
 
-For more information, see [Kubernetes: volume binding mode](https://kubernetes.io/docs/concepts/storage/storage-classes/#volume-binding-mode).
+### Collect core dumps in Kubernetes environments
 
-On Google Cloud Provider (GCP), if you choose not to set binding mode to `WaitForFirstConsumer`, you might use regional persistent disks to replicate data between two zones in the same region on Google Kubernetes Engine (GKE). This can be used by the pod, in cases when the pod reschedules to another node in a different  zone.
-
-For more information, see the following:
-
-- [Google Kubernetes Engine: persistent volumes and dynamic provisioning](https://cloud.google.com/kubernetes-engine/docs/concepts/persistent-volumes)
-- [Google Cloud: regional persistent disks](https://cloud.google.com/compute/docs/disks/high-availability-regional-persistent-disk)
-
-## Collect core dumps in Kubernetes environments
-
-When dealing with Kubernetes-based installations of YugabyteDB Anywhere, you might need to retrieve core dump files in case of a crash within the Kubernetes pod. For more information, see [Specify ulimit and remember the location of core dumps](../../install-yugabyte-platform/prerequisites#specify-ulimit-and-remember-the-location-of-core-dumps). 
+When dealing with Kubernetes-based installations of YugabyteDB Anywhere, you might need to retrieve core dump files in case of a crash within the Kubernetes pod. For more information, see [Specify ulimit and remember the location of core dumps](../../install-yugabyte-platform/prepare-environment/kubernetes/#specify-ulimit-and-remember-the-location-of-core-dumps).
 
 The process of collecting core dumps depends on the value of the sysctl `kernel.core_pattern`, which you can inspect within a Kubernetes pod or node by executing the following command:
 
@@ -426,7 +417,7 @@ cat /proc/sys/kernel/core_pattern
 
 The value of `core_pattern` can be a literal path or it can contain a pipe symbol:
 
-- If the value of `core_pattern` is a literal path of the form `/var/tmp/core.%p`, cores are copied by the YugabyteDB node to a persistent volume directory that you can inspect using the following command: 
+- If the value of `core_pattern` is a literal path of the form `/var/tmp/core.%p`, cores are copied by the YugabyteDB node to a persistent volume directory that you can inspect using the following command:
 
   ```sh
   kubectl exec -it -n <namespace> <pod_name> -c yb-cleanup -- ls -lht /var/yugabyte/cores
@@ -441,3 +432,69 @@ The value of `core_pattern` can be a literal path or it can contain a pipe symbo
   ```
 
 - If the value of `core_pattern` contains a `|` pipe symbol (for example, `|/usr/share/apport/apport -p%p -s%s -c%c -d%d -P%P -u%u -g%g -- %E`), the core dump is being redirected to a specific collector on the underlying Kubernetes node, with the location depending on the exact collector. In this case, it is your responsibility to identify the location to which these files are written and retrieve them.
+
+### Use debug hooks with YugabyteDB in Kubernetes
+
+You can add your own commands to pre- and post-debug hooks to troubleshoot crashing YB-Master or YB-TServer pods. These commands are run before the database process starts and after the database process terminates or crashes.
+
+For example, to modify the debug hooks of a YB-Master, run following command:
+
+```sh
+kubectl edit configmap -n <namespace> ybuni1-asia-south1-a-lbrl-master-hooks
+```
+
+This opens the configmap YAML in your editor.
+
+To add multiple commands to the pre-debug hook of `yb-master-0`, you can modify the `yb-master-0-pre_debug_hook.sh` key as follows:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ybuni1-asia-south1-a-lbrl-master-hooks
+data:
+  yb-master-0-post_debug_hook.sh: 'echo ''hello-from-post'' '
+  yb-master-0-pre_debug_hook.sh: |
+    echo "Running the pre hook"
+    du -sh /mnt/disk0/yb-data/
+    sleep 5m
+    # other commands here…
+  yb-master-1-post_debug_hook.sh: 'echo ''hello-from-post'' '
+  yb-master-1-pre_debug_hook.sh: 'echo ''hello-from-pre'' '
+```
+
+After you save the file, the updated commands will be executed on the next restart of `yb-master-0`.
+
+You can run the following command to check the output of your debug hook:
+
+```sh
+kubectl logs -n <namespace> ybuni1-asia-south1-a-lbrl-yb-master-0 -c yb-master
+```
+
+Expect an output similar to the following:
+
+```output
+...
+2023-03-29 06:40:09,553 [INFO] k8s_parent.py: Executing operation: ybuni1-asia-south1-a-lbrl-yb-master-0_pre_debug_hook filepath: /opt/debug_hooks_config/yb-master-0-pre_debug_hook.sh
+2023-03-29 06:45:09,627 [INFO] k8s_parent.py: Output from hook b'Running the pre hook\n44M\t/mnt/disk0/yb-data/\n'
+```
+
+## Perform the follower lag check during upgrades
+
+You can use the follower lag check to ensure that the YB-Master and YB-TServer process is caught up to its peers. To find this metric on Prometheus, execute the following:
+
+```sh
+max by (instance) (follower_lag_ms{instance='<ip>:<http_port>'})
+```
+
+- *ip* represents the YB-Master IP or the YB-TServer IP.
+- *http_port* represents the HTTP port on which the YB-Master or YB-TServer is listening. The YB-Master default port is 7000 and the YB-TServer default port is 9000.
+
+The result is the maximum follower lag, in milliseconds, of the most recent Prometheus of the specified YB-Master or YB-TServer process.
+
+Typically, the maximum follower lag of a healthy universe is a few seconds at most. The following reasons may contribute to a significant increase in the follower lag, potentially reaching several minutes:
+
+- Node issues, such as network problems between nodes, an unhealthy state of nodes, or inability of the node's YB-Master or YB-TServer process to properly serve requests. The lag usually persists until the issue is resolved.
+- Issues during a rolling upgrade, when the YB-Master or YB-TServer process is stopped, upgrade on the associated process is performed, then the process is restarted. During the downtime, writes to the database continue to occur, but the associated YB-Master or YB-TServer are left behind. The lag gradually decreases after the YB-Master or YB-TServer has restarted and can serve requests again. However, if an upgrade is performed on a universe that is not in a healthy state to begin with (for example, a node is down or is experiencing an unexpected problem), a failure is likely to occur due to the follower lag threshold not being reached within the specified timeframe after the processes have restarted. Note that the default value for the follower lag threshold is 1 minute and the overall time allocated for the process to catch up is 15 minutes. To remedy the situation, perform the following:
+  - Bring the node back to a healthy state by stopping and restarting the node, or removing it and adding a new one).
+  - Ensure that the YB-Master and YB-TServer processes are running correctly on the node.

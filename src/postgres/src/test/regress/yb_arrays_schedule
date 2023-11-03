@@ -8,11 +8,9 @@
 test: yb_pg_int8
 test: yb_pg_point
 
-# Chain of dependencies for `yb_pg_arrays`
-test: yb_pg_create_function_1
-test: yb_pg_create_type
-test: yb_pg_create_table
-test: yb_pg_copy
+# Dependencies for `yb_pg_arrays`
+test: yb_dep_tenk1
+test: yb_dep_array_op_test
 
 test: yb_pg_arrays
 test: yb_int2_array

@@ -50,15 +50,13 @@ class PgLoadBalancerTest : public PgMiniTestBase {
   }
 };
 
-TEST_F(PgLoadBalancerTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceDuringLongRunningTransaction)) {
+TEST_F(PgLoadBalancerTest, LoadBalanceDuringLongRunningTransaction) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_initial_delay_secs) = 20;
 
   auto conn = ASSERT_RESULT(Connect());
-
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t(k INT, v INT) SPLIT INTO 2 TABLETS;"));
 
@@ -76,7 +74,7 @@ TEST_F(PgLoadBalancerTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceDuringLongRunningT
   ASSERT_OK(cluster_->AddTabletServer());
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    auto x = client->IsLoadBalanced(2);
+    auto x = client_->IsLoadBalanced(2);
     return x;
   }, 15s * kTimeMultiplier, "Wait for load balancer to balance to second tserver."));
 

@@ -8,6 +8,8 @@ import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Date;
+import java.util.Objects;
 import java.util.UUID;
 import play.libs.Json;
 
@@ -39,10 +41,50 @@ public class ScheduleUtil {
     if (scheduleTask == null) {
       return null;
     }
-    return Backup.fetchAllBackupsByTaskUUID(scheduleTask.getTaskUUID())
-        .stream()
-        .filter(bkp -> bkp.state.equals(BackupState.Completed))
+    return Backup.fetchAllBackupsByTaskUUID(scheduleTask.getTaskUUID()).stream()
+        .filter(bkp -> bkp.getState().equals(BackupState.Completed))
         .findFirst()
         .orElse(null);
+  }
+
+  public static long getIncrementalBackupFrequency(Schedule schedule) {
+    BackupRequestParams scheduleParams =
+        Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
+    if (scheduleParams.incrementalBackupFrequency == 0L) {
+      return 0L;
+    }
+    return scheduleParams.incrementalBackupFrequency;
+  }
+
+  public static Date nextExpectedIncrementTaskTime(Schedule schedule) {
+    // Checking incremental backup frequency instead of using Util function as function is called
+    // before object is created
+    BackupRequestParams scheduleParams =
+        Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
+    if (scheduleParams.incrementalBackupFrequency == 0L) {
+      return null;
+    }
+
+    long incrementFrequency = scheduleParams.incrementalBackupFrequency;
+
+    Date nextScheduleTaskTime = schedule.getNextScheduleTaskTime();
+    if (Objects.isNull(nextScheduleTaskTime)) {
+      long newIncrementScheduleTaskTime = (new Date()).getTime() + incrementFrequency;
+      return new Date(newIncrementScheduleTaskTime);
+    }
+
+    Date nextIncrementScheduleTaskTime = schedule.getNextIncrementScheduleTaskTime();
+    if (Objects.isNull(nextIncrementScheduleTaskTime)) {
+      return new Date(nextScheduleTaskTime.getTime() + incrementFrequency);
+    }
+
+    // check if calculated increment backup time is after current time
+    Date currentTime = new Date();
+    while ((!Objects.isNull(nextIncrementScheduleTaskTime))
+        && currentTime.after(nextIncrementScheduleTaskTime)) {
+      nextIncrementScheduleTaskTime =
+          new Date(nextIncrementScheduleTaskTime.getTime() + incrementFrequency);
+    }
+    return nextIncrementScheduleTaskTime;
   }
 }

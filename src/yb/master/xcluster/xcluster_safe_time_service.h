@@ -37,6 +37,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/xcluster/xcluster_consumer_metrics.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/rpc/scheduler.h"
 #include "yb/util/threadpool.h"
 #include "yb/gutil/thread_annotations.h"
@@ -61,9 +62,14 @@ class XClusterSafeTimeService {
   void ScheduleTaskIfNeeded() EXCLUDES(shutdown_cond_lock_, task_enqueue_lock_);
 
   // Calculate the max_safe_time - min_safe_time for each namespace.
-  Result<std::unordered_map<NamespaceId, uint64_t>> GetEstimatedDataLossMicroSec();
+  Result<std::unordered_map<NamespaceId, uint64_t>> GetEstimatedDataLossMicroSec(
+      const LeaderEpoch& epoch);
 
-  Result<XClusterNamespaceToSafeTimeMap> RefreshAndGetXClusterNamespaceToSafeTimeMap();
+  Status GetXClusterSafeTimeInfoFromMap(
+      const LeaderEpoch& epoch, GetXClusterSafeTimeResponsePB* resp);
+
+  Result<XClusterNamespaceToSafeTimeMap> RefreshAndGetXClusterNamespaceToSafeTimeMap(
+      const LeaderEpoch& epoch);
 
   xcluster::XClusterConsumerClusterMetrics* TEST_GetMetricsForNamespace(
       const NamespaceId& namespace_id);

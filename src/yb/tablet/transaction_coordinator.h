@@ -63,12 +63,12 @@ class TransactionCoordinatorContext {
 
   // Returns current hybrid time lease expiration.
   // Valid only if we are leader.
-  virtual HybridTime HtLeaseExpiration() const = 0;
+  virtual Result<HybridTime> HtLeaseExpiration() const = 0;
 
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
   virtual std::unique_ptr<UpdateTxnOperation> CreateUpdateTransaction(
       std::shared_ptr<LWTransactionStatePB> request) = 0;
-  virtual void SubmitUpdateTransaction(
+  virtual Status SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperation> operation, int64_t term) = 0;
 
   server::Clock& clock() const {
@@ -89,7 +89,7 @@ class TransactionCoordinator {
  public:
   TransactionCoordinator(const std::string& permanent_uuid,
                          TransactionCoordinatorContext* context,
-                         Counter* expired_metric,
+                         TabletMetrics* tablet_metrics,
                          const MetricEntityPtr& metrics);
   ~TransactionCoordinator();
 
@@ -138,7 +138,21 @@ class TransactionCoordinator {
                    CoarseTimePoint deadline,
                    tserver::GetTransactionStatusResponsePB* response);
 
-  void Abort(const std::string& transaction_id, int64_t term, TransactionAbortCallback callback);
+  void Abort(const TransactionId& transaction_id, int64_t term, TransactionAbortCallback callback);
+
+  // CancelTransactionIfFound returns true if the transaction is found in the list of managed txns
+  // at the coordinator, and invokes the callback with the cancelation status. If the txn isn't
+  // found, it returns false and the callback is not invoked.
+  bool CancelTransactionIfFound(
+      const TransactionId& transaction_id, int64_t term, TransactionAbortCallback callback);
+
+  // Populates old transactions and their metadata (involved tablets, active subtransactions) based
+  // on the arguments in the request. Used by pg_client_service to determine which transactions to
+  // display in pg_locks/yb_lock_status.
+  Status GetOldTransactions(
+      const tserver::GetOldTransactionsRequestPB* req,
+      tserver::GetOldTransactionsResponsePB* resp,
+      CoarseTimePoint deadline);
 
   std::string DumpTransactions();
 

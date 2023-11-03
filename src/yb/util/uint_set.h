@@ -18,6 +18,7 @@
 
 #include "yb/gutil/strings/join.h"
 
+#include "yb/util/memory/arena_fwd.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 
@@ -81,6 +82,15 @@ class UnsignedIntSet {
     return set;
   }
 
+  void ToPB(ArenaVector<T>* out) const {
+    uint32_t last_unset = 0;
+    for (const auto& elem : interval_set_) {
+      out->push_back(elem.lower() - last_unset);
+      out->push_back(elem.upper() - elem.lower() + 1);
+      last_unset = elem.upper() + 1;
+    }
+  }
+
   void ToPB(google::protobuf::RepeatedField<T>* mutable_container) const {
     uint32_t last_unset = 0;
     for (const auto& elem : interval_set_) {
@@ -100,6 +110,12 @@ class UnsignedIntSet {
 
   bool operator==(const UnsignedIntSet<T>& other) const {
     return boost::icl::is_element_equal(interval_set_, other.interval_set_);
+  }
+
+  // Returns true if this set is a super set of the other set.
+  bool Contains(const UnsignedIntSet<T>& other) const {
+    ElementRangeSet set_difference = other.interval_set_ - this->interval_set_;
+    return set_difference.empty();
   }
 
  private:

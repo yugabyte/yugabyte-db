@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import { components } from 'react-select';
 import { browserHistory } from 'react-router';
@@ -178,6 +178,7 @@ export default class CreateBackup extends Component {
     }
     if (
       (values.schedulingFrequency || values.cronExpression) &&
+      // eslint-disable-next-line eqeqeq
       values.timeBeforeDelete != null &&
       values.timeBeforeDelete !== '' &&
       (!_.isNumber(values.timeBeforeDelete) || values.timeBeforeDelete < 0)
@@ -185,6 +186,7 @@ export default class CreateBackup extends Component {
       errors.timeBeforeDelete = 'Time before deletion needs to be in number of days';
     }
 
+    // eslint-disable-next-line eqeqeq
     if (values.parallelism === '' || values.parallelism == null) {
       errors.parallelism = 'Number of threads is required';
     } else if (!_.isNumber(values.parallelism)) {
@@ -340,7 +342,7 @@ export default class CreateBackup extends Component {
               isKeyspaceSelected && tableKeyspace.value === 'allkeyspaces';
             const isSchedulingFrequencyReadOnly = cronExpression !== '';
             const isCronExpressionReadOnly = schedulingFrequency !== '';
-            const isTableSelected = backupTableUUID && backupTableUUID.length;
+            const isTableSelected = backupTableUUID?.length;
             const s3StorageSelected = storageConfigUUID && storageConfigUUID.id === 'S3';
             const showTransactionalToggle =
               isKeyspaceSelected &&
@@ -544,7 +546,11 @@ export default class CreateBackup extends Component {
                     {s3StorageSelected && (
                       <Field name="enableSSE" component={YBFormToggle} label={'Encrypt Backup'} />
                     )}
-                    <Field name="useTablespaces" component={YBFormToggle} label={'Use Tablespaces'} />
+                    <Field
+                      name="useTablespaces"
+                      component={YBFormToggle}
+                      label={'Use Tablespaces'}
+                    />
                     <Field
                       name="parallelism"
                       component={YBFormInput}

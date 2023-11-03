@@ -28,7 +28,6 @@ YB_STRONGLY_TYPED_BOOL(Stop);
 YB_STRONGLY_TYPED_BOOL(Unlock);
 
 class ScopedOperation;
-class ScopedRWOperation;
 
 // Class that counts acquired tokens and don't shutdown until this count drops to zero.
 class OperationCounter {
@@ -95,6 +94,11 @@ class RWOperationCounter {
   std::string resource_name() const {
     return resource_name_;
   }
+
+  uint64_t TEST_GetDisableCount() const;
+
+  bool TEST_IsStopped() const;
+
  private:
   Status WaitForOpsToFinish(
       const CoarseTimePoint& start_time, const CoarseTimePoint& deadline);
@@ -125,11 +129,24 @@ class ScopedRWOperation {
   void operator=(const ScopedRWOperation&) = delete;
   ScopedRWOperation(const ScopedRWOperation&) = delete;
 
-  explicit ScopedRWOperation(RWOperationCounter* counter = nullptr,
-                             const CoarseTimePoint& deadline = CoarseTimePoint());
+  ScopedRWOperation()
+      : ScopedRWOperation(
+            /* counter = */ nullptr,
+            /* abort_status_holder = */ nullptr,
+            /* deadline = */ CoarseTimePoint()) {}
+
+  explicit ScopedRWOperation(
+      RWOperationCounter* counter, const CoarseTimePoint& deadline = CoarseTimePoint())
+      : ScopedRWOperation(counter, /* abort_status_holder = */ nullptr, deadline) {}
+
+  explicit ScopedRWOperation(
+      RWOperationCounter* counter, const StatusHolder& abort_status_holder,
+      const CoarseTimePoint& deadline = CoarseTimePoint())
+      : ScopedRWOperation(counter, &abort_status_holder, deadline) {}
 
   ScopedRWOperation(ScopedRWOperation&& op) : data_{std::move(op.data_)} {
     op.data_.counter_ = nullptr;  // Moved ownership.
+    op.data_.abort_status_holder_ = nullptr;
   }
 
   ~ScopedRWOperation();
@@ -138,20 +155,31 @@ class ScopedRWOperation {
     Reset();
     data_ = std::move(op.data_);
     op.data_.counter_ = nullptr;
+    op.data_.abort_status_holder_ = nullptr;
   }
 
   bool ok() const {
     return data_.counter_ != nullptr;
   }
 
+  Status GetAbortedStatus() const;
+
   void Reset();
 
   std::string resource_name() const {
     return data_.counter_ ? data_.counter_->resource_name() : "null";
   }
+
+  static ScopedRWOperation TEST_Create() { return ScopedRWOperation(); }
+
  private:
+  explicit ScopedRWOperation(
+      RWOperationCounter* counter, const StatusHolder* abort_status_holder,
+      const CoarseTimePoint& deadline);
+
   struct Data {
     RWOperationCounter* counter_ = nullptr;
+    const StatusHolder* abort_status_holder_ = nullptr;
     std::string resource_name_;
 #ifndef NDEBUG
     LongOperationTracker long_operation_tracker_;
@@ -164,7 +192,7 @@ class ScopedRWOperation {
 // RETURN_NOT_OK macro support.
 Status MoveStatus(const ScopedRWOperation& scoped);
 
-// A convenience class to automatically pause/resume a RWOperationCounter.
+// A convenience class to automatically pause/resume/stop a RWOperationCounter.
 class ScopedRWOperationPause {
  public:
   // Object is not copyable, but movable.
@@ -172,6 +200,10 @@ class ScopedRWOperationPause {
   ScopedRWOperationPause(const ScopedRWOperationPause&) = delete;
 
   ScopedRWOperationPause() {}
+  // If stop is false, ScopedRWOperation constructor will wait while ScopedRWOperationPause is
+  // alive.
+  // If stop is true, ScopedRWOperation constructor will create an instance with an error (see
+  // ScopedRWOperation::ok()) while ScopedRWOperationPause is alive.
   ScopedRWOperationPause(RWOperationCounter* counter, const CoarseTimePoint& deadline, Stop stop);
 
   ScopedRWOperationPause(ScopedRWOperationPause&& p) : data_(std::move(p.data_)) {

@@ -10,18 +10,19 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.HashMap;
 import java.util.Map;
@@ -29,14 +30,14 @@ import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.runners.MockitoJUnitRunner;
-import org.yb.client.ChangeLoadBalancerStateResponse;
-import org.yb.client.YBClient;
+import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 public class BackupUniverseTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
+
+  private Users defaultUser;
 
   @Override
   @Before
@@ -48,23 +49,27 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     config.put(Universe.TAKE_BACKUPS, "true");
     defaultUniverse.updateConfig(config);
     defaultUniverse.save();
+    defaultUser = ModelFactory.testUser(defaultCustomer);
   }
 
   private TaskInfo submitTask(BackupTableParams.ActionType actionType, boolean enableVerboseLogs) {
     BackupTableParams backupTableParams = new BackupTableParams();
-    backupTableParams.universeUUID = defaultUniverse.universeUUID;
+    backupTableParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     backupTableParams.setTableName("bar");
     backupTableParams.setKeyspace("foo");
     backupTableParams.tableUUID = UUID.randomUUID();
     backupTableParams.storageConfigUUID = UUID.randomUUID();
     backupTableParams.actionType = actionType;
     backupTableParams.enableVerboseLogs = enableVerboseLogs;
-    backupTableParams.customerUuid = defaultCustomer.uuid;
+    backupTableParams.customerUuid = defaultCustomer.getUuid();
+    // Set http context
+    TestUtils.setFakeHttpContext(defaultUser);
+
     try {
       UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, backupTableParams);
       CustomerTask.create(
           defaultCustomer,
-          defaultUniverse.universeUUID,
+          defaultUniverse.getUniverseUUID(),
           taskUUID,
           CustomerTask.TargetType.Backup,
           CustomerTask.TaskType.Create,
@@ -88,7 +93,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
     Backup backup = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID()).get(0);
     assertNotNull(backup);
-    assertEquals(Completed, backup.state);
+    assertEquals(Completed, backup.getState());
   }
 
   @Test
@@ -103,7 +108,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     verify(mockTableManager, times(1)).createBackup(any());
     Backup backup = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID()).get(0);
     assertNotNull(backup);
-    assertEquals(Failed, backup.state);
+    assertEquals(Failed, backup.getState());
   }
 
   @Test
@@ -117,7 +122,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     verify(mockTableManager, times(1)).createBackup(any());
     Backup backup = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID()).get(0);
     assertNotNull(backup);
-    assertEquals(Failed, backup.state);
+    assertEquals(Failed, backup.getState());
   }
 
   @Test
@@ -132,7 +137,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
     Backup backup = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID()).get(0);
     assertNotNull(backup);
-    assertEquals(Completed, backup.state);
+    assertEquals(Completed, backup.getState());
   }
 
   @Test
@@ -147,7 +152,7 @@ public class BackupUniverseTest extends CommissionerBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
     Backup backup = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID()).get(0);
     assertNotNull(backup);
-    assertEquals(Completed, backup.state);
+    assertEquals(Completed, backup.getState());
   }
 
   @Test

@@ -1,4 +1,4 @@
-import React, { FC, useRef, useState } from 'react';
+import { FC, useRef, useState } from 'react';
 import { Popover, Row, Col, Button, Overlay } from 'react-bootstrap';
 import './UniverseAlertBadge.scss';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
@@ -55,6 +55,7 @@ const AlertPopover = (universeUUID: string, isPopoverShown: boolean, limit: numb
       ) : (
         <>
           <h3 className="alert-count">{alertList?.data.entities.length} alerts</h3>
+          {/* eslint-disable-next-line react/display-name */}
           {alertList?.data.entities.map((entity) => (
             <Row key={entity.uuid} className="alert-entity">
               <div

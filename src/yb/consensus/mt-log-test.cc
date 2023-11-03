@@ -54,9 +54,9 @@
 // TODO: Semantics of the Log and Appender thread interactions changed and now multi-threaded
 // writing is no longer allowed, or to be more precise, does no longer guarantee the ordering of
 // events being written, across threads.
-DEFINE_UNKNOWN_int32(num_writer_threads, 1, "Number of threads writing to the log");
-DEFINE_UNKNOWN_int32(num_batches_per_thread, 2000, "Number of batches per thread");
-DEFINE_UNKNOWN_int32(num_ops_per_batch_avg, 5, "Target average number of ops per batch");
+DEFINE_NON_RUNTIME_int32(num_writer_threads, 1, "Number of threads writing to the log");
+DEFINE_NON_RUNTIME_int32(num_batches_per_thread, 2000, "Number of batches per thread");
+DEFINE_NON_RUNTIME_int32(num_ops_per_batch_avg, 5, "Target average number of ops per batch");
 
 namespace yb {
 namespace log {
@@ -114,7 +114,7 @@ class MultiThreadedLogTest : public LogTestBase {
       DVLOG(1) << num_ops << " ops in this batch";
       num_ops =  std::max(num_ops, 1);
       {
-        std::lock_guard<simple_spinlock> lock_guard(lock_);
+        std::lock_guard lock_guard(lock_);
         for (int j = 0; j < num_ops; j++) {
           auto replicate = rpc::MakeSharedMessage<consensus::LWReplicateMsg>();
           auto index = current_index_++;

@@ -86,12 +86,12 @@ Result<TabletId> GetTabletIdFromSstFilename(const std::string& filename) {
 class TabletManagerListener : public tserver::TabletMemoryManagerListenerIf {
  public:
   void StartedFlush(const TabletId& tablet_id) override {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     flushed_tablets_.push_back(tablet_id);
   }
 
   std::vector<TabletId> GetFlushedTablets() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     return flushed_tablets_;
   }
 
@@ -108,10 +108,10 @@ class FlushITest : public YBTest {
 
   void SetUp() override {
     HybridTime::TEST_SetPrettyToString(true);
-    FLAGS_memstore_size_mb = kOverServerLimitMB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_memstore_size_mb) = kOverServerLimitMB;
     // Set the global memstore to kServerLimitMB.
-    FLAGS_global_memstore_size_percentage = 100;
-    FLAGS_global_memstore_size_mb_max = kServerLimitMB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_global_memstore_size_percentage) = 100;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_global_memstore_size_mb_max) = kServerLimitMB;
     YBTest::SetUp();
 
     rocksdb_listener_ = std::make_shared<RocksDbListener>();
@@ -187,7 +187,7 @@ class FlushITest : public YBTest {
   int NumRunningFlushes() {
     int compactions = 0;
     for (auto& peer : cluster_->GetTabletPeers(0)) {
-      auto* db = pointer_cast<rocksdb::DBImpl*>(peer->tablet()->TEST_db());
+      auto* db = pointer_cast<rocksdb::DBImpl*>(peer->tablet()->regular_db());
       if (db) {
         compactions += db->TEST_NumRunningFlushes();
       }
@@ -214,7 +214,7 @@ class FlushITest : public YBTest {
     for (auto& peer : cluster_->GetTabletPeers(0)) {
       const auto tablet_id = peer->tablet_id();
       if (tablets->count(tablet_id) == 0) {
-        auto* db = pointer_cast<rocksdb::DBImpl*>(peer->tablet()->TEST_db());
+        auto* db = pointer_cast<rocksdb::DBImpl*>(peer->tablet()->regular_db());
         if (db) {
           auto* cf = pointer_cast<rocksdb::ColumnFamilyHandleImpl*>(db->DefaultColumnFamily());
           if (cf->cfd()->mem()->num_entries() > 0) {
@@ -235,7 +235,7 @@ class FlushITest : public YBTest {
 
   void DumpMemoryUsage() {
     auto* server = cluster_->mini_tablet_server(0)->server();
-    LOG(INFO) << server->mem_tracker()->FindChild("Tablets")->LogUsage("MEM ");
+    LOG(INFO) << server->mem_tracker()->FindChild("Tablets_overhead")->LogUsage("MEM ");
     LOG(INFO) << "rocksdb memory usage: " << GetRocksDbMemoryUsage();
   }
 
@@ -267,11 +267,11 @@ TEST_F(FlushITest, TestFlushHappens) {
 
 void FlushITest::TestFlushPicksOldestInactiveTabletAfterCompaction(bool with_restart) {
   // Trigger compaction early.
-  FLAGS_rocksdb_level0_file_num_compaction_trigger = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 2;
 
   // Set memstore limit to 1/nth of server limit so we can cause memory usage with enough
   // granularity.
-  FLAGS_memstore_size_mb = kServerLimitMB / 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_memstore_size_mb) = kServerLimitMB / 5;
   std::unordered_map<TabletId, int> inactive_tablets_to_flush;
 
   // Write to tables until compaction started and until we occupy 50% of kServerLimitMB by
@@ -296,7 +296,7 @@ void FlushITest::TestFlushPicksOldestInactiveTabletAfterCompaction(bool with_res
   if (with_restart) {
     // We want to restore memtables from log on restart to test how memory monitor based flush
     // works after restart.
-    FLAGS_flush_rocksdb_on_shutdown = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
     LOG(INFO) << "Restarting cluster ...";
     ASSERT_OK(cluster_->RestartSync());
     LOG(INFO) << "Cluster has been restarted";
@@ -306,7 +306,7 @@ void FlushITest::TestFlushPicksOldestInactiveTabletAfterCompaction(bool with_res
 
   rocksdb_listener_->Clear();
 
-  FLAGS_memstore_size_mb = kOverServerLimitMB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_memstore_size_mb) = kOverServerLimitMB;
   SetupWorkload(GetTableName(tables));
   tables++;
   WriteAtLeast((kServerLimitMB * 1_MB) + 1);

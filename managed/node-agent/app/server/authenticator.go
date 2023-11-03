@@ -28,7 +28,7 @@ func (authenticator *Authenticator) authorize(ctx context.Context, method string
 		return status.Errorf(codes.Unauthenticated, "Authorization token is not provided")
 	}
 	accessToken := values[0]
-	_, err := util.VerifyJWT(authenticator.config, accessToken)
+	_, err := util.VerifyJWT(ctx, authenticator.config, accessToken)
 	if err != nil {
 		return status.Errorf(codes.Unauthenticated, "Authorization token is invalid: %v", err)
 	}

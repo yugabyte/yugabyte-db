@@ -64,10 +64,6 @@ const string LDBCommand::ARG_HEX = "hex";
 const string LDBCommand::ARG_KEY_HEX = "key_hex";
 const string LDBCommand::ARG_VALUE_HEX = "value_hex";
 const string LDBCommand::ARG_CF_NAME = "column_family";
-const string LDBCommand::ARG_TTL = "ttl";
-const string LDBCommand::ARG_TTL_START = "start_time";
-const string LDBCommand::ARG_TTL_END = "end_time";
-const string LDBCommand::ARG_TIMESTAMP = "timestamp";
 const string LDBCommand::ARG_FROM = "from";
 const string LDBCommand::ARG_TO = "to";
 const string LDBCommand::ARG_MAX_KEYS = "max_keys";
@@ -441,7 +437,7 @@ CompactorCommand::CompactorCommand(const vector<string>& params,
       const map<string, string>& options, const vector<string>& flags) :
     LDBCommand(options, flags, false,
                BuildCmdLineOptions({ARG_FROM, ARG_TO, ARG_HEX, ARG_KEY_HEX,
-                                    ARG_VALUE_HEX, ARG_TTL})),
+                                    ARG_VALUE_HEX})),
     null_from_(true), null_to_(true) {
 
   map<string, string>::const_iterator itr = options.find(ARG_FROM);
@@ -751,45 +747,6 @@ void CreateColumnFamilyCommand::DoCommand() {
 
 // ----------------------------------------------------------------------------
 
-namespace {
-
-string ReadableTime(int unixtime) {
-  char time_buffer[80];
-  time_t rawtime = unixtime;
-  struct tm tInfo;
-  struct tm* timeinfo = localtime_r(&rawtime, &tInfo);
-  assert(timeinfo == &tInfo);
-  strftime(time_buffer, 80, "%c", timeinfo);
-  return string(time_buffer);
-}
-
-// This function only called when it's the sane case of >1 buckets in time-range
-// Also called only when timekv falls between ttl_start and ttl_end provided
-void IncBucketCounts(vector<uint64_t>* bucket_counts, int ttl_start,
-      int time_range, int bucket_size, int timekv, int num_buckets) {
-  assert(time_range > 0 && timekv >= ttl_start && bucket_size > 0 &&
-    timekv < (ttl_start + time_range) && num_buckets > 1);
-  int bucket = (timekv - ttl_start) / bucket_size;
-  (*bucket_counts)[bucket]++;
-}
-
-void PrintBucketCounts(const vector<uint64_t>& bucket_counts, int ttl_start,
-      int ttl_end, int bucket_size, int num_buckets) {
-  int time_point = ttl_start;
-  for(int i = 0; i < num_buckets - 1; i++, time_point += bucket_size) {
-    fprintf(stdout, "Keys in range %s to %s : %" PRIu64 "\n",
-            ReadableTime(time_point).c_str(),
-            ReadableTime(time_point + bucket_size).c_str(),
-            bucket_counts[i]);
-  }
-  fprintf(stdout, "Keys in range %s to %s : %" PRIu64 "\n",
-          ReadableTime(time_point).c_str(),
-          ReadableTime(ttl_end).c_str(),
-          bucket_counts[num_buckets - 1]);
-}
-
-}  // namespace
-
 const string InternalDumpCommand::ARG_COUNT_ONLY = "count_only";
 const string InternalDumpCommand::ARG_COUNT_DELIM = "count_delim";
 const string InternalDumpCommand::ARG_STATS = "stats";
@@ -944,23 +901,24 @@ void InternalDumpCommand::DoCommand() {
   } else {
     fprintf(stdout, "Internal keys in range: %" PRId64 "\n", count);
   }
+  if (!iter->status().ok()) {
+    exec_state_ = LDBCommandExecuteResult::Failed(iter->status().ToString());
+  }
 }
 
 
 const string DBDumperCommand::ARG_COUNT_ONLY = "count_only";
 const string DBDumperCommand::ARG_COUNT_DELIM = "count_delim";
 const string DBDumperCommand::ARG_STATS = "stats";
-const string DBDumperCommand::ARG_TTL_BUCKET = "bucket";
 
 DBDumperCommand::DBDumperCommand(const vector<string>& params,
                                  const map<string, string>& options,
                                  const vector<string>& flags)
     : LDBCommand(options, flags, true,
                  BuildCmdLineOptions(
-                     {ARG_TTL, ARG_HEX, ARG_KEY_HEX, ARG_VALUE_HEX, ARG_FROM,
+                     {ARG_HEX, ARG_KEY_HEX, ARG_VALUE_HEX, ARG_FROM,
                       ARG_TO, ARG_MAX_KEYS, ARG_COUNT_ONLY, ARG_COUNT_DELIM,
-                      ARG_STATS, ARG_TTL_START, ARG_TTL_END, ARG_TTL_BUCKET,
-                      ARG_TIMESTAMP, ARG_PATH})),
+                      ARG_STATS, ARG_PATH})),
       null_from_(true),
       null_to_(true),
       max_keys_(-1),
@@ -1026,15 +984,10 @@ void DBDumperCommand::Help(string& ret) {
   ret.append("  ");
   ret.append(DBDumperCommand::Name());
   ret.append(HelpRangeCmdArgs());
-  ret.append(" [--" + ARG_TTL + "]");
   ret.append(" [--" + ARG_MAX_KEYS + "=<N>]");
-  ret.append(" [--" + ARG_TIMESTAMP + "]");
   ret.append(" [--" + ARG_COUNT_ONLY + "]");
   ret.append(" [--" + ARG_COUNT_DELIM + "=<char>]");
   ret.append(" [--" + ARG_STATS + "]");
-  ret.append(" [--" + ARG_TTL_BUCKET + "=<N>]");
-  ret.append(" [--" + ARG_TTL_START + "=<N>:- is inclusive]");
-  ret.append(" [--" + ARG_TTL_END + "=<N>:- is exclusive]");
   ret.append(" [--" + ARG_PATH + "=<path_to_a_file>]");
   ret.append("\n");
 }
@@ -1115,40 +1068,11 @@ void DBDumperCommand::DoDumpCommand() {
   }
 
   int max_keys = max_keys_;
-  int ttl_start;
-  if (!ParseIntOption(option_map_, ARG_TTL_START, ttl_start, exec_state_)) {
-    ttl_start = DBWithTTLImpl::kMinTimestamp;  // TTL introduction time
-  }
-  int ttl_end;
-  if (!ParseIntOption(option_map_, ARG_TTL_END, ttl_end, exec_state_)) {
-    ttl_end = DBWithTTLImpl::kMaxTimestamp;  // Max time allowed by TTL feature
-  }
-  if (ttl_end < ttl_start) {
-    fprintf(stderr, "Error: End time can't be less than start time\n");
-    delete iter;
-    return;
-  }
-  int time_range = ttl_end - ttl_start;
-  int bucket_size;
-  if (!ParseIntOption(option_map_, ARG_TTL_BUCKET, bucket_size, exec_state_) ||
-      bucket_size <= 0) {
-    bucket_size = time_range; // Will have just 1 bucket by default
-  }
   // Creating variables for row count of each type
   string rtype1, rtype2, row, val;
   rtype2 = "";
   uint64_t c = 0;
   uint64_t s1 = 0, s2 = 0;
-
-  // At this point, bucket_size=0 => time_range=0
-  int num_buckets = (bucket_size >= time_range)
-                        ? 1
-                        : ((time_range + bucket_size - 1) / bucket_size);
-  vector<uint64_t> bucket_counts(num_buckets, 0);
-  if (is_db_ttl_ && !count_only_ && timestamp_ && !count_delim_) {
-    fprintf(stdout, "Dumping key-values from %s to %s\n",
-            ReadableTime(ttl_start).c_str(), ReadableTime(ttl_end).c_str());
-  }
 
   for (; iter->Valid(); iter->Next()) {
     int rawtime = 0;
@@ -1158,20 +1082,8 @@ void DBDumperCommand::DoDumpCommand() {
     // Terminate if maximum number of keys have been dumped
     if (max_keys == 0)
       break;
-    if (is_db_ttl_) {
-      TtlIterator* it_ttl = dynamic_cast<TtlIterator*>(iter);
-      assert(it_ttl);
-      rawtime = it_ttl->timestamp();
-      if (rawtime < ttl_start || rawtime >= ttl_end) {
-        continue;
-      }
-    }
     if (max_keys > 0) {
       --max_keys;
-    }
-    if (is_db_ttl_ && num_buckets > 1) {
-      IncBucketCounts(&bucket_counts, ttl_start, time_range, bucket_size,
-                      rawtime, num_buckets);
     }
     ++count;
     if (count_delim_) {
@@ -1197,9 +1109,6 @@ void DBDumperCommand::DoDumpCommand() {
 
 
     if (!count_only_ && !count_delim_) {
-      if (is_db_ttl_ && timestamp_) {
-        fprintf(stdout, "%s ", ReadableTime(rawtime).c_str());
-      }
       string str = PrintKeyValue(iter->key().ToString(),
                                  iter->value().ToString(), is_key_hex_,
                                  is_value_hex_);
@@ -1207,14 +1116,16 @@ void DBDumperCommand::DoDumpCommand() {
     }
   }
 
-  if (num_buckets > 1 && is_db_ttl_) {
-    PrintBucketCounts(bucket_counts, ttl_start, ttl_end, bucket_size,
-                      num_buckets);
-  } else if(count_delim_) {
+  if(count_delim_) {
     fprintf(stdout, "%s => count:%" PRIu64 "\tsize:%" PRIu64 "\n", rtype2.c_str(), c, s2);
   } else {
     fprintf(stdout, "Keys in range: %" PRIu64 "\n", count);
   }
+
+  if (!iter->status().ok()) {
+    exec_state_ = LDBCommandExecuteResult::Failed(iter->status().ToString());
+  }
+
   // Clean up
   delete iter;
 }
@@ -1653,7 +1564,7 @@ void WALDumperCommand::DoCommand() {
 
 GetCommand::GetCommand(const vector<string>& params,
       const map<string, string>& options, const vector<string>& flags) :
-  LDBCommand(options, flags, true, BuildCmdLineOptions({ARG_TTL, ARG_HEX,
+  LDBCommand(options, flags, true, BuildCmdLineOptions({ARG_HEX,
                                                         ARG_KEY_HEX,
                                                         ARG_VALUE_HEX})) {
 
@@ -1673,7 +1584,6 @@ void GetCommand::Help(string& ret) {
   ret.append("  ");
   ret.append(GetCommand::Name());
   ret.append(" <key>");
-  ret.append(" [--" + ARG_TTL + "]");
   ret.append("\n");
 }
 
@@ -1752,7 +1662,7 @@ void ApproxSizeCommand::DoCommand() {
 BatchPutCommand::BatchPutCommand(const vector<string>& params,
       const map<string, string>& options, const vector<string>& flags) :
   LDBCommand(options, flags, false,
-             BuildCmdLineOptions({ARG_TTL, ARG_HEX, ARG_KEY_HEX, ARG_VALUE_HEX,
+             BuildCmdLineOptions({ARG_HEX, ARG_KEY_HEX, ARG_VALUE_HEX,
                                   ARG_CREATE_IF_MISSING})) {
 
   if (params.size() < 2) {
@@ -1775,7 +1685,6 @@ void BatchPutCommand::Help(string& ret) {
   ret.append("  ");
   ret.append(BatchPutCommand::Name());
   ret.append(" <key> <value> [<key> <value>] [..]");
-  ret.append(" [--" + ARG_TTL + "]");
   ret.append("\n");
 }
 
@@ -1810,9 +1719,9 @@ ScanCommand::ScanCommand(const vector<string>& params,
                          const vector<string>& flags)
     : LDBCommand(options, flags, true,
                  BuildCmdLineOptions(
-                     {ARG_TTL,      ARG_NO_VALUE,  ARG_HEX,    ARG_KEY_HEX,
-                      ARG_TO,       ARG_VALUE_HEX, ARG_FROM,   ARG_TIMESTAMP,
-                      ARG_MAX_KEYS, ARG_TTL_START, ARG_TTL_END, ARG_ONLY_VERIFY_CHECKSUMS})),
+                     {ARG_NO_VALUE, ARG_HEX, ARG_KEY_HEX,
+                      ARG_TO, ARG_VALUE_HEX, ARG_FROM,
+                      ARG_MAX_KEYS, ARG_ONLY_VERIFY_CHECKSUMS})),
       start_key_specified_(false),
       end_key_specified_(false),
       max_keys_scanned_(-1),
@@ -1869,11 +1778,7 @@ void ScanCommand::Help(string& ret) {
   ret.append("  ");
   ret.append(ScanCommand::Name());
   ret.append(HelpRangeCmdArgs());
-  ret.append(" [--" + ARG_TTL + "]");
-  ret.append(" [--" + ARG_TIMESTAMP + "]");
   ret.append(" [--" + ARG_MAX_KEYS + "=<N>q] ");
-  ret.append(" [--" + ARG_TTL_START + "=<N>:- is inclusive]");
-  ret.append(" [--" + ARG_TTL_END + "=<N>:- is exclusive]");
   ret.append(" [--" + ARG_NO_VALUE + "]");
   ret.append(" [--" + ARG_ONLY_VERIFY_CHECKSUMS + "]");
   ret.append("\n");
@@ -1892,38 +1797,9 @@ void ScanCommand::DoCommand() {
   } else {
     it->SeekToFirst();
   }
-  int ttl_start;
-  if (!ParseIntOption(option_map_, ARG_TTL_START, ttl_start, exec_state_)) {
-    ttl_start = DBWithTTLImpl::kMinTimestamp;  // TTL introduction time
-  }
-  int ttl_end;
-  if (!ParseIntOption(option_map_, ARG_TTL_END, ttl_end, exec_state_)) {
-    ttl_end = DBWithTTLImpl::kMaxTimestamp;  // Max time allowed by TTL feature
-  }
-  if (ttl_end < ttl_start) {
-    fprintf(stderr, "Error: End time can't be less than start time\n");
-    delete it;
-    return;
-  }
-  if (is_db_ttl_ && timestamp_) {
-    fprintf(stdout, "Scanning key-values from %s to %s\n",
-            ReadableTime(ttl_start).c_str(), ReadableTime(ttl_end).c_str());
-  }
   for ( ;
         it->Valid() && (!end_key_specified_ || it->key().ToString() < end_key_);
         it->Next()) {
-    if (is_db_ttl_) {
-      TtlIterator* it_ttl = dynamic_cast<TtlIterator*>(it);
-      assert(it_ttl);
-      int rawtime = it_ttl->timestamp();
-      if (rawtime < ttl_start || rawtime >= ttl_end) {
-        continue;
-      }
-      if (timestamp_ && !only_verify_checksums_) {
-        fprintf(stdout, "%s ", ReadableTime(rawtime).c_str());
-      }
-    }
-
     Slice key_slice = it->key();
 
     std::string formatted_key;
@@ -2004,7 +1880,7 @@ void DeleteCommand::DoCommand() {
 PutCommand::PutCommand(const vector<string>& params,
       const map<string, string>& options, const vector<string>& flags) :
   LDBCommand(options, flags, false,
-             BuildCmdLineOptions({ARG_TTL, ARG_HEX, ARG_KEY_HEX, ARG_VALUE_HEX,
+             BuildCmdLineOptions({ARG_HEX, ARG_KEY_HEX, ARG_VALUE_HEX,
                                   ARG_CREATE_IF_MISSING})) {
 
   if (params.size() != 2) {
@@ -2028,7 +1904,6 @@ void PutCommand::Help(string& ret) {
   ret.append("  ");
   ret.append(PutCommand::Name());
   ret.append(" <key> <value> ");
-  ret.append(" [--" + ARG_TTL + "]");
   ret.append("\n");
 }
 
@@ -2061,7 +1936,7 @@ const char* DBQuerierCommand::DELETE_CMD = "delete";
 DBQuerierCommand::DBQuerierCommand(const vector<string>& params,
     const map<string, string>& options, const vector<string>& flags) :
   LDBCommand(options, flags, false,
-             BuildCmdLineOptions({ARG_TTL, ARG_HEX, ARG_KEY_HEX,
+             BuildCmdLineOptions({ARG_HEX, ARG_KEY_HEX,
                                   ARG_VALUE_HEX})) {
 
 }
@@ -2069,7 +1944,6 @@ DBQuerierCommand::DBQuerierCommand(const vector<string>& params,
 void DBQuerierCommand::Help(string& ret) {
   ret.append("  ");
   ret.append(DBQuerierCommand::Name());
-  ret.append(" [--" + ARG_TTL + "]");
   ret.append("\n");
   ret.append("    Starts a REPL shell.  Type help for list of available "
              "commands.");
@@ -2254,7 +2128,7 @@ void DBFileDumperCommand::DoCommand() {
   std::vector<LiveFileMetaData> metadata;
   db_->GetLiveFilesMetaData(&metadata);
   for (auto& fileMetadata : metadata) {
-    std::string filename = fileMetadata.FullName();
+    std::string filename = fileMetadata.BaseFilePath();
     std::cout << filename << " level:" << fileMetadata.level << std::endl;
     std::cout << "------------------------------" << std::endl;
     DumpSstFile(filename, false, true);

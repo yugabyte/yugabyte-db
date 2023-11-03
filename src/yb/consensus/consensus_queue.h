@@ -188,9 +188,9 @@ class PeerMessageQueue {
     // Whether the follower was detected to need remote bootstrap.
     bool needs_remote_bootstrap = false;
 
-    // #Attempts of bootstrapping from closest non-leader peer.
-    // We revert to bootstrapping from leader post 5 failed attempts.
-    uint64_t bootstrap_attempts_from_non_leader = 0;
+    // Number of times this peer attempted bootstrap from a closest non-leader peer
+    // that resulted in a failure.
+    uint32_t failed_bootstrap_attempts_from_non_leader = 0;
 
     // Member type of this peer in the config.
     PeerMemberType member_type = PeerMemberType::UNKNOWN_MEMBER_TYPE;
@@ -310,6 +310,14 @@ class PeerMessageQueue {
   // Reutrns NULL if all tracked peers in the peers_map_ don't have CloudInfoPB specified.
   const TrackedPeer* FindClosestPeerForBootstrap(const TrackedPeer* remote_tracked_peer)
       REQUIRES(queue_lock_);
+
+  // Increment failed_bootstrap_attempts_from_non_leader for the given peer. The method should only
+  // be called when an attempt to bootstrap from a non-leader peer was made, and it resulted in an
+  // error, where (error != ALREADY_IN_PROGRESS && error != TABLET_SPLIT_PARENT_STILL_LIVE) holds
+  // true.
+  // We do so because a remote bootstrap could only have been tried from the new peer when the above
+  // expression holds true.
+  void IncrementFailedBootstrapAttemptsFromNonLeader(const std::string& peer_uuid);
 
   // Update the last successful communication timestamp for the given peer to the current time. This
   // should be called when a non-network related error is received from the peer, indicating that it
@@ -656,8 +664,6 @@ class PeerMessageQueueObserver {
 
   virtual ~PeerMessageQueueObserver() {}
 };
-
-Status ValidateFlags();
 
 }  // namespace consensus
 }  // namespace yb

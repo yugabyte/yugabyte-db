@@ -53,6 +53,7 @@ message("-- PRECOMPILED HEADERS:    ${YB_PCH_ON}")
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_modules")
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake_standard_modules")
 include(YugabyteFunctions)
+ENFORCE_OUT_OF_SOURCE_BUILD()
 yb_initialize_constants()
 include(YugabyteTesting)
 
@@ -108,8 +109,21 @@ if(NOT DEFINED YB_BUILD_TESTS)
   message("Will build tests by default")
   set(YB_BUILD_TESTS ON)
 endif()
-yb_put_vars_into_cache(YB_BUILD_TESTS)
+yb_put_var_into_cache(YB_BUILD_TESTS BOOL)
 message("YB_BUILD_TESTS=${YB_BUILD_TESTS}")
+
+if(NOT DEFINED YB_BUILD_FUZZ_TARGETS)
+  message("Will not build fuzz targets by default")
+  set(YB_BUILD_FUZZ_TARGETS OFF)
+endif()
+if(NOT DEFINED YB_BUILD_ODYSSEY)
+  message("Will not build Odyssey by default")
+  set(YB_BUILD_ODYSSEY OFF)
+  # Eventually we should build Odyssey by default on Linux but not on macOS.
+endif()
+
+yb_put_string_vars_into_cache(YB_BUILD_FUZZ_TARGETS)
+message("YB_BUILD_FUZZ_TARGETS=${YB_BUILD_FUZZ_TARGETS}")
 
 parse_build_root_basename()
 if("${YB_BUILD_TYPE}" STREQUAL "")
@@ -219,9 +233,7 @@ include(CompilerInfo)
 # This helps find the right third-party build directory.
 if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
   set(THIRDPARTY_INSTRUMENTATION_TYPE "${YB_BUILD_TYPE}")
-elseif (IS_CLANG)
-  set(THIRDPARTY_INSTRUMENTATION_TYPE "uninstrumented")
-elseif (IS_GCC)
+elseif (IS_CLANG OR IS_GCC)
   set(THIRDPARTY_INSTRUMENTATION_TYPE "uninstrumented")
 else()
   message(FATAL_ERROR "Unknown compiler family: '${COMPILER_FAMILY}'.")
@@ -311,7 +323,7 @@ ADD_CXX_FLAGS("-DYB_COMPILER_TYPE=$ENV{YB_COMPILER_TYPE}")
 ADD_CXX_FLAGS("-DYB_COMPILER_VERSION=${COMPILER_VERSION}")
 ADD_CXX_FLAGS("-DSNAPPY")
 ADD_CXX_FLAGS("-DLZ4")
-ADD_CXX_FLAGS("-DZLIB")
+ADD_CXX_FLAGS("-DYB_ZLIB")
 
 ############################################################
 # Compiler flags
@@ -351,21 +363,8 @@ if(IS_CLANG)
   ADD_CXX_FLAGS("-Werror=implicit-fallthrough")
   ADD_CXX_FLAGS("-D_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS")
   ADD_CXX_FLAGS("-Wthread-safety-analysis")
-
-  if("$ENV{YB_ENABLE_STATIC_ANALYZER}" STREQUAL "1")
-    if(APPLE)
-      message("YB_ENABLE_STATIC_ANALYZER is set to 1, but we are not running the static analyzer"
-              " on macOS yet")
-    else()
-      message("YB_ENABLE_STATIC_ANALYZER is set to 1, enabling Clang static analyzer")
-      include(yb_clang_analyzer)
-      message("clang_analyzer_flags=${clang_analyzer_flags}")
-      ADD_CXX_FLAGS("${clang_analyzer_flags}")
-    endif()
-  else()
-    message("YB_ENABLE_STATIC_ANALYZER is not set to 1, not enabling Clang static analyzer")
-  endif()
-
+  ADD_CXX_FLAGS("-Wthread-safety-reference")
+  ADD_CXX_FLAGS("-Wthread-safety-precise")
   ADD_CXX_FLAGS("-Wshorten-64-to-32")
 endif()
 
@@ -381,7 +380,7 @@ if(IS_GCC)
   # TODO: Subtitute it with '-as-needed' instead to avoid linking with unused library (issue #1495)
   # for reducing pocess start time
   ADD_LINKER_FLAGS("-Wl,-no-as-needed")
-  if ("${COMPILER_VERSION}" MATCHES "^11[.].*$")
+  if ("${COMPILER_VERSION}" MATCHES "^1[123][.].*$")
     # To silence these spurious warnings:
     # https://gist.githubusercontent.com/mbautin/60c7fb897a92b998a111ff38429a1158/raw
     # https://gist.githubusercontent.com/mbautin/56b95b7a6816ccdf77eaa60f53a7d3ef/raw
@@ -389,6 +388,28 @@ if(IS_GCC)
     ADD_CXX_FLAGS("-Wno-stringop-overflow")
     ADD_CXX_FLAGS("-Wno-stringop-overread")
   endif()
+  if ("${COMPILER_VERSION}" MATCHES "^1[23][.].*$")
+    if("${YB_BUILD_TYPE}" STREQUAL "release")
+      # To avoid https://github.com/yugabyte/yugabyte-db/issues/16076
+      ADD_CXX_FLAGS("-Wno-restrict")
+    endif()
+    if("${YB_BUILD_TYPE}" MATCHES "^(fastdebug|release)$")
+      # To avoid https://github.com/yugabyte/yugabyte-db/issues/16767"
+      ADD_CXX_FLAGS("-Wno-maybe-uninitialized")
+    endif()
+  endif()
+  if ("${COMPILER_VERSION}" MATCHES "^13[.].*$" AND
+      "${YB_BUILD_TYPE}" STREQUAL "release")
+    # GCC 13 wants us to e.g. initalize an array of void* values in the StackTrace class, which is
+    # unnecessary. This does not happen in debug.
+    # https://gist.githubusercontent.com/mbautin/02d955abbee29f58c0d0d9cf7ab3291d/raw
+    ADD_CXX_FLAGS("-Wno-uninitialized")
+
+    # Also the use-after-free detector complains about Boost multi index container.
+    # https://gist.githubusercontent.com/mbautin/de18543ea85d46db49dfa4b4b7df082a/raw
+    ADD_CXX_FLAGS("-Wno-use-after-free")
+  endif()
+
 endif()
 
 if(USING_LINUXBREW)
@@ -501,8 +522,6 @@ endif()
 
 include(YugabyteFindThirdParty)
 yb_find_third_party_installed_dir()
-set(YB_PREFIX_COMMON "${YB_THIRDPARTY_INSTALLED_DIR}/common")
-yb_put_vars_into_cache(YB_PREFIX_COMMON)
 
 if(IS_CLANG)
   YB_SETUP_CLANG()
@@ -577,9 +596,8 @@ file(MAKE_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 set(EXECUTABLE_OUTPUT_PATH "${YB_BUILD_ROOT}/bin")
 file(MAKE_DIRECTORY "${EXECUTABLE_OUTPUT_PATH}")
 
-# Generated sources always have higher priority than even the "ent" directory include files.
+# Generated sources always have higher priority.
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/src)
-include_directories(ent/src)
 include_directories(src)
 
 enable_testing()
@@ -646,20 +664,41 @@ function(ADD_THIRDPARTY_LIB LIB_NAME)
 endfunction()
 
 # Look in thirdparty prefix paths before anywhere else for system dependencies.
-set(CMAKE_PREFIX_PATH ${YB_PREFIX_COMMON} ${CMAKE_PREFIX_PATH})
-ADD_LINKER_FLAGS("-L${YB_PREFIX_COMMON}/lib")
+set(YB_THIRDPARTY_COMMON_DIR "${YB_THIRDPARTY_INSTALLED_DIR}/common")
 
-set(YB_THIRDPARTY_INSTALLED_DEPS_DIR
-  "${YB_THIRDPARTY_INSTALLED_DIR}/${THIRDPARTY_INSTRUMENTATION_TYPE}")
-set(CMAKE_PREFIX_PATH ${YB_THIRDPARTY_INSTALLED_DEPS_DIR} ${CMAKE_PREFIX_PATH})
-ADD_LINKER_FLAGS("-L${YB_THIRDPARTY_INSTALLED_DEPS_DIR}/lib")
+# The instrumentation type could be "uninstrumented", "asan", "tsan".
+set(YB_THIRDPARTY_MAYBE_INSTRUMENTED_DIR
+    "${YB_THIRDPARTY_INSTALLED_DIR}/${THIRDPARTY_INSTRUMENTATION_TYPE}")
 
-set(YB_THIRDPARTY_INSTALLED_DIR ${YB_PREFIX_COMMON})
+# PKG_CONFIG_PATH is a colon-separated list of directories.
+concat_thirdparty_prefix_dirs_with_suffix(YB_PKG_CONFIG_PATH ":" "/lib/pkgconfig")
+yb_put_var_into_cache(YB_PKG_CONFIG_PATH STRING)
 
-# See thirdparty/yb_build_thirdparty_main.py for an explanation of differences between installed and
-# installed-deps.
-ADD_GLOBAL_RPATH_ENTRY("${YB_THIRDPARTY_INSTALLED_DIR}/lib")
-ADD_GLOBAL_RPATH_ENTRY("${YB_THIRDPARTY_INSTALLED_DEPS_DIR}/lib")
+set(CMAKE_PREFIX_PATH
+    "${YB_THIRDPARTY_COMMON_DIR}"
+    "${YB_THIRDPARTY_MAYBE_INSTRUMENTED_DIR}"
+    ${CMAKE_PREFIX_PATH})
+
+# Paths added to CMAKE_PREFIX_PATH might end up as RPATHs on the linker command line. One possible
+# explanation for this is that when CMake finds dependency libraries in some of the "lib"
+# subdirectories of directories listed by CMAKE_PREFIX_PATHS, it will make sure the compiled
+# executables can find those libraries. Therefore, in order to avoid duplicate RPATHs in the
+# command line, we have to be cautions when adding these same directories to RPATH.
+message("CMAKE_PREFIX_PATH: ${CMAKE_PREFIX_PATH}")
+
+if(APPLE AND IS_CLANG AND "${COMPILER_VERSION}" MATCHES "^1[567][.].*$")
+  # To avoid "warning: duplicate LC_RPATH are deprecated" messages.
+  # Suggestion from https://github.com/igraph/igraph/issues/2394#issuecomment-1732292483
+  ADD_LINKER_FLAGS("-ld_classic")
+endif()
+
+ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR("${YB_THIRDPARTY_COMMON_DIR}/lib")
+
+# Not adding RPATH here, because in practice it already gets added via the CMAKE_PREFIX_PATH
+# mechanism.
+YB_ADD_LIB_DIR("${YB_THIRDPARTY_MAYBE_INSTRUMENTED_DIR}/lib")
+SET(YB_THIRDPARTY_MAYBE_INSTRUMENTED_RPATH_ARG
+    "-Wl,-rpath,${YB_THIRDPARTY_MAYBE_INSTRUMENTED_DIR}/lib")
 
 # If we are using a non-default gcc or clang compiler, we need to add its library directory to
 # rpath.
@@ -687,12 +726,6 @@ if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1" OR
     "${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
   message("Allowing undefined symbols "
           "(YB_TCMALLOC_ENABLED=${YB_TCMALLOC_ENABLED}, build type is ${YB_BUILD_TYPE})")
-  if(IS_GCC)
-    # Without this, yb_util cannot get linked with GCC 11 because it references some undefined
-    # symbols belonging to tcmalloc, e.g. HeapProfilerStart.
-    # https://gist.githubusercontent.com/mbautin/53e72fbc8c45b4b0d759673fba102ddf/raw
-    ADD_LINKER_FLAGS("-Wl,--unresolved-symbols=ignore-all")
-  endif()
   if(APPLE)
     # See https://bit.ly/3DrOibC on this Apple Clang specific flag.
     ADD_LINKER_FLAGS("-undefined dynamic_lookup")
@@ -702,8 +735,18 @@ if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1" OR
     #
     # See https://github.com/bazelbuild/bazel/issues/16413 for discussion.
     ADD_LINKER_FLAGS("-Wl,-no_fixup_chains")
+  elseif(IS_GCC)
+    # Without this, yb_util cannot get linked with GCC 11 because it references some undefined
+    # symbols belonging to tcmalloc, e.g. HeapProfilerStart.
+    # https://gist.githubusercontent.com/mbautin/53e72fbc8c45b4b0d759673fba102ddf/raw
+    ADD_LINKER_FLAGS("-Wl,--unresolved-symbols=ignore-all")
   else()
-    ADD_LINKER_FLAGS("-Wl,--allow-shlib-undefined")
+    # Allow undefined symbols when linking libs, so not resolved references to tcmalloc symbols
+    # does not break libs linking.
+    string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,--allow-shlib-undefined")
+    # Don't allow undefined symbols when linking executables, so we can catch undefined symbols
+    # during build phase rather than later in runtime.
+    ADD_EXE_LINKER_FLAGS("-Wl,--no-undefined -Wl,--no-allow-shlib-undefined")
   endif()
 
   if(APPLE)
@@ -712,10 +755,22 @@ if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1" OR
     set(TCMALLOC_STATIC_LIB_LD_FLAGS
         "-Wl,--whole-archive ${TCMALLOC_STATIC_LIB} -Wl,--no-whole-archive")
   endif()
-else()
+elseif(NOT APPLE)
   message("Not allowing any undefined symbols "
           "(tcmalloc is disabled and build type is ${YB_BUILD_TYPE})")
   ADD_LINKER_FLAGS("-Wl,--no-undefined -Wl,--no-allow-shlib-undefined")
+endif()
+
+if (NOT "$ENV{YB_VALGRIND_PATH}" STREQUAL "")
+  if(APPLE)
+    message(FATAL_ERROR "Valgrind cannot be used in macOS.")
+  endif()
+
+  if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
+    message(FATAL_ERROR "Valgrind cannot be used while TCMalloc is enabled. "
+            "Build with --no-tcmalloc to use Valgrind.")
+  endif()
+  ADD_CXX_FLAGS("-DYB_VALGRIND_PATH=$ENV{YB_VALGRIND_PATH}")
 endif()
 
 ############################################################
@@ -735,13 +790,22 @@ set(YB_CMAKE_CXX_EXTRA_FLAGS "-Wextra -Wno-unused-parameter")
 # For any C code, use the same flags as for C++.
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS}")
 
-# C++-only flags.
-ADD_CXX_FLAGS("-Werror=missing-field-initializers")
+# -------------------------------------------------------------------------------------------------
+# C++-only flags
+# -------------------------------------------------------------------------------------------------
 
-if ((IS_GCC) AND
-    ("${CMAKE_CXX_COMPILER_VERSION}" VERSION_GREATER_EQUAL "7.0"))
-  # Used with GCC 7.
-  ADD_CXX_FLAGS("-faligned-new")
+ADD_CXX_FLAGS("-Werror=missing-field-initializers")
+if(IS_GCC)
+  if ("${COMPILER_VERSION}" MATCHES "^13[.].*$")
+    # To avoid https://gist.githubusercontent.com/mbautin/3cf55f9225eeb6e8f8c085d7de3e4496/raw
+    # False positive "dangling reference" when all codepaths return a reference to an object
+    # that continues to exist after the function returns.
+    ADD_CXX_FLAGS("-Wno-dangling-reference")
+  endif()
+
+  if ("${CMAKE_CXX_COMPILER_VERSION}" VERSION_GREATER_EQUAL "7.0")
+    ADD_CXX_FLAGS("-faligned-new")
+  endif()
 endif()
 
 # -Wsign-compare is enabled for C++ only for GCC with just -Wall, and enabled for both C and C++
@@ -750,12 +814,19 @@ if (IS_CLANG)
   ADD_CXX_FLAGS("-Wsign-compare")
 endif()
 
+# -------------------------------------------------------------------------------------------------
+# Finalize C flags
+# -------------------------------------------------------------------------------------------------
+
+# TODO: we should not add these flags to C flags and then remove them.
+
 string (REPLACE "-Werror=non-virtual-dtor" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 string (REPLACE "-Werror=reorder" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 string (REPLACE "-Wnon-virtual-dtor" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 string (REPLACE "-Woverloaded-virtual" "" CMAKE_C_FLAGS ${CMAKE_C_FLAGS})
 
 yb_deduplicate_arguments(CMAKE_C_FLAGS)
+# -------------------------------------------------------------------------------------------------
 
 set(CMAKE_CXX_STANDARD 20)
 
@@ -765,6 +836,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 yb_deduplicate_arguments(CMAKE_EXE_LINKER_FLAGS)
 message("Linker flags for executables: ${CMAKE_EXE_LINKER_FLAGS}")
 
+yb_deduplicate_arguments(CMAKE_SHARED_LINKER_FLAGS)
+message("Linker flags for shared libraries: ${CMAKE_SHARED_LINKER_FLAGS}")
+
 # Define full paths to libpq and libyb_pgbackend shared libraries. These libraries are built as part
 # of building PostgreSQL. We need to declare these as by-products of running the PostgreSQL build
 # command, as well as wrap them into CMake targets so that other libraries and executables can
@@ -773,6 +847,12 @@ set(LIBPQ_SHARED_LIB
     "${YB_BUILD_ROOT}/postgres/lib/libpq${YB_SHARED_LIBRARY_SUFFIX}")
 set(YB_PGBACKEND_SHARED_LIB
     "${YB_BUILD_ROOT}/postgres/lib/libyb_pgbackend${YB_SHARED_LIBRARY_SUFFIX}")
+
+# Also define full paths to PostgreSQL static libraries that are linked into Odyssey.
+set(PG_COMMON_STATIC_LIB
+    "${YB_BUILD_ROOT}/postgres_build/src/common/libpgcommon.a")
+set(PG_PORT_STATIC_LIB
+    "${YB_BUILD_ROOT}/postgres_build/src/port/libpgport.a")
 
 # -------------------------------------------------------------------------------------------------
 # Subdirectories
@@ -785,30 +865,41 @@ include_directories(${YB_BUILD_ROOT}/postgres/include)
 add_postgres_shared_library(pq "${LIBPQ_SHARED_LIB}")
 add_postgres_shared_library(yb_pgbackend "${YB_PGBACKEND_SHARED_LIB}")
 
-add_subdirectory(src/yb/rocksdb)
-add_subdirectory(src/yb/gutil)
-add_subdirectory(src/yb/util)
-add_subdirectory(src/yb/common)
-add_subdirectory(src/yb/encryption)
-add_subdirectory(src/yb/gen_yrpc)
-add_subdirectory(src/yb/fs)
-add_subdirectory(src/yb/server)
-add_subdirectory(src/yb/tablet)
-add_subdirectory(src/yb/bfql)
-add_subdirectory(src/yb/bfpg)
-add_subdirectory(src/yb/rpc)
-add_subdirectory(src/yb/tserver)
-add_subdirectory(src/yb/consensus)
-add_subdirectory(src/yb/master)
-add_subdirectory(src/yb/client)
-add_subdirectory(src/yb/integration-tests)
-add_subdirectory(src/yb/tools)
-add_subdirectory(src/yb/rocksutil)
-add_subdirectory(src/yb/docdb)
-add_subdirectory(src/yb/yql)
-add_subdirectory(src/yb/cdc)
+set(YB_SUBDIR_NAMES
+    bfcommon
+    bfpg
+    bfql
+    cdc
+    client
+    common
+    consensus
+    docdb
+    dockv
+    encryption
+    fs
+    gen_yrpc
+    gutil
+    integration-tests
+    master
+    qlexpr
+    rocksdb
+    rocksutil
+    rpc
+    server
+    tablet
+    tools
+    tserver
+    util
+    yql
+   )
 
-include("${YB_SRC_ROOT}/ent/CMakeLists.txt")
+foreach(subdir_name IN LISTS YB_SUBDIR_NAMES)
+  add_subdirectory("src/yb/${subdir_name}")
+endforeach()
+
+if(YB_BUILD_ODYSSEY)
+  yb_setup_odyssey()
+endif()
 
 # Note "yb-server", without the "t" -- this is not a typo. "yb-server" is the unified LTO executable
 # that contains the functionality of both yb-master and yb-tserver, and yb-master/yb-tserver are

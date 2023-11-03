@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { withRouter } from 'react-router';
 import * as Yup from 'yup';
@@ -8,23 +8,27 @@ import { Formik, Field } from 'formik';
 import JsYaml from 'js-yaml';
 import _ from 'lodash';
 import clsx from 'clsx';
-import { YBButton } from '../../../common/forms/fields';
-import { YBFormSelect, YBFormInput, YBFormDropZone } from '../../../common/forms/fields';
+import { YBButton, YBFormSelect, YBFormInput, YBFormDropZone } from '../../../common/forms/fields';
+import { toast } from 'react-toastify';
+
 import YBInfoTip from '../../../common/descriptors/YBInfoTip';
-import { isNonEmptyObject } from '../../../../utils/ObjectUtils';
+import { isNonEmptyObject, isDefinedNotNull } from '../../../../utils/ObjectUtils';
 import { readUploadedFile } from '../../../../utils/UniverseUtils';
 import { KUBERNETES_PROVIDERS, REGION_DICT } from '../../../../config';
 import AddRegionList from './AddRegionList';
-import { specialChars } from '../../constants';
+import { ACCEPTABLE_CHARS } from '../../constants';
+import {
+  QUAY_IMAGE_REGISTRY,
+  REDHAT_IMAGE_REGISTRY
+} from '../../../configRedesign/providerRedesign/forms/k8s/constants';
 
 const convertStrToCode = (s) => s.trim().toLowerCase().replace(/\s/g, '-');
-const quayImageRegistry = 'quay.io/yugabyte/yugabyte';
-const redhatImageRegistry = 'registry.connect.redhat.com/yugabytedb/yugabyte';
+const quayImageRegistry = QUAY_IMAGE_REGISTRY;
+const redhatImageRegistry = REDHAT_IMAGE_REGISTRY;
 
 class CreateKubernetesConfiguration extends Component {
   createProviderConfig = (vals, setSubmitting) => {
     const { type } = this.props;
-
     const self = this;
     const pullSecretFile = vals.pullSecret;
     const providerName = vals.accountName;
@@ -35,8 +39,8 @@ class CreateKubernetesConfiguration extends Component {
     const providerTypeMetadata = KUBERNETES_PROVIDERS.find(
       (providerType) => providerType.code === type
     );
-
-    const providerKubeConfig = vals.kubeConfig ? readUploadedFile(vals.kubeConfig, false) : {};
+    const providerKubeConfig = vals.kubeConfig ? readUploadedFile(vals.kubeConfig, false) : '{}';
+    fileConfigArray.push(providerKubeConfig);
     // Loop thru regions and check for config files
     vals.regionList.forEach((region, rIndex) => {
       region.zoneList.forEach((zone, zIndex) => {
@@ -56,18 +60,19 @@ class CreateKubernetesConfiguration extends Component {
 
     // Loop thru regions to add location information
     const regionsLocInfo = vals.regionList.map((region) => {
-      const { code, latitude, longitude, name } = REGION_DICT[region.regionCode.value];
+      const regInDict = REGION_DICT[region.regionCode.value];
       return {
-        name,
-        code,
-        latitude,
-        longitude,
+        name: region.regionCode.label ?? regInDict?.name,
+        code: regInDict?.code ?? region.regionCode.value,
+        latitude: regInDict?.latitude,
+        longitude: regInDict?.longitude,
         zoneList: region.zoneList.map((zone) => {
           const config = {
             STORAGE_CLASS: zone.storageClasses || undefined,
             KUBENAMESPACE: zone.namespace || undefined,
             KUBE_DOMAIN: zone.kubeDomain || undefined,
             OVERRIDES: zone.zoneOverrides,
+            // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
             KUBECONFIG_NAME: (zone.zoneKubeConfig && zone.zoneKubeConfig.name) || undefined,
             KUBE_POD_ADDRESS_TEMPLATE: zone.zonePodAddressTemplate || undefined
           };
@@ -92,9 +97,8 @@ class CreateKubernetesConfiguration extends Component {
           KUBECONFIG_PROVIDER: vals.providerType
             ? vals.providerType.value
             : providerTypeMetadata
-              ? providerTypeMetadata.code
-              : 'gke',
-          KUBECONFIG_SERVICE_ACCOUNT: vals.serviceAccount,
+            ? providerTypeMetadata.code
+            : 'gke',
           KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || quayImageRegistry
         };
 
@@ -104,12 +108,17 @@ class CreateKubernetesConfiguration extends Component {
 
         configIndexRecord.forEach(([regionIdx, zoneIdx], i) => {
           const currentZone = regionsLocInfo[regionIdx].zoneList[zoneIdx];
-          currentZone.config.KUBECONFIG_CONTENT = configs[1 + i];
+          currentZone.config.KUBECONFIG_CONTENT = configs[2 + i];
         });
         // TODO: fetch the service account name from the kubeconfig.
-
-        if (isNonEmptyObject(pullSecretFile)) {
-          const pullSecretYaml = JsYaml.safeLoad(configs[0]);
+        if (isDefinedNotNull(vals.kubeConfig)) {
+          Object.assign(providerConfig, {
+            KUBECONFIG_NAME: vals.kubeConfig.name,
+            KUBECONFIG_CONTENT: configs[1]
+          });
+        }
+        if (isDefinedNotNull(pullSecretFile)) {
+          const pullSecretYaml = JsYaml.load(configs[0]);
           Object.assign(providerConfig, {
             KUBECONFIG_IMAGE_PULL_SECRET_NAME:
               pullSecretYaml.metadata && pullSecretYaml.metadata.name,
@@ -126,6 +135,50 @@ class CreateKubernetesConfiguration extends Component {
     );
     this.props.toggleListView(true);
     setSubmitting(false);
+  };
+
+  fillFormWithKubeConfig = (formikProps) => {
+    const { setFieldValue } = formikProps;
+    this.props
+      .fetchKubenetesConfig()
+      .then((resp) => {
+        const {
+          KUBECONFIG_PULL_SECRET_NAME,
+          KUBECONFIG_PULL_SECRET_CONTENT,
+          KUBECONFIG_IMAGE_REGISTRY,
+          KUBECONFIG_PROVIDER
+        } = resp.data.config;
+        const { regionList, name } = resp.data;
+        const fileObj = new File([KUBECONFIG_PULL_SECRET_CONTENT], KUBECONFIG_PULL_SECRET_NAME, {
+          type: 'text/plain',
+          lastModified: new Date().getTime()
+        });
+        setFieldValue('pullSecret', fileObj);
+        setFieldValue('accountName', name);
+        setFieldValue('imageRegistry', KUBECONFIG_IMAGE_REGISTRY);
+        const provider = _.find(KUBERNETES_PROVIDERS, { code: KUBECONFIG_PROVIDER.toLowerCase() });
+        setFieldValue('providerType', { label: provider.name, value: provider.code });
+
+        const parsedRegionList = regionList.map((region) => {
+          return {
+            regionCode: {
+              label: region.name || REGION_DICT[region.code].name,
+              value: region.code
+            },
+            zoneList: region.zoneList.map((z) => {
+              return {
+                storageClasses: z.config.STORAGE_CLASS,
+                zoneLabel: z.name
+              };
+            }),
+            isValid: true
+          };
+        });
+        setFieldValue('regionList', parsedRegionList);
+      })
+      .catch(() => {
+        toast.error('Unable to fetch Kube Config');
+      });
   };
 
   render() {
@@ -155,7 +208,6 @@ class CreateKubernetesConfiguration extends Component {
       // preselect the only available provider type, if any
       providerType: providerTypeOptions.length === 1 ? providerTypeOptions[0] : null,
       accountName: '',
-      serviceAccount: '',
       pullSecret: null,
       regionCode: '',
       zoneLabel: '',
@@ -176,9 +228,7 @@ class CreateKubernetesConfiguration extends Component {
     const validationSchema = Yup.object().shape({
       accountName: Yup.string()
         .required('Config name is Required')
-        .matches(specialChars, 'Config Name cannot contain special characters except - and _'),
-
-      serviceAccount: Yup.string().required('Service Account name is Required'),
+        .matches(ACCEPTABLE_CHARS, 'Config Name cannot contain special characters except - and _'),
 
       kubeConfig: Yup.mixed().nullable(),
 
@@ -217,6 +267,11 @@ class CreateKubernetesConfiguration extends Component {
       return p.values.regionList.filter((region) => region.isValid).length > 0;
     };
 
+    const showPrefillKubeConfigLink =
+      type === 'k8s' &&
+      (this.props.featureFlags.test.enablePrefillKubeConfig ||
+        this.props.featureFlags.released.enablePrefillKubeConfig);
+
     return (
       <div>
         <h2 className="table-container-title">{title}</h2>
@@ -235,6 +290,15 @@ class CreateKubernetesConfiguration extends Component {
               <form name="kubernetesConfigForm" onSubmit={props.handleSubmit}>
                 <div className="editor-container">
                   <Row>
+                    {showPrefillKubeConfigLink && (
+                      <YBButton
+                        btnText="Fetch suggested config"
+                        btnClass="btn btn-orange fetch-kube-config-but"
+                        onClick={() => {
+                          this.fillFormWithKubeConfig(props);
+                        }}
+                      />
+                    )}
                     <Col lg={8}>
                       <Row
                         className={clsx('config-provider-row', {
@@ -274,7 +338,6 @@ class CreateKubernetesConfiguration extends Component {
                           <Field
                             name="kubeConfig"
                             component={YBFormDropZone}
-                            className="upload-file-button"
                             title={'Upload Kube Config file'}
                           />
                         </Col>
@@ -284,19 +347,6 @@ class CreateKubernetesConfiguration extends Component {
                             content={
                               'Use this setting to set a kube config for all regions and zones.'
                             }
-                          />
-                        </Col>
-                      </Row>
-                      <Row className="config-provider-row">
-                        <Col lg={3}>
-                          <div className="form-item-custom-label">Service Account</div>
-                        </Col>
-                        <Col lg={7}>
-                          <Field
-                            name="serviceAccount"
-                            placeholder="Service Account name"
-                            component={YBFormInput}
-                            className={'kube-provider-input-field'}
                           />
                         </Col>
                       </Row>
@@ -326,7 +376,6 @@ class CreateKubernetesConfiguration extends Component {
                           <Field
                             name="pullSecret"
                             component={YBFormDropZone}
-                            className="upload-file-button"
                             title={'Upload Pull Secret file'}
                           />
                         </Col>

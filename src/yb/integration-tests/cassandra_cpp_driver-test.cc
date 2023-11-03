@@ -53,9 +53,6 @@ using rapidjson::Value;
 using strings::Substitute;
 
 using yb::CoarseBackoffWaiter;
-using yb::YQLDatabase;
-using yb::client::TableHandle;
-using yb::client::TransactionManager;
 using yb::client::YBTableName;
 using yb::client::YBTableInfo;
 using yb::client::YBqlWriteOpPtr;
@@ -1088,7 +1085,7 @@ TEST_F_EX(CppCassandraDriverTest, TestDeferredIndexBackfillsAfterWait,
 
   // Launch Backfill through yb-admin
   constexpr auto kAdminRpcTimeout = 5;
-  auto yb_admin_client = std::make_unique<tools::enterprise::ClusterAdminClient>(
+  auto yb_admin_client = std::make_unique<tools::ClusterAdminClient>(
       cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(kAdminRpcTimeout));
   ASSERT_OK(yb_admin_client->Init());
   ASSERT_OK(yb_admin_client->LaunchBackfillIndexForTable(table_name));
@@ -1249,7 +1246,7 @@ void TestBackfillIndexTable(
 
   IndexPermissions perm = ASSERT_RESULT(test->client_->WaitUntilIndexPermissionsAtLeast(
       table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE, kMaxWait));
-  ASSERT_TRUE(perm == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
 
   auto main_table_size = ASSERT_RESULT(GetTableSize(&test->session_, "key_value"));
   auto index_table_size = ASSERT_RESULT(GetTableSize(&test->session_, "index_by_value"));
@@ -2121,7 +2118,7 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexFails, CppCassandraDriver
       IndexPermissions::INDEX_PERM_NOT_USED,
       50ms /* max_wait */);
   ASSERT_TRUE(!res.ok());
-  ASSERT_TRUE(res.status().IsNotFound());
+  ASSERT_TRUE(res.status().IsNotFound()) << res.status();
 
   ASSERT_OK(LoggedWaitFor(
       [this, index_table_name]() {
@@ -2322,7 +2319,7 @@ class CppCassandraDriverTestWithMasterFailover : public CppCassandraDriverTestIn
 
 TEST_F_EX(
     CppCassandraDriverTest, TestLogSpewDuringBackfill, CppCassandraDriverTestWithMasterFailover) {
-  FLAGS_external_mini_cluster_max_log_bytes = 50_MB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_external_mini_cluster_max_log_bytes) = 50_MB;
   // TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kTrue, IncludeAllColumns::kTrue,
   //                        UserEnforced::kFalse, StepdownMasterLeader::kTrue);
   // Wait for Log spew
@@ -2927,7 +2924,7 @@ class CppCassandraDriverLowSoftLimitTest : public CppCassandraDriverTest {
 
 TEST_F_EX(CppCassandraDriverTest, BatchWriteDuringSoftMemoryLimit,
           CppCassandraDriverLowSoftLimitTest) {
-  FLAGS_external_mini_cluster_max_log_bytes = 512_MB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_external_mini_cluster_max_log_bytes) = 512_MB;
 
   constexpr int kBatchSize = 500;
   constexpr int kWriters = 4;
@@ -3073,7 +3070,7 @@ class CppCassandraDriverTestThreeMasters : public CppCassandraDriverTestNoPartit
 };
 
 TEST_F_EX(CppCassandraDriverTest, ManyTables, CppCassandraDriverTestThreeMasters) {
-  FLAGS_external_mini_cluster_max_log_bytes = 512_MB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_external_mini_cluster_max_log_bytes) = 512_MB;
 
   constexpr int kThreads = RegularBuildVsSanitizers(5, 2);
   constexpr int kTables = RegularBuildVsSanitizers(15, 5);
@@ -3218,7 +3215,8 @@ TEST_F_EX(CppCassandraDriverTest,
   // We are now just after a cache update, so we should expect that we only get the cached value
   // for the next kCacheRefreshSecs seconds.
 
-  // Add a table to update system.partitions again.
+  // Add a table to update system.partitions again. Don't invalidate the cache on this create.
+  ASSERT_OK(cluster_->SetFlagOnMasters("invalidate_yql_partitions_cache_on_create_table", "false"));
   ASSERT_OK(AddTable());
 
   // Check that we still get the same cached version as the bg task has not run yet.
@@ -3228,6 +3226,16 @@ TEST_F_EX(CppCassandraDriverTest,
   // Wait for the cache to update.
   SleepFor(MonoDelta::FromSeconds(kCacheRefreshSecs));
   // Verify that we get the new cached value.
+  new_results = ResultsToList(ASSERT_RESULT(session_.ExecuteWithResult(statement)));
+  ASSERT_NE(old_results, new_results);
+  old_results = new_results;
+
+  // Add another table to update system.partitions again, but this time enable the gflag to
+  // invalidate the cache.
+  ASSERT_OK(cluster_->SetFlagOnMasters("invalidate_yql_partitions_cache_on_create_table", "true"));
+  ASSERT_OK(AddTable());
+
+  // The cache was invalidated, so the new results should be updated.
   new_results = ResultsToList(ASSERT_RESULT(session_.ExecuteWithResult(statement)));
   ASSERT_NE(old_results, new_results);
   old_results = new_results;

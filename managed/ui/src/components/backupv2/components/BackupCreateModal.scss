@@ -1,7 +1,12 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
+
+.row {
+  margin-left: 0;
+  margin-right: 0;
+}
 
 .backup-configuration-form {
-  & > .row {
+  &>.row {
     margin-bottom: 24px;
   }
 
@@ -24,7 +29,7 @@
       line-height: 16px;
 
       i {
-        color: $YB_WARNING_COLOR;
+        color: colors.$YB_WARNING_COLOR;
         font-size: 14px;
       }
     }
@@ -39,6 +44,7 @@
       display: flex;
       align-items: center;
       margin-bottom: 8px;
+
       span {
         margin-top: 4px;
       }
@@ -55,6 +61,7 @@
       color: #545454;
       margin-bottom: 10px;
     }
+
     .incremental-interval-ctrls {
       margin-top: 8px;
     }
@@ -78,7 +85,7 @@
 
   .tables-count {
     background: #f5f4f0;
-    border: 1px solid $YB_BG_WHITE_4;
+    border: 1px solid colors.$YB_BG_WHITE_4;
     border-radius: 8px;
     margin-left: 20px;
     padding: 8px;
@@ -87,7 +94,7 @@
     justify-content: space-between;
 
     .edit-selection {
-      color: $YB_ORANGE;
+      color: colors.$YB_ORANGE;
       cursor: pointer;
 
       &:hover {
@@ -97,7 +104,7 @@
   }
 
   .standard-error {
-    color: $YB_ERROR_TEXT_COLOR;
+    color: colors.$YB_ERROR_TEXT_COLOR;
     margin-left: 6px;
     margin-bottom: 6px;
   }
@@ -122,20 +129,33 @@
     margin-bottom: 6px;
     color: #67666c;
 
-    > span {
+    >span {
       margin-right: 10px;
+    }
+  }
+
+  .tablespaces {
+    border-radius: 8px;
+    border: 1px solid #E5E5E9;
+    background: #FFF;
+    padding: 10px !important;
+    label: {
+      margin-right: 8px;
+    }
+    .tablespaces-subText{
+      color: #67666C;
     }
   }
 }
 
 .select-ycql-tables-modal {
-  background: $YB_BG_WHITE_3;
-  border: 1px solid $YB_LIGHT_GRAY_BORDER;
+  background: colors.$YB_BG_WHITE_3;
+  border: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
   border-radius: 8px;
 
   .table-list-panel {
     padding: 15px;
-    border-right: 1px solid $YB_LIGHT_GRAY_BORDER;
+    border-right: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
 
     .select-all {
       display: flex;
@@ -149,8 +169,8 @@
       button {
         width: 73px;
         height: 30px;
-        background: $YB_BG_WHITE_3;
-        border: 1px solid $YB_BG_WHITE_4;
+        background: colors.$YB_BG_WHITE_3;
+        border: 1px solid colors.$YB_BG_WHITE_4;
         border-radius: 6px;
         font-style: normal;
         font-weight: 500;
@@ -161,7 +181,7 @@
     }
 
     .table-list {
-      border-top: 1px solid $YB_LIGHT_GRAY_BORDER;
+      border-top: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
       height: 350px;
       overflow-y: auto;
 
@@ -180,7 +200,7 @@
 
         .select-icon {
           display: none;
-          color: $YB_ORANGE;
+          color: colors.$YB_ORANGE;
           align-items: center;
           font-weight: 400;
           font-size: 12px;
@@ -191,7 +211,7 @@
         }
 
         &:hover {
-          background: $YB_BACKGROUND;
+          background: colors.$YB_BACKGROUND;
 
           .select-icon {
             display: inline-flex;
@@ -210,7 +230,7 @@
     }
 
     .selected-table-item {
-      background: $YB_GRAY_HOVER;
+      background: colors.$YB_GRAY_HOVER;
       border-radius: 6px;
       padding: 8px 12px;
       display: flex;

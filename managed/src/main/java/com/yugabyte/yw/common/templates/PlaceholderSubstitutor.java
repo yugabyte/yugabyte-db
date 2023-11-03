@@ -15,7 +15,7 @@ import java.util.function.Function;
 /**
  * Replace placeholders, surrounded by prefix and suffix strings with some values from domain model.
  */
-public class PlaceholderSubstitutor {
+public class PlaceholderSubstitutor implements PlaceholderSubstitutorIF {
   private final String parameterPrefix;
   private final String parameterSuffix;
   private final Function<String, String> valueProvider;

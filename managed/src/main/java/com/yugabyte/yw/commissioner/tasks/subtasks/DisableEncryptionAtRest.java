@@ -11,6 +11,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
@@ -34,7 +35,7 @@ public class DisableEncryptionAtRest extends AbstractTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
@@ -42,6 +43,11 @@ public class DisableEncryptionAtRest extends AbstractTaskBase {
       log.info("Running {}: hostPorts={}.", getName(), hostPorts);
       client = ybService.getClient(hostPorts, certificate);
       client.disableEncryptionAtRestInMemory();
+
+      // Update the state of the universe EAR to the intended state only if above tasks run without
+      // any error.
+      EncryptionAtRestUtil.updateUniverseEARState(
+          taskParams().getUniverseUUID(), taskParams().encryptionAtRestConfig);
       universe.incrementVersion();
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());

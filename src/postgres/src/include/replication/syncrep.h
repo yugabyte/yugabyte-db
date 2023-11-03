@@ -14,6 +14,7 @@
 #define _SYNCREP_H
 
 #include "access/xlogdefs.h"
+#include "storage/proc.h"
 #include "utils/guc.h"
 
 #define SyncRepRequested() \
@@ -67,7 +68,7 @@ extern char *SyncRepStandbyNames;
 extern void SyncRepWaitForLSN(XLogRecPtr lsn, bool commit);
 
 /* called at backend exit */
-extern void SyncRepCleanupAtProcExit(void);
+extern void SyncRepCleanupAtProcExit(PGPROC *proc);
 
 /* called by wal sender */
 extern void SyncRepInitConfig(void);

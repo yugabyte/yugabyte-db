@@ -2,7 +2,7 @@
 title: Synthetic timezones (do not observe DST) [YSQL]
 headerTitle: Synthetic timezones (do not observe Daylight Savings Time)
 linkTitle: Synthetic timezones no DST
-description: Table. [YSQL]
+description: Synthetic timezones no DST table. [YSQL]
 menu:
   stable:
     identifier: canonical-no-country-no-dst

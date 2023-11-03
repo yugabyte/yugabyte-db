@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 create_index ::= CREATE [ UNIQUE ] INDEX [ NONCONCURRENTLY ]  
                  [ [ IF NOT EXISTS ] name ] ON [ ONLY ] table_name  
                  [ USING access_method_name ] ( index_elem [ , ... ] ) 

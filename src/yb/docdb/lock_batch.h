@@ -15,10 +15,10 @@
 
 #include <string>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/intent.h"
+#include "yb/dockv/intent.h"
 
 #include "yb/gutil/macros.h"
 
@@ -40,7 +40,7 @@ struct LockedBatchEntry;
 
 struct LockBatchEntry {
   RefCntPrefix key;
-  IntentTypeSet intent_types;
+  dockv::IntentTypeSet intent_types;
 
   // Memory is owned by SharedLockManager.
   LockedBatchEntry* locked = nullptr;
@@ -81,6 +81,8 @@ class LockBatch {
   // instance. The returned instance can be used to construct another LockBatch, which in turn will
   // re-lock the keys.
   std::optional<UnlockedBatch> Unlock();
+
+  const LockBatchEntries& Get() const { return data_.key_to_type; }
 
  private:
   void MoveFrom(LockBatch* other);
@@ -126,6 +128,9 @@ class UnlockedBatch {
   LockBatch Lock(CoarseTimePoint deadline) &&;
 
   UnlockedBatch& operator=(UnlockedBatch&& other) { MoveFrom(&other); return *this; }
+
+  const LockBatchEntries& Get() const { return key_to_type_; }
+
  private:
   void MoveFrom(UnlockedBatch* other);
 

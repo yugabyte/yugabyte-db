@@ -10,12 +10,12 @@
             "type": "object",
             "properties": {
               "scrapeInterval": {
-                "type": "integer"
+                "type": "string"
               },
               "scrapeTimeout": {
-                "type": "integer"
+                "type": "string"
               },
-              "externalPort": {
+              "port": {
                 "type": "integer"
               },
               "maxConcurrency": {
@@ -25,18 +25,78 @@
                 "type": "integer"
               },
               "timeout": {
+                "type": "string"
+              },
+              "retentionTime": {
+                "type": "string"
+              },
+              "restartSeconds": {
                 "type": "integer"
               }
             },
-            "required": ["scrapeInterval", "scrapeTimeout", "externalPort", "maxConcurrency",
-              "maxSamples", "timeout"]
+            "required": ["scrapeInterval", "scrapeTimeout", "port", "maxConcurrency",
+              "maxSamples", "timeout", "retentionTime", "restartSeconds"]
         },
         "platform": {
           "description": "Platform Config Parameters",
           "type": "object",
           "properties": {
-            "logPath": {
-              "type": "string"
+            "proxy": {
+              "description": "Platform Proxy Config Parameters",
+              "type": "object",
+              "properties": {
+                "enable": {
+                  "type": "boolean"
+                },
+                "http_proxy": {
+                  "type": "string"
+                },
+                "java_http_proxy_port": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string",
+                      "maxLength": 0
+                    }
+                  ]
+                },
+                "java_http_proxy_host": {
+                  "type": "string"
+                },
+                "https_proxy": {
+                  "type": "string"
+                },
+                "java_https_proxy_port": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string",
+                      "maxLength": 0
+                    }
+                  ]
+                },
+                "java_https_proxy_host": {
+                  "type": "string"
+                },
+                "no_proxy": {
+                  "type": "string"
+                },
+                "java_non_proxy": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 0
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                }
+              }
             },
             "platformDbUser": {
               "type": "string"
@@ -96,33 +156,105 @@
                   }
               ]
             },
-            "externalPort": {
+            "port": {
               "type": "integer"
             },
-            "containerExposedPort": {
-              "type": "integer"
-            } ,
             "keyStorePassword": {
+              "type": "string"
+            },
+            "appSecret": {
+              "type": "string"
+            },
+            "restartSeconds": {
+              "type": "integer"
+            },
+            "support_origin_url": {
               "type": "string"
             }
           },
-          "required": ["platformDbUser",
-          "platformDbPassword",
-          "useOauth", "ybSecurityType", "ybOidcClientId",
-          "ybOidcSecret", "ybOidcDiscoveryUri", "ywUrl",
-          "ybOidcScope", "ybOidcEmailAttr", "externalPort",
-          "containerExposedPort", "keyStorePassword", "logPath"]
+          "required": ["port", "keyStorePassword", "restartSeconds"]
         },
-      "preflight": {
-          "description": "Preflight Config parameters",
+        "postgres": {
+          "description": "Postgres Config Parameters",
           "type": "object",
           "properties": {
-            "overrideWarning": {
-              "type": "boolean"
+            "install": {
+              "description": "YBA-Installer Managed Postgres Config",
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "port": {
+                  "type": "integer"
+                },
+                "restartSeconds": {
+                  "type": "integer"
+                },
+                "locale": {
+                  "type": "string"
+                },
+                "ldap_enabled": {
+                  "type": "boolean"
+                },
+                "ldap_server": {
+                  "type": "string"
+                },
+                "ldap_base_dn": {
+                  "type": "string"
+                },
+                "ldap_port": {
+                  "type": "integer"
+                },
+                "secure_ldap": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "useExisting": {
+              "description": "YBA-Installer Existing Postgres Config",
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "username": {
+                  "type": "string"
+                },
+                "password": {
+                  "type": "string"
+                },
+                "host": {
+                  "type": "string"
+                },
+                "port": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string",
+                      "maxLength": 0
+                    }
+                  ]
+                },
+                "pg_dump_path": {
+                  "type": "string"
+                },
+                "pg_restore_path": {
+                  "type": "string"
+                }
+              }
             }
-          },
-          "required": [ "overrideWarning"]
-      }
+
+          }
+        },
+        "installRoot": {
+          "type": "string"
+        },
+        "service_username": {
+          "type": "string"
+        }
     },
-    "required": ["prometheus", "platform", "preflight"]
+    "required": ["prometheus", "platform", "postgres", "installRoot", "service_username"]
   }

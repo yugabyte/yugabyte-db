@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <time.h>
@@ -44,6 +45,7 @@
 #include <functional>
 #include <future>
 #include <iosfwd>
+#include <iterator>
 #include <limits>
 #include <list>
 #include <map>
@@ -85,6 +87,9 @@
 #include <boost/function/function_fwd.hpp>
 #include <boost/functional/hash.hpp>
 #include <boost/functional/hash/hash.hpp>
+#include <boost/icl/discrete_interval.hpp>
+#include <boost/icl/interval_set.hpp>
+#include <boost/interprocess/ipc/message_queue.hpp>
 #include <boost/intrusive/list.hpp>
 #include <boost/iterator/transform_iterator.hpp>
 #include <boost/mpl/and.hpp>
@@ -261,6 +266,7 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/striped64.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -269,6 +275,8 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/thread.h"
+#include "yb/util/thread_annotations_util.h"
 #include "yb/util/threadlocal.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/timestamp.h"
@@ -276,8 +284,10 @@
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/type_traits.h"
+#include "yb/util/uint_set.h"
 #include "yb/util/ulimit.h"
 #include "yb/util/uuid.h"
 #include "yb/util/varint.h"
 #include "yb/util/web_callback_registry.h"
+#include "yb/util/write_buffer.h"
 #include "yb/util/yb_partition.h"

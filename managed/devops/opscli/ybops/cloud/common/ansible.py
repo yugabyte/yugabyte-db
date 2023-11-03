@@ -18,6 +18,7 @@ import sys
 from ybops.common.exceptions import YBOpsRuntimeError, YBOpsRecoverableError
 import ybops.utils as ybutils
 from ybops.utils.ssh import SSH, SSH2, parse_private_key, check_ssh2_bin_present
+from ybops.utils.remote_shell import copy_to_tmp, RemoteShell
 
 
 class AnsibleProcess(object):
@@ -41,7 +42,7 @@ class AnsibleProcess(object):
         self.connection_type = self.DEFAULT_SSH_CONNECTION_TYPE
         self.connection_target = "localhost"
         self.sensitive_data_keywords = ["KEY", "SECRET", "CREDENTIALS", "API", "POLICY",
-                                        "RPC_AUTH_TOKEN"]
+                                        "NODE_AGENT_AUTH_TOKEN"]
 
     def set_connection_params(self, conn_type, target):
         self.connection_type = conn_type
@@ -62,30 +63,14 @@ class AnsibleProcess(object):
                 playbook_args[key] = self.REDACT_STRING
         return playbook_args
 
-    def get_python_executable(self):
-        if "PYTHON_EXECUTABLE" in os.environ:
-            return os.environ["PYTHON_EXECUTABLE"]
-        raise YBOpsRuntimeError("Could not find python path in environment.")
-
-    def get_pex_path(self):
-        """
-        Method used to determine the pex path if script is being called with a PEX environment.
-        Returns path to env if available, False otherwise
-        """
-        if "PEX" in os.environ:
-            return os.environ.get("PEX")
-        return False
-
-    # Finds ansible playbook path. Only necessary in PEX environments.
-    def get_ansible_playbook_path(self):
-        return [x for x in sys.path if x.find('ansible-') >= 0][0]
-
-    def run(self, filename, extra_vars=None, host_info=None, print_output=True):
+    def run(self, filename, extra_vars=None, host_info=None, print_output=True,
+            disable_offloading=False):
         """Method used to call out to the respective Ansible playbooks.
         Args:
             filename: The playbook file to execute
-            extra_args: A dictionary of KVs to pass as extra-vars to ansible-playbook
+            extra_vars: A dictionary of KVs to pass as extra-vars to ansible-playbook
             host_info: A dictionary of host level attributes which is empty for localhost.
+            disable_offloading: A flag to disable ansible offloading.
         """
 
         if host_info is None:
@@ -102,21 +87,26 @@ class AnsibleProcess(object):
         ssh_port = vars.pop("ssh_port", None)
         ssh_host = vars.pop("ssh_host", None)
         vault_password_file = vars.pop("vault_password_file", None)
+        vars_file = vars.pop("vars_file", None)
         ask_sudo_pass = vars.pop("ask_sudo_pass", None)
         sudo_pass_file = vars.pop("sudo_pass_file", None)
         ssh_key_file = vars.pop("private_key_file", None)
         ssh2_enabled = vars.pop("ssh2_enabled", False) and check_ssh2_bin_present()
+        local_package_path = vars.pop("local_package_path", None)
+        connection_type = vars.pop("connection_type", None)
+        node_agent_home = vars.pop("node_agent_home", None)
         node_agent_ip = vars.pop("node_agent_ip", None)
         node_agent_port = vars.pop("node_agent_port", None)
         node_agent_cert_path = vars.pop("node_agent_cert_path", None)
         node_agent_auth_token = vars.pop("node_agent_auth_token", None)
+        offload = vars.pop("offload_ansible", False) and not disable_offloading
         ssh_key_type = parse_private_key(ssh_key_file)
+        remote_tmp_dir = vars.get("remote_tmp_dir", "/tmp")
         env = os.environ.copy()
         if env.get('APPLICATION_CONSOLE_LOG_LEVEL') != 'INFO':
             env['PROFILE_TASKS_TASK_OUTPUT_LIMIT'] = '30'
 
         playbook_args.update(vars)
-
         if self.can_ssh:
             playbook_args.update({
                 "ssh_user": ssh_user,
@@ -124,14 +114,7 @@ class AnsibleProcess(object):
                 "ssh_version": SSH if ssh_key_type == SSH else SSH2
             })
 
-        process_args = ["ansible-playbook"]
-
-        # Determine PEX and override ansible-playbook path.
-        pex_path = self.get_pex_path()
-        if pex_path:
-            python = self.get_python_executable()
-            ansible_playbook = self.get_ansible_playbook_path()
-            process_args = [python, pex_path, ansible_playbook + "/.prefix/bin/ansible-playbook"]
+        process_args = [os.path.join(ybutils.YB_DEVOPS_HOME, "bin/ansible-playbook.sh")]
 
         if ssh2_enabled:
             # Will be moved as part of task of license upload api.
@@ -149,31 +132,52 @@ class AnsibleProcess(object):
         process_args.extend([os.path.join(ybutils.YB_DEVOPS_HOME, filename)])
         playbook_args["yb_home_dir"] = ybutils.YB_HOME_DIR
 
-        if vault_password_file is not None:
-            process_args.extend(["--vault-password-file", vault_password_file])
-        if ask_sudo_pass is not None:
-            process_args.extend(["--ask-sudo-pass"])
-        if sudo_pass_file is not None:
-            playbook_args["yb_sudo_pass_file"] = sudo_pass_file
-
-        if skip_tags is not None:
-            process_args.extend(["--skip-tags", skip_tags])
-        elif tags is not None:
-            process_args.extend(["--tags", tags])
-
-        process_args.extend([
-            "--user", ssh_user
-        ])
-
-        if node_agent_ip is not None and node_agent_port is not None:
-            connection_type = "node_agent_rpc"
+        if connection_type is not None and connection_type == 'node_agent_rpc':
             playbook_args.update({
-                "rpc_ip": node_agent_ip,
-                "rpc_port": node_agent_port,
-                "rpc_cert_path": node_agent_cert_path,
-                "rpc_auth_token": node_agent_auth_token
+                # Below args are used in the playbooks.
+                # E.g ssh_user as home_dir.
+                "ansible_port": node_agent_port,
+                "yb_ansible_host": node_agent_ip,
+                "ssh_user": ssh_user,
+                "yb_server_ssh_user": ssh_user
             })
-            inventory_target = self.build_connection_target(node_agent_ip)
+            if offload:
+                if vars_file is not None:
+                    copy_to_tmp(extra_vars, vars_file, remote_tmp_dir=remote_tmp_dir)
+                    vars_file = os.path.join(remote_tmp_dir, os.path.basename(vars_file))
+                if vault_password_file is not None:
+                    copy_to_tmp(extra_vars, vault_password_file, remote_tmp_dir=remote_tmp_dir)
+                    vault_password_file = os.path.join(
+                        remote_tmp_dir, os.path.basename(vault_password_file))
+
+                devops_path = os.path.join(node_agent_home, "pkg", "devops")
+                thirdparty_path = os.path.join(node_agent_home, "pkg", "thirdparty")
+                # Pass local ansible env vars to remote shell.
+                process_args = []
+                for env_var, value in os.environ.items():
+                    if env_var.startswith("ANSIBLE") and env_var != "ANSIBLE_LOCAL_TEMP":
+                        process_args.append("{}={}".format(env_var, value))
+
+                process_args.extend([os.path.join(devops_path, "bin", "ansible-playbook.sh"),
+                                     os.path.join(devops_path, os.path.basename(filename))])
+                if local_package_path is not None:
+                    local_package_path = thirdparty_path
+                playbook_args.update({
+                    "ansible_remote_tmp": "/tmp",
+                    "yb_ansible_host": "localhost"
+                })
+                process_args.extend(["--limit", "localhost"])
+                inventory_target = "localhost,"
+                connection_type = "local"
+            else:
+                playbook_args.update({
+                  "node_agent_user": ssh_user,
+                  "node_agent_ip": node_agent_ip,
+                  "node_agent_port": node_agent_port,
+                  "node_agent_cert_path": node_agent_cert_path,
+                  "node_agent_auth_token": node_agent_auth_token,
+                })
+                inventory_target = self.build_connection_target(node_agent_ip)
         elif ssh_port is None or ssh_host is None:
             connection_type = "local"
             inventory_target = "localhost,"
@@ -200,6 +204,25 @@ class AnsibleProcess(object):
             inventory_target = self.build_connection_target(
                 host_info.get("name", self.connection_target))
 
+        if vars_file is not None:
+            playbook_args["vars_file"] = vars_file
+        if vault_password_file is not None:
+            process_args.extend(["--vault-password-file", vault_password_file])
+        if local_package_path is not None:
+            playbook_args["local_package_path"] = local_package_path
+        if ask_sudo_pass is not None:
+            process_args.extend(["--ask-sudo-pass"])
+        if sudo_pass_file is not None:
+            playbook_args["yb_sudo_pass_file"] = sudo_pass_file
+
+        if skip_tags is not None:
+            process_args.extend(["--skip-tags", ','.join(skip_tags)])
+        if tags is not None:
+            process_args.extend(["--tags", ','.join(tags)])
+
+        process_args.extend([
+          "--user", ssh_user
+        ])
         # Set inventory, connection type, and pythonpath.
         process_args.extend([
             "-i", inventory_target,
@@ -217,20 +240,39 @@ class AnsibleProcess(object):
 
         logging.info("Running ansible command {}".format(json.dumps(redacted_process_args,
                                                                     separators=(' ', ' '))))
-        p = subprocess.Popen(process_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
-        stdout, stderr = p.communicate()
-
+        if offload:
+            logging.info("Running ansible playbook {} on DB node"
+                         .format(os.path.basename(filename)))
+            remote_shell_args = {"async": True}
+            remote_shell = RemoteShell(extra_vars)
+            try:
+                rc, stdout, stderr = remote_shell.exec_command(process_args, **remote_shell_args)
+            finally:
+                delete_files = []
+                if vars_file is not None:
+                    delete_files.extend(vars_file)
+                if vault_password_file is not None:
+                    delete_files.extend(vault_password_file)
+                if delete_files:
+                    remote_shell.exec_command("rm -rf ".format(' '.join(delete_files)))
+        else:
+            logging.info("Running ansible playbook {} on platform"
+                         .format(os.path.basename(filename)))
+            p = subprocess.Popen(process_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                 env=env)
+            stdout, stderr = p.communicate()
+            rc = p.returncode
         if print_output:
             print(stdout.decode('utf-8'))
 
-        if p.returncode != 0:
+        if rc != 0:
             errmsg = f"Playbook run of {filename} against {inventory_target} with args " \
-                     f"{redacted_process_args} failed with return code {p.returncode} " \
-                     f"and error '{stderr}'"
+                     f"{redacted_process_args} failed with return code {rc} " \
+                     f"and error '{stderr.decode('utf-8')}'"
 
-            if p.returncode == 4:  # host unreachable
+            if rc == 4:  # host unreachable
                 raise YBOpsRecoverableError(errmsg)
             else:
                 raise YBOpsRuntimeError(errmsg)
 
-        return p.returncode
+        return rc

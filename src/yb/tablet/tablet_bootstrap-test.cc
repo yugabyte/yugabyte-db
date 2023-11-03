@@ -32,7 +32,7 @@
 
 #include <vector>
 
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/consensus_meta.h"
@@ -41,6 +41,8 @@
 #include "yb/consensus/opid_util.h"
 
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
+
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/server/logical_clock.h"
 
@@ -78,7 +80,6 @@ using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::kMinimumTerm;
 using consensus::MakeOpId;
-using consensus::ReplicateMsg;
 using consensus::ReplicateMsgPtr;
 using log::LogAnchorRegistry;
 using log::LogTestBase;
@@ -176,11 +177,12 @@ class BootstrapTest : public LogTestBase {
 
   Result<RaftGroupMetadataPtr> LoadOrCreateTestRaftGroupMetadata(const Schema& src_schema) {
     Schema schema = SchemaBuilder(src_schema).Build();
-    std::pair<PartitionSchema, Partition> partition = CreateDefaultPartition(schema);
+    auto partition = CreateDefaultPartition(schema);
 
     auto table_info = std::make_shared<TableInfo>(
         "TEST: ", Primary::kTrue, log::kTestTable, log::kTestNamespace, log::kTestTable, kTableType,
-        schema, IndexMap(), boost::none /* index_info */, 0 /* schema_version */, partition.first);
+        schema, qlexpr::IndexMap(), boost::none /* index_info */, 0 /* schema_version */,
+        partition.first);
     auto result = VERIFY_RESULT(RaftGroupMetadata::TEST_LoadOrCreate(RaftGroupMetadataData {
       .fs_manager = fs_manager_.get(),
       .table_info = table_info,
@@ -188,6 +190,7 @@ class BootstrapTest : public LogTestBase {
       .partition = partition.second,
       .tablet_data_state = TABLET_DATA_READY,
       .snapshot_schedules = {},
+      .hosted_services = {},
     }));
     RETURN_NOT_OK(result->Flush());
     return result;
@@ -227,7 +230,9 @@ class BootstrapTest : public LogTestBase {
       .allowed_history_cutoff_provider = {},
       .transaction_manager_provider = nullptr,
       .full_compaction_pool = nullptr,
-      .post_split_compaction_added = nullptr
+      .admin_triggered_compaction_pool = nullptr,
+      .post_split_compaction_added = nullptr,
+      .metadata_cache = nullptr,
     };
     BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -235,8 +240,8 @@ class BootstrapTest : public LogTestBase {
       .append_pool = log_thread_pool_.get(),
       .allocation_pool = log_thread_pool_.get(),
       .log_sync_pool = log_thread_pool_.get(),
-      .retryable_requests = nullptr,
-      .test_hooks = test_hooks_
+      .retryable_requests_manager = nullptr,
+      .test_hooks = test_hooks_,
     };
     RETURN_NOT_OK(BootstrapTablet(data, tablet, &log_, boot_info));
     return Status::OK();
@@ -253,11 +258,11 @@ class BootstrapTest : public LogTestBase {
     peer->set_permanent_uuid(meta->fs_manager()->uuid());
     peer->set_member_type(consensus::PeerMemberType::VOTER);
 
-    std::unique_ptr<ConsensusMetadata> cmeta;
-    RETURN_NOT_OK_PREPEND(ConsensusMetadata::Create(meta->fs_manager(), meta->raft_group_id(),
-                                                    meta->fs_manager()->uuid(),
-                                                    config, kMinimumTerm, &cmeta),
-                          "Unable to create consensus metadata");
+    std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT_PREPEND(
+        ConsensusMetadata::Create(
+            meta->fs_manager(), meta->raft_group_id(), meta->fs_manager()->uuid(), config,
+            kMinimumTerm),
+        "Unable to create consensus metadata");
 
     RETURN_NOT_OK_PREPEND(RunBootstrapOnTestTablet(meta, tablet, boot_info),
                           "Unable to bootstrap test tablet");
@@ -266,9 +271,10 @@ class BootstrapTest : public LogTestBase {
 
   void IterateTabletRows(const Tablet* tablet,
                          vector<string>* results) {
-    auto iter = tablet->NewRowIterator(schema_);
+    dockv::ReaderProjection projection(*tablet->schema());
+    auto iter = tablet->NewRowIterator(projection);
     ASSERT_OK(iter);
-    ASSERT_OK(IterateToStringList(iter->get(), results));
+    ASSERT_OK(IterateToStringList(iter->get(), *tablet->schema(), results));
     for (const string& result : *results) {
       VLOG(1) << result;
     }
@@ -878,7 +884,7 @@ TEST_F(BootstrapTest, RandomizedInput) {
 
   // This is to avoid non-deterministic time-based behavior in "bootstrap optimizer"
   // (skip_wal_rewrite mode).
-  FLAGS_retryable_request_timeout_secs = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = 0;
 
   const auto kNumIter = NonTsanVsTsan(400, 150);
   const auto kNumEntries = NonTsanVsTsan(1500, 500);
@@ -972,11 +978,10 @@ TEST_F(BootstrapTest, ColocatedSchemaBoostrap) {
   ColocationId colocation_id = 123456789;
   Schema schema{
       {
-          ColumnSchema("key", INT32, false, true),
-          ColumnSchema("int_val", INT32),
-          ColumnSchema("string_val", STRING, true)
+          ColumnSchema("key", DataType::INT32, ColumnKind::HASH),
+          ColumnSchema("int_val", DataType::INT32),
+          ColumnSchema("string_val", DataType::STRING, ColumnKind::VALUE, Nullable::kTrue)
       },
-      1,
       TableProperties(),
       Uuid::Nil(),
       colocation_id,

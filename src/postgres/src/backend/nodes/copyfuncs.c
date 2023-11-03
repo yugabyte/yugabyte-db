@@ -466,8 +466,8 @@ _copyYbSeqScan(const YbSeqScan *from)
 	 */
 	CopyScanFields((const Scan *) from, (Scan *) newnode);
 
-	COPY_NODE_FIELD(remote.qual);
-	COPY_NODE_FIELD(remote.colrefs);
+	COPY_NODE_FIELD(yb_pushdown.quals);
+	COPY_NODE_FIELD(yb_pushdown.colrefs);
 
 	return newnode;
 }
@@ -517,10 +517,12 @@ _copyIndexScan(const IndexScan *from)
 	COPY_NODE_FIELD(indexorderbyops);
 	COPY_NODE_FIELD(indextlist);
 	COPY_SCALAR_FIELD(indexorderdir);
-	COPY_NODE_FIELD(index_remote.qual);
-	COPY_NODE_FIELD(index_remote.colrefs);
-	COPY_NODE_FIELD(rel_remote.qual);
-	COPY_NODE_FIELD(rel_remote.colrefs);
+	COPY_NODE_FIELD(yb_idx_pushdown.quals);
+	COPY_NODE_FIELD(yb_idx_pushdown.colrefs);
+	COPY_NODE_FIELD(yb_rel_pushdown.quals);
+	COPY_NODE_FIELD(yb_rel_pushdown.colrefs);
+	COPY_SCALAR_FIELD(yb_distinct_prefixlen);
+	COPY_SCALAR_FIELD(yb_lock_mechanism);
 
 	return newnode;
 }
@@ -546,9 +548,10 @@ _copyIndexOnlyScan(const IndexOnlyScan *from)
 	COPY_NODE_FIELD(indexorderby);
 	COPY_NODE_FIELD(indextlist);
 	COPY_SCALAR_FIELD(indexorderdir);
-	COPY_NODE_FIELD(remote.qual);
-	COPY_NODE_FIELD(remote.colrefs);
+	COPY_NODE_FIELD(yb_pushdown.quals);
+	COPY_NODE_FIELD(yb_pushdown.colrefs);
 	COPY_NODE_FIELD(yb_indexqual_for_recheck);
+	COPY_SCALAR_FIELD(yb_distinct_prefixlen);
 
 	return newnode;
 }
@@ -901,9 +904,18 @@ _copyYbBatchedNestLoop(const YbBatchedNestLoop *from)
 	/*
 	 * copy remainder of node
 	 */
-	COPY_NODE_FIELD(innerHashAttNos);
-	COPY_NODE_FIELD(outerParamExprs);
-	COPY_NODE_FIELD(hashOps);
+	COPY_SCALAR_FIELD(num_hashClauseInfos);
+
+	if (from->num_hashClauseInfos > 0)
+		COPY_POINTER_FIELD(
+			hashClauseInfos,
+			from->num_hashClauseInfos * sizeof(YbBNLHashClauseInfo));
+
+	for (int i = 0; i < from->num_hashClauseInfos; i++)
+	{
+		newnode->hashClauseInfos[i].outerParamExpr =
+			copyObject(from->hashClauseInfos[i].outerParamExpr);
+	}
 
 	return newnode;
 }
@@ -4072,6 +4084,26 @@ _copyDiscardStmt(const DiscardStmt *from)
 	return newnode;
 }
 
+static YbCreateProfileStmt *
+_copyCreateProfileStmt(const YbCreateProfileStmt *from)
+{
+	YbCreateProfileStmt *newnode = makeNode(YbCreateProfileStmt);
+
+	COPY_STRING_FIELD(prfname);
+	COPY_SCALAR_FIELD(prffailedloginattempts);
+	return newnode;
+}
+
+static YbDropProfileStmt *
+_copyDropProfileStmt(const YbDropProfileStmt *from)
+{
+	YbDropProfileStmt *newnode = makeNode(YbDropProfileStmt);
+
+	COPY_STRING_FIELD(prfname);
+	COPY_SCALAR_FIELD(missing_ok);
+	return newnode;
+}
+
 static CreateTableGroupStmt *
 _copyCreateTableGroupStmt(const CreateTableGroupStmt *from)
 {
@@ -4893,15 +4925,24 @@ _copyRowBounds(const RowBounds *from)
 	return newnode;
 }
 
-static YbExprParamDesc *
-_copyYbExprParamDesc(const YbExprParamDesc *from)
+static YbExprColrefDesc *
+_copyYbExprColrefDesc(const YbExprColrefDesc *from)
 {
-	YbExprParamDesc *newnode = makeNode(YbExprParamDesc);
+	YbExprColrefDesc *newnode = makeNode(YbExprColrefDesc);
 
 	COPY_SCALAR_FIELD(attno);
 	COPY_SCALAR_FIELD(typid);
 	COPY_SCALAR_FIELD(typmod);
 	COPY_SCALAR_FIELD(collid);
+
+	return newnode;
+}
+
+static YbBatchedExpr *
+_copyYbBatchedExpr(const YbBatchedExpr *from)
+{
+	YbBatchedExpr *newnode = makeNode(YbBatchedExpr);
+	COPY_NODE_FIELD(orig_expr);
 
 	return newnode;
 }
@@ -5511,6 +5552,12 @@ copyObjectImpl(const void *from)
 		case T_DiscardStmt:
 			retval = _copyDiscardStmt(from);
 			break;
+		case T_YbCreateProfileStmt:
+			retval = _copyCreateProfileStmt(from);
+			break;
+		case T_YbDropProfileStmt:
+			retval = _copyDropProfileStmt(from);
+			break;
 		case T_CreateTableGroupStmt:
 			retval = _copyCreateTableGroupStmt(from);
 			break;
@@ -5822,8 +5869,12 @@ copyObjectImpl(const void *from)
 			retval = _copyRowBounds(from);
 			break;
 
-		case T_YbExprParamDesc:
-			retval = _copyYbExprParamDesc(from);
+		case T_YbExprColrefDesc:
+			retval = _copyYbExprColrefDesc(from);
+			break;
+
+		case T_YbBatchedExpr:
+			retval = _copyYbBatchedExpr(from);
 			break;
 
 		default:

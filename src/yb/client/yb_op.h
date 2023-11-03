@@ -40,7 +40,7 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
-#include "yb/common/partial_row.h"
+#include "yb/dockv/partial_row.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/retryable_request.h"
 #include "yb/common/transaction.pb.h"
@@ -52,16 +52,6 @@
 #include "yb/util/ref_cnt_buffer.h"
 
 namespace yb {
-
-class RedisWriteRequestPB;
-class RedisReadRequestPB;
-class RedisResponsePB;
-
-class QLWriteRequestPB;
-class QLReadRequestPB;
-class QLResponsePB;
-class QLRowBlock;
-
 namespace client {
 
 namespace internal {
@@ -121,7 +111,7 @@ class YBOperation {
     return succeeded();
   }
 
-  virtual bool should_add_intents(IsolationLevel isolation_level) {
+  virtual bool should_apply_intents(IsolationLevel isolation_level) {
     return !read_only() || isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION;
   }
 
@@ -144,12 +134,8 @@ class YBOperation {
     request_id_ = id;
   }
 
-  std::optional<RetryableRequestId> min_running_request_id() const {
-    return min_running_request_id_;
-  }
-
-  void set_min_running_request_id(RetryableRequestId id) {
-    min_running_request_id_ = id;
+  void reset_request_id() {
+    request_id_.reset();
   }
 
   // Returns the partition key of the operation.
@@ -190,8 +176,9 @@ class YBOperation {
 
   boost::optional<PartitionListVersion> partition_list_version_;
 
+  // Persist retryable request ID across internal retries within the same YBSession
+  // to prevent duplicate writes due to internal retries.
   std::optional<RetryableRequestId> request_id_;
-  std::optional<RetryableRequestId> min_running_request_id_;
 
   DISALLOW_COPY_AND_ASSIGN(YBOperation);
 };
@@ -302,16 +289,18 @@ class YBqlOp : public YBOperation {
 
   QLResponsePB* mutable_response() { return ql_response_.get(); }
 
-  const std::string& rows_data() { return rows_data_; }
+  const RefCntSlice& rows_data() { return rows_data_; }
 
-  std::string* mutable_rows_data() { return &rows_data_; }
+  void set_rows_data(const RefCntSlice& value) {
+    rows_data_ = value;
+  }
 
   bool succeeded() const override;
 
  protected:
   explicit YBqlOp(const std::shared_ptr<YBTable>& table);
   std::unique_ptr<QLResponsePB> ql_response_;
-  std::string rows_data_;
+  RefCntSlice rows_data_;
 };
 
 class YBqlWriteOp : public YBqlOp {
@@ -417,7 +406,7 @@ class YBqlReadOp : public YBqlOp {
   }
 
   std::vector<ColumnSchema> MakeColumnSchemasFromRequest() const;
-  Result<QLRowBlock> MakeRowBlock() const;
+  Result<qlexpr::QLRowBlock> MakeRowBlock() const;
 
   const ReadHybridTime& read_time() const { return read_time_; }
   void SetReadTime(const ReadHybridTime& value) { read_time_ = value; }
@@ -444,8 +433,7 @@ std::vector<ColumnSchema> MakeColumnSchemasFromColDesc(
 class YBPgsqlOp : public YBOperation {
  public:
   YBPgsqlOp(
-      const std::shared_ptr<YBTable>& table, std::string* partition_key,
-      rpc::Sidecars* sidecars);
+      const std::shared_ptr<YBTable>& table, rpc::Sidecars* sidecars);
   ~YBPgsqlOp();
 
   const PgsqlResponsePB& response() const { return *response_; }
@@ -472,15 +460,9 @@ class YBPgsqlOp : public YBOperation {
     return sidecars_;
   }
 
-  Status GetPartitionKey(std::string* partition_key) const override {
-    *partition_key = partition_key_;
-    return Status::OK();
-  }
-
  protected:
   std::unique_ptr<PgsqlResponsePB> response_;
   int64_t sidecar_index_ = -1;
-  std::string partition_key_;
   rpc::Sidecars& sidecars_;
 };
 
@@ -519,6 +501,7 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
   static YBPgsqlWriteOpPtr NewInsert(const YBTablePtr& table, rpc::Sidecars* sidecars);
   static YBPgsqlWriteOpPtr NewUpdate(const YBTablePtr& table, rpc::Sidecars* sidecars);
   static YBPgsqlWriteOpPtr NewDelete(const YBTablePtr& table, rpc::Sidecars* sidecars);
+  static YBPgsqlWriteOpPtr NewFetchSequence(const YBTablePtr& table, rpc::Sidecars* sidecars);
 
  protected:
   virtual Type type() const override { return PGSQL_WRITE; }
@@ -571,9 +554,10 @@ class YBPgsqlReadOp : public YBPgsqlOp {
   static std::vector<ColumnSchema> MakeColumnSchemasFromColDesc(
       const google::protobuf::RepeatedPtrField<PgsqlRSColDescPB>& rscol_descs);
 
-  bool should_add_intents(IsolationLevel isolation_level) override;
-  void SetUsedReadTime(const ReadHybridTime& used_time);
+  bool should_apply_intents(IsolationLevel isolation_level) override;
+  void SetUsedReadTime(const ReadHybridTime& used_time, const TabletId& tablet);
   const ReadHybridTime& used_read_time() const { return used_read_time_; }
+  const TabletId& used_tablet() const { return used_tablet_; }
 
   Status GetPartitionKey(std::string* partition_key) const override;
 
@@ -588,6 +572,8 @@ class YBPgsqlReadOp : public YBPgsqlOp {
   std::unique_ptr<PgsqlReadRequestPB> request_holder_;
   YBConsistencyLevel yb_consistency_level_ = YBConsistencyLevel::STRONG;
   ReadHybridTime used_read_time_;
+  // The tablet that served this operation.
+  TabletId used_tablet_;
 };
 
 // This class is not thread-safe, though different YBNoOp objects on
@@ -600,7 +586,7 @@ class YBNoOp {
 
   // Executes a no-op request against the tablet server on which the row specified
   // by "key" lives.
-  Status Execute(YBClient* client, const YBPartialRow& key);
+  Status Execute(YBClient* client, const dockv::YBPartialRow& key);
  private:
   const std::shared_ptr<YBTable> table_;
 
@@ -608,23 +594,29 @@ class YBNoOp {
 };
 
 Status InitPartitionKey(
-    const Schema& schema, const PartitionSchema& partition_schema,
-    const std::string& last_partition, LWPgsqlReadRequestPB* request);
+    const Schema& schema, const dockv::PartitionSchema& partition_schema,
+    const TablePartitionList& partitions, LWPgsqlReadRequestPB* request);
 
 Status InitPartitionKey(
-    const Schema& schema, const PartitionSchema& partition_schema, LWPgsqlWriteRequestPB* request);
+    const Schema& schema, const dockv::PartitionSchema& partition_schema,
+    LWPgsqlWriteRequestPB* request);
 
 Status GetRangePartitionBounds(
     const Schema& schema,
     const PgsqlReadRequestPB& request,
-    std::vector<docdb::KeyEntryValue>* lower_bound,
-    std::vector<docdb::KeyEntryValue>* upper_bound);
+    dockv::KeyEntryValues* lower_bound,
+    dockv::KeyEntryValues* upper_bound);
 
 Status GetRangePartitionBounds(
     const Schema& schema,
     const LWPgsqlReadRequestPB& request,
-    std::vector<docdb::KeyEntryValue>* lower_bound,
-    std::vector<docdb::KeyEntryValue>* upper_bound);
+    dockv::KeyEntryValues* lower_bound,
+    dockv::KeyEntryValues* upper_bound);
+
+bool IsTolerantToPartitionsChange(const YBOperation& op);
+
+Result<const PartitionKey&> TEST_FindPartitionKeyByUpperBound(
+    const TablePartitionList& partitions, const PgsqlReadRequestPB& request);
 
 }  // namespace client
 }  // namespace yb

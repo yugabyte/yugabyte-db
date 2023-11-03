@@ -10,6 +10,7 @@ import javax.validation.Valid;
 
 @ApiModel(description = "Specification for release locations")
 public class ReleaseFormData {
+
   public String version;
 
   @Valid public S3Location s3;

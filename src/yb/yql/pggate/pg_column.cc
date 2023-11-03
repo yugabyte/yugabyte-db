@@ -22,16 +22,58 @@
 #include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/schema.h"
 
-namespace yb {
-namespace pggate {
+#include "yb/dockv/key_entry_value.h"
+
+#include "yb/util/logging.h"
+
+#include "yb/yql/pggate/pg_expr.h"
+
+namespace yb::pggate {
 
 namespace {
 
 ColumnSchema kColumnYBctid(
-    "ybctid", QLType::CreatePrimitiveType<DataType::BINARY>(),
-    false, false, false, false, to_underlying(PgSystemAttrNum::kYBTupleId));
+    "ybctid", QLType::Create(DataType::BINARY), ColumnKind::RANGE_ASC_NULL_FIRST, Nullable::kFalse,
+    false, false, to_underlying(PgSystemAttrNum::kYBTupleId));
 
+LWPgsqlExpressionPB* AllocNonVirtualBindPB(
+    const PgColumn& column, LWPgsqlWriteRequestPB* write_req) {
+  auto* col_pb = write_req->add_column_values();
+  col_pb->set_column_id(column.id());
+  return col_pb->mutable_expr();
 }
+
+LWPgsqlExpressionPB* AllocNonVirtualBindPB(
+    const PgColumn& column, LWPgsqlReadRequestPB* write_req) {
+  LOG(DFATAL) << "Binds for other columns are not allowed";
+  return nullptr;
+}
+
+dockv::KeyEntryValue QLValueToKeyEntryValue(const LWQLValuePB* input, SortingType sorting) {
+  return input
+      ? dockv::KeyEntryValue::FromQLValuePBForKey(*input, sorting)
+      : dockv::KeyEntryValue();
+}
+
+dockv::KeyEntryValue QLValueToKeyEntryValue(const LWQLValuePB* input, const ColumnSchema& desc) {
+  return QLValueToKeyEntryValue(input, desc.sorting_type());
+}
+
+ArenaList<LWPgsqlExpressionPB>& SubExprsOut(LWPgsqlExpressionPB* bind_pb) {
+  auto it = bind_pb->mutable_condition()->mutable_operands()->begin();
+  ++it;
+  return *it->mutable_condition()->mutable_operands();
+}
+
+} // namespace
+
+namespace pg_column::internal {
+
+ExtractKeyColumnValue::type ExtractKeyColumnValue::operator()(const LWPgsqlExpressionPB& pb) const {
+  return QLValueToKeyEntryValue(&pb.value(), sorting_);
+}
+
+} // namespace pg_column::internal
 
 PgColumn::PgColumn(std::reference_wrapper<const Schema> schema, size_t index)
     : schema_(schema), index_(index) {
@@ -40,28 +82,63 @@ PgColumn::PgColumn(std::reference_wrapper<const Schema> schema, size_t index)
 //--------------------------------------------------------------------------------------------------
 
 LWPgsqlExpressionPB *PgColumn::AllocPrimaryBindPB(LWPgsqlWriteRequestPB *write_req) {
+  return DoAllocPrimaryBindPB(write_req);
+}
+
+template <class Req>
+LWPgsqlExpressionPB *PgColumn::DoAllocPrimaryBindPB(Req *req) {
   if (is_partition()) {
-    bind_pb_ = write_req->add_partition_column_values();
+    bind_pb_ = req->add_partition_column_values();
   } else if (is_primary()) {
-    bind_pb_ = write_req->add_range_column_values();
+    bind_pb_ = req->add_range_column_values();
   }
   return bind_pb_;
 }
 
-LWPgsqlExpressionPB *PgColumn::AllocBindPB(LWPgsqlWriteRequestPB *write_req) {
-  if (bind_pb_ == nullptr) {
-    DCHECK(!is_partition() && !is_primary())
-      << "Binds for primary columns should have already been allocated by AllocPrimaryBindPB()";
+Result<LWPgsqlExpressionPB*> PgColumn::AllocBindPB(LWPgsqlWriteRequestPB* write_req, PgExpr* expr) {
+  return DoAllocBindPB(write_req, expr);
+}
 
-    if (is_virtual_column()) {
-      bind_pb_ = write_req->mutable_ybctid_column_value();
-    } else {
-      auto* col_pb = write_req->add_column_values();
-      col_pb->set_column_id(id());
-      bind_pb_ = col_pb->mutable_expr();
+template <class Req>
+Result<LWPgsqlExpressionPB*> PgColumn::DoAllocBindPB(Req* req, PgExpr* expr) {
+  if (bind_pb_ != nullptr) {
+    if (ValueBound()) {
+      LOG(DFATAL) << "Column already bound";
+    } else if (expr) {
+      RETURN_NOT_OK(expr->EvalTo(bind_pb_));
     }
+    return bind_pb_;
+  }
+
+  DCHECK(!is_partition() && !is_primary())
+    << "Binds for primary columns should have already been allocated by AllocPrimaryBindPB()";
+
+  bind_pb_ = is_virtual_column() ? req->mutable_ybctid_column_value()
+                                 : AllocNonVirtualBindPB(*this, req);
+  if (expr) {
+    RETURN_NOT_OK(expr->EvalTo(bind_pb_));
   }
   return bind_pb_;
+}
+
+bool PgColumn::ValueBound() const {
+  if (bind_pb_ && bind_pb_->expr_case() != PgsqlExpressionPB::EXPR_NOT_SET) {
+    DCHECK(bind_pb_->has_value());
+    return true;
+  }
+  return false;
+}
+
+void PgColumn::UnbindValue() {
+  if (bind_pb_) {
+    bind_pb_->clear_value();
+  }
+}
+
+void PgColumn::MoveBoundValueTo(LWPgsqlExpressionPB* out) {
+  DCHECK(ValueBound());
+  out->ref_value(bind_pb_->mutable_value());
+  UnbindValue();
 }
 
 LWPgsqlExpressionPB *PgColumn::AllocAssignPB(LWPgsqlWriteRequestPB *write_req) {
@@ -92,26 +169,11 @@ const ColumnSchema& PgColumn::desc() const {
 //--------------------------------------------------------------------------------------------------
 
 LWPgsqlExpressionPB *PgColumn::AllocPrimaryBindPB(LWPgsqlReadRequestPB *read_req) {
-  if (is_partition()) {
-    bind_pb_ = read_req->add_partition_column_values();
-  } else if (is_primary()) {
-    bind_pb_ = read_req->add_range_column_values();
-  }
-  return bind_pb_;
+  return DoAllocPrimaryBindPB(read_req);
 }
 
-LWPgsqlExpressionPB *PgColumn::AllocBindPB(LWPgsqlReadRequestPB *read_req) {
-  if (bind_pb_ == nullptr) {
-    DCHECK(!is_partition() && !is_primary())
-      << "Binds for primary columns should have already been allocated by AllocPrimaryBindPB()";
-
-    if (is_virtual_column()) {
-      bind_pb_ = read_req->mutable_ybctid_column_value();
-    } else {
-      DLOG(FATAL) << "Binds for other columns are not allowed";
-    }
-  }
-  return bind_pb_;
+Result<LWPgsqlExpressionPB*> PgColumn::AllocBindPB(LWPgsqlReadRequestPB* read_req, PgExpr* expr) {
+  return DoAllocBindPB(read_req, expr);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -122,10 +184,6 @@ LWPgsqlExpressionPB *PgColumn::AllocBindConditionExprPB(LWPgsqlReadRequestPB *re
     bind_condition_expr_pb_->mutable_condition()->set_op(QL_OP_AND);
   }
   return bind_condition_expr_pb_->mutable_condition()->add_operands();
-}
-
-void PgColumn::ResetBindPB() {
-  bind_pb_ = nullptr;
 }
 
 int PgColumn::id() const {
@@ -145,5 +203,48 @@ int PgColumn::attr_num() const {
   return desc().order();
 }
 
-}  // namespace pggate
-}  // namespace yb
+Result<dockv::KeyEntryValue> PgColumn::BuildKeyColumnValue(LWQLValuePB** dest) const {
+  SCHECK(ValueBound(), IllegalState, "Bind value not found for $0", id());
+  *dest = bind_pb_->mutable_value();
+  return QLValueToKeyEntryValue(*dest, desc());
+}
+
+Result<dockv::KeyEntryValue> PgColumn::BuildKeyColumnValue() const {
+  LWQLValuePB* temp_value;
+  return BuildKeyColumnValue(&temp_value);
+}
+
+PgColumn::SubExprKeyColumnValueProvider PgColumn::BuildSubExprKeyColumnValueProvider() const {
+  return SubExprKeyColumnValueProvider(SubExprsOut(bind_pb_), desc().sorting_type());
+}
+
+Status PgColumn::SetSubExprs(PgDml* stmt, PgExpr **value, size_t count) {
+  // There's no "list of expressions" field, so we simulate it with an artificial nested OR
+  // with repeated operands, one per bind expression.
+  // This is only used for operation unrolling in pg_doc_op and is not understood by DocDB.
+  auto cond = bind_pb_->mutable_condition()->add_operands()->mutable_condition();
+  cond->set_op(QL_OP_OR);
+
+  for (size_t i = 0; i != count; ++i) {
+    RETURN_NOT_OK(value[i]->EvalTo(cond->add_operands()));
+  }
+  return Status::OK();
+}
+
+// Moves IN operator bound for range key component into 'condition_expr' field
+Status PgColumn::MoveBoundKeyInOperator(LWPgsqlReadRequestPB* read_req) {
+  auto& cond = *AllocBindConditionExprPB(read_req)->mutable_condition();
+  cond.set_op(QL_OP_IN);
+  cond.mutable_operands()->push_back_ref(
+      &bind_pb_->mutable_condition()->mutable_operands()->front());
+
+  auto list = cond.add_operands()->mutable_value()->mutable_list_value();
+  auto& out = SubExprsOut(bind_pb_);
+  for (auto& expr : out) {
+    list->mutable_elems()->push_back_ref(expr.mutable_value());
+  }
+  out.clear();
+  return Status::OK();
+}
+
+}  // namespace yb::pggate

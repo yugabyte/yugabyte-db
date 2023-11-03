@@ -12,7 +12,7 @@ type: docs
 
 For one-dimensional arrays, but _only for these_ (see [Multidimensional `array_agg()` and `unnest()`](./#multidimensional-array-agg-and-unnest-first-overloads)), these two functions have mutually complementary effects in the following sense. After this sequence (the notation is informal):
 
-```
+```output
 array_agg of "SETOF tuples #1" => "result array"
 unnest of "result array" => "SETOF tuples #3"
 ```
@@ -33,7 +33,7 @@ This function has two overloads.
 
 **Signature:**
 
-```
+```output
 input value:       SETOF anyelement
 return value:      anyarray
 ```
@@ -49,7 +49,7 @@ values
 
 It produces this result:
 
-```
+```output
  column1 | column2
 ---------+---------
        1 | dog
@@ -57,7 +57,7 @@ It produces this result:
        3 | ant
 ```
 
-Notice that YSQL has named the `SELECT` list items _"column1"_ and _"column2_". The result is a so-called `SETOF`. It means a set of rows, just as is produced by a `SELECT` statement. (You'll see the term if you describe the `generate_series()` built-in table function with the `\df` metacommand.) To use the rows that the `VALUES` statement produces as the input for `array_agg()`, you need to use a named `type`, thus:
+Notice that YSQL has named the `SELECT` list items _"column1"_ and _"column2_". The result is a so-called `SETOF`. It means a set of rows, just as is produced by a `SELECT` statement. (You'll see the term if you describe the `generate_series()` built-in table function with the `\df` meta-command.) To use the rows that the `VALUES` statement produces as the input for `array_agg()`, you need to use a named `type`, thus:
 
 ```plpgsql
 create type rt as (f1 int, f2 text);
@@ -73,7 +73,7 @@ from tab;
 
 It produces this result:
 
-```
+```output
                arr
 ---------------------------------
  {"(1,dog)","(2,cat)","(3,ant)"}
@@ -110,9 +110,9 @@ as arr;
 
 Each of the three _"select... as arr"_ queries above produces the same result, as was shown after the first of them. This demonstrates their semantic equivalence.
 
-To prepare for the demonstration of `unnest()`, save the single-valued result from the most recent of the three queries (but any one of them would do) into a `ysqlsh` variable by using the `\gset` metacommand. This takes a single argument, conventionally spelled with a trailing underscore (for example, _"result&#95;"_) and re-runs the `SELECT` statement that, as the last submitted `ysqlsh` command, is still in the command buffer. (If the `SELECT` doesn't return a single row, then you get a clear error.) In general, when the `SELECT` list has _N_ members, called _"c1"_ through _"cN"_, each of these values is stored in automatically-created variables called _"result&#95;c1"_ through _"result&#95;cN"_.
+To prepare for the demonstration of `unnest()`, save the single-valued result from the most recent of the three queries (but any one of them would do) into a `ysqlsh` variable by using the `\gset` meta-command. This takes a single argument, conventionally spelled with a trailing underscore (for example, _"result&#95;"_) and re-runs the `SELECT` statement that, as the last submitted `ysqlsh` command, is still in the command buffer. (If the `SELECT` doesn't return a single row, then you get a clear error.) In general, when the `SELECT` list has _N_ members, called _"c1"_ through _"cN"_, each of these values is stored in automatically-created variables called _"result&#95;c1"_ through _"result&#95;cN"_.
 
-if you aren't already familiar with the `\gset` metacommand, you can read a brief account of how it works in [Meta-commands](../../../../../../admin/ysqlsh/#meta-commands) within the major section on `ysqlsh`.
+if you aren't already familiar with the `\gset` meta-command, you can read a brief account of how it works in [Meta-commands](../../../../../../admin/ysqlsh-meta-commands/) within the major section on `ysqlsh`.
 
 Immediately after running the _"with... select array_agg(...) as arr..."_ query above, do this:
 
@@ -121,9 +121,9 @@ Immediately after running the _"with... select array_agg(...) as arr..."_ query 
 \echo :result_arr
 ```
 
-The `\gset` metacommand is silent. The `\echo` metacommand shows this:
+The `\gset` meta-command is silent. The `\echo` meta-command shows this:
 
-```
+```output
 {"(1,dog)","(2,cat)","(3,ant)"}
 ```
 
@@ -137,7 +137,7 @@ Before considering `unnest()`, look at `array_agg()`'s second overload:
 
 **Signature:**
 
-```
+```output
 input value:       SETOF anyarray
 return value:      anyarray
 ```
@@ -155,7 +155,7 @@ from tab;
 
 It produces this result:
 
-```
+```output
         arr
 -------------------
  {{a,b,c},{d,e,f}}
@@ -163,7 +163,7 @@ It produces this result:
 
 And here is a negative example:
 
-```
+```plpgsql
 with tab as (
   values
     ('{a, b, c}'::text[]),
@@ -174,7 +174,7 @@ from tab;
 
 It causes this error:
 
-```
+```output
 2202E: cannot accumulate arrays of different dimensionality
 ```
 
@@ -188,21 +188,21 @@ This function has two overloads. The first is straightforward and has an obvious
 
 **Signature:**
 
-```
+```output
 input value:       anyarray
 return value:      SETOF anyelement
 ```
 
-As the sketch at the start of this page indicated, the input to unnest is an array. To use what the code example in the account of array_agg() set in the `ysqlsh` variable _"result&#95;arr"_ in a SQL statement, you must quote it and typecast it to _"rt[]"_. This can be done with the \set metacommand, thus:
+As the sketch at the start of this page indicated, the input to unnest is an array. To use what the code example in the account of array_agg() set in the `ysqlsh` variable _"result&#95;arr"_ in a SQL statement, you must quote it and typecast it to _"rt[]"_. This can be done with the \set meta-command, thus:
 
 ```plpgsql
 \set unnest_arg '\'':result_arr'\'::rt[]'
 \echo :unnest_arg
 ```
 
-The `\set` metacommand uses the backslash character to escape the single quote character that it also uses to surround the string that it assigns to the target `ysqlsh` variable. The `\echo` metacommand shows this:
+The `\set` meta-command uses the backslash character to escape the single quote character that it also uses to surround the string that it assigns to the target `ysqlsh` variable. The `\echo` meta-command shows this:
 
-```
+```output
 '{"(1,dog)","(2,cat)","(3,ant)"}'::rt[]
 ```
 
@@ -221,7 +221,7 @@ order by 1;
 
 The parentheses around the column alias _"rec"_ are required to remove what the SQL compiler would otherwise see as an ambiguity, and would report as a _"42P01 undefined_table"_ error. This is the result:
 
-```
+```output
  f1 |  f2
 ---+-----
  1 | dog
@@ -237,7 +237,7 @@ As promised, the original `SETOF` tuples has been recovered.
 
 **Signature:**
 
-```
+```output
 input value:       <variadic list of> anyarray
 return value:      many coordinated columns of SETOF anyelement
 ```
@@ -259,7 +259,7 @@ as result(arr1, arr2, arr3, arr4_a, arr4_n, n);
 
 It produces this result:
 
-```
+```output
    arr1    | arr2 |   arr3    |  arr4_a   |  arr4_n   | n
 -----------+------+-----------+-----------+-----------+---
          1 |   10 | a         |         1 | p         | 1
@@ -287,9 +287,9 @@ from tab
 \echo :unnest_arg
 ```
 
-Notice that the SQL statement, this time, is _not_ terminated with a semicolon. Rather, the `\gset` metacommand acts as the terminator. This makes the `ysqlsh` output less noisy. This is the result:
+Notice that the SQL statement, this time, is _not_ terminated with a semicolon. Rather, the `\gset` meta-command acts as the terminator. This makes the `ysqlsh` output less noisy. This is the result:
 
-```
+```output
 '{{1,2,3},{4,5,6},{7,8,9}}'::int[]
 ```
 
@@ -302,7 +302,7 @@ order by 1;
 
 It produces this result:
 
-```
+```output
  val
 -----
    1
@@ -328,7 +328,7 @@ select array_agg(val order by val) from a;
 
 It produces this result:
 
-```
+```output
       array_agg
 ---------------------
  {1,2,3,4,5,6,7,8,9}
@@ -344,7 +344,7 @@ select array_to_string(:unnest_arg, ',');
 
 It produces this result:
 
-```
+```output
   array_to_string
 -------------------
  1,2,3,4,5,6,7,8,9
@@ -414,7 +414,7 @@ master_pk, seq;
 
 This is the result:
 
-```
+```output
  master_pk | master_name | seq | detail_name
 -----------+-------------+-----+-------------
          1 | John        |   1 | cat
@@ -459,8 +459,7 @@ order by 1;
 
 This is the result:
 
-```
-
+```output
  master_pk | master_name |                       details
 -----------+-------------+------------------------------------------------------
          1 | John        | {"(1,cat)","(2,dog)"}
@@ -511,7 +510,7 @@ order by 1;
 
 It produces this result:
 
-```
+```output
  master_pk | master_name |                        pretty_details
 -----------+-------------+--------------------------------------------------------------
          1 | John        | 1: cat       | 2: dog       |
@@ -581,7 +580,7 @@ from original_except_new_union_new_except_original;
 
 This is the result:
 
-```
+```output
                    result
 ---------------------------------------------
  "new_data" is identical to "original_data."
@@ -613,9 +612,9 @@ Notice that if you choose the _"masters&#95;with&#95;details"_ approach (either 
   order by 1;
   ```
 
-&#160;&#160;&#160;&#160;This is the result:
+  This is the result:
 
-  ```
+  ```output
    master_pk | master_name |            agg
   -----------+-------------+----------------------------
            2 | Mary        | {"(1,rabbit)","(4,horse)"}
@@ -630,7 +629,7 @@ Notice that if you choose the _"masters&#95;with&#95;details"_ approach (either 
   set detail_name = 'bobcat'
   where master_pk = 2
   and detail_name = 'squirrel';
-
+  
   select
     master_pk,
     master_name,
@@ -642,9 +641,9 @@ Notice that if you choose the _"masters&#95;with&#95;details"_ approach (either 
   master_pk, seq;
   ```
 
-&#160;&#160;&#160;&#160;This is the result:
+  This is the result:
 
-  ```
+  ```output
    master_pk | master_name | seq | detail_name
   -----------+-------------+-----+-------------
            2 | Mary        |   1 | rabbit
@@ -659,7 +658,7 @@ Notice that if you choose the _"masters&#95;with&#95;details"_ approach (either 
   update masters_with_details
   set details = array_replace(details, '(3,squirrel)', '(3,bobcat)')
   where master_pk = 2;
-
+  
   select
     master_pk,
     master_name,
@@ -671,13 +670,13 @@ Notice that if you choose the _"masters&#95;with&#95;details"_ approach (either 
   master_pk, seq;
   ```
 
-&#160;&#160;&#160;&#160;The result is identical to the result shown for querying _"original&#95;data"_ above.
+  The result is identical to the result shown for querying _"original&#95;data"_ above.
 
 - Implementing the requirement that the values of _"detail&#95;name"_ must be unique for a given _"masters"_ row is trivial in the old regime:
 
-```plpgsql
-  create unique index on details(master_pk, detail_name);
-```
+  ```plpgsql
+    create unique index on details(master_pk, detail_name);
+  ```
 
 To achieve the effect in the new regime, you'd need to write a PL/pgSQL function, with return type `boolean` that scans the values in the _"details"_ array and returns `TRUE` when there are no duplicates among the values of the _"detail&#95;name"_ field and that otherwise returns `FALSE`. Then you'd use this function as the basis for a check constraint in the definition of the _"details&#95;with&#95;masters"_ table. This is a straightforward programming task, but it does take more effort than the declarative implementation of the business rule that the two-table regime allows.
 
@@ -687,61 +686,69 @@ To achieve the effect in the new regime, you'd need to write a PL/pgSQL function
 
 **Signature:**
 
-```
+```output
 input value:       anyarray, integer, boolean
 return value:      SETOF integer
 ```
 
 ### Semantics
 
-The second input parameter specifies the dimension along which the index values should be generated. The third, optional, input parameter controls the ordering of the values. The default value `TRUE` means generate the index values in ascending order from the lower index bound to the upper index bound; and the value `FALSE` means generate the index values in descending order from the upper index bound to the lower index bound.
+The second input parameter specifies the dimension along which the index values should be generated. The third, optional, input parameter controls the ordering of the values. The default value `FALSE` means generate the index values in ascending order from the lower index bound to the upper index bound; and the value `TRUE` means generate the index values in descending order from the upper index bound to the lower index bound.
 
-Here is a simple example:
+It's useful to use the same array in each of several examples. Make it available thus:
 
 ```plpgsql
-select generate_subscripts(
-    array[17, 42, 53], 1
-  )
-as subscript;
+drop function if exists arr() cascade;
+create function arr()
+  returns int[]
+  language sql
+as $body$
+  select array[17, 42, 53, 67]::int[];
+$body$;
+```
+
+Now demonstrate the basic behavior _generate_subscripts():_ 
+
+```plpgsql
+select generate_subscripts(arr(), 1) as subscripts;
 ```
 
 This is the result:
 
-```
- subscript
------------
-         1
-         2
-         3
+```output
+ subscripts 
+------------
+          1
+          2
+          3
+          4
 ```
 
-The example asks for the index values to be generated reverse order.
+Asks for the subscripts to be generated in reverse order.
 
 ```plpgsql
-select generate_subscripts(
-    array[17, 42, 53], 1, true
-  )
-as subscript;
+select generate_subscripts(arr(), 1, true) as subscripts;
 ```
 
 This is the result:
 
-```
- subscript
------------
-         3
-         2
-         1
+```output
+ subscripts 
+------------
+          4
+          3
+          2
+          1
 ```
 
 `generate_series()` can be use to produce the same result as `generate_subscripts()`. Notice that `generate_series()` doesn't have a _"reverse"_ option. This means that, especially when you want the results in reverse order, the syntax is significantly more cumbersome, as this example shows:
 
 ```plpgsql
-select array_upper(array[17, 42, 53], 1) + 1 - generate_series(
-    array_lower(array[17, 42, 53], 1),
-    array_upper(array[17, 42, 53], 1)
+select array_upper(arr(), 1) + 1 - generate_series(
+    array_lower(arr(), 1),
+    array_upper(arr(), 1)
   )
-as subscript;
+as subscripts;
 ```
 
 The following example creates a procedure that compares the results of `generate_subscripts()` and `generate_series()`, when the latter is invoked in a way that will produce the same results as the former. The procedure's input parameter lets you specify along which dimension you want to generate the index values. To emphasize how much easier it is to write the `generate_subscripts()` invocation, the test uses the reverse index order option. The array is constructed using the array literal notation (see [Multidimensional array of `int` values](../../literals/array-of-primitive-values/#multidimensional-array-of-int-values)) that explicitly sets the lower index bound along each of the array's three dimensions. [`array_agg()`](./#array-agg-first-overload) is used to aggregate the results from each approach so that they can be compared simply by using the [`=` operator](../comparison/#the-160-160-160-160-and-160-160-160-160-operators).
@@ -791,6 +798,8 @@ end;
 $body$;
 ```
 
+Each of the calls finishes silently, showing that the _asserts_ hold.
+
 ### The g(i) table(column) aliasing locution
 
 Both of the built-ins, `generate_series()` and `generate_subscripts()` are table functions. For this reason, they are amenable to this aliasing locution:
@@ -802,7 +811,7 @@ from generate_series(1, 3) as my_table_alias(my_column_alias);
 
 This is the result:
 
-```
+```output
  my_column_alias
 -----------------
                1
@@ -819,7 +828,7 @@ from generate_subscripts('[5:7]={17, 42, 53}'::int[], 1) as g(i);
 
 with this result:
 
-```
+```output
  i
 ---
  5
@@ -830,8 +839,8 @@ with this result:
 This is useful because without the locution, the result of each of these table functions is anonymous. The more verbose alternative is to define the aliases in a `WITH` clause, as was done above:
 
 ```plpgsql
-with g as (
-  select generate_subscripts('[5:7]={17, 42, 53}'::int[], 1) as i)
+with g(i) as (
+  select generate_subscripts('[5:7]={17, 42, 53}'::int[], 1))
 select g.i from g;
 ```
 
@@ -840,50 +849,80 @@ select g.i from g;
 The most obvious use is to tabulate the array values along side of the index values, using the immediately preceding example:
 
 ```plpgsql
-create table t(k int primary key, arr int[]);
-insert into t(k, arr) values (1, '[5:7]={17, 42, 53}');
+drop table if exists t cascade;
+create table t(k text primary key, arr int[]);
+insert into t(k, arr) values
+  ('Array One', '{17, 42, 53, 67}'),
+  ('Array Two', '[5:7]={19, 47, 59}');
 
-select i, (select arr from t where k = 1)[i]
-from generate_subscripts((select arr from t where k = 1), 1) as g(i);
-
+select i, (select arr from t where k = 'Array One')[i]
+from generate_subscripts((select arr from t where k = 'Array One'), 1) as g(i);
 ```
 
 It produces this result:
 
-```
- i | arr
+```output
+ i | arr 
 ---+-----
- 5 |  17
- 6 |  42
- 7 |  53
+ 1 |  17
+ 2 |  42
+ 3 |  53
+ 4 |  67
 ```
 
 Notice that this:
 
-```
+```output
 (select arr from t where k = 1)[i]
 ```
 
 has the same effect as this:
 
-```
+```output
 (select arr[i] from t where k = 1)
 ```
 
 It was written the first way to emphasize the annoying textual repetition of _"(select arr from t where k = 1)"_.
-This highlights a critical difference between SQL and
-a procedural language like PL/pgSQL. The latter allows you so initialize a variable with an arbitrarily
-complex and verbose expression and then just to use the variable's name thereafter. But SQL has no such notion.
+This highlights a critical difference between SQL and a procedural language like PL/pgSQL. The latter allows you so initialize a variable with an arbitrarily complex and verbose expression and then just to use the variable's name thereafter. But SQL has no such notion.
+
+Notice that the table _t_ has two rows. You can't generalize the SQL shown immediately above to list the indexes with their array values for both rows. This is where the _cross join lateral_ syntax comes to the rescue:
+
+```plpgsql
+with
+  c(k, a, idx) as (
+    select k, arr, indexes.idx
+      from t
+      cross join lateral
+      generate_subscripts(t.arr, 1) as indexes(idx))
+select k, idx, a[idx]
+from c
+order by k;
+```
+
+It produces this result:
+
+```output
+     k     | idx | a  
+-----------+-----+----
+ Array One |   1 | 17
+ Array One |   2 | 42
+ Array One |   3 | 53
+ Array One |   4 | 67
+ Array Two |   5 | 19
+ Array Two |   6 | 47
+ Array Two |   7 | 59
+```
+
 Here is the PL/pgSQL re-write.
 
 ```plpgsql
 do $body$
 <<b>>declare
-  arr constant int[] := (select arr from t where k = 1);
+  arr constant int[] := (select arr from t where k = 'Array Two');
   i int;
 begin
   for b.i in (
-    select g.i from generate_subscripts(arr, 1, true) as g(i))
+    select g.i from generate_subscripts(arr, 1) as g(i))
   loop
     raise info '% | % ', i, arr[i];
   end loop;
@@ -891,12 +930,12 @@ end b;
 $body$;
 ```
 
-The result (after manually stripping the "INFO:" prompts), is the same as the SQL approach that uses `generate_subscripts()`, shown above, produces:
+The result (after manually stripping the "INFO:" prompts), is the same as the SQL approach that uses `generate_subscripts()` with _cross join lateral_, shown above, produces:
 
-```
-7 | 53
-6 | 42
-5 | 17
+```output
+ 5 | 19 
+ 6 | 47
+ 7 | 59
 ```
 
 Notice that having made the transition to a procedural approach, there is no longer any need to use
@@ -939,7 +978,7 @@ select unnest((select arr from v)) as val;
 
 Each uses the same array, _"array[1, 2, 3]::int[]"_, and each produces the same result, thus:
 
-```
+```output
  val
 -----
   17
@@ -974,7 +1013,7 @@ order by s1.i, s2.j;
 
 Again, each uses the same array (this time _'{{17, 42, 53},{57, 67, 73}}'::int[]_) and each produces the same result, thus:
 
-```
+```output
  element
 ---------
       17

@@ -33,8 +33,6 @@ DECLARE_int64(max_concurrent_snapshot_rpcs_per_tserver);
 namespace yb {
 namespace master {
 
-YB_STRONGLY_TYPED_BOOL(ForClient);
-
 struct TabletSnapshotOperation {
   TabletId tablet_id;
   SnapshotScheduleId schedule_id;
@@ -88,6 +86,18 @@ class SnapshotState : public StateWithTablets {
     return throttler_;
   }
 
+  bool HasTtl() const {
+    return retention_duration_hours_ ? true : false;
+  }
+
+  bool ShouldAddToCoveringMap() const {
+    return HasTtl() && !schedule_id() && AllInState(SysSnapshotEntryPB::COMPLETE);
+  }
+
+  bool ShouldRemoveFromCoveringMap() const {
+    return HasTtl() && !schedule_id() && AllInState(SysSnapshotEntryPB::DELETING);
+  }
+
   Result<tablet::CreateSnapshotData> SysCatalogSnapshotData(
       const tablet::SnapshotOperation& operation) const;
 
@@ -106,9 +116,10 @@ class SnapshotState : public StateWithTablets {
   bool NeedCleanup() const;
   bool ShouldUpdate(const SnapshotState& other) const;
   void DeleteAborted(const Status& status);
+  bool HasExpired(HybridTime now) const;
 
  private:
-  bool IsTerminalFailure(const Status& status) override;
+  std::optional<SysSnapshotEntryPB::State> GetTerminalStateForStatus(const Status& status) override;
   Status CheckDoneStatus(const Status& status) override;
 
   TxnSnapshotId id_;
@@ -122,9 +133,10 @@ class SnapshotState : public StateWithTablets {
   bool delete_started_ = false;
   AsyncTaskTracker cleanup_tracker_;
   AsyncTaskThrottler throttler_;
+  std::optional<int32_t> retention_duration_hours_ = std::nullopt;
 };
 
-Result<docdb::KeyBytes> EncodedSnapshotKey(
+Result<dockv::KeyBytes> EncodedSnapshotKey(
     const TxnSnapshotId& id, SnapshotCoordinatorContext* context);
 
 } // namespace master

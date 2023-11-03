@@ -2,19 +2,23 @@
 
 package com.yugabyte.yw.common;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.JsonParser.Feature;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.SupportBundleUtil.KubernetesResourceType;
+import io.fabric8.kubernetes.api.model.Namespace;
+import io.fabric8.kubernetes.api.model.NamespaceList;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.NodeList;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaimCondition;
+import io.fabric8.kubernetes.api.model.PersistentVolumeClaimList;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.api.model.PodStatus;
@@ -23,40 +27,35 @@ import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.ServiceList;
 import io.fabric8.kubernetes.api.model.events.v1.Event;
 import io.fabric8.kubernetes.api.model.events.v1.EventList;
-import lombok.extern.slf4j.Slf4j;
-import play.libs.Json;
 import java.io.BufferedWriter;
-import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.nio.charset.Charset;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.inject.Singleton;
-import org.apache.commons.io.FileUtils;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
+import play.libs.Json;
 
 @Singleton
 @Slf4j
 public class ShellKubernetesManager extends KubernetesManager {
 
-  @Inject ReleaseManager releaseManager;
+  private final ShellProcessHandler shellProcessHandler;
 
-  @Inject ShellProcessHandler shellProcessHandler;
-
-  @Inject play.Configuration appConfig;
-
-  public static final Logger LOG = LoggerFactory.getLogger(ShellKubernetesManager.class);
+  @Inject
+  public ShellKubernetesManager(ShellProcessHandler shellProcessHandler) {
+    this.shellProcessHandler = shellProcessHandler;
+  }
 
   private ShellResponse execCommand(Map<String, String> config, List<String> command) {
     return execCommand(config, command, true /*logCmdOutput*/);
@@ -76,7 +75,10 @@ public class ShellKubernetesManager extends KubernetesManager {
 
   private <T> T deserialize(String json, Class<T> type) {
     try {
-      return new ObjectMapper().configure(Feature.ALLOW_SINGLE_QUOTES, true).readValue(json, type);
+      return new ObjectMapper()
+          .configure(Feature.ALLOW_SINGLE_QUOTES, true)
+          .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+          .readValue(json, type);
     } catch (Exception e) {
       throw new RuntimeException("Error deserializing response from kubectl command: ", e);
     }
@@ -109,9 +111,7 @@ public class ShellKubernetesManager extends KubernetesManager {
 
   @Override
   public List<Pod> getPodInfos(
-      Map<String, String> config, String universePrefix, String namespace) {
-    // Implementation specific helm release name.
-    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
+      Map<String, String> config, String helmReleaseName, String namespace) {
     List<String> commandList =
         ImmutableList.of(
             "kubectl",
@@ -130,9 +130,7 @@ public class ShellKubernetesManager extends KubernetesManager {
 
   @Override
   public List<Service> getServices(
-      Map<String, String> config, String universePrefix, String namespace) {
-    // Implementation specific helm release name.
-    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
+      Map<String, String> config, String helmReleaseName, String namespace) {
     List<String> commandList =
         ImmutableList.of(
             "kubectl",
@@ -149,7 +147,17 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   @Override
+  public List<Namespace> getNamespaces(Map<String, String> config) {
+    List<String> commandList = ImmutableList.of("kubectl", "get", "namespaces", "-o", "json");
+    ShellResponse response = execCommand(config, commandList).processErrors();
+    return deserialize(response.message, NamespaceList.class).getItems();
+  }
+
+  @Override
   public Pod getPodObject(Map<String, String> config, String namespace, String podName) {
+    if (namespace == null) {
+      namespace = "";
+    }
     List<String> commandList =
         ImmutableList.of("kubectl", "get", "pod", "--namespace", namespace, "-o", "json", podName);
     ShellResponse response =
@@ -160,6 +168,16 @@ public class ShellKubernetesManager extends KubernetesManager {
   @Override
   public PodStatus getPodStatus(Map<String, String> config, String namespace, String podName) {
     return getPodObject(config, namespace, podName).getStatus();
+  }
+
+  @Override
+  public String getCloudProvider(Map<String, String> config) {
+    List<String> commandList =
+        ImmutableList.of("kubectl", "get", "nodes", "-o", "jsonpath={.items[0].spec.providerID}");
+    ShellResponse response =
+        execCommand(config, commandList, false /*logCmdOutput*/).processErrors();
+    String nodeName = response.getMessage();
+    return nodeName.split(":")[0];
   }
 
   @Override
@@ -240,9 +258,7 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   @Override
-  public void deleteStorage(Map<String, String> config, String universePrefix, String namespace) {
-    // Implementation specific helm release name.
-    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
+  public void deleteStorage(Map<String, String> config, String helmReleaseName, String namespace) {
     // Delete Master and TServer Volumes
     List<String> commandList =
         ImmutableList.of(
@@ -275,6 +291,30 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   @Override
+  public void deleteAllServerTypePods(
+      Map<String, String> config,
+      String namespace,
+      ServerType serverType,
+      String releaseName,
+      boolean newNamingStyle) {
+    String appNameLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+    String serverTypeSelector = "";
+    if (serverType.equals(ServerType.EITHER)) {
+      serverTypeSelector = " in (yb-tserver,yb-master)";
+    } else if (serverType.equals(ServerType.MASTER)) {
+      serverTypeSelector = "=yb-master";
+    } else if (serverType.equals(ServerType.TSERVER)) {
+      serverTypeSelector = "=yb-tserver";
+    }
+    String appName = String.format("%s%s", appNameLabel, serverTypeSelector);
+    String labelSelector = String.format("%s,%s=%s", appName, "release", releaseName);
+    List<String> commandList =
+        ImmutableList.of(
+            "kubectl", "--namespace", namespace, "delete", "pods", "-l", labelSelector);
+    execCommand(config, commandList).processErrors("Unable to delete pods");
+  }
+
+  @Override
   public List<Event> getEvents(Map<String, String> config, String namespace) {
     List<String> commandList =
         ImmutableList.of("kubectl", "get", "events", "-n", namespace, "-o", "json");
@@ -295,12 +335,13 @@ public class ShellKubernetesManager extends KubernetesManager {
     Yaml yaml = new Yaml();
 
     try {
-      Path tempFile = Files.createTempFile(UUID.randomUUID().toString() + "-namespace", ".yml");
+      Path tempFile =
+          fileHelperService.createTempFile(UUID.randomUUID().toString() + "-namespace", ".yml");
       BufferedWriter bw = new BufferedWriter(new FileWriter(tempFile.toFile()));
       yaml.dump(namespace, bw);
       return tempFile.toAbsolutePath().toString();
     } catch (IOException e) {
-      LOG.error(e.getMessage());
+      log.error(e.getMessage());
       throw new RuntimeException("Error writing Namespace YAML file.");
     }
   }
@@ -322,20 +363,60 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   @Override
-  public boolean expandPVC(
+  public List<PersistentVolumeClaim> getPVCs(
       Map<String, String> config,
       String namespace,
-      String universePrefix,
-      String appLabel,
-      String newDiskSize) {
-    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
-    String labelSelector = String.format("app=%s,release=%s", appLabel, helmReleaseName);
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle) {
+    String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+    String labelSelector = String.format("%s=%s,release=%s", appLabel, appName, helmReleaseName);
+    List<String> commandList =
+        ImmutableList.of(
+            "kubectl", "--namespace", namespace, "get", "pvc", "-l", labelSelector, "-o", "json");
+    ShellResponse response =
+        execCommand(config, commandList, false).processErrors("Unable to get PVCs");
+    return deserialize(response.getMessage(), PersistentVolumeClaimList.class).getItems();
+  }
+
+  @Override
+  public List<Pod> getPods(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle) {
+    String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+    String labelSelector = String.format("%s=%s,release=%s", appLabel, appName, helmReleaseName);
+    List<String> commandList =
+        ImmutableList.of(
+            "kubectl", "--namespace", namespace, "get", "pod", "-l", labelSelector, "-o", "json");
+    ShellResponse response =
+        execCommand(config, commandList, false).processErrors("Unable to get Pods");
+    return deserialize(response.getMessage(), PodList.class).getItems();
+  }
+
+  @Override
+  public boolean expandPVC(
+      UUID universeUUID,
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      String newDiskSize,
+      boolean newNamingStyle) {
+    String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+    String labelSelector = String.format("%s=%s,release=%s", appLabel, appName, helmReleaseName);
     List<String> commandList =
         ImmutableList.of(
             "kubectl", "--namespace", namespace, "get", "pvc", "-l", labelSelector, "-o", "name");
     ShellResponse response =
         execCommand(config, commandList, false).processErrors("Unable to get PVCs");
-    log.info("Expanding PVCs: {}", response.getMessage());
+    List<PersistentVolumeClaim> pvcs =
+        getPVCs(config, namespace, helmReleaseName, appName, newNamingStyle);
+    Set<String> pvcNames =
+        pvcs.stream().map(pvc -> pvc.getMetadata().getName()).collect(Collectors.toSet());
+    log.info("Expanding PVCs: {}", pvcNames);
     ObjectNode patchObj = Json.newObject();
     patchObj
         .putObject("spec")
@@ -344,25 +425,72 @@ public class ShellKubernetesManager extends KubernetesManager {
         .put("storage", newDiskSize);
     String patchStr = patchObj.toString();
     boolean patchSuccess = true;
-    for (String pvcName : response.getMessage().split("\n")) {
+    for (String pvcName : pvcNames) {
       commandList =
-          ImmutableList.of("kubectl", "--namespace", namespace, "patch", pvcName, "-p", patchStr);
+          ImmutableList.of(
+              "kubectl", "--namespace", namespace, "patch", "pvc", pvcName, "-p", patchStr);
       response = execCommand(config, commandList, false).processErrors("Unable to patch PVC");
-      patchSuccess &= response.isSuccess() && waitForPVCExpand(config, namespace, pvcName);
+      patchSuccess &=
+          response.isSuccess() && waitForPVCExpand(universeUUID, config, namespace, pvcName);
     }
     return patchSuccess;
   }
 
+  @Override
+  public void copyFileToPod(
+      Map<String, String> config,
+      String namespace,
+      String podName,
+      String containerName,
+      String srcFilePath,
+      String destFilePath) {
+    List<String> commandList =
+        ImmutableList.of(
+            "kubectl",
+            "cp",
+            srcFilePath,
+            String.format("%s/%s:%s", namespace, podName, destFilePath),
+            String.format("--container=%s", containerName));
+    execCommand(config, commandList, true)
+        .processErrors(
+            String.format("Unable to copy file from: %s to %s", srcFilePath, destFilePath));
+  }
+
+  @Override
+  public void performYbcAction(
+      Map<String, String> config,
+      String namespace,
+      String podName,
+      String containerName,
+      List<String> commandArgs) {
+    List<String> commandList =
+        new LinkedList<String>(
+            Arrays.asList(
+                "kubectl",
+                "exec",
+                podName,
+                "--namespace",
+                namespace,
+                "--container",
+                containerName,
+                "--"));
+    commandList.addAll(commandArgs);
+    execCommand(config, commandList, true)
+        .processErrors(
+            String.format("Unable to run the command: %s", String.join(" ", commandArgs)));
+  }
+
   // Ref: https://kubernetes.io/blog/2022/05/05/volume-expansion-ga/
   // The PVC status condition is cleared once PVC resize is done.
-  private boolean waitForPVCExpand(Map<String, String> config, String namespace, String pvcName) {
+  private boolean waitForPVCExpand(
+      UUID universeUUID, Map<String, String> config, String namespace, String pvcName) {
     RetryTaskUntilCondition<List<PersistentVolumeClaimCondition>> waitForExpand =
         new RetryTaskUntilCondition<>(
             // task
             () -> {
               List<String> commandList =
                   ImmutableList.of(
-                      "kubectl", "--namespace", namespace, "get", pvcName, "-o", "json");
+                      "kubectl", "--namespace", namespace, "get", "pvc", pvcName, "-o", "json");
               ShellResponse response =
                   execCommand(config, commandList, false).processErrors("Unable to get PVC");
               List<PersistentVolumeClaimCondition> pvcConditions =
@@ -381,20 +509,21 @@ public class ShellKubernetesManager extends KubernetesManager {
                     pvcConditions.get(0));
               }
               return pvcConditions.isEmpty();
-            },
-            // delay between retry of task
-            2,
-            // timeout for retry in secs
-            getTimeoutSecs());
-    return waitForExpand.retryUntilCond();
+            });
+    return waitForExpand.retryUntilCond(
+        2 /* delayBetweenRetrySecs */, getTimeoutSecs(universeUUID) /* timeoutSecs */);
   }
 
   @Override
   public String getStorageClassName(
-      Map<String, String> config, String namespace, String universePrefix, boolean forMaster) {
-    String appLabel = forMaster ? "yb-master" : "yb-tserver";
-    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
-    String labelSelector = String.format("app=%s,release=%s", appLabel, helmReleaseName);
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      boolean forMaster,
+      boolean newNamingStyle) {
+    String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+    String appName = forMaster ? "yb-master" : "yb-tserver";
+    String labelSelector = String.format("%s=%s,release=%s", appLabel, appName, helmReleaseName);
     List<String> commandList =
         ImmutableList.of(
             "kubectl",
@@ -417,11 +546,16 @@ public class ShellKubernetesManager extends KubernetesManager {
     List<String> commandList =
         ImmutableList.of(
             "kubectl", "get", "sc", storageClassName, "-o", "jsonpath='{.allowVolumeExpansion}'");
-    ShellResponse response =
-        execCommand(config, commandList, false)
-            .processErrors("Unable to read StorageClass volume expansion");
-    String allowsExpansion = deserialize(response.getMessage(), String.class);
-    return allowsExpansion.equalsIgnoreCase("true");
+    ShellResponse response = execCommand(config, commandList, false);
+    if (response.isSuccess()) {
+      String allowsExpansion = deserialize(response.getMessage(), String.class);
+      return allowsExpansion.equalsIgnoreCase("true");
+    }
+    // Could not look into StorageClass.allowVolumeExpansion. This could be due to lack of
+    // permission to read cluster scoped resources. So assume that StorageClass would
+    // allow expansion and skip the validation.
+    log.info("Sufficient permissions not available to validate StorageClass {}", storageClassName);
+    return true;
   }
 
   public void checkAndAddFlagToCommand(List<String> commandList, String flagKey, String flagValue) {
@@ -533,15 +667,14 @@ public class ShellKubernetesManager extends KubernetesManager {
    * @return true if the namespace exists, else false.
    */
   public boolean verifyNamespace(String namespace) {
-    List<String> commandList =
-        new ArrayList<String>(Arrays.asList("kubectl", "get", "ns", namespace));
+    List<String> commandList = new ArrayList<>(Arrays.asList("kubectl", "get", "ns", namespace));
     ShellResponse response = execCommand(null, commandList);
     return response.isSuccess();
   }
 
   /**
-   * Retrieves the platform namespace by running {@code hostname -f} to get the FQDN. Splits the
-   * FQDN output on "." to get the namespace at index 2.
+   * Retrieves the platform namespace using the FQDN. Splits the FQDN output on "." to get the
+   * namespace at index 2.
    *
    * <pre>
    * Example FQDN = {@code "yb-yugaware-0.yb-yugaware.yb-platform.svc.cluster.local"}
@@ -552,19 +685,43 @@ public class ShellKubernetesManager extends KubernetesManager {
    */
   @Override
   public String getPlatformNamespace() {
-    List<String> commandList = new ArrayList<String>(Arrays.asList("hostname", "-f"));
-    ShellResponse response = execCommand(null, commandList);
-    String hostNameFqdn = response.message;
-    String[] fqdnParts = hostNameFqdn.split(".");
-    if (fqdnParts.length < 3) {
-      log.debug(String.format("Output of 'hostname -f' is '%s'.", hostNameFqdn));
-      return null;
-    }
-    String platformNamespace = fqdnParts[2];
+    String platformNamespace = getPlatformFQDNPart(2);
     if (!verifyNamespace(platformNamespace)) {
       return null;
     }
     return platformNamespace;
+  }
+
+  /**
+   * Retrieves the platform pod name using the FQDN. Splits the FQDN output on "." to get the pod
+   * name at index 0.
+   *
+   * <pre>
+   * Example FQDN = {@code "yb-yugaware-0.yb-yugaware.yb-platform.svc.cluster.local"}
+   * Example pod name = {@code "yb-yugaware-0"}
+   * </pre>
+   *
+   * @return the platform pod name.
+   */
+  @Override
+  public String getPlatformPodName() {
+    return getPlatformFQDNPart(0);
+  }
+
+  /**
+   * Finds the FQDN of platform pod using {@code hostname -f}. Returns the value at the given index
+   * by splitting the FQDN on "."
+   */
+  private String getPlatformFQDNPart(int idx) {
+    List<String> commandList = new ArrayList<>(Arrays.asList("hostname", "-f"));
+    ShellResponse response = execCommand(null, commandList);
+    String hostNameFqdn = response.message;
+    String[] fqdnParts = hostNameFqdn.split("\\.");
+    if (fqdnParts.length < idx + 1) {
+      log.debug(String.format("Output of 'hostname -f' is '%s'.", hostNameFqdn));
+      return null;
+    }
+    return fqdnParts[idx];
   }
 
   /**
@@ -582,7 +739,7 @@ public class ShellKubernetesManager extends KubernetesManager {
   public String getHelmValues(
       Map<String, String> config, String namespace, String helmReleaseName, String outputFormat) {
     List<String> commandList =
-        new ArrayList<String>(Arrays.asList("helm", "get", "values", helmReleaseName));
+        new ArrayList<>(Arrays.asList("helm", "get", "values", helmReleaseName));
 
     checkAndAddFlagToCommand(commandList, "-n", namespace);
     checkAndAddFlagToCommand(commandList, "-o", outputFormat);
@@ -617,9 +774,9 @@ public class ShellKubernetesManager extends KubernetesManager {
                 "-o",
                 "jsonpath=" + jsonPathFormat));
 
+    ObjectMapper mapper = new ObjectMapper();
     ShellResponse response = execCommand(config, commandList);
     for (String rawRoleData : response.message.split("\n")) {
-      ObjectMapper mapper = new ObjectMapper();
       try {
         List<String> parsedRoleData =
             mapper.readValue(rawRoleData, new TypeReference<List<String>>() {});
@@ -629,7 +786,7 @@ public class ShellKubernetesManager extends KubernetesManager {
           roleDataList.add(roleData);
         }
       } catch (IOException e) {
-        e.printStackTrace();
+        log.error("Error occurred in getting cluster roles", e);
       }
     }
     return roleDataList;
@@ -681,5 +838,58 @@ public class ShellKubernetesManager extends KubernetesManager {
     checkAndAddFlagToCommand(commandList, "-o", outputFormat);
 
     return execCommandProcessErrors(config, commandList);
+  }
+
+  /**
+   * Best effort to get the user associated with the kubeconfig provided by config. We leverage the
+   * command `kubectl config get-users` and assume the first user found is the user we care about.
+   *
+   * @param config the environment variables to set (KUBECONFIG, OVERRIDES, STORAGE_CLASS, etc.).
+   * @return the first user in the kubeconfig.
+   */
+  @Override
+  public String getKubeconfigUser(Map<String, String> config) {
+    List<String> commandList =
+        new ArrayList<String>(Arrays.asList("kubectl", "config", "get-users"));
+    ShellResponse response = execCommand(config, commandList);
+    response.processErrors();
+
+    // Best effort to return the first user we find.
+    for (String rawKubeconfigUser : response.message.split("\n")) {
+      // Skip the header.
+      if (rawKubeconfigUser.equalsIgnoreCase("name")) {
+        continue;
+      }
+      return rawKubeconfigUser;
+    }
+    // No users found
+    return "";
+  }
+
+  /**
+   * Best effort to get the cluster associated with the kubeconfig provided by config. We leverage
+   * the command `kubectl config get-clusters` and assume the first cluster found is the user we
+   * care about.
+   *
+   * @param config the environment variables to set (KUBECONFIG, OVERRIDES, STORAGE_CLASS, etc.).
+   * @return the first cluster in the kubeconfig.
+   */
+  @Override
+  public String getKubeconfigCluster(Map<String, String> config) {
+    List<String> commandList =
+        new ArrayList<String>(Arrays.asList("kubectl", "config", "get-clusters"));
+    ShellResponse response = execCommand(config, commandList);
+    response.processErrors();
+
+    // Best effort to return the first cluster we find.
+    for (String rawKubeconfigCluster : response.message.split("\n")) {
+      // Skip the header.
+      if (rawKubeconfigCluster.equalsIgnoreCase("name")) {
+        continue;
+      }
+      return rawKubeconfigCluster;
+    }
+    // No clusters found
+    return "";
   }
 }

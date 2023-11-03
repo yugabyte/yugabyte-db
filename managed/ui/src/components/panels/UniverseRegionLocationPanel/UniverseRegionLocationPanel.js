@@ -1,8 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
-import { RegionMap } from '../../maps';
-import { RegionMapLegend } from '../../maps';
+import { Component } from 'react';
+import { RegionMap, RegionMapLegend } from '../../maps';
+
 import { isNonEmptyArray, isValidObject, isEmptyArray } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { getPrimaryCluster, getProviderMetadata } from '../../../utils/UniverseUtils';
@@ -54,7 +54,7 @@ export default class UniverseRegionLocationPanel extends Component {
         if (isNonEmptyArray(universePrimaryRegions)) {
           universePrimaryRegions.forEach(function (regionItem) {
             if (isValidObject(regionItem.uuid)) {
-              if (universeListByRegions.hasOwnProperty(regionItem.uuid)) {
+              if (Object.prototype.hasOwnProperty.call(universeListByRegions, regionItem.uuid)) {
                 universeListByRegions[regionItem.uuid].push(universeItem);
               } else {
                 universeListByRegions[regionItem.uuid] = [universeItem];

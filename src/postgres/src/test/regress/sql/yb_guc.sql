@@ -24,6 +24,22 @@ set yb_transaction_priority_upper_bound = 0.6;
 set yb_transaction_priority_lower_bound = 0.4;
 set yb_transaction_priority_lower_bound = 0.6;
 
+-- Test yb_fetch_row_limit
+set yb_fetch_row_limit = 100;
+show yb_fetch_row_limit;
+
+set yb_fetch_row_limit = -1;  -- ERROR since yb_fetch_row_limit must be non-negative.
+
+-- Test yb_fetch_size_limit
+set yb_fetch_size_limit = '2MB';
+show yb_fetch_size_limit;
+set yb_fetch_size_limit = 789;
+show yb_fetch_size_limit;
+set yb_fetch_size_limit = 2048;
+show yb_fetch_size_limit;
+
+set yb_fetch_size_limit = -1;  -- ERROR since yb_fetch_size_limit must be non-negative.
+
 -- Check enable_seqscan, enable_indexscan, enable_indexonlyscan for YB scans.
 CREATE TABLE test_scan (i int, j int);
 CREATE INDEX NONCONCURRENTLY ON test_scan (j);

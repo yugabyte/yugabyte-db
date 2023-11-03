@@ -6,6 +6,22 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
+- name: "Create soft-link for python"
+  hosts: "{{ yb_ansible_host }}"
+  strategy: linear
+  gather_facts: yes
+  become: yes
+  become_method: sudo
+  tasks:
+    - name: "Create soft-link for python if needed"
+      raw: >
+        (test -e /usr/bin/python3 && ! test -e /usr/bin/python) &&
+        (ln -s /usr/bin/python3 /usr/bin/python) ||
+        (echo "Not creating soft-link from /usr/bin/python3 to /usr/bin/python")
+      when: ansible_os_family == 'Suse' or
+            ansible_distribution == 'Ubuntu'
+      tags: yb-prebuilt-ami
+
 - name: "Install python3 on CentOS 8 machines"
   hosts: "{{ yb_ansible_host }}"
   strategy: linear
@@ -20,7 +36,9 @@
         (test -e /usr/bin/dnf && ! test -e /usr/bin/python) &&
         (dnf install -y python36 && alternatives --set python /usr/bin/python3) ||
         (echo "Python already installed or not CentOS 8")
-      when: not air_gapped
+      when: >
+        not air_gapped and ansible_os_family == 'RedHat' and
+        ansible_distribution_major_version == '8'
       tags: yb-prebuilt-ami
 
 - name: "Pre-provisioning tasks"
@@ -147,3 +165,34 @@
       when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8' and
             custom_ssh_port != '22'
       tags: yb-prebuilt-ami
+
+    - name: Install glibc-locale-source and glibc-langpack-en packages
+      become: yes
+      become_method: sudo
+      vars:
+        air_gapped: "{{ air_gap | default(false) }}"
+      yum:
+        name:
+          - glibc-locale-source
+          - glibc-langpack-en
+        state: present
+      when: not air_gapped and ansible_os_family == 'RedHat' and
+            install_locales | default(false) | bool
+
+    - name: Generate UTF-8 locales
+      become: yes
+      become_method: sudo
+      vars:
+        air_gapped: "{{ air_gap | default(false) }}"
+      shell: |
+        set -x
+        languages=("en_US" "de_DE" "es_ES" "fr_FR" "it_IT"
+               "ja_JP" "ko_KR" "pl_PL" "ru_RU" "sv_SE"
+               "tr_TR" "zh_CN")
+        for lang in "${languages[@]}"; do
+          localedef --quiet --force --inputfile="${lang}" --charmap=UTF-8 "${lang}.UTF-8"
+        done
+      args:
+        executable: /bin/bash
+      when: not air_gapped and ansible_os_family == 'RedHat' and
+            install_locales | default(false) | bool

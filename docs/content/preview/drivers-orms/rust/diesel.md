@@ -1,7 +1,8 @@
 ---
-title: Use an ORM
+title: Diesel ORM
+headerTitle: Use an ORM
 linkTitle: Use an ORM
-description: Diesel ORM support for YugabyteDB
+description: Rust Diesel ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -13,7 +14,7 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="/preview/drivers-orms/rust/diesel/" class="nav-link active">
+    <a href="../diesel/" class="nav-link active">
       <i class="fa-brands fa-rust" aria-hidden="true"></i>
       Diesel
     </a>

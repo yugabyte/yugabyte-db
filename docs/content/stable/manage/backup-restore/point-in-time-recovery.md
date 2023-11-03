@@ -22,7 +22,7 @@ Typically, you know when the data was corrupted and would want to restore to the
 
 PITR in YugabyteDB is based on a combination of the flashback capability and periodic [distributed snapshots](../snapshot-ysql).
 
-Flashback provides means to rewind the data back in time. At any moment, YugabyteDB stores not only the latest state of the data, but also the recent history of changes. With flashback, you can rollback to any point in time in the history retention period. The history is also preserved when a snapshot is taken, which means that by creating snapshots periodically, you effectively increase the flashback retention.
+Flashback provides a way to rewind the data back in time. At any moment, YugabyteDB stores not only the latest state of the data, but also the recent history of changes. With flashback, you can rollback to any point in time in the history retention period. The history is also preserved when a snapshot is taken, which means that by creating snapshots periodically, you effectively increase the flashback retention.
 
 For example, if your overall retention target for PITR is three days, you can use the following configuration:
 
@@ -62,7 +62,7 @@ To create a schedule and enable PITR, use the [`create_snapshot_schedule`](../..
 Assuming the retention target is three days, you can execute the following command to create a schedule that produces a snapshot once a day (every 1,440 minutes) and retains it for three days (4,320 minutes):
 
 ```sh
-./bin/yb-admin create_snapshot_schedule 1440 4320 <database_name>
+./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> create_snapshot_schedule 1440 4320 <database_name>
 ```
 
 The following output is a unique ID of the newly-created snapshot schedule:
@@ -80,7 +80,7 @@ You can use this ID to [delete the schedule](#delete-a-schedule) or [restore to 
 To delete a schedule and disable PITR, use the following [`delete_snapshot_schedule`](../../../admin/yb-admin/#delete-snapshot-schedule) command that takes the ID of the schedule to be deleted as a parameter:
 
 ```sh
-./bin/yb-admin delete_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
+./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> delete_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
 ### List schedules
@@ -88,7 +88,7 @@ To delete a schedule and disable PITR, use the following [`delete_snapshot_sched
 To see a list of schedules that currently exist in the cluster, use the following [`list_snapshot_schedules`](../../../admin/yb-admin/#list-snapshot-schedules) command:
 
 ```sh
-./bin/yb-admin list_snapshot_schedules
+./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> list_snapshot_schedules
 ```
 
 ```output.json
@@ -119,7 +119,7 @@ To see a list of schedules that currently exist in the cluster, use the followin
 You can also use the same command to view the information about a particular schedule by providing its ID as a parameter, as follows:
 
 ```sh
-./bin/yb-admin list_snapshot_schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
+./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> list_snapshot_schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
 ## Restore to a point in time
@@ -147,15 +147,17 @@ If a database or a keyspace has an associated snapshot schedule, you can use tha
     For example, the following command restores to 1:00 PM PDT on May 1st 2022 using a Unix timestamp:
 
     ```sh
-    ./bin/yb-admin restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-                                             1651435200
+    ./bin/yb-admin \
+        -master_addresses <ip1:7100,ip2:7100,ip3:7100> \
+        restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 1651435200
     ```
 
     The following is an equivalent command that uses a YCQL timestamp:
 
     ```sh
-    ./bin/yb-admin restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-                                             2022-05-01 13:00-0700
+    ./bin/yb-admin \
+        -master_addresses <ip1:7100,ip2:7100,ip3:7100> \
+        restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 "2022-05-01 13:00-0700"
     ```
 
   * Restore to a time that is relative to the current (for example, to 10 minutes ago from now) by specifying how much time back you would like to roll a database or keyspace.
@@ -163,15 +165,17 @@ If a database or a keyspace has an associated snapshot schedule, you can use tha
     For example, to restore to 5 minutes ago, run the following command:
 
     ```sh
-    ./bin/yb-admin restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-                                             minus 5m
+    ./bin/yb-admin \
+        -master_addresses <ip1:7100,ip2:7100,ip3:7100> \
+        restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 minus 5m
     ```
 
     Or, to restore to 1 hour ago, use the following:
 
     ```sh
-    ./bin/yb-admin restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-                                             minus 1h
+    ./bin/yb-admin \
+        -master_addresses <ip1:7100,ip2:7100,ip3:7100> \
+        restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 minus 1h
     ```
 
     For detailed information on the relative time formatting, refer to the [`restore_snapshot_schedule` reference](../../../admin/yb-admin/#restore-snapshot-schedule).
@@ -180,7 +184,7 @@ If a database or a keyspace has an associated snapshot schedule, you can use tha
 
 YugabyteDB supports [index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md), which asynchronously populates a new index. The process runs in the background and can take a significant amount of time, depending on the size of the data. If you restore to a point in time soon after an index creation, you're likely to hit a state where the index is in the middle of the backfill process.
 
-**YugabyteDB ignores these partly-backfilled indexes during read operations. To make sure the indexes are properly used, you need to drop and create them again to reinitiate the backfill process.** Run the following query to get a list of indexes that need to be recreated:
+**YugabyteDB ignores these partly-backfilled indexes during read operations. To make sure the indexes are properly used, you need to drop and create them again to re-initiate the backfill process.** Run the following query to get a list of indexes that need to be recreated:
 
 ```sql
 SELECT pg_class.relname
@@ -200,7 +204,7 @@ This limitation will be removed in an upcoming release, and is tracked in issue 
 
 PITR functionality has several limitations, primarily related to interactions with other YugabyteDB features. Most of these limitations will be addressed in upcoming releases; refer to each limitation's corresponding tracking issue for details.
 
-###  CDC
+### CDC
 
 Using PITR and [CDC](../../../explore/change-data-capture/) together is currently not supported.
 
@@ -208,22 +212,14 @@ Tracking issue: [12773](https://github.com/yugabyte/yugabyte-db/issues/12773)
 
 ### xCluster replication
 
-The combination of PITR and [xCluster replication](../../../explore/multi-region-deployments/asynchronous-replication-ysql/) is not fully tested, and is considered beta.
-
-xCluster does not replicate any commands related to PITR. If you have two clusters with replication between them, enable PITR on both ends separately. To restore, the following is the recommended procedure:
+xCluster does not replicate any commands related to PITR. If you have two clusters with replication between them, enable PITR on both ends independently. You can perform a restore using the following recommended procedure:
 
 1. Stop application workloads and make sure there are no active transactions.
 1. Wait for replication to complete.
-1. Restore to the same time on both clusters.
+1. Delete xCluster replication from both clusters.
+1. Restore both clusters to the exact same time.
+1. Re-establish xCluster replication.
 1. Resume the application workloads.
-
-Tracking issue: [10820](https://github.com/yugabyte/yugabyte-db/issues/10820)
-
-### Tablegroups
-
-Using PITR with [tablegroups](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-tablegroups.md) is not currently supported. If you attempt to create a PITR schedule within a cluster with tablegroups, you'll get an error. Attempting to create a tablegroup if a schedule exists on _any of the databases_ will also produce an error.
-
-Tracking issue: [11924](https://github.com/yugabyte/yugabyte-db/issues/11924)
 
 ### Global objects
 

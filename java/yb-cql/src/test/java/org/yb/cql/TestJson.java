@@ -85,6 +85,83 @@ public class TestJson extends BaseCQLTest {
       "WHERE imsi='34' and call_date=totimestamp(now());");
   }
 
+  private void testUpsertWithNestedJson() throws Exception {
+    session.execute("CREATE TABLE t(a text, b int, j jsonb, PRIMARY KEY (a, b)) with CLUSTERING "
+        + "ORDER BY (b DESC)");
+
+    session.execute(
+        "update t set j = '{\"l1\" : {\"l2\" : {\"l3\" : \"A\"}}}' where a = '1' and b = 1");
+
+    session.execute("update t set j -> 'l1' -> 'l2' -> 'l3_sibling' = '\"10\"', "
+        + "j -> 'l1' -> 'l2' -> 'l3_sibling_2' = '\"20\"', "
+        + "j -> 'l1' -> 'l2' -> 'l3_sibling_3' = '\"30\"', "
+        + "j -> 'l1' -> 'l2_sibling_1' = '\"1000\"', "
+        + "j -> 'l1_sibling_1' = '\"test_value\"', "
+        + "j -> 'l1_sibling_2' = '\"test_value2\"' "
+        + "where a = '1' and b = 1");
+    assertQuery("SELECT * FROM t WHERE a = '1' and b = 1",
+        "Row[1, 1, {\"l1\":{\"l2\":{\"l3\":\"A\",\"l3_sibling\":\"10\",\"l3_sibling_2\":\"20\","
+            + "\"l3_sibling_3\":\"30\"},\"l2_sibling_1\":\"1000\"},\"l1_sibling_1\":\"test_value\""
+            + ",\"l1_sibling_2\":\"test_value2\"}]");
+
+    // Upsert disallowed if intermediate level does not exist.
+    runInvalidStmt(
+        "update t set j -> 'l1' -> 'l2_sibling' -> 'l3_child_l2_sibling' = '\"40\"' where a = '1'"
+            + " and b = 1",
+        "Could not find member");
+
+    // Attributes added within the same statement.
+    session.execute("update t set "
+        + "j -> 'non_existent' = '{}', "
+        + "j -> 'non_existent' -> 'age' = '\"test_value_2\"' "
+        + "where a = '2' and b = 2");
+    assertQuery("SELECT * FROM t WHERE a = '2' and b = 2",
+        "Row[2, 2, {\"non_existent\":{\"age\":\"test_value_2\"}}]");
+
+    // Attributes added & overwritten within the same statement.
+    session.execute("update t set "
+        + "j -> 'non_existent' = '\"10\"', "
+        + "j -> 'non_existent' = '\"20\"' "
+        + "where a = '3' and b = 3");
+    assertQuery("SELECT * FROM t WHERE a = '3' and b = 3", "Row[3, 3, {\"non_existent\":\"20\"}]");
+
+    // Overwrite an existing attribute.
+    session.execute(
+        "update t set j = '{\"l1\" : {\"l2\" : {\"l3\" : \"A\"}}}' where a = '4' and b = 4");
+    session.execute("update t set "
+        + "j -> 'l1' = '\"10\"'"
+        + "where a = '4' and b = 4");
+    assertQuery("SELECT * FROM t WHERE a = '4' and b = 4", "Row[4, 4, {\"l1\":\"10\"}]");
+
+    // Nested objects inside an array.
+    session.execute(
+        "update t set j = '{\"l1\" : {\"l2\" : {\"l3\" : \"A\"}}}' where a = '5' and b = 5");
+    session.execute("update t set "
+        + "j -> 'l1_sibling' = '[1, 2, 3.4, false, { \"k1\" : 1, \"k2\" : [100, 200]}]',"
+        + "j -> 'l1' -> 'l2' -> 'l3_sibling' = '[1, false, { \"k1\" : false, \"k2\" : [100, 200]}]'"
+        + "where a = '5' and b = 5");
+    assertQuery("SELECT * FROM t WHERE a = '5' and b = 5",
+        "Row[5, 5, {\"l1\":{\"l2\":{\"l3\":\"A\",\"l3_sibling\":[1,false,{\"k1\":false,"
+            + "\"k2\":[100,200]}]}},\"l1_sibling\":[1,2,3.4000000953674318,false,{\"k1\":1,\"k2\":"
+            + "[100,200]}]}]");
+  }
+
+  @Test
+  public void testUpsertWithNestedJsonWithMemberCache() throws Exception {
+    testUpsertWithNestedJson();
+  }
+
+  @Test
+  public void testUpsertWithNestedJsonWithoutMemberCache() throws Exception {
+    try {
+      // By default: ycql_jsonb_use_member_cache=true.
+      restartClusterWithFlag("ycql_jsonb_use_member_cache", "false");
+      testUpsertWithNestedJson();
+    } finally {
+      destroyMiniCluster(); // Destroy the recreated cluster when done.
+    }
+  }
+
   @Test
   public void testJson() throws Exception {
     String json =
@@ -442,7 +519,6 @@ public class TestJson extends BaseCQLTest {
         "'\"100\"'").all().size());
   }
 
-
   @Test
   public void testSchemaBuilderWithJsonColumnType() throws Exception {
 
@@ -471,5 +547,4 @@ public class TestJson extends BaseCQLTest {
     session.execute("INSERT INTO test_json(c1, c2) values (8, '{\"b\" : 1}');");
     verifyResultSet(session.execute("SELECT * FROM test_json WHERE c1 = 1"));
   }
-
 }

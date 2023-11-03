@@ -14,14 +14,20 @@
 #pragma once
 
 #include <atomic>
+#include <memory>
 
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/interprocess/ipc/message_queue.hpp>
 
 #include "yb/tserver/tserver_util_fwd.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/thread.h"
+#include "yb/util/uuid.h"
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
@@ -94,6 +100,51 @@ class TServerSharedData {
   uint64_t postgres_auth_key_;
 
   std::atomic<uint64_t> db_catalog_versions_[kMaxNumDbCatalogVersions] = {0};
+};
+
+YB_STRONGLY_TYPED_BOOL(Create);
+
+class SharedExchange {
+ public:
+  SharedExchange(const Uuid& instance_id, uint64_t session_id, Create create);
+  ~SharedExchange();
+
+  std::byte* Obtain(size_t required_size);
+  Result<Slice> SendRequest(CoarseTimePoint deadline);
+  bool ReadyToSend() const;
+  void Respond(size_t size);
+  Result<size_t> Poll();
+  void SignalStop();
+
+  uint64_t session_id() const;
+
+ private:
+  class Impl;
+  std::unique_ptr<Impl> impl_;
+};
+
+using SharedExchangeListener = std::function<void(size_t)>;
+
+class SharedExchangeThread {
+ public:
+  SharedExchangeThread(
+      const Uuid& instance_id, uint64_t session_id, Create create,
+      const SharedExchangeListener& listener);
+
+  ~SharedExchangeThread();
+
+  SharedExchange& exchange() {
+    return exchange_;
+  }
+
+ private:
+  SharedExchange exchange_;
+  scoped_refptr<Thread> thread_;
+};
+
+struct SharedExchangeMessage {
+  uint64_t session_id;
+  size_t size;
 };
 
 }  // namespace tserver

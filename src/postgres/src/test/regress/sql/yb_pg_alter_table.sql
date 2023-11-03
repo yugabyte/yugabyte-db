@@ -246,8 +246,7 @@ ALTER TABLE onek DROP CONSTRAINT onek_unique1_constraint_foo;
 -- renaming constraint
 ALTER TABLE onek ADD CONSTRAINT onek_check_constraint CHECK (unique1 >= 0);
 ALTER TABLE onek RENAME CONSTRAINT onek_check_constraint TO onek_check_constraint_foo;
-/*
-TODO: Uncomment when renaming constraint is supported (GHI #3943).
+
 ALTER TABLE onek DROP CONSTRAINT onek_check_constraint_foo;
 
 -- renaming constraint should rename index as well
@@ -261,6 +260,8 @@ ALTER TABLE onek DROP CONSTRAINT onek_unique1_constraint_foo;
 CREATE TABLE constraint_rename_test (a int CONSTRAINT con1 CHECK (a > 0), b int, c int);
 \d constraint_rename_test
 CREATE TABLE constraint_rename_test2 (a int CONSTRAINT con1 CHECK (a > 0), d int) INHERITS (constraint_rename_test);
+/*
+TODO: Uncomment when inheritance is supported (https://github.com/yugabyte/yugabyte-db/issues/1129).
 \d constraint_rename_test2
 ALTER TABLE constraint_rename_test2 RENAME CONSTRAINT con1 TO con1foo; -- fail
 ALTER TABLE ONLY constraint_rename_test RENAME CONSTRAINT con1 TO con1foo; -- fail
@@ -280,6 +281,7 @@ DROP TABLE constraint_rename_test2;
 DROP TABLE constraint_rename_test;
 ALTER TABLE IF EXISTS constraint_not_exist RENAME CONSTRAINT con3 TO con3foo; -- ok
 ALTER TABLE IF EXISTS constraint_rename_test ADD CONSTRAINT con4 UNIQUE (a);
+*/
 
 -- renaming constraints with cache reset of target relation
 CREATE TABLE constraint_rename_cache (a int,
@@ -294,9 +296,6 @@ CREATE TABLE like_constraint_rename_cache
 \d like_constraint_rename_cache
 DROP TABLE constraint_rename_cache;
 DROP TABLE like_constraint_rename_cache;
-*/
--- YB Note: Remove following line when the above tests are uncommented.
-ALTER TABLE onek DROP CONSTRAINT onek_check_constraint;
 
 --
 -- lock levels

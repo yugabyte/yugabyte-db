@@ -4,8 +4,6 @@ headerTitle: DocDB replication layer
 linkTitle: DocDB replication layer
 description: Learn how synchronous and asynchronous replication work in DocDB, including advanced features like xCluster replication and read replicas.
 image: /images/section_icons/architecture/concepts.png
-aliases:
-  - /preview/architecture/docdb/replication/
 headcontent: Learn how synchronous and asynchronous replication work in DocDB.
 menu:
   preview:
@@ -19,8 +17,8 @@ This section describes how replication works in DocDB. The data in a DocDB table
 
 YugabyteDB also provides other advanced replication features. These include two forms of asynchronous replication of data:
 
-* **xCluster** Data is asynchronously replicated between different YugabyteDB clusters - both unidirectional replication (master-slave) or  bidirectional replication across two clusters.
-* **Read replicas** The in-cluster asynchronous replicas are called read replicas.
+* **xCluster** - Data is asynchronously replicated between different YugabyteDB universes - both unidirectional replication (master-slave) or bidirectional replication across two universes.
+* **Read replicas** - The in-universe asynchronous replicas are called read replicas.
 
 The YugabyteDB synchronous replication architecture is inspired by <a href="https://research.google.com/archive/spanner-osdi2012.pdf">Google Spanner</a>.
 
@@ -35,7 +33,7 @@ The YugabyteDB xCluster replication architecture is inspired by RDBMS databases 
         <div class="title">Default synchronous replication</div>
       </div>
       <div class="body">
-        In-cluster synchronous replication with Raft consensus.
+        In-primary-cluster synchronous replication with Raft consensus.
       </div>
     </a>
   </div>
@@ -47,7 +45,7 @@ The YugabyteDB xCluster replication architecture is inspired by RDBMS databases 
         <div class="title">xCluster</div>
       </div>
       <div class="body">
-        Cross-cluster asynchronous replication of data.
+        Cross-universe asynchronous replication of data.
       </div>
     </a>
   </div>
@@ -59,10 +57,9 @@ The YugabyteDB xCluster replication architecture is inspired by RDBMS databases 
         <div class="title">Read replicas</div>
       </div>
       <div class="body">
-        In-cluster asynchronous replicas to enable reading data that is a bit stale with lower read latencies.
+        In-universe asynchronous replicas to enable reading data that is a bit stale with lower read latencies.
       </div>
     </a>
   </div>
-
 
 </div>

@@ -61,4 +61,29 @@ enum progress_type
 #define PROGRESS_COPY_TYPE_PIPE 3
 #define PROGRESS_COPY_TYPE_CALLBACK 4
 
+/*
+ * TODO: remove this comment after PG 13 merge
+ * The following macros and their values are imported from upstream PG.
+ * The relevant PG commit (ab0dfc961b6a821f23d9c40c723d11380ce195a6)
+ * was only partially imported to YB - so not all the commit's newly added
+ * macros are imported (only the ones used in YB are).
+ */
+
+/* Progress parameters for CREATE INDEX */
+#define PROGRESS_CREATEIDX_COMMAND				0
+#define PROGRESS_CREATEIDX_INDEX_OID			6
+#define PROGRESS_CREATEIDX_PHASE				9
+#define PROGRESS_CREATEIDX_TUPLES_TOTAL			11
+#define PROGRESS_CREATEIDX_TUPLES_DONE			12
+#define PROGRESS_CREATEIDX_PARTITIONS_TOTAL		13
+#define PROGRESS_CREATEIDX_PARTITIONS_DONE		14
+
+/* Commands of PROGRESS_CREATEIDX */
+#define PROGRESS_CREATEIDX_COMMAND_CREATE			1
+#define PROGRESS_CREATEIDX_COMMAND_CREATE_CONCURRENTLY	2
+
+/* YB phases for CREATE INDEX */
+#define YB_PROGRESS_CREATEIDX_INITIALIZING 0
+#define YB_PROGRESS_CREATEIDX_BACKFILLING 1
+
 #endif

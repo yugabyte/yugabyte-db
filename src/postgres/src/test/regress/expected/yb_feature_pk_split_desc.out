@@ -252,10 +252,11 @@ SELECT * FROM feature_pk_split_desc
 EXPLAIN SELECT COUNT(*) FROM feature_pk_split_desc WHERE col_integer = 50 AND col_varchar = 'a';
                                                   QUERY PLAN
 --------------------------------------------------------------------------------------------------------------
- Aggregate  (cost=4.12..4.13 rows=1 width=8)
+ Finalize Aggregate  (cost=4.12..4.13 rows=1 width=8)
    ->  Index Scan using feature_pk_split_desc_pkey on feature_pk_split_desc  (cost=0.00..4.12 rows=1 width=0)
          Index Cond: ((col_integer = 50) AND ((col_varchar)::text = 'a'::text))
-(3 rows)
+         Partial Aggregate: true
+(4 rows)
 
 SELECT COUNT(*) FROM feature_pk_split_desc WHERE col_integer = 50 AND col_varchar = 'a';
  count
@@ -268,10 +269,11 @@ EXPLAIN SELECT COUNT(*) FROM feature_pk_split_desc
 		  col_varchar >= 'a' AND col_varchar <= 'n';
                                                                      QUERY PLAN
 ----------------------------------------------------------------------------------------------------------------------------------------------------
- Aggregate  (cost=4.12..4.13 rows=1 width=8)
+ Finalize Aggregate  (cost=4.12..4.13 rows=1 width=8)
    ->  Index Scan using feature_pk_split_desc_pkey on feature_pk_split_desc  (cost=0.00..4.12 rows=1 width=0)
          Index Cond: ((col_integer >= 500) AND (col_integer <= 5000) AND ((col_varchar)::text >= 'a'::text) AND ((col_varchar)::text <= 'n'::text))
-(3 rows)
+         Partial Aggregate: true
+(4 rows)
 
 SELECT COUNT(*) FROM feature_pk_split_desc
 	WHERE col_integer >= 500 AND col_integer <= 5000 AND

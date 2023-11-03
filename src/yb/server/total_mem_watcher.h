@@ -15,10 +15,13 @@
 
 #include <functional>
 #include <memory>
+#include <mutex>
+#include <condition_variable>
 
 #include "yb/gutil/macros.h"
 
 #include "yb/util/status_fwd.h"
+#include "yb/gutil/thread_annotations.h"
 
 namespace yb {
 namespace server {
@@ -30,7 +33,9 @@ namespace server {
 // This class is not thread-safe.
 class TotalMemWatcher {
  public:
-  virtual ~TotalMemWatcher();
+  virtual ~TotalMemWatcher() = default;
+
+  void Shutdown() EXCLUDES(exit_loop_mutex_);
 
   // Re-check the total memory usage and populate the internal state of this watcher object.
   virtual Status Check() = 0;
@@ -46,16 +51,20 @@ class TotalMemWatcher {
 
   static std::unique_ptr<TotalMemWatcher> Create();
 
-  // Enters an infinite loop monitoring memory usage. Exits from the loop if the memory usage limit
-  // has been exceeded. Uses the provided functions to initiate server shutdown and check if
-  // shutdown has completed.
-  void MemoryMonitoringLoop(std::function<void()> shutdown_fn,
-                            std::function<bool()> is_shutdown_finished_fn);
+  // Enters an infinite loop monitoring memory usage. Invokes trigger_termination_fn and exits from
+  // the loop if the memory usage limit has been exceeded. Exits the loop without calling
+  // termination_callback if Shutdown has been called.
+  void MemoryMonitoringLoop(std::function<void()> trigger_termination_fn)
+      EXCLUDES(exit_loop_mutex_);
 
  protected:
   TotalMemWatcher();
 
   size_t rss_termination_limit_bytes_;
+
+  std::mutex exit_loop_mutex_;
+  bool exit_loop_ GUARDED_BY(exit_loop_mutex_) = false;
+  std::condition_variable exit_loop_cv_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(TotalMemWatcher);

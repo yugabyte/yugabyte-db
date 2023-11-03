@@ -47,8 +47,7 @@ public class KubernetesProvision extends CloudTaskBase {
   }
 
   public void createKubernetesInitTask(KubernetesCommandExecutor.CommandType commandType) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup(commandType.getSubTaskGroupName(), executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup(commandType.getSubTaskGroupName());
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     params.config = taskParams().config;
     params.commandType = commandType;

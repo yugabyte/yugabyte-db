@@ -3,12 +3,12 @@ title: The WITH clause and common table expressions (CTEs) [YSQL]
 headerTitle: The WITH clause and common table expressions
 linkTitle: WITH clause
 description: How to use the WITH clause and common table expressions (CTEs)
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   preview:
     identifier: with-clause
     parent: the-sql-language
-    weight: 200
+    weight: 300
 type: indexpage
 showRightNav: true
 ---
@@ -122,6 +122,8 @@ Finally, the use of a _recursive_ CTE in a `WITH` clause enables advanced functi
      edgar
    susan
 ```
+
+## The organization of the remainder of this section
 
 The remainder of this section has the following subsections:
 

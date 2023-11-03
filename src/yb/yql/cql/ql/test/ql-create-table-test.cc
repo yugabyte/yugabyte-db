@@ -171,7 +171,7 @@ TEST_F(TestQLCreateTable, TestQLCreateTableSimple) {
 // sleeping and the table is in a ready state. Without the fix, the INSERT statement always fails
 // with a "Table Not Found" error.
 TEST_F(TestQLCreateTable, TestQLConcurrentCreateTableAndCreateTableIfNotExistsStmts) {
-  FLAGS_TEST_simulate_slow_table_create_secs = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_slow_table_create_secs) = 10;
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
 
@@ -207,7 +207,7 @@ TEST_F(TestQLCreateTable, TestQLConcurrentCreateTableAndCreateTableIfNotExistsSt
 // that whenever a CREATE TABLE statement returns "Duplicate Table. Already present", the table
 // is ready to accept write requests.
 TEST_F(TestQLCreateTable, TestQLConcurrentCreateTableStmt) {
-  FLAGS_TEST_simulate_slow_table_create_secs = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_slow_table_create_secs) = 10;
   // Init the simulated cluster.
   ASSERT_NO_FATALS(CreateSimulatedCluster());
 
@@ -333,85 +333,17 @@ TEST_F(TestQLCreateTable, TestQLCreateTableWithClusteringOrderBy) {
       "Invalid Table Property. Not a clustering key colum");
 }
 
-TEST_F(TestQLCreateTable, TestQLCreateTableWithPartitionScemeOf) {
-  // Init the simulated cluster.
-  ASSERT_NO_FATALS(CreateSimulatedCluster());
-
-  // Get an available processor.
-  TestQLProcessor *processor = GetQLProcessor();
-
-  const string table1 = "devices(supplier_id INT, device_id DOUBLE, model_year INT, "
-      "device_name TEXT, PRIMARY KEY((supplier_id, device_id), model_year));";
-  const string table2 = "descriptions1(supplier_id INT, device_id DOUBLE, description TEXT, "
-      "PRIMARY KEY((supplier_id, device_id))) with partition scheme of devices;";
-  const string table3 = "descriptions2(supp_id INT, dev_id DOUBLE, description TEXT, "
-      "image_id INT, PRIMARY KEY((supp_id, dev_id), image_id)) "
-      "with partition scheme of devices;";
-  const string table4 = "descriptions3(supplier_id INT, device_id DOUBLE, description TEXT, "
-      "PRIMARY KEY(supplier_id, device_id)) with partition scheme of devices;";
-  const string table5 = "descriptions4(supplier_id INT, device_id DOUBLE, model_year INT, "
-      "description TEXT, PRIMARY KEY((supplier_id, device_id, model_year))) "
-      "with partition scheme of devices;";
-  const string table6 = "descriptions5(supplier_id INT, device_id DOUBLE, description TEXT, "
-      "PRIMARY KEY((supplier_id, device_id))) with partition scheme of non_existing_table;";
-  const string table7 = "descriptions6(supp_id INT, dev_id DOUBLE, description TEXT, "
-      "image_id INT, PRIMARY KEY((supp_id, description))) with partition scheme of devices;";
-  const string table8 = "descriptions7(supp_id INT, dev_id DOUBLE, description TEXT, "
-      "image_id INT, PRIMARY KEY((dev_id, supp_id))) with partition scheme of devices;";
-  const string table9 = "descriptions8(supp_id INT, dev_id DOUBLE, description TEXT, "
-      "image_id INT, PRIMARY KEY((supp_id, image_id))) with partition scheme of devices;";
-  const string table10 = "descriptions9(supp_id INT, dev_id DOUBLE, description TEXT, "
-      "image_id INT, PRIMARY KEY((description, image_id))) with partition scheme of devices;";
-  const string table11 = "descriptions10(supp_id INT, dev_id DOUBLE, description TEXT, "
-      "image_id INT, PRIMARY KEY((supp_id, dev_id))) with partition scheme devices;";
-  const string table12 = "descriptions11(supp_id INT, dev_id DOUBLE, description TEXT, "
-      "image_id INT, PRIMARY KEY((supp_id, dev_id))) with partition schema of devices;";
-  const string table13 = "descriptions12(supp_id INT, dev_id DOUBLE, description TEXT, "
-      "image_id INT, PRIMARY KEY((supp_id, dev_id))) with partitioning scheme of devices;";
-
-  // Create the devices tables.
-  EXEC_VALID_STMT(CreateStmt(table1));
-
-  EXEC_VALID_STMT(CreateStmt(table2));
-  EXEC_VALID_STMT(CreateStmt(table3));
-  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table4),
-                               "The number of hash keys in the current table "
-                                   "differ from the number of hash keys in 'devices'");
-  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table5),
-                               "The number of hash keys in the current table "
-                                   "differ from the number of hash keys in 'devices'");
-  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table6),
-                               "Object Not Found");
-  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table7),
-                               "The hash key 'description' in the current table has a different "
-                                   "datatype from the corresponding hash key in 'devices'");
-  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table8),
-                               "The hash key 'dev_id' in the current table has a different "
-                                   "datatype from the corresponding hash key in 'devices'");
-  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table9),
-                               "The hash key 'image_id' in the current table has a different "
-                                   "datatype from the corresponding hash key in 'devices'");
-  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table10),
-                               "The hash key 'description' in the current table has a different "
-                                   "datatype from the corresponding hash key in 'devices'");
-  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table11),
-                               "syntax error");
-  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table12),
-                               "syntax error");
-  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table13),
-                               "syntax error");
-}
-
 // Check for presence of rows in system.metrics table.
 TEST_F(TestQLCreateTable, TestMetrics) {
-  FLAGS_metrics_snapshotter_interval_ms = 1000 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_metrics_snapshotter_interval_ms) = 1000 * kTimeMultiplier;
 
-  FLAGS_master_enable_metrics_snapshotter = true;
-  FLAGS_tserver_enable_metrics_snapshotter = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_metrics_snapshotter) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_enable_metrics_snapshotter) = true;
 
   std::vector<std::string> table_metrics =
   {"rocksdb_bytes_per_read_sum", "rocksdb_bytes_per_read_count"};
-  FLAGS_metrics_snapshotter_table_metrics_whitelist = boost::algorithm::join(table_metrics, ",");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_metrics_snapshotter_table_metrics_whitelist) =
+      boost::algorithm::join(table_metrics, ",");
 
   std::vector<std::string> tserver_metrics = {
     "handler_latency_yb_tserver_TabletServerService_ListTablets_sum",
@@ -453,7 +385,7 @@ TEST_F(TestQLCreateTable, TestMetrics) {
 
     std::unordered_set<std::string> t;
     for (size_t i = 0; i < row_block->row_count(); i++) {
-      QLRow &row = row_block->row(i);
+      auto& row = row_block->row(i);
       t.insert(row.column(0).string_value());
     }
 
@@ -472,7 +404,7 @@ TEST_F(TestQLCreateTable, TestMetrics) {
 
     std::unordered_set<std::string> t;
     for (size_t i = 0; i < row_block->row_count(); i++) {
-      QLRow &row = row_block->row(i);
+      auto& row = row_block->row(i);
       t.insert(row.column(0).string_value());
     }
 

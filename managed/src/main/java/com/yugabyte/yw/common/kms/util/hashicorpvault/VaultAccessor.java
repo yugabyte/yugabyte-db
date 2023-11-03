@@ -11,24 +11,27 @@
 
 package com.yugabyte.yw.common.kms.util.hashicorpvault;
 
+import com.bettercloud.vault.SslConfig;
+import com.bettercloud.vault.Vault;
+import com.bettercloud.vault.VaultConfig;
+import com.bettercloud.vault.VaultException;
+import com.bettercloud.vault.api.Auth.TokenRequest;
+import com.bettercloud.vault.response.AuthResponse;
+import com.bettercloud.vault.response.LogicalResponse;
+import com.bettercloud.vault.rest.RestResponse;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+import io.ebean.annotation.EnumValue;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyStore;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.List;
 import java.util.Map;
 import java.util.TimeZone;
-
-import com.bettercloud.vault.Vault;
-import com.bettercloud.vault.VaultConfig;
-import com.bettercloud.vault.VaultException;
-import com.bettercloud.vault.response.LogicalResponse;
-import com.bettercloud.vault.rest.RestResponse;
-import com.bettercloud.vault.api.Auth.TokenRequest;
-import com.bettercloud.vault.response.AuthResponse;
-
-import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.models.helpers.CommonUtils;
-
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,6 +39,7 @@ import org.slf4j.LoggerFactory;
  * Wrapper over Vault.logical crud operations
  */
 public class VaultAccessor {
+
   public static final Logger LOG = LoggerFactory.getLogger(VaultAccessor.class);
 
   public static final long TTL_RENEWAL_BEFORE_EXPIRY_HRS = 24;
@@ -44,14 +48,24 @@ public class VaultAccessor {
   private Vault vault;
   private long tokenTTL;
   private Calendar tokenTtlExpiry;
+
   /** Vault supports 2 versions of API, we have to use version 1 to connect with Vault. */
   private int apiVersion;
 
+  private AuthType authType;
+
+  // allowed authentication menthods to access the vault
+  public enum AuthType {
+    @EnumValue("Token")
+    Token,
+
+    @EnumValue("AppRole")
+    AppRole,
+  }
+
   /**
-   * Constructs vault object of com.bettercloud.vault.Vault use buildVaultAccessor to build a object
-   *
-   * @param vObj
-   * @param apiVer
+   * Constructs vault object of com.bettercloud.vault.Vault use buildVaultAccessor to build an
+   * object
    */
   public VaultAccessor(Vault vObj, int apiVer) {
 
@@ -60,26 +74,39 @@ public class VaultAccessor {
     LOG.debug("Calling HCVaultAccessor: with vault {}, API version: {}", vObj, apiVersion);
 
     vault = vObj;
+    authType = AuthType.Token;
     tokenTtlExpiry = Calendar.getInstance();
   }
 
-  /**
-   * From address(url) and from token, build Vault object to access vault.
-   *
-   * @param vaultAddr
-   * @param vaultToken
-   * @return
-   * @throws VaultException
-   */
+  public VaultAccessor(Vault vObj, int apiVer, AuthType type) {
+
+    tokenTTL = 0;
+    apiVersion = apiVer;
+    LOG.debug(
+        "Calling HCVaultAccessor: with vault {}, API version: {}, auth type: {}",
+        vObj,
+        apiVersion,
+        type);
+
+    vault = vObj;
+    authType = type;
+    tokenTtlExpiry = Calendar.getInstance();
+  }
+
+  /** From address(url) and from token, build Vault object to access vault. */
   public static VaultAccessor buildVaultAccessor(String vaultAddr, String vaultToken)
       throws VaultException {
-    LOG.debug("Calling buildVaultAccessor: with addr {}", vaultAddr);
+    LOG.debug("Calling buildVaultAccessor: with address {}", vaultAddr);
+    int apiVersion = 1;
 
-    int apiversion = 1;
-    VaultConfig config = new VaultConfig().address(vaultAddr).token(vaultToken).build();
-    Vault vault = new Vault(config, Integer.valueOf(apiversion));
+    VaultConfig config = new VaultConfig().address(vaultAddr).token(vaultToken);
+
+    config = customCAStoreConfig(config);
+    config = config.build();
+
+    Vault vault = new Vault(config, Integer.valueOf(apiVersion));
     LOG.info("Created vault connection with {}, - {}", vaultAddr, vault);
-    VaultAccessor vAccessor = new VaultAccessor(vault, apiversion);
+    VaultAccessor vAccessor = new VaultAccessor(vault, apiVersion);
 
     try {
       vAccessor.tokenSelfLookupCheck();
@@ -90,6 +117,81 @@ public class VaultAccessor {
       throw e;
     }
     return vAccessor;
+  }
+
+  public static VaultAccessor buildVaultAccessorFromAppRole(
+      String vaultAddr, String vaultAuthNamespace, String vaultRoleID, String vaultSecretID)
+      throws VaultException {
+    LOG.debug("Calling buildVaultAccessorFromAppRole: with address {}", vaultAddr);
+
+    VaultConfig config = new VaultConfig().address(vaultAddr);
+    config = customCAStoreConfig(config);
+    config.build();
+    int apiVersion = 1;
+    Vault vault = new Vault(config, apiVersion);
+    String path = "approle";
+    AuthResponse response;
+
+    try {
+      if (!StringUtils.isBlank(vaultAuthNamespace)) {
+        LOG.info("Namespace given = '{}'", vaultAuthNamespace);
+        response =
+            vault
+                .auth()
+                .withNameSpace(vaultAuthNamespace)
+                .loginByAppRole(path, vaultRoleID, vaultSecretID);
+        LOG.info("Adding namespace '{}' to vault config", vaultAuthNamespace);
+        config = config.nameSpace(vaultAuthNamespace);
+      } else {
+        LOG.info("No namespace given.");
+        response = vault.auth().loginByAppRole(path, vaultRoleID, vaultSecretID);
+      }
+    } catch (VaultException e) {
+      LOG.error("Creation of vault (AppRole) has failed with error:" + e.getMessage());
+      throw e;
+    }
+    String vaultToken = response.getAuthClientToken();
+
+    config = config.token(vaultToken);
+
+    config = customCAStoreConfig(config);
+    config = config.build();
+
+    vault = new Vault(config, Integer.valueOf(apiVersion));
+    LOG.info("Created vault connection (AppRole) with {}, - {}", vaultAddr, vault);
+    VaultAccessor vAccessor = new VaultAccessor(vault, apiVersion, AuthType.AppRole);
+
+    try {
+      vAccessor.tokenSelfLookupCheck();
+      vAccessor.getTokenExpiryFromVault();
+    } catch (VaultException e) {
+      LOG.error("Creation of vault (Approle) has failed with error:" + e.getMessage());
+      throw e;
+    }
+    return vAccessor;
+  }
+
+  public static VaultConfig customCAStoreConfig(VaultConfig config) throws VaultException {
+    // Need to do this to circumvent the issue of not being able to call non-static methods
+    // of CAStore into this class. HCVault/EAR code needs refactoring.
+    CustomCAStoreManager customCAStoreManager =
+        StaticInjectorHolder.injector().instanceOf(CustomCAStoreManager.class);
+    boolean customCAUploaded = customCAStoreManager.areCustomCAsPresent();
+    boolean ybaTrustStoreEnabled = customCAStoreManager.isEnabled();
+    if (customCAUploaded && !ybaTrustStoreEnabled) {
+      LOG.warn("Skipping to use YBA's custom trust-store as the feature is disabled");
+    }
+    if (customCAUploaded && ybaTrustStoreEnabled) {
+      LOG.debug("Using YBA's custom trust-store with Java defaults");
+      KeyStore ybaJavaKeyStore = customCAStoreManager.getYbaAndJavaKeyStore();
+      try {
+        config.sslConfig(new SslConfig().trustStore(ybaJavaKeyStore).build());
+      } catch (VaultException e) {
+        LOG.error("Creation of vault with SSL config has failed with error:" + e.getMessage());
+        throw e;
+      }
+    }
+    return config;
   }
 
   public void tokenSelfLookupCheck() throws VaultException {
@@ -110,15 +212,10 @@ public class VaultAccessor {
     } catch (VaultException e) {
       LOG.debug("Cannot extract secret engine type /sys/mounts/, exception :" + e.getMessage());
     }
-    return new String("INVAID");
+    return new String("INVALID");
   }
 
-  /**
-   * Checks for response and throws exception if its one of the http error codes
-   *
-   * @param restResp
-   * @throws VaultException
-   */
+  /** Checks for response and throws exception if its one of the http error codes */
   public int checkForResponseFailure(RestResponse restResp) throws VaultException {
     int status = restResp.getStatus();
     LOG.debug("Response status is : {}", status);
@@ -135,8 +232,8 @@ public class VaultAccessor {
   /**
    * Extracts ttl from vault and sets it to the object
    *
-   * @return List<long ttl, long ttlexpiry> ttl: ttl (int seconds) fetched from vault and ttlexpiry:
-   *     time stamp (int milisecods) of expiry (currentTime + ttl)
+   * @return List<long ttl, long ttl-expiry> ttl: ttl (int seconds) fetched from vault and
+   *     ttl-expiry: time stamp (int milliseconds) of expiry (currentTime + ttl)
    * @throws VaultException
    */
   public List<Object> getTokenExpiryFromVault() throws VaultException {
@@ -174,7 +271,7 @@ public class VaultAccessor {
     return Arrays.asList(tokenTTL, tokenTtlExpiry.getTimeInMillis());
   }
 
-  /** This is done as best effort, and no gurantees are given at this point of time. */
+  /** This is done as best effort, and no guarantees are given at this point of time. */
   public void renewSelf() {
     try {
       boolean isRenewable = vault.auth().lookupSelf().isRenewable();
@@ -184,19 +281,33 @@ public class VaultAccessor {
         LOG.warn("Vault Token {} is not renewable", token);
         return;
       }
+      renewToken(token);
 
+    } catch (VaultException e) {
+      LOG.warn("Received exception while attempting to renew");
+    }
+  }
+
+  public void renewToken(String token) {
+
+    try {
       long ttl = vault.auth().lookupSelf().getTTL();
       if (ttl < (3600 * TTL_RENEWAL_BEFORE_EXPIRY_HRS)) {
         vault.auth().renewSelf();
-        LOG.info("Token {} is renewed as it was very close to expiry", token);
+        LOG.info(
+            "Token {} of authentication type {} has been renewed as it was very close to expiry",
+            token,
+            authType);
         return;
       }
 
       long maxttl = vault.auth().lookupSelf().getCreationTTL();
       if ((ttl * TTL_EXPIRY_PERCENT_FACTOR) < maxttl) {
         vault.auth().renewSelf();
-        LOG.info("Token {} is renewed as it has passed 90% of its expiry window", token);
-      } else LOG.debug("Not need to renew token {} for now", token);
+        LOG.info(
+            "Token {} is renewed as it has passed {}0% of its expiry window",
+            token, TTL_EXPIRY_PERCENT_FACTOR);
+      } else LOG.debug("No need to renew token {} for now", token);
 
     } catch (VaultException e) {
       LOG.warn("Received exception while attempting to renew");
@@ -210,6 +321,7 @@ public class VaultAccessor {
     AuthResponse ar = vault.auth().createToken(tr);
     return ar.getAuthClientToken();
   }
+
   /**
    * Performs list operation on provided path of secret engine.
    *
@@ -247,7 +359,7 @@ public class VaultAccessor {
    *
    * @param path
    * @param textmap dictionary of data that is getting posted.
-   * @param filter to return specific vaule of output
+   * @param filter to return specific value of output
    * @return
    * @throws VaultException
    */
@@ -260,6 +372,7 @@ public class VaultAccessor {
     if ("".equals(filter)) return logicalResp.getData().toString();
     else return logicalResp.getData().get(filter).toString();
   }
+
   /**
    * Performs POST operation on path provided
    *

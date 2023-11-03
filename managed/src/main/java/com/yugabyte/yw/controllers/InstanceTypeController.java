@@ -13,19 +13,33 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.InstanceTypeResp;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -40,10 +54,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
-import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -62,9 +77,7 @@ public class InstanceTypeController extends AuthenticatedController {
     this.cloudAPIFactory = cloudAPIFactory;
   }
 
-  @Inject RuntimeConfigFactory runtimeConfigFactory;
-
-  @Inject ConfigHelper configHelper;
+  @Inject RuntimeConfGetter confGetter;
 
   /**
    * GET endpoint for listing instance types
@@ -83,19 +96,39 @@ public class InstanceTypeController extends AuthenticatedController {
           code = 500,
           message = "If there was a server or database issue when listing the instance types",
           response = YBPError.class))
-  public Result list(UUID customerUUID, UUID providerUUID, List<String> zoneCodes) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result list(
+      UUID customerUUID, UUID providerUUID, List<String> zoneCodes, @Nullable String arch) {
     Set<String> filterByZoneCodes = new HashSet<>(zoneCodes);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    if (arch == null && confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching)) {
+      // This will be the case of legacy flow, where we don't have architecture as top level
+      // universe property. We can retrieve the arch from the default Image bundle for the provider.
+      List<ImageBundle> defaultImageBundles = ImageBundle.getDefaultForProvider(providerUUID);
+      if (defaultImageBundles.size() > 0) {
+        arch = defaultImageBundles.get(0).getDetails().getArch().toString();
+      }
+    }
+    final String architecture = arch;
     Map<String, InstanceType> instanceTypesMap;
     instanceTypesMap =
         InstanceType.findByProvider(
                 provider,
-                config,
-                configHelper,
-                runtimeConfigFactory
-                    .forProvider(provider)
-                    .getBoolean("yb.internal.allow_unsupported_instances"))
+                confGetter,
+                confGetter.getConfForScope(provider, ProviderConfKeys.allowUnsupportedInstances))
             .stream()
+            .filter(
+                it -> {
+                  if (provider.getCloudCode() == CloudType.aws && architecture != null) {
+                    return it.getInstanceTypeDetails().arch == Architecture.valueOf(architecture);
+                  }
+                  return true;
+                })
             .collect(toMap(it -> it.getInstanceTypeCode(), identity()));
 
     return maybeFilterByZoneOfferings(filterByZoneCodes, provider, instanceTypesMap);
@@ -108,17 +141,16 @@ public class InstanceTypeController extends AuthenticatedController {
     if (filterByZoneCodes.isEmpty()) {
       LOG.debug("No zones specified. Skipping filtering by zone.");
     } else {
-      CloudAPI cloudAPI = cloudAPIFactory.get(provider.code);
+      CloudAPI cloudAPI = cloudAPIFactory.get(provider.getCode());
       if (cloudAPI != null) {
         try {
           LOG.debug(
               "Full list of instance types: {}. Filtering it based on offerings.",
               instanceTypesMap.keySet());
           Map<Region, Set<String>> azByRegionMap =
-              filterByZoneCodes
-                  .stream()
+              filterByZoneCodes.stream()
                   .map(code -> AvailabilityZone.getByCode(provider, code))
-                  .collect(groupingBy(az -> az.region, mapping(az -> az.code, toSet())));
+                  .collect(groupingBy(az -> az.getRegion(), mapping(az -> az.getCode(), toSet())));
 
           LOG.debug("AZs looked up from db {}", azByRegionMap);
 
@@ -129,9 +161,7 @@ public class InstanceTypeController extends AuthenticatedController {
           LOG.debug("Instance Type Offerings from cloud: {}.", offeringsByInstanceType);
 
           List<InstanceType> filteredInstanceTypes =
-              offeringsByInstanceType
-                  .entrySet()
-                  .stream()
+              offeringsByInstanceType.entrySet().stream()
                   .filter(kv -> kv.getValue().size() >= filterByZoneCodes.size())
                   .map(Map.Entry::getKey)
                   .map(instanceTypesMap::get)
@@ -147,11 +177,11 @@ public class InstanceTypeController extends AuthenticatedController {
               "There was an error {} talking to {} cloud API or filtering instance types "
                   + "based on per zone offerings for user selected zones: {}. We won't filter.",
               exception,
-              provider.code,
+              provider.getCode(),
               filterByZoneCodes);
         }
       } else {
-        LOG.info("No Cloud API defined for {}. Skipping filtering by zone.", provider.code);
+        LOG.info("No Cloud API defined for {}. Skipping filtering by zone.", provider.getCode());
       }
     }
     return PlatformResults.withData(convert(instanceTypesMap.values(), provider));
@@ -160,8 +190,8 @@ public class InstanceTypeController extends AuthenticatedController {
   private InstanceTypeResp convert(InstanceType it, Provider provider) {
     return new InstanceTypeResp()
         .setInstanceType(it)
-        .setProviderCode(provider.code)
-        .setProviderUuid(provider.uuid);
+        .setProviderCode(provider.getCode())
+        .setProviderUuid(provider.getUuid());
   }
 
   private List<InstanceTypeResp> convert(
@@ -187,24 +217,41 @@ public class InstanceTypeController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.InstanceType",
           required = true))
-  public Result create(UUID customerUUID, UUID providerUUID) {
-    Form<InstanceType> formData = formFactory.getFormDataOrBadRequest(InstanceType.class);
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
+    Form<InstanceType> formData = formFactory.getFormDataOrBadRequest(request, InstanceType.class);
 
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    if (provider.getCloudCode() == CloudType.aws
+        && confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching)) {
+      // Check in case the arch is specified for the instance.
+      InstanceTypeDetails instanceDetails = formData.get().getInstanceTypeDetails();
+      if (instanceDetails == null || instanceDetails.arch == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Please specify the architecture for the instance type %s",
+                formData.get().getInstanceTypeCode()));
+      }
+    }
     InstanceType it =
         InstanceType.upsert(
-            provider.uuid,
+            provider.getUuid(),
             formData.get().getInstanceTypeCode(),
-            formData.get().numCores,
-            formData.get().memSizeGB,
-            formData.get().instanceTypeDetails);
+            formData.get().getNumCores(),
+            formData.get().getMemSizeGB(),
+            formData.get().getInstanceTypeDetails());
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.CloudProvider,
             providerUUID.toString(),
-            Audit.ActionType.CreateInstanceType,
-            Json.toJson(formData.rawData()));
+            Audit.ActionType.CreateInstanceType);
     return PlatformResults.withData(convert(it, provider));
   }
 
@@ -220,18 +267,24 @@ public class InstanceTypeController extends AuthenticatedController {
       value = "Delete an instance type",
       response = YBPSuccess.class,
       nickname = "deleteInstanceType")
-  public Result delete(UUID customerUUID, UUID providerUUID, String instanceTypeCode) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result delete(
+      UUID customerUUID, UUID providerUUID, String instanceTypeCode, Http.Request request) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    InstanceType instanceType = InstanceType.getOrBadRequest(provider.uuid, instanceTypeCode);
+    InstanceType instanceType = InstanceType.getOrBadRequest(provider.getUuid(), instanceTypeCode);
     instanceType.setActive(false);
     instanceType.save();
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.CloudProvider,
             providerUUID.toString(),
-            Audit.ActionType.DeleteInstanceType,
-            request().body().asJson());
+            Audit.ActionType.DeleteInstanceType);
     return YBPSuccess.empty();
   }
 
@@ -247,13 +300,19 @@ public class InstanceTypeController extends AuthenticatedController {
       value = "Get details of an instance type",
       response = InstanceTypeResp.class,
       nickname = "instanceTypeDetail")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result index(UUID customerUUID, UUID providerUUID, String instanceTypeCode) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
 
-    InstanceType instanceType = InstanceType.getOrBadRequest(provider.uuid, instanceTypeCode);
+    InstanceType instanceType = InstanceType.getOrBadRequest(provider.getUuid(), instanceTypeCode);
     // Mount paths are not persisted for non-onprem clouds, but we know the default details.
-    if (!provider.code.equals(onprem.toString())) {
-      instanceType.instanceTypeDetails.setDefaultMountPaths();
+    if (!provider.getCode().equals(onprem.toString())) {
+      instanceType.getInstanceTypeDetails().setDefaultMountPaths();
     }
     return PlatformResults.withData(convert(instanceType, provider));
   }
@@ -267,6 +326,7 @@ public class InstanceTypeController extends AuthenticatedController {
       value = "List supported EBS volume types",
       response = StorageType.class,
       responseContainer = "List")
+  @AuthzPath
   public Result getEBSTypes() {
     return PlatformResults.withData(
         Arrays.stream(PublicCloudConstants.StorageType.values())
@@ -283,6 +343,7 @@ public class InstanceTypeController extends AuthenticatedController {
       value = "List supported GCP disk types",
       response = StorageType.class,
       responseContainer = "List")
+  @AuthzPath
   public Result getGCPTypes() {
 
     return PlatformResults.withData(
@@ -300,6 +361,7 @@ public class InstanceTypeController extends AuthenticatedController {
       value = "List supported Azure disk types",
       response = StorageType.class,
       responseContainer = "List")
+  @AuthzPath
   public Result getAZUTypes() {
     return PlatformResults.withData(
         Arrays.stream(PublicCloudConstants.StorageType.values())

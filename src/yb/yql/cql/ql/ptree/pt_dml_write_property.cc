@@ -28,7 +28,6 @@ namespace yb {
 namespace ql {
 
 using strings::Substitute;
-using client::YBColumnSchema;
 
 // These property names need to be lowercase, since identifiers are converted to lowercase by the
 // scanner phase and as a result if we're doing string matching everything should be lowercase.

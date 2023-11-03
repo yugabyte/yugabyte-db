@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import {
   BulkImportContainer,
@@ -65,7 +65,7 @@ export default class TableAction extends Component {
   }
 
   closeModal() {
-    this.setState((prevState, props) => {
+    this.setState(() => {
       return {
         showModal: false
       };

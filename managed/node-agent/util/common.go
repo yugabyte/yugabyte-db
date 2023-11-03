@@ -2,13 +2,21 @@ package util
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/url"
+	pb "node-agent/generated/service"
 	"os"
+	"os/user"
+	"reflect"
+	"strconv"
 	"sync"
 
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -18,6 +26,7 @@ const (
 	nodeAgentDir            = "/node-agent"
 	configDir               = "/config"
 	certsDir                = "/cert"
+	pexEnvDir               = "/pkg/devops/pex/pexEnv"
 	releaseDir              = "/release"
 	logsDir                 = "/logs"
 	DefaultShell            = "/bin/bash"
@@ -33,8 +42,9 @@ const (
 	NodeHomeDirectory       = "/home/yugabyte"
 	GetCustomersApiEndpoint = "/api/customers"
 	GetVersionEndpoint      = "/api/app_version"
-	UpgradeScript           = "yb-node-agent.sh"
-	InstallScript           = "node-agent-installer.sh"
+	UpgradeScript           = "node-agent-installer.sh"
+	RequestIdHeader         = "X-REQUEST-ID"
+
 	// Cert names.
 	NodeAgentCertFile = "node_agent.crt"
 	NodeAgentKeyFile  = "node_agent.key"
@@ -54,27 +64,50 @@ const (
 	PlatformCaCertPathKey     = "platform.ca_cert_path"
 
 	// Node config keys.
-	NodeIpKey           = "node.ip"
-	NodePortKey         = "node.port"
-	RequestTimeoutKey   = "node.request_timeout_sec"
-	NodeNameKey         = "node.name"
-	NodeAgentIdKey      = "node.agent.uuid"
-	NodeIdKey           = "node.uuid"
-	NodeInstanceTypeKey = "node.instance_type"
-	NodeAzIdKey         = "node.azid"
-	NodeRegionKey       = "node.region"
-	NodeZoneKey         = "node.zone"
-	NodeInstanceNameKey = "node.instance_name"
-	NodePingIntervalKey = "node.ping_interval_sec"
-	NodeLoggerKey       = "node.log"
+	NodeIpKey                  = "node.ip"
+	NodePortKey                = "node.port"
+	RequestTimeoutKey          = "node.request_timeout_sec"
+	NodeNameKey                = "node.name"
+	NodeAgentIdKey             = "node.agent.uuid"
+	NodeIdKey                  = "node.uuid"
+	NodeInstanceTypeKey        = "node.instance_type"
+	NodeAzIdKey                = "node.azid"
+	NodeRegionKey              = "node.region"
+	NodeZoneKey                = "node.zone"
+	NodeLoggerKey              = "node.log"
+	NodeAgentRestartKey        = "node.restart"
+	NodeAgentLogLevelKey       = "node.log_level"
+	NodeAgentLogMaxMbKey       = "node.log_max_mb"
+	NodeAgentLogMaxBackupsKey  = "node.log_max_backups"
+	NodeAgentLogMaxDaysKey     = "node.log_max_days"
+	NodeAgentDisableMetricsTLS = "node.disable_metrics_tls"
+)
+
+const (
+	CorrelationId ContextKey = "correlation-id"
 )
 
 var (
-	homeDirectory   *string
-	onceLoadHomeDir = &sync.Once{}
+	nodeAgentHome         string
+	onceLoadNodeAgentHome = &sync.Once{}
 )
 
+// ContextKey is the key type go context values.
+type ContextKey string
+
+// Handler is a generic handler func.
 type Handler func(context.Context) (any, error)
+
+// RPCResponseConverter is the converter for response in async executor.
+type RPCResponseConverter func(any) (*pb.DescribeTaskResponse, error)
+
+// UserDetail is a placeholder for OS user.
+type UserDetail struct {
+	User      *user.User
+	UserID    uint32
+	GroupID   uint32
+	IsCurrent bool
+}
 
 func NewUUID() uuid.UUID {
 	return uuid.New()
@@ -181,17 +214,14 @@ func PlatformValidateNodeInstanceEndpoint(cuuid string, azid string) string {
 
 // Returns the home directory.
 func MustGetHomeDirectory() string {
-	if homeDirectory == nil {
-		onceLoadHomeDir.Do(func() {
-			homeDirName, err := os.UserHomeDir()
-			if err != nil {
-				panic("Unable to fetch the Home Directory")
-			} else {
-				homeDirectory = &homeDirName
-			}
-		})
-	}
-	return *homeDirectory + nodeAgentDir
+	onceLoadNodeAgentHome.Do(func() {
+		userHome, err := os.UserHomeDir()
+		if err != nil {
+			panic(fmt.Sprintf("Unable to fetch the Home Directory - %s", err.Error()))
+		}
+		nodeAgentHome = userHome + nodeAgentDir
+	})
+	return nodeAgentHome
 }
 
 // Returns the Path to Preflight Checks script
@@ -212,6 +242,12 @@ func CertsDir() string {
 	return MustGetHomeDirectory() + certsDir
 }
 
+// PexEnvDir returns the pexEnv path
+func PexEnvDir() string {
+	return MustGetHomeDirectory() + pexEnvDir
+}
+
+// ReleaseDir returns the release dir path.
 func ReleaseDir() string {
 	return MustGetHomeDirectory() + releaseDir
 }
@@ -224,10 +260,6 @@ func LogsDir() string {
 // Returns path to the installer/upgrade script.
 func UpgradeScriptPath() string {
 	return MustGetHomeDirectory() + "/pkg/bin/" + UpgradeScript
-}
-
-func InstallScriptPath() string {
-	return MustGetHomeDirectory() + "/" + InstallScript
 }
 
 func VersionFile() string {
@@ -245,4 +277,89 @@ func IsDigits(str string) bool {
 		}
 	}
 	return true
+}
+
+// UserInfo returns the user, user ID and group ID for the user name.
+func UserInfo(username string) (*UserDetail, error) {
+	userAcc, err := user.Current()
+	if err != nil {
+		return nil, err
+	}
+	isCurrent := true
+	if username != "" && userAcc.Username != username {
+		userAcc, err = user.Lookup(username)
+		if err != nil {
+			return nil, err
+		}
+		isCurrent = false
+	}
+	uid, err := strconv.Atoi(userAcc.Uid)
+	if err != nil {
+		return nil, err
+	}
+	gid, err := strconv.Atoi(userAcc.Gid)
+	if err != nil {
+		return nil, err
+	}
+	return &UserDetail{
+		User: userAcc, UserID: uint32(uid), GroupID: uint32(gid), IsCurrent: isCurrent}, nil
+}
+
+// CorrelationID returns the correlation ID from the context.
+func CorrelationID(ctx context.Context) string {
+	if v := ctx.Value(CorrelationId); v != nil {
+		return v.(string)
+	}
+	return ""
+}
+
+// WithCorrelationID creates a child context with correlation ID.
+func WithCorrelationID(ctx context.Context, corrId string) context.Context {
+	return context.WithValue(ctx, CorrelationId, corrId)
+}
+
+// ConvertType converts a type from one to another.
+func ConvertType(from any, to any) error {
+	kind := reflect.TypeOf(to).Kind()
+	if kind != reflect.Pointer {
+		return fmt.Errorf("Target type (%v) is not a pointer", kind)
+	}
+	var b []byte
+	var err error
+	if msg, ok := from.(proto.Message); ok {
+		b, err = protojson.Marshal(msg)
+	} else {
+		b, err = json.Marshal(from)
+	}
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(b, to)
+}
+
+// ScanDir scans a directory and invokes the callback for every file/dir.
+func ScanDir(dir string, callback func(os.FileInfo) (bool, error)) error {
+	fInfos, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, fInfo := range fInfos {
+		isContinue, err := callback(fInfo)
+		if err != nil {
+			return err
+		}
+		if !isContinue {
+			break
+		}
+	}
+	return nil
+}
+
+// IsPexEnvAvailable returns true if pexEnv directory exists or there is no error.
+func IsPexEnvAvailable() bool {
+	fInfo, err := os.Stat(PexEnvDir())
+	if err != nil {
+		return false
+	}
+	return fInfo.IsDir()
 }

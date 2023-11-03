@@ -47,7 +47,6 @@
 #include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/statistics.h"
-#include "yb/rocksdb/util/xfunc.h"
 
 namespace rocksdb {
 
@@ -699,8 +698,6 @@ ReadOptions::ReadOptions()
       prefix_same_as_start(false),
       pin_data(false),
       query_id(rocksdb::kDefaultQueryId) {
-  XFUNC_TEST("", "managed_options", managed_options, xf_manage_options,
-             reinterpret_cast<ReadOptions*>(this));
 }
 
 ReadOptions::ReadOptions(bool cksum, bool cache)
@@ -715,8 +712,6 @@ ReadOptions::ReadOptions(bool cksum, bool cache)
       prefix_same_as_start(false),
       pin_data(false),
       query_id(rocksdb::kDefaultQueryId) {
-  XFUNC_TEST("", "managed_options", managed_options, xf_manage_options,
-             reinterpret_cast<ReadOptions*>(this));
 }
 
 std::atomic<int64_t> flush_tick_(1);

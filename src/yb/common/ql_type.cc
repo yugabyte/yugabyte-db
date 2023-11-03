@@ -13,135 +13,190 @@
 
 #include "yb/common/ql_type.h"
 
+#include <boost/preprocessor/seq/for_each.hpp>
+
 #include "yb/common/common.pb.h"
 #include "yb/common/types.h"
 
 #include "yb/gutil/macros.h"
 
 #include "yb/util/result.h"
+#include "yb/util/string_case.h"
 
 namespace yb {
 
-using std::shared_ptr;
+namespace {
+
+struct EmptyUDTypeInfo {};
+
+template<DataType type>
+struct Traits {
+  using UDTInfo = EmptyUDTypeInfo;
+};
+
+template<>
+struct Traits<DataType::USER_DEFINED_TYPE> {
+  using UDTInfo = UDTypeInfo;
+};
+
+constexpr int kMaxValidYCQLTypeIndex = to_underlying(DataType::JSONB) + 1;
+
+// Set of keywords in CQL.
+// Derived from .../cassandra/src/java/org/apache/cassandra/cql3/Cql.g
+static const std::unordered_set<std::string> cql_keywords({
+    "add", "allow", "alter", "and", "apply", "asc", "authorize", "batch", "begin", "by",
+    "columnfamily", "create", "default", "delete", "desc", "describe", "drop", "entries",
+    "execute", "from", "frozen", "full", "grant", "if", "in", "index", "infinity", "insert",
+    "into", "is", "keyspace", "limit", "list", "map", "materialized", "mbean", "mbeans",
+    "modify", "nan", "norecursive", "not", "null", "of", "on", "or", "order", "primary",
+    "rename", "replace", "revoke", "schema", "select", "set", "table", "to", "token",
+    "truncate", "unlogged", "unset", "update", "use", "using", "view", "where", "with"
+});
+
+} // namespace
+
+struct QLType::Internals {
+  template<DataType type, class... Args>
+  static SharedPtr Make(Args&&... args) {
+    auto holder = std::make_shared<TypeHolder<typename Traits<type>::UDTInfo>>(
+        type, std::forward<Args>(args)...);
+    auto* ql_type = &holder->type;
+    // holder object stores type as a member. Create shared_ptr<QLType> on this member.
+    return std::shared_ptr<QLType>(std::move(holder), ql_type);
+  }
+
+ private:
+  template<class UDTInfo>
+  struct TypeHolder : private UDTInfo {
+    template<class... Args>
+    TypeHolder(DataType id, Params&& params = Params(), Args&&... args)
+      : UDTInfo(std::forward<Args>(args)...),
+        type(id, std::move(params), GetUDTypeInfoPtr(this)) {}
+
+    QLType type;
+  };
+
+  static const UDTypeInfo* GetUDTypeInfoPtr(const EmptyUDTypeInfo*) {
+    static_assert(sizeof(TypeHolder<EmptyUDTypeInfo>) == sizeof(QLType));
+    return nullptr;
+  }
+
+  static const UDTypeInfo* GetUDTypeInfoPtr(const UDTypeInfo* info) {
+    return info;
+  }
+};
+
+namespace {
+
+static const QLType::SharedPtr kNullType;
+
+template<DataType type>
+const auto kDefaultType = QLType::Internals::Make<type>();
+
+} // namespace
 
 //--------------------------------------------------------------------------------------------------
 // The following functions are to construct QLType objects.
 
-shared_ptr<QLType> QLType::Create(
-    DataType data_type, const std::vector<shared_ptr<QLType>>& params) {
-  switch (data_type) {
+QLType::SharedPtr QLType::Create(DataType type, Params params) {
+  switch (type) {
     case DataType::LIST:
       DCHECK_EQ(params.size(), 1);
-      return CreateCollectionType<DataType::LIST>(params);
+      return Internals::Make<DataType::LIST>(std::move(params));
     case DataType::MAP:
       DCHECK_EQ(params.size(), 2);
-      return CreateCollectionType<DataType::MAP>(params);
+      return Internals::Make<DataType::MAP>(std::move(params));
     case DataType::SET:
       DCHECK_EQ(params.size(), 1);
-      return CreateCollectionType<DataType::SET>(params);
+      return Internals::Make<DataType::SET>(std::move(params));
     case DataType::FROZEN:
       DCHECK_EQ(params.size(), 1);
-      return CreateCollectionType<DataType::FROZEN>(params);
+      return Internals::Make<DataType::FROZEN>(std::move(params));
     case DataType::TUPLE:
-      return CreateCollectionType<DataType::TUPLE>(params);
+      return Internals::Make<DataType::TUPLE>(std::move(params));
     // User-defined types cannot be created like this
     case DataType::USER_DEFINED_TYPE:
       LOG(FATAL) << "Unsupported constructor for user-defined type";
-      return nullptr;
+      return kNullType;
     default:
-      DCHECK_EQ(params.size(), 0);
-      return Create(data_type);
+      break;
   }
+  DCHECK_EQ(params.size(), 0);
+  return Create(type);
 }
 
-shared_ptr<QLType> QLType::Create(DataType data_type) {
-  switch (data_type) {
-    case DataType::UNKNOWN_DATA:
-      return CreatePrimitiveType<DataType::UNKNOWN_DATA>();
-    case DataType::NULL_VALUE_TYPE:
-      return CreatePrimitiveType<DataType::NULL_VALUE_TYPE>();
-    case DataType::INT8:
-      return CreatePrimitiveType<DataType::INT8>();
-    case DataType::INT16:
-      return CreatePrimitiveType<DataType::INT16>();
-    case DataType::INT32:
-      return CreatePrimitiveType<DataType::INT32>();
-    case DataType::INT64:
-      return CreatePrimitiveType<DataType::INT64>();
-    case DataType::STRING:
-      return CreatePrimitiveType<DataType::STRING>();
-    case DataType::BOOL:
-      return CreatePrimitiveType<DataType::BOOL>();
-    case DataType::FLOAT:
-      return CreatePrimitiveType<DataType::FLOAT>();
-    case DataType::DOUBLE:
-      return CreatePrimitiveType<DataType::DOUBLE>();
-    case DataType::BINARY:
-      return CreatePrimitiveType<DataType::BINARY>();
-    case DataType::TIMESTAMP:
-      return CreatePrimitiveType<DataType::TIMESTAMP>();
-    case DataType::DECIMAL:
-      return CreatePrimitiveType<DataType::DECIMAL>();
-    case DataType::VARINT:
-      return CreatePrimitiveType<DataType::VARINT>();
-    case DataType::INET:
-      return CreatePrimitiveType<DataType::INET>();
-    case DataType::JSONB:
-      return CreatePrimitiveType<DataType::JSONB>();
-    case DataType::UUID:
-      return CreatePrimitiveType<DataType::UUID>();
-    case DataType::TIMEUUID:
-      return CreatePrimitiveType<DataType::TIMEUUID>();
-    case DataType::DATE:
-      return CreatePrimitiveType<DataType::DATE>();
-    case DataType::TIME:
-      return CreatePrimitiveType<DataType::TIME>();
+QLType::SharedPtr QLType::Create(DataType type) {
+  switch (type) {
+    case DataType::UNKNOWN_DATA:    return kDefaultType<DataType::UNKNOWN_DATA>;
+    case DataType::NULL_VALUE_TYPE: return kDefaultType<DataType::NULL_VALUE_TYPE>;
+    case DataType::INT8:            return kDefaultType<DataType::INT8>;
+    case DataType::INT16:           return kDefaultType<DataType::INT16>;
+    case DataType::INT32:           return kDefaultType<DataType::INT32>;
+    case DataType::INT64:           return kDefaultType<DataType::INT64>;
+    case DataType::STRING:          return kDefaultType<DataType::STRING>;
+    case DataType::BOOL:            return kDefaultType<DataType::BOOL>;
+    case DataType::FLOAT:           return kDefaultType<DataType::FLOAT>;
+    case DataType::DOUBLE:          return kDefaultType<DataType::DOUBLE>;
+    case DataType::BINARY:          return kDefaultType<DataType::BINARY>;
+    case DataType::TIMESTAMP:       return kDefaultType<DataType::TIMESTAMP>;
+    case DataType::DECIMAL:         return kDefaultType<DataType::DECIMAL>;
+    case DataType::VARINT:          return kDefaultType<DataType::VARINT>;
+    case DataType::INET:            return kDefaultType<DataType::INET>;
+    case DataType::JSONB:           return kDefaultType<DataType::JSONB>;
+    case DataType::UUID:            return kDefaultType<DataType::UUID>;
+    case DataType::TIMEUUID:        return kDefaultType<DataType::TIMEUUID>;
+    case DataType::DATE:            return kDefaultType<DataType::DATE>;
+    case DataType::TIME:            return kDefaultType<DataType::TIME>;
 
     // Create empty parametric types and raise error during semantic check.
-    case DataType::LIST:
-      return CreateTypeList();
-    case DataType::MAP:
-      return CreateTypeMap();
-    case DataType::SET:
-      return CreateTypeSet();
+    case DataType::LIST: {
+      static const auto default_list = CreateTypeList(DataType::UNKNOWN_DATA);
+      return default_list;
+    }
+    case DataType::MAP: {
+      static const auto default_map = CreateTypeMap(DataType::UNKNOWN_DATA, DataType::UNKNOWN_DATA);
+      return default_map;
+    }
+    case DataType::SET: {
+      static const auto default_set = CreateTypeSet(DataType::UNKNOWN_DATA);
+      return default_set;
+    }
     case DataType::TUPLE:
-      return CreateCollectionType<DataType::TUPLE>({});
-    case DataType::FROZEN:
-      return CreateTypeFrozen();
+      // Unfortunately tuple type allows params modification.
+      // As a result static object can't be used.
+      return Create(DataType::TUPLE, {});
+    case DataType::FROZEN: {
+      static const auto default_frozen = CreateTypeFrozen(QLType::Create(DataType::UNKNOWN_DATA));
+      return default_frozen;
+    }
 
     // Kudu datatypes.
-    case UINT8:
-      return CreatePrimitiveType<DataType::UINT8>();
-    case UINT16:
-      return CreatePrimitiveType<DataType::UINT16>();
-    case UINT32:
-      return CreatePrimitiveType<DataType::UINT32>();
-    case UINT64:
-      return CreatePrimitiveType<DataType::UINT64>();
+    case DataType::UINT8:  return kDefaultType<DataType::UINT8>;
+    case DataType::UINT16: return kDefaultType<DataType::UINT16>;
+    case DataType::UINT32: return kDefaultType<DataType::UINT32>;
+    case DataType::UINT64: return kDefaultType<DataType::UINT64>;
 
     // Datatype for variadic builtin function.
-    case TYPEARGS:
-      return CreatePrimitiveType<DataType::TYPEARGS>();
+    case DataType::TYPEARGS: return kDefaultType<DataType::TYPEARGS>;
 
     // User-defined types cannot be created like this
     case DataType::USER_DEFINED_TYPE:
       LOG(FATAL) << "Unsupported constructor for user-defined type";
-      return nullptr;
+      return kNullType;
 
-    case DataType::GIN_NULL:
-      return CreatePrimitiveType<DataType::GIN_NULL>();
+    case DataType::GIN_NULL: return kDefaultType<DataType::GIN_NULL>;
   }
-  LOG(FATAL) << "Not supported datatype " << ToCQLString(data_type);
-  return nullptr;
+  LOG(FATAL) << "Not supported datatype " << ToCQLString(type);
+  return kNullType;
 }
 
 bool QLType::IsValidPrimaryType(DataType type) {
   switch (type) {
-    case DataType::MAP: FALLTHROUGH_INTENDED;
-    case DataType::SET: FALLTHROUGH_INTENDED;
-    case DataType::LIST: FALLTHROUGH_INTENDED;
-    case DataType::TUPLE: FALLTHROUGH_INTENDED;
-    case DataType::JSONB: FALLTHROUGH_INTENDED;
+    case DataType::MAP:   [[fallthrough]];
+    case DataType::SET:   [[fallthrough]];
+    case DataType::LIST:  [[fallthrough]];
+    case DataType::TUPLE: [[fallthrough]];
+    case DataType::JSONB: [[fallthrough]];
     case DataType::USER_DEFINED_TYPE:
       return false;
 
@@ -152,45 +207,51 @@ bool QLType::IsValidPrimaryType(DataType type) {
   }
 }
 
-shared_ptr<QLType> QLType::CreateTypeMap(std::shared_ptr<QLType> key_type,
-                                           std::shared_ptr<QLType> value_type) {
-  std::vector<shared_ptr<QLType>> params = {key_type, value_type};
-  return CreateCollectionType<DataType::MAP>(params);
+QLType::SharedPtr QLType::CreateTypeMap(SharedPtr key_type, SharedPtr value_type) {
+  return Create(DataType::MAP, {std::move(key_type), std::move(value_type)});
 }
 
-std::shared_ptr<QLType>  QLType::CreateTypeMap(DataType key_type, DataType value_type) {
-  return CreateTypeMap(QLType::Create(key_type), QLType::Create(value_type));
+QLType::SharedPtr QLType::CreateTypeMap(DataType key_type, DataType value_type) {
+  return CreateTypeMap(Create(key_type), Create(value_type));
 }
 
-shared_ptr<QLType> QLType::CreateTypeList(std::shared_ptr<QLType> value_type) {
-  std::vector<shared_ptr<QLType>> params(1, value_type);
-  return CreateCollectionType<DataType::LIST>(params);
+QLType::SharedPtr QLType::CreateTypeList(SharedPtr value_type) {
+  return Create(DataType::LIST, {std::move(value_type)});
 }
 
-std::shared_ptr<QLType>  QLType::CreateTypeList(DataType value_type) {
-  return CreateTypeList(QLType::Create(value_type));
+QLType::SharedPtr QLType::CreateTypeList(DataType value_type) {
+  return CreateTypeList(Create(value_type));
 }
 
-shared_ptr<QLType> QLType::CreateTypeSet(std::shared_ptr<QLType> value_type) {
-  std::vector<shared_ptr<QLType>> params(1, value_type);
-  return CreateCollectionType<DataType::SET>(params);
+QLType::SharedPtr QLType::CreateTypeSet(SharedPtr value_type) {
+  return Create(DataType::SET, {std::move(value_type)});
 }
 
-std::shared_ptr<QLType>  QLType::CreateTypeSet(DataType value_type) {
-  return CreateTypeSet(QLType::Create(value_type));
+QLType::SharedPtr QLType::CreateTypeSet(DataType value_type) {
+  return CreateTypeSet(Create(value_type));
 }
 
-shared_ptr<QLType> QLType::CreateTypeFrozen(shared_ptr<QLType> value_type) {
-  std::vector<shared_ptr<QLType>> params(1, value_type);
-  return CreateCollectionType<DataType::FROZEN>(params);
+QLType::SharedPtr QLType::CreateTypeFrozen(SharedPtr value_type) {
+  return Create(DataType::FROZEN, {std::move(value_type)});
+}
+
+QLType::SharedPtr QLType::CreateUDType(
+    std::string keyspace_name,
+    std::string type_name,
+    std::string type_id,
+    std::vector<std::string> field_names,
+    Params field_types) {
+  return Internals::Make<DataType::USER_DEFINED_TYPE>(
+      std::move(field_types), std::move(keyspace_name), std::move(type_name),
+      std::move(type_id), std::move(field_names));
 }
 
 //--------------------------------------------------------------------------------------------------
 // ToPB and FromPB.
 
-void QLType::ToQLTypePB(QLTypePB *pb_type) const {
-  pb_type->set_main(id_);
-  for (auto &param : params_) {
+void QLType::ToQLTypePB(QLTypePB* pb_type) const {
+  pb_type->set_main(ToPB(id_));
+  for (const auto& param : params_) {
     param->ToQLTypePB(pb_type->add_params());
   }
 
@@ -206,68 +267,61 @@ void QLType::ToQLTypePB(QLTypePB *pb_type) const {
   }
 }
 
-shared_ptr<QLType> QLType::FromQLTypePB(const QLTypePB& pb_type) {
-  if (pb_type.main() == USER_DEFINED_TYPE) {
-    auto ql_type = std::make_shared<QLType>(pb_type.udtype_info().keyspace_name(),
-                                              pb_type.udtype_info().name());
+QLType::SharedPtr QLType::FromQLTypePB(const QLTypePB& pb_type) {
+  Params params;
+  params.reserve(pb_type.params().size());
+  for (const auto& param : pb_type.params()) {
+    params.push_back(FromQLTypePB(param));
+  }
+
+  if (pb_type.main() == PersistentDataType::USER_DEFINED_TYPE) {
+    const auto& udt = pb_type.udtype_info();
     std::vector<std::string> field_names;
-    for (const auto& field_name : pb_type.udtype_info().field_names()) {
+    field_names.reserve(udt.field_names().size());
+    for (const auto& field_name : udt.field_names()) {
       field_names.push_back(field_name);
     }
 
-    std::vector<shared_ptr<QLType>> field_types;
-    for (const auto& field_type : pb_type.params()) {
-      field_types.push_back(QLType::FromQLTypePB(field_type));
-    }
-
-    ql_type->SetUDTypeFields(pb_type.udtype_info().id(), field_names, field_types);
-    return ql_type;
+    return CreateUDType(
+        udt.keyspace_name(), udt.name(), udt.id(), std::move(field_names), std::move(params));
   }
 
-  if (pb_type.params().empty()) {
-    return Create(pb_type.main());
-  }
-
-  std::vector<shared_ptr<QLType>> params;
-  for (auto &param : pb_type.params()) {
-    params.push_back(FromQLTypePB(param));
-  }
-  return Create(pb_type.main(), params);
+  return params.empty() ? Create(ToLW(pb_type.main()))
+                        : Create(ToLW(pb_type.main()), std::move(params));
 }
 
-std::shared_ptr<QLType> QLType::keys_type() const {
+const QLType::SharedPtr& QLType::keys_type() const {
   switch (id_) {
-    case MAP:
+    case DataType::MAP:
       return params_[0];
-    case LIST:
-      return QLType::Create(INT32);
-    case SET:
+    case DataType::LIST:
+      return kDefaultType<DataType::INT32>;
+    case DataType::SET:
       // set has no keys, only values
-      return nullptr;
-    case TUPLE:
-      // https://github.com/YugaByte/yugabyte-db/issues/936
-      LOG(FATAL) << "Tuple type not implemented yet";
+      return kNullType;
+    case DataType::TUPLE:
+      LOG(FATAL) << "The term 'key' is not applicable to the Tuple type";
 
     default:
       // elementary types have no keys or values
-      return nullptr;
+      return kNullType;
   }
 }
 
-std::shared_ptr<QLType> QLType::values_type() const {
+const QLType::SharedPtr& QLType::values_type() const {
   switch (id_) {
-    case MAP:
+    case DataType::MAP:
       return params_[1];
-    case LIST:
+    case DataType::LIST:
       return params_[0];
-    case SET:
+    case DataType::SET:
       return params_[0];
-    case TUPLE:
-      LOG(FATAL) << "Tuple type not implemented yet";
+    case DataType::TUPLE:
+      LOG(FATAL) << "The term 'value' is not applicable to the Tuple type";
 
     default:
       // other types have no keys or values
-      return nullptr;
+      return kNullType;
   }
 }
 
@@ -278,43 +332,52 @@ const QLType::SharedPtr& QLType::param_type(size_t member_index) const {
 
 //--------------------------------------------------------------------------------------------------
 // Logging routines.
-const std::string QLType::ToCQLString(const DataType& datatype) {
-  switch (datatype) {
-    case DataType::UNKNOWN_DATA: return "unknown";
-    case DataType::NULL_VALUE_TYPE: return "anytype";
-    case DataType::INT8: return "tinyint";
-    case DataType::INT16: return "smallint";
-    case DataType::INT32: return "int";
-    case DataType::INT64: return "bigint";
-    case DataType::STRING: return "text";
-    case DataType::BOOL: return "boolean";
-    case DataType::FLOAT: return "float";
-    case DataType::DOUBLE: return "double";
-    case DataType::BINARY: return "blob";
-    case DataType::TIMESTAMP: return "timestamp";
-    case DataType::DECIMAL: return "decimal";
-    case DataType::VARINT: return "varint";
-    case DataType::INET: return "inet";
-    case DataType::JSONB: return "jsonb";
-    case DataType::LIST: return "list";
-    case DataType::MAP: return "map";
-    case DataType::SET: return "set";
-    case DataType::UUID: return "uuid";
-    case DataType::TIMEUUID: return "timeuuid";
-    case DataType::TUPLE: return "tuple";
-    case DataType::TYPEARGS: return "typeargs";
-    case DataType::FROZEN: return "frozen";
-    case DataType::USER_DEFINED_TYPE: return "user_defined_type";
-    case DataType::DATE: return "date";
-    case DataType::TIME: return "time";
-    case DataType::UINT8: return "uint8";
-    case DataType::UINT16: return "uint16";
-    case DataType::UINT32: return "uint32";
-    case DataType::UINT64: return "uint64";
-    case DataType::GIN_NULL: return "gin_null";
+const std::string& QLType::ToCQLString(DataType type) {
+#define DATA_TYPE_SWITCH_CASE_IMPL(type, name) \
+    case type: { static const std::string name_str(name); return name_str; }
+#define DATA_TYPE_SWITCH_CASE(r, data, item) DATA_TYPE_SWITCH_CASE_IMPL item;
+#define DATA_TYPE_ENUM_ELEMENTS \
+    ((DataType::UNKNOWN_DATA, "unknown")) \
+    ((DataType::NULL_VALUE_TYPE, "anytype")) \
+    ((DataType::INT8, "tinyint")) \
+    ((DataType::INT16, "smallint")) \
+    ((DataType::INT32, "int")) \
+    ((DataType::INT64, "bigint")) \
+    ((DataType::STRING, "text")) \
+    ((DataType::BOOL, "boolean")) \
+    ((DataType::FLOAT, "float")) \
+    ((DataType::DOUBLE, "double")) \
+    ((DataType::BINARY, "blob")) \
+    ((DataType::TIMESTAMP, "timestamp")) \
+    ((DataType::DECIMAL, "decimal")) \
+    ((DataType::VARINT, "varint")) \
+    ((DataType::INET, "inet")) \
+    ((DataType::JSONB, "jsonb")) \
+    ((DataType::LIST, "list")) \
+    ((DataType::MAP, "map")) \
+    ((DataType::SET, "set")) \
+    ((DataType::UUID, "uuid")) \
+    ((DataType::TIMEUUID, "timeuuid")) \
+    ((DataType::TUPLE, "tuple")) \
+    ((DataType::TYPEARGS, "typeargs")) \
+    ((DataType::FROZEN, "frozen")) \
+    ((DataType::USER_DEFINED_TYPE, "user_defined_type")) \
+    ((DataType::DATE, "date")) \
+    ((DataType::TIME, "time")) \
+    ((DataType::UINT8, "uint8")) \
+    ((DataType::UINT16, "uint16")) \
+    ((DataType::UINT32, "uint32")) \
+    ((DataType::UINT64, "uint64")) \
+    ((DataType::GIN_NULL, "gin_null"))
+  switch (type) {
+    BOOST_PP_SEQ_FOR_EACH(DATA_TYPE_SWITCH_CASE, ~, DATA_TYPE_ENUM_ELEMENTS)
   }
-  LOG(FATAL) << "Invalid datatype: " << datatype;
-  return "Undefined Type";
+#undef DATA_TYPE_SWITCH_CASE_IMPL
+#undef DATA_TYPE_SWITCH_CASE
+#undef DATA_TYPE_ENUM_ELEMENTS
+  LOG(FATAL) << "Invalid datatype: " << type;
+  static const std::string undefined_type_name("Undefined Type");
+  return undefined_type_name;
 }
 
 std::string QLType::ToString() const {
@@ -326,7 +389,14 @@ std::string QLType::ToString() const {
 void QLType::ToString(std::stringstream& os) const {
   if (IsUserDefined()) {
     // UDTs can only be used in the keyspace they are defined in, so keyspace name is implied.
-    os << udtype_name();
+    const std::string udt_name = udtype_name();
+    // Identifiers in cassandra/ycql are case-insensitive unless specified under double quotes.
+    // See: https://docs.datastax.com/en/cql-oss/3.x/cql/cql_reference/ucase-lcase_r.html
+    if (cql_keywords.contains(ToLowerCase(udt_name))) {
+      os << "\"" <<  udt_name << "\"";
+    } else {
+      os << udt_name;
+    }
   } else {
     os << ToCQLString(id_);
     if (!params_.empty()) {
@@ -343,7 +413,7 @@ void QLType::ToString(std::stringstream& os) const {
 }
 
 bool QLType::DoesUserDefinedTypeIdExist(const QLTypePB& type_pb,
-                                        const bool transitive,
+                                        bool transitive,
                                         const std::string& udt_id) {
   if (type_pb.main() == USER_DEFINED_TYPE) {
     if (type_pb.udtype_info().id() == udt_id) {
@@ -364,7 +434,7 @@ bool QLType::DoesUserDefinedTypeIdExist(const QLTypePB& type_pb,
 
 // Get the type ids of all UDTs referenced by this UDT.
 void QLType::GetUserDefinedTypeIds(const QLTypePB& type_pb,
-                                   const bool transitive,
+                                   bool transitive,
                                    std::vector<std::string>* udt_ids) {
   if (type_pb.main() == USER_DEFINED_TYPE) {
     udt_ids->push_back(type_pb.udtype_info().id());
@@ -391,11 +461,10 @@ const TypeInfo* QLType::type_info() const {
   return GetTypeInfo(id_);
 }
 
-bool QLType::IsImplicitlyConvertible(const std::shared_ptr<QLType>& lhs_type,
-                                            const std::shared_ptr<QLType>& rhs_type) {
+bool QLType::IsImplicitlyConvertible(const SharedPtr& lhs_type, const SharedPtr& rhs_type) {
   switch (QLType::GetConversionMode(lhs_type->main(), rhs_type->main())) {
-    case QLType::ConversionMode::kIdentical: FALLTHROUGH_INTENDED;
-    case QLType::ConversionMode::kSimilar: FALLTHROUGH_INTENDED;
+    case QLType::ConversionMode::kIdentical: [[fallthrough]];
+    case QLType::ConversionMode::kSimilar: [[fallthrough]];
     case QLType::ConversionMode::kImplicit:
       return true;
 
@@ -411,7 +480,7 @@ bool QLType::IsImplicitlyConvertible(const std::shared_ptr<QLType>& lhs_type,
       }
       return true;
 
-    case QLType::ConversionMode::kExplicit: FALLTHROUGH_INTENDED;
+    case QLType::ConversionMode::kExplicit: [[fallthrough]];
     case QLType::ConversionMode::kNotAllowed:
       return false;
   }
@@ -421,7 +490,10 @@ bool QLType::IsImplicitlyConvertible(const std::shared_ptr<QLType>& lhs_type,
 }
 
 QLType::ConversionMode QLType::GetConversionMode(DataType left, DataType right) {
-  DCHECK(IsValid(left) && IsValid(right)) << left << ", " << right;
+  const size_t left_index = to_underlying(left);
+  const size_t right_index = to_underlying(right);
+  DCHECK_LT(left_index, kMaxValidYCQLTypeIndex);
+  DCHECK_LT(right_index, kMaxValidYCQLTypeIndex);
 
   static const ConversionMode kID = ConversionMode::kIdentical;
   static const ConversionMode kSI = ConversionMode::kSimilar;
@@ -429,7 +501,7 @@ QLType::ConversionMode QLType::GetConversionMode(DataType left, DataType right) 
   static const ConversionMode kFC = ConversionMode::kFurtherCheck;
   static const ConversionMode kEX = ConversionMode::kExplicit;
   static const ConversionMode kNA = ConversionMode::kNotAllowed;
-  static const ConversionMode kConversionMode[kMaxTypeIndex][kMaxTypeIndex] = {
+  static const ConversionMode kConversionMode[kMaxValidYCQLTypeIndex][kMaxValidYCQLTypeIndex] = {
       // LHS :=  RHS (source)
       //         nul | i8  | i16 | i32 | i64 | str | bln | flt | dbl | bin | tst | dec | vit | ine | lst | map | set | uid | tui | tup | arg | udt | frz | dat | tim | jso    // NOLINT
       /* nul */{ kID,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM }, // NOLINT
@@ -459,15 +531,19 @@ QLType::ConversionMode QLType::GetConversionMode(DataType left, DataType right) 
       /* tim */{ kIM,  kNA,  kNA,  kNA,  kIM,  kIM,  kNA,  kNA,  kNA,  kNA,  kIM,  kNA,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kID,  kNA }, // NOLINT
       /* jso */{ kNA,  kNA,  kNA,  kNA,  kNA,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kID }, // NOLINT
   };
-  return kConversionMode[left][right];
+
+  return kConversionMode[left_index][right_index];
 }
 
 bool QLType::IsComparable(DataType left, DataType right) {
-  DCHECK(IsValid(left) && IsValid(right)) << left << ", " << right;
+  const size_t left_index = to_underlying(left);
+  const size_t right_index = to_underlying(right);
+  DCHECK_LT(left_index, kMaxValidYCQLTypeIndex);
+  DCHECK_LT(right_index, kMaxValidYCQLTypeIndex);
 
   static const bool kYS = true;
   static const bool kNO = false;
-  static const bool kCompareMode[kMaxTypeIndex][kMaxTypeIndex] = {
+  static const bool kCompareMode[kMaxValidYCQLTypeIndex][kMaxValidYCQLTypeIndex] = {
       // LHS ==  RHS (source)
       //         nul | i8  | i16 | i32 | i64 | str | bln | flt | dbl | bin | tst | dec | vit | ine | lst | map | set | uid | tui | tup | arg | udt | frz | dat | tim | jso    // NOLINT
       /* nul */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO }, // NOLINT
@@ -497,7 +573,8 @@ bool QLType::IsComparable(DataType left, DataType right) {
       /* tim */{ kNO,  kNO,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kYS,  kNO }, // NOLINT
       /* jso */{ kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS }, // NOLINT
   };
-  return kCompareMode[left][right];
+
+  return kCompareMode[left_index][right_index];
 }
 
 bool QLType::IsPotentiallyConvertible(DataType left, DataType right) {
@@ -508,7 +585,7 @@ bool QLType::IsSimilar(DataType left, DataType right) {
   return GetConversionMode(left, right) <= ConversionMode::kSimilar;
 }
 
-boost::optional<size_t> QLType::GetUDTypeFieldIdxByName(const std::string &field_name) const {
+boost::optional<size_t> QLType::GetUDTypeFieldIdxByName(const std::string& field_name) const {
   const auto& field_names = udtype_field_names();
   for (size_t i = 0; i != field_names.size(); ++i) {
     if (field_names[i] == field_name) {

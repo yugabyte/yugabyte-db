@@ -81,5 +81,23 @@ Status CheckIfNoLongerLeaderAndSetupError(const Status& s, RespClass* resp) {
   return s;
 }
 
+inline Status CheckStatus(const Status& status, const char* action) {
+  if (status.ok()) {
+    return status;
+  }
+
+  const Status s = status.CloneAndPrepend(std::string("An error occurred while ") + action);
+  LOG(WARNING) << s;
+  return s;
+}
+
+inline Status CheckLeaderStatus(const Status& status, const char* action) {
+  return CheckIfNoLongerLeader(CheckStatus(status, action));
+}
+
+template <class RespClass>
+Status CheckLeaderStatusAndSetupError(const Status& status, const char* action, RespClass* resp) {
+  return CheckIfNoLongerLeaderAndSetupError(CheckStatus(status, action), resp);
+}
 }  // namespace master
 }  // namespace yb

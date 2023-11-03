@@ -2,56 +2,66 @@
 
 package com.yugabyte.yw.common.alerts.impl;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.WSClientRefresher;
 import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertTemplateVariable;
 import com.yugabyte.yw.models.Customer;
-import java.io.IOException;
+import java.util.List;
+import javax.inject.Inject;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
+import org.apache.http.HttpStatus;
+import play.libs.ws.WSResponse;
 
 @Slf4j
 @Singleton
-public class AlertChannelSlack extends AlertChannelBase {
+public class AlertChannelSlack extends AlertChannelWebBase {
+
+  public static final String SLACK_WS_KEY = "yb.alert.slack.ws";
+
+  @Inject
+  public AlertChannelSlack(
+      WSClientRefresher wsClientRefresher,
+      AlertTemplateVariableService alertTemplateVariableService) {
+    super(wsClientRefresher, alertTemplateVariableService);
+  }
 
   @Override
-  public void sendNotification(Customer customer, Alert alert, AlertChannel channel)
+  public void sendNotification(
+      Customer customer,
+      Alert alert,
+      AlertChannel channel,
+      AlertChannelTemplatesExt channelTemplates)
       throws PlatformNotificationException {
     log.trace("sendNotification {}", alert);
     AlertChannelSlackParams params = (AlertChannelSlackParams) channel.getParams();
-    String text = getNotificationText(alert, channel);
+    List<AlertTemplateVariable> variables = alertTemplateVariableService.list(customer.getUuid());
+    Context context = new Context(channel, channelTemplates, variables);
+    String text = getNotificationText(alert, context, false);
 
     SlackMessage message = new SlackMessage();
     message.username = params.getUsername();
     message.icon_url = params.getIconUrl();
     message.text = text;
 
-    HttpPost httpPost = new HttpPost(params.getWebhookUrl());
-    try (CloseableHttpClient client = HttpClients.createDefault()) {
-      ObjectMapper objectMapper = new ObjectMapper();
-      String json = objectMapper.writeValueAsString(message);
+    try {
+      WSResponse response = sendRequest(SLACK_WS_KEY, params.getWebhookUrl(), message);
 
-      httpPost.setEntity(new StringEntity(json));
-      httpPost.setHeader("Accept", "application/json");
-      httpPost.setHeader("Content-type", "application/json");
-
-      HttpResponse response = client.execute(httpPost);
-
-      if (response.getStatusLine().getStatusCode() != 200) {
+      if (response.getStatus() != HttpStatus.SC_OK) {
         throw new PlatformNotificationException(
             String.format(
-                "Error sending Slack message for alert %s: error response %s received",
-                alert.getName(), response.getStatusLine().getStatusCode()));
+                "Error sending Slack message for alert %s: error response %s received with body %s",
+                alert.getName(), response.getStatus(), response.getBody()));
       }
-    } catch (IOException e) {
+    } catch (PlatformNotificationException pne) {
+      throw pne;
+    } catch (Exception e) {
       throw new PlatformNotificationException(
           String.format(
               "Error sending Slack message for alert %s: %s", alert.getName(), e.getMessage()),

@@ -126,9 +126,6 @@ Result<rpc::ProcessCallsResult> RedisConnectionContext::ProcessCalls(
 Status RedisConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& connection,
                                                  size_t commands_in_batch,
                                                  rpc::CallData* data) {
-  auto reactor = connection->reactor();
-  DCHECK(reactor->IsCurrentThread());
-
   auto call = rpc::InboundCall::Create<RedisInboundCall>(connection, data->size(), this);
 
   Status s = call->ParseFrom(call_mem_tracker_, commands_in_batch, data);
@@ -200,17 +197,15 @@ RedisInboundCall::RedisInboundCall(rpc::ConnectionPtr conn,
     : QueueableInboundCall(std::move(conn), weight_in_bytes, call_processed_listener) {}
 
 RedisInboundCall::~RedisInboundCall() {
-  Status status;
+  Status status =
+      STATUS(ServiceUnavailable, "Shutdown connection", "" /* msg2 */, Errno(ESHUTDOWN));
   if (quit_.load(std::memory_order_acquire)) {
     rpc::ConnectionPtr conn = connection();
     rpc::Reactor* reactor = conn->reactor();
-    auto scheduled = reactor->ScheduleReactorTask(
-        MakeFunctorReactorTask(std::bind(&rpc::Reactor::DestroyConnection,
-                                         reactor,
-                                         conn.get(),
-                                         status),
-                               conn, SOURCE_LOCATION()));
-    LOG_IF(WARNING, !scheduled) << "Failed to schedule destroy";
+    auto scheduling_status = reactor->ScheduleReactorTask(MakeFunctorReactorTask(
+        std::bind(&rpc::Reactor::DestroyConnection, reactor, conn.get(), status), conn,
+        SOURCE_LOCATION()));
+    LOG_IF(DFATAL, !scheduling_status.ok()) << "Failed to schedule destroy";
   }
 }
 
@@ -221,7 +216,6 @@ Status RedisInboundCall::ParseFrom(
 
   consumption_ = ScopedTrackedConsumption(mem_tracker, data->size());
 
-  request_data_memory_usage_.store(data->size(), std::memory_order_release);
   request_data_ = std::move(*data);
   serialized_request_ = Slice(request_data_.data(), request_data_.size());
 
@@ -288,6 +282,7 @@ void RedisInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now();
   auto total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
 
+  auto trace_ = trace();
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces
           || (trace_ && trace_->must_print())
           || total_time > FLAGS_rpc_slow_query_threshold_ms)) {
@@ -307,6 +302,7 @@ string RedisInboundCall::ToString() const {
 
 bool RedisInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
                               rpc::RpcCallInProgressPB* resp) {
+  auto trace_ = trace();
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
   }

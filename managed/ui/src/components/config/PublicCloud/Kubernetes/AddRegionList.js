@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import {
   YBFormSelect,
@@ -53,7 +53,6 @@ class AddRegionList extends Component {
           storageClasses: '',
           namespace: '',
           kubeDomain: '',
-          zoneKubeConfig: formik.values.kubeConfig,
           zoneOverrides: '',
           zonePodAddressTemplate: '',
           issuerType: 'NONE'
@@ -110,13 +109,14 @@ class AddRegionList extends Component {
   };
 
   zoneConfigFormatter = (cell, row) => {
-    if (row.zoneKubeConfig && row.zoneKubeConfig.name) {
+    if (row.zoneKubeConfig?.name) {
       return row.zoneKubeConfig.name;
     } else {
       return null;
     }
   };
 
+  // eslint-disable-next-line react/display-name
   actionFormatter = (zoneArrayHelpers) => (cell, row, formatExtraData, rowIdx) => {
     const { showZoneForm, regionIndex } = this.state;
     const vals = zoneArrayHelpers.form.values;
@@ -138,7 +138,6 @@ class AddRegionList extends Component {
                 storageClasses: '',
                 namespace: '',
                 kubeDomain: '',
-                zoneKubeConfig: vals.kubeConfig,
                 zoneOverrides: '',
                 zonePodAddressTemplate: '',
                 issuerType: 'NONE'
@@ -156,13 +155,11 @@ class AddRegionList extends Component {
   };
 
   addZone = (arrayPush) => {
-    const { formik } = this.props;
     arrayPush({
       zoneLabel: '',
       storageClasses: '',
       namespace: '',
       kubeDomain: '',
-      zoneKubeConfig: formik.values.kubeConfig,
       zoneOverrides: '',
       zonePodAddressTemplate: '',
       issuerType: 'NONE'
@@ -179,10 +176,10 @@ class AddRegionList extends Component {
     const { regionIndex, showZoneForm } = this.state;
     const { regionList } = formik.values;
     const currentRegion = regionList[regionIndex];
-    const zoneIndex =
-      currentRegion && currentRegion.zoneList.length ? currentRegion.zoneList.length - 1 : 0;
-    const nonEditingZones =
-      currentRegion && currentRegion.zoneList ? currentRegion.zoneList.slice(0, zoneIndex) : [];
+    const zoneIndex = currentRegion?.zoneList?.length ? currentRegion.zoneList.length - 1 : 0;
+    const nonEditingZones = currentRegion?.zoneList
+      ? currentRegion.zoneList?.slice(0, zoneIndex)
+      : [];
     const regionOptions = REGION_METADATA.map((region) => ({
       value: region.code,
       label: region.name
@@ -274,7 +271,7 @@ class AddRegionList extends Component {
                       </Row>
                     </div>
 
-                    {currentRegion && currentRegion.regionCode && (
+                    {currentRegion?.regionCode && (
                       <FieldArray
                         name={`regionList[${regionIndex}].zoneList`}
                         render={(zoneArrayHelpers) => {
@@ -351,14 +348,13 @@ class AddRegionList extends Component {
                                         {typeof getIn(
                                           formik.errors,
                                           `regionList[${regionIndex}].zoneList`
-                                        ) === 'string' ?
-                                          (
-                                            <div className="input-feedback">
-                                              <ErrorMessage
-                                                name={`regionList[${regionIndex}].zoneList`}
-                                              />
-                                            </div>
-                                          ) : null}
+                                        ) === 'string' ? (
+                                          <div className="input-feedback">
+                                            <ErrorMessage
+                                              name={`regionList[${regionIndex}].zoneList`}
+                                            />
+                                          </div>
+                                        ) : null}
                                       </Col>
                                     </Row>
                                     <Row className="config-provider-row">
@@ -436,7 +432,6 @@ class AddRegionList extends Component {
                                         <Field
                                           name={`regionList[${regionIndex}].zoneList[${zoneIndex}].zoneKubeConfig`}
                                           component={YBFormDropZone}
-                                          className="upload-file-button"
                                           title={'Upload Kube Config file'}
                                         />
                                       </Col>
@@ -459,7 +454,9 @@ class AddRegionList extends Component {
 
                                     <Row className="config-provider-row">
                                       <Col lg={3}>
-                                        <div className="form-item-custom-label">Pod Address Template</div>
+                                        <div className="form-item-custom-label">
+                                          Pod Address Template
+                                        </div>
                                       </Col>
                                       <Col lg={7}>
                                         <Field
@@ -570,6 +567,7 @@ class AddRegionList extends Component {
                   )}
                   {displayedRegions.map((region, index) => (
                     <li
+                      // eslint-disable-next-line react/no-array-index-key
                       key={index}
                       onClick={() => {
                         // Regions edit popup handler

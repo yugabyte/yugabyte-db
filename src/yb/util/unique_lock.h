@@ -25,12 +25,11 @@ namespace yb {
 // Thread annotations enabled, using a UniqueLock wrapper class around std::unique_lock.
 // ------------------------------------------------------------------------------------------------
 
-#define UNIQUE_LOCK(lock_name, mutex) ::yb::UniqueLock<decltype(mutex)> lock_name(mutex);
-
 // A wrapper unique_lock that supports thread annotations.
 template<typename Mutex>
 class SCOPED_CAPABILITY UniqueLock {
  public:
+  UniqueLock() = default;
   explicit UniqueLock(Mutex &mutex) ACQUIRE(mutex) : unique_lock_(mutex) {}
 
   explicit UniqueLock(Mutex &mutex, std::defer_lock_t defer) : unique_lock_(mutex, defer) {}
@@ -42,6 +41,8 @@ class SCOPED_CAPABILITY UniqueLock {
   void lock() ACQUIRE() { unique_lock_.lock(); }
 
   std::unique_lock<Mutex>& internal_unique_lock() { return unique_lock_; }
+
+  bool owns_lock() const { return unique_lock_.owns_lock(); }
 
   Mutex* mutex() RETURN_CAPABILITY(unique_lock_.mutex()) { return unique_lock_.mutex(); }
 
@@ -74,8 +75,6 @@ std::unique_lock<Mutex>& GetLockForCondition(UniqueLock<Mutex>* lock) {
 
 template<class Mutex>
 using UniqueLock = std::unique_lock<Mutex>;
-
-#define UNIQUE_LOCK(lock_name, mutex) std::unique_lock<decltype(mutex)> lock_name(mutex);
 
 template<typename Mutex>
 void WaitOnConditionVariable(std::condition_variable* cond_var, UniqueLock<Mutex>* lock) {

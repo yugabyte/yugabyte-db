@@ -22,7 +22,7 @@ yb-master [ flag  ] | [ flag ]
 ### Example
 
 ```sh
-$ ./bin/yb-master \
+./bin/yb-master \
 --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
 --rpc_bind_addresses 172.151.17.130 \
 --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" \
@@ -31,28 +31,13 @@ $ ./bin/yb-master \
 
 ### Online help
 
-To display the online help, run `yb-master --help` from the YugabyteDB home directory.
+To display the online help, run `yb-master --help` from the YugabyteDB home directory:
 
 ```sh
-$ ./bin/yb-master --help
+./bin/yb-master --help
 ```
 
-## Configuration flags
-
-- [General](#general-flags)
-- [YSQL](#ysql-flags)
-- [Logging](#logging-flags)
-- [Raft](#raft-flags)
-  - [Write ahead log (WAL)](#write-ahead-log-wal-flags)
-- [Sharding](#sharding-flags)
-- [Load balancing](#load-balancing-flags)
-- [Geo-distribution](#geo-distribution-flags)
-- [Security](#security-flags)
-- [Change data capture (CDC)](#change-data-capture-cdc-flags)
-
----
-
-### General flags
+## General flags
 
 ##### --version
 
@@ -92,19 +77,21 @@ Default: Same value as `--fs_data_dirs`
 
 ##### --rpc_bind_addresses
 
-Specifies the comma-separated list of the network interface addresses to bind to for RPC connections
+Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections.
 
-- Typically, the value is set to the private IP address of the host on which the server is running. When using the default, or explicitly setting the value to `0.0.0.0:7100`, the server will listen on all available network interfaces.
+The values used must match on all `yb-master` and [`yb-tserver`](../yb-tserver/#rpc-bind-addresses) configurations.
 
-- The values used must match on all `yb-master` and [`yb-tserver`](../yb-tserver/#rpc-bind-addresses) configurations.
+Default: Private IP address of the host on which the server is running, as defined in `/home/yugabyte/master/conf/server.conf`. For example:
 
-Default: `0.0.0.0:7100`
+```sh
+egrep -i rpc /home/yugabyte/master/conf/server.conf
+--rpc_bind_addresses=172.161.x.x:7100
+```
 
-{{< note title="Note" >}}
+Make sure that the [`server_broadcast_addresses`](#server-broadcast-addresses) flag is set correctly if the following applies:
 
-In cases where `rpc_bind_addresses` is set to `0.0.0.0` (or not explicitly set, and uses the default) or in cases involving public IP addresses, make sure that [`server_broadcast_addresses`](#server-broadcast-addresses) is correctly set.
-
-{{< /note >}}
+- `rpc_bind_addresses` is set to `0.0.0.0`
+- `rpc_bind_addresses` involves public IP addresses such as, for example, `0.0.0.0:7100`, which instructs the server to listen on all available network interfaces.
 
 ##### --server_broadcast_addresses
 
@@ -126,7 +113,7 @@ If this value is changed from the default, make sure to add the same value to al
 
 ##### --use_private_ip
 
-Specifies the policy that determines when to use private IP addresses for inter-node communication. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the [placement (`--placement_*`) configuration flags](#placement-flags).
+Specifies the policy that determines when to use private IP addresses for inter-node communication. Possible values are `never`, `zone`, `cloud`, and `region`. Based on the values of the [geo-distribution flags](#geo-distribution-flags).
 
 Valid values for the policy are:
 
@@ -172,9 +159,7 @@ Location of .htpasswd file containing usernames and hashed passwords, for authen
 
 Default: `""`
 
----
-
-### YSQL flags
+## YSQL flags
 
 ##### --enable_ysql
 
@@ -188,9 +173,7 @@ Enables the YSQL API when value is `true`.
 
 Default: `true`
 
----
-
-### Logging flags
+## Logging flags
 
 ##### --colorlogtostderr
 
@@ -254,9 +237,7 @@ Log messages at, or above, this level are copied to `stderr` in addition to log 
 
 Default: `2`
 
----
-
-### Raft flags
+## Raft flags
 
 For a typical deployment, values used for Raft and the write ahead log (WAL) flags in `yb-master` configurations should match the values in [yb-tserver](../yb-tserver/#raft-flags) configurations.
 
@@ -264,13 +245,17 @@ For a typical deployment, values used for Raft and the write ahead log (WAL) fla
 
 The duration, in seconds, after which a follower is considered to be failed because the leader has not received a heartbeat.
 
-Default: `900` (15 minutes)
-
-{{< note title="Important" >}}
+Default: `7200` (2 hours)
 
 The `--follower_unavailable_considered_failed_sec` value should match the value for [`--log_min_seconds_to_retain`](#log-min-seconds-to-retain).
 
-{{< /note >}}
+##### --evict_failed_followers
+
+Failed followers will be evicted from the Raft group and the data will be re-replicated.
+
+Default: `false`
+
+Note that it is not recommended to set the flag to true for masters as you cannot automatically recover a failed master once it is evicted.
 
 ##### --leader_failure_max_missed_heartbeat_periods
 
@@ -296,13 +281,9 @@ The heartbeat interval, in milliseconds, for Raft replication. The leader produc
 
 Default: `500`
 
-#### Write ahead log (WAL) flags
-
-{{< note title="Note" >}}
+### Write ahead log (WAL) flags
 
 Ensure that values used for the write ahead log (WAL) in `yb-master` configurations match the values in `yb-tserver` configurations.
-
-{{< /note >}}
 
 ##### --fs_wal_dirs
 
@@ -312,7 +293,7 @@ Default: Same as `--fs_data_dirs`
 
 ##### --durable_wal_write
 
-If set to `false`, the writes to the WAL are synced to disk every [`interval_durable_wal_write_ms`](#interval-durable-wal-write-mas) milliseconds (ms) or every [`bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single AZ deployments, this flag should be set to `true`.
+If set to `false`, the writes to the WAL are synced to disk every [`interval_durable_wal_write_ms`](#interval-durable-wal-write-ms) milliseconds (ms) or every [`bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single AZ deployments, this flag should be set to `true`.
 
 Default: `false`
 
@@ -332,7 +313,9 @@ Default: `1`
 
 The minimum duration, in seconds, to retain WAL segments, regardless of durability requirements. WAL segments can be retained for a longer amount of time, if they are necessary for correct restart. This value should be set long enough such that a tablet server which has temporarily failed can be restarted in the given time period.
 
-Default: `900` (15 minutes)
+Default: `7200` (2 hours)
+
+The `--log_min_seconds_to_retain` value should match the value for [`--follower_unavailable_considered_failed_sec`](#follower-unavailable-considered-failed-sec).
 
 ##### --log_min_segments_to_retain
 
@@ -346,9 +329,13 @@ The size, in megabytes (MB), of a WAL segment (file). When the WAL segment reach
 
 Default: `64`
 
----
+##### --reuse_unclosed_segment_threshold_bytes
 
-### Load balancing flags
+When the server restarts from a previous crash, if the tablet's last WAL file size is less than or equal to this threshold value, the last WAL file will be reused. Otherwise, WAL will allocate a new file at bootstrap. To disable WAL reuse, set the value to `-1`.
+
+Default: The default value in `2.18.1` is `-1` - feature is disabled by default. The default value starting from `2.19.1` is `524288` (0.5 MB) - feature is enabled by default.
+
+## Load balancing flags
 
 For information on YB-Master load balancing, see [Data placement and load balancing](../../../architecture/concepts/yb-master/#data-placement-and-load-balancing).
 
@@ -404,7 +391,7 @@ Default: `10`
 
 ##### --load_balancer_max_concurrent_tablet_remote_bootstraps_per_table
 
- Maximum number of tablets being remote bootstrapped for any table. The maximum number of remote bootstraps across the cluster is still limited by the flag `load_balancer_max_concurrent_tablet_remote_bootstraps`. This flag is meant to prevent a single table use all the available remote bootstrap sessions and starving other tables.
+Maximum number of tablets being remote bootstrapped for any table. The maximum number of remote bootstraps across the cluster is still limited by the flag `load_balancer_max_concurrent_tablet_remote_bootstraps`. This flag is meant to prevent a single table use all the available remote bootstrap sessions and starving other tables.
 
 Default: `2`
 
@@ -426,9 +413,7 @@ Should the LB skip a leader as a possible remove candidate.
 
 Default: `false`
 
----
-
-### Sharding flags
+## Sharding flags
 
 ##### --max_clock_skew_usec
 
@@ -444,53 +429,78 @@ Default: `3`
 
 ##### --yb_num_shards_per_tserver
 
-The number of shards per YB-TServer for each YCQL table when a user table is created.
+The number of shards (tablets) per YB-TServer for each YCQL table when a user table is created.
 
-Default: `-1` (server internally sets default value). For servers with up to two CPU cores, the default value is `4`. For three or more CPU cores, the default value is `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
+Default: `-1`, where the number of shards is determined at runtime, as follows:
+
+- If [enable_automatic_tablet_splitting](#enable-automatic-tablet-splitting) is `true`
+  - The default value is considered as `1`.
+  - For servers with 4 CPU cores or less, the number of tablets for each table doesn't depend on the number of YB-TServers. Instead, for 2 CPU cores or less, 1 tablet per cluster is created; for 4 CPU cores or less, 2 tablets per cluster are created.
+
+- If `enable_automatic_tablet_splitting` is `false`
+  - For servers with up to two CPU cores, the default value is considered as `4`.
+  - For three or more CPU cores, the default value is considered as `8`.
+
+Local cluster installations created using `yb-ctl` and `yb-docker-ctl` use a default value of `2` for this flag.
+
+Clusters created using `yugabyted` always use a default value of `1`.
+
+{{< note title="Note" >}}
+
+- This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+- If the value is set to *Default* (`-1`), then the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup prior to version 2.18 and the flag remains *unchanged* starting from version 2.18.
+- The [`CREATE TABLE ... WITH TABLETS = <num>`](../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets) clause can be used on a per-table basis to override the `yb_num_shards_per_tserver` value.
+
+{{< /note >}}
+
+##### --ysql_num_shards_per_tserver
+
+The number of shards (tablets) per YB-TServer for each YSQL table when a user table is created.
+
+Default: `-1`, where the number of shards is determined at runtime, as follows:
+
+- If [enable_automatic_tablet_splitting](#enable-automatic-tablet-splitting) is `true`
+  - The default value is considered as `1`.
+  - For servers with 4 CPU cores or less, the number of tablets for each table doesn't depend on the number of YB-TServers. Instead, for 2 CPU cores or less, 1 tablet per cluster is created; for 4 CPU cores or less, 2 tablets per cluster are created.
+
+- If `enable_automatic_tablet_splitting` is `false`
+  - For servers with up to two CPU cores, the default value is considered as 2.
+  - For servers with three or four CPU cores, the default value is considered as 4.
+  - Beyond four cores, the default value is considered as 8.
+
+Local cluster installations created using `yb-ctl` and `yb-docker-ctl` use a default value of `2` for this flag.
+
+Clusters created using `yugabyted` always use a default value of `1`.
+
+{{< note title="Note" >}}
+
+- This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+- If the value is set to *Default* (`-1`), the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup prior to version 2.18 and the flag remains *unchanged* starting from version 2.18.
+- The [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause can be used on a per-table basis to override the `ysql_num_shards_per_tserver` value.
+
+{{< /note >}}
+
+##### --ysql_colocate_database_by_default
+
+When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
+
+For more details, see [clusters in colocated tables](../../../architecture/docdb-sharding/colocated-tables/#clusters).
+
+Default: `false`
+
+## Tablet splitting flags
+
+##### --enable_automatic_tablet_splitting
+
+Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-sharding/tablet-splitting/#automatic-tablet-splitting), based on the specified tablet threshold sizes configured below.
+
+Default: `true`
 
 {{< note title="Important" >}}
 
 This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
 
 {{< /note >}}
-
-{{< note title="Note" >}}
-
-On a per-table basis, the [`CREATE TABLE ... WITH TABLETS = <num>`](../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets) clause can be used to override the `yb_num_shards_per_tserver` value.
-
-{{< /note >}}
-
-{{< note title="Note" >}}
-
-If `enable_automatic_tablet_splitting` is `true`, this value will be overridden and tables will begin with 1 tablet per node.
-
-{{< /note >}}
-
-##### --ysql_num_shards_per_tserver
-
-The number of shards per YB-TServer for each YSQL table when a user table is created.
-
-Default: `-1` (server internally sets default value). For servers with up to two CPU cores, the default value is `2`. For servers with three or four CPU cores, the default value is `4`. Beyond four cores, the default value is `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
-
-{{< note title="Note" >}}
-
-On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause can be used to override the `ysql_num_shards_per_tserver` value.
-
-{{< /note >}}
-
-{{< note title="Note" >}}
-
-If `enable_automatic_tablet_splitting` is `true`, this value will be overridden and tables will begin with 1 tablet per node.
-
-{{< /note >}}
-
-### Tablet splitting flags
-
-##### --enable_automatic_tablet_splitting
-
-Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-sharding/tablet-splitting/#automatic-tablet-splitting), based on the specified tablet threshold sizes configured below.
-
-Default: `false`
 
 ##### --tablet_split_low_phase_shard_count_per_node
 
@@ -570,11 +580,7 @@ Enables automatic tablet splitting for tables that are part of an xCluster repli
 
 Default: `false`
 
-{{< note title="Note" >}}
-
 To enable tablet splitting on cross cluster replicated tables, this flag should be set to `true` on both the producer and consumer clusters, as they will perform splits independently of each other. Both the producer and consumer clusters must be running v2.14.0+ to enable the feature (relevant in case of cluster upgrades).
-
-{{< /note >}}
 
 ##### --prevent_split_for_ttl_tables_for_seconds
 
@@ -594,7 +600,7 @@ Determines whether to sort automatic split candidates from largest to smallest (
 
 Default: `true`
 
-**Syntax**
+Syntax:
 
 ```sh
 yb-admin --master_addresses <master-addresses> --tablet_force_split_size_threshold_bytes <bytes>
@@ -603,14 +609,12 @@ yb-admin --master_addresses <master-addresses> --tablet_force_split_size_thresho
 - *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 - *bytes*: The threshold size, in bytes, after which tablets should be split. Default value of `0` disables automatic tablet splitting.
 
-For details on automatic tablet splitting, see:
+For details on automatic tablet splitting, see the following:
 
-- [Automatic tablet splitting](../../../architecture/docdb-sharding/tablet-splitting) — Architecture overview
+- [Automatic tablet splitting](../../../architecture/docdb-sharding/tablet-splitting) — Architecture overview.
 - [Automatic Re-sharding of Data with Tablet Splitting](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) — Architecture design document in the GitHub repository.
 
----
-
-### Geo-distribution flags
+## Geo-distribution flags
 
 Settings related to managing geo-distributed clusters.
 
@@ -650,9 +654,7 @@ If true, transaction tables will be automatically created for any YSQL tablespac
 
 Default: `true`
 
----
-
-### Security flags
+## Security flags
 
 For details on enabling server-to-server encryption, see [Server-server encryption](../../../secure/tls-encryption/server-to-server/).
 
@@ -660,7 +662,7 @@ For details on enabling server-to-server encryption, see [Server-server encrypti
 
 Directory that contains certificate authority, private key, and certificates for this server.
 
-Default: `""` (Uses `<data drive>/yb-data/master/data/certs`.)
+Default: `""` (uses `<data drive>/yb-data/master/data/certs`.)
 
 ##### --allow_insecure_connections
 
@@ -670,7 +672,7 @@ Default: `true`
 
 ##### --dump_certificate_entries
 
-Adds certificate entries, including IP addresses and hostnames, to log for handshake error messages.  Enabling this flag is useful for debugging certificate issues.
+Adds certificate entries, including IP addresses and hostnames, to log for handshake error messages. Enabling this flag is helpful for debugging certificate issues.
 
 Default: `false`
 
@@ -682,7 +684,7 @@ Default: `false`
 
 ##### --cipher_list
 
-Specify cipher lists for TLS 1.2 and below. (For TLS 1.3, use [--ciphersuite](#ciphersuite).) Use a colon (":") separated list of TLSv1.2 cipher names in order of preference. Use an exclamation mark ("!") to exclude ciphers. For example:
+Specify cipher lists for TLS 1.2 and earlier versions. (For TLS 1.3, use [--ciphersuite](#ciphersuite).) Use a colon-separated list of TLS 1.2 cipher names in order of preference. Use an exclamation mark ( `!` ) to exclude ciphers. For example:
 
 ```sh
 --cipher_list DEFAULTS:!DES:!IDEA:!3DES:!RC2
@@ -698,9 +700,9 @@ For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org
 
 ##### --ciphersuite
 
-Specify cipher lists for TLS 1.3. (For TLS 1.2 and below, use [--cipher_list](#cipher-list).)
+Specify cipher lists for TLS 1.3. For TLS 1.2 and earlier, use [--cipher_list](#cipher-list).
 
-Use a colon (":") separated list of TLSv1.3 ciphersuite names in order of preference. Use an exclamation mark ("!") to exclude ciphers. For example:
+Use a colon-separated list of TLS 1.3 ciphersuite names in order of preference. Use an exclamation mark ( ! ) to exclude ciphers. For example:
 
 ```sh
 --ciphersuite DEFAULTS:!CHACHA20
@@ -714,13 +716,11 @@ Default: `DEFAULTS`
 
 For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
 
----
+## Change data capture (CDC) flags
 
-### Change data capture (CDC) flags
+To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
 
-To learn more about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
-
-For other CDC configuration flags, see [YB-TServer's CDC flags](../yb-tserver/#change-data-capture-cdc-flags).
+For information on other CDC configuration flags, see [YB-TServer's CDC flags](../yb-tserver/#change-data-capture-cdc-flags).
 
 ##### --cdc_state_table_num_tablets
 
@@ -736,11 +736,11 @@ Default: `14400` (4 hours)
 
 ## Admin UI
 
-The Admin UI for yb-master is available at <http://localhost:7000>.
+The Admin UI for YB-Master is available at <http://localhost:7000>.
 
 ### Home
 
-Home page of the YB-Master server that gives a high level overview of the cluster. Note all YB-Master servers in a cluster show identical information.
+Home page of the YB-Master server that gives a high level overview of the cluster. Not all YB-Master servers in a cluster show identical information.
 
 ![master-home](/images/admin/master-home-binary-with-tables.png)
 

@@ -7,15 +7,11 @@
 # - DROP
 ################################################################################
 
-# Chain of dependencies for yb_pg_alter_table
+# Dependencies for yb_pg_alter_table
 test: yb_pg_insert
-test: yb_pg_create_function_1
-test: yb_pg_create_type
-test: yb_pg_create_table
-test: yb_pg_copy
-test: yb_pg_create_index
-test: yb_pg_create_table_like
+test: yb_dep_onek
 
+test: yb_pg_create_table_like
 test: yb_pg_alter_table
 test: yb_alter_table
 test: yb_create_table

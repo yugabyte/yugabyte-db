@@ -16,7 +16,10 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.MaintenanceService;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.filters.MaintenanceWindowApiFilter;
@@ -24,9 +27,15 @@ import com.yugabyte.yw.forms.paging.MaintenanceWindowPagedApiQuery;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.MaintenanceWindow;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.filters.MaintenanceWindowFilter;
 import com.yugabyte.yw.models.paging.MaintenanceWindowPagedQuery;
 import com.yugabyte.yw.models.paging.MaintenanceWindowPagedResponse;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -35,6 +44,7 @@ import io.swagger.annotations.Authorization;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -49,23 +59,42 @@ public class MaintenanceController extends AuthenticatedController {
     this.maintenanceService = maintenanceService;
   }
 
-  @ApiOperation(value = "Get details of a maintenance window", response = MaintenanceWindow.class)
+  @ApiOperation(
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "Get details of a maintenance window",
+      response = MaintenanceWindow.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result get(UUID customerUUID, UUID windowUUID) {
     Customer.getOrBadRequest(customerUUID);
 
-    MaintenanceWindow window = maintenanceService.getOrBadRequest(windowUUID);
+    MaintenanceWindow window = maintenanceService.getOrBadRequest(customerUUID, windowUUID);
     return PlatformResults.withData(window);
   }
 
   @ApiOperation(
-      value = "List maintenance windows",
+      value = "WARNING: This is a preview API that could change. " + "List maintenance windows",
       response = MaintenanceWindow.class,
       responseContainer = "List",
       nickname = "listOfMaintenanceWindows")
-  public Result list(UUID customerUUID) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
+  public Result list(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
-    MaintenanceWindowApiFilter apiFilter = parseJsonAndValidate(MaintenanceWindowApiFilter.class);
+    MaintenanceWindowApiFilter apiFilter =
+        parseJsonAndValidate(request, MaintenanceWindowApiFilter.class);
     MaintenanceWindowFilter filter =
         apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
     List<MaintenanceWindow> windows = maintenanceService.list(filter);
@@ -73,7 +102,9 @@ public class MaintenanceController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List maintenance windows (paginated)",
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "List maintenance windows (paginated)",
       response = MaintenanceWindowPagedResponse.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -81,11 +112,18 @@ public class MaintenanceController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.paging.MaintenanceWindowPagedApiQuery",
           required = true))
-  public Result page(UUID customerUUID) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
+  public Result page(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
     MaintenanceWindowPagedApiQuery apiQuery =
-        parseJsonAndValidate(MaintenanceWindowPagedApiQuery.class);
+        parseJsonAndValidate(request, MaintenanceWindowPagedApiQuery.class);
     MaintenanceWindowApiFilter apiFilter = apiQuery.getFilter();
     MaintenanceWindowFilter filter =
         apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
@@ -97,17 +135,26 @@ public class MaintenanceController extends AuthenticatedController {
     return PlatformResults.withData(windows);
   }
 
-  @ApiOperation(value = "Create maintenance window", response = MaintenanceWindow.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. " + "Create maintenance window",
+      response = MaintenanceWindow.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "CreateMaintenanceWindowRequest",
           paramType = "body",
           dataType = "com.yugabyte.yw.models.MaintenanceWindow",
           required = true))
-  public Result create(UUID customerUUID) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
+  public Result create(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
-    MaintenanceWindow window = parseJson(MaintenanceWindow.class);
+    MaintenanceWindow window = parseJson(request, MaintenanceWindow.class);
 
     if (window.getUuid() != null) {
       throw new PlatformServiceException(BAD_REQUEST, "Can't create window with uuid set");
@@ -117,26 +164,34 @@ public class MaintenanceController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.MaintenanceWindow,
             Objects.toString(window.getUuid(), null),
-            Audit.ActionType.Create,
-            request().body().asJson());
+            Audit.ActionType.Create);
     return PlatformResults.withData(window);
   }
 
-  @ApiOperation(value = "Update maintenance window", response = MaintenanceWindow.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. " + "Update maintenance window",
+      response = MaintenanceWindow.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "UpdateMaintenanceWindowRequest",
           paramType = "body",
           dataType = "com.yugabyte.yw.models.MaintenanceWindow",
           required = true))
-  public Result update(UUID customerUUID, UUID windowUUID) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
+  public Result update(UUID customerUUID, UUID windowUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
-    maintenanceService.getOrBadRequest(windowUUID);
+    maintenanceService.getOrBadRequest(customerUUID, windowUUID);
 
-    MaintenanceWindow window = parseJson(MaintenanceWindow.class);
+    MaintenanceWindow window = parseJson(request, MaintenanceWindow.class);
 
     if (window.getUuid() == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Can't update window with missing uuid");
@@ -151,25 +206,33 @@ public class MaintenanceController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.MaintenanceWindow,
             windowUUID.toString(),
-            Audit.ActionType.Update,
-            request().body().asJson());
+            Audit.ActionType.Update);
     return PlatformResults.withData(window);
   }
 
-  @ApiOperation(value = "Delete maintenance window", response = YBPSuccess.class)
-  public Result delete(UUID customerUUID, UUID windowUUID) {
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. " + "Delete maintenance window",
+      response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
+  public Result delete(UUID customerUUID, UUID windowUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
-    maintenanceService.getOrBadRequest(windowUUID);
+    maintenanceService.getOrBadRequest(customerUUID, windowUUID);
 
     maintenanceService.delete(windowUUID);
 
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.MaintenanceWindow,
             windowUUID.toString(),
             Audit.ActionType.Delete);

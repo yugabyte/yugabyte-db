@@ -29,7 +29,165 @@ tags:
   name: cluster
 - description: APIs for getting information about an existing cluster
   name: cluster-info
+- description: APIs for getting information about Voyager migrations
+  name: voyager-info
+- description: APIs for getting Voyager data migrations metrics
+  name: voyager-metrics
 paths:
+  /migrations:
+    get:
+      description: Get the list of Voyager migrations
+      operationId: GetVoyagerMigrationTasks
+      parameters:
+      - description: uuid of the voyager migration task
+        explode: false
+        in: query
+        name: uuid
+        required: false
+        schema:
+          format: uuid
+          type: string
+        style: form
+      - description: specify the migration phase for which details are required
+        explode: false
+        in: query
+        name: migration_phase
+        required: false
+        schema:
+          format: int64
+          minimum: 0
+          type: integer
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoyagerMigrationsInfo'
+          description: List of the Voyager migrations
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get the list of Voyager migrations
+      tags:
+      - voyager-info
+  /migration_assesment:
+    get:
+      description: Get Voyager data migration metrics
+      operationId: GetVoyagerMigrationAssesmentDetails
+      parameters:
+      - description: uuid of the voyager migration task
+        explode: false
+        in: query
+        name: uuid
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/API_for_Plan_and_Asses_page'
+          description: Response for Plan and Asses page
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get Voyager data migration metrics
+      tags:
+      - voyager-info
+  /migrate_schema:
+    get:
+      description: Get Voyager data migration metrics
+      operationId: GetVoyagerMigrateSchemaTasks
+      parameters:
+      - description: uuid of the voyager migration task
+        explode: false
+        in: query
+        name: uuid
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Individual_Migration_Task_Info'
+          description: Response for individual migration task
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get Voyager data migration metrics
+      tags:
+      - voyager-info
+  /migration_metrics:
+    get:
+      description: Get Voyager data migration metrics
+      operationId: GetVoyagerDataMigrationMetrics
+      parameters:
+      - description: uuid of the voyager migration task
+        explode: false
+        in: query
+        name: uuid
+        required: true
+        schema:
+          format: uuid
+          type: string
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoyagerMigrateDataMetrics'
+          description: Voyager data migration metrics response
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get Voyager data migration metrics
+      tags:
+      - voyager-metrics
   /cluster:
     delete:
       description: Submit task to delete a Yugabyte Cluster
@@ -223,6 +381,14 @@ paths:
         schema:
           type: string
         style: form
+      - description: Zone to filter for the given cluster
+        explode: false
+        in: query
+        name: zone
+        required: false
+        schema:
+          type: string
+        style: form
       - description: Start of range of time series data (in epoch seconds)
         explode: false
         in: query
@@ -242,6 +408,14 @@ paths:
           format: int64
           minimum: 0
           type: integer
+        style: form
+      - description: Cluster type (primary or read replica)
+        explode: false
+        in: query
+        name: cluster_type
+        required: false
+        schema:
+          type: string
         style: form
       responses:
         "200":
@@ -263,6 +437,57 @@ paths:
                 $ref: '#/components/schemas/ApiError'
           description: API Error
       summary: Get a metric for a cluster
+      tags:
+      - cluster-info
+  /activities:
+    get:
+      description: Get activities data for a Yugabyte cluster
+      operationId: getClusterActivities
+      parameters:
+      - description: Which activities data to retrieve
+        explode: false
+        in: query
+        name: activities
+        required: true
+        schema:
+          type: string
+        style: form
+      - description: Completed or In-Progress
+        explode: false
+        in: query
+        name: status
+        required: true
+        schema:
+          type: string
+        style: form
+      - description: Which database's activities data is to be retrived.
+        explode: false
+        in: query
+        name: database
+        required: false
+        schema:
+          type: string
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Activities_Response'
+          description: Activities Response
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get a activities data for a cluster
       tags:
       - cluster-info
   /tables:
@@ -301,6 +526,49 @@ paths:
                 $ref: '#/components/schemas/ApiError'
           description: API Error
       summary: Get list of DB tables per YB API (YCQL/YSQL)
+      tags:
+      - cluster-info
+  /table:
+    get:
+      description: Get info on a single table, given table uuid
+      operationId: getTableInfo
+      parameters:
+      - description: UUID of the table
+        explode: false
+        in: query
+        name: id
+        required: true
+        schema:
+          type: string
+        style: form
+      - description: Specify the node ip-address from where the table info is retrieved
+        explode: false
+        in: query
+        name: node_address
+        required: true
+        schema:
+          type: string
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableInfo'
+          description: Information for a single table
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get info on a single table, given table uuid
       tags:
       - cluster-info
   /health-check:
@@ -381,6 +649,93 @@ paths:
       summary: Get YugabyteDB version
       tags:
       - cluster-info
+  /is_load_balancer_idle:
+    get:
+      description: Check if cluster load balancer is idle
+      operationId: getIsLoadBalancerIdle
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Is_load_balancer_idle'
+          description: Is load balancer idle
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Check if cluster load balancer is idle
+      tags:
+      - cluster-info
+  /gflags:
+    get:
+      description: Retrieve gflags of master and tserver process
+      operationId: getGflags
+      parameters:
+      - description: Specify the node ip-address from where gflags are retrieved
+        explode: false
+        in: query
+        name: node_address
+        required: true
+        schema:
+          type: string
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GflagsInfo'
+          description: Gflags information
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get gflags of master and tserver process
+      tags:
+      - cluster-info
+  /alerts:
+    get:
+      description: Get any alerts for the cluster
+      operationId: getClusterAlerts
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alerts_Response'
+          description: Alerts information
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get any alerts for the cluster
+      tags:
+      - cluster-info
 components:
   requestBodies:
     ClusterSpec:
@@ -390,18 +745,42 @@ components:
             $ref: '#/components/schemas/ClusterSpec'
       description: DB Cluster to be updated
   responses:
-    ClusterResponse:
+    VoyagerMigrationsResponse:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Cluster_Response'
-      description: Cluster response
+            $ref: '#/components/schemas/VoyagerMigrationsInfo'
+      description: List of the Voyager migrations
     ApiError:
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ApiError'
       description: API Error
+    VoyagerAssesmentResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/API_for_Plan_and_Asses_page'
+      description: Response for Plan and Asses page
+    MigrateSchemaResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Individual_Migration_Task_Info'
+      description: Response for individual migration task
+    VoyagerDataMigrationMetricsResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/VoyagerMigrateDataMetrics'
+      description: Voyager data migration metrics response
+    ClusterResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Cluster_Response'
+      description: Cluster response
     LiveQueryResponse:
       content:
         application/json:
@@ -426,12 +805,24 @@ components:
           schema:
             $ref: '#/components/schemas/Metric_Response'
       description: Metric response
+    ActivityResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Activities_Response'
+      description: Activities Response
     ClusterTableListResponse:
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Cluster_table_list_response'
       description: List of cluster tables
+    TableInfoResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TableInfo'
+      description: Information for a single table
     HealthCheckResponse:
       content:
         application/json:
@@ -450,7 +841,309 @@ components:
           schema:
             $ref: '#/components/schemas/VersionInfo'
       description: Version info for YugabyteDB
+    GflagsResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GflagsInfo'
+      description: Gflags information
+    AlertsResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Alerts_Response'
+      description: Alerts information
   schemas:
+    VoyagerMigrationDetails:
+      description: Information regarding a specific voyager migration task
+      example:
+        complexity: complexity
+        database_name: database_name
+        migration_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        migration_phase: 0
+        source_db: source_db
+        invocation_sequence: 6
+        migration_name: migration_name
+        schema_name: schema_name
+        invocation_timestamp: invocation_timestamp
+        status: status
+      properties:
+        migration_uuid:
+          format: uuid
+          type: string
+        migration_name:
+          type: string
+        migration_phase:
+          type: integer
+        invocation_sequence:
+          type: integer
+        source_db:
+          type: string
+        complexity:
+          type: string
+        database_name:
+          type: string
+        schema_name:
+          type: string
+        status:
+          type: string
+        invocation_timestamp:
+          type: string
+      title: Voyager task details
+      type: object
+    VoyagerMigrationsInfo:
+      description: YB Voyager migrations Info
+      example:
+        migrations:
+        - complexity: complexity
+          database_name: database_name
+          migration_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          migration_phase: 0
+          source_db: source_db
+          invocation_sequence: 6
+          migration_name: migration_name
+          schema_name: schema_name
+          invocation_timestamp: invocation_timestamp
+          status: status
+        - complexity: complexity
+          database_name: database_name
+          migration_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          migration_phase: 0
+          source_db: source_db
+          invocation_sequence: 6
+          migration_name: migration_name
+          schema_name: schema_name
+          invocation_timestamp: invocation_timestamp
+          status: status
+      properties:
+        migrations:
+          items:
+            $ref: '#/components/schemas/VoyagerMigrationDetails'
+          type: array
+      title: YB Voyager migrations Info
+      type: object
+    ApiError:
+      properties:
+        error:
+          $ref: '#/components/schemas/ApiError_error'
+      title: API Error
+      type: object
+    AssesmentComplexityInfo:
+      description: Assesment complexity details
+      example:
+        schema: schema
+        table_count: 6
+        complexity: complexity
+        sql_objects_count: 0
+      properties:
+        schema:
+          type: string
+        sql_objects_count:
+          type: integer
+        table_count:
+          type: integer
+        complexity:
+          type: string
+      title: Assesment complexity details
+      type: object
+    MigrationAssesmentInfo:
+      description: Details for Voyager migrations assesment
+      example:
+        complexity_overview:
+        - schema: schema
+          table_count: 6
+          complexity: complexity
+          sql_objects_count: 0
+        - schema: schema
+          table_count: 6
+          complexity: complexity
+          sql_objects_count: 0
+        assesment_status: true
+        top_errors:
+        - top_errors
+        - top_errors
+        top_suggestions:
+        - top_suggestions
+        - top_suggestions
+      properties:
+        assesment_status:
+          type: boolean
+        top_errors:
+          items:
+            type: string
+          type: array
+        top_suggestions:
+          items:
+            type: string
+          type: array
+        complexity_overview:
+          items:
+            $ref: '#/components/schemas/AssesmentComplexityInfo'
+          type: array
+      title: Details for Voyager migrations assesment
+      type: object
+    ErrorsAndSuggestionsDetails:
+      description: Errors and suggestions details
+      example:
+        reason: reason
+        GH: GH
+        sqlStatement: sqlStatement
+        filePath: filePath
+        suggestion: suggestion
+        objectName: objectName
+        objectType: objectType
+      properties:
+        objectType:
+          type: string
+        objectName:
+          type: string
+        reason:
+          type: string
+        sqlStatement:
+          type: string
+        filePath:
+          type: string
+        suggestion:
+          type: string
+        GH:
+          type: string
+      title: Errors and Suggestions details
+      type: object
+    SqlObjectsDetails:
+      description: Sql obejcts type and count
+      example:
+        invalidCount: 6
+        totalCount: 0
+        objectNames: objectNames
+        objectDetails: objectDetails
+        objectType: objectType
+      properties:
+        objectType:
+          type: string
+        totalCount:
+          type: integer
+        invalidCount:
+          type: integer
+        objectNames:
+          type: string
+        objectDetails:
+          type: string
+      title: Sql Objects
+      type: object
+    MigrateSchemaTaskInfo:
+      description: Voyager data migration metrics details
+      example:
+        import_schema: import_schema
+        suggestions_errors:
+        - reason: reason
+          GH: GH
+          sqlStatement: sqlStatement
+          filePath: filePath
+          suggestion: suggestion
+          objectName: objectName
+          objectType: objectType
+        - reason: reason
+          GH: GH
+          sqlStatement: sqlStatement
+          filePath: filePath
+          suggestion: suggestion
+          objectName: objectName
+          objectType: objectType
+        migration_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        overall_status: overall_status
+        analyze_schema: analyze_schema
+        sql_objects:
+        - invalidCount: 6
+          totalCount: 0
+          objectNames: objectNames
+          objectDetails: objectDetails
+          objectType: objectType
+        - invalidCount: 6
+          totalCount: 0
+          objectNames: objectNames
+          objectDetails: objectDetails
+          objectType: objectType
+        export_schema: export_schema
+      properties:
+        migration_uuid:
+          format: uuid
+          type: string
+        overall_status:
+          type: string
+        export_schema:
+          type: string
+        analyze_schema:
+          type: string
+        import_schema:
+          type: string
+        suggestions_errors:
+          items:
+            $ref: '#/components/schemas/ErrorsAndSuggestionsDetails'
+          type: array
+        sql_objects:
+          items:
+            $ref: '#/components/schemas/SqlObjectsDetails'
+          type: array
+      title: Details for export schema, import schema and analyze schema steps
+      type: object
+    VoyagerMigrateDataMetricsDetails:
+      description: Voyager data migration metrics details
+      example:
+        count_total_rows: 5
+        migration_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        migration_phase: 0
+        schema_name: schema_name
+        count_live_rows: 1
+        invocation_timestamp: invocation_timestamp
+        table_name: table_name
+        status: 6
+      properties:
+        migration_uuid:
+          format: uuid
+          type: string
+        table_name:
+          type: string
+        schema_name:
+          type: string
+        migration_phase:
+          type: integer
+        status:
+          type: integer
+        count_live_rows:
+          type: integer
+        count_total_rows:
+          type: integer
+        invocation_timestamp:
+          type: string
+      title: Voyager Migrate Data Metrics details
+      type: object
+    VoyagerMigrateDataMetrics:
+      description: List of YB Voyager Data migrations metrics
+      example:
+        metrics:
+        - count_total_rows: 5
+          migration_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          migration_phase: 0
+          schema_name: schema_name
+          count_live_rows: 1
+          invocation_timestamp: invocation_timestamp
+          table_name: table_name
+          status: 6
+        - count_total_rows: 5
+          migration_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          migration_phase: 0
+          schema_name: schema_name
+          count_live_rows: 1
+          invocation_timestamp: invocation_timestamp
+          table_name: table_name
+          status: 6
+      properties:
+        metrics:
+          items:
+            $ref: '#/components/schemas/VoyagerMigrateDataMetricsDetails'
+          type: array
+      title: YB Voyager Migrate Data metrics Info
+      type: object
     CloudEnum:
       default: MANUAL
       description: Which cloud the cluster is deployed in
@@ -489,11 +1182,12 @@ components:
     ClusterNodeInfo:
       description: Node level information
       example:
-        disk_size_used_gb: 5.962133916683182
-        num_cores: 2
-        memory_mb: 6.027456183070403
-        cpu_usage: 5.637376656633329
-        disk_size_gb: 1.4658129805029452
+        disk_size_used_gb: 5.637376656633329
+        num_cores: 7
+        memory_mb: 1.4658129805029452
+        ram_provisioned_gb: 9.301444243932576
+        cpu_usage: 2.3021358869347655
+        disk_size_gb: 5.962133916683182
       properties:
         memory_mb:
           default: 0
@@ -519,23 +1213,31 @@ components:
           default: 0
           description: The number of CPU cores per node
           type: integer
+        ram_provisioned_gb:
+          default: 0
+          description: The total size of provisioned ram (GB)
+          format: double
+          type: number
       required:
       - disk_size_gb
       - memory_mb
       - num_cores
+      - ram_provisioned_gb
       title: Cluster Node Info
       type: object
     ClusterInfo:
       description: Cluster level information
       example:
+        replication_factor: 14
         node_info:
-          disk_size_used_gb: 5.962133916683182
-          num_cores: 2
-          memory_mb: 6.027456183070403
-          cpu_usage: 5.637376656633329
-          disk_size_gb: 1.4658129805029452
+          disk_size_used_gb: 5.637376656633329
+          num_cores: 7
+          memory_mb: 1.4658129805029452
+          ram_provisioned_gb: 9.301444243932576
+          cpu_usage: 2.3021358869347655
+          disk_size_gb: 5.962133916683182
         is_production: false
-        version: 7
+        version: 3
         num_nodes: 2
       properties:
         num_nodes:
@@ -546,6 +1248,11 @@ components:
           type: integer
         fault_tolerance:
           $ref: '#/components/schemas/ClusterFaultTolerance'
+        replication_factor:
+          description: The replication factor applied on the cluster
+          maximum: 24
+          minimum: 1
+          type: integer
         node_info:
           $ref: '#/components/schemas/ClusterNodeInfo'
         is_production:
@@ -568,7 +1275,7 @@ components:
       example:
         cloud_info:
           region: us-west2
-        num_nodes: 22
+        num_nodes: 5
       properties:
         cloud_info:
           $ref: '#/components/schemas/CloudInfo'
@@ -588,7 +1295,7 @@ components:
         placement_info:
           cloud_info:
             region: us-west2
-          num_nodes: 22
+          num_nodes: 5
       properties:
         placement_info:
           $ref: '#/components/schemas/PlacementInfo'
@@ -617,11 +1324,11 @@ components:
         - placement_info:
             cloud_info:
               region: us-west2
-            num_nodes: 22
+            num_nodes: 5
         - placement_info:
             cloud_info:
               region: us-west2
-            num_nodes: 22
+            num_nodes: 5
         name: name
         cloud_info:
           region: us-west2
@@ -629,14 +1336,16 @@ components:
           encryption_in_transit: false
           encryption_at_rest: false
         cluster_info:
+          replication_factor: 14
           node_info:
-            disk_size_used_gb: 5.962133916683182
-            num_cores: 2
-            memory_mb: 6.027456183070403
-            cpu_usage: 5.637376656633329
-            disk_size_gb: 1.4658129805029452
+            disk_size_used_gb: 5.637376656633329
+            num_cores: 7
+            memory_mb: 1.4658129805029452
+            ram_provisioned_gb: 9.301444243932576
+            cpu_usage: 2.3021358869347655
+            disk_size_gb: 5.962133916683182
           is_production: false
-          version: 7
+          version: 3
           num_nodes: 2
       properties:
         name:
@@ -717,11 +1426,11 @@ components:
           - placement_info:
               cloud_info:
                 region: us-west2
-              num_nodes: 22
+              num_nodes: 5
           - placement_info:
               cloud_info:
                 region: us-west2
-              num_nodes: 22
+              num_nodes: 5
           name: name
           cloud_info:
             region: us-west2
@@ -729,14 +1438,16 @@ components:
             encryption_in_transit: false
             encryption_at_rest: false
           cluster_info:
+            replication_factor: 14
             node_info:
-              disk_size_used_gb: 5.962133916683182
-              num_cores: 2
-              memory_mb: 6.027456183070403
-              cpu_usage: 5.637376656633329
-              disk_size_gb: 1.4658129805029452
+              disk_size_used_gb: 5.637376656633329
+              num_cores: 7
+              memory_mb: 1.4658129805029452
+              ram_provisioned_gb: 9.301444243932576
+              cpu_usage: 2.3021358869347655
+              disk_size_gb: 5.962133916683182
             is_production: false
-            version: 7
+            version: 3
             num_nodes: 2
         info:
           metadata:
@@ -754,12 +1465,6 @@ components:
       - info
       - spec
       title: Cluster Data
-      type: object
-    ApiError:
-      properties:
-        error:
-          $ref: '#/components/schemas/ApiError_error'
-      title: API Error
       type: object
     LiveQueryResponseYSQLQueryItem:
       description: Schema for Live Query Response YSQL Query Item
@@ -1033,16 +1738,21 @@ components:
         local_blks_written:
           type: integer
         max_time:
+          format: double
           type: number
         mean_time:
+          format: double
           type: number
         min_time:
+          format: double
           type: number
         rows:
           type: integer
         stddev_time:
+          format: double
           type: number
         total_time:
+          format: double
           type: number
       title: Slow Query Response YSQL Query Item
       type: object
@@ -1165,23 +1875,43 @@ components:
     NodeData:
       description: Node data
       example:
+        is_master_up: true
         is_master: true
         is_tserver: true
+        is_read_replica: true
         is_node_up: true
         name: name
+        host: host
+        is_bootstrapping: true
         cloud_info:
           cloud: cloud
           zone: zone
           region: region
         metrics:
+          system_tablets_total: 0
+          system_tablets_leaders: 0
+          write_ops_per_sec: 5.637376656633329
+          ram_provisioned_bytes: 0
+          time_since_hb_sec: 2.3021358869347655
+          active_connections:
+            ysql: 0
+            ycql: 0
+          total_sst_file_size_bytes: 6
           uncompressed_sst_file_size_bytes: 1
           read_ops_per_sec: 5.962133916683182
+          user_tablets_leaders: 0
+          ram_used_bytes: 0
           memory_used_bytes: 0
-          write_ops_per_sec: 5.637376656633329
-          total_sst_file_size_bytes: 6
+          uptime_seconds: 0
+          user_tablets_total: 0
+          disk_provisioned_bytes: 0
+          master_uptime_us: 0
         software_version: software_version
       properties:
         name:
+          nullable: false
+          type: string
+        host:
           nullable: false
           type: string
         is_node_up:
@@ -1189,6 +1919,12 @@ components:
         is_master:
           type: boolean
         is_tserver:
+          type: boolean
+        is_read_replica:
+          type: boolean
+        is_master_up:
+          type: boolean
+        is_bootstrapping:
           type: boolean
         metrics:
           $ref: '#/components/schemas/NodeData_metrics'
@@ -1198,8 +1934,12 @@ components:
           type: string
       required:
       - cloud_info
+      - host
+      - is_bootstrapping
       - is_master
+      - is_master_up
       - is_node_up
+      - is_read_replica
       - is_tserver
       - metrics
       - name
@@ -1233,6 +1973,21 @@ components:
       - values
       title: Metric Data
       type: object
+    ActivityData:
+      description: Activity Data
+      example:
+        data: '{}'
+        name: name
+      properties:
+        name:
+          type: string
+        data:
+          type: object
+      required:
+      - data
+      - name
+      title: Activity Data
+      type: object
     YbApiEnum:
       description: Type of DB API (YSQL/YCQL)
       enum:
@@ -1246,12 +2001,17 @@ components:
         keyspace: keyspace
         size_bytes: 0
         name: name
+        uuid: uuid
       properties:
         name:
           minLength: 1
           nullable: false
           type: string
         keyspace:
+          minLength: 1
+          nullable: false
+          type: string
+        uuid:
           minLength: 1
           nullable: false
           type: string
@@ -1266,6 +2026,7 @@ components:
       - name
       - size_bytes
       - type
+      - uuid
       title: Cluster Table Object
       type: object
     ClusterTableData:
@@ -1276,6 +2037,255 @@ components:
       title: Cluster Table Data
       type: array
       uniqueItems: true
+    PlacementCloudInfo:
+      description: Placement Cloud Info
+      example:
+        placement_region: placement_region
+        placement_zone: placement_zone
+        placement_cloud: placement_cloud
+      properties:
+        placement_cloud:
+          type: string
+        placement_region:
+          type: string
+        placement_zone:
+          type: string
+      title: Placement Cloud Info
+      type: object
+    PlacementBlock:
+      description: Placement Block
+      example:
+        cloud_info:
+          placement_region: placement_region
+          placement_zone: placement_zone
+          placement_cloud: placement_cloud
+        min_num_replicas: 1
+      properties:
+        cloud_info:
+          $ref: '#/components/schemas/PlacementCloudInfo'
+        min_num_replicas:
+          type: integer
+      title: Placement Block
+      type: object
+    TableReplicationInfo:
+      description: TableReplicationInfo
+      example:
+        placement_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        num_replicas: 6
+        placement_blocks:
+        - cloud_info:
+            placement_region: placement_region
+            placement_zone: placement_zone
+            placement_cloud: placement_cloud
+          min_num_replicas: 1
+        - cloud_info:
+            placement_region: placement_region
+            placement_zone: placement_zone
+            placement_cloud: placement_cloud
+          min_num_replicas: 1
+      properties:
+        num_replicas:
+          type: integer
+        placement_blocks:
+          items:
+            $ref: '#/components/schemas/PlacementBlock'
+          type: array
+        placement_uuid:
+          format: uuid
+          type: string
+      title: TableReplicationInfo
+      type: object
+    ColumnInfo:
+      description: Column Info
+      example:
+        column: column
+        id: id
+        type: type
+      properties:
+        column:
+          type: string
+        id:
+          type: string
+        type:
+          type: string
+      title: Column Info
+      type: object
+    RaftConfig:
+      description: Raft Config
+      example:
+        role: role
+        location: location
+        uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+      properties:
+        uuid:
+          format: uuid
+          type: string
+        role:
+          type: string
+        location:
+          type: string
+      title: Raft Config
+      type: object
+    TabletInfo:
+      description: Tablet Info
+      example:
+        tablet_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        partition: partition
+        raft_config:
+        - role: role
+          location: location
+          uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        - role: role
+          location: location
+          uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        hidden: true
+        split_depth: 5
+        state: state
+        message: message
+      properties:
+        tablet_id:
+          format: uuid
+          type: string
+        partition:
+          type: string
+        split_depth:
+          type: integer
+        state:
+          type: string
+        hidden:
+          type: boolean
+        message:
+          type: string
+        raft_config:
+          items:
+            $ref: '#/components/schemas/RaftConfig'
+          type: array
+      title: Tablet Info
+      type: object
+    TableInfo:
+      description: Table Info
+      example:
+        table_tablespace_oid: table_tablespace_oid
+        table_replication_info:
+          live_replicas:
+            placement_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            num_replicas: 6
+            placement_blocks:
+            - cloud_info:
+                placement_region: placement_region
+                placement_zone: placement_zone
+                placement_cloud: placement_cloud
+              min_num_replicas: 1
+            - cloud_info:
+                placement_region: placement_region
+                placement_zone: placement_zone
+                placement_cloud: placement_cloud
+              min_num_replicas: 1
+          read_replicas:
+          - placement_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            num_replicas: 6
+            placement_blocks:
+            - cloud_info:
+                placement_region: placement_region
+                placement_zone: placement_zone
+                placement_cloud: placement_cloud
+              min_num_replicas: 1
+            - cloud_info:
+                placement_region: placement_region
+                placement_zone: placement_zone
+                placement_cloud: placement_cloud
+              min_num_replicas: 1
+          - placement_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            num_replicas: 6
+            placement_blocks:
+            - cloud_info:
+                placement_region: placement_region
+                placement_zone: placement_zone
+                placement_cloud: placement_cloud
+              min_num_replicas: 1
+            - cloud_info:
+                placement_region: placement_region
+                placement_zone: placement_zone
+                placement_cloud: placement_cloud
+              min_num_replicas: 1
+        table_state: table_state
+        table_state_message: table_state_message
+        columns:
+        - column: column
+          id: id
+          type: type
+        - column: column
+          id: id
+          type: type
+        table_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        table_version: 0
+        table_name: table_name
+        tablets:
+        - tablet_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          partition: partition
+          raft_config:
+          - role: role
+            location: location
+            uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          - role: role
+            location: location
+            uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          hidden: true
+          split_depth: 5
+          state: state
+          message: message
+        - tablet_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          partition: partition
+          raft_config:
+          - role: role
+            location: location
+            uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          - role: role
+            location: location
+            uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          hidden: true
+          split_depth: 5
+          state: state
+          message: message
+        table_type: table_type
+      properties:
+        table_name:
+          type: string
+        table_id:
+          format: uuid
+          type: string
+        table_version:
+          type: integer
+        table_type:
+          type: string
+        table_state:
+          type: string
+        table_state_message:
+          type: string
+        table_tablespace_oid:
+          type: string
+        table_replication_info:
+          $ref: '#/components/schemas/TableInfo_table_replication_info'
+        columns:
+          items:
+            $ref: '#/components/schemas/ColumnInfo'
+          type: array
+        tablets:
+          items:
+            $ref: '#/components/schemas/TabletInfo'
+          type: array
+      required:
+      - columns
+      - table_id
+      - table_name
+      - table_replication_info
+      - table_state
+      - table_state_message
+      - table_type
+      - table_version
+      - tablets
+      title: Table Info
+      type: object
     HealthCheckInfo:
       example:
         most_recent_uptime: 0
@@ -1362,6 +2372,132 @@ components:
           type: string
       title: YugabyteDB Version Info
       type: object
+    Gflag:
+      description: Gflag
+      example:
+        name: name
+        type: type
+        value: value
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+        type:
+          type: string
+      title: Gflag
+      type: object
+    GflagsInfo:
+      description: Gflags Info
+      example:
+        tserver_flags:
+        - name: name
+          type: type
+          value: value
+        - name: name
+          type: type
+          value: value
+        master_flags:
+        - name: name
+          type: type
+          value: value
+        - name: name
+          type: type
+          value: value
+      properties:
+        master_flags:
+          items:
+            $ref: '#/components/schemas/Gflag'
+          type: array
+        tserver_flags:
+          items:
+            $ref: '#/components/schemas/Gflag'
+          type: array
+      required:
+      - master_flags
+      - tserver_flags
+      title: Gflags Info
+      type: object
+    AlertsInfo:
+      description: Alerts Info
+      example:
+        name: name
+        info: info
+      properties:
+        name:
+          description: Name of alert
+          type: string
+        info:
+          description: Array of alerts
+          type: string
+      required:
+      - info
+      - name
+      title: Alerts Info
+      type: object
+    API_for_Plan_and_Asses_page:
+      example:
+        data:
+          complexity_overview:
+          - schema: schema
+            table_count: 6
+            complexity: complexity
+            sql_objects_count: 0
+          - schema: schema
+            table_count: 6
+            complexity: complexity
+            sql_objects_count: 0
+          assesment_status: true
+          top_errors:
+          - top_errors
+          - top_errors
+          top_suggestions:
+          - top_suggestions
+          - top_suggestions
+      properties:
+        data:
+          $ref: '#/components/schemas/MigrationAssesmentInfo'
+      title: API for Plan and Asses page
+      type: object
+    Individual_Migration_Task_Info:
+      example:
+        data:
+          import_schema: import_schema
+          suggestions_errors:
+          - reason: reason
+            GH: GH
+            sqlStatement: sqlStatement
+            filePath: filePath
+            suggestion: suggestion
+            objectName: objectName
+            objectType: objectType
+          - reason: reason
+            GH: GH
+            sqlStatement: sqlStatement
+            filePath: filePath
+            suggestion: suggestion
+            objectName: objectName
+            objectType: objectType
+          migration_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          overall_status: overall_status
+          analyze_schema: analyze_schema
+          sql_objects:
+          - invalidCount: 6
+            totalCount: 0
+            objectNames: objectNames
+            objectDetails: objectDetails
+            objectType: objectType
+          - invalidCount: 6
+            totalCount: 0
+            objectNames: objectNames
+            objectDetails: objectDetails
+            objectType: objectType
+          export_schema: export_schema
+      properties:
+        data:
+          $ref: '#/components/schemas/MigrateSchemaTaskInfo'
+      title: Individual Migration Task Info
+      type: object
     Cluster_Response:
       example:
         data:
@@ -1370,11 +2506,11 @@ components:
             - placement_info:
                 cloud_info:
                   region: us-west2
-                num_nodes: 22
+                num_nodes: 5
             - placement_info:
                 cloud_info:
                   region: us-west2
-                num_nodes: 22
+                num_nodes: 5
             name: name
             cloud_info:
               region: us-west2
@@ -1382,14 +2518,16 @@ components:
               encryption_in_transit: false
               encryption_at_rest: false
             cluster_info:
+              replication_factor: 14
               node_info:
-                disk_size_used_gb: 5.962133916683182
-                num_cores: 2
-                memory_mb: 6.027456183070403
-                cpu_usage: 5.637376656633329
-                disk_size_gb: 1.4658129805029452
+                disk_size_used_gb: 5.637376656633329
+                num_cores: 7
+                memory_mb: 1.4658129805029452
+                ram_provisioned_gb: 9.301444243932576
+                cpu_usage: 2.3021358869347655
+                disk_size_gb: 5.962133916683182
               is_production: false
-              version: 7
+              version: 3
               num_nodes: 2
           info:
             metadata:
@@ -1406,35 +2544,69 @@ components:
     Cluster_Nodes_Response:
       example:
         data:
-        - is_master: true
+        - is_master_up: true
+          is_master: true
           is_tserver: true
+          is_read_replica: true
           is_node_up: true
           name: name
+          host: host
+          is_bootstrapping: true
           cloud_info:
             cloud: cloud
             zone: zone
             region: region
           metrics:
+            system_tablets_total: 0
+            system_tablets_leaders: 0
+            write_ops_per_sec: 5.637376656633329
+            ram_provisioned_bytes: 0
+            time_since_hb_sec: 2.3021358869347655
+            active_connections:
+              ysql: 0
+              ycql: 0
+            total_sst_file_size_bytes: 6
             uncompressed_sst_file_size_bytes: 1
             read_ops_per_sec: 5.962133916683182
+            user_tablets_leaders: 0
+            ram_used_bytes: 0
             memory_used_bytes: 0
-            write_ops_per_sec: 5.637376656633329
-            total_sst_file_size_bytes: 6
+            uptime_seconds: 0
+            user_tablets_total: 0
+            disk_provisioned_bytes: 0
+            master_uptime_us: 0
           software_version: software_version
-        - is_master: true
+        - is_master_up: true
+          is_master: true
           is_tserver: true
+          is_read_replica: true
           is_node_up: true
           name: name
+          host: host
+          is_bootstrapping: true
           cloud_info:
             cloud: cloud
             zone: zone
             region: region
           metrics:
+            system_tablets_total: 0
+            system_tablets_leaders: 0
+            write_ops_per_sec: 5.637376656633329
+            ram_provisioned_bytes: 0
+            time_since_hb_sec: 2.3021358869347655
+            active_connections:
+              ysql: 0
+              ycql: 0
+            total_sst_file_size_bytes: 6
             uncompressed_sst_file_size_bytes: 1
             read_ops_per_sec: 5.962133916683182
+            user_tablets_leaders: 0
+            ram_used_bytes: 0
             memory_used_bytes: 0
-            write_ops_per_sec: 5.637376656633329
-            total_sst_file_size_bytes: 6
+            uptime_seconds: 0
+            user_tablets_total: 0
+            disk_provisioned_bytes: 0
+            master_uptime_us: 0
           software_version: software_version
       properties:
         data:
@@ -1482,17 +2654,52 @@ components:
       - start_timestamp
       title: Metric Response
       type: object
-    Cluster_table_list_response:
+    Activities_Response:
       example:
         data:
-        - keyspace: keyspace
-          size_bytes: 0
+        - data: '{}'
           name: name
-        - keyspace: keyspace
-          size_bytes: 0
+        - data: '{}'
           name: name
       properties:
         data:
+          items:
+            $ref: '#/components/schemas/ActivityData'
+          type: array
+      required:
+      - data
+      title: Activities Response
+      type: object
+    Cluster_table_list_response:
+      example:
+        tables:
+        - keyspace: keyspace
+          size_bytes: 0
+          name: name
+          uuid: uuid
+        - keyspace: keyspace
+          size_bytes: 0
+          name: name
+          uuid: uuid
+        indexes:
+        - keyspace: keyspace
+          size_bytes: 0
+          name: name
+          uuid: uuid
+        - keyspace: keyspace
+          size_bytes: 0
+          name: name
+          uuid: uuid
+      properties:
+        tables:
+          description: List of cluster tables
+          items:
+            $ref: '#/components/schemas/ClusterTable'
+          nullable: false
+          title: Cluster Table Data
+          type: array
+          uniqueItems: true
+        indexes:
           description: List of cluster tables
           items:
             $ref: '#/components/schemas/ClusterTable'
@@ -1501,7 +2708,8 @@ components:
           type: array
           uniqueItems: true
       required:
-      - data
+      - indexes
+      - tables
       title: Cluster table list response
       type: object
     Health_Check_Response:
@@ -1542,6 +2750,33 @@ components:
       - data
       title: Cluster tablet list response
       type: object
+    Is_load_balancer_idle:
+      description: Is load balancer idle
+      example:
+        is_idle: true
+      properties:
+        is_idle:
+          type: boolean
+      required:
+      - is_idle
+      title: Is load balancer idle
+      type: object
+    Alerts_Response:
+      example:
+        data:
+        - name: name
+          info: info
+        - name: name
+          info: info
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/AlertsInfo'
+          type: array
+      required:
+      - data
+      title: Alerts Response
+      type: object
     ApiError_error:
       properties:
         detail:
@@ -1551,13 +2786,45 @@ components:
           description: Error code
           type: integer
       type: object
+    NodeData_metrics_active_connections:
+      example:
+        ysql: 0
+        ycql: 0
+      properties:
+        ysql:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        ycql:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+      required:
+      - ycql
+      - ysql
+      type: object
     NodeData_metrics:
       example:
+        system_tablets_total: 0
+        system_tablets_leaders: 0
+        write_ops_per_sec: 5.637376656633329
+        ram_provisioned_bytes: 0
+        time_since_hb_sec: 2.3021358869347655
+        active_connections:
+          ysql: 0
+          ycql: 0
+        total_sst_file_size_bytes: 6
         uncompressed_sst_file_size_bytes: 1
         read_ops_per_sec: 5.962133916683182
+        user_tablets_leaders: 0
+        ram_used_bytes: 0
         memory_used_bytes: 0
-        write_ops_per_sec: 5.637376656633329
-        total_sst_file_size_bytes: 6
+        uptime_seconds: 0
+        user_tablets_total: 0
+        disk_provisioned_bytes: 0
+        master_uptime_us: 0
       properties:
         memory_used_bytes:
           default: 0
@@ -1581,11 +2848,73 @@ components:
           default: 0
           format: double
           type: number
+        time_since_hb_sec:
+          default: 0
+          format: double
+          type: number
+        uptime_seconds:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        user_tablets_total:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        user_tablets_leaders:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        system_tablets_total:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        system_tablets_leaders:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        active_connections:
+          $ref: '#/components/schemas/NodeData_metrics_active_connections'
+        master_uptime_us:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        ram_used_bytes:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        ram_provisioned_bytes:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        disk_provisioned_bytes:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
       required:
+      - active_connections
+      - disk_provisioned_bytes
+      - master_uptime_us
       - memory_used_bytes
+      - ram_provisioned_bytes
+      - ram_used_bytes
       - read_ops_per_sec
+      - system_tablets_leaders
+      - system_tablets_total
+      - time_since_hb_sec
       - total_sst_file_size_bytes
       - uncompressed_sst_file_size_bytes
+      - uptime_seconds
+      - user_tablets_leaders
+      - user_tablets_total
       - write_ops_per_sec
       type: object
     NodeData_cloud_info:
@@ -1603,6 +2932,57 @@ components:
       required:
       - region
       - zone
+      type: object
+    TableInfo_table_replication_info:
+      example:
+        live_replicas:
+          placement_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          num_replicas: 6
+          placement_blocks:
+          - cloud_info:
+              placement_region: placement_region
+              placement_zone: placement_zone
+              placement_cloud: placement_cloud
+            min_num_replicas: 1
+          - cloud_info:
+              placement_region: placement_region
+              placement_zone: placement_zone
+              placement_cloud: placement_cloud
+            min_num_replicas: 1
+        read_replicas:
+        - placement_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          num_replicas: 6
+          placement_blocks:
+          - cloud_info:
+              placement_region: placement_region
+              placement_zone: placement_zone
+              placement_cloud: placement_cloud
+            min_num_replicas: 1
+          - cloud_info:
+              placement_region: placement_region
+              placement_zone: placement_zone
+              placement_cloud: placement_cloud
+            min_num_replicas: 1
+        - placement_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          num_replicas: 6
+          placement_blocks:
+          - cloud_info:
+              placement_region: placement_region
+              placement_zone: placement_zone
+              placement_cloud: placement_cloud
+            min_num_replicas: 1
+          - cloud_info:
+              placement_region: placement_region
+              placement_zone: placement_zone
+              placement_cloud: placement_cloud
+            min_num_replicas: 1
+      properties:
+        live_replicas:
+          $ref: '#/components/schemas/TableReplicationInfo'
+        read_replicas:
+          items:
+            $ref: '#/components/schemas/TableReplicationInfo'
+          type: array
       type: object
   securitySchemes:
     BearerAuthToken:

@@ -64,6 +64,13 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
   scoped_refptr<Log> log;
   auto tablet_ptr = harness_->tablet();
   auto tablet_id = tablet_ptr->tablet_id();
+  log::NewSegmentAllocationCallback noop = {};
+  auto new_segment_allocation_callback =
+      tablet()->metadata()->IsLazySuperblockFlushEnabled()
+          ? std::bind(
+                &tablet::RaftGroupMetadata::Flush, tablet()->metadata(),
+                tablet::OnlyIfDirty::kTrue)
+          : noop;
   ASSERT_OK(Log::Open(LogOptions(), tablet_id,
                      fs_manager()->GetFirstTabletWalDirOrDie(tablet_ptr->metadata()->table_id(),
                                                              tablet_id),
@@ -76,7 +83,9 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
                      log_thread_pool_.get(),
                      log_thread_pool_.get(),
                      std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
-                     &log));
+                     &log,
+                     {}, // pre_log_rollover_callback,
+                     new_segment_allocation_callback));
 
   scoped_refptr<MetricEntity> table_metric_entity =
     METRIC_ENTITY_table.Instantiate(&metric_registry_, Format("table-$0", CURRENT_TEST_NAME()));
@@ -105,10 +114,9 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
   config.add_peers()->CopyFrom(config_peer);
   config.set_opid_index(consensus::kInvalidOpIdIndex);
 
-  std::unique_ptr<ConsensusMetadata> cmeta;
-  ASSERT_OK(ConsensusMetadata::Create(tablet()->metadata()->fs_manager(),
-                                     tablet_id, fs_manager()->uuid(),
-                                     config, consensus::kMinimumTerm, &cmeta));
+  std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
+      tablet()->metadata()->fs_manager(), tablet_id, fs_manager()->uuid(), config,
+      consensus::kMinimumTerm));
 
   MessengerBuilder mbuilder(CURRENT_TEST_NAME());
   messenger_ = ASSERT_RESULT(mbuilder.Build());
@@ -118,6 +126,13 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
                                                                       config_peer.cloud_info());
 
   log_anchor_registry_.reset(new LogAnchorRegistry());
+  consensus::RetryableRequestsManager retryable_requests_manager(
+      tablet_id,
+      fs_manager(),
+      fs_manager()->GetWalRootDirs()[0],
+      MemTracker::FindOrCreateTracker(tablet_id),
+      "");
+  Status s = retryable_requests_manager.Init(clock());
   ASSERT_OK(tablet_peer_->SetBootstrapping());
   ASSERT_OK(tablet_peer_->InitTabletPeer(
       tablet(),
@@ -129,9 +144,10 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
       tablet_metric_entity,
       raft_pool_.get(),
       tablet_prepare_pool_.get(),
-      nullptr /* retryable_requests */,
+      &retryable_requests_manager,
       nullptr /* consensus_meta */,
-      multi_raft_manager_.get()));
+      multi_raft_manager_.get(),
+      nullptr /* flush_retryable_requests_pool */));
   consensus::ConsensusBootstrapInfo boot_info;
   ASSERT_OK(tablet_peer_->Start(boot_info));
 
@@ -142,7 +158,7 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
     if (FLAGS_quick_leader_election_on_create) {
       return tablet_peer_->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
     }
-    RETURN_NOT_OK(tablet_peer_->consensus()->EmulateElection());
+    RETURN_NOT_OK(VERIFY_RESULT(tablet_peer_->GetConsensus())->EmulateElection());
     return true;
   }, MonoDelta::FromMilliseconds(500), "If quick leader elections enabled, wait for peer to be a "
                                        "leader, otherwise emulate."));
@@ -181,7 +197,7 @@ void RemoteBootstrapSessionTest::PopulateTablet() {
 void RemoteBootstrapSessionTest::InitSession() {
   session_.reset(new RemoteBootstrapSession(
       tablet_peer_, "TestSession", "FakeUUID", nullptr /* nsessions */));
-  ASSERT_OK(session_->Init());
+  ASSERT_OK(session_->InitBootstrapSession());
 }
 
 }  // namespace tserver

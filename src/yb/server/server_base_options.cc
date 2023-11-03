@@ -40,7 +40,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/common_net.pb.h"
 
@@ -166,7 +166,7 @@ WebserverOptions& ServerBaseOptions::CompleteWebserverOptions() {
   return webserver_opts;
 }
 
-std::string ServerBaseOptions::HostsString() {
+std::string ServerBaseOptions::HostsString() const {
   return !server_broadcast_addresses.empty() ? server_broadcast_addresses
                                              : rpc_opts.rpc_bind_addresses;
 }
@@ -176,12 +176,12 @@ void ServerBaseOptions::SetMasterAddressesNoValidation(MasterAddressesPtr master
     LOG(INFO) << "Updating master addrs to " << MasterAddressesToString(*master_addresses);
   }
 
-  std::lock_guard<std::mutex> l(master_addresses_mtx_);
+  std::lock_guard l(master_addresses_mtx_);
   master_addresses_ = master_addresses;
 }
 
 MasterAddressesPtr ServerBaseOptions::GetMasterAddresses() const {
-  std::lock_guard<std::mutex> l(master_addresses_mtx_);
+  std::lock_guard l(master_addresses_mtx_);
   return master_addresses_;
 }
 

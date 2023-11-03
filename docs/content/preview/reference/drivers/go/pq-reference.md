@@ -1,7 +1,8 @@
 ---
-title: Go Drivers
+title: PQ Driver
+headerTitle: Go Drivers
 linkTitle: Go Drivers
-description: Go Drivers for YSQL
+description: Go PQ Driver for YSQL
 headcontent: Go Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
@@ -39,7 +40,9 @@ type: docs
 
 The [PQ driver](https://github.com/lib/pq/) is a popular driver for PostgreSQL that can used for connecting to YugabyteDB YSQL.
 
-The driver allows Go programmers to connect to YugabyteDB database to execute DMLs and DDLs using the standard `database/sql` package.
+The driver allows Go programmers to connect to YugabyteDB database to execute DMLs and DDLs using the standard `database/sql` package. The driver supports the [SCRAM-SHA-256 authentication method](../../../../secure/authentication/password-authentication/#scram-sha-256).
+
+For a tutorial on building a sample Go application with pq, see [Connect an application](../../../../drivers-orms/go/pq/).
 
 ## Fundamentals
 
@@ -53,6 +56,17 @@ Import the PQ driver package by adding the following import statement in your Go
 import (
   _ "github.com/lib/pq"
 )
+```
+
+To install the package locally, run the following commands:
+
+{{< note title="Note">}}
+Set the  environment variable `GO111MODULE` before installing the `lib/pq` package if your Go version is 1.11 or higher.
+{{< /note >}}
+
+```sh
+export GO111MODULE=auto
+go get github.com/lib/pq
 ```
 
 ### Connect to YugabyteDB database

@@ -19,6 +19,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/slice.h"
+#include "yb/util/slice_parts.h"
 
 DECLARE_bool(dump_transactions);
 

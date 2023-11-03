@@ -13,15 +13,13 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import java.util.*;
+import lombok.Builder;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
@@ -35,127 +33,109 @@ public abstract class DevopsBase {
 
   @Inject ShellProcessHandler shellProcessHandler;
 
-  @Inject RuntimeConfigFactory runtimeConfigFactory;
-
-  @Inject play.Configuration appConfig;
+  @Inject RuntimeConfGetter confGetter;
 
   @Inject NodeAgentClient nodeAgentClient;
+
+  @Inject FileHelperService fileHelperService;
 
   protected NodeAgentClient getNodeAgentClient() {
     return nodeAgentClient;
   }
 
-  protected JsonNode parseShellResponse(ShellResponse response, String command) {
+  protected JsonNode execAndParseShellResponse(DevopsCommand devopsCommand) {
+    ShellResponse response = execCommand(devopsCommand);
     if (response.code == 0) {
       return Json.parse(response.message);
     } else {
       String errorMsg =
           String.format(
               "YBCloud command %s (%s) failed to execute. %s",
-              getCommandType(), command, response.message);
+              getCommandType(), devopsCommand.command, response.message);
       log.error(errorMsg);
       return ApiResponse.errorJSON(errorMsg);
     }
   }
 
-  protected JsonNode execAndParseCommandCloud(
-      UUID providerUUID, String command, List<String> commandArgs) {
-    ShellResponse response =
-        execCommand(null, providerUUID, null, command, commandArgs, Collections.emptyList());
-    return parseShellResponse(response, command);
-  }
-
-  protected JsonNode execAndParseCommandRegion(
-      UUID regionUUID, String command, List<String> commandArgs) {
-    ShellResponse response =
-        execCommand(regionUUID, null, null, command, commandArgs, Collections.emptyList());
-    return parseShellResponse(response, command);
-  }
-
-  protected ShellResponse execCommand(
-      UUID regionUUID,
-      UUID providerUUID,
-      String command,
-      List<String> commandArgs,
-      List<String> cloudArgs) {
-    return execCommand(
-        regionUUID, providerUUID, null /*cloudType*/, command, commandArgs, cloudArgs);
-  }
-
-  protected ShellResponse execCommand(
-      UUID regionUUID,
-      UUID providerUUID,
-      Common.CloudType cloudType,
-      String command,
-      List<String> commandArgs,
-      List<String> cloudArgs) {
-    return execCommand(regionUUID, providerUUID, cloudType, command, commandArgs, cloudArgs, null);
-  }
-
-  protected ShellResponse execCommand(
-      UUID regionUUID,
-      UUID providerUUID,
-      Common.CloudType cloudType,
-      String command,
-      List<String> commandArgs,
-      List<String> cloudArgs,
-      Map<String, String> envVars) {
-    return execCommand(
-        regionUUID, providerUUID, cloudType, command, commandArgs, cloudArgs, envVars, null);
-  }
-
-  protected ShellResponse execCommand(
-      UUID regionUUID,
-      UUID providerUUID,
-      Common.CloudType cloudType,
-      String command,
-      List<String> commandArgs,
-      List<String> cloudArgs,
-      Map<String, String> envVars,
-      Map<String, String> sensitiveData) {
+  protected ShellResponse execCommand(DevopsCommand devopsCommand) {
     List<String> commandList = new ArrayList<>();
     commandList.add(YBCLOUD_SCRIPT);
     Map<String, String> extraVars = new HashMap<>();
-    if (envVars != null) {
-      extraVars.putAll(envVars);
+    if (devopsCommand.envVars != null) {
+      extraVars.putAll(devopsCommand.envVars);
     }
     Region region = null;
-    if (regionUUID != null) {
-      region = Region.get(regionUUID);
+    if (devopsCommand.regionUUID != null) {
+      region = Region.get(devopsCommand.regionUUID);
     }
 
-    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
+    List<String> commandArgs = devopsCommand.commandArgs;
+
+    if (confGetter.getGlobalConf(GlobalConfKeys.ssh2Enabled)) {
       commandArgs.add("--ssh2_enabled");
     }
 
     Provider provider = null;
     if (region != null) {
-      commandList.add(region.provider.code);
+      commandList.add(region.getProviderCloudCode().toString());
       commandList.add("--region");
-      commandList.add(region.code);
-      extraVars.putAll(region.provider.getUnmaskedConfig());
-    } else if (providerUUID != null) {
-      provider = Provider.get(providerUUID);
-      commandList.add(provider.code);
-      extraVars.putAll(provider.getUnmaskedConfig());
-    } else if (cloudType != null) {
-      commandList.add(cloudType.toString());
+      commandList.add(region.getCode());
+      try {
+        Map<String, String> envConfig = CloudInfoInterface.fetchEnvVars(region.getProvider());
+        extraVars.putAll(envConfig);
+      } catch (Exception e) {
+        throw new RuntimeException("Failed to retrieve env variables for the provider!", e);
+      }
+    } else if (devopsCommand.providerUUID != null) {
+      provider = Provider.get(devopsCommand.providerUUID);
+      commandList.add(provider.getCode());
+      try {
+        Map<String, String> envConfig = CloudInfoInterface.fetchEnvVars(provider);
+        extraVars.putAll(envConfig);
+      } catch (Exception e) {
+        throw new RuntimeException("Failed to retrieve env variables for the provider!", e);
+      }
+    } else if (devopsCommand.cloudType != null) {
+      commandList.add(devopsCommand.cloudType.toString());
     } else {
       throw new RuntimeException(
           "Invalid args provided for execCommand: region, provider or cloudType required!");
     }
 
     String description = String.join(" ", commandList);
-    description += (" " + getCommandType().toLowerCase() + " " + command);
+    description += (" " + getCommandType().toLowerCase() + " " + devopsCommand.command);
     if (commandArgs.size() >= 1) {
       description += (" " + commandArgs.get(commandArgs.size() - 1));
     }
-    commandList.addAll(cloudArgs);
+    commandList.addAll(devopsCommand.cloudArgs);
     commandList.add(getCommandType().toLowerCase());
-    commandList.add(command);
+    commandList.add(devopsCommand.command);
     commandList.addAll(commandArgs);
-    return (sensitiveData != null && !sensitiveData.isEmpty())
-        ? shellProcessHandler.run(commandList, extraVars, description, sensitiveData)
-        : shellProcessHandler.run(commandList, extraVars, description);
+    return shellProcessHandler.run(
+        commandList,
+        ShellProcessContext.builder()
+            .logCmdOutput(true)
+            .description(description)
+            .extraEnvVars(extraVars)
+            .redactedVals(devopsCommand.redactedVals)
+            .sensitiveData(devopsCommand.sensitiveData)
+            .timeoutSecs(confGetter.getGlobalConf(GlobalConfKeys.devopsCommandTimeout).toSeconds())
+            .build());
+  }
+
+  @Builder
+  public static class DevopsCommand {
+    UUID regionUUID;
+    UUID providerUUID;
+    Common.CloudType cloudType;
+    String command;
+    List<String> commandArgs;
+    @Builder.Default List<String> cloudArgs = Collections.emptyList();
+    // Env vars for this command.
+    Map<String, String> envVars;
+    // Args that are in the cmd, but need to be redacted.
+    Map<String, String> redactedVals;
+    // Args that will be added to the cmd but will be redacted in logs.
+    Map<String, String> sensitiveData;
   }
 }

@@ -34,26 +34,40 @@
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/pg_client.fwd.h"
 
+#include "yb/util/enums.h"
+#include "yb/util/lw_function.h"
 #include "yb/util/monotime.h"
+#include "yb/util/ref_cnt_buffer.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
 namespace pggate {
 
-YB_STRONGLY_TYPED_BOOL(DdlMode);
+YB_DEFINE_ENUM(
+  DdlType,
+  // Not a DDL operation.
+  ((NonDdl, 0))
+  // DDL operation that does not modify the DocDB schema protobufs.
+  ((DdlWithoutDocdbSchemaChanges, 1))
+  // DDL operation that modifies the DocDB schema protobufs.
+  ((DdlWithDocdbSchemaChanges, 2))
+);
 
 #define YB_PG_CLIENT_SIMPLE_METHODS \
-    (AlterDatabase)(AlterTable)(CreateDatabase)(CreateTable)(CreateTablegroup) \
-    (DropDatabase)(DropTablegroup)(TruncateTable)
+    (AlterDatabase)(AlterTable) \
+    (CreateDatabase)(CreateReplicationSlot)(CreateTable)(CreateTablegroup) \
+    (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable)
 
 struct PerformResult {
   Status status;
   ReadHybridTime catalog_read_time;
   rpc::CallResponsePtr response;
+  HybridTime used_in_txn_limit;
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(status, catalog_read_time);
+    return YB_STRUCT_TO_STRING(status, catalog_read_time, used_in_txn_limit);
   }
 };
 
@@ -71,14 +85,20 @@ class PgClient {
 
   void SetTimeout(MonoDelta timeout);
 
+  uint64_t SessionID() const;
+
   Result<PgTableDescPtr> OpenTable(
       const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time);
 
-  Status FinishTransaction(Commit commit, DdlMode ddl_mode);
+  Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id);
+
+  Status FinishTransaction(Commit commit, DdlType ddl_type);
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
   Result<std::pair<PgOid, PgOid>> ReserveOids(PgOid database_oid, PgOid next_oid, uint32_t count);
+
+  Result<PgOid> GetNewObjectId(PgOid db_oid);
 
   Result<bool> IsInitDbDone();
 
@@ -89,7 +109,15 @@ class PgClient {
   Result<client::YBTableName> DropTable(
       tserver::PgDropTableRequestPB* req, CoarseTimePoint deadline);
 
+  Result<int> WaitForBackendsCatalogVersion(
+      tserver::PgWaitForBackendsCatalogVersionRequestPB* req, CoarseTimePoint deadline);
   Status BackfillIndex(tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline);
+
+  Status GetIndexBackfillProgress(const std::vector<PgObjectId>& index_ids,
+                                  uint64_t** backfill_statuses);
+
+  Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
+      const std::string& table_id, const std::string& transaction_id);
 
   Result<int32> TabletServerCount(bool primary_only);
 
@@ -119,6 +147,16 @@ class PgClient {
                                    std::optional<int64_t> expected_last_val,
                                    std::optional<bool> expected_is_called);
 
+  Result<std::pair<int64_t, int64_t>> FetchSequenceTuple(int64_t db_oid,
+                                                         int64_t seq_oid,
+                                                         uint64_t ysql_catalog_version,
+                                                         bool is_db_catalog_version_mode,
+                                                         uint32_t fetch_count,
+                                                         int64_t inc_by,
+                                                         int64_t min_value,
+                                                         int64_t max_value,
+                                                         bool cycle);
+
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(int64_t db_oid,
                                                      int64_t seq_oid,
                                                      uint64_t ysql_catalog_version,
@@ -135,8 +173,21 @@ class PgClient {
 
   Result<bool> CheckIfPitrActive();
 
+  Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
+
+  Result<boost::container::small_vector<RefCntSlice, 2>> GetTableKeyRanges(
+      const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
+
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
-      bool size_only);
+      bool size_only, uint32_t db_oid);
+
+  Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
+
+  using ActiveTransactionCallback = LWFunction<Status(
+      const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;
+  Status EnumerateActiveTransactions(
+      const ActiveTransactionCallback& callback, bool for_current_session_only = false) const;
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DECLARE(r, data, method) \
   Status method(                             \
@@ -144,6 +195,8 @@ class PgClient {
       CoarseTimePoint deadline);
 
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_SIMPLE_METHOD_DECLARE, ~, YB_PG_CLIENT_SIMPLE_METHODS);
+
+  Status CancelTransaction(const unsigned char* transaction_id);
 
  private:
   class Impl;

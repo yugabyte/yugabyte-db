@@ -27,7 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class TableSpaceUtil {
 
-  private static final String REPLICA_PLACEMENT_TEXT = "replica_placement=";
+  public static final String REPLICA_PLACEMENT_TEXT = "replica_placement=";
 
   public static TableSpaceInfo parseToTableSpaceInfo(TableSpaceQueryResponse tablespace) {
     TableSpaceInfo.TableSpaceInfoBuilder builder = TableSpaceInfo.builder();
@@ -141,9 +141,7 @@ public class TableSpaceUtil {
 
   private static void validatePlacement(PlacementInfo clusterPlacement, PlacementBlock pb) {
     PlacementAZ foundAZ =
-        clusterPlacement
-            .cloudList
-            .stream()
+        clusterPlacement.cloudList.stream()
             .filter(c -> Objects.equals(c.code, pb.cloud))
             .flatMap(c -> c.regionList.stream())
             .filter(r -> Objects.equals(r.code, pb.region))

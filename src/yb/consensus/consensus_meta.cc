@@ -84,18 +84,16 @@ PeerRole UnpackRole(ConsensusMetadata::PackedRoleAndTerm role_and_term) {
 
 } // anonymous namespace
 
-Status ConsensusMetadata::Create(FsManager* fs_manager,
+Result<std::unique_ptr<ConsensusMetadata>> ConsensusMetadata::Create(FsManager* fs_manager,
                                  const string& tablet_id,
                                  const std::string& peer_uuid,
                                  const RaftConfigPB& config,
-                                 int64_t current_term,
-                                 std::unique_ptr<ConsensusMetadata>* cmeta_out) {
+                                 int64_t current_term) {
   std::unique_ptr<ConsensusMetadata> cmeta(new ConsensusMetadata(fs_manager, tablet_id, peer_uuid));
   cmeta->set_committed_config(config);
   cmeta->set_current_term(current_term);
   RETURN_NOT_OK(cmeta->Flush());
-  cmeta_out->swap(cmeta);
-  return Status::OK();
+  return cmeta;
 }
 
 Status ConsensusMetadata::Load(FsManager* fs_manager,
@@ -105,7 +103,7 @@ Status ConsensusMetadata::Load(FsManager* fs_manager,
   std::unique_ptr<ConsensusMetadata> cmeta(new ConsensusMetadata(fs_manager,
                                                                  tablet_id,
                                                                  peer_uuid));
-  RETURN_NOT_OK(pb_util::ReadPBContainerFromPath(fs_manager->env(),
+  RETURN_NOT_OK(pb_util::ReadPBContainerFromPath(fs_manager->encrypted_env(),
       VERIFY_RESULT(fs_manager->GetConsensusMetadataPath(tablet_id)),
       &cmeta->pb_));
   cmeta->UpdateActiveRole(); // Needs to happen here as we sidestep the accessor APIs.
@@ -283,7 +281,7 @@ Status ConsensusMetadata::Flush() {
 
   string meta_file_path = VERIFY_RESULT(fs_manager_->GetConsensusMetadataPath(tablet_id_));
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
-                          fs_manager_->env(), meta_file_path, pb_,
+                          fs_manager_->encrypted_env(), meta_file_path, pb_,
                           pb_util::OVERWRITE,
                           // Always fsync the consensus metadata.
                           pb_util::SYNC),

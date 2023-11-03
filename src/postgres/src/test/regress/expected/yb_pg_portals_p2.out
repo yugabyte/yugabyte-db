@@ -1,7 +1,6 @@
 --
 -- PORTALS_P2
 --
-CREATE TABLE onek2 AS SELECT * FROM onek;
 BEGIN;
 DECLARE foo13 CURSOR FOR
    SELECT * FROM onek WHERE unique1 = 50;

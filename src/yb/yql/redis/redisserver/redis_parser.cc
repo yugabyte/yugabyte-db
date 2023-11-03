@@ -36,11 +36,8 @@
 namespace yb {
 namespace redisserver {
 
-using yb::client::YBTable;
 using yb::client::YBRedisWriteOp;
 using yb::client::YBRedisReadOp;
-using std::vector;
-using std::shared_ptr;
 using std::string;
 
 namespace {

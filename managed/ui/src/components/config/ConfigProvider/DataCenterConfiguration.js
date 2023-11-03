@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { withRouter } from 'react-router';
 import {
   KubernetesProviderConfigurationContainer,
@@ -22,9 +22,8 @@ import { NewStorageConfiguration } from '../Storage/StorageConfigurationNew';
 import './DataCenterConfiguration.scss';
 
 class DataCenterConfiguration extends Component {
-
   getTabTitle = (type) => {
-    switch(type) {
+    switch (type) {
       case 'AWS':
         return (
           <div className="title">
@@ -77,7 +76,7 @@ class DataCenterConfiguration extends Component {
       default:
         return null;
     }
-  }
+  };
 
   render() {
     const {
@@ -91,7 +90,7 @@ class DataCenterConfiguration extends Component {
       ? 'cloud'
       : 'backup';
     const activeTab = tab || defaultTab;
-    const defaultConfig = section || "s3";
+    const defaultConfig = section || 's3';
 
     return (
       <div>
@@ -181,14 +180,12 @@ class DataCenterConfiguration extends Component {
               <SecurityConfiguration activeTab={section} />
             </Tab>
           )}
-          {
-            (featureFlags.test['enableMultiRegionConfig'] || featureFlags.released['enableMultiRegionConfig']) && (
-              <Tab eventKey="newBackupConfig" title="New Backup Config" key="new-backup-config">
-                <NewStorageConfiguration activeTab={section}/>
-              </Tab>
-            )
-          }
-         
+          {(featureFlags.test['enableMultiRegionConfig'] ||
+            featureFlags.released['enableMultiRegionConfig']) && (
+            <Tab eventKey="newBackupConfig" title="New Backup Config" key="new-backup-config">
+              <NewStorageConfiguration activeTab={section} />
+            </Tab>
+          )}
         </YBTabsWithLinksPanel>
       </div>
     );

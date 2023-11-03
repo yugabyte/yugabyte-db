@@ -94,7 +94,7 @@ function mapStateToProps(state, ownProps) {
       if (isNonEmptyObject(masterGFlags)) {
         Object.keys(masterGFlags).forEach((key) => {
           const masterObj = {};
-          if (tserverGFlags.hasOwnProperty(key)) {
+          if (Object.prototype.hasOwnProperty.call(tserverGFlags, key)) {
             masterObj['TSERVER'] = tserverGFlags[key];
           }
           masterObj['Name'] = key;
@@ -105,7 +105,7 @@ function mapStateToProps(state, ownProps) {
       if (isNonEmptyObject(tserverGFlags)) {
         Object.keys(tserverGFlags).forEach((key) => {
           const tserverObj = {};
-          if (!masterGFlags.hasOwnProperty(key)) {
+          if (!Object.prototype.hasOwnProperty.call(masterGFlags, key)) {
             tserverObj['TSERVER'] = tserverGFlags[key];
             tserverObj['Name'] = key;
             gFlagArray.push(tserverObj);
@@ -136,7 +136,8 @@ function mapStateToProps(state, ownProps) {
     'upgradeOption',
     'systemdValue',
     'ybSoftwareVersion',
-    'tlsCertificate'
+    'tlsCertificate',
+    'gFlags'
   );
 
   return {

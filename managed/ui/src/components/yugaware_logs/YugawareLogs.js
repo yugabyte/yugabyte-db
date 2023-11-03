@@ -1,22 +1,22 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { useState } from 'react';
-import { showOrRedirect } from '../../utils/LayoutUtils';
+import { useState } from 'react';
+import moment from 'moment-timezone';
 import { DateTimePicker } from 'react-widgets';
 import AceEditor from 'react-ace';
+import Select from 'react-select';
+import { useMount } from 'react-use';
+import { Col, Row } from 'react-bootstrap';
 import 'ace-builds/src-noconflict/ext-searchbox';
 import 'ace-builds/src-noconflict/mode-java';
 import 'ace-builds/src-noconflict/theme-github';
-import { Col, Row } from 'react-bootstrap';
-import Select from 'react-select';
+import { showOrRedirect } from '../../utils/LayoutUtils';
 import {
   YBButton,
   YBControlledNumericInputWithLabel,
   YBControlledTextInput
 } from '../common/forms/fields';
-import { useMount } from 'react-use';
-import {YBLabel} from "../common/descriptors";
-import moment from "moment";
+import { YBLabel } from '../common/descriptors';
 
 import './YugawareLogs.scss';
 
@@ -43,14 +43,18 @@ const convertDateFromStr = (dateStr) => {
   return new Date(dateStr);
 };
 
-const getDefaultStartTime = () => new Date(
-  moment(new Date()).tz('UTC').add(-2, 'days').format(DATE_FORMAT));
+const getUTCStartTime = (startDate) => {
+  return startDate
+    ? new Date(moment(startDate).tz('UTC').format(DATE_FORMAT))
+    : getDefaultStartTime();
+};
 
-const getDefaultEndTime = () => new Date(
-  moment(new Date()).tz('UTC').format(DATE_FORMAT));
+const getDefaultStartTime = () =>
+  new Date(moment(new Date()).tz('UTC').add(-2, 'days').format(DATE_FORMAT));
+
+const getDefaultEndTime = () => new Date(moment(new Date()).tz('UTC').format(DATE_FORMAT));
 
 const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError, fetchUniverseList }) => {
-
   const editorStyle = {
     width: '100%',
     height: 'calc(100vh - 150px)'
@@ -65,8 +69,13 @@ const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError, fetchU
   const [endDate, setEndDate] = useState(getDefaultEndTime());
 
   const doSearch = () => {
-    getLogs(maxLines, regex, selectedUniverse, convertDateToStr(startDate),
-      convertDateToStr(endDate));
+    getLogs(
+      maxLines,
+      regex,
+      selectedUniverse,
+      convertDateToStr(startDate),
+      convertDateToStr(endDate)
+    );
 
     const newURL = new URL(
       window.location.protocol + '//' + window.location.host + window.location.pathname
@@ -93,11 +102,12 @@ const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError, fetchU
     showOrRedirect(currentCustomer.data.features, 'main.logs');
 
     const params = new URLSearchParams(window.location.search);
-    const regexFromParam = params.get('queryRegex') || undefined;
-    const maxLinesFromParam = params.get('maxLines') || DEFAULT_MAX_LINES;
-    const universeFromParam = params.get('universeName') || undefined;
-    const startDateFromParam = params.get('startDate') || convertDateToStr(getDefaultStartTime());
-    const endDateFromParam = params.get('endDate') || convertDateToStr(getDefaultEndTime());
+    const regexFromParam = params.get('queryRegex') ?? undefined;
+    const maxLinesFromParam = params.get('maxLines') ?? DEFAULT_MAX_LINES;
+    const universeFromParam = params.get('universeName') ?? undefined;
+    const UTCStartTime = getUTCStartTime(params.get('startDate'));
+    const startDateFromParam = convertDateToStr(UTCStartTime);
+    const endDateFromParam = params.get('endDate') ?? convertDateToStr(getDefaultEndTime());
 
     setRegex(regexFromParam);
     setMaxLines(maxLinesFromParam);
@@ -105,8 +115,13 @@ const YugawareLogs = ({ currentCustomer, yugawareLogs, getLogs, logError, fetchU
     setStartDate(convertDateFromStr(startDateFromParam));
     setEndDate(convertDateFromStr(endDateFromParam));
 
-    getLogs(maxLinesFromParam, regexFromParam, universeFromParam, startDateFromParam,
-      endDateFromParam);
+    getLogs(
+      maxLinesFromParam,
+      regexFromParam,
+      universeFromParam,
+      startDateFromParam,
+      endDateFromParam
+    );
     fetchUniverseList().then((resp) => {
       const universesOptions = resp.map((uni) => {
         return {

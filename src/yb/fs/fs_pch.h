@@ -148,6 +148,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_ec.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/striped64.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_macros.h"

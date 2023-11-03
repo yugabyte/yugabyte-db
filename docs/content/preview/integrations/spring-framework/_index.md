@@ -4,13 +4,11 @@ headerTitle: Spring Framework
 linkTitle: Spring Framework
 description: Using Spring Framework with YugabyteDB
 headcontent: Using Spring Framework with YugabyteDB
-aliases:
-  - /preview/reference/drivers/spring-data-yugabytedb
 image: /images/section_icons/develop/ecosystem/spring.png
 menu:
-  preview:
+  preview_integrations:
     identifier: spring-framework
-    parent: integrations
+    parent: application-frameworks
     weight: 571
 type: indexpage
 ---

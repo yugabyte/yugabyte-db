@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.io.File;
 import java.io.IOException;
@@ -30,6 +31,8 @@ public class ShellLogsManagerTest extends TestCase {
   @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
 
   @Mock Config mockConfig;
+
+  @Mock RuntimeConfGetter runtimeConfGetter;
 
   @Mock PlatformScheduler mockPlatformScheduler;
 
@@ -98,7 +101,7 @@ public class ShellLogsManagerTest extends TestCase {
     List<File> files = new ArrayList<>();
 
     ShellLogsManager mockManager =
-        new ShellLogsManager(mockPlatformScheduler, mockRuntimeConfigFactory) {
+        new ShellLogsManager(mockPlatformScheduler, mockRuntimeConfigFactory, runtimeConfGetter) {
           @Override
           protected List<File> listLogFiles() {
             return files;
@@ -145,7 +148,7 @@ public class ShellLogsManagerTest extends TestCase {
     }
     Collections.shuffle(mockFiles);
     ShellLogsManager mockManager =
-        new ShellLogsManager(mockPlatformScheduler, mockRuntimeConfigFactory) {
+        new ShellLogsManager(mockPlatformScheduler, mockRuntimeConfigFactory, runtimeConfGetter) {
           @Override
           protected Long getBaseTimestamp(long retentionHours) {
             return baseTS - TimeUnit.HOURS.toMillis(retentionHours);

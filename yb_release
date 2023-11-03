@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # Copyright (c) YugaByte, Inc.
 #
@@ -17,4 +17,4 @@ set -euo pipefail
 
 activate_virtualenv
 set_pythonpath
-python3 "$YB_SRC_ROOT"/build-support/yb_release.py "$@"
+python3 "$YB_SCRIPT_PATH_YB_RELEASE_CORE_DB" "$@"

@@ -46,10 +46,7 @@ Result<int64_t> SelectCountStar(PGConn* pgconn,
   auto query_str = Format("SELECT COUNT(*) FROM $0$1",
                           table_name,
                           where_clause == "" ? "" : Format(" WHERE $0", where_clause));
-  auto res = VERIFY_RESULT(pgconn->Fetch(query_str));
-  SCHECK(PQntuples(res.get()) == 1, InternalError,
-         Format("Query $0 was expected to return a single row", query_str));
-  return pgwrapper::GetInt64(res.get(), 0, 0);
+  return VERIFY_RESULT(pgconn->FetchValue<PGUint64>(query_str));
 }
 
 Result<bool> SystemTableExists(PGConn* pgconn, const std::string& table_name) {
@@ -150,8 +147,8 @@ Result<Version> DetermineAndSetVersion(PGConn* pgconn) {
         "  LIMIT 1");
     pgwrapper::PGResultPtr res = VERIFY_RESULT(pgconn->Fetch(query_str));
     if (PQntuples(res.get()) == 1) {
-      int major_version = VERIFY_RESULT(pgwrapper::GetInt32(res.get(), 0, 0));
-      int minor_version = VERIFY_RESULT(pgwrapper::GetInt32(res.get(), 0, 1));
+      auto major_version = VERIFY_RESULT(pgwrapper::GetValue<int32_t>(res.get(), 0, 0));
+      auto minor_version = VERIFY_RESULT(pgwrapper::GetValue<int32_t>(res.get(), 0, 1));
       Version ver(major_version, minor_version);
       LOG(INFO) << "Version is " << ver;
       return ver;
@@ -387,7 +384,7 @@ Status YsqlUpgradeHelper::Upgrade() {
                                   "  WHERE datname NOT IN ('template0', 'template1');");
       pgwrapper::PGResultPtr res = VERIFY_RESULT(t1_conn->Fetch(query_str));
       for (int i = 0; i < PQntuples(res.get()); i++) {
-        db_names.emplace_back(VERIFY_RESULT(pgwrapper::GetString(res.get(), i, 0)));
+        db_names.emplace_back(VERIFY_RESULT(GetValue<std::string>(res.get(), i, 0)));
       }
     }
   }
@@ -426,6 +423,9 @@ Status YsqlUpgradeHelper::Upgrade() {
               << " (database " << min_version_entry->database_name_ << ")";
 
     RETURN_NOT_OK(MigrateOnce(min_version_entry));
+    if (pg_global_heartbeat_wait_) {
+      SleepFor(MonoDelta::FromMilliseconds(2 * heartbeat_interval_ms_));
+    }
   }
 
   return Status::OK();
@@ -455,6 +455,16 @@ Status YsqlUpgradeHelper::MigrateOnce(DatabaseEntry* db_entry) {
                         Format("Failed to read migration '$0'", next_migration_filename));
 
   LOG(INFO) << db_name << ": applying migration '" << next_migration_filename << "'";
+
+  // We use the existence of "pg_global" to indicate that we need to wait.
+  // For example, the creation of shared system relation need to be propagated
+  // to invalidate its negative cache entry in other Postgres backends.
+  pg_global_heartbeat_wait_ =
+    db_name == "template1" && boost::icontains(migration_content.ToString(), "pg_global");
+  if (pg_global_heartbeat_wait_) {
+    LOG(INFO) << "Found pg_global in migration file " << next_migration_filename
+              << " when applying to " << db_name;
+  }
 
   // Note that underlying PQexec executes mutiple statements transactionally, where our usual ACID
   // guarantees apply.

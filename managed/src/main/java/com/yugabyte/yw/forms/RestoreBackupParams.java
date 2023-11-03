@@ -1,14 +1,19 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.yugabyte.yw.common.BackupUtil.RegionLocations;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.models.Backup.BackupCategory;
+import com.yugabyte.yw.models.common.YBADeprecated;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
 
@@ -26,7 +31,9 @@ public class RestoreBackupParams extends UniverseTaskParams {
 
   @Constraints.Required
   @ApiModelProperty(value = "Universe UUID", required = true)
-  public UUID universeUUID;
+  @Getter
+  @Setter
+  private UUID universeUUID;
 
   @ApiModelProperty(value = "KMS configuration UUID")
   public UUID kmsConfigUUID = null;
@@ -40,12 +47,20 @@ public class RestoreBackupParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Backup's storage info to restore")
   public List<BackupStorageInfo> backupStorageInfoList;
 
+  @ApiModelProperty(hidden = true)
+  @JsonIgnore
+  @Getter
+  @Setter
+  private Map<String, YbcBackupResponse> successMarkerMap = new HashMap<>();
+
   // Intermediate states to resume ybc backups
   public UUID prefixUUID;
 
   public int currentIdx;
 
   public String currentYbcTaskId;
+
+  public String nodeIp;
 
   // Should backup script enable verbose logging.
   @ApiModelProperty(value = "Is verbose logging enabled")
@@ -61,6 +76,7 @@ public class RestoreBackupParams extends UniverseTaskParams {
   public Boolean disableChecksum = false;
 
   @ApiModelProperty(value = "Is tablespaces information included")
+  @YBADeprecated(sinceDate = "2023-08-28", sinceYBAVersion = "2.20.0")
   public Boolean useTablespaces = false;
 
   @ApiModelProperty(value = "Disable multipart upload")
@@ -98,33 +114,36 @@ public class RestoreBackupParams extends UniverseTaskParams {
 
     @ApiModelProperty(value = "User name of the new tables owner")
     public String newOwner = null;
+
+    @ApiModelProperty(value = "Is selective table restore")
+    public boolean selectiveTableRestore = false;
+
+    @ApiModelProperty(value = "Use tablespaces during restore")
+    @Getter
+    @Setter
+    private boolean useTablespaces = false;
   }
 
   public RestoreBackupParams(
       RestoreBackupParams otherParams, BackupStorageInfo backupStorageInfo, ActionType actionType) {
-    this(otherParams, backupStorageInfo, actionType, null);
-  }
-
-  public RestoreBackupParams(
-      RestoreBackupParams otherParams,
-      BackupStorageInfo backupStorageInfo,
-      ActionType actionType,
-      String currentYbcTaskId) {
     this.customerUUID = otherParams.customerUUID;
-    this.universeUUID = otherParams.universeUUID;
+    this.setUniverseUUID(otherParams.getUniverseUUID());
     this.storageConfigUUID = otherParams.storageConfigUUID;
     this.restoreTimeStamp = otherParams.restoreTimeStamp;
     this.kmsConfigUUID = otherParams.kmsConfigUUID;
     this.parallelism = otherParams.parallelism;
     this.actionType = actionType;
     this.backupStorageInfoList = new ArrayList<>();
+    // Deprecating parent level useTablespaces, so need to set backupStorageInfo
+    // level useTablespaces here.
+    backupStorageInfo.useTablespaces =
+        backupStorageInfo.useTablespaces || otherParams.useTablespaces;
     this.backupStorageInfoList.add(backupStorageInfo);
     this.disableChecksum = otherParams.disableChecksum;
     this.useTablespaces = otherParams.useTablespaces;
     this.disableMultipart = otherParams.disableMultipart;
     this.enableVerboseLogs = otherParams.enableVerboseLogs;
     this.prefixUUID = otherParams.prefixUUID;
-    this.currentYbcTaskId = currentYbcTaskId;
   }
 
   @JsonIgnore
@@ -132,7 +151,7 @@ public class RestoreBackupParams extends UniverseTaskParams {
     // Don't need vebose, multipart, parallelism.
     // Since only using this for YBC restores.
     this.customerUUID = params.customerUUID;
-    this.universeUUID = params.universeUUID;
+    this.setUniverseUUID(params.getUniverseUUID());
     this.storageConfigUUID = params.storageConfigUUID;
     this.restoreTimeStamp = params.restoreTimeStamp;
     this.kmsConfigUUID = params.kmsConfigUUID;

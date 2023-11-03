@@ -23,6 +23,8 @@
 
 #include <boost/function/function_fwd.hpp>
 
+#include "yb/cdc/cdc_types.h"
+
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids_types.h"
 
@@ -35,6 +37,7 @@ template <class T>
 class scoped_refptr;
 
 YB_STRONGLY_TYPED_BOOL(RequireTabletsRunning);
+YB_STRONGLY_TYPED_BOOL(PartitionsOnly);
 
 namespace yb {
 namespace client {
@@ -104,6 +107,7 @@ struct YBqlWritePrimaryKeyComparator;
 
 using LocalTabletFilter = std::function<void(std::vector<const TabletId*>*)>;
 using VersionedTablePartitionListPtr = std::shared_ptr<const VersionedTablePartitionList>;
+using TablePartitionListPtr = std::shared_ptr<const TablePartitionList>;
 using TabletServersInfo = std::vector<YBTabletServerPlacementInfo>;
 using YBqlOpPtr = std::shared_ptr<YBqlOp>;
 using YBqlReadOpPtr = std::shared_ptr<YBqlReadOp>;
@@ -115,6 +119,7 @@ enum class YBTableType;
 
 YB_DEFINE_ENUM(GrantRevokeStatementType, (GRANT)(REVOKE));
 YB_STRONGLY_TYPED_BOOL(ForceConsistentRead);
+YB_STRONGLY_TYPED_BOOL(ForceGlobalTransaction);
 YB_STRONGLY_TYPED_BOOL(Initial);
 YB_STRONGLY_TYPED_BOOL(UseCache);
 
@@ -153,7 +158,12 @@ YB_STRONGLY_TYPED_BOOL(IsWithinTransactionRetry);
 typedef std::function<void(const Result<internal::RemoteTabletPtr>&)> LookupTabletCallback;
 typedef std::function<void(const Result<std::vector<internal::RemoteTabletPtr>>&)>
         LookupTabletRangeCallback;
-typedef std::function<void(const Result<CDCStreamId>&)> CreateCDCStreamCallback;
+typedef std::function<void(const Result<xrepl::StreamId>&)> CreateCDCStreamCallback;
+typedef Result<std::tuple<
+    std::vector<TableId> /* table_ids */, std::vector<std::string> /* bootstrap_ids */,
+    HybridTime /* bootstrap_time */>>
+    BootstrapProducerResult;
+typedef std::function<void(BootstrapProducerResult)> BootstrapProducerCallback;
 class AsyncClientInitialiser;
 
 } // namespace client

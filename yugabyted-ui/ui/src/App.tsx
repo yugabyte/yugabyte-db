@@ -37,6 +37,7 @@ export const App: FC = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider theme={mainTheme}>
+        {/* <ToastProvider> */}
           <BrowserRouter>
             <CssBaseline />
             <Switch>              
@@ -44,6 +45,7 @@ export const App: FC = () => {
               <Route component={MainLayout} />
             </Switch>
           </BrowserRouter>
+        {/* </ToastProvider> */}
       </ThemeProvider>
     </QueryClientProvider>
   );

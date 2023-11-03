@@ -63,25 +63,25 @@ AsyncClientInitialiser::AsyncClientInitialiser(
 
 AsyncClientInitialiser::~AsyncClientInitialiser() {
   Shutdown();
-  if (init_client_thread_.joinable()) {
-    init_client_thread_.join();
+  if (init_client_thread_) {
+    init_client_thread_->Join();
   }
 }
 
-void AsyncClientInitialiser::Start() {
-  init_client_thread_ = std::thread(std::bind(&AsyncClientInitialiser::InitClient, this));
+void AsyncClientInitialiser::Start(const server::ClockPtr& clock) {
+  CHECK_OK(Thread::Create(
+      "async_client_initialiser", "init_client", &AsyncClientInitialiser::InitClient, this, clock,
+      &init_client_thread_));
 }
 
 YBClient* AsyncClientInitialiser::client() const {
   return client_future_.get();
 }
 
-void AsyncClientInitialiser::InitClient() {
-  CDSAttacher attacher;
-
+void AsyncClientInitialiser::InitClient(const server::ClockPtr& clock) {
   LOG(INFO) << "Starting to init ybclient";
   while (!stopping_) {
-    auto result = client_builder_->Build(messenger_);
+    auto result = client_builder_->Build(messenger_, clock);
     if (result.ok()) {
       LOG(INFO) << "Successfully built ybclient";
       client_holder_.reset(result->release());

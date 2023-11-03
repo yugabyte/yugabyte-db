@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: YugabyteDB Python Driver for YCQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: Python driver for YCQL
+description: Connect an application using YugabyteDB Python driver for YCQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -95,6 +96,28 @@ for row in rows:
 cluster.shutdown()
 ```
 
+#### Use SSL
+
+To run the application with SSL, create the cluster connection with additional SSL imports and parameters described as follows:
+
+```python
+# Include additional imports.
+from ssl import SSLContext, PROTOCOL_TLS_CLIENT, CERT_REQUIRED
+from cassandra.auth import PlainTextAuthProvider
+
+# Include additional parameters.
+ssl_context = SSLContext(PROTOCOL_TLS_CLIENT)
+ssl_context.load_verify_locations('path to certs file')
+ssl_context.verify_mode = CERT_REQUIRED
+
+# Create the cluster connection.
+cluster = Cluster(contact_points=['ip_address'],
+    ssl_context=ssl_context,
+    ssl_options={'server_hostname': 'ip_address'},
+    auth_provider=PlainTextAuthProvider(username='username', password='password'))
+session = cluster.connect()
+```
+
 ### Run the application
 
 To run the application, type the following:
@@ -111,3 +134,4 @@ Created table employee
 Inserted (id, name, age, language) = (1, 'John', 35, 'Python')
 John 35 Python
 ```
+

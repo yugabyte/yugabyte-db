@@ -8,6 +8,7 @@ import static org.junit.Assert.assertNotNull;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.util.List;
@@ -19,11 +20,15 @@ import play.libs.Json;
 public class ScheduleTest extends FakeDBApplication {
   private Customer defaultCustomer;
   private CustomerConfig s3StorageConfig;
+  private Users defaultUser;
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST27");
+    defaultUser = ModelFactory.testUser(defaultCustomer);
+    // Set http context
+    TestUtils.setFakeHttpContext(defaultUser);
   }
 
   @Test
@@ -31,20 +36,20 @@ public class ScheduleTest extends FakeDBApplication {
     UUID universeUUID = UUID.randomUUID();
     Schedule schedule =
         ModelFactory.createScheduleBackup(
-            defaultCustomer.uuid, universeUUID, s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(), universeUUID, s3StorageConfig.getConfigUUID());
     assertNotNull(schedule);
     BackupTableParams taskParams = Json.fromJson(schedule.getTaskParams(), BackupTableParams.class);
-    assertEquals(s3StorageConfig.configUUID, taskParams.storageConfigUUID);
+    assertEquals(s3StorageConfig.getConfigUUID(), taskParams.storageConfigUUID);
     assertEquals(Active, schedule.getStatus());
   }
 
   @Test
   public void testFetchByScheduleUUID() {
-    Universe u = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
     Schedule s =
         ModelFactory.createScheduleBackup(
-            defaultCustomer.uuid, u.universeUUID, s3StorageConfig.configUUID);
-    Schedule schedule = Schedule.getOrBadRequest(s.scheduleUUID);
+            defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
+    Schedule schedule = Schedule.getOrBadRequest(s.getScheduleUUID());
     assertNotNull(schedule);
   }
 
@@ -52,10 +57,10 @@ public class ScheduleTest extends FakeDBApplication {
   public void testGetAllActiveSchedulesWithAllActive() {
     Schedule s1 =
         ModelFactory.createScheduleBackup(
-            defaultCustomer.uuid, UUID.randomUUID(), s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(), UUID.randomUUID(), s3StorageConfig.getConfigUUID());
     Schedule s2 =
         ModelFactory.createScheduleBackup(
-            defaultCustomer.uuid, UUID.randomUUID(), s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(), UUID.randomUUID(), s3StorageConfig.getConfigUUID());
     List<Schedule> schedules = Schedule.getAllActive();
     assertEquals(2, schedules.size());
   }
@@ -64,10 +69,10 @@ public class ScheduleTest extends FakeDBApplication {
   public void testGetAllActiveSchedulesWithInactive() {
     Schedule s1 =
         ModelFactory.createScheduleBackup(
-            defaultCustomer.uuid, UUID.randomUUID(), s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(), UUID.randomUUID(), s3StorageConfig.getConfigUUID());
     Schedule s2 =
         ModelFactory.createScheduleBackup(
-            defaultCustomer.uuid, UUID.randomUUID(), s3StorageConfig.configUUID);
+            defaultCustomer.getUuid(), UUID.randomUUID(), s3StorageConfig.getConfigUUID());
     List<Schedule> schedules = Schedule.getAllActive();
     assertEquals(2, schedules.size());
     s2.stopSchedule();

@@ -86,8 +86,10 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
     proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
 
     client_ = std::make_unique<RemoteBootstrapClient>(GetTabletId(), fs_manager_.get());
-    ASSERT_OK(GetRaftConfigLeader(tablet_peer_->consensus()
-        ->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED), &leader_));
+    ASSERT_OK(GetRaftConfigLeader(
+        ASSERT_RESULT(tablet_peer_->GetConsensus())
+            ->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED),
+        &leader_));
 
     HostPort host_port = HostPortFromPB(leader_.last_known_private_addr()[0]);
     ASSERT_OK(client_->Start(leader_.permanent_uuid(), proxy_cache_.get(),
@@ -105,7 +107,8 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
   RaftPeerPB leader_;
 };
 
-Status RemoteBootstrapClientTest::CompareFileContents(const std::string& path1, const std::string& path2) {
+Status RemoteBootstrapClientTest::CompareFileContents(
+    const std::string& path1, const std::string& path2) {
   std::shared_ptr<RandomAccessFile> file1, file2;
   RETURN_NOT_OK(env_util::OpenFileForRandom(fs_manager_->env(), path1, &file1));
   RETURN_NOT_OK(env_util::OpenFileForRandom(fs_manager_->env(), path2, &file2));

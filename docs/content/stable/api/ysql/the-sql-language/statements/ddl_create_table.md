@@ -18,24 +18,24 @@ Use the `CREATE TABLE` statement to create a table in a database. It defines the
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
 </ul>
 
 <div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_table,table_elem,column_constraint,table_constraint,key_columns,hash_columns,range_columns,storage_parameters,storage_parameter,index_parameters,references_clause,split_row.grammar.md" %}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_table,table_elem,column_constraint,table_constraint,key_columns,hash_columns,range_columns,storage_parameters,storage_parameter,index_parameters,references_clause,split_row.diagram.md" %}}
   </div>
 </div>
@@ -78,16 +78,16 @@ This clause is used to specify a default value for the column. If an `INSERT` st
 
 Constraints can be deferred using the `DEFERRABLE` clause. Currently, only foreign key constraints
 can be deferred in YugabyteDB. A constraint that is not deferrable will be checked after every row
-within a statement. In the case of deferrable constraints, the checking of the constraint can be postponed
+in a statement. In the case of deferrable constraints, the checking of the constraint can be postponed
 until the end of the transaction.
 
-Constraints marked as `INITIALLY IMMEDIATE` will be checked after every row within a statement.
+Constraints marked as `INITIALLY IMMEDIATE` will be checked after every row in a statement.
 
 Constraints marked as `INITIALLY DEFERRED` will be checked at the end of the transaction.
 
-### Temporary or Temp
+### TEMPORARY or TEMP
 
-Using this qualifier will create a temporary table. Temporary tables are only visible in the current client session or transaction in which they are created and are automatically dropped at the end of the session or transaction. Any indexes created on temporary tables are temporary as well.
+Using this qualifier will create a temporary table. Temporary tables are visible only in the current client session or transaction in which they are created and are automatically dropped at the end of the session or transaction. Any indexes created on temporary tables are temporary as well. See the section [Creating and using temporary schema-objects](../../creating-and-using-temporary-schema-objects/).
 
 ### TABLESPACE
 
@@ -126,15 +126,13 @@ In the example above, there are three split points and so four tablets will be c
 - tablet 3: `a=200, b=<lowest>` to `a=200, b=5`
 - tablet 4: `a=200, b=5` to `a=<highest>, b=<highest>`
 
-### COLOCATED
-
-Colocated table support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+### COLOCATION
 
 For colocated databases, specify `false` to opt this table out of colocation. This means that the table won't be stored on the same tablet as the rest of the tables for this database, but instead, will have its own set of tablets.
 
-Use this option for large tables that need to be scaled out. See [colocated tables architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) for more details on when colocation is useful.
+Use this option for large tables that need to be scaled out. See [Colocated tables](../../../../../architecture/docdb-sharding/colocated-tables/) for details on when colocated tables are beneficial.
 
-Note that `COLOCATED = true` has no effect if the database that this table is part of is not colocated since colocation today is supported only at the database level.
+Note that `COLOCATION = true` has no effect if the database that this table is part of is not colocated, as currently colocation is supported only at the database level.
 
 ### Storage parameters
 
@@ -270,9 +268,9 @@ yugabyte=# CREATE TABLE tracking (id int PRIMARY KEY) SPLIT INTO 10 TABLETS;
 ### Opt a table out of colocation
 
 ```plpgsql
-yugabyte=# CREATE DATABASE company WITH colocated = true;
+yugabyte=# CREATE DATABASE company WITH COLOCATION = true;
 
-yugabyte=# CREATE TABLE employee(id INT PRIMARY KEY, name TEXT) WITH (colocated = false);
+yugabyte=# CREATE TABLE employee(id INT PRIMARY KEY, name TEXT) WITH (COLOCATION = false);
 ```
 
 In this example, database `company` is colocated and all tables other than the `employee` table are stored on a single tablet.

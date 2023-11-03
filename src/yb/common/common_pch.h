@@ -4,10 +4,12 @@
 
 #include <assert.h>
 #include <dirent.h>
+#include <fcntl.h>
 #include <float.h>
 #include <inttypes.h>
 #include <openssl/ossl_typ.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -15,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/syscall.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <time.h>
 #include <uuid/uuid.h>
@@ -28,18 +31,22 @@
 #include <chrono>
 #include <cmath>
 #include <compare>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <deque>
 #include <fstream>
 #include <functional>
+#include <initializer_list>
 #include <iosfwd>
 #include <iostream>
 #include <iterator>
 #include <limits>
 #include <list>
+#include <locale>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -60,6 +67,7 @@
 #include <utility>
 #include <vector>
 
+#include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/algorithm/string/trim.hpp>
@@ -87,12 +95,15 @@
 #include <boost/preprocessor/expr_if.hpp>
 #include <boost/preprocessor/facilities/apply.hpp>
 #include <boost/preprocessor/if.hpp>
+#include <boost/preprocessor/list/for_each.hpp>
 #include <boost/preprocessor/punctuation/is_begin_parens.hpp>
 #include <boost/preprocessor/seq/enum.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor/seq/to_list.hpp>
 #include <boost/preprocessor/seq/transform.hpp>
 #include <boost/preprocessor/stringize.hpp>
 #include <boost/preprocessor/variadic/to_seq.hpp>
+#include <boost/range/iterator_range.hpp>
 #include <boost/signals2/dummy_mutex.hpp>
 #include <boost/smart_ptr/detail/yield_k.hpp>
 #include <boost/system/error_code.hpp>
@@ -102,6 +113,8 @@
 #include <boost/unordered_map.hpp>
 #include <boost/uuid/nil_generator.hpp>
 #include <boost/uuid/uuid.hpp>
+#undef EV_ERROR // On mac is it defined as some number, but ev++.h uses it in enum
+#include <ev++.h>
 #include <gflags/gflags.h>
 #include <gflags/gflags_declare.h>
 #include <glog/logging.h>
@@ -133,14 +146,6 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/endian.h"
-#include "yb/gutil/hash/builtin_type_hash.h"
-#include "yb/gutil/hash/city.h"
-#include "yb/gutil/hash/hash.h"
-#include "yb/gutil/hash/hash128to64.h"
-#include "yb/gutil/hash/jenkins.h"
-#include "yb/gutil/hash/jenkins_lookup2.h"
-#include "yb/gutil/hash/legacy_hash.h"
-#include "yb/gutil/hash/string_hash.h"
 #include "yb/gutil/int128.h"
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/logging-inl.h"
@@ -191,6 +196,7 @@
 #include "yb/util/errno.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/faststring.h"
+#include "yb/util/fault_injection.h"
 #include "yb/util/file_system.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/auto_flags.h"
@@ -239,6 +245,7 @@
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_trim.h"
+#include "yb/util/string_util.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/strongly_typed_string.h"
 #include "yb/util/strongly_typed_uuid.h"
@@ -253,5 +260,6 @@
 #include "yb/util/ulimit.h"
 #include "yb/util/uuid.h"
 #include "yb/util/varint.h"
+#include "yb/util/write_buffer.h"
 #include "yb/util/yb_partition.h"
 #include "yb/util/yb_pg_errcodes.h"

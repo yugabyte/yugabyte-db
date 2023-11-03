@@ -32,7 +32,7 @@
 
 #include <cstddef>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/schema.h"
@@ -98,7 +98,7 @@ TEST_F(TestRaftGroupMetadata, TestLoadFromSuperBlock) {
 
   // Shut down the tablet.
   harness_->tablet()->StartShutdown();
-  harness_->tablet()->CompleteShutdown(DisableFlushOnShutdown::kFalse);
+  harness_->tablet()->CompleteShutdown(DisableFlushOnShutdown::kFalse, AbortOps::kFalse);
 
   RaftGroupMetadata* meta = harness_->tablet()->metadata();
 

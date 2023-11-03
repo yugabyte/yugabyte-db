@@ -51,6 +51,8 @@ public class PlacementInfo {
     @ApiModelProperty public String name;
     // The list of AZs inside this region into which we want to place data.
     @ApiModelProperty public List<PlacementAZ> azList = new ArrayList<PlacementAZ>();
+    // The Load Balancer FQDN.
+    @ApiModelProperty public String lbFQDN;
 
     @Override
     public String toString() {
@@ -101,8 +103,7 @@ public class PlacementInfo {
 
   @JsonIgnore
   public Stream<PlacementAZ> azStream() {
-    return cloudList
-        .stream()
+    return cloudList.stream()
         .flatMap(cloud -> cloud.regionList.stream())
         .flatMap(region -> region.azList.stream());
   }

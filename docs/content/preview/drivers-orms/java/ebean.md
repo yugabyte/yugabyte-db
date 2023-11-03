@@ -1,7 +1,8 @@
 ---
-title: Use an ORM
+title: Ebean ORM
+headerTitle: Use an ORM
 linkTitle: Use an ORM
-description: Java ORM support for YugabyteDB
+description: Java Ebean ORM support for YugabyteDB
 headcontent: Java ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
@@ -23,6 +24,12 @@ type: docs
   <li >
     <a href="../ebean/" class="nav-link active">
       Ebean ORM
+    </a>
+  </li>
+
+  <li >
+    <a href="../mybatis/" class="nav-link ">
+      MyBatis
     </a>
   </li>
 

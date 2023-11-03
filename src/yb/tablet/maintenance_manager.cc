@@ -51,7 +51,6 @@
 #include "yb/util/thread.h"
 #include "yb/util/unique_lock.h"
 
-using std::pair;
 using std::shared_ptr;
 using std::string;
 using strings::Substitute;
@@ -145,7 +144,7 @@ Status MaintenanceManager::Init() {
 
 void MaintenanceManager::Shutdown() {
   {
-    std::lock_guard<std::mutex> guard(mutex_);
+    std::lock_guard guard(mutex_);
     if (shutdown_) {
       return;
     }
@@ -160,7 +159,7 @@ void MaintenanceManager::Shutdown() {
 }
 
 void MaintenanceManager::RegisterOp(MaintenanceOp* op) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   CHECK(!op->manager_.get()) << "Tried to register " << op->name()
           << ", but it was already registered.";
   auto inserted = ops_.emplace(op, MaintenanceOpStats()).second;
@@ -173,7 +172,7 @@ void MaintenanceManager::RegisterOp(MaintenanceOp* op) {
 
 void MaintenanceManager::UnregisterOp(MaintenanceOp* op) {
   {
-    UNIQUE_LOCK(lock, mutex_);
+    UniqueLock lock(mutex_);
 
     CHECK(op->manager_.get() == this) << "Tried to unregister " << op->name()
           << ", but it is not currently registered with this maintenance manager.";
@@ -204,7 +203,7 @@ void MaintenanceManager::UnregisterOp(MaintenanceOp* op) {
 void MaintenanceManager::RunSchedulerThread() {
   auto polling_interval = polling_interval_ms_ * 1ms;
 
-  UNIQUE_LOCK(lock, mutex_);
+  UniqueLock lock(mutex_);
   for (;;) {
     // Loop until we are shutting down or it is time to run another op.
     cond_.wait_for(GetLockForCondition(&lock), polling_interval);
@@ -380,7 +379,7 @@ void MaintenanceManager::LaunchOp(const ScopedMaintenanceOpRun& run) {
   op->RunningGauge()->Decrement();
   MonoTime end_time(MonoTime::Now());
   MonoDelta delta(end_time.GetDeltaSince(start_time));
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
 
   CompletedOp& completed_op = completed_ops_[completed_ops_count_ % completed_ops_.size()];
   completed_op.name = op->name();
@@ -393,7 +392,7 @@ void MaintenanceManager::LaunchOp(const ScopedMaintenanceOpRun& run) {
 
 void MaintenanceManager::GetMaintenanceManagerStatusDump(MaintenanceManagerStatusPB* out_pb) {
   DCHECK(out_pb != nullptr);
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   MaintenanceOp* best_op = FindBestOp();
   for (MaintenanceManager::OpMapTy::value_type& val : ops_) {
     MaintenanceManagerStatusPB_MaintenanceOpPB* op_pb = out_pb->add_registered_operations();
@@ -463,7 +462,7 @@ void ScopedMaintenanceOpRun::Reset() {
   if (!op_) {
     return;
   }
-  std::lock_guard<std::mutex> lock(op_->manager_->mutex_);
+  std::lock_guard lock(op_->manager_->mutex_);
   if (--op_->running_ == 0) {
     op_->cond_.notify_all();
   }
@@ -477,7 +476,7 @@ MaintenanceOp* ScopedMaintenanceOpRun::get() const {
 
 void ScopedMaintenanceOpRun::Assign(MaintenanceOp* op) {
   op_ = op;
-  std::lock_guard<std::mutex> lock(op_->manager_->mutex_);
+  std::lock_guard lock(op_->manager_->mutex_);
   ++op->running_;
   ++op->manager_->running_ops_;
 }

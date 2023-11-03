@@ -43,10 +43,4 @@ extern bool ExecIndexEvalArrayKeys(ExprContext *econtext,
 					   IndexArrayKeyInfo *arrayKeys, int numArrayKeys);
 extern bool ExecIndexAdvanceArrayKeys(IndexArrayKeyInfo *arrayKeys, int numArrayKeys);
 
-/*
- * Update YugabyteDB specific run-time statistics
- */
-extern void YbExecUpdateInstrumentIndexScan(IndexScanState *node,
-											Instrumentation *instr);
-
 #endif							/* NODEINDEXSCAN_H */

@@ -66,7 +66,6 @@ enum SysCacheIdentifier
 	FOREIGNSERVEROID,
 	FOREIGNTABLEREL,
 	INDEXRELID,
-	INHERITSRELID,
 	LANGNAME,
 	LANGOID,
 	NAMESPACENAME,
@@ -116,11 +115,8 @@ enum SysCacheIdentifier
 #define SysCacheSize (YBTABLEGROUPOID + 1)
 };
 
-extern Bitmapset *YBSysTablePrimaryKey(Oid relid);
-
 /* Used in IsYugaByteEnabled() mode only */
 extern void YbSetSysCacheTuple(Relation rel, HeapTuple tup);
-extern void YbPreloadCatalogCaches(void);
 extern void YbPreloadCatalogCache(int cache_id, int idx_cache_id);
 extern void YbInitPinnedCacheIfNeeded();
 extern void YbResetPinnedCache();

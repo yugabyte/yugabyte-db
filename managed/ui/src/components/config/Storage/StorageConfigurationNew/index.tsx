@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC } from 'react';
+import { FC } from 'react';
 import { Tab } from 'react-bootstrap';
 import { useDispatch } from 'react-redux';
 import { fetchCustomerConfigs, fetchCustomerConfigsResponse } from '../../../../actions/customers';
@@ -59,9 +59,8 @@ interface NewStorageConfigurationProps {
 }
 
 export const NewStorageConfiguration: FC<NewStorageConfigurationProps> = ({ activeTab }) => {
-  const tabToDisplay = activeTab || IStorageProviders.AWS;
+  const tabToDisplay = activeTab ?? IStorageProviders.AWS;
   const dispatch: any = useDispatch();
-
 
   const fetchConfigs = () => {
     dispatch(fetchCustomerConfigs()).then((response: any) => {

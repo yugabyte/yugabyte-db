@@ -3,9 +3,9 @@ title: YSQL Loader
 linkTitle: YSQL Loader
 description: YSQL Loader
 menu:
-  preview:
+  preview_integrations:
     identifier: ysql-loader
-    parent: integrations
+    parent: data-migration
     weight: 571
 type: docs
 ---

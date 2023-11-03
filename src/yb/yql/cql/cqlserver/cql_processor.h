@@ -21,6 +21,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include "yb/rpc/service_if.h"
 
 #include "yb/yql/cql/cqlserver/cqlserver_fwd.h"
@@ -111,6 +113,17 @@ class CQLProcessor : public ql::QLProcessor {
   // Send response back to client.
   void PrepareAndSendResponse(const std::unique_ptr<ql::CQLResponse>& response);
   void SendResponse(const ql::CQLResponse& response);
+
+  ql::CQLMessage::QueryId GetPrepQueryId() const {
+    return request_ && request_->opcode() == ql::CQLMessage::Opcode::EXECUTE
+        ? static_cast<const ql::ExecuteRequest&>(*request_).query_id() : "";
+  }
+
+  ql::CQLMessage::QueryId GetUnprepQueryId() const {
+    return request_ && request_->opcode() == ql::CQLMessage::Opcode::QUERY
+        ? CQLStatement::GetQueryId(ql_env_.CurrentKeyspace(),
+                                   static_cast<const ql::QueryRequest&>(*request_).query()) : "";
+  }
 
   const std::unordered_map<std::string, std::vector<std::string>> kSupportedOptions = {
       {ql::CQLMessage::kCQLVersionOption,

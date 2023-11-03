@@ -50,21 +50,21 @@ int main() {
 
 using GFLAGS::ParseCommandLineFlags;
 
-DEFINE_UNKNOWN_bool(trigger_deadlock, false,
+DEFINE_NON_RUNTIME_bool(trigger_deadlock, false,
             "issue delete in range scan to trigger PrefixHashMap deadlock");
-DEFINE_UNKNOWN_int32(bucket_count, 100000, "number of buckets");
-DEFINE_UNKNOWN_uint64(num_locks, 10001, "number of locks");
-DEFINE_UNKNOWN_bool(random_prefix, false, "randomize prefix");
-DEFINE_UNKNOWN_uint64(total_prefixes, 100000, "total number of prefixes");
-DEFINE_UNKNOWN_uint64(items_per_prefix, 1, "total number of values per prefix");
-DEFINE_UNKNOWN_int64(write_buffer_size, 33554432, "");
-DEFINE_UNKNOWN_int32(max_write_buffer_number, 2, "");
-DEFINE_UNKNOWN_int32(min_write_buffer_number_to_merge, 1, "");
-DEFINE_UNKNOWN_int32(skiplist_height, 4, "");
-DEFINE_UNKNOWN_int32(memtable_prefix_bloom_bits, 10000000, "");
-DEFINE_UNKNOWN_int32(memtable_prefix_bloom_probes, 10, "");
-DEFINE_UNKNOWN_int32(memtable_prefix_bloom_huge_page_tlb_size, 2 * 1024 * 1024, "");
-DEFINE_UNKNOWN_int32(value_size, 40, "");
+DEFINE_NON_RUNTIME_int32(bucket_count, 100000, "number of buckets");
+DEFINE_NON_RUNTIME_uint64(num_locks, 10001, "number of locks");
+DEFINE_NON_RUNTIME_bool(random_prefix, false, "randomize prefix");
+DEFINE_NON_RUNTIME_uint64(total_prefixes, 100000, "total number of prefixes");
+DEFINE_NON_RUNTIME_uint64(items_per_prefix, 1, "total number of values per prefix");
+DEFINE_NON_RUNTIME_int64(write_buffer_size, 33554432, "");
+DEFINE_NON_RUNTIME_int32(max_write_buffer_number, 2, "");
+DEFINE_NON_RUNTIME_int32(min_write_buffer_number_to_merge, 1, "");
+DEFINE_NON_RUNTIME_int32(skiplist_height, 4, "");
+DEFINE_NON_RUNTIME_int32(memtable_prefix_bloom_bits, 10000000, "");
+DEFINE_NON_RUNTIME_int32(memtable_prefix_bloom_probes, 10, "");
+DEFINE_NON_RUNTIME_int32(memtable_prefix_bloom_huge_page_tlb_size, 2 * 1024 * 1024, "");
+DEFINE_NON_RUNTIME_int32(value_size, 40, "");
 
 // Path to the database on file system
 const std::string kDbName = rocksdb::test::TmpDir() + "/prefix_test";
@@ -93,7 +93,7 @@ class TestKeyComparator : public Comparator {
 
   // Compare needs to be aware of the possibility of a and/or b is
   // prefix only
-  int Compare(const Slice& a, const Slice& b) const override {
+  int Compare(Slice a, Slice b) const override {
     const TestKey* key_a = SliceToTestKey(a);
     const TestKey* key_b = SliceToTestKey(b);
     if (key_a->prefix != key_b->prefix) {
@@ -263,19 +263,19 @@ TEST_F(PrefixTest, TestResult) {
       PutKey(db.get(), write_options, 1, 6, v16);
       std::unique_ptr<Iterator> iter(db->NewIterator(read_options));
       SeekIterator(iter.get(), 1, 6);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v16 == iter->value());
       SeekIterator(iter.get(), 1, 5);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v16 == iter->value());
       SeekIterator(iter.get(), 1, 5);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v16 == iter->value());
       iter->Next();
-      ASSERT_TRUE(!iter->Valid());
+      ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 
       SeekIterator(iter.get(), 2, 0);
-      ASSERT_TRUE(!iter->Valid());
+      ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 
       ASSERT_EQ(v16.ToString(), Get(db.get(), read_options, 1, 6));
       ASSERT_EQ(kNotFoundResult, Get(db.get(), read_options, 1, 5));
@@ -288,20 +288,20 @@ TEST_F(PrefixTest, TestResult) {
       PutKey(db.get(), write_options, 1, 7, v17);
       iter.reset(db->NewIterator(read_options));
       SeekIterator(iter.get(), 1, 7);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v17 == iter->value());
 
       SeekIterator(iter.get(), 1, 6);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v16 == iter->value());
       iter->Next();
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v17 == iter->value());
       iter->Next();
-      ASSERT_TRUE(!iter->Valid());
+      ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 
       SeekIterator(iter.get(), 2, 0);
-      ASSERT_TRUE(!iter->Valid());
+      ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 
       // 3. Insert an entry for the same prefix as the head of the bucket.
       Slice v15("v15");
@@ -309,21 +309,21 @@ TEST_F(PrefixTest, TestResult) {
       iter.reset(db->NewIterator(read_options));
 
       SeekIterator(iter.get(), 1, 7);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v17 == iter->value());
 
       SeekIterator(iter.get(), 1, 5);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v15 == iter->value());
       iter->Next();
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v16 == iter->value());
       iter->Next();
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v17 == iter->value());
 
       SeekIterator(iter.get(), 1, 5);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v15 == iter->value());
 
       ASSERT_EQ(v15.ToString(), Get(db.get(), read_options, 1, 5));
@@ -336,18 +336,18 @@ TEST_F(PrefixTest, TestResult) {
       iter.reset(db->NewIterator(read_options));
 
       SeekIterator(iter.get(), 2, 2);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v22 == iter->value());
       SeekIterator(iter.get(), 2, 0);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v22 == iter->value());
 
       SeekIterator(iter.get(), 1, 5);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v15 == iter->value());
 
       SeekIterator(iter.get(), 1, 7);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v17 == iter->value());
 
       // 5. Insert an entry with a smaller prefix
@@ -356,22 +356,22 @@ TEST_F(PrefixTest, TestResult) {
       iter.reset(db->NewIterator(read_options));
 
       SeekIterator(iter.get(), 0, 2);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v02 == iter->value());
       SeekIterator(iter.get(), 0, 0);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v02 == iter->value());
 
       SeekIterator(iter.get(), 2, 0);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v22 == iter->value());
 
       SeekIterator(iter.get(), 1, 5);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v15 == iter->value());
 
       SeekIterator(iter.get(), 1, 7);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v17 == iter->value());
 
       // 6. Insert to the beginning and the end of the first prefix
@@ -381,31 +381,31 @@ TEST_F(PrefixTest, TestResult) {
       PutKey(db.get(), write_options, 1, 8, v18);
       iter.reset(db->NewIterator(read_options));
       SeekIterator(iter.get(), 1, 7);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v17 == iter->value());
 
       SeekIterator(iter.get(), 1, 3);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v13 == iter->value());
       iter->Next();
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v15 == iter->value());
       iter->Next();
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v16 == iter->value());
       iter->Next();
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v17 == iter->value());
       iter->Next();
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v18 == iter->value());
 
       SeekIterator(iter.get(), 0, 0);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v02 == iter->value());
 
       SeekIterator(iter.get(), 2, 0);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v22 == iter->value());
 
       ASSERT_EQ(v22.ToString(), Get(db.get(), read_options, 2, 2));
@@ -446,24 +446,23 @@ TEST_F(PrefixTest, PrefixValid) {
       ASSERT_OK(db->Flush(FlushOptions()));
       read_options.prefix_same_as_start = true;
       std::unique_ptr<Iterator> iter(db->NewIterator(read_options));
-      ASSERT_OK(iter->status());
       SeekIterator(iter.get(), 12345, 6);
-      ASSERT_TRUE(iter->Valid()) << "iter->status(): " << iter->status();
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v16 == iter->value());
 
       iter->Next();
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v17 == iter->value());
 
       iter->Next();
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v18 == iter->value());
 
       iter->Next();
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_TRUE(v19 == iter->value());
       iter->Next();
-      ASSERT_FALSE(iter->Valid());
+      ASSERT_FALSE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_EQ(kNotFoundResult, Get(db.get(), read_options, 12346, 8));
     }
   }
@@ -525,7 +524,7 @@ TEST_F(PrefixTest, DynamicPrefixIterator) {
       auto key_prefix = options.prefix_extractor->Transform(key);
       uint64_t total_keys = 0;
       for (iter->Seek(key);
-           iter->Valid() && iter->key().starts_with(key_prefix);
+           ASSERT_RESULT(iter->CheckedValid()) && iter->key().starts_with(key_prefix);
            iter->Next()) {
         if (FLAGS_trigger_deadlock) {
           std::cout << "Behold the deadlock!\n";
@@ -558,7 +557,7 @@ TEST_F(PrefixTest, DynamicPrefixIterator) {
       iter->Seek(key);
       hist_no_seek_time.Add(timer.ElapsedNanos());
       hist_no_seek_comparison.Add(perf_context.user_key_comparison_count);
-      ASSERT_TRUE(!iter->Valid());
+      ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
     }
 
     std::cout << "non-existing Seek key comparison: \n"

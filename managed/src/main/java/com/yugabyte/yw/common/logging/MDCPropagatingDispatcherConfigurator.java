@@ -4,7 +4,6 @@ import akka.dispatch.DispatcherPrerequisites;
 import akka.dispatch.MessageDispatcher;
 import akka.dispatch.MessageDispatcherConfigurator;
 import com.typesafe.config.Config;
-
 import java.util.concurrent.TimeUnit;
 import scala.concurrent.duration.FiniteDuration;
 

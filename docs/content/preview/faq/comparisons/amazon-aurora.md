@@ -33,6 +33,6 @@ Aurora is Amazon's proprietary database that does not allow users to build cloud
 
 The following posts cover some more details around how YugabyteDB differs from Amazon Aurora.
 
-- [What is Distributed SQL?](https://blog.yugabyte.com/what-is-distributed-sql/)
-- [Comparing Distributed SQL Performance – YugabyteDB vs. Amazon Aurora PostgreSQL vs. CockroachDB](https://blog.yugabyte.com/comparing-distributed-sql-performance-yugabyte-db-vs-amazon-aurora-postgresql-vs-cockroachdb/)
-- [Rise of Globally Distributed SQL Databases – Redefining Transactional Stores for Cloud Native Era](https://blog.yugabyte.com/rise-of-globally-distributed-sql-databases-redefining-transactional-stores-for-cloud-native-era/)
+- [What is Distributed SQL?](https://www.yugabyte.com/blog/what-is-distributed-sql/)
+- [Comparing Distributed SQL Performance – YugabyteDB vs. Amazon Aurora PostgreSQL vs. CockroachDB](https://www.yugabyte.com/blog/comparing-distributed-sql-performance-yugabyte-db-vs-amazon-aurora-postgresql-vs-cockroachdb/)
+- [Rise of Globally Distributed SQL Databases – Redefining Transactional Stores for Cloud Native Era](https://www.yugabyte.com/blog/rise-of-globally-distributed-sql-databases-redefining-transactional-stores-for-cloud-native-era/)

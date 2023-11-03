@@ -15,7 +15,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellResponse;
@@ -37,10 +36,8 @@ public class TransferXClusterCerts extends NodeTaskBase {
 
   @Inject
   protected TransferXClusterCerts(
-      BaseTaskDependencies baseTaskDependencies,
-      NodeManager nodeManager,
-      NodeUniverseManager nodeUniverseManager) {
-    super(baseTaskDependencies, nodeManager);
+      BaseTaskDependencies baseTaskDependencies, NodeUniverseManager nodeUniverseManager) {
+    super(baseTaskDependencies);
     this.nodeUniverseManager = nodeUniverseManager;
   }
 
@@ -135,10 +132,10 @@ public class TransferXClusterCerts extends NodeTaskBase {
 
   private void transferXClusterCertUsingNodeUniverseManager() {
     // Find the specified universe and node.
-    Optional<Universe> targetUniverseOptional = Universe.maybeGet(taskParams().universeUUID);
+    Optional<Universe> targetUniverseOptional = Universe.maybeGet(taskParams().getUniverseUUID());
     if (!targetUniverseOptional.isPresent()) {
       throw new IllegalArgumentException(
-          String.format("No universe with UUID %s found", taskParams().universeUUID));
+          String.format("No universe with UUID %s found", taskParams().getUniverseUUID()));
     }
     Universe targetUniverse = targetUniverseOptional.get();
     NodeDetails node = targetUniverse.getNode(taskParams().nodeName);
@@ -146,7 +143,7 @@ public class TransferXClusterCerts extends NodeTaskBase {
       throw new IllegalArgumentException(
           String.format(
               "Node with name %s in universe %s not found",
-              taskParams().nodeName, taskParams().universeUUID));
+              taskParams().nodeName, taskParams().getUniverseUUID()));
     }
 
     String sourceCertificateDirPath =
@@ -162,7 +159,7 @@ public class TransferXClusterCerts extends NodeTaskBase {
           taskParams().rootCertPath,
           taskParams().nodeName,
           sourceCertificatePath,
-          taskParams().universeUUID);
+          taskParams().getUniverseUUID());
 
       // Create the parent directory for the certificate file.
       nodeUniverseManager
@@ -204,30 +201,12 @@ public class TransferXClusterCerts extends NodeTaskBase {
               sourceCertificatePath,
               "600")
           .processErrors("Copying the certificate file to the node failed");
-
-      // `Kubectl cp` does not assign the owner properly. Also, the permission needs to `755` for
-      // K8s universes because the owner is root.
-      if (targetUniverse
-          .getUniverseDetails()
-          .getPrimaryCluster()
-          .userIntent
-          .providerType
-          .equals(CloudType.kubernetes)) {
-        nodeUniverseManager
-            .runCommand(
-                node, targetUniverse, ImmutableList.of("chown", "root:root", sourceCertificatePath))
-            .processErrors("Changing owner of the certificate to `root:root` failed");
-        nodeUniverseManager
-            .runCommand(
-                node, targetUniverse, ImmutableList.of("chmod", "755", sourceCertificatePath))
-            .processErrors("Changing the permissions of the certificate file to `755` failed");
-      }
     } else if (taskParams().action.equals(Params.Action.REMOVE)) {
       log.info(
           "Removing server cert located at {} from node {} in universe {}",
           sourceCertificatePath,
           taskParams().nodeName,
-          taskParams().universeUUID);
+          taskParams().getUniverseUUID());
 
       // Remove the certificate file.
       verifyRmCommandShellResponse(

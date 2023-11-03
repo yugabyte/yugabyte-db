@@ -27,6 +27,7 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.paging.AlertPagedQuery;
 import com.yugabyte.yw.models.paging.AlertPagedResponse;
 import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
+import io.ebean.DB;
 import io.ebean.Query;
 import io.ebean.annotation.Transactional;
 import java.util.Collections;
@@ -61,8 +62,7 @@ public class AlertService {
 
     List<Alert> beforeAlerts = Collections.emptyList();
     Set<UUID> alertUuids =
-        alerts
-            .stream()
+        alerts.stream()
             .filter(alert -> !alert.isNew())
             .map(Alert::getUuid)
             .collect(Collectors.toSet());
@@ -74,8 +74,7 @@ public class AlertService {
         beforeAlerts.stream().collect(Collectors.toMap(Alert::getUuid, Function.identity()));
 
     Map<EntityOperation, List<Alert>> toCreateAndUpdate =
-        alerts
-            .stream()
+        alerts.stream()
             .map(alert -> prepareForSave(alert, beforeAlertMap.get(alert.getUuid())))
             .filter(alert -> filterForSave(alert, beforeAlertMap.get(alert.getUuid())))
             .peek(alert -> validate(alert, beforeAlertMap.get(alert.getUuid())))
@@ -84,12 +83,12 @@ public class AlertService {
     List<Alert> toCreate = toCreateAndUpdate.getOrDefault(CREATE, Collections.emptyList());
     if (!toCreate.isEmpty()) {
       toCreate.forEach(Alert::generateUUID);
-      Alert.db().saveAll(toCreate);
+      DB.getDefault().saveAll(toCreate);
     }
 
     List<Alert> toUpdate = toCreateAndUpdate.getOrDefault(UPDATE, Collections.emptyList());
     if (!toUpdate.isEmpty()) {
-      Alert.db().updateAll(toUpdate);
+      DB.getDefault().updateAll(toUpdate);
     }
 
     log.trace("{} alerts saved", toCreate.size() + toUpdate.size());
@@ -119,12 +118,19 @@ public class AlertService {
     return alert;
   }
 
+  public Alert getOrBadRequest(UUID customerUUID, UUID uuid) {
+    Alert alert = getOrBadRequest(uuid);
+    if (!(alert.getCustomerUUID().equals(customerUUID))) {
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Alert UUID: " + uuid);
+    }
+    return alert;
+  }
+
   @Transactional
   public List<Alert> markResolved(AlertFilter filter) {
     AlertFilter notResolved = filter.toBuilder().states(State.getFiringStates()).build();
     List<Alert> resolved =
-        list(notResolved)
-            .stream()
+        list(notResolved).stream()
             .peek(
                 alert -> {
                   boolean wasInitiallySuspended =
@@ -154,8 +160,7 @@ public class AlertService {
   public List<Alert> acknowledge(AlertFilter filter) {
     AlertFilter notResolved = filter.toBuilder().state(Alert.State.ACTIVE, State.SUSPENDED).build();
     List<Alert> resolved =
-        list(notResolved)
-            .stream()
+        list(notResolved).stream()
             .map(
                 alert ->
                     alert

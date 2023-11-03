@@ -8,7 +8,7 @@ import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -82,7 +82,10 @@ public class MetricConfigTest extends FakeDBApplication {
         allOf(
             notNullValue(),
             equalTo(
-                "(avg(irate(log_sync_latency_sum{export_type=\"tserver_export\"}[60s]))) / (avg(irate(log_sync_latency_count{export_type=\"tserver_export\"}[60s])))")));
+                "(avg(irate(log_sync_latency_sum"
+                    + "{export_type=\"tserver_export\"}[60s]))) /"
+                    + " (avg(irate(log_sync_latency_count"
+                    + "{export_type=\"tserver_export\"}[60s])))")));
   }
 
   @Test
@@ -119,8 +122,8 @@ public class MetricConfigTest extends FakeDBApplication {
   public void testMultiMetric() {
     JsonNode configJson =
         Json.parse(
-            "{\"metric\": \"log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg\","
-                + "\"function\": \"avg\", \"range\": true}");
+            "{\"metric\": \"log_sync_latency.avg|log_group_commit_latency.avg|"
+                + "log_append_latency.avg\",\"function\": \"avg\", \"range\": true}");
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
     Map<String, String> queries =
@@ -160,6 +163,29 @@ public class MetricConfigTest extends FakeDBApplication {
             notNullValue(),
             equalTo(
                 "sum(irate(rpc_latency_count{export_type=\"tserver_export\", "
+                    + "service_type=\"TabletServerService\", service_method=~\"Read|Write\"}[60s]))"
+                    + " by (service_method)")));
+  }
+
+  @Test
+  public void testQuantileMetric() {
+    JsonNode configJson =
+        Json.parse(
+            "{\"metric\": \"rpc_latency\", \"function\": \"quantile_over_time.99|sum\","
+                + "\"range\": true,"
+                + "\"filters\": {\"export_type\": \"tserver_export\","
+                + "\"service_type\": \"TabletServerService\","
+                + "\"service_method\": \"Read|Write\"},"
+                + "\"group_by\": \"service_method\"}");
+    MetricConfig metricConfig = MetricConfig.create("metric", configJson);
+    metricConfig.save();
+    String query = metricConfig.getConfig().getQuery(new HashMap<>(), DEFAULT_RANGE_SECS);
+    assertThat(
+        query,
+        allOf(
+            notNullValue(),
+            equalTo(
+                "sum(quantile_over_time(0.99, rpc_latency{export_type=\"tserver_export\", "
                     + "service_type=\"TabletServerService\", service_method=~\"Read|Write\"}[60s]))"
                     + " by (service_method)")));
   }
@@ -206,8 +232,9 @@ public class MetricConfigTest extends FakeDBApplication {
   public void testMultiMetricWithComplexFilters() {
     JsonNode configJson =
         Json.parse(
-            "{\"metric\": \"log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg\","
-                + "\"function\": \"avg\", \"filters\": {\"node_prefix\": \"foo|bar\"}}");
+            "{\"metric\": \"log_sync_latency.avg|log_group_commit_latency.avg"
+                + "|log_append_latency.avg\",\"function\": \"avg\","
+                + " \"filters\": {\"node_prefix\": \"foo|bar\"}}");
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
     Map<String, String> queries =
@@ -339,8 +366,8 @@ public class MetricConfigTest extends FakeDBApplication {
   public void testQueryWithOperator() {
     JsonNode configJson =
         Json.parse(
-            "{\"metric\": \"metric\", \"range\": true,"
-                + "\"function\": \"rate|avg\", \"filters\": {\"memory\": \"used\"}, \"operator\": \"/10\"}");
+            "{\"metric\": \"metric\", \"range\": true,\"function\": \"rate|avg\", \"filters\":"
+                + " {\"memory\": \"used\"}, \"operator\": \"/10\"}");
     MetricConfig metricConfig = MetricConfig.create("metric", configJson);
     metricConfig.save();
 

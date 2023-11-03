@@ -48,13 +48,13 @@ import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.google.protobuf.ByteString;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestTablespaceProperties extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestTablespaceProperties.class);
 
@@ -715,7 +715,7 @@ public class TestTablespaceProperties extends BasePgSQLTest {
         setPlacementUuid(ByteString.copyFromUtf8("")).build();
 
     CatalogEntityInfo.PlacementInfoPB readOnlyPlacementInfo = CatalogEntityInfo.PlacementInfoPB.
-        newBuilder().addAllPlacementBlocks(placementBlocksReadOnly).
+        newBuilder().addAllPlacementBlocks(placementBlocksReadOnly).setNumReplicas(1).
         setPlacementUuid(ByteString.copyFromUtf8("readcluster")).build();
 
     List<CatalogEntityInfo.PlacementInfoPB> readOnlyPlacements = Arrays.asList(

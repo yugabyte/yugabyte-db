@@ -3,10 +3,12 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -16,6 +18,8 @@ import java.util.Optional;
 import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.CommonNet;
+import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.SetupUniverseReplicationResponse;
 import org.yb.client.YBClient;
@@ -31,8 +35,9 @@ import org.yb.util.NetUtil;
 public class XClusterConfigSetup extends XClusterConfigTaskBase {
 
   @Inject
-  protected XClusterConfigSetup(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
+  protected XClusterConfigSetup(
+      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+    super(baseTaskDependencies, xClusterUniverseService);
   }
 
   public static class Params extends XClusterConfigTaskParams {
@@ -52,8 +57,8 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
     return String.format(
         "%s (targetUniverse=%s, xClusterUuid=%s, tableIds=%s)",
         super.getName(),
-        taskParams().universeUUID,
-        taskParams().getXClusterConfig().uuid,
+        taskParams().getUniverseUUID(),
+        taskParams().getXClusterConfig().getUuid(),
         taskParams().tableIds);
   }
 
@@ -79,17 +84,17 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
         String errMsg =
             String.format(
                 "Table with id (%s) does not belong to the task params xCluster config (%s)",
-                tableId, xClusterConfig.uuid);
+                tableId, xClusterConfig.getUuid());
         throw new IllegalArgumentException(errMsg);
       }
-      if (tableConfig.get().replicationSetupDone) {
+      if (tableConfig.get().isReplicationSetupDone()) {
         String errMsg =
             String.format(
                 "Replication is already set up for table with id (%s) in xCluster config (%s)",
-                tableId, xClusterConfig.uuid);
+                tableId, xClusterConfig.getUuid());
         throw new IllegalArgumentException(errMsg);
       }
-      tableIdsBootstrapIdsMap.put(tableId, tableConfig.get().streamId);
+      tableIdsBootstrapIdsMap.put(tableId, tableConfig.get().getStreamId());
     }
     // Either all tables should need bootstrap, or none should.
     if (tableIdsBootstrapIdsMap.values().stream().anyMatch(Objects::isNull)
@@ -98,42 +103,42 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
           String.format(
               "Failed to create XClusterConfig(%s) because some tables went through bootstrap and "
                   + "some did not, You must create XClusterConfigSetup subtask separately for them",
-              xClusterConfig.uuid));
+              xClusterConfig.getUuid()));
     }
 
-    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.sourceUniverseUUID);
-    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
-    YBClient client = ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate);
-
-    try {
+    try (YBClient client =
+        ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate)) {
       log.info(
           "Setting up replication for XClusterConfig({}): tableIdsBootstrapIdsMap {}",
-          xClusterConfig.uuid,
+          xClusterConfig.getUuid(),
           tableIdsBootstrapIdsMap);
+      // For dual NIC, the universes will be able to communicate over the secondary
+      // addresses.
+      Set<CommonNet.HostPortPB> sourceMasterAddresses =
+          new HashSet<>(
+              NetUtil.parseStringsAsPB(
+                  sourceUniverse.getMasterAddresses(
+                      false /* mastersQueryable */, true /* getSecondary */)));
+
       SetupUniverseReplicationResponse resp =
           client.setupUniverseReplication(
               xClusterConfig.getReplicationGroupName(),
               tableIdsBootstrapIdsMap,
-              // For dual NIC, the universes will be able to communicate over the secondary
-              // addresses.
-              new HashSet<>(
-                  NetUtil.parseStringsAsPB(
-                      sourceUniverse.getMasterAddresses(
-                          false /* mastersQueryable */, true /* getSecondary */))));
+              sourceMasterAddresses,
+              supportsTxnXCluster(targetUniverse)
+                  ? xClusterConfig.getType().equals(ConfigType.Txn)
+                  : null);
       if (resp.hasError()) {
         throw new RuntimeException(
             String.format(
                 "Failed to set up replication for XClusterConfig(%s): %s",
-                xClusterConfig.uuid, resp.errorMessage()));
+                xClusterConfig.getUuid(), resp.errorMessage()));
       }
-      waitForXClusterOperation(client::isSetupUniverseReplicationDone);
-
-      // Persist that replicationSetupDone is true for the tables in taskParams. We have checked
-      // that taskParams().tableIds exist in the xCluster config, so it will not throw an exception.
-      xClusterConfig.setReplicationSetupDone(taskParams().tableIds);
-      xClusterConfig.setStatusForTables(taskParams().tableIds, XClusterTableConfig.Status.Running);
+      waitForXClusterOperation(xClusterConfig, client::isSetupUniverseReplicationDone);
 
       // Get the stream ids from the target universe and put it in the Platform DB.
       GetMasterClusterConfigResponse clusterConfigResp = client.getMasterClusterConfig();
@@ -142,21 +147,27 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
             String.format(
                 "Failed to getMasterClusterConfig from target universe (%s) for xCluster config "
                     + "(%s): %s",
-                targetUniverse.universeUUID, xClusterConfig.uuid, clusterConfigResp.errorMessage());
+                targetUniverse.getUniverseUUID(),
+                xClusterConfig.getUuid(),
+                clusterConfigResp.errorMessage());
         throw new RuntimeException(errMsg);
       }
-      updateStreamIdsFromTargetUniverseClusterConfig(
+      syncXClusterConfigWithReplicationGroup(
           clusterConfigResp.getConfig(), xClusterConfig, taskParams().tableIds);
+
+      // For txn xCluster set the target universe role to standby.
+      if (xClusterConfig.getType().equals(ConfigType.Txn) && xClusterConfig.isTargetActive()) {
+        client.changeXClusterRole(XClusterRole.STANDBY);
+        xClusterConfig.setTargetActive(false);
+        xClusterConfig.update();
+      }
 
       if (HighAvailabilityConfig.get().isPresent()) {
         getUniverse(true).incrementVersion();
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
-      xClusterConfig.setStatusForTables(taskParams().tableIds, XClusterTableConfig.Status.Failed);
       throw new RuntimeException(e);
-    } finally {
-      ybService.closeClient(client, targetUniverseMasterAddresses);
     }
 
     log.info("Completed {}", getName());

@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: pgadmin
     parent: tools
-    weight: 10
+    weight: 80
 type: docs
 ---
 
@@ -23,7 +23,7 @@ Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB prerequis
 
 ### PostgreSQL JDBC driver
 
-To connect pgAdmin to a YugabyteDB cluster, you need the PostgreSQL JDBC driver installed. To download the current version that supports Java 8 or later, go to the [PostgreSQL JDBC Driver download](https://jdbc.postgresql.org/download.html) page.
+To connect pgAdmin to a YugabyteDB cluster, you need the PostgreSQL JDBC driver installed. To download the current version that supports Java 8 or later, go to the [PostgreSQL JDBC Driver download](https://jdbc.postgresql.org/download/) page.
 
 ## Install pgAdmin
 

@@ -40,10 +40,10 @@ rightNav:
 
 | Field name | Description |
 | :--------- | :---------- |
-| `title` | Title text to display in browser tab and search engine results |
+| `title` | Title text to display in browser tab and search engine results. This should be unique to the page. |
 | `headerTitle` | Title text to appear as the page title |
 | `linkTitle` | Title text to display in the navigation bar and breadcrumbs |
-| `description` | Description text to display in search results |
+| `description` | Description text to display in search results. This should be unique to the page. |
 | `headcontent` | Subtitle text below the headerTitle |
 | `menu` | Needs a menu name as defined in `menus.toml`. |
 | `identifier` | ID for the page. The page identifier must be unique within the scope of the menu. |

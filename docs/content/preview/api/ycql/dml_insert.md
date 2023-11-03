@@ -53,7 +53,7 @@ Where
 
 - `table_name` and `column` are identifiers (`table_name` may be qualified with a keyspace name).
 - `value` can be any expression although Apache Cassandra requires that `value`s must be literals.
-- Restrictions for `if_expression` and `ttl_expression` are covered in the Semantics section below.
+- Restrictions for `if_expression` and `ttl_expression` are covered in the Semantics section.
 - See [Expressions](..#expressions) for more information on syntax rules.
 
 ## Semantics
@@ -157,7 +157,7 @@ ycqlsh:example> SELECT * FROM employees;
 
 ### Insert a row with expiration time using the `USING TTL` clause
 
-You can do this as shown below.
+You can do this as follows:
 
 ```sql
 ycqlsh:example> INSERT INTO employees(department_id, employee_id, name) VALUES (2, 2, 'Jack') USING TTL 10;

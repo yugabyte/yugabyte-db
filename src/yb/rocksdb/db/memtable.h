@@ -356,7 +356,7 @@ class MemTable {
   const MemTableOptions* GetMemTableOptions() const { return &moptions_; }
 
   void UpdateFrontiers(const UserFrontiers& value) {
-    std::lock_guard<SpinMutex> l(frontiers_mutex_);
+    std::lock_guard l(frontiers_mutex_);
     if (frontiers_) {
       frontiers_->MergeFrontiers(value);
     } else {
@@ -364,6 +364,8 @@ class MemTable {
     }
   }
 
+  // Frontiers accessors might return stale frontiers if invoked after records have been written to
+  // the memtable, but before frontiers are updated.
   UserFrontierPtr GetFrontier(UpdateUserValueType type) const;
 
   const UserFrontiers* Frontiers() const { return frontiers_.get(); }

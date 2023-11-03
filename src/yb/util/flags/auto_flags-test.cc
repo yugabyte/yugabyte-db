@@ -26,6 +26,21 @@ DEFINE_RUNTIME_AUTO_uint64(test_auto_uint64, kExternal, 1, 2, "Testing!");
 DEFINE_RUNTIME_AUTO_double(test_auto_double, kExternal, 1, 2, "Testing!");
 DEFINE_RUNTIME_AUTO_string(test_auto_string, kExternal, "false", "true", "Testing!");
 
+// Static Assert test flags. These should fail to compile.
+// DEFINE_RUNTIME_AUTO_int32(test_auto_flag, kExternal, 100, 1, "Testing"); // Duplicate flag
+// DEFINE_RUNTIME_AUTO_bool(test_auto_bool, kExternal, 10, true, "Testing!"); // Initial value
+// incompatible
+// DEFINE_RUNTIME_AUTO_bool(test_auto_bool, kExternal, false, "true", "Testing!"); // Target value
+// incompatible
+// DEFINE_RUNTIME_AUTO_string(test_auto_string, kExternal, 1, "test", "Testing!"); // Initial value
+// incompatible String
+// DEFINE_RUNTIME_AUTO_bool(test_auto_string, kExternal, "test", true, "Testing!"); // Target value
+// incompatible String
+// DEFINE_RUNTIME_AUTO_bool(test_auto_bool, kExternal, true, true, "Testing!"); // Initial and
+// Target are same
+// DEFINE_RUNTIME_AUTO_string(test_auto_string, kExternal, "test", "test", "Testing!"); // Initial
+// and Target are same String
+
 DISABLE_PROMOTE_ALL_AUTO_FLAGS_FOR_TEST;
 
 namespace yb {
@@ -58,8 +73,6 @@ void ParseCommandLineFlags(vector<string> arguments) {
 }  // namespace
 
 TEST(AutoFlagsTest, TestPromote) {
-  ASSERT_NOK(PromoteAutoFlag("Invalid_flag"));
-
   ASSERT_EQ(FLAGS_test_auto_flag, 0);
   VerifyFlagDefault(0);
 
@@ -70,17 +83,18 @@ TEST(AutoFlagsTest, TestPromote) {
   ASSERT_EQ(FLAGS_test_auto_double, 1);
   ASSERT_EQ(FLAGS_test_auto_string, "false");
 
-  ASSERT_OK(PromoteAutoFlag(kFlagName));
+  const auto* flag_desc = GetAutoFlagDescription(kFlagName);
+  ASSERT_NO_FATALS(PromoteAutoFlag(*flag_desc));
   ASSERT_EQ(FLAGS_test_auto_flag, 100);
   VerifyFlagDefault(100);
 
-  // Override should still work
-  FLAGS_test_auto_flag = 10;
+  // Setting an override should take precedence.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_test_auto_flag) = 10;
   ASSERT_EQ(FLAGS_test_auto_flag, 10);
   VerifyFlagDefault(100);
 
   // Promote should not modify overridden values
-  ASSERT_OK(PromoteAutoFlag(kFlagName));
+  ASSERT_NO_FATALS(PromoteAutoFlag(*flag_desc));
   ASSERT_EQ(FLAGS_test_auto_flag, 10);
 }
 
@@ -98,7 +112,8 @@ TEST(AutoFlagsTest, TestAutoPromoted) {
   ASSERT_EQ(FLAGS_test_auto_string, "true");
 
   // promote again should be no-op
-  ASSERT_OK(PromoteAutoFlag(kFlagName));
+  const auto* flag_desc = GetAutoFlagDescription(kFlagName);
+  ASSERT_NO_FATALS(PromoteAutoFlag(*flag_desc));
   ASSERT_EQ(FLAGS_test_auto_flag, 100);
   VerifyFlagDefault(100);
 }
@@ -158,4 +173,32 @@ TEST(AutoFlagsTest, TestGetFlagsEligibleForPromotion) {
   ASSERT_EQ(eligible_flags["p3"].size(), 2);
 }
 
+TEST(AutoFlagsTest, TestDemote) {
+  ASSERT_EQ(FLAGS_test_auto_flag, 0);
+  VerifyFlagDefault(0);
+
+  const auto* flag_desc = GetAutoFlagDescription(kFlagName);
+  ASSERT_NO_FATALS(PromoteAutoFlag(*flag_desc));
+  ASSERT_EQ(FLAGS_test_auto_flag, 100);
+  VerifyFlagDefault(100);
+
+  ASSERT_NO_FATALS(DemoteAutoFlag(*flag_desc));
+  ASSERT_EQ(FLAGS_test_auto_flag, 0);
+  VerifyFlagDefault(0);
+
+  // Setting an override should take precedence.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_test_auto_flag) = 10;
+  ASSERT_EQ(FLAGS_test_auto_flag, 10);
+  VerifyFlagDefault(0);
+
+  // Promote should not modify overridden values.
+  ASSERT_NO_FATALS(PromoteAutoFlag(*flag_desc));
+  ASSERT_EQ(FLAGS_test_auto_flag, 10);
+  VerifyFlagDefault(100);
+
+  // Demote should not modify overridden values.
+  ASSERT_NO_FATALS(DemoteAutoFlag(*flag_desc));
+  ASSERT_EQ(FLAGS_test_auto_flag, 10);
+  VerifyFlagDefault(0);
+}
 }  // namespace yb

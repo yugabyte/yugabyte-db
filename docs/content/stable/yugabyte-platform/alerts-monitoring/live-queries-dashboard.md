@@ -1,4 +1,5 @@
 ---
+title: Live queries in YugabyteDB Anywhere
 headerTitle: Live Queries dashboard
 linkTitle: Live Queries dashboard
 description: Live Queries dashboard
@@ -6,7 +7,7 @@ menu:
   stable_yugabyte-platform:
     parent: alerts-monitoring
     identifier: live-queries-dashboard
-    weight: 10
+    weight: 20
 type: docs
 ---
 
@@ -37,32 +38,32 @@ The following table describes the **Live Queries** column values.
 
 You can use the **Live Queries** dashboard as follows:
 
-1. Navigate to the **Universes**, select your universe, then select **Queries**, and then select YSQL from **Show live queries** on the right, as per the following illustration:<br><br>
+1. Navigate to the **Universes**, select your universe, then select **Queries**, and then select YSQL from **Show live queries** on the right, as per the following illustration:<br>
 
-   ![Select API type](/images/yp/alerts-monitoring/live-queries/image1.png)<br><br>
+   ![Select API type](/images/yp/alerts-monitoring/live-queries/image1.png)<br>
 
-   If you changing the **Show live queries** selection to **YCQL**, the column headers will change and the data will be refreshed, as per the following illustration:<br><br>
+   If you changing the **Show live queries** selection to **YCQL**, the column headers will change and the data will be refreshed, as per the following illustration:<br>
 
-   ![Changing drop-down selection](/images/yp/alerts-monitoring/live-queries/image2.png)<br><br>
+   ![Changing drop-down selection](/images/yp/alerts-monitoring/live-queries/image2.png)<br>
 
-2. Click the search bar to trigger the display of the column filter options to be able to use a query language for filtering data based on certain fields, as per the following illustration:<br><br>
+2. Click the search bar to trigger the display of the column filter options to be able to use a query language for filtering data based on certain fields, as per the following illustration:<br>
 
    ![Search drop-down](/images/yp/alerts-monitoring/live-queries/search-dropdown.png)<br>
 
-   <br><br>You can add multiple search terms that are applied as an intersection. In the following example, adding `Node Name` filters for all rows with a name containing `puppy-food` and have a `UniqueSecondaryIndex` in one of the data cells:<br><br>
+   You can add multiple search terms that are applied as an intersection. In the following example, adding `Node Name` filters for all rows with a name containing `puppy-food` and have a `UniqueSecondaryIndex` in one of the data cells:<br>
 
-   ![Multiple filters](/images/yp/alerts-monitoring/live-queries/multiple-filters.png)<br><br>
+   ![Multiple filters](/images/yp/alerts-monitoring/live-queries/multiple-filters.png)<br>
 
    You can use filtering for comparisons on numbers columns (`Elapsed Time`) using `>`, `>=`, `<`, and `<=` to search for values that are greater than, greater than or equal to, less than, and less than or equal to another value (Elapsed Time: `< 50`).  You can also use the range syntax `n..n` to search for values within a range, where the first number `n` is the lowest value and the second `n` is the highest value. The range syntax supports tokens like the following: `n..*` which is equivalent to `>= n`. Or `*..n` which is the same as `<= n`.
 
-3. Click on a row to open a sidebar with a full view of the query statement, along with all the column data, as per the following illustration:<br><br>
+3. Click on a row to open a sidebar with a full view of the query statement, along with all the column data, as per the following illustration:<br>
 
-   ![View query statement](/images/yp/alerts-monitoring/live-queries/image5.png)<br><br>
+   ![View query statement](/images/yp/alerts-monitoring/live-queries/image5.png)<br>
 
-   You can also find additional prefiltered navigation links from different pages to the **Live Queries** page. For example, from the **Metrics** page to the **Queries** page, when a node is selected from the list, as per the following illustration:<br><br>
+   You can also find additional prefiltered navigation links from different pages to the **Live Queries** page. For example, from the **Metrics** page to the **Queries** page, when a node is selected from the list, as per the following illustration:<br>
 
-   ![Metrics page showing link](/images/yp/alerts-monitoring/live-queries/metrics-page-showing-link.png)<br><br>
+   ![Metrics page showing link](/images/yp/alerts-monitoring/live-queries/metrics-page-showing-link.png)<br>
 
-   Or from the **Nodes** page to the **Live Queries** page, with the specific node prefiltered, as per the following illustration:<br><br>
+   Or from the **Nodes** page to the **Live Queries** page, with the specific node prefiltered, as per the following illustration:<br>
 
    ![Nodes page showing link](/images/yp/alerts-monitoring/live-queries/nodes-page-show-link.png)

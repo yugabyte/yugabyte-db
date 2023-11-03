@@ -41,6 +41,8 @@ To enable audit logging, first configure audit logging for the cluster. This is 
 
     For example, `ysql_pg_conf_csv="pgaudit.log='DDL',pgaudit.log_level=notice"`
 
+    Use double quotes to enclose any settings having commas within.
+
     These configuration values are set when the YugabyteDB cluster is created and hence are picked up for all users and for every session.
 
 - Use the [SET](../../../api/ysql/the-sql-language/statements/cmd_set/) command in a running session.
@@ -57,6 +59,8 @@ After configuring the YB-TServer and starting the cluster, create the `pgAudit` 
 CREATE EXTENSION IF NOT EXISTS pgaudit;
 ```
 
+You only need to run this statement on a single node, and it will apply across your cluster.
+
 ## Customize audit logging
 
 You can customize YSQL audit logging using the `pgAudit` flags, as per the following table.
@@ -72,7 +76,7 @@ You can customize YSQL audit logging using the `pgAudit` flags, as per the follo
 | pgaudit.log_statement_once | ON - Specifies whether logging will include the statement text and parameters with the first log entry for a statement or sub-statement combination or with every entry. Disabling this setting results in less verbose logging but may make it more difficult to determine the statement that generated a log entry. | OFF |
 | pgaudit.role | Specifies the master role to use for object audit logging. Multiple audit roles can be defined by granting them to the master role. This allows multiple groups to be in charge of different aspects of audit logging. | None |
 
-## Example
+## Example 1
 
 Use the following steps to configure audit logging in a YugabyteDB cluster with bare minimum configurations.
 
@@ -94,7 +98,7 @@ SET pgaudit.log_level=notice;
 
 ### Load the pgAudit extension
 
-To enable the `pgAudit` extension on the YugabyteDB cluster, create the `pgAudit` extension as follows:
+To enable the `pgAudit` extension on the YugabyteDB cluster, create the `pgAudit` extension on any node as follows:
 
 ```sql
 yugabyte=# CREATE EXTENSION IF NOT EXISTS pgaudit;
@@ -117,6 +121,109 @@ CREATE TABLE
 ```
 
 Notice that audit logs are generated for DDL statements.
+
+## Example 2
+
+Use the following steps to configure advanced audit logging in a YugabyteDB cluster.
+
+### Enable audit logging
+
+Start the YugabyteDB cluster with the following audit logging configuration:
+
+```shell
+--ysql_pg_conf_csv="log_line_prefix='%m [%p %l %c] %q[%C %R %Z %H] [%r %a %u %d] '",pgaudit.log='all',pgaudit.log_parameter=on,pgaudit.log_relation=on,pgaudit.log_catalog=off,suppress_nonpg_logs=on
+```
+
+### Load the pgAudit extension
+
+To enable the `pgAudit` extension on the YugabyteDB cluster, create the `pgAudit` extension on any node as follows:
+
+```sql
+yugabyte=# CREATE EXTENSION IF NOT EXISTS pgaudit;
+yugabyte=# CREATE TABLE IF NOT EXISTS my_table ( h int, r int, v int, primary key(h,r));
+```
+
+### Generate a scenario with concurrent transactions
+
+Start two sessions and execute transactions concurrently as follows:
+
+<table class="no-alter-colors">
+  <thead>
+    <tr>
+    <th>
+    Client 1
+    </th>
+    <th>
+    Client 2
+    </th>
+    </tr>
+  </thead>
+  <tbody>
+  <tr>
+   <td>
+
+```sql
+yugabyte=# BEGIN;
+yugabyte=# INSERT INTO my_table VALUES (5,2,2);
+```
+
+   </td>
+   <td>
+   </td>
+  </tr>
+  <tr>
+   <td>
+   </td>
+   <td>
+
+```sql
+yugabyte=# BEGIN;
+yugabyte=# INSERT INTO my_table VALUES (6,2,2);
+yugabyte=# COMMIT;
+```
+
+   </td>
+  </tr>
+  <tr>
+   <td>
+
+```sql
+yugabyte=# INSERT INTO my_table VALUES (7,2,2);
+COMMIT;
+```
+
+   </td>
+   <td>
+   </td>
+  </tr>
+
+</tbody>
+</table>
+
+Your PostgreSQL log should include interleaved output similar to the following:
+
+```output
+2022-12-08 14:11:24.190 EST [93243 15 639235e1.16c3b] [cloud1 datacenter1 rack1 node1] [127.0.0.1(49823) ysqlsh yugabyte yugabyte] LOG:  AUDIT: SESSION,6,1,MISC,BEGIN,,,begin;,<none>
+2022-12-08 14:11:34.309 EST [93243 16 639235e1.16c3b] [cloud1 datacenter1 rack1 node1] [127.0.0.1(49823) ysqlsh yugabyte yugabyte] LOG:  AUDIT: SESSION,7,1,WRITE,INSERT,TABLE,public.my_table,"INSERT INTO my_table VALUES (5,2,2);",<none>
+2022-12-08 14:11:38.294 EST [92937 8 639233f7.16b09] [cloud1 datacenter1 rack1 node1] [127.0.0.1(49633) ysqlsh yugabyte yugabyte] LOG:  AUDIT: SESSION,6,1,MISC,BEGIN,,,begin;,<none>
+2022-12-08 14:11:42.976 EST [92937 9 639233f7.16b09] [cloud1 datacenter1 rack1 node1] [127.0.0.1(49633) ysqlsh yugabyte yugabyte] LOG:  AUDIT: SESSION,7,1,WRITE,INSERT,TABLE,public.my_table,"INSERT INTO my_table VALUES (6,2,2);",<none>
+2022-12-08 14:11:46.596 EST [92937 10 639233f7.16b09] [cloud1 datacenter1 rack1 node1] [127.0.0.1(49633) ysqlsh yugabyte yugabyte] LOG:  AUDIT: SESSION,8,1,MISC,COMMIT,,,COMMIT;,<none>
+2022-12-08 14:11:52.317 EST [93243 17 639235e1.16c3b] [cloud1 datacenter1 rack1 node1] [127.0.0.1(49823) ysqlsh yugabyte yugabyte] LOG:  AUDIT: SESSION,8,1,WRITE,INSERT,TABLE,public.my_table,"INSERT INTO my_table VALUES (7,2,2);",<none>
+2022-12-08 14:11:54.374 EST [93243 18 639235e1.16c3b] [cloud1 datacenter1 rack1 node1] [127.0.0.1(49823) ysqlsh yugabyte yugabyte] LOG:  AUDIT: SESSION,9,1,MISC,COMMIT,,,commit;,<none>
+```
+
+Sorting by session identifier and timestamp, and including the node information for uniqueness in the cluster, you can group the transactions:
+
+```output
+cloud1 datacenter1 rack1 node1 639233f7.16b09 2022-12-08 14:11:38.294 SESSION,6,1,MISC,BEGIN,,,begin;,<none>
+cloud1 datacenter1 rack1 node1 639233f7.16b09 2022-12-08 14:11:42.976 SESSION,7,1,WRITE,INSERT,TABLE,public.my_table,"INSERT INTO my_table VALUES (6,2,2);",<none>
+cloud1 datacenter1 rack1 node1 639233f7.16b09 2022-12-08 14:11:46.596 SESSION,8,1,MISC,COMMIT,,,COMMIT;,<none>
+
+cloud1 datacenter1 rack1 node1 639235e1.16c3b 2022-12-08 14:11:24.190 SESSION,6,1,MISC,BEGIN,,,begin;,<none>
+cloud1 datacenter1 rack1 node1 639235e1.16c3b 2022-12-08 14:11:34.309 SESSION,7,1,WRITE,INSERT,TABLE,public.my_table,"INSERT INTO my_table VALUES (5,2,2);",<none>
+cloud1 datacenter1 rack1 node1 639235e1.16c3b 2022-12-08 14:11:52.317 SESSION,8,1,WRITE,INSERT,TABLE,public.my_table,"INSERT INTO my_table VALUES (7,2,2);",<none>
+cloud1 datacenter1 rack1 node1 639235e1.16c3b 2022-12-08 14:11:54.374 SESSION,9,1,MISC,COMMIT,,,commit;,<none>
+```
 
 ## Read more
 

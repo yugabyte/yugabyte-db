@@ -42,7 +42,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
 
@@ -70,17 +70,13 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/tsan_util.h"
 
-using yb::client::YBClient;
-using yb::client::YBClientBuilder;
 using yb::client::YBSchema;
-using yb::client::YBSchemaFromSchema;
 using yb::client::YBTableCreator;
 using yb::client::YBTableName;
 using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
 using yb::consensus::ConsensusMetadataPB;
 using yb::consensus::ConsensusStatePB;
 using yb::consensus::PeerMemberType;
-using yb::consensus::RaftPeerPB;
 using yb::itest::TServerDetails;
 using yb::tablet::TABLET_DATA_COPYING;
 using yb::tablet::TABLET_DATA_DELETED;
@@ -90,9 +86,7 @@ using yb::tablet::TabletDataState;
 using yb::tablet::RaftGroupReplicaSuperBlockPB;
 using yb::tserver::ListTabletsResponsePB;
 using yb::tserver::TabletServerErrorPB;
-using std::numeric_limits;
 using std::string;
-using std::unordered_map;
 using std::vector;
 using strings::Substitute;
 
@@ -326,7 +320,7 @@ Result<bool> DeleteTableTest::VerifyTableCompletelyDeleted(
 
   // 2) Should respond to GetTableSchema with a NotFound error.
   YBSchema schema;
-  PartitionSchema partition_schema;
+  dockv::PartitionSchema partition_schema;
   Status s = client_->GetTableSchema(table, &schema, &partition_schema);
   if (!s.IsNotFound()) {
     return false;
@@ -409,7 +403,7 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
 
   // 2) Should respond to GetTableSchema with a NotFound error.
   YBSchema schema;
-  PartitionSchema partition_schema;
+  dockv::PartitionSchema partition_schema;
   Status s = client_->GetTableSchema(
       TestWorkloadOptions::kDefaultTableName, &schema, &partition_schema);
   ASSERT_TRUE(s.IsNotFound()) << s.ToString();
@@ -1357,6 +1351,7 @@ class DeleteTableTombstonedParamTest : public DeleteTableTest,
 TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   vector<string> flags;
   flags.push_back("--log_segment_size_mb=1");  // Faster log rolls.
+  flags.push_back("--allow_encryption_at_rest=false");
   ASSERT_NO_FATALS(StartCluster(flags));
   const string fault_flag = GetParam();
   LOG(INFO) << "Running with fault flag: " << fault_flag;

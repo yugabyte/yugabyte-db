@@ -13,18 +13,16 @@ test: yb_pg_int8
 test: yb_pg_create_function_1
 test: yb_pg_create_type
 
-# Dependency for yb_pg_create_function_2
+# Dependency for yb_pg_create_function_2, yb_pg_errors
 test: yb_pg_create_table
 
 test: yb_pg_create_function_2
 
-# Dependency for yb_pg_select, yb_pg_with
+# Dependency for yb_pg_with
 test: yb_pg_copy
 
+test: yb_pg_create_misc
 test: yb_pg_create_operator
-
+test: yb_pg_create_index
 test: yb_pg_errors
-test: yb_pg_select
-test: yb_pg_select_distinct
-test: yb_pg_select_distinct_on
 test: yb_pg_with

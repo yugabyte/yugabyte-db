@@ -1,11 +1,11 @@
-import React from 'react';
 import { Tab, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import { YBTabsPanel } from '../panels';
 import UsersListContainer from './Users/UsersListContainer';
 import UserAuthContainer from './UserAuth/UserAuthContainer';
+import { isRbacEnabled } from '../../redesign/features/rbac/common/RbacUtils';
+import { YBLoading } from '../common/indicators';
 import KeyIcon from './icons/key_icon';
 import './styles.scss';
-import { YBLoading } from '../common/indicators';
 
 export const UserManagement = (props) => {
   const { activeTab, defaultTab, routePrefix, currentUserInfo } = props;
@@ -28,13 +28,18 @@ export const UserManagement = (props) => {
         placement="right"
         overlay={
           <Tooltip className="high-index" id="user-auth-tooltip">
-            You don't have enough permission
+            {"You don't have enough permission"}
           </Tooltip>
         }
       >
         {AuthTab()}
       </OverlayTrigger>
     );
+  };
+
+  const havePermission = () => {
+    if (isRbacEnabled()) return true;
+    return isAdmin || isLoading;
   };
 
   return (
@@ -58,9 +63,9 @@ export const UserManagement = (props) => {
           <UsersListContainer />
         </Tab>
         <Tab
-          disabled={!isAdmin || isLoading}
+          disabled={!havePermission()}
           eventKey="user-auth"
-          title={isLoading || isAdmin ? <AuthTab /> : <AuthTabWithOverlay />}
+          title={havePermission() ? <AuthTab /> : <AuthTabWithOverlay />}
           unmountOnExit
         >
           {isLoading ? <YBLoading /> : <UserAuthContainer isAdmin={isAdmin} />}

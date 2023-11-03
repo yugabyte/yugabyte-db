@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/gutil/stringprintf.h"
@@ -47,7 +47,6 @@ DECLARE_int64(encryption_counter_max);
 DECLARE_bool(TEST_encryption_use_openssl_compatible_counter_overflow);
 
 namespace yb {
-namespace enterprise {
 
 namespace {
 
@@ -72,9 +71,10 @@ INSTANTIATE_TEST_CASE_P(
 
 void EncryptedSSTableTest::CounterOverflow(
     int num_keys, int64_t initial_counter) {
-  FLAGS_encryption_counter_min = initial_counter;
-  FLAGS_encryption_counter_max = initial_counter;
-  FLAGS_TEST_encryption_use_openssl_compatible_counter_overflow = GetParam();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_encryption_counter_min) = initial_counter;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_encryption_counter_max) = initial_counter;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_encryption_use_openssl_compatible_counter_overflow) = GetParam();
 
   string test_dir;
   ASSERT_OK(Env::Default()->GetTestDirectory(&test_dir));
@@ -173,7 +173,7 @@ void EncryptedSSTableTest::CounterOverflow(
       table_reader->NewIterator(rocksdb::ReadOptions()));
   it->SeekToFirst();
   int i = 0;
-  while (it->Valid()) {
+  while (ASSERT_RESULT(it->CheckedValid())) {
     ASSERT_EQ(it->key(), GetKey(i));
     ASSERT_EQ(it->value(), GetValue(i));
     i++;
@@ -196,5 +196,4 @@ TEST_P(EncryptedSSTableTest, CounterOverflow100000Keys) {
   CounterOverflow(100 * 1000, 0xffffff00);
 }
 
-} // namespace enterprise
 } // namespace yb

@@ -1,17 +1,22 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
-import { Button } from 'react-bootstrap';
+import { Button, Row, Col } from 'react-bootstrap';
 import { FlexContainer, FlexShrink } from '../../../common/flexbox/YBFlexBox';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../../../panels';
-import { Row, Col } from 'react-bootstrap';
+
 import { Link, browserHistory } from 'react-router';
 import { YBCopyButton } from '../../../common/descriptors';
 import { KUBERNETES_PROVIDERS } from '../../../../config';
 import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
 import { YBTextInput, YBModal } from '../../../common/forms/fields';
+import {
+  ProviderCode,
+  PROVIDER_ROUTE_PREFIX
+} from '../../../configRedesign/providerRedesign/constants';
+
 import './ListKubernetesConfigurations.scss';
 
 export default class ListKubernetesConfigurations extends Component {
@@ -30,14 +35,14 @@ export default class ListKubernetesConfigurations extends Component {
 
   deleteProviderEnabled = (providerUUID) => {
     const providerInUse = (this.props.universeList?.data || [])
-      .flatMap(item => item.universeDetails.clusters)
-      .some(item => item.userIntent.provider === providerUUID);
+      .flatMap((item) => item.universeDetails.clusters)
+      .some((item) => item.userIntent.provider === providerUUID);
     return !providerInUse;
   };
 
   formatZones = (cell) => (
     <>
-      {cell.map(item => (
+      {cell.map((item) => (
         <div key={item.uuid} className="k8s-providers-list__cell-subrow">
           {item.name}
         </div>
@@ -77,11 +82,22 @@ export default class ListKubernetesConfigurations extends Component {
       closeModal,
       deleteProviderConfig,
       showDeleteConfirmationModal,
+      isRedesign,
       modal: { showModal, visibleModal }
     } = this.props;
 
     const providerLinkFormatter = function (cell, row) {
-      return <Link to={`/config/cloud/${type}/${row.uuid}`}>{cell}</Link>;
+      return (
+        <Link
+          to={
+            isRedesign
+              ? `/${PROVIDER_ROUTE_PREFIX}/${ProviderCode.KUBERNETES}/${row.uuid}`
+              : `/config/cloud/${type}/${row.uuid}`
+          }
+        >
+          {cell}
+        </Link>
+      );
     };
 
     const providerDetails = providers.find((item) => {
@@ -223,7 +239,10 @@ export default class ListKubernetesConfigurations extends Component {
                 onFormSubmit={confirmDelete}
               >
                 Are you sure you want to delete{' '}
-                <strong>{this.state.providerToDelete && this.state.providerToDelete.name}</strong>{' '}
+                {/* eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing */}
+                <strong>
+                  {this.state.providerToDelete && this.state.providerToDelete.name}
+                </strong>{' '}
                 provider?
               </YBModal>
             </Fragment>
@@ -272,18 +291,6 @@ export default class ListKubernetesConfigurations extends Component {
                       label="Kube Config Path:"
                       isReadOnly={true}
                       input={{ value: providerDetails.configPath }}
-                    />
-                  </Col>
-                </Row>
-                <Row className="config-provider-row">
-                  <Col lg={5}>
-                    <div className="form-item-custom-label">Service Account</div>
-                  </Col>
-                  <Col lg={7}>
-                    <YBTextInput
-                      label="Service Account name:"
-                      isReadOnly={true}
-                      input={{ value: providerDetails.serviceAccount }}
                     />
                   </Col>
                 </Row>

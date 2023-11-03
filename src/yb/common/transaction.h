@@ -37,6 +37,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
+#include "yb/util/metrics.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/uint_set.h"
@@ -60,7 +61,46 @@ Result<TransactionId> FullyDecodeTransactionId(const Slice& slice);
 // from slice.
 Result<TransactionId> DecodeTransactionId(Slice* slice);
 
-using AbortedSubTransactionSet = UnsignedIntSet<SubTransactionId>;
+using SubtxnSet = UnsignedIntSet<SubTransactionId>;
+
+// SubtxnSetAndPB avoids repeated serialization of SubtxnSet, required for rpc calls, by storing
+// the serialized proto form (SubtxnSetPB). A shared_ptr to a SubtxnSetAndPB object can be obtained
+// by calling SubtxnSetAndPB::Create(const T& set_pb), where T should be some type where
+// SubtxnSet::FromPB(set_pb.set()) is well defined. for instance, SubtxnSetPB/ ::yb::LWSubtxnSetPB.
+class SubtxnSetAndPB {
+ public:
+  SubtxnSetAndPB() {}
+
+  SubtxnSetAndPB(SubtxnSet&& set, SubtxnSetPB&& pb) : set_(std::move(set)), pb_(std::move(pb)) {}
+
+  template <class T>
+  static Result<std::shared_ptr<SubtxnSetAndPB>> Create(const T& set_pb) {
+    auto res = SubtxnSet::FromPB(set_pb.set());
+    RETURN_NOT_OK(res);
+    SubtxnSetPB pb;
+    res->ToPB(pb.mutable_set());
+    std::shared_ptr<SubtxnSetAndPB>
+        subtxn_info = std::make_shared<SubtxnSetAndPB>(std::move(*res), std::move(pb));
+    return subtxn_info;
+  }
+
+  const SubtxnSet& set() const {
+    return set_;
+  }
+
+  const SubtxnSetPB& pb() const {
+    return pb_;
+  }
+
+  std::string ToString() const {
+    // Skip including the redundant string representation of the proto form.
+    return set_.ToString();
+  }
+
+ private:
+  const SubtxnSet set_;
+  const SubtxnSetPB pb_;
+};
 
 struct TransactionStatusResult {
   TransactionStatus status;
@@ -73,20 +113,37 @@ struct TransactionStatusResult {
   HybridTime status_time;
 
   // Set of thus-far aborted subtransactions in this transaction.
-  AbortedSubTransactionSet aborted_subtxn_set;
+  SubtxnSet aborted_subtxn_set;
+
+  // Populating status_tablet field is optional, except when we report transaction promotion.
+  TabletId status_tablet;
+
+  // Status containing the deadlock info if the transaction was aborted due to a deadlock.
+  // Defaults to Status::OK() in all other cases.
+  Status expected_deadlock_status = Status::OK();
+
+  TransactionStatusResult() {}
 
   TransactionStatusResult(TransactionStatus status_, HybridTime status_time_);
 
   TransactionStatusResult(
       TransactionStatus status_, HybridTime status_time_,
-      AbortedSubTransactionSet aborted_subtxn_set_);
+      SubtxnSet aborted_subtxn_set_, Status expected_deadlock_status_ = Status::OK());
+
+  TransactionStatusResult(
+      TransactionStatus status_, HybridTime status_time_, SubtxnSet aborted_subtxn_set_,
+      TabletId status_tablet);
 
   static TransactionStatusResult Aborted() {
     return TransactionStatusResult(TransactionStatus::ABORTED, HybridTime());
   }
 
+  static TransactionStatusResult Deadlocked(Status deadlock_status) {
+    return TransactionStatusResult(TransactionStatus::ABORTED, HybridTime(), {}, deadlock_status);
+  }
+
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(status, status_time, aborted_subtxn_set);
+    return YB_STRUCT_TO_STRING(status, status_time, aborted_subtxn_set, status_tablet);
   }
 };
 
@@ -124,6 +181,9 @@ struct StatusRequest {
   const std::string* reason;
   TransactionLoadFlags flags;
   TransactionStatusCallback callback;
+  // If non-null, populate status_tablet_id for known transactions in the same thread the request is
+  // initiated.
+  std::string* status_tablet_id = nullptr;
 
   std::string ToString() const {
     return Format("{ id: $0 read_ht: $1 global_limit_ht: $2 serial_no: $3 reason: $4 flags: $5}",
@@ -135,7 +195,7 @@ class RequestScope;
 
 struct TransactionLocalState {
   HybridTime commit_ht;
-  AbortedSubTransactionSet aborted_subtxn_set;
+  SubtxnSet aborted_subtxn_set;
 };
 
 class TransactionStatusManager {
@@ -168,15 +228,13 @@ class TransactionStatusManager {
 
   virtual void Abort(const TransactionId& id, TransactionStatusCallback callback) = 0;
 
-  virtual void Cleanup(TransactionIdSet&& set) = 0;
+  virtual Status Cleanup(TransactionIdSet&& set) = 0;
 
   // For each pair fills second with priority of transaction with id equals to first.
-  virtual void FillPriorities(
+  virtual Status FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) = 0;
 
-  virtual void FillStatusTablets(std::vector<BlockingTransactionData>* inout) = 0;
-
-  virtual boost::optional<TabletId> FindStatusTablet(const TransactionId& id) = 0;
+  virtual Result<boost::optional<TabletId>> FindStatusTablet(const TransactionId& id) = 0;
 
   // Returns minimal running hybrid time of all running transactions.
   virtual HybridTime MinRunningHybridTime() const = 0;
@@ -184,6 +242,10 @@ class TransactionStatusManager {
   virtual Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) = 0;
 
   virtual const TabletId& tablet_id() const = 0;
+
+  virtual void RecordConflictResolutionKeysScanned(int64_t num_keys) = 0;
+
+  virtual void RecordConflictResolutionScanLatency(MonoDelta latency)  = 0;
 
  private:
   friend class RequestScope;
@@ -248,7 +310,7 @@ class NODISCARD_CLASS RequestScope {
 // and finally on transaction commit.
 struct SubTransactionMetadata {
   SubTransactionId subtransaction_id = kMinSubTransactionId;
-  AbortedSubTransactionSet aborted;
+  SubtxnSet aborted;
 
   void ToPB(SubTransactionMetadataPB* dest) const;
 
@@ -317,13 +379,15 @@ struct TransactionMetadata {
   // start_time is used only for backward compability during rolling update.
   HybridTime start_time;
 
+  // Used by the wait queue to determine the order in which waiting transactions are resumed.
+  // Matches the txn start time tracked by postgres.
+  int64_t pg_txn_start_us = 0;
+
   // Indicates whether this transaction is a local transaction or global transaction.
   TransactionLocality locality = TransactionLocality::GLOBAL;
 
   // Former transaction status tablet that the transaction was using prior to a move.
   TabletId old_status_tablet;
-
-  bool external_transaction = false;
 
   static Result<TransactionMetadata> FromPB(const LWTransactionMetadataPB& source);
   static Result<TransactionMetadata> FromPB(const TransactionMetadataPB& source);
@@ -337,7 +401,7 @@ struct TransactionMetadata {
   std::string ToString() const {
     return Format(
         "{ transaction_id: $0 isolation: $1 status_tablet: $2 priority: $3 start_time: $4"
-        " locality: $5 old_status_tablet: $6 external_transaction: $7}",
+        " locality: $5 old_status_tablet: $6}",
         transaction_id, IsolationLevel_Name(isolation), status_tablet, priority, start_time,
         TransactionLocality_Name(locality), old_status_tablet);
   }
@@ -363,5 +427,22 @@ extern const std::string kMetricsSnapshotsTableName;
 extern const std::string kTransactionTablePrefix;
 
 YB_DEFINE_ENUM(CleanupType, (kGraceful)(kImmediate))
+
+// Provides a unified efficient interface for accessing lock info in a TabletLockInfoPB message.
+// Single-shard waiter info is created and returned, and TransactionLockInfoPB instances are made
+// accessible by TransactionId.
+class TransactionLockInfoManager {
+ public:
+  explicit TransactionLockInfoManager(TabletLockInfoPB* tablet_lock_info);
+
+  TabletLockInfoPB::TransactionLockInfoPB* GetOrAddTransactionLockInfo(const TransactionId& id);
+
+  TabletLockInfoPB::WaiterInfoPB* GetSingleShardLockInfo();
+
+ private:
+  TabletLockInfoPB* tablet_lock_info_;
+  std::unordered_map<
+      TransactionId, TabletLockInfoPB::TransactionLockInfoPB*> transaction_lock_infos_;
+};
 
 } // namespace yb

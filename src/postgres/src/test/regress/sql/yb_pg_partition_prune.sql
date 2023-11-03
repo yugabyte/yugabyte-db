@@ -84,6 +84,7 @@ explain (costs off) select * from rlp where a = 1 or b = 'ab';
 explain (costs off) select * from rlp where a > 20 and a < 27;
 explain (costs off) select * from rlp where a = 29;
 explain (costs off) select * from rlp where a >= 29;
+explain (costs off) select * from rlp where a < 1 or (a > 20 and a < 25);
 
 -- redundant clauses are eliminated
 explain (costs off) select * from rlp where a > 1 and a = 10;	/* only default */
@@ -618,6 +619,9 @@ select * from tbl1 join tprt on tbl1.col1 > tprt.col1;
 explain (analyze, costs off, summary off, timing off)
 select * from tbl1 join tprt on tbl1.col1 = tprt.col1;
 
+/*+Set(yb_bnl_batch_size 1024)*/ explain (analyze, costs off, summary off, timing off)
+select * from tbl1 join tprt on tbl1.col1 = tprt.col1;
+
 select tbl1.col1, tprt.col1 from tbl1
 inner join tprt on tbl1.col1 > tprt.col1
 order by tbl1.col1, tprt.col1;
@@ -633,6 +637,9 @@ explain (analyze, costs off, summary off, timing off)
 select * from tbl1 inner join tprt on tbl1.col1 > tprt.col1;
 */
 explain (analyze, costs off, summary off, timing off)
+select * from tbl1 inner join tprt on tbl1.col1 = tprt.col1;
+
+/*+Set(yb_bnl_batch_size 1024)*/ explain (analyze, costs off, summary off, timing off)
 select * from tbl1 inner join tprt on tbl1.col1 = tprt.col1;
 
 select tbl1.col1, tprt.col1 from tbl1
@@ -658,6 +665,9 @@ order by tbl1.col1, tprt.col1;
 delete from tbl1;
 insert into tbl1 values (10000);
 explain (analyze, costs off, summary off, timing off)
+select * from tbl1 join tprt on tbl1.col1 = tprt.col1;
+
+/*+Set(yb_bnl_batch_size 1024)*/ explain (analyze, costs off, summary off, timing off)
 select * from tbl1 join tprt on tbl1.col1 = tprt.col1;
 
 select tbl1.col1, tprt.col1 from tbl1

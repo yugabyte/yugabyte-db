@@ -36,7 +36,6 @@
 #include "yb/util/metrics.h"
 
 using std::string;
-using strings::Substitute;
 
 namespace yb {
 namespace rpc {

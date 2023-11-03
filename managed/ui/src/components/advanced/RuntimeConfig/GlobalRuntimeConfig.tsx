@@ -1,22 +1,15 @@
-import React, { FC, useEffect } from 'react';
-
-import { RunTimeConfigScope } from '../../../redesign/helpers/dtos';
+import { FC, useEffect } from 'react';
+import { RunTimeConfigScope, RuntimeConfigScopeProps } from '../../../redesign/utils/dtos';
 import { ConfigData } from '../ConfigData';
 
 import '../AdvancedConfig.scss';
 
-interface GlobalRuntimeConfigProps {
-  fetchRuntimeConfigs: (scope?: string) => void;
-  setRuntimeConfig: (key: string, value: string) => void;
-  deleteRunTimeConfig: (key: string) => void;
-  resetRuntimeConfigs: () => void;
-}
-
-export const GlobalRuntimeConfig: FC<GlobalRuntimeConfigProps> = ({
+export const GlobalRuntimeConfig: FC<RuntimeConfigScopeProps> = ({
+  configTagFilter,
   fetchRuntimeConfigs,
   setRuntimeConfig,
   deleteRunTimeConfig,
-  resetRuntimeConfigs,
+  resetRuntimeConfigs
 }) => {
   useEffect(() => {
     resetRuntimeConfigs();
@@ -29,6 +22,7 @@ export const GlobalRuntimeConfig: FC<GlobalRuntimeConfigProps> = ({
         setRuntimeConfig={setRuntimeConfig}
         deleteRunTimeConfig={deleteRunTimeConfig}
         scope={RunTimeConfigScope.GLOBAL}
+        configTagFilter={configTagFilter}
       />
     </div>
   );

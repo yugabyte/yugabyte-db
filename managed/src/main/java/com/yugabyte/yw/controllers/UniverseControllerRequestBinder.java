@@ -18,9 +18,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.io.IOException;
@@ -43,7 +52,7 @@ import play.mvc.Http;
 public class UniverseControllerRequestBinder {
 
   static <T extends UniverseDefinitionTaskParams> T bindFormDataToTaskParams(
-      Http.Context ctx, Http.Request request, Class<T> paramType) {
+      Http.Request request, Class<T> paramType) {
     ObjectMapper mapper = Json.mapper();
     // Notes about code deleted from here:
     // 1 communicationPorts and expectedUniverseVersion - See UniverseTaskParams.BaseConverter
@@ -51,13 +60,43 @@ public class UniverseControllerRequestBinder {
     //    pushed to post deserialization.
     // 2. encryptionAtRestConfig - See @JsonAlias annotations on the EncryptionAtRestConfig props
     // 3. cluster.userIntent gflags list to maps - TODO
+
+    // This is only for until we need the config switch for Usek8sCustomResources.
+    // Once we turn turn default we can remove this.
+    // Also eventually we will deprecate instanceType for k8s.
+    RuntimeConfGetter runtimeConfGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+
     try {
       ObjectNode formData = (ObjectNode) request.body().asJson();
       List<UniverseDefinitionTaskParams.Cluster> clusters = mapClustersInParams(formData, true);
       T taskParams = Json.mapper().treeToValue(formData, paramType);
+
       taskParams.clusters = clusters;
-      taskParams.creatingUser = CommonUtils.getUserFromContext(ctx);
+      taskParams.creatingUser = CommonUtils.getUserFromContext();
       taskParams.platformUrl = request.host();
+      if (UniverseDefinitionTaskParams.class.isAssignableFrom(paramType)) {
+        // We can get rid of this if when we default to new style resource spec.
+        for (Cluster cluster : taskParams.clusters) {
+          UserIntent ui = cluster.userIntent;
+          if (ui.providerType == CloudType.kubernetes) {
+            if (ui.instanceType != null) {
+              if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+                InstanceType instanceType =
+                    InstanceType.getOrBadRequest(UUID.fromString(ui.provider), ui.instanceType);
+                // set K8s resource spec from instance type data.
+                ui.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
+                ui.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
+                ui.masterK8SNodeResourceSpec.memoryGib = instanceType.getMemSizeGB();
+                ui.masterK8SNodeResourceSpec.cpuCoreCount = instanceType.getNumCores();
+                ui.tserverK8SNodeResourceSpec.memoryGib = instanceType.getMemSizeGB();
+                ui.tserverK8SNodeResourceSpec.cpuCoreCount = instanceType.getNumCores();
+              }
+            }
+          }
+        }
+      }
+
       return taskParams;
     } catch (JsonProcessingException exception) {
       throw new PlatformServiceException(
@@ -66,7 +105,7 @@ public class UniverseControllerRequestBinder {
   }
 
   static <T extends UpgradeTaskParams> T bindFormDataToUpgradeTaskParams(
-      Http.Context ctx, Http.Request request, Class<T> paramType, Universe universe) {
+      Http.Request request, Class<T> paramType, Universe universe) {
     try {
       ObjectNode formData = (ObjectNode) request.body().asJson();
       ArrayNode clustersJson = (ArrayNode) formData.get("clusters");
@@ -80,10 +119,14 @@ public class UniverseControllerRequestBinder {
           JsonNode masterGFlagsNode = null;
           JsonNode tserverGFlagsNode = null;
           JsonNode instanceTagsNode = null;
+          JsonNode specificGFlags = null;
+          JsonNode userIntentOverrides = null;
           if (userIntent != null) {
             masterGFlagsNode = userIntent.remove("masterGFlags");
             tserverGFlagsNode = userIntent.remove("tserverGFlags");
             instanceTagsNode = userIntent.remove("instanceTags");
+            specificGFlags = userIntent.remove("specificGFlags");
+            userIntentOverrides = userIntent.remove("userIntentOverrides");
           }
           UniverseDefinitionTaskParams.Cluster currentCluster;
           if (clusterJson.has("uuid")) {
@@ -92,14 +135,14 @@ public class UniverseControllerRequestBinder {
             if (currentCluster == null) {
               throw new IllegalArgumentException(
                   String.format(
-                      "Cluster %s is not found in universe %s", uuid, universe.universeUUID));
+                      "Cluster %s is not found in universe %s", uuid, universe.getUniverseUUID()));
             }
           } else {
             JsonNode clusterType = clusterJson.get("clusterType");
             if (clusterType == null) {
               throw new IllegalArgumentException(
                   String.format(
-                      "Unknown cluster in request for universe %s", universe.universeUUID));
+                      "Unknown cluster in request for universe %s", universe.getUniverseUUID()));
             }
             if (clusterType
                 .asText()
@@ -110,7 +153,7 @@ public class UniverseControllerRequestBinder {
                 throw new IllegalArgumentException(
                     String.format(
                         "Cannot choose readonly cluster in universe %s (cluster type %s)",
-                        universe.universeUUID, clusterType.asText()));
+                        universe.getUniverseUUID(), clusterType.asText()));
               }
               currentCluster = universe.getUniverseDetails().getReadOnlyClusters().get(0);
             }
@@ -126,12 +169,20 @@ public class UniverseControllerRequestBinder {
           checkAndAddMapField(
               tserverGFlagsNode, gflags -> cluster.userIntent.tserverGFlags = gflags);
           checkAndAddMapField(instanceTagsNode, tags -> cluster.userIntent.instanceTags = tags);
+          if (specificGFlags != null) {
+            cluster.userIntent.specificGFlags = Json.fromJson(specificGFlags, SpecificGFlags.class);
+          }
+          if (userIntentOverrides != null) {
+            cluster.userIntent.setUserIntentOverrides(
+                Json.fromJson(
+                    userIntentOverrides, UniverseDefinitionTaskParams.UserIntentOverrides.class));
+          }
           clusters.add(cluster);
         }
       }
       T taskParams = mergeWithUniverse(formData, universe, paramType);
       taskParams.clusters = clusters;
-      taskParams.creatingUser = CommonUtils.getUserFromContext(ctx);
+      taskParams.creatingUser = CommonUtils.getUserFromContext();
 
       return taskParams;
     } catch (JsonProcessingException exception) {
@@ -168,11 +219,12 @@ public class UniverseControllerRequestBinder {
       throw new IllegalStateException(
           "Expected " + paramsClass + " but deserialized to " + result.getClass());
     }
-    result.universeUUID = universe.universeUUID;
-    result.expectedUniverseVersion = universe.version;
+    result.setUniverseUUID(universe.getUniverseUUID());
+    result.expectedUniverseVersion = universe.getVersion();
     if (universe.isYbcEnabled()) {
       result.installYbc = true;
-      result.enableYbc = true;
+      result.setEnableYbc(true);
+      result.setYbcSoftwareVersion(universe.getUniverseDetails().getYbcSoftwareVersion());
     }
     return result;
   }
@@ -200,7 +252,7 @@ public class UniverseControllerRequestBinder {
           String.format(
               "Error in serializing/deserializing UniverseDefinitonTaskParams into %s "
                   + "for universe: %s, UniverseDetails: %s",
-              targetClass, params.universeUUID, CommonUtils.maskObject(params)),
+              targetClass, params.getUniverseUUID(), CommonUtils.maskObject(params)),
           e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, errMsg);
     }

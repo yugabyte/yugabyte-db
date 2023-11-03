@@ -10,7 +10,6 @@ menu:
     identifier: k8s-gke-1
     weight: 623
 aliases:
-  - /preview/deploy/kubernetes/gke/
   - /preview/deploy/kubernetes/gke/helm-chart/
   - /preview/deploy/kubernetes/single-zone/gke/
 type: docs
@@ -19,7 +18,7 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../helm-chart/" class="nav-link active">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>

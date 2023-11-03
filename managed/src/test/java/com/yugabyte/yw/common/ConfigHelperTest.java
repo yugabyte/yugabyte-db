@@ -13,54 +13,37 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.FileData;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.YugawareProperty;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Base64;
-import java.util.Collection;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.error.YAMLException;
-import play.Application;
+import play.Environment;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ConfigHelperTest extends FakeDBApplication {
   String TMP_STORAGE_PATH = "/tmp/yugaware_tests/" + getClass().getSimpleName();
 
-  @InjectMocks ConfigHelper configHelper;
+  ConfigHelper configHelper;
 
-  @Mock Util util;
-
-  @Mock Application application;
-
-  Customer customer;
-
-  @Before
-  public void setUp() {
-    customer = ModelFactory.testCustomer();
-  }
+  @Mock Environment environment;
 
   @Before
   public void beforeTest() throws IOException {
     new File(TMP_STORAGE_PATH).mkdirs();
+    configHelper = app.injector().instanceOf(ConfigHelper.class);
   }
 
   @After
@@ -88,8 +71,8 @@ public class ConfigHelperTest extends FakeDBApplication {
     Map<String, Object> jsonMap = new HashMap();
     jsonMap.put("version_number", "1.1.1.1");
     jsonMap.put("build_number", "12345");
-    when(application.resourceAsStream(configFile)).thenReturn(asJsonStream(jsonMap));
-    configHelper.loadSoftwareVersiontoDB(application);
+    when(environment.resourceAsStream(configFile)).thenReturn(asJsonStream(jsonMap));
+    configHelper.loadSoftwareVersiontoDB(environment);
     assertEquals(
         ImmutableMap.of("version", "1.1.1.1-b12345"),
         configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion));
@@ -101,11 +84,14 @@ public class ConfigHelperTest extends FakeDBApplication {
     map.put("config-1", "foo");
     map.put("config-2", "bar");
 
+    when(environment.classLoader()).thenReturn(ClassLoader.getSystemClassLoader());
     for (ConfigHelper.ConfigType configType : ConfigHelper.ConfigType.values()) {
-      when(application.classloader()).thenReturn(ClassLoader.getSystemClassLoader());
-      when(application.resourceAsStream(configType.getConfigFile())).thenReturn(asYamlStream(map));
+      if (configType.getConfigFile() == null) {
+        continue;
+      }
+      when(environment.resourceAsStream(configType.getConfigFile())).thenReturn(asYamlStream(map));
     }
-    configHelper.loadConfigsToDB(application);
+    configHelper.loadConfigsToDB(environment);
 
     for (ConfigHelper.ConfigType configType : ConfigHelper.ConfigType.values()) {
       if (configType.getConfigFile() != null) {
@@ -118,8 +104,8 @@ public class ConfigHelperTest extends FakeDBApplication {
 
   @Test(expected = YAMLException.class)
   public void testLoadConfigsToDBWithoutFile() {
-    when(application.classloader()).thenReturn(ClassLoader.getSystemClassLoader());
-    configHelper.loadConfigsToDB(application);
+    when(environment.classLoader()).thenReturn(ClassLoader.getSystemClassLoader());
+    configHelper.loadConfigsToDB(environment);
   }
 
   @Test
@@ -187,41 +173,5 @@ public class ConfigHelperTest extends FakeDBApplication {
         configHelper.getRegionMetadata(Common.CloudType.docker).get("region"),
         allOf(notNullValue(), equalTo("docker-data")));
     assertTrue(configHelper.getRegionMetadata(Common.CloudType.onprem).isEmpty());
-  }
-
-  @Test
-  public void testSyncFileData() throws IOException {
-    Provider p = ModelFactory.awsProvider(customer);
-    String[] diskFileNames = {"testFile1.txt", "testFile2", "testFile3.root.crt"};
-    for (String diskFileName : diskFileNames) {
-      String filePath = "/keys/" + p.uuid + "/";
-      createTempFile(TMP_STORAGE_PATH + filePath, diskFileName, UUID.randomUUID().toString());
-    }
-    for (String diskFileName : diskFileNames) {
-      String filePath = "/node-agent/" + customer.uuid + "/" + UUID.randomUUID() + "/0/";
-      createTempFile(TMP_STORAGE_PATH + filePath, diskFileName, UUID.randomUUID().toString());
-    }
-    configHelper.syncFileData(TMP_STORAGE_PATH, false);
-
-    String[] dbFileNames = {"testFile4.txt", "testFile5", "testFile6.root.crt"};
-    for (String dbFileName : dbFileNames) {
-      UUID parentUUID = UUID.randomUUID();
-      String filePath = "/keys/" + parentUUID + "/" + dbFileName;
-      String content = Base64.getEncoder().encodeToString(UUID.randomUUID().toString().getBytes());
-      FileData.create(parentUUID, filePath, dbFileName, content);
-    }
-    for (String dbFileName : dbFileNames) {
-      UUID parentUUID = UUID.randomUUID();
-      String filePath = "/node-agent/" + customer.uuid + "/" + parentUUID + "/0/" + dbFileName;
-      String content = Base64.getEncoder().encodeToString(UUID.randomUUID().toString().getBytes());
-      FileData.create(parentUUID, filePath, dbFileName, content);
-    }
-
-    configHelper.syncFileData(TMP_STORAGE_PATH, true);
-    List<FileData> fd = FileData.getAll();
-    assertEquals(fd.size(), 12);
-    Collection<File> diskFiles = FileUtils.listFiles(new File(TMP_STORAGE_PATH), null, true);
-    assertEquals(diskFiles.size(), 12);
-    FileUtils.deleteDirectory(new File(TMP_STORAGE_PATH));
   }
 }

@@ -5,8 +5,7 @@ import { connect } from 'react-redux';
 
 function mapStateToProps(state) {
   return {
-    providers: state.cloud.providers,
-    insecure: !!state.customer.INSECURE_apiToken
+    providers: state.cloud.providers
   };
 }
 

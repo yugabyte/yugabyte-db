@@ -10,11 +10,16 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.utils.FileUtils.getOrCreateTmpDirectory;
+
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
@@ -42,6 +47,7 @@ public class ShellLogsManager {
   private final PlatformScheduler platformScheduler;
   private final String customLogsDir;
   private final Config config;
+  private final RuntimeConfGetter confGetter;
   static final String YB_LOGS_SHELL_OUTPUT_DIR_KEY = "yb.logs.shell.output_dir"; // Optional
   static final String YB_LOGS_SHELL_OUTPUT_RETENTION_HOURS_KEY =
       "yb.logs.shell.output_retention_hours";
@@ -55,13 +61,16 @@ public class ShellLogsManager {
 
   @Inject
   public ShellLogsManager(
-      PlatformScheduler platformScheduler, RuntimeConfigFactory runtimeConfigFactory) {
+      PlatformScheduler platformScheduler,
+      RuntimeConfigFactory runtimeConfigFactory,
+      RuntimeConfGetter confGetter) {
     this.platformScheduler = platformScheduler;
     this.config = runtimeConfigFactory.globalRuntimeConf();
     this.customLogsDir =
         config.hasPath(YB_LOGS_SHELL_OUTPUT_DIR_KEY)
             ? config.getString(YB_LOGS_SHELL_OUTPUT_DIR_KEY)
             : null;
+    this.confGetter = confGetter;
   }
 
   public void startLogsGC() {
@@ -137,9 +146,7 @@ public class ShellLogsManager {
               .thenComparing(Comparator.comparingLong(File::length).reversed()));
 
       Set<String> currentlyUsedLogs =
-          currentProcesses
-              .values()
-              .stream()
+          currentProcesses.values().stream()
               .flatMap(p -> Stream.of(p.getLeft(), p.getRight()))
               .map(f -> f.getName())
               .collect(Collectors.toSet());
@@ -212,10 +219,15 @@ public class ShellLogsManager {
     File parentDir = null;
     if (customLogsDir != null) {
       parentDir = new File(customLogsDir);
-      if (!parentDir.exists()) {
-        parentDir.mkdirs();
-      }
+    } else {
+      Path tmpDirectoryPath =
+          getOrCreateTmpDirectory(confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
+      parentDir = tmpDirectoryPath.toFile();
     }
+    if (!parentDir.exists()) {
+      parentDir.mkdirs();
+    }
+
     return File.createTempFile(prefix, "tmp", parentDir);
   }
 }

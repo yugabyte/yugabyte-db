@@ -33,7 +33,7 @@ Replicas may not be completely up to date with all updates, so this design may r
 
 ### Surface area
 
-Two session variables control the behavior of follower reads:
+Two YSQL parameters control the behavior of follower reads:
 
 - `yb_read_from_followers` controls whether reading from followers is enabled. Default is false.
 - `yb_follower_read_staleness_ms` sets the maximum allowable staleness. Default is 30000 (30 seconds).
@@ -44,8 +44,8 @@ The table describes what the expected behavior is when a read happens from a fol
 
 | Conditions | Expected behavior |
 | :--------- | :---------------- |
-| yb_read_from_followers is true AND transaction is marked read-only | Read happens from the closest follower |
-| yb_read_from_followers is false OR transaction/statement is not read-only | Read happens from the leader |
+| `yb_read_from_followers` is true AND transaction is marked read-only | Read happens from the closest follower |
+| `yb_read_from_followers` is false OR transaction/statement is not read-only | Read happens from the leader |
 
 ### Read from follower conditions
 
@@ -60,11 +60,12 @@ To mark a transaction as read only, a user can do one of the following:
 - `SET TRANSACTION READ ONLY` applies only to the current transaction block.
 - `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` applies the read-only setting to all statements and transaction blocks that follow.
 - `SET default_transaction_read_only = TRUE` applies the read-only setting to all statements and transaction blocks that follow.
-- Use the **pg_hint_plan** mechanism to embed the hint along with the `SELECT` statement. For example, `/*+ Set(transaction_read_only true) */ SELECT ...` applies only to the current `SELECT` statement.
+
+Note: The use of `pg_hint_plan` to mark a statement as read-only is not recommended. It may work in some cases, but relies on side effects and has known issues (see [GH17024](https://github.com/yugabyte/yugabyte-db/issues/17024) and  [GH17135](https://github.com/yugabyte/yugabyte-db/issues/17135)).
 
 ## Examples
 
-This example uses follower reads since the **transaction** is marked read-only.
+This example uses follower reads because the **transaction** is marked read-only.
 
 ```sql
 set yb_read_from_followers = true;
@@ -79,7 +80,7 @@ commit;
  k1 | v1
 ```
 
-This example uses follower reads since the **session** is marked read only.
+This example uses follower reads because the **session** is marked read only.
 
 ```sql
 set session characteristics as transaction read only;
@@ -94,56 +95,7 @@ SELECT * from t WHERE k='k1';
 (1 row)
 ```
 
-The following examples use follower reads since the **pg_hint_plan** mechanism is used during SELECT, PREPARE, and CREATE FUNCTION to perform follower reads.
-
-{{< note title="Note" >}}
-The pg_hint_plan hint needs to be applied at the prepare/function-definition stage and not at the `execute` stage.
-{{< /note >}}
-
-```sql
-set yb_read_from_followers = true;
-/*+ Set(transaction_read_only on) */
-SELECT * from t WHERE k='k1';
-```
-
-```output
-----+----
- k1 | v1
-(1 row)
-```
-
-```sql
-set yb_read_from_followers = true;
-PREPARE select_stmt(text) AS
-/*+ Set(transaction_read_only on) */
-SELECT * from t WHERE k=$1;
-EXECUTE select_stmt(‘k1’);
-```
-
-```output
- k  | v
-----+----
- k1 | v1
-(1 row)
-```
-
-```sql
-set yb_read_from_followers = true;
-CREATE FUNCTION func() RETURNS text AS
-$$ /*+ Set(transaction_read_only on) */
-SELECT * from t WHERE k=1 $$ LANGUAGE SQL;
-CREATE FUNCTION
-SELECT func();
-```
-
-```output
- k  | v
-----+----
- k1 | v1
-(1 row)
-```
-
-A **join** example that uses follower reads.
+The following is a `JOIN` example that uses follower reads:
 
 ```sql
 create table table1(k int primary key, v int);

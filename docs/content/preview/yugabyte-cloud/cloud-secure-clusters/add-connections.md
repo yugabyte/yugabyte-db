@@ -26,6 +26,8 @@ Add IP allow lists for the following:
 - [Connecting an application](../../cloud-connect/connect-applications/). Add the public IP addresses of the instance running the application.
 - [Connecting a peered application VPC](../../cloud-basics/cloud-vpcs/). Add the CIDR of the application VPC.
 
+Note that you don't need to add an IP allow list if you are connecting an application using [private endpoints](../../cloud-basics/cloud-vpcs/cloud-add-endpoint/) over a private link.
+
 Each entry can either be a single IP address, a CIDR-notated range of addresses, or a comma-delimited list of addresses. For example:
 
 - 172.16.0.0
@@ -36,6 +38,14 @@ For development and learning, you can use the range 0.0.0.0/0 to allow connectio
 
 The IP allow lists assigned to a cluster are listed under **Network Access** on the cluster **Settings** tab.
 
+## Enabling public access
+
+By default, clusters deployed in VPCs do not expose any publicly-accessible IP addresses, and you can only connect from resources inside the VPC network.
+
+If you want to connect to a cluster in a VPC from a public IP, you must both add the IP address to the allow list, and enable **Public Access** on the cluster **Settings > Network Access** tab. When enabled, a public IP address is added to each region of the cluster. You can view the private and public host addresses under **Connection Parameters** on the cluster **Settings > Infrastructure** tab.
+
+Public access isn't available for read replicas.
+
 ## Allow list limits
 
 - Clusters are limited to a maximum of 100 allow list rules. Each IP address or CIDR entry in an allow list is considered a rule. For example, an allow list with 15 comma-delimited IP addresses has 15 rules.
@@ -45,23 +55,27 @@ The IP allow lists assigned to a cluster are listed under **Network Access** on 
 
 To add IP allow lists to a cluster:
 
-1. On the **Clusters** page, select the cluster, and select the **Settings** tab.
-1. Under **IP Allow Lists**, click **Edit List** to display the **Add IP Allow List** sheet.
-    \
-    The sheet lists all IP allow lists that have been created for your account.
+1. On the **Clusters** page, select the cluster, and select the **Settings > Network Access** tab.
+1. Under **IP Allow Lists**, click **Add List** or **Edit List** to display the **Add IP Allow List** sheet.
 
-1. Select the box for the IP allow lists you want to add to the cluster.
-1. If you do not have any IP allow lists or want to create a new one, click **Create New List and Add to Cluster** and do the following:
-    - Enter a name and description for the list.
-    - Enter one or more IP addresses or CIDR ranges; delimit entries using commas or new lines.
-    - Click **Detect and add my IP to this list** to add your own IP address.
+    The sheet lists all IP allow lists that have been assigned to the cluster.
+
+1. You can add IP addresses using any combination of the following options.
+
+    | Option | Description |
+    | :----- | :---------- |
+    | Add Current IP Address | Creates an allow list using the public IP address of your computer and adds it to the cluster IP allow list. |
+    | Add Peered VPC Networks | Only available for clusters deployed in a VPC. VPCs must be peered, and the peering connection active for the networks to be added to the IP allow list.<br>Choose **Add All Peered Networks** to create an IP allow list from every network peered with the cluster VPC, and add it to the cluster.<br>Choose **Add Individual Peered Networks** to select specific peered networks to add to the cluster IP allow list. |
+    | Add Existing IP Allow List | Choose from a list of IP allow lists already [created for your account](#create-an-ip-allow-list). |
+    | Create New IP Allow List | Create a new IP allow list and manually enter the CIDR and public IP addresses. |
+
 1. Click **Save** when done.
 
 The allow list takes up to 30 seconds to become active.
 
 ## Manage IP allow lists
 
-Any IP allow list that you create is also added to your cloud's **Network Access**.
+Any IP allow list that you create is also added to your account's **Networking**.
 
 The **IP Allow List** tab displays a list of IP allow lists configured for your account.
 
@@ -75,12 +89,12 @@ IP allow lists are limited to a maximum of 100 allow list rules (that is, the ma
 
 To create an IP allow list:
 
-1. On the **Network Access** page, select the **IP Allow List** tab.
-1. Click **Add IP Address** to display the **Add IP Allow List** sheet.
+1. On the **Networking** page, select the **IP Allow List** tab.
+1. Click **Add IP Address** to display the **Create New IP Allow List** sheet.
 1. Enter a name and description for the allow list.
 1. Enter the IP addresses and ranges. Each entry can either be a single IP address, a CIDR-notated range of addresses, or multiple comma-delimited addresses.
-1. Click **Detect and add my IP to this list** to add the IP address of the computer you are using to access YugabyteDB Managed.
-1. Click **Add** when you are done.
+1. Click **Add Current IP Address** to add the IP address of the computer you are using to access YugabyteDB Managed.
+1. Click **Create** when you are done.
 
 The allow list takes up to 30 seconds to become active.
 

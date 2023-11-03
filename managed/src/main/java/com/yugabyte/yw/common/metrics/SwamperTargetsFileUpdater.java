@@ -52,6 +52,8 @@ public class SwamperTargetsFileUpdater {
   @VisibleForTesting
   static final String CONFIG_SYNC_INTERVAL_PARAM = "yb.metrics.config_sync_interval_sec";
 
+  static final String CLOUD_ENABLED = "yb.cloud.enabled";
+
   private final PlatformScheduler platformScheduler;
   private final SwamperHelper swamperHelper;
   private final RuntimeConfigFactory configFactory;
@@ -70,6 +72,7 @@ public class SwamperTargetsFileUpdater {
   }
 
   public void start() {
+    boolean isCloudEnabled = configFactory.globalRuntimeConf().getBoolean(CLOUD_ENABLED);
     int configSyncPeriodSec = configFactory.globalRuntimeConf().getInt(CONFIG_SYNC_INTERVAL_PARAM);
     if (configSyncPeriodSec < MIN_CONFIG_SYNC_INTERVAL_SEC) {
       log.warn(
@@ -79,17 +82,19 @@ public class SwamperTargetsFileUpdater {
           MIN_CONFIG_SYNC_INTERVAL_SEC);
       configSyncPeriodSec = MIN_CONFIG_SYNC_INTERVAL_SEC;
     }
-    platformScheduler.schedule(
-        getClass().getSimpleName(),
-        Duration.ZERO,
-        Duration.ofSeconds(configSyncPeriodSec),
-        this::process);
+    if (!isCloudEnabled) {
+      platformScheduler.schedule(
+          getClass().getSimpleName(),
+          Duration.ZERO,
+          Duration.ofSeconds(configSyncPeriodSec),
+          this::process);
+    }
   }
 
   private void syncUniverse(Universe universe) {
     try {
       swamperHelper.writeUniverseTargetJson(universe);
-      universe.updateSwamperConfigWritten(true);
+      universe.setSwamperConfigWritten(true);
       universe.save();
       SWAMPER_TARGET_FILE_UPDATED_UNIVERSES_COUNTER.inc();
     } catch (Exception e) {

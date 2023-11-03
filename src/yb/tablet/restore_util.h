@@ -14,15 +14,17 @@
 #pragma once
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/rocksdb_writer.h"
-#include "yb/docdb/value.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 
 namespace yb {
 
@@ -37,8 +39,10 @@ class FetchState {
             boost::none,
             rocksdb::kDefaultQueryId,
             TransactionOperationContext(),
-            CoarseTimePoint::max(),
-            read_time)) {
+            docdb::ReadOperationData {
+              .deadline = CoarseTimePoint::max(),
+              .read_time = read_time,
+            })) {
   }
 
   Status SetPrefix(const Slice& prefix);
@@ -52,14 +56,14 @@ class FetchState {
   }
 
   Slice value() const {
-    return iterator_->value();
+    return key_.value;
   }
 
   size_t num_rows() const {
     return num_rows_;
   }
 
-  const docdb::FetchKeyResult& FullKey() const {
+  const docdb::FetchedEntry& FullKey() const {
     return key_;
   }
 
@@ -79,7 +83,7 @@ class FetchState {
 
   std::unique_ptr<docdb::IntentAwareIterator> iterator_;
   Slice prefix_;
-  docdb::FetchKeyResult key_;
+  docdb::FetchedEntry key_;
   size_t num_rows_ = 0;
   // Store stack of subkeys for the current row.
   // I.e. the first entry is related to row, the second is related to column in this row.
@@ -94,9 +98,9 @@ YB_DEFINE_ENUM(RestoreTicker, (kUpdates)(kInserts)(kDeletes));
 class RestorePatch {
  public:
   RestorePatch(FetchState* existing_state, FetchState* restoring_state,
-               docdb::DocWriteBatch* doc_batch) :
-      existing_state_(existing_state), restoring_state_(restoring_state),
-      doc_batch_(doc_batch) {}
+               docdb::DocWriteBatch* doc_batch, tablet::TableInfo* table_info) :
+      table_info_(table_info), existing_state_(existing_state),
+      restoring_state_(restoring_state), doc_batch_(doc_batch) {}
 
   Status PatchCurrentStateFromRestoringState();
 
@@ -120,6 +124,8 @@ class RestorePatch {
                   GetTicker(RestoreTicker::kDeletes));
   }
 
+  virtual Status Finish() = 0;
+
   virtual ~RestorePatch() = default;
 
  protected:
@@ -128,25 +134,43 @@ class RestorePatch {
   virtual Status ProcessCommonEntry(
       const Slice& key, const Slice& existing_value, const Slice& restoring_value);
 
-  Status ProcessRestoringOnlyEntry(
+  virtual Status ProcessRestoringOnlyEntry(
       const Slice& restoring_key, const Slice& restoring_value);
 
   virtual Status ProcessExistingOnlyEntry(
       const Slice& existing_key, const Slice& existing_value);
 
+  tablet::TableInfo* table_info_;
  private:
   FetchState* existing_state_;
   FetchState* restoring_state_;
   docdb::DocWriteBatch* doc_batch_;
   std::array<size_t, kRestoreTickerMapSize> tickers_ = { 0, 0, 0 };
 
-  virtual Result<bool> ShouldSkipEntry(const Slice& key, const Slice& value) = 0;
-};
+  struct KeyValuePair {
+    KeyBuffer key;
+    ValueBuffer value;
+    // Initialized lazily if we need to actually decode the value.
+    std::optional<dockv::PackedRowDecoderVariant> decoder;
+  };
+  // Key-Value pair corresponding to the most recent packed row encountered in
+  // the restoring state.
+  KeyValuePair last_packed_row_restoring_state_;
 
-void AddKeyValue(const Slice& key, const Slice& value, docdb::DocWriteBatch* write_batch);
+  virtual Result<bool> ShouldSkipEntry(const Slice& key, const Slice& value) = 0;
+  Status TryUpdateLastPackedRow(const Slice& key, const Slice& value);
+};
 
 void WriteToRocksDB(
     docdb::DocWriteBatch* write_batch, const HybridTime& write_time, const OpId& op_id,
     tablet::Tablet* tablet, const std::optional<docdb::KeyValuePairPB>& restore_kv);
+
+Result<std::optional<int64_t>> GetInt64ColumnValue(
+    const dockv::SubDocKey& sub_doc_key, const Slice& value,
+    tablet::TableInfo* table_info, const std::string& column_name);
+
+Result<std::optional<bool>> GetBoolColumnValue(
+    const dockv::SubDocKey& sub_doc_key, const Slice& value,
+    tablet::TableInfo* table_info, const std::string& column_name);
 
 } // namespace yb

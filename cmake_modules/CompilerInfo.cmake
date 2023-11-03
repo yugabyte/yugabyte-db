@@ -103,7 +103,7 @@ if("${COMPILER_FAMILY}" STREQUAL "gcc")
   set(IS_GCC TRUE)
 endif()
 
-yb_put_vars_into_cache(
+yb_put_string_vars_into_cache(
   COMPILER_FAMILY
   COMPILER_VERSION
   IS_APPLE_CLANG
@@ -111,3 +111,12 @@ yb_put_vars_into_cache(
   IS_GCC
   YB_COMPILER_TYPE
 )
+
+# Explicitly put these into the cache to avoid a warning about manually-specified variables not
+# being used.
+if(DEFINED YB_RESOLVED_C_COMPILER)
+  yb_put_string_vars_into_cache(YB_RESOLVED_C_COMPILER)
+endif()
+if(DEFINED YB_RESOLVED_CXX_COMPILER)
+  yb_put_string_vars_into_cache(YB_RESOLVED_CXX_COMPILER)
+endif()

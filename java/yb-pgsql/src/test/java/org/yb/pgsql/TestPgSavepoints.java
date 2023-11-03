@@ -17,20 +17,22 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalInt;
 
 import static org.yb.AssertionWrappers.*;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgSavepoints extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgSavepoints.class);
   private static final int LARGE_BATCH_ROW_THRESHOLD = 100;
@@ -322,5 +324,23 @@ public class TestPgSavepoints extends BasePgSQLTest {
   public void testSavepointLargeApplyWithAbortsAndNodeKills() throws Exception {
     // TODO(savepoints): Add test which forces node restarts to ensure transaction loader is
     // properly loading savepoint metadata.
+  }
+
+  @Test
+  public void testSavepointCanBeDisabled() throws Exception {
+    Map<String, String> extra_tserver_flags = new HashMap<String, String>();
+    extra_tserver_flags.put("enable_pg_savepoints", "false");
+    restartClusterWithFlags(Collections.emptyMap(), extra_tserver_flags);
+    createTable();
+    try (Statement statement = connection.createStatement()) {
+        statement.execute("INSERT INTO t VALUES (1, 2)");
+        runInvalidQuery(statement,  "SAVEPOINT a", /*matchAll*/ true,
+                        "SAVEPOINT <transaction> not supported due to setting of flag " +
+                        "--enable_pg_savepoints",
+                        "Hint: The flag may have been set to false because savepoints do not " +
+                        "currently work with xCluster replication");
+    }
+    // Revert back to old set of flags for other test methods
+    restartClusterWithFlags(Collections.emptyMap(), Collections.emptyMap());
   }
 }

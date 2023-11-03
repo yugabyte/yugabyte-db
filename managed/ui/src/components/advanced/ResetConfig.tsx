@@ -1,10 +1,9 @@
-
-import React, { FC } from 'react';
+import { FC } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { useTranslation } from 'react-i18next';
 import { Field } from 'formik';
 
-import { RunTimeConfigData, RunTimeConfigScope } from '../../redesign/helpers/dtos';
+import { RunTimeConfigData, RunTimeConfigScope } from '../../redesign/utils/dtos';
 import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../actions/customers';
 import { YBModalForm } from '../common/forms';
 import { YBFormInput } from '../common/forms/fields';
@@ -42,10 +41,7 @@ export const ResetConfig: FC<ResetConfigData> = ({
     } else if (scope === RunTimeConfigScope.CUSTOMER) {
       scopeValue = customerUUID!;
     }
-    await deleteRunTimeConfig(
-      configData.configKey,
-      scopeValue
-    );
+    await deleteRunTimeConfig(configData.configKey, scopeValue);
     onHide();
   };
   return (

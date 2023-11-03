@@ -27,7 +27,7 @@ import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 
 enum TestAlgorithm implements SupportedAlgorithmInterface {
@@ -79,21 +79,33 @@ class TestEncryptionAtRestService extends EncryptionAtRestService<TestAlgorithm>
   }
 
   @Override
-  public byte[] retrieveKeyWithService(
-      UUID universeUUID, UUID configUUID, byte[] keyRef, EncryptionAtRestConfig config) {
+  public byte[] retrieveKeyWithService(UUID configUUID, byte[] keyRef) {
     this.createRequest = !this.createRequest;
     return this.createRequest ? null : "some_key_value".getBytes();
   }
 
   @Override
   public byte[] validateRetrieveKeyWithService(
-      UUID universeUUID,
-      UUID configUUID,
-      byte[] keyRef,
-      EncryptionAtRestConfig config,
-      ObjectNode authConig) {
+      UUID configUUID, byte[] keyRef, ObjectNode authConig) {
     this.createRequest = !this.createRequest;
     return this.createRequest ? null : "some_key_value".getBytes();
+  }
+
+  @Override
+  public ObjectNode getKeyMetadata(UUID configUUID) {
+    // Does nothing here because we test for individual KMS providers.
+    return null;
+  }
+
+  @Override
+  public byte[] encryptKeyWithService(UUID configUUID, byte[] universeKey) {
+    return null;
+  }
+
+  @Override
+  public void refreshKmsWithService(UUID configUUID, ObjectNode authConfig) throws Exception {
+    // Does nothing here
+    throw new UnsupportedOperationException("Unimplemented method 'refreshKmsWithService'");
   }
 }
 
@@ -109,18 +121,18 @@ public class EncryptionAtRestServiceTest extends FakeDBApplication {
 
   @Test
   public void testGetServiceNotImplemented() {
-    assertNull(new EncryptionAtRestManager().getServiceInstance("UNSUPPORTED"));
+    assertNull(new EncryptionAtRestManager(null).getServiceInstance("UNSUPPORTED"));
   }
 
   @Test
   public void testGetServiceNewInstance() {
-    assertNotNull(new EncryptionAtRestManager().getServiceInstance("SMARTKEY"));
+    assertNotNull(new EncryptionAtRestManager(null).getServiceInstance("SMARTKEY"));
   }
 
   @Test
   public void testGetServiceSingleton() {
     EncryptionAtRestService newService =
-        new EncryptionAtRestManager().getServiceInstance("SMARTKEY");
+        new EncryptionAtRestManager(null).getServiceInstance("SMARTKEY");
     assertEquals(KeyProvider.SMARTKEY.getServiceInstance().hashCode(), newService.hashCode());
   }
 

@@ -53,6 +53,11 @@ typedef struct QueryDesc
 
 	/* This is always set NULL by the core system, but plugins can change it */
 	struct Instrumentation *totaltime;	/* total time spent in ExecutorRun */
+
+	/* An additional instrumentation field to collect async RPC stats. This
+	 * needs to be a separate field because its life cycle is distinct from that
+	 * of 'totaltime'. */
+	struct Instrumentation *yb_query_stats;
 } QueryDesc;
 
 /* in pquery.c */

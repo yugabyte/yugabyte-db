@@ -77,6 +77,10 @@
 #include <netdb.h>
 #include <limits.h>
 
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
+
 #ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
 #endif
@@ -95,6 +99,7 @@
 
 #include "access/transam.h"
 #include "access/xlog.h"
+#include "access/xact.h"
 #include "bootstrap/bootstrap.h"
 #include "catalog/pg_control.h"
 #include "common/file_perm.h"
@@ -115,12 +120,17 @@
 #include "postmaster/postmaster.h"
 #include "postmaster/syslogger.h"
 #include "replication/logicallauncher.h"
+#include "replication/slot.h"
+#include "replication/syncrep.h"
 #include "replication/walsender.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/pg_shmem.h"
 #include "storage/pmsignal.h"
 #include "storage/proc.h"
+#include "storage/procarray.h"
+#include "storage/procsignal.h"
+#include "storage/sinvaladt.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/datetime.h"
@@ -185,7 +195,6 @@ typedef struct bkend
 } Backend;
 
 static dlist_head BackendList = DLIST_STATIC_INIT(BackendList);
-int too_many_conn = 0;
 
 #ifdef EXEC_BACKEND
 static Backend *ShmemBackendArray;
@@ -280,7 +289,8 @@ static int	Shutdown = NoShutdown;
 
 static bool FatalError = false; /* T if recovering from backend crash */
 
-static bool YbCrashWhileLockIntermediateState = false; /* Crashed before fully acquiring a lock */
+/* Crashed before fully acquiring a lock, or with unexpected error code.  */
+static bool YbCrashInUnmanageableState = false;
 
 #ifdef __linux__
 static char *YbBackendOomScoreAdj = NULL;
@@ -412,6 +422,7 @@ static void startup_die(SIGNAL_ARGS);
 static void dummy_handler(SIGNAL_ARGS);
 static void StartupPacketTimeoutHandler(void);
 static void CleanupBackend(int pid, int exitstatus);
+static bool CleanupKilledProcess(PGPROC *proc);
 static bool CleanupBackgroundWorker(int pid, int exitstatus);
 static void HandleChildCrash(int pid, int exitstatus, const char *procname);
 static void LogChildExit(int lev, const char *procname,
@@ -608,10 +619,6 @@ PostmasterMain(int argc, char *argv[])
 	MyStartTime = time(NULL);
 
 	IsPostmasterEnvironment = true;
-
-	if (YBIsEnabledInPostgresEnvVar()) {
-		YBCStatementTimeoutPtr = &StatementTimeout;
-	}
 
 	/*
 	 * We should not be creating any files or directories before we check the
@@ -2327,7 +2334,7 @@ retry1:
 			break;
 		case CAC_TOOMANY:
 			/* increment rejection counter */
-			too_many_conn++;
+			(*yb_too_many_conn)++;
 			ereport(FATAL,
 					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
 					 errmsg("sorry, too many clients already")));
@@ -2913,16 +2920,50 @@ reaper(SIGNAL_ARGS)
 		for (i = 0; i < ProcGlobal->allProcCount; i++)
 		{
 			PGPROC	   *proc = &ProcGlobal->allProcs[i];
+
+			if (!proc || proc->pid != pid)
+				continue;
+
 			/*
 			 * We take a conservative approach and restart the postmaster if
 			 * a process dies while holding a lock.
 			 */
-			if (pid == proc->pid && proc->ybAnyLockAcquired)
+			if (proc->ybAnyLockAcquired)
 			{
-				YbCrashWhileLockIntermediateState = true;
-				ereport(LOG,
+				YbCrashInUnmanageableState = true;
+				ereport(WARNING,
 						(errmsg("terminating active server processes due to backend crash while "
-						"acquiring LWLock")));
+								"acquiring LWLock")));
+				break;
+			}
+
+			/*
+			 * If the process died but was not holding a lock, then we can do some cleanup
+			 */
+			if (WIFSIGNALED(exitstatus))
+			{
+				if (WTERMSIG(exitstatus) == SIGABRT ||
+					WTERMSIG(exitstatus) == SIGKILL ||
+					WTERMSIG(exitstatus) == SIGSEGV)
+				{
+					elog(INFO, "cleaning up after process with pid %d exited with status %d",
+						 pid, exitstatus);
+					if (!CleanupKilledProcess(proc))
+					{
+						YbCrashInUnmanageableState = true;
+						ereport(WARNING,
+								(errmsg("terminating active server processes due to backend crash "
+										"that is unable to be cleaned up")));
+					}
+				}
+				else
+				{
+					YbCrashInUnmanageableState = true;
+					ereport(WARNING,
+							(errmsg("terminating active server processes due to backend crash from "
+									"unexpected error code %d",
+							 WTERMSIG(exitstatus))));
+				}
 				break;
 			}
 		}
@@ -2998,7 +3039,7 @@ reaper(SIGNAL_ARGS)
 			 */
 			StartupStatus = STARTUP_NOT_RUNNING;
 			FatalError = false;
-			YbCrashWhileLockIntermediateState = false;
+			YbCrashInUnmanageableState = false;
 			Assert(AbortStartTime == 0);
 			ReachedNormalRunning = true;
 			pmState = PM_RUN;
@@ -3217,7 +3258,7 @@ reaper(SIGNAL_ARGS)
 		 * Else do standard backend child cleanup.
 		 */
 		CleanupBackend(pid, exitstatus);
-		if (!YbCrashWhileLockIntermediateState && !FatalError)
+		if (!YbCrashInUnmanageableState && !FatalError)
 		{
 			/*
 			 * Since this is not a fatal crash, we are pursuing a clean exit. All
@@ -3345,6 +3386,51 @@ CleanupBackgroundWorker(int pid,
 }
 
 /*
+ * CleanupKilledProcess - cleanup after an unexpectedly killed process.
+ *
+ * Returns true if the process was succesfully cleaned up, false if the process
+ * cannot be cleaned up.
+ */
+static bool
+CleanupKilledProcess(PGPROC *proc)
+{
+	if (proc->backendId == InvalidBackendId)
+	{
+		/* These come from ShutdownAuxiliaryProcess */
+		ConditionVariableCancelSleepForProc(proc);
+		pgstat_report_wait_end_for_proc(proc);
+	}
+	else
+	{
+		/* From InitProcessPhase2 */
+		ProcArrayRemove(proc, InvalidTransactionId);
+
+		/* From ProcSignalInit */
+		CleanupProcSignalStateForProc(proc);
+
+		/* From SharedInvalBackendInit */
+		CleanupInvalidationStateForProc(proc);
+
+		/* From ProcKill */
+		ReplicationSlotCleanupForProc(proc);
+		SyncRepCleanupAtProcExit(proc);
+		ConditionVariableCancelSleepForProc(proc);
+
+		if (proc->lockGroupLeader != NULL)
+		{
+			elog(WARNING, "cannot cleanup after a process in a lockgroup");
+			return false;
+		}
+
+		DisownLatchOnBehalfOfPid(&proc->procLatch, proc->pid);
+
+		ReleaseProcToFreeList(proc);
+	}
+
+	return true;
+}
+
+/*
  * CleanupBackend -- cleanup after terminated backend.
  *
  * Remove all local state associated with backend.
@@ -3357,7 +3443,17 @@ CleanupBackend(int pid,
 {
 	dlist_mutable_iter iter;
 
-	LogChildExit(DEBUG2, _("server process"), pid, exitstatus);
+	if (YBIsEnabledInPostgresEnvVar())
+	{
+		LogChildExit(EXIT_STATUS_0(exitstatus) ? DEBUG2 : WARNING, _("server process"), pid, exitstatus);
+
+		if (WTERMSIG(exitstatus) == SIGKILL)
+			pgstat_report_query_termination("Terminated by SIGKILL", pid);
+		else if (WTERMSIG(exitstatus) == SIGSEGV)
+			pgstat_report_query_termination("Terminated by SIGSEGV", pid);
+	}
+	else
+		LogChildExit(DEBUG2, _("server process"), pid, exitstatus);
 
 	/*
 	 * If a backend dies in an ugly way then we must signal all other backends
@@ -3459,15 +3555,14 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 	 */
 	if (YBIsEnabledInPostgresEnvVar() && !YBShouldRestartAllChildrenIfOneCrashes())
 	{
-		take_action = take_action && YbCrashWhileLockIntermediateState;
-		if (YbCrashWhileLockIntermediateState)
-			YbCrashWhileLockIntermediateState = false;
+		take_action = take_action && YbCrashInUnmanageableState;
 	}
 
 	if (take_action)
 	{
-		LogChildExit(LOG, procname, pid, exitstatus);
-		ereport(LOG,
+		int level = YBIsEnabledInPostgresEnvVar() ? INFO : LOG;
+		LogChildExit(level, procname, pid, exitstatus);
+		ereport(level,
 				(errmsg("terminating any other active server processes")));
 	}
 
@@ -3510,7 +3605,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 			 */
 			if (take_action)
 			{
-				ereport(DEBUG2,
+				ereport(INFO,
 						(errmsg_internal("sending %s to process %d",
 										 (SendStop ? "SIGSTOP" : "SIGQUIT"),
 										 (int) rw->rw_pid)));
@@ -3731,11 +3826,6 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 				 activity ? errdetail("Failed process was running: %s", activity) : 0));
 	else if (WIFSIGNALED(exitstatus))
 	{
-		if (WTERMSIG(exitstatus) == SIGKILL)
-			pgstat_report_query_termination("Terminated by SIGKILL", pid);
-		else if (WTERMSIG(exitstatus) == SIGSEGV)
-			pgstat_report_query_termination("Terminated by SIGSEGV", pid);
-
 #if defined(WIN32)
 		ereport(lev,
 
@@ -4199,6 +4289,16 @@ BackendStartup(Port *port)
 	pid = fork_process();
 	if (pid == 0)				/* child */
 	{
+#ifdef __linux__
+		/*
+		 * In YB, all backends are stateless and upon PG master termination, all
+		 * backend processes should also terminate regardless what state they are
+		 * in. No clean-up procedure is needed in the backends.
+		 */
+		if (IsYugaByteEnabled())
+			prctl(PR_SET_PDEATHSIG, SIGKILL);
+#endif
+
 		free(bn);
 
 		/* Detangle from postmaster */

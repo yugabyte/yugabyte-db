@@ -12,3 +12,4 @@ test: yb_ybgin_nulls
 test: yb_ybgin_search_modes
 test: yb_ybgin_misc
 test: yb_ybgin_operators
+test: yb_ybgin_pushdown

@@ -4,6 +4,7 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.forms.TableTaskParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -43,7 +44,9 @@ public class DeleteTablesFromUniverse extends AbstractTaskBase {
   public String getName() {
     return String.format(
         "%s (Universe=%s, fullTableNames=%s)",
-        super.getName(), taskParams().universeUUID, taskParams().getFullTablesNameListToDelete());
+        super.getName(),
+        taskParams().getUniverseUUID(),
+        taskParams().getFullTablesNameListToDelete());
   }
 
   @Override
@@ -55,7 +58,7 @@ public class DeleteTablesFromUniverse extends AbstractTaskBase {
       throw new RuntimeException("taskParams().keyspaceTablesMap cannot be null");
     }
 
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String universeMasterAddresses = universe.getMasterAddresses();
     String universeCertificate = universe.getCertificateNodetoNode();
     try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
@@ -65,12 +68,15 @@ public class DeleteTablesFromUniverse extends AbstractTaskBase {
                   tableName -> {
                     try {
                       client.deleteTable(keyspace, tableName);
-                      log.info("Dropped table {}", getTableFullName(keyspace, tableName));
+                      log.info(
+                          "Dropped table {}",
+                          CommonUtils.logTableName(getTableFullName(keyspace, tableName)));
                     } catch (Exception e) {
                       String errMsg =
                           String.format(
                               "Failed to drop table %s: %s",
-                              getTableFullName(keyspace, tableName), e.getMessage());
+                              CommonUtils.logTableName(getTableFullName(keyspace, tableName)),
+                              e.getMessage());
                       log.error(errMsg, e);
                       throw new RuntimeException(errMsg);
                     }

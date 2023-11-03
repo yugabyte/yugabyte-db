@@ -1,7 +1,9 @@
 ---
-title: Foreign keys
+title: Foreign keys in YugabyteDB YSQL
+headerTitle: Foreign keys
 linkTitle: Foreign keys
 description: Defining Foreign key constraint in YSQL
+headContent: Explore foreign keys in YugabyteDB using YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
@@ -51,7 +53,7 @@ Defining the `CONSTRAINT` clause and naming the foreign key is optional. If you 
 
 ## Examples
 
-Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../../../yugabyte-cloud/cloud-basics/create-clusters-free/) and connect to the cluster using [ysqlsh](../../../admin/ysqlsh/) for local clusters, or [using cloud shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) for YugabyteDB Managed.
+{{% explore-setup-single %}}
 
 The following example creates two tables:
 
@@ -127,5 +129,5 @@ ALTER TABLE child_table
 
 - [Table with Foreign Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-foreign-key-constraint)
 - [Foreign Keys in PostgreSQL documentation](https://www.postgresql.org/docs/12/ddl-constraints.html#DDL-CONSTRAINTS-FK)
-- [Relational Data Modeling with Foreign Keys in a Distributed SQL Database](https://blog.yugabyte.com/relational-data-modeling-with-foreign-keys-in-a-distributed-sql-database/)
+- [Relational Data Modeling with Foreign Keys in a Distributed SQL Database](https://www.yugabyte.com/blog/relational-data-modeling-with-foreign-keys-in-a-distributed-sql-database/)
 - [Other Constraints](../other-constraints/)

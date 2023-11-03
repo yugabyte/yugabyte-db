@@ -32,9 +32,9 @@
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/slice_transform.h"
-#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
 
 namespace rocksdb {
 
@@ -48,7 +48,7 @@ class LevelIterator : public InternalIterator {
   LevelIterator(const ColumnFamilyData* const cfd,
       const ReadOptions& read_options,
       const std::vector<FileMetaData*>& files)
-    : cfd_(cfd), read_options_(read_options), files_(files), valid_(false),
+    : cfd_(cfd), read_options_(read_options), files_(files),
       file_index_(std::numeric_limits<uint32_t>::max()) {}
 
   void SetFileIndex(uint32_t file_index) {
@@ -57,7 +57,7 @@ class LevelIterator : public InternalIterator {
       file_index_ = file_index;
       Reset();
     }
-    valid_ = false;
+    entry_ = KeyValueEntry::Invalid();
   }
   void Reset() {
     assert(file_index_ < files_.size());
@@ -66,51 +66,49 @@ class LevelIterator : public InternalIterator {
         files_[file_index_]->fd, files_[file_index_]->UserFilter(), nullptr /* table_reader_ptr */,
         nullptr, false));
   }
-  void SeekToLast() override {
+  const KeyValueEntry& SeekToLast() override {
     status_ = STATUS(NotSupported, "LevelIterator::SeekToLast()");
-    valid_ = false;
+    return entry_ = KeyValueEntry::Invalid();
   }
-  void Prev() override {
+  const KeyValueEntry& Prev() override {
     status_ = STATUS(NotSupported, "LevelIterator::Prev()");
-    valid_ = false;
+    return entry_ = KeyValueEntry::Invalid();
   }
-  bool Valid() const override {
-    return valid_;
-  }
-  void SeekToFirst() override {
+  const KeyValueEntry& SeekToFirst() override {
     SetFileIndex(0);
     file_iter_->SeekToFirst();
-    valid_ = file_iter_->Valid();
+    return entry_ = file_iter_->Entry();
   }
-  void Seek(const Slice& internal_key) override {
+  const KeyValueEntry& Seek(Slice internal_key) override {
     assert(file_iter_ != nullptr);
     file_iter_->Seek(internal_key);
-    valid_ = file_iter_->Valid();
+    return entry_ = file_iter_->Entry();
   }
-  void Next() override {
-    assert(valid_);
-    file_iter_->Next();
+  const KeyValueEntry& Next() override {
+    assert(entry_);
+    entry_ = file_iter_->Next();
     for (;;) {
-      if (file_iter_->status().IsIncomplete() || file_iter_->Valid()) {
-        valid_ = !file_iter_->status().IsIncomplete();
-        return;
+      if (file_iter_->status().IsIncomplete()) {
+        entry_ = KeyValueEntry::Invalid();
+        return entry_;
+      }
+      if (entry_) {
+        return entry_;
       }
       if (file_index_ + 1 >= files_.size()) {
-        valid_ = false;
-        return;
+        entry_ = KeyValueEntry::Invalid();
+        return entry_;
       }
       SetFileIndex(file_index_ + 1);
       file_iter_->SeekToFirst();
+      entry_ = file_iter_->Entry();
     }
   }
-  Slice key() const override {
-    assert(valid_);
-    return file_iter_->key();
+
+  const KeyValueEntry& Entry() const override {
+    return entry_;
   }
-  Slice value() const override {
-    assert(valid_);
-    return file_iter_->value();
-  }
+
   Status status() const override {
     if (!status_.ok()) {
       return status_;
@@ -125,7 +123,7 @@ class LevelIterator : public InternalIterator {
   const ReadOptions& read_options_;
   const std::vector<FileMetaData*>& files_;
 
-  bool valid_;
+  KeyValueEntry entry_;
   uint32_t file_index_;
   Status status_;
   std::unique_ptr<InternalIterator> file_iter_;
@@ -143,7 +141,6 @@ ForwardIterator::ForwardIterator(DBImpl* db, const ReadOptions& read_options,
       sv_(current_sv),
       mutable_iter_(nullptr),
       current_(nullptr),
-      valid_(false),
       status_(Status::OK()),
       immutable_status_(Status::OK()),
       has_iter_trimmed_for_upper_bound_(false),
@@ -198,12 +195,7 @@ void ForwardIterator::Cleanup(bool release_sv) {
   }
 }
 
-bool ForwardIterator::Valid() const {
-  // See UpdateCurrent().
-  return valid_ ? !current_over_upper_bound_ : false;
-}
-
-void ForwardIterator::SeekToFirst() {
+const KeyValueEntry& ForwardIterator::SeekToFirst() {
   if (sv_ == nullptr) {
     RebuildIterators(true);
   } else if (sv_->version_number != cfd_->GetSuperVersionNumber()) {
@@ -212,6 +204,7 @@ void ForwardIterator::SeekToFirst() {
     ResetIncompleteIterators();
   }
   SeekInternal(Slice(), true);
+  return Entry();
 }
 
 bool ForwardIterator::IsOverUpperBound(const Slice& internal_key) const {
@@ -221,9 +214,9 @@ bool ForwardIterator::IsOverUpperBound(const Slice& internal_key) const {
                *read_options_.iterate_upper_bound) < 0);
 }
 
-void ForwardIterator::Seek(const Slice& internal_key) {
+const KeyValueEntry& ForwardIterator::Seek(Slice internal_key) {
   if (IsOverUpperBound(internal_key)) {
-    valid_ = false;
+    entry_ = KeyValueEntry::Invalid();
   }
   if (sv_ == nullptr) {
     RebuildIterators(true);
@@ -233,6 +226,7 @@ void ForwardIterator::Seek(const Slice& internal_key) {
     ResetIncompleteIterators();
   }
   SeekInternal(internal_key, false);
+  return Entry();
 }
 
 void ForwardIterator::SeekInternal(const Slice& internal_key,
@@ -396,18 +390,18 @@ void ForwardIterator::SeekInternal(const Slice& internal_key,
       is_prev_inclusive_ = true;
     }
 
-    TEST_SYNC_POINT_CALLBACK("ForwardIterator::SeekInternal:Immutable", this);
+    DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ForwardIterator::SeekInternal:Immutable", this);
   } else if (current_ && current_ != mutable_iter_) {
     // current_ is one of immutable iterators, push it back to the heap
     immutable_min_heap_.push(current_);
   }
 
   UpdateCurrent();
-  TEST_SYNC_POINT_CALLBACK("ForwardIterator::SeekInternal:Return", this);
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ForwardIterator::SeekInternal:Return", this);
 }
 
-void ForwardIterator::Next() {
-  assert(valid_);
+const KeyValueEntry& ForwardIterator::Next() {
+  assert(entry_);
   bool update_prev_key = false;
 
   if (sv_ == nullptr ||
@@ -421,8 +415,8 @@ void ForwardIterator::Next() {
       RenewIterators();
     }
     SeekInternal(old_key, false);
-    if (!valid_ || key().compare(old_key) != 0) {
-      return;
+    if (!entry_ || entry_.key.compare(old_key) != 0) {
+      return Entry();
     }
   } else if (current_ != mutable_iter_) {
     // It is going to advance immutable iterator
@@ -462,17 +456,16 @@ void ForwardIterator::Next() {
     }
   }
   UpdateCurrent();
-  TEST_SYNC_POINT_CALLBACK("ForwardIterator::Next:Return", this);
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ForwardIterator::Next:Return", this);
+  return Entry();
 }
 
-Slice ForwardIterator::key() const {
-  assert(valid_);
-  return current_->key();
-}
-
-Slice ForwardIterator::value() const {
-  assert(valid_);
-  return current_->value();
+const KeyValueEntry& ForwardIterator::Entry() const {
+  // See UpdateCurrent().
+  if (current_over_upper_bound_) {
+    return KeyValueEntry::Invalid();
+  }
+  return entry_;
 }
 
 Status ForwardIterator::status() const {
@@ -560,11 +553,11 @@ void ForwardIterator::RenewIterators() {
     if (found) {
       if (l0_iters_[iold] == nullptr) {
         l0_iters_new.push_back(nullptr);
-        TEST_SYNC_POINT_CALLBACK("ForwardIterator::RenewIterators:Null", this);
+        DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ForwardIterator::RenewIterators:Null", this);
       } else {
         l0_iters_new.push_back(l0_iters_[iold]);
         l0_iters_[iold] = nullptr;
-        TEST_SYNC_POINT_CALLBACK("ForwardIterator::RenewIterators:Copy", this);
+        DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ForwardIterator::RenewIterators:Copy", this);
       }
       continue;
     }
@@ -654,7 +647,6 @@ void ForwardIterator::UpdateCurrent() {
       current_ = mutable_iter_;
     }
   }
-  valid_ = (current_ != nullptr);
   if (!status_.ok()) {
     status_ = Status::OK();
   }
@@ -664,7 +656,12 @@ void ForwardIterator::UpdateCurrent() {
   // just set valid_ to false, as that would effectively disable the tailing
   // optimization (Seek() would be called on all immutable iterators regardless
   // of whether the target key is greater than prev_key_).
-  current_over_upper_bound_ = valid_ && IsOverUpperBound(current_->key());
+  if (current_) {
+    entry_ = current_->Entry();
+    current_over_upper_bound_ = entry_ && IsOverUpperBound(entry_.key);
+  } else {
+    entry_ = KeyValueEntry::Invalid();
+  }
 }
 
 bool ForwardIterator::NeedToSeekImmutable(const Slice& target) {
@@ -675,7 +672,7 @@ bool ForwardIterator::NeedToSeekImmutable(const Slice& target) {
   // 'target' belongs to that interval (immutable_min_heap_.top() is already
   // at the correct position).
 
-  if (!valid_ || !current_ || !is_prev_set_ || !immutable_status_.ok()) {
+  if (!entry_ || !current_ || !is_prev_set_ || !immutable_status_.ok()) {
     return true;
   }
   Slice prev_key = prev_key_.GetKey();

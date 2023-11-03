@@ -68,15 +68,9 @@ This is required for YugabyteDB, because if the COPY command finishes due to an 
 
 The following examples demonstrate the possible stages (IN PROGRESS, ERROR, SUCCESS) for the copy operation.
 
-{{< note title="Setup" >}}
-
-Local single-node cluster. See [Set up your YugabyteDB cluster](../../../explore/#set-up-your-yugabytedb-cluster).
-
-{{< /note >}}
-
 ### Prerequisites
 
-- Make sure you have YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../quick-start/) to have YugabyteDB up and running in minutes.
+{{% explore-setup-single-local %}}
 
 - Run the following script from your YugabyteDB installation directory to generate data to a file `test_data.csv`.
 

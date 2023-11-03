@@ -14,9 +14,9 @@
 
 #include "yb/yql/pggate/util/pg_tuple.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
-#include "yb/common/ybc-internal.h"
+#include "yb/yql/pggate/util/ybc-internal.h"
 
 namespace yb {
 namespace pggate {
@@ -25,7 +25,7 @@ PgTuple::PgTuple(uint64_t *datums, bool *isnulls, PgSysColumns *syscols)
     : datums_(datums), isnulls_(isnulls), syscols_(syscols) {
 }
 
-void PgTuple::WriteNull(int index, const PgWireDataHeader& header) {
+void PgTuple::WriteNull(int index) {
   isnulls_[index] = true;
   datums_[index] = 0;
 }
@@ -33,15 +33,6 @@ void PgTuple::WriteNull(int index, const PgWireDataHeader& header) {
 void PgTuple::WriteDatum(int index, uint64_t datum) {
   isnulls_[index] = false;
   datums_[index] = datum;
-}
-
-void PgTuple::Write(uint8_t **pgbuf, const PgWireDataHeader& header, const uint8_t *value,
-                    int64_t bytes) {
-  // TODO: return a status instead of crashing.
-  CHECK_LE(bytes, kYBCMaxPostgresTextSizeBytes);
-  CHECK_GE(bytes, 0);
-  *pgbuf = static_cast<uint8_t*>(YBCCStringToTextWithLen(reinterpret_cast<const char*>(value),
-                                                         static_cast<int>(bytes)));
 }
 
 }  // namespace pggate

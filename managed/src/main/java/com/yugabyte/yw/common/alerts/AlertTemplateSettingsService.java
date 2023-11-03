@@ -25,6 +25,7 @@ import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.filters.AlertTemplateSettingsFilter;
 import com.yugabyte.yw.models.helpers.EntityOperation;
+import io.ebean.DB;
 import io.ebean.annotation.Transactional;
 import java.util.Collections;
 import java.util.List;
@@ -65,8 +66,7 @@ public class AlertTemplateSettingsService {
     settings.forEach(s -> s.setCustomerUUID(customerUUID));
     List<AlertTemplateSettings> before = Collections.emptyList();
     Set<UUID> existingUuids =
-        settings
-            .stream()
+        settings.stream()
             .filter(configuration -> !configuration.isNew())
             .map(AlertTemplateSettings::getUuid)
             .collect(Collectors.toSet());
@@ -76,13 +76,11 @@ public class AlertTemplateSettingsService {
       before = list(filter);
     }
     Map<UUID, AlertTemplateSettings> beforeMap =
-        before
-            .stream()
+        before.stream()
             .collect(Collectors.toMap(AlertTemplateSettings::getUuid, Function.identity()));
 
     Map<EntityOperation, List<AlertTemplateSettings>> toCreateAndUpdate =
-        settings
-            .stream()
+        settings.stream()
             .peek(s -> prepareForSave(s, beforeMap.get(s.getUuid())))
             .peek(s -> validate(s, beforeMap.get(s.getUuid())))
             .collect(
@@ -96,10 +94,10 @@ public class AlertTemplateSettingsService {
         toCreateAndUpdate.getOrDefault(UPDATE, Collections.emptyList());
 
     if (!CollectionUtils.isEmpty(toCreate)) {
-      AlertTemplateSettings.db().saveAll(toCreate);
+      DB.getDefault().saveAll(toCreate);
     }
     if (!CollectionUtils.isEmpty(toUpdate)) {
-      AlertTemplateSettings.db().updateAll(toUpdate);
+      DB.getDefault().updateAll(toUpdate);
     }
 
     writeDefinitions(customerUUID, settings);
@@ -118,17 +116,17 @@ public class AlertTemplateSettingsService {
       throw new PlatformServiceException(
           BAD_REQUEST, "Can't get Alert Template Settings by null uuid");
     }
-    return list(AlertTemplateSettingsFilter.builder().uuid(uuid).build())
-        .stream()
+    return list(AlertTemplateSettingsFilter.builder().uuid(uuid).build()).stream()
         .findFirst()
         .orElse(null);
   }
 
   public AlertTemplateSettings get(UUID customerUUID, String template) {
-    return list(AlertTemplateSettingsFilter.builder()
-            .customerUuid(customerUUID)
-            .template(template)
-            .build())
+    return list(
+            AlertTemplateSettingsFilter.builder()
+                .customerUuid(customerUUID)
+                .template(template)
+                .build())
         .stream()
         .findFirst()
         .orElse(null);
@@ -140,6 +138,14 @@ public class AlertTemplateSettingsService {
     }
     AlertTemplateSettings settings = get(uuid);
     if (settings == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Template Settings UUID: " + uuid);
+    }
+    return settings;
+  }
+
+  public AlertTemplateSettings getOrBadRequest(UUID customerUuid, UUID uuid) {
+    AlertTemplateSettings settings = getOrBadRequest(uuid);
+    if (!(settings.getCustomerUUID().equals(customerUuid))) {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid Template Settings UUID: " + uuid);
     }
     return settings;
@@ -207,8 +213,7 @@ public class AlertTemplateSettingsService {
 
   private void writeDefinitions(UUID customerUUID, List<AlertTemplateSettings> settings) {
     Set<AlertTemplate> templates =
-        settings
-            .stream()
+        settings.stream()
             .map(AlertTemplateSettings::getTemplate)
             .map(AlertTemplate::valueOf)
             .collect(Collectors.toSet());
@@ -223,8 +228,7 @@ public class AlertTemplateSettingsService {
     AlertDefinitionFilter alertDefinitionFilter =
         AlertDefinitionFilter.builder()
             .configurationUuids(
-                affectedConfigurations
-                    .stream()
+                affectedConfigurations.stream()
                     .map(AlertConfiguration::getUuid)
                     .collect(Collectors.toSet()))
             .build();

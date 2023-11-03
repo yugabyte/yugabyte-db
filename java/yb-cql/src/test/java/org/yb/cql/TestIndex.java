@@ -809,23 +809,56 @@ public class TestIndex extends BaseCQLTest {
     }
   }
 
-  private void assertRoutingVariables(String query,
-                                      List<String> expectedVars,
-                                      Object[] values,
-                                      String expectedRow) {
-    PreparedStatement stmt = session.prepare(query);
+  private boolean expectedRoutingVariables(String query,
+                                           List<String> expectedVars,
+                                           Object[] values,
+                                           String expectedRow,
+                                           Session s) {
+    PreparedStatement stmt = s.prepare(query);
     int hashIndexes[] = stmt.getRoutingKeyIndexes();
+    boolean successfulResult = true;
+
     if (expectedVars == null) {
       assertNull(hashIndexes);
     } else {
       List<String> actualVars = new Vector<String>();
       ColumnDefinitions vars = stmt.getVariables();
-      for (int hashIndex : hashIndexes) {
-        actualVars.add(vars.getTable(hashIndex) + "." + vars.getName(hashIndex));
+      if (hashIndexes != null) {
+        for (int hashIndex : hashIndexes) {
+          actualVars.add(vars.getTable(hashIndex) + "." + vars.getName(hashIndex));
+        }
       }
-      assertEquals(expectedVars, actualVars);
+
+      LOG.info("Expected vars: " + expectedVars + " actual vars: " + actualVars);
+      successfulResult = expectedVars.equals(actualVars);
     }
-    assertEquals(expectedRow, session.execute(stmt.bind(values)).one().toString());
+
+    assertEquals(expectedRow, s.execute(stmt.bind(values)).one().toString());
+    return successfulResult;
+  }
+
+  private void assertRoutingVariables(String query,
+                                      List<String> expectedVars,
+                                      Object[] values,
+                                      String expectedRow) {
+    LOG.info("Test query: " + query);
+    // Try the current session first.
+    if (expectedRoutingVariables(query, expectedVars, values, expectedRow, session)) {
+      return;
+    }
+
+    final int numTServers = miniCluster.getTabletServers().size();
+    for (int i = 0; i < numTServers; ++i) {
+      // Previous TS can use stale schema. Try another TS via a new session.
+      try (Session new_session = connectWithTestDefaults().getSession()) {
+        new_session.execute("USE " + DEFAULT_TEST_KEYSPACE);
+        if (expectedRoutingVariables(query, expectedVars, values, expectedRow, new_session)) {
+          return;
+        }
+      }
+    }
+
+    fail("No one TS returned expected PREPARE RESPONSE: " + expectedVars);
   }
 
   @Test
@@ -1112,16 +1145,16 @@ public class TestIndex extends BaseCQLTest {
     // Insert into first table with conditional DML.
     session.execute("insert into test_cond (k, v1, v2) values (1, 1, 'a');");
     assertQuery("insert into test_cond (k, v1, v2) values (1, 1, 'a') if not exists;",
-                "Columns[[applied](boolean), k(int), v2(varchar), v1(int)]",
-                "Row[false, 1, a, 1]");
+                "Columns[[applied](boolean), k(int), v1(int), v2(varchar)]",
+                "Row[false, 1, 1, a]");
     assertQuery("insert into test_cond (k, v1, v2) values (2, 1, 'a') if not exists;",
                 "Row[true]");
 
     // Insert into second table with conditional DML.
     session.execute("insert into test_cond_unique (k, v1, v2) values (1, 1, 'a');");
     assertQuery("insert into test_cond_unique (k, v1, v2) values (1, 1, 'a') if not exists;",
-                "Columns[[applied](boolean), k(int), v2(varchar), v1(int)]",
-                "Row[false, 1, a, 1]");
+                "Columns[[applied](boolean), k(int), v1(int), v2(varchar)]",
+                "Row[false, 1, 1, a]");
     assertInvalidUniqueIndexDML("insert into test_cond_unique (k, v1, v2) values (2, 2, 'a') " +
                                 "if not exists;", "test_cond_unique_by_v2");
     assertQueryRowsUnordered("select * from test_cond_unique;",

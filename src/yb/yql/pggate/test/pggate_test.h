@@ -20,8 +20,8 @@
 
 #include "pg_type_d.h" // NOLINT
 
-#include "yb/common/value.pb.h"
-#include "yb/common/ybc_util.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/value.messages.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
@@ -30,6 +30,7 @@
 #include "yb/util/shared_mem.h"
 #include "yb/util/test_util.h"
 
+#include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 // This file comes from this directory:
@@ -63,23 +64,33 @@ class PggateTest : public YBTest {
   void SetUp() override;
   void TearDown() override;
 
-  // Init cluster for each test case.
-  Status Init(const char *test_name, int num_tablet_servers = kNumOfTablets);
+  // Init cluster for each test case. If 'replication_factor' is not explicitly passed in, it
+  // defaults to the number of master nodes.
+  Status Init(const char* test_name,
+              int num_tablet_servers = kNumOfTablets,
+              int replication_factor = 0,
+              const std::string& use_existing_db = "");
 
-  // Create simulated cluster.
-  Status CreateCluster(int num_tablet_servers);
+  // Create simulated cluster. If 'replication_factor' is not explicitly passed in, it defaults to
+  // the number of master nodes.
+  Status CreateCluster(int num_tablet_servers, int replication_factor = 0);
 
   //------------------------------------------------------------------------------------------------
   // Setup the database for testing.
-  void SetupDB(const std::string& db_name = kDefaultDatabase, YBCPgOid db_oid = kDefaultDatabaseOid);
-  void CreateDB(const std::string& db_name = kDefaultDatabase, YBCPgOid db_oid = kDefaultDatabaseOid);
+  void SetupDB(const std::string& db_name = kDefaultDatabase,
+               YBCPgOid db_oid = kDefaultDatabaseOid);
+  void CreateDB(const std::string& db_name = kDefaultDatabase,
+                YBCPgOid db_oid = kDefaultDatabaseOid);
   void ConnectDB(const std::string& db_name = kDefaultDatabase);
+
+  virtual void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) {}
 
  protected:
   void BeginDDLTransaction();
   void CommitDDLTransaction();
   void BeginTransaction();
   void CommitTransaction();
+  void ExecCreateTableTransaction(YBCPgStatement pg_stmt);
 
   //------------------------------------------------------------------------------------------------
   // Simulated cluster.

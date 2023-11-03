@@ -55,6 +55,11 @@
  * WITH/WITHOUT_OIDS tell the executor to emit tuples with or without space
  * for OIDs, respectively.  These are currently used only for CREATE TABLE AS.
  * If neither is set, the plan may or may not produce tuples including OIDs.
+ *
+ * YB_AGG_PARENT tells the plan node that the parent node is an Agg node.  This
+ * context is used to signal the plan node to make an extra effort to determine
+ * whether aggregates can be pushed down.  It should only be set for plan nodes
+ * that have no children, such as IndexOnlyScan.
  */
 #define EXEC_FLAG_EXPLAIN_ONLY	0x0001	/* EXPLAIN, no ANALYZE */
 #define EXEC_FLAG_REWIND		0x0002	/* need efficient rescan */
@@ -64,6 +69,8 @@
 #define EXEC_FLAG_WITH_OIDS		0x0020	/* force OIDs in returned tuples */
 #define EXEC_FLAG_WITHOUT_OIDS	0x0040	/* force no OIDs in returned tuples */
 #define EXEC_FLAG_WITH_NO_DATA	0x0080	/* rel scannability doesn't matter */
+
+#define EXEC_FLAG_YB_AGG_PARENT	0x8000	/* parent node is Agg */
 
 
 /* Hook for plugins to get control in ExecutorStart() */

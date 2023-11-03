@@ -15,6 +15,7 @@
 #include "yb/master/master_replication.service.h"
 #include "yb/master/master_service_base.h"
 #include "yb/master/master_service_base-internal.h"
+#include "yb/master/xcluster/xcluster_manager.h"
 
 namespace yb {
 namespace master {
@@ -29,10 +30,6 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
     CatalogManager,
     (ValidateReplicationInfo)
-  )
-
-  MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
-    enterprise::CatalogManager,
     (AlterUniverseReplication)
     (CreateCDCStream)
     (DeleteCDCStream)
@@ -41,10 +38,13 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (GetUniverseReplication)
     (GetUDTypeMetadata)
     (IsSetupUniverseReplicationDone)
+    (IsSetupNamespaceReplicationWithBootstrapDone)
     (UpdateConsumerOnProducerSplit)
     (UpdateConsumerOnProducerMetadata)
     (ListCDCStreams)
+    (IsObjectPartOfXRepl)
     (SetUniverseReplicationEnabled)
+    (SetupNamespaceReplicationWithBootstrap)
     (SetupUniverseReplication)
     (UpdateCDCStream)
     (GetCDCDBStreamInfo)
@@ -54,10 +54,14 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (GetReplicationStatus)
     (GetTableSchemaFromSysCatalog)
     (ChangeXClusterRole)
+    (BootstrapProducer)
   )
 
-  MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK(
-      CatalogManager, (GetXClusterEstimatedDataLoss)(GetXClusterSafeTime))
+  MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
+      XClusterManager,
+      (GetXClusterSafeTime)
+      (PauseResumeXClusterProducerStreams)
+  )
 };
 
 } // namespace

@@ -12,8 +12,10 @@
 //
 
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/json_util.h"
 
 #include "yb/gutil/logging-inl.h"
@@ -55,7 +57,6 @@ using std::string;
 using std::vector;
 
 DECLARE_uint64(max_clock_skew_usec);
-
 DECLARE_int32(num_tablet_servers);
 DECLARE_int32(num_replicas);
 
@@ -68,7 +69,7 @@ const std::string kClusterName = "yugacluster";
 const std::string kTablegroupName = "ysql_tg";
 
 constexpr auto kInterval = 6s;
-constexpr auto kRetention = 10min;
+constexpr auto kRetention = RegularBuildVsDebugVsSanitizers(10min, 18min, 10min);
 constexpr auto kHistoryRetentionIntervalSec = 5;
 constexpr auto kCleanupSplitTabletsInterval = 1s;
 const std::string old_sys_catalog_snapshot_path = "/opt/yb-build/ysql-sys-catalog-snapshots/";
@@ -405,6 +406,23 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
         },
         wait_time * kTimeMultiplier, description);
   }
+  // Waits for snapshot count to increase from current to current + delta.
+  Status WaitForMoreSnapshots(
+      const std::string& schedule_id, MonoDelta wait_time, uint32_t delta,
+      const std::string& description) {
+    // Get current count.
+    auto schedule = VERIFY_RESULT(GetSnapshotSchedule(schedule_id));
+    const rapidjson::Value& snapshots = VERIFY_RESULT(Get(schedule, "snapshots"));
+    auto current_count = snapshots.GetArray().Size();
+    return WaitFor(
+        [this, &schedule_id, delta, current_count]() -> Result<bool> {
+          auto schedule = VERIFY_RESULT(GetSnapshotSchedule(schedule_id));
+          const rapidjson::Value& snapshots = VERIFY_RESULT(Get(schedule, "snapshots"));
+          snapshots.IsArray();
+          return current_count + delta <= snapshots.GetArray().Size();
+        },
+        wait_time * kTimeMultiplier, description);
+  }
 
   // Note: Only populates interval and retention_duration.
   Result<master::SnapshotScheduleOptionsPB> GetSnapshotScheduleOptions(
@@ -443,6 +461,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
   }
 
   void TestUndeleteTable(bool restart_masters);
+  void TestGCHiddenTables();
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->bind_to_unique_loopback_addresses = true;
@@ -473,7 +492,6 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
     opts->enable_ysql = true;
     opts->extra_tserver_flags.emplace_back("--ysql_num_shards_per_tserver=1");
     opts->extra_master_flags.emplace_back("--log_ysql_catalog_versions=true");
-    opts->extra_master_flags.emplace_back("--vmodule=master_heartbeat_service=1");
     opts->extra_master_flags.emplace_back("--consensus_rpc_timeout_ms=5000");
     opts->num_masters = 3;
   }
@@ -626,7 +644,7 @@ TEST_F(YbAdminSnapshotScheduleTest, TestTruncateDisallowedWithPitr) {
 TEST_F(YbAdminSnapshotScheduleTest, Delete) {
   auto schedule_id = ASSERT_RESULT(PrepareQl(kRetention, kRetention + 1s));
 
-  auto session = client_->NewSession();
+  auto session = client_->NewSession(60s);
   LOG(INFO) << "Create table";
   ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
       client::Transactional::kTrue, 3, client_.get(), &table_));
@@ -837,7 +855,7 @@ TEST_F(YbAdminSnapshotScheduleTest, CreateIntervalLargerThanRetention) {
 void YbAdminSnapshotScheduleTest::TestUndeleteTable(bool restart_masters) {
   auto schedule_id = ASSERT_RESULT(PrepareQl());
 
-  auto session = client_->NewSession();
+  auto session = client_->NewSession(60s);
   LOG(INFO) << "Create table";
   ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
       client::Transactional::kTrue, 3, client_.get(), &table_));
@@ -895,7 +913,7 @@ TEST_F(YbAdminSnapshotScheduleTest, UndeleteTableWithRestart) {
 TEST_F(YbAdminSnapshotScheduleTest, CleanupDeletedTablets) {
   auto schedule_id = ASSERT_RESULT(PrepareQl(kInterval, kInterval + 1s));
 
-  auto session = client_->NewSession();
+  auto session = client_->NewSession(60s);
   LOG(INFO) << "Create table";
   ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
       client::Transactional::kTrue, 3, client_.get(), &table_));
@@ -934,6 +952,60 @@ TEST_F(YbAdminSnapshotScheduleTest, CleanupDeletedTablets) {
     }
     return true;
   }, deadline, "Deleted table cleanup"));
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, ListRestorationsAfterFailover) {
+  auto schedule_id = ASSERT_RESULT(PrepareQl(2s * kTimeMultiplier, 10s * kTimeMultiplier));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  // Create a table.
+  LOG(INFO) << "Create table";
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kTrue, 3, client_.get(), &table_));
+
+  SleepFor(MonoDelta::FromSeconds(6 * kTimeMultiplier));
+
+  // Restore to the time noted above.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // Perform a master leader stepdown.
+  LOG(INFO) << "Stepping down the master leader";
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+
+  // list_snapshot_restorations should not fatal now.
+  auto restorations = ASSERT_RESULT(GetAllRestorationIds());
+  ASSERT_EQ(restorations.size(), 1);
+  LOG(INFO) << "Restoration: " << restorations[0];
+}
+
+TEST_F(YbAdminSnapshotScheduleTest, ListRestorationsTestMigration) {
+  auto schedule_id = ASSERT_RESULT(PrepareQl(2s * kTimeMultiplier, 10s * kTimeMultiplier));
+
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  // Create a table.
+  LOG(INFO) << "Create table";
+  ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
+      client::Transactional::kTrue, 3, client_.get(), &table_));
+
+  SleepFor(MonoDelta::FromSeconds(6 * kTimeMultiplier));
+
+  // Simulate old behavior.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_update_aggregated_restore_state", "true"));
+
+  // Restore to the time noted above.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // Reload this data.
+  cluster_->Shutdown();
+  ASSERT_OK(cluster_->Restart());
+  LOG(INFO) << "Restarted cluster";
+
+  // list_snapshot_restorations should not fatal now.
+  auto restorations = ASSERT_RESULT(GetAllRestorationIds());
+  ASSERT_EQ(restorations.size(), 1);
+  LOG(INFO) << "Restoration: " << restorations[0];
 }
 
 // This class simplifies the way to run PITR tests against (not) colocated database.
@@ -1063,6 +1135,7 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlCreateTable) {
         for (const auto& tablet : resp.status_and_schema()) {
           if (tablet.tablet_status().namespace_name() == client::kTableName.namespace_name()
               && tablet.tablet_status().table_name().find("colocated.parent") == string::npos
+              && tablet.tablet_status().table_name().find("colocation.parent") == string::npos
               && tablet.tablet_status().table_name().find("tablegroup.parent") == string::npos) {
             LOG(INFO) << "Tablet " << tablet.tablet_status().tablet_id() << " of table "
                       << tablet.tablet_status().table_name() << ", hidden status "
@@ -1331,7 +1404,8 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDeleteColumn) {
     ASSERT_STR_CONTAINS(query_and_result.status().ToString(), "does not exist");
 
     LOG(INFO) << "Reading Rows";
-    auto select_res = ASSERT_RESULT(conn.FetchValue<int>(Format("SELECT * FROM $0", table_name)));
+    auto select_res = ASSERT_RESULT(conn.FetchValue<int32_t>(
+        Format("SELECT * FROM $0", table_name)));
     LOG(INFO) << "Read result: " << select_res;
     ASSERT_EQ(select_res, 1);
 
@@ -1351,6 +1425,62 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDeleteColumn) {
 
     // We should now be able to insert with restored column.
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 'next value')", table_name));
+  };
+
+  RunTestWithColocatedParam(schedule_id);
+}
+
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDeleteColumnWithMissingDefault) {
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ExecBeforeRestoreTS = [&](std::string prefix, std::string option) {
+    const auto table_name = prefix + "_table";
+
+    LOG(INFO) << "Create a table and insert data";
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY) $1",
+        table_name, option));
+    // Insert a row.
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", table_name));
+    // Add a column with a missing default value.
+    ASSERT_OK(conn.ExecuteFormat(
+        "ALTER TABLE $0 ADD COLUMN value TEXT DEFAULT 'default'", table_name));
+    // Insert some rows with explicitly set values and nulls for the new column.
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES (2, null), (3, 'not_default')", table_name));
+  };
+
+  ExecAfterRestoreTS = [&](std::string prefix, std::string option) {
+    const auto table_name = prefix + "_table";
+
+    LOG(INFO) << "Alter the table -> Drop 'value' column";
+    // Drop the column.
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN value", table_name));
+    // Verify that we cannot read the column.
+    auto query_and_result = conn.FetchValue<std::string>(Format(
+        "SELECT value FROM $0", table_name));
+    ASSERT_FALSE(query_and_result.ok());
+    ASSERT_STR_CONTAINS(query_and_result.status().ToString(), "does not exist");
+    // Verify that we cannot insert into the column.
+    auto insert_status = conn.ExecuteFormat("INSERT INTO $0 VALUES (4, 'new_value')", table_name);
+    ASSERT_FALSE(insert_status.ok());
+    ASSERT_STR_CONTAINS(insert_status.ToString(), "more expressions than target columns");
+  };
+
+  CheckAfterPITR = [&](std::string prefix, std::string option) {
+    const auto table_name = prefix + "_table";
+
+    LOG(INFO) << "Select data from the table after restore";
+    // Verify that the missing default values are restored correctly.
+    const auto query = Format("SELECT value FROM $0", table_name);
+    // There might be a transient period when we get stale data before
+    // the new catalog version gets propagated to all tservers via heartbeats.
+    ASSERT_OK(WaitForSelectQueryToMatchExpectation(query + " WHERE key = 1", "default", &conn));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<std::string>(query + " WHERE key = 2")), "");
+    ASSERT_EQ(ASSERT_RESULT(
+        conn.FetchValue<std::string>(query + " WHERE key = 3")), "not_default");
+    // We should now be able to insert with restored column.
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (4, 'new_value')", table_name));
   };
 
   RunTestWithColocatedParam(schedule_id);
@@ -1528,12 +1658,12 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropDefault) {
 }
 
 // Check that postgres sys catalog schema is correctly restored during PITR.
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropDefaultWithPackedRow),
+TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlDropDefaultWithPackedRow,
           YbAdminSnapshotScheduleTestWithYsqlAndPackedRow) {
   ASSERT_OK(PrepareCommon());
-  ASSERT_OK(CompactTablets(cluster_.get()));
+  ASSERT_OK(CompactTablets(cluster_.get(), 300s * kTimeMultiplier));
   TestPgsqlDropDefault();
-  ASSERT_OK(CompactTablets(cluster_.get()));
+  ASSERT_OK(CompactTablets(cluster_.get(), 300s * kTimeMultiplier));
 
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN v2 TEXT DEFAULT 'v2_default'"));
@@ -1544,7 +1674,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropDefaultW
 }
 
 // Check that we restore cleaned metadata correctly.
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddColumnCompactWithPackedRow),
+TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlAddColumnCompactWithPackedRow,
           YbAdminSnapshotScheduleTestWithYsqlAndPackedRow) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
@@ -1568,10 +1698,73 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddColumnCom
 
   ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN v2"));
 
-  ASSERT_OK(CompactTablets(cluster_.get()));
+  ASSERT_OK(CompactTablets(cluster_.get(), 300s * kTimeMultiplier));
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
   auto res = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM test_table ORDER BY key"));
   ASSERT_EQ(res, "1, one, NULL; 2, two, dva");
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlSingleColumnUpdate,
+          YbAdminSnapshotScheduleTestWithYsqlAndPackedRow) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+  {
+    auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+    // Create a sequence.
+    ASSERT_OK(conn.Execute("CREATE SEQUENCE seq_1 INCREMENT 5 START 10"));
+  }
+  // Note down the restore time.
+  Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
+
+  // Now get next val in new connection.
+  {
+    auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+    auto result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('seq_1')"));
+    LOG(INFO) << "First value of sequence " << result;
+    ASSERT_EQ(result, "10");
+  }
+
+  // Restore to noted time.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // Open a new connection and get the next value.
+  {
+    auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+    auto result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('seq_1')"));
+    LOG(INFO) << "First value of sequence post restore " << result;
+    ASSERT_EQ(result, "510");
+  }
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlTestMonotonicSequence,
+          YbAdminSnapshotScheduleTestWithYsqlAndPackedRow) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE seq_1"));
+  // last_value column in sequences_data table should be 1 currently.
+  // Record this timestamp for restoration.
+  Timestamp time = ASSERT_RESULT(GetCurrentTime());
+
+  // Once I read in the first value, last_values should change to 100
+  // (since caches are of size 100). Read 50 values.
+  for (int i = 1; i <= 50; i++) {
+    auto result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('seq_1')"));
+    LOG(INFO) << "Iteration: " << i << ", seq value: " << result;
+    ASSERT_EQ(stoi(result), i);
+  }
+
+  // Restore to time noted above.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // The entire data should be wiped out now. Cache should still be at 50.
+  // last_value column should not be reverted to 1 but instead remain 100.
+  // The first 50 values should be 51,52...,100 due to the cache.
+  // Subsequent values should not start from 1 but instead be 101,102...150
+  // since last_value was not reverted.
+  for (int i = 1; i <= 150; i++) {
+    auto result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('seq_1')"));
+    LOG(INFO) << "Iteration: " << i << ", seq value: " << result;
+    ASSERT_EQ(stoi(result), i+50);
+  }
 }
 
 void YbAdminSnapshotScheduleTestWithYsql::TestPgsqlDropDefault() {
@@ -2321,7 +2514,224 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlSequencePartialCleanupAfte
       "INSERT INTO $0 VALUES (1, nextval('$1'))", table_name, sequence_name));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlTestTruncateDisallowedWithPitr),
+class YbAdminSnapshotScheduleTestWithYsqlAndNoPackedRow
+    : public YbAdminSnapshotScheduleTestWithYsql {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    YbAdminSnapshotScheduleTestWithYsql::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back("--ysql_enable_packed_row=false");
+    opts->extra_master_flags.emplace_back("--ysql_enable_packed_row=false");
+  }
+};
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlTestMonotonicSequenceNoPacked,
+          YbAdminSnapshotScheduleTestWithYsqlAndNoPackedRow) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE seq_1 INCREMENT 2"));
+  // last_value column in sequences_data table should be 1 currently.
+  // Record this timestamp for restoration.
+  Timestamp time = ASSERT_RESULT(GetCurrentTime());
+
+  // Once I read in the first value, last_values should change to 199
+  // (since caches are of size 100). Read 50 values.
+  for (int i = 1; i <= 99; i += 2) {
+    auto result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('seq_1')"));
+    LOG(INFO) << "Iteration: " << i << ", seq value: " << result;
+    ASSERT_EQ(stoi(result), i);
+  }
+
+  // Restore to time noted above.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // The entire data should be wiped out now. Cache should still be at 99.
+  // last_value column should not be reverted to 1 but instead remain 199.
+  // The first 50 values should be 101,103...,199 due to the cache.
+  // Subsequent values should not start from 1 but instead be 201,203...
+  // since last_value was not reverted.
+  for (int i = 101; i <= 399; i += 2) {
+    auto result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('seq_1')"));
+    LOG(INFO) << "Iteration: " << i << ", seq value: " << result;
+    ASSERT_EQ(stoi(result), i);
+  }
+}
+
+class YbAdminSnapshotScheduleTestPerDbCatalogVersion : public YbAdminSnapshotScheduleTestWithYsql {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    YbAdminSnapshotScheduleTestWithYsql::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back(
+        "--allowed_preview_flags_csv=ysql_enable_db_catalog_version_mode");
+    opts->extra_master_flags.emplace_back(
+        "--allowed_preview_flags_csv=ysql_enable_db_catalog_version_mode");
+  }
+
+  Status PrepareDbCatalogVersion(pgwrapper::PGConn* conn) {
+    LOG(INFO) << "Preparing pg_yb_catalog_version to have one row per database";
+    RETURN_NOT_OK(conn->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+    // "ON CONFLICT DO NOTHING" is only needed for the case where the cluster already has
+    // those rows (e.g., when initdb is run with --ysql_enable_db_catalog_version_mode=true).
+    RETURN_NOT_OK(conn->Execute("INSERT INTO pg_catalog.pg_yb_catalog_version "
+                                "SELECT oid, 1, 1 from pg_catalog.pg_database where oid != 1 "
+                                "ON CONFLICT DO NOTHING"));
+    return Status::OK();
+  }
+
+  void RestartClusterSetDbCatalogVersionMode(
+      bool enabled, const std::vector<string>& extra_tserver_flags) {
+    LOG(INFO) << "Restart the cluster and turn "
+              << (enabled ? "on" : "off") << " --ysql_enable_db_catalog_version_mode";
+    cluster_->Shutdown();
+    const string db_catalog_version_gflag =
+      Format("--ysql_enable_db_catalog_version_mode=$0", enabled ? "true" : "false");
+    for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+      cluster_->master(i)->mutable_flags()->push_back(db_catalog_version_gflag);
+    }
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      cluster_->tablet_server(i)->mutable_flags()->push_back(db_catalog_version_gflag);
+      for (const auto& flag : extra_tserver_flags) {
+        cluster_->tablet_server(i)->mutable_flags()->push_back(flag);
+      }
+    }
+    ASSERT_OK(cluster_->Restart());
+  }
+
+  using Version = uint64_t;
+
+  struct CatalogVersion {
+    Version current_version;
+    Version last_breaking_version;
+  };
+
+  using MasterCatalogVersionMap = std::unordered_map<Oid, CatalogVersion>;
+
+  static Result<MasterCatalogVersionMap> GetMasterCatalogVersionMap(pgwrapper::PGConn* conn) {
+    auto res = VERIFY_RESULT(conn->Fetch("SELECT * FROM pg_yb_catalog_version"));
+    const auto lines = PQntuples(res.get());
+    SCHECK_GT(lines, 0, IllegalState, "empty version map");
+    SCHECK_EQ(PQnfields(res.get()), 3, IllegalState, "Unexpected column count");
+    MasterCatalogVersionMap result;
+    std::string output;
+    for (int i = 0; i != lines; ++i) {
+      const auto db_oid = VERIFY_RESULT(pgwrapper::GetValue<pgwrapper::PGOid>(res.get(), i, 0));
+      const auto current_version = VERIFY_RESULT(
+          pgwrapper::GetValue<pgwrapper::PGUint64>(res.get(), i, 1));
+      const auto last_breaking_version = VERIFY_RESULT(
+          pgwrapper::GetValue<pgwrapper::PGUint64>(res.get(), i, 2));
+      result.emplace(db_oid, CatalogVersion{current_version, last_breaking_version});
+      if (!output.empty()) {
+        output += ", ";
+      }
+      output += Format("($0, $1, $2)", db_oid, current_version, last_breaking_version);
+    }
+    LOG(INFO) << "Catalog version map: " << output;
+    return result;
+  }
+};
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlTestPerDbCatalogVersion,
+          YbAdminSnapshotScheduleTestPerDbCatalogVersion) {
+  auto schedule_id = ASSERT_RESULT(PreparePg());
+
+  // Turn on the per db catalog version.
+  auto conn_yb = ASSERT_RESULT(PgConnect("yugabyte"));
+  ASSERT_OK(PrepareDbCatalogVersion(&conn_yb));
+  RestartClusterSetDbCatalogVersionMode(true, {});
+  LOG(INFO) << "Per db catalog version is turned on";
+
+  // Create another db.
+  conn_yb = ASSERT_RESULT(PgConnect("yugabyte"));
+  ASSERT_OK(conn_yb.Execute("CREATE DATABASE demo2"));
+
+  // Create a table on this database and issue a few alters to bump up the catalog version.
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  LOG(INFO) << "Create table 'test_table'";
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value INT)"));
+
+  // Note down the time to restore, we'll be restoring to this time.
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  // Issue a few alters to bump up the catalog version.
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value2 INT"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value3 INT"));
+
+  // Wait for catalog version to be propagated.
+  SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
+
+  // Create demo3.
+  ASSERT_OK(conn_yb.Execute("CREATE DATABASE demo3"));
+
+  auto ns_list = ASSERT_RESULT(client_->ListNamespaces());
+  std::string my_ns_id;
+  std::string demo2_ns_id;
+  std::string demo3_ns_id;
+
+  for (const auto& ns : ns_list) {
+    if (ns.id.name() == client::kTableName.namespace_name()) {
+      my_ns_id = ns.id.id();
+    } else if (ns.id.name() == "demo2") {
+      demo2_ns_id = ns.id.id();
+    } else if (ns.id.name() == "demo3") {
+      demo3_ns_id = ns.id.id();
+    }
+  }
+  ASSERT_FALSE(my_ns_id.empty());
+  ASSERT_FALSE(demo2_ns_id.empty());
+  ASSERT_FALSE(demo3_ns_id.empty());
+
+  auto my_ns_oid = ASSERT_RESULT(GetPgsqlDatabaseOid(my_ns_id));
+  auto demo2_ns_oid = ASSERT_RESULT(GetPgsqlDatabaseOid(demo2_ns_id));
+  auto demo3_ns_oid = ASSERT_RESULT(GetPgsqlDatabaseOid(demo3_ns_id));
+
+  LOG(INFO) << "DB OID of my_keyspace " << my_ns_oid;
+  LOG(INFO) << "DB OID of demo2 " << demo2_ns_oid;
+  LOG(INFO) << "DB OID of demo3 " << demo3_ns_oid;
+
+  // Drop demo2.
+  ASSERT_OK(conn_yb.Execute("DROP DATABASE demo2"));
+
+  // Note the catalog version of all the databases.
+  auto map_before_restore = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn));
+
+  // Restore to time noted above.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // Wait for catalog version to be propagated.
+  SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
+
+  // Get the map again
+  auto map_after_restore = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn));
+
+  // only for this db the catalog version should change.
+  bool found_demo3 = false;
+  bool found_my_ns = false;
+  for (const auto& [Oid, CatalogVersion] : map_after_restore) {
+    // demo2 has been dropped.
+    ASSERT_NE(Oid, demo2_ns_oid);
+    if (Oid == demo3_ns_oid) {
+      found_demo3 = true;
+    }
+    if (Oid == my_ns_oid) {
+      found_my_ns = true;
+    }
+    ASSERT_TRUE(map_before_restore.contains(Oid));
+    if (Oid != my_ns_oid) {
+      ASSERT_EQ(CatalogVersion.current_version, map_before_restore[Oid].current_version);
+      ASSERT_EQ(
+          CatalogVersion.last_breaking_version, map_before_restore[Oid].last_breaking_version);
+    } else {
+      ASSERT_EQ(CatalogVersion.current_version, map_before_restore[Oid].current_version + 1);
+      ASSERT_EQ(
+          CatalogVersion.last_breaking_version, map_before_restore[Oid].last_breaking_version);
+    }
+    map_before_restore.erase(Oid);
+  }
+  ASSERT_TRUE(map_before_restore.empty());
+  ASSERT_TRUE(found_demo3);
+  ASSERT_TRUE(found_my_ns);
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlTestTruncateDisallowedWithPitr,
           YbAdminSnapshotScheduleTestWithYsql) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -2339,7 +2749,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlTestTruncate
   ASSERT_OK(conn.Execute("TRUNCATE TABLE test_table"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(RestoreDroppedTablegroup),
+TEST_F_EX(YbAdminSnapshotScheduleTest, RestoreDroppedTablegroup,
           YbAdminSnapshotScheduleTestWithYsqlParam) {
   auto schedule_id = ASSERT_RESULT(PreparePg(YsqlColocationConfig::kTablegroup));
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
@@ -2391,7 +2801,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(RestoreDroppedTab
   ASSERT_OK(conn.Execute("INSERT INTO test_table_2 VALUES (1, 'after')"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(DropTablegroupWithRestoredTable),
+TEST_F_EX(YbAdminSnapshotScheduleTest, DropTablegroupWithRestoredTable,
           YbAdminSnapshotScheduleTestWithYsqlParam) {
   // Verify when a tablegroup child table is HIDDEN in both current and restoring time, then PITR
   // should NOT unhide it accidently.
@@ -2430,7 +2840,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(DropTablegroupWit
   ASSERT_OK(conn.ExecuteFormat("DROP TABLEGROUP $0", kTablegroupName));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(RestoreWithTwoTablegroups),
+TEST_F_EX(YbAdminSnapshotScheduleTest, RestoreWithTwoTablegroups,
           YbAdminSnapshotScheduleTestWithYsqlParam) {
   // Verify PITR restore does HIDE the current tablegroup which didn't exist in the restoring time
   // and recover the one exists in the restoring time.
@@ -2467,7 +2877,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(RestoreWithTwoTab
   ASSERT_NOK(conn.ExecuteFormat(query, "test_tg"));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(TablegroupGCAfterRestore),
+TEST_F_EX(YbAdminSnapshotScheduleTest, TablegroupGCAfterRestore,
           YbAdminSnapshotScheduleTestWithYsqlParam) {
   // Verify the tablegroup gets cleaned up if it is marked as HIDDEN after PITR restore and
   // goes out of retention period.
@@ -2489,7 +2899,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(TablegroupGCAfter
 
   auto tablegroups = ASSERT_RESULT(client_->ListTablegroups(client::kTableName.namespace_name()));
   ASSERT_EQ(tablegroups.size(), 1);
-  TableId parent_table_id = master::GetTablegroupParentTableId(tablegroups[0].id());
+  TableId parent_table_id = GetTablegroupParentTableId(tablegroups[0].id());
   LOG(INFO) << "Tablegroup parent table name: " << parent_table_id;
 
   LOG(INFO) << "Perform a Restore to the time noted above";
@@ -2532,6 +2942,75 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(TablegroupGCAfter
   }
 }
 
+class YbAdminSnapshotScheduleTestWithYsqlRetention : public YbAdminSnapshotScheduleTestWithYsql {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    YbAdminSnapshotScheduleTestWithYsql::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back("--timestamp_history_retention_interval_sec=0");
+    opts->extra_master_flags.emplace_back("--timestamp_history_retention_interval_sec=0");
+    opts->extra_tserver_flags.emplace_back(
+        "--timestamp_syscatalog_history_retention_interval_sec=0");
+    opts->extra_master_flags.emplace_back(
+        "--timestamp_syscatalog_history_retention_interval_sec=0");
+  }
+};
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, SysCatalogRetention,
+          YbAdminSnapshotScheduleTestWithYsqlRetention) {
+  auto schedule_id = ASSERT_RESULT(PreparePg(YsqlColocationConfig::kNotColocated, 300s, 1200s));
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  for (int i = 1; i <= 50; i++) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t$0(id INT PRIMARY KEY, name TEXT)", i));
+  }
+  // Note down the time.
+  auto time = ASSERT_RESULT(GetCurrentTime());
+  for (int i = 1; i <= 50; i++) {
+    ASSERT_OK(conn.ExecuteFormat("DROP TABLE t$0", i));
+  }
+  // Flush and compact sys catalog. The original create table entries should not be
+  // removed.
+  ASSERT_OK(FlushAndCompactSysCatalog(cluster_.get(), 300s));
+  // Restore to time noted above.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // Tables should exist now.
+  for (int i = 1; i <= 50; i++) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t$0 (id, name) VALUES (1, 'after')", i));
+  }
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, SysCatalogRetentionWithFastPitr,
+          YbAdminSnapshotScheduleTestWithYsqlRetention) {
+  auto schedule_id = ASSERT_RESULT(PreparePg(YsqlColocationConfig::kNotColocated, 30s, 600s));
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  // Create 10 tables.
+  for (int i = 1; i <= 10; i++) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t$0(id INT PRIMARY KEY, name TEXT)", i));
+  }
+  // Enable fast pitr.
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_fast_pitr", "true"));
+  // Note down the time.
+  auto time = ASSERT_RESULT(GetCurrentTime());
+
+  for (int i = 1; i <= 10; i++) {
+    ASSERT_OK(conn.ExecuteFormat("DROP TABLE t$0", i));
+  }
+
+  // Wait for at least one more snapshot.
+  ASSERT_OK(WaitForMoreSnapshots(schedule_id, 300s, 2, "Wait for 2 more snapshots"));
+
+  // Flush and compact sys catalog. The original create table entries should not be
+  // removed.
+  ASSERT_OK(FlushAndCompactSysCatalog(cluster_.get(), 300s));
+  // Restore to time noted above.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+
+  // Tables should exist now.
+  for (int i = 1; i <= 10; i++) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t$0 (id, name) VALUES (1, 'after')", i));
+  }
+}
+
 class YbAdminSnapshotScheduleUpgradeTestWithYsql : public YbAdminSnapshotScheduleTestWithYsql {
   std::vector<std::string> ExtraMasterFlags() override {
     // To speed up tests.
@@ -2552,7 +3031,7 @@ class YbAdminSnapshotScheduleUpgradeTestWithYsql : public YbAdminSnapshotSchedul
 };
 
 TEST_F(YbAdminSnapshotScheduleUpgradeTestWithYsql,
-       YB_DISABLE_TEST_IN_TSAN(PgsqlTestOldSysCatalogSnapshot)) {
+       PgsqlTestOldSysCatalogSnapshot) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
 
@@ -2678,6 +3157,78 @@ TEST_F(YbAdminSnapshotScheduleTest, UndeleteIndexToBackfillTime) {
   ASSERT_EQ(res, 1);
 }
 
+TEST_F(YbAdminSnapshotScheduleTest, RestoreDuringBackfill) {
+  // While a backfill of a YCQL table in one keyspace is in progress, do a PITR on a separate YCQL
+  // keyspace. This test checks the backfill completes successfully, regardless of the PITR.
+  auto schedule_id = ASSERT_RESULT(PrepareCql());
+  constexpr int pitr_row_cnt = 100;
+  constexpr int backfill_row_cnt = 250;
+  std::string pitr_table_name = "test_table";
+  const auto backfill_yb_table =
+      client::YBTableName(YQL_DATABASE_CQL, "backfill_kspace", "test_host_table");
+  auto get_pitr_table_row_cnt = [&pitr_table_name](CassandraSession* conn) -> Result<int> {
+    auto count = VERIFY_RESULT(
+        conn->ExecuteAndRenderToString(Format("SELECT COUNT(*) from $0", pitr_table_name)));
+    return std::stoi(count);
+  };
+  auto initialize_table = [](CassandraSession* conn, const std::string& table_name,
+                             int row_cnt) -> Status {
+    RETURN_NOT_OK(conn->ExecuteQuery(Format(
+        "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) WITH transactions = { 'enabled' : true "
+        "}",
+        table_name)));
+    auto prepared = VERIFY_RESULT(
+        conn->Prepare(Format("INSERT INTO $0 (key, value) VALUES (?, ?)", table_name)));
+    auto batch = CassandraBatch(CassBatchType::CASS_BATCH_TYPE_LOGGED);
+    int cnt = 1;
+    for (int i = 0; i < row_cnt; ++i, ++cnt) {
+      auto stmt = prepared.Bind();
+      stmt.Bind(0, i);
+      stmt.Bind(1, Format("$0", i));
+      batch.Add(&stmt);
+    }
+    return conn->ExecuteBatch(batch);
+  };
+  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+  ASSERT_OK(initialize_table(&conn, pitr_table_name, pitr_row_cnt));
+  ASSERT_EQ(ASSERT_RESULT(get_pitr_table_row_cnt(&conn)), pitr_row_cnt);
+  ASSERT_OK(conn.ExecuteQuery(
+      Format("CREATE KEYSPACE IF NOT EXISTS $0", backfill_yb_table.namespace_name())));
+
+  auto backfill_conn = ASSERT_RESULT(CqlConnect(backfill_yb_table.namespace_name()));
+  ASSERT_OK(initialize_table(&backfill_conn, backfill_yb_table.table_name(), backfill_row_cnt));
+
+  auto time = ASSERT_RESULT(GetCurrentTime());
+  ASSERT_OK(conn.ExecuteQuery(Format(
+      "INSERT INTO $0 (key, value) VALUES ($1, '$2')", pitr_table_name, pitr_row_cnt + 1,
+      pitr_row_cnt + 1)));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "true"));
+  ASSERT_EQ(ASSERT_RESULT(get_pitr_table_row_cnt(&conn)), pitr_row_cnt + 1);
+  ASSERT_OK(
+      backfill_conn.ExecuteQuery("CREATE UNIQUE INDEX test_table_idx ON test_host_table (value)"));
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+  ASSERT_EQ(ASSERT_RESULT(get_pitr_table_row_cnt(&conn)), pitr_row_cnt);
+  auto proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+
+  LOG(INFO) << "Wait for index backfill to complete.";
+  ASSERT_OK(WaitFor(
+      [&proxy, &backfill_yb_table]() -> Result<bool> {
+        master::GetTableSchemaRequestPB req;
+        master::GetTableSchemaResponsePB resp;
+        rpc::RpcController controller;
+        backfill_yb_table.SetIntoTableIdentifierPB(req.mutable_table());
+        RETURN_NOT_OK(proxy.GetTableSchema(req, &resp, &controller));
+        if (resp.indexes_size() != 1) {
+          return STATUS_FORMAT(
+              IllegalState, "Expected to see 1 index for table, got: $0", resp.indexes_size());
+        }
+        return resp.indexes(0).index_permissions() ==
+               IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE;
+      },
+      200s * kTimeMultiplier, "Timed out waiting for index backfill to complete."));
+}
+
 // This test is for schema version patching after restore.
 // Consider the following scenario, w/o patching:
 //
@@ -2772,11 +3323,28 @@ TEST_F(YbAdminSnapshotScheduleTest, TestVerifyRestorationLogic) {
 }
 
 TEST_F(YbAdminSnapshotScheduleTest, TestGCHiddenTables) {
+  TestGCHiddenTables();
+}
+
+class YbAdminSnapshotScheduleTestWithYcqlPackedRow : public YbAdminSnapshotScheduleTestWithYsql {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    YbAdminSnapshotScheduleTestWithYsql::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back("--ycql_enable_packed_row=true");
+    opts->extra_master_flags.emplace_back("--ycql_enable_packed_row=true");
+  }
+};
+
+TEST_F(YbAdminSnapshotScheduleTestWithYcqlPackedRow, GCHiddenTables) {
+  TestGCHiddenTables();
+}
+
+void YbAdminSnapshotScheduleTest::TestGCHiddenTables() {
   const auto interval = 15s;
   const auto retention = 30s * kTimeMultiplier;
   auto schedule_id = ASSERT_RESULT(PrepareQl(interval, retention));
 
-  auto session = client_->NewSession();
+  auto session = client_->NewSession(60s);
   LOG(INFO) << "Create table";
   ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
       client::Transactional::kTrue, 3, client_.get(), &table_));
@@ -2841,9 +3409,7 @@ TEST_F(YbAdminSnapshotScheduleTest, TestGCHiddenTables) {
 
 class YbAdminSnapshotConsistentRestoreTest : public YbAdminSnapshotScheduleTest {
  public:
-  virtual std::vector<std::string> ExtraTSFlags() {
-    return { "--consistent_restore=true", "--TEST_tablet_delay_restore_ms=0" };
-  }
+  virtual std::vector<std::string> ExtraTSFlags() { return {"--TEST_tablet_delay_restore_ms=0"}; }
 };
 
 Status WaitWrites(int num, std::atomic<int>* current) {
@@ -3108,10 +3674,6 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, DDLsDuringRestore, YbAdminSnapshotConsist
 
 class YbAdminSnapshotConsistentRestoreFailoverTest : public YbAdminSnapshotScheduleTest {
  public:
-  std::vector<std::string> ExtraTSFlags() override {
-    return { "--consistent_restore=true" };
-  }
-
   std::vector<std::string> ExtraMasterFlags() override {
     return { "--TEST_skip_sending_restore_finished=true" };
   }
@@ -3207,8 +3769,7 @@ class YbAdminRestoreAfterSplitTest : public YbAdminSnapshotScheduleTest {
   }
 
   std::vector<std::string> ExtraTSFlags() override {
-    return { "--vmodule=meta_cache=5,read_query=5,pg_client=5,client=5",
-             "--cleanup_split_tablets_interval_sec=1",
+    return { "--cleanup_split_tablets_interval_sec=1",
              "--leader_lease_duration_ms=6000",
              "--leader_failure_max_missed_heartbeat_periods=12",
              "--retryable_request_timeout_secs=5" };
@@ -3243,8 +3804,8 @@ class YbAdminRestoreAfterSplitTest : public YbAdminSnapshotScheduleTest {
   }
 
   void SetRf1Flags() {
-    FLAGS_num_tablet_servers = 1;
-    FLAGS_num_replicas = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
   }
 
   Result<int> GetRowCount(CassandraSession* conn) {
@@ -3553,10 +4114,10 @@ TEST_F(YbAdminRestoreAfterSplitTest, TestRestoreUncompactedChildTabletAndSplit) 
       client::kTableName.table_name(), "1"));
   ASSERT_EQ(499, ASSERT_RESULT(GetRowCount(&conn)));
   // Force a compaction and wait for the child tablets to be fully compacted.
-  ASSERT_OK(CompactTablets(cluster_.get()));
+  ASSERT_OK(CompactTablets(cluster_.get(), 300s * kTimeMultiplier));
   for (const auto& tablet : tablets) {
     const auto leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet.tablet_id()));
-    ASSERT_OK(test_admin_client_->WaitForTabletFullyCompacted(leader_idx, tablet.tablet_id()));
+    ASSERT_OK(test_admin_client_->WaitForTabletPostSplitCompacted(leader_idx, tablet.tablet_id()));
   }
   // Reset the flag so we compact the children after the restore.
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_post_split_compaction", "false"));
@@ -3566,7 +4127,7 @@ TEST_F(YbAdminRestoreAfterSplitTest, TestRestoreUncompactedChildTabletAndSplit) 
   ASSERT_EQ(tablets.size(), 2);
   for (const auto& tablet : tablets) {
     const auto leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet.tablet_id()));
-    ASSERT_OK(test_admin_client_->WaitForTabletFullyCompacted(leader_idx, tablet.tablet_id()));
+    ASSERT_OK(test_admin_client_->WaitForTabletPostSplitCompacted(leader_idx, tablet.tablet_id()));
   }
   // Try to split the first tablet to sanity check it was compacted after the restore.
   ASSERT_OK(test_admin_client_->SplitTabletAndWait(
@@ -3695,7 +4256,7 @@ class YbAdminSnapshotScheduleAutoSplitting : public YbAdminSnapshotScheduleTestW
 };
 
 TEST_F_EX(
-    YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(SplitDisabledDuringRestore),
+    YbAdminSnapshotScheduleTest, SplitDisabledDuringRestore,
     YbAdminSnapshotScheduleAutoSplitting) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -3739,11 +4300,50 @@ TEST_F_EX(
   ASSERT_TRUE(ASSERT_RESULT(VerifyData(&conn, prev_tablets_count)));
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(CacheRefreshOnNewConnection),
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, DeadlockWithSplitting,
+    YbAdminSnapshotScheduleAutoSplitting) {
+  // Create an aggressive snapshot schedule that takes a snapshot every second.
+  auto schedule_id = ASSERT_RESULT(
+      PreparePg(YsqlColocationConfig::kNotColocated, 1s /* interval */, 6s /* retention */));
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) "
+      "SPLIT INTO 3 tablets",
+      client::kTableName.table_name()));
+
+  // Only this row should be present after restoration.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 (key, value) VALUES ($1, 'after')", client::kTableName.table_name(), 0));
+
+  auto prev_tablets_count = ASSERT_RESULT(GetTabletCount(test_admin_client_.get()));
+  LOG(INFO) << prev_tablets_count << " tablets present before restore";
+
+  // Splitting should be delayed for 2 secs with the lock held. At least one snapshot
+  // should take place since the frequency is 1 every second.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_delay_split_registration_secs", "2"));
+
+  // Insert enough data conducive to splitting.
+  ASSERT_OK(InsertDataForSplitting(&conn, 15000));
+  LOG(INFO) << "Inserted 15000 rows";
+
+  // Now split and wait for them. If deadlocked this should time out.
+  ASSERT_OK(WaitFor(
+      [this, prev_tablets_count]() -> Result<bool> {
+        auto tablets_count = VERIFY_RESULT(GetTabletCount(test_admin_client_.get()));
+        LOG(INFO) << tablets_count << " tablets thus far after inserting 5000 rows";
+        return tablets_count >= prev_tablets_count + 5;
+      },
+      120s, "Wait for tablets to be split"));
+}
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, CacheRefreshOnNewConnection,
           YbAdminSnapshotScheduleAutoSplitting) {
   // Setup an RF1 so that we are only dealing with one tserver and its cache.
-  FLAGS_num_tablet_servers = 1;
-  FLAGS_num_replicas = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
 
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -3815,8 +4415,8 @@ class YbAdminSnapshotScheduleTestWithYsqlAndManualSplitting
 
   void TestIOWithSnapshotScheduleAndSplit(bool test_write, bool perform_restore) {
     // Setup an RF1 so that we are only dealing with one tserver and its cache.
-    FLAGS_num_tablet_servers = 1;
-    FLAGS_num_replicas = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
 
     auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -3881,22 +4481,22 @@ class YbAdminSnapshotScheduleTestWithYsqlAndManualSplitting
   }
 };
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(ReadsWithSnapshotScheduleAndSplit),
+TEST_F_EX(YbAdminSnapshotScheduleTest, ReadsWithSnapshotScheduleAndSplit,
           YbAdminSnapshotScheduleTestWithYsqlAndManualSplitting) {
   TestIOWithSnapshotScheduleAndSplit(/* test_write = */ false, /* perform_restore = */ false);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(WritesWithSnapshotScheduleAndSplit),
+TEST_F_EX(YbAdminSnapshotScheduleTest, WritesWithSnapshotScheduleAndSplit,
           YbAdminSnapshotScheduleTestWithYsqlAndManualSplitting) {
   TestIOWithSnapshotScheduleAndSplit(/* test_write = */ true, /* perform_restore = */ false);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(WritesAfterRestoreWithSplit),
+TEST_F_EX(YbAdminSnapshotScheduleTest, WritesAfterRestoreWithSplit,
           YbAdminSnapshotScheduleTestWithYsqlAndManualSplitting) {
   TestIOWithSnapshotScheduleAndSplit(/* test_write = */ true, /* perform_restore = */ true);
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(ReadsAfterRestoreWithSplit),
+TEST_F_EX(YbAdminSnapshotScheduleTest, ReadsAfterRestoreWithSplit,
           YbAdminSnapshotScheduleTestWithYsqlAndManualSplitting) {
   TestIOWithSnapshotScheduleAndSplit(/* test_write = */ false, /* perform_restore = */ true);
 }
@@ -4114,6 +4714,7 @@ class YbAdminSnapshotScheduleFailoverTests : public YbAdminSnapshotScheduleTest 
              "--max_concurrent_restoration_rpcs=1",
              "--schedule_restoration_rpcs_out_of_band=false",
              "--vmodule=tablet_bootstrap=4",
+             "--TEST_fatal_on_snapshot_verify=false",
              Format("--TEST_play_pending_uncommitted_entries=$0",
                     replay_uncommitted_ ? "true" : "false")};
   }
@@ -4489,7 +5090,7 @@ class YbAdminSnapshotScheduleTestWithLBYsql : public YbAdminSnapshotScheduleTest
   }
 };
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlPreventTablespaceDrop),
+TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlPreventTablespaceDrop,
           YbAdminSnapshotScheduleTestWithLBYsql) {
   // Start a cluster with 3 nodes. Create a snapshot schedule on a db.
   auto schedule_id = ASSERT_RESULT(PreparePg());
@@ -4536,7 +5137,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlPreventTable
 }
 
 TEST_F_EX(
-    YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlRestoreDroppedTableWithTablespace),
+    YbAdminSnapshotScheduleTest, PgsqlRestoreDroppedTableWithTablespace,
     YbAdminSnapshotScheduleTestWithLBYsql) {
   // Start a cluster with 3 nodes. Create a snapshot schedule on a db.
   auto schedule_id = ASSERT_RESULT(PreparePg());
@@ -4609,7 +5210,7 @@ TEST_F_EX(
   ASSERT_EQ(res, "after");
 }
 
-TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(CreateDuplicateSchedules),
+TEST_F_EX(YbAdminSnapshotScheduleTest, CreateDuplicateSchedules,
           YbAdminSnapshotScheduleTestWithYsql) {
   ASSERT_OK(PrepareCommon());
 
@@ -4624,6 +5225,36 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(CreateDuplicateSc
   ASSERT_FALSE(res.ok());
   ASSERT_STR_CONTAINS(res.ToString(),
     "already exists for the given keyspace ysql." + kTableName.namespace_name());
+}
+
+class YbAdminSnapshotScheduleTestWithYsqlTransactionalDDL
+    : public YbAdminSnapshotScheduleTestWithYsql {
+ public:
+  std::vector<std::string> ExtraMasterFlags() override {
+    // To speed up tests.
+    return { "--snapshot_coordinator_cleanup_delay_ms=1000",
+             "--snapshot_coordinator_poll_interval_ms=500",
+             "--enable_transactional_ddl_gc=true" };
+  }
+};
+
+TEST_F_EX(YbAdminSnapshotScheduleTest, BeforeCreateFinishes,
+          YbAdminSnapshotScheduleTestWithYsqlTransactionalDDL) {
+  auto schedule_id = ASSERT_RESULT(PreparePg(YsqlColocationConfig::kDBColocated));
+
+  auto conn = ASSERT_RESULT(PgConnect(kTableName.namespace_name()));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE demo_new (id INT, name TEXT)"));
+
+  // We want to restore to time before table was created.
+  auto time = ASSERT_RESULT(GetCurrentTime());
+  // Skip txn verification at the master so that txn metadata remains.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_skip_transaction_verification", "true"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE demo (id INT, name TEXT)"));
+
+  // Reset the flag.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_skip_transaction_verification", "false"));
+  // Restore to this time. There should be no fatals.
+  ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
 }
 
 }  // namespace tools

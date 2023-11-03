@@ -1,8 +1,9 @@
 ---
-title: Use an ORM
+title: Sequelize ORM
+headerTitle: Use an ORM
 linkTitle: Use an ORM
-description: NodeJS ORM support for YugabyteDB
-headcontent: NodeJS ORM support for YugabyteDB
+description: Node.js Sequelize ORM support for YugabyteDB
+headcontent: Node.js ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:
@@ -30,6 +31,7 @@ type: docs
 [Sequelize ORM](https://sequelize.org/v6/) is an Object/Relational Mapping (ORM) framework for Node.js applications. It enables JavaScript developers to work with relational databases, including support for features such as solid transaction support, relations, read replication, and more.
 
 Sequelize works with YugabyteDB because the Sequelize ORM supports PostgreSQL as a backend database, and YugabyteDB YSQL is a PostgreSQL-compatible API.
+
 To improve the experience and address a few limitations (for example, support for `findOrCreate()` API), there is [ongoing work](https://github.com/yugabyte/yugabyte-db/issues/11683) to add support for YugabyteDB to the Sequelize ORM core package.
 
 Currently, you can use [sequelize-yugabytedb](https://github.com/yugabyte/sequelize-yugabytedb) to build Node.js applications. This page uses the `sequelize-yugabytedb` package to describe how to get started with Sequelize ORM for connecting to YugabyteDB.
@@ -37,6 +39,12 @@ Currently, you can use [sequelize-yugabytedb](https://github.com/yugabyte/sequel
 ## Working with domain objects
 
 This section describes how to use Node.js models (domain objects) to store and retrieve data from a YugabyteDB cluster.
+
+## CRUD operations
+
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps on the [Node.js ORM example application](../../orms/nodejs/ysql-sequelize/) page.
+
+The following steps break down the example to demonstrate how to perform common tasks required for Node.js application development using Sequelize.
 
 ### Step 1: Install the sequelize-yugabytedb ORM package
 
@@ -210,6 +218,7 @@ This configuration can be used while connecting to a YugabyteDB Managed cluster 
       });
     ```
 
-## Next steps
+## Learn more
 
-- Explore [Scaling Node Applications](../../../explore/linear-scalability/) with YugabyteDB.
+- Build Node.js applications using [Prisma ORM](../prisma/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)

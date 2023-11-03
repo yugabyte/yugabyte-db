@@ -18,6 +18,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceInfo;
@@ -27,6 +28,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.List;
 import java.util.UUID;
@@ -59,7 +61,7 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
         createFromConfig(defaultProvider, "Existing", "r1-az1-4-1;r1-az2-3-1;r1-az3-4-1");
 
     mockCreateTablespaceAnswer(ShellResponse.ERROR_CODE_SUCCESS, FETCH_TABLESPACE_ANSWER);
-    verifyExecution(Success, universe.universeUUID, 3, "r1-az1-1;r1-az2-1;r1-az3-1", 2);
+    verifyExecution(Success, universe.getUniverseUUID(), 3, "r1-az1-1;r1-az2-1;r1-az3-1", 2);
   }
 
   @Test
@@ -69,18 +71,18 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
 
     mockFetchTablespaceAnswer("com/yugabyte/yw/controllers/tablespaces_shell_response2.txt");
     mockCreateTablespaceAnswer(ShellResponse.ERROR_CODE_SUCCESS, FETCH_TABLESPACE_ANSWER);
-    verifyExecution(Success, universe.universeUUID, 3, "r1-az1-1;r1-az2-1;r1-az3-1", 1);
+    verifyExecution(Success, universe.getUniverseUUID(), 3, "r1-az1-1;r1-az2-1;r1-az3-1", 1);
   }
 
   @Test
   public void testCreateTableSpaces_InvalidUniverse() {
-    Universe universe = createUniverse("Universe", defaultCustomer.getCustomerId());
+    Universe universe = createUniverse("Universe", defaultCustomer.getId());
 
     mockCreateTablespaceAnswer(ShellResponse.ERROR_CODE_SUCCESS, FETCH_TABLESPACE_ANSWER);
     CreateTablespaceParams params =
-        verifyExecution(Failure, universe.universeUUID, 3, "r1-az1-1;r1-az2-1;r1-az3-1", 0);
+        verifyExecution(Failure, universe.getUniverseUUID(), 3, "r1-az1-1;r1-az2-1;r1-az3-1", 0);
     verifyException(
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         params,
         "Cluster may not have been initialized yet. Please try later");
   }
@@ -97,9 +99,9 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
         .thenReturn(shellResponse);
 
     CreateTablespaceParams params =
-        verifyExecution(Failure, universe.universeUUID, 3, "r1-az1-1;r1-az2-1;r1-az3-1", 1);
+        verifyExecution(Failure, universe.getUniverseUUID(), 3, "r1-az1-1;r1-az2-1;r1-az3-1", 1);
     verifyException(
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         params,
         "Error while executing SQL request: Error occurred. Code: -1. Output: Error");
   }
@@ -111,9 +113,9 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
 
     mockFetchTablespaceAnswer("com/yugabyte/yw/controllers/tablespaces_shell_response2.txt");
     CreateTablespaceParams params =
-        verifyExecution(Failure, universe.universeUUID, 3, "r1-az1-1;r1-az2-1;r1-az4-1", 1);
+        verifyExecution(Failure, universe.getUniverseUUID(), 3, "r1-az1-1;r1-az2-1;r1-az4-1", 1);
     verifyException(
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         params,
         "Unable to create tablespace as another tablespace with"
             + " the same name 'test_tablespace' exists");
@@ -126,9 +128,9 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
 
     mockCreateTablespaceAnswer(ShellResponse.ERROR_CODE_GENERIC_ERROR, "Error");
     CreateTablespaceParams params =
-        verifyExecution(Failure, universe.universeUUID, 3, "r1-az1-1;r1-az2-1;r1-az3-1", 2);
+        verifyExecution(Failure, universe.getUniverseUUID(), 3, "r1-az1-1;r1-az2-1;r1-az3-1", 2);
     verifyException(
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         params,
         "Error while executing SQL request: Error occurred. Code: -1. Output: Error");
   }
@@ -136,7 +138,7 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
   private CreateTablespaceParams verifyExecution(
       State state, UUID universeUUID, int numReplicas, String config, int invocations) {
     CreateTablespaceParams params =
-        generateTablespaceParams(universeUUID, defaultProvider.code, numReplicas, config);
+        generateTablespaceParams(universeUUID, defaultProvider.getCode(), numReplicas, config);
     TaskInfo taskInfo = submitTask(universeUUID, 1, params.tablespaceInfos);
     assertEquals(state, taskInfo.getTaskState());
     verify(mockNodeUniverseManager, times(invocations))
@@ -149,7 +151,7 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
     CreateTableSpaces.Params taskParams = new CreateTableSpaces.Params();
     taskParams.tablespaceInfos = params.tablespaceInfos;
     taskParams.expectedUniverseVersion = 1;
-    taskParams.universeUUID = universeUUID;
+    taskParams.setUniverseUUID(universeUUID);
 
     CreateTableSpaces task =
         new CreateTableSpaces(mockBaseTaskDependencies, mockNodeUniverseManager);
@@ -183,17 +185,20 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
     CreateTableSpaces.Params taskParams = new CreateTableSpaces.Params();
     taskParams.tablespaceInfos = tablespaceInfos;
     taskParams.expectedUniverseVersion = version;
-    taskParams.universeUUID = universe.universeUUID;
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
 
     try {
       UUID taskUUID = commissioner.submit(TaskType.CreateTableSpaces, taskParams);
+      // Set http context
+      Users defaultUser = ModelFactory.testUser(defaultCustomer);
+      TestUtils.setFakeHttpContext(defaultUser);
       CustomerTask.create(
           defaultCustomer,
-          universe.universeUUID,
+          universe.getUniverseUUID(),
           taskUUID,
           CustomerTask.TargetType.Universe,
           CustomerTask.TaskType.CreateTableSpaces,
-          universe.name);
+          universe.getName());
       return waitForTask(taskUUID);
     } catch (InterruptedException e) {
       assertNull(e.getMessage());

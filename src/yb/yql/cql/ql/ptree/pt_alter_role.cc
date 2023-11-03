@@ -24,6 +24,8 @@
 #include "yb/yql/cql/ql/ptree/yb_location.h"
 
 DECLARE_bool(use_cassandra_authentication);
+DEFINE_RUNTIME_bool(ycql_allow_non_authenticated_password_reset, false,
+    "If to allow non-authenticated user to reset the password.");
 
 namespace yb {
 namespace ql {
@@ -50,9 +52,11 @@ PTAlterRole::~PTAlterRole() {
 Status PTAlterRole::Analyze(SemContext* sem_context) {
   SemState sem_state(sem_context);
 
-  RETURN_NOT_AUTH_ENABLED(sem_context);
-  RETURN_NOT_OK(sem_context->CheckHasRolePermission(loc(), PermissionType::ALTER_PERMISSION,
-                                                    role_name()));
+  if (!FLAGS_ycql_allow_non_authenticated_password_reset) {
+    RETURN_NOT_AUTH_ENABLED(sem_context);
+    RETURN_NOT_OK(
+        sem_context->CheckHasRolePermission(loc(), PermissionType::ALTER_PERMISSION, role_name()));
+  }
 
   // Save context state, and set "this" as current column in the context.
   SymbolEntry cached_entry = *sem_context->current_processing_id();

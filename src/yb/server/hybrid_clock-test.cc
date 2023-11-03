@@ -32,7 +32,7 @@
 
 #include <algorithm>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/server/hybrid_clock.h"
@@ -87,12 +87,12 @@ TEST(MockHybridClockTest, TestMockedSystemClock) {
   mock_clock.Set(time);
   clock->NowWithError(&hybrid_time, &max_error_usec);
   ASSERT_EQ(hybrid_time.ToUint64(),
-            HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(time.time_point, 0).ToUint64());
+            HybridTime::FromMicrosecondsAndLogicalValue(time.time_point, 0).ToUint64());
   ASSERT_EQ(max_error_usec, time.max_error);
   // Perform another read, we should observe the logical component increment, again.
   clock->NowWithError(&hybrid_time, &max_error_usec);
   ASSERT_EQ(hybrid_time.ToUint64(),
-            HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(time.time_point, 1).ToUint64());
+            HybridTime::FromMicrosecondsAndLogicalValue(time.time_point, 1).ToUint64());
 }
 
 // Test that two subsequent time reads are monotonically increasing.
@@ -105,25 +105,24 @@ TEST_F(HybridClockTest, TestNow_ValuesIncreaseMonotonically) {
 // Tests the clock updates with the incoming value if it is higher.
 TEST_F(HybridClockTest, TestUpdate_LogicalValueIncreasesByAmount) {
   HybridTime now = clock_->Now();
-  uint64_t now_micros = HybridClock::GetPhysicalValueMicros(now);
+  uint64_t now_micros = now.GetPhysicalValueMicros();
 
   // increase the logical value
-  auto logical = HybridClock::GetLogicalValue(now);
+  auto logical = now.GetLogicalValue();
   logical += 10;
 
   // increase the physical value so that we're sure the clock will take this
   // one, 200 msecs should be more than enough.
   now_micros += 200000;
 
-  HybridTime now_increased = HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(
-      now_micros, logical);
+  HybridTime now_increased = HybridTime::FromMicrosecondsAndLogicalValue(now_micros, logical);
 
   clock_->Update(now_increased);
 
   HybridTime now2 = clock_->Now();
-  ASSERT_EQ(logical + 1, HybridClock::GetLogicalValue(now2));
-  ASSERT_EQ(HybridClock::GetPhysicalValueMicros(now) + 200000,
-            HybridClock::GetPhysicalValueMicros(now2));
+  ASSERT_EQ(logical + 1, now2.GetLogicalValue());
+  ASSERT_EQ(now.GetPhysicalValueMicros() + 200000,
+            now2.GetPhysicalValueMicros());
 }
 
 // Thread which loops polling the clock and updating it slightly
@@ -140,8 +139,7 @@ void StresserThread(HybridClock* clock, AtomicBool* stop, int num_reads_per_upda
     }
 
     // Add a random bit of offset to the clock, and perform an update.
-    HybridTime new_ht = HybridClock::AddPhysicalTimeToHybridTime(
-        t, MonoDelta::FromMicroseconds(rng.Uniform(10000)));
+    HybridTime new_ht = t.AddDelta(MonoDelta::FromMicroseconds(rng.Uniform(10000)));
     clock->Update(new_ht);
     prev = new_ht;
   }
@@ -177,47 +175,46 @@ void HybridClockTest::RunMultiThreadedTest(int num_reads_per_update) {
 }
 
 TEST_F(HybridClockTest, CompareHybridClocksToDelta) {
-  EXPECT_EQ(1, HybridClock::CompareHybridClocksToDelta(
-      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 10),
-      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1002, 10),
+  EXPECT_EQ(1, CompareHybridTimesToDelta(
+      HybridTime::FromMicrosecondsAndLogicalValue(1000, 10),
+      HybridTime::FromMicrosecondsAndLogicalValue(1002, 10),
       MonoDelta::FromMicroseconds(1)));
 
-  EXPECT_EQ(-1, HybridClock::CompareHybridClocksToDelta(
-      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 10),
-      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1002, 10),
+  EXPECT_EQ(-1, CompareHybridTimesToDelta(
+      HybridTime::FromMicrosecondsAndLogicalValue(1000, 10),
+      HybridTime::FromMicrosecondsAndLogicalValue(1002, 10),
       MonoDelta::FromMicroseconds(5)));
 
-  EXPECT_EQ(0, HybridClock::CompareHybridClocksToDelta(
-      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 10),
-      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1001, 10),
+  EXPECT_EQ(0, CompareHybridTimesToDelta(
+      HybridTime::FromMicrosecondsAndLogicalValue(1000, 10),
+      HybridTime::FromMicrosecondsAndLogicalValue(1001, 10),
       MonoDelta::FromMicroseconds(1)));
 
-  EXPECT_EQ(1, HybridClock::CompareHybridClocksToDelta(
-      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 10),
-      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1001, 11),
+  EXPECT_EQ(1, CompareHybridTimesToDelta(
+      HybridTime::FromMicrosecondsAndLogicalValue(1000, 10),
+      HybridTime::FromMicrosecondsAndLogicalValue(1001, 11),
       MonoDelta::FromMicroseconds(1)));
 
-  EXPECT_EQ(-1, HybridClock::CompareHybridClocksToDelta(
-      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 10),
-      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1001, 9),
+  EXPECT_EQ(-1, CompareHybridTimesToDelta(
+      HybridTime::FromMicrosecondsAndLogicalValue(1000, 10),
+      HybridTime::FromMicrosecondsAndLogicalValue(1001, 9),
       MonoDelta::FromMicroseconds(1)));
 
-  EXPECT_EQ(-1, HybridClock::CompareHybridClocksToDelta(
-      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 10),
-      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 10),
+  EXPECT_EQ(-1, CompareHybridTimesToDelta(
+      HybridTime::FromMicrosecondsAndLogicalValue(1000, 10),
+      HybridTime::FromMicrosecondsAndLogicalValue(1000, 10),
       MonoDelta::FromNanoseconds(MonoTime::kNanosecondsPerMicrosecond - 1)));
 
-  EXPECT_EQ(-1, HybridClock::CompareHybridClocksToDelta(
-      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 10),
-      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1001, 10),
+  EXPECT_EQ(-1, CompareHybridTimesToDelta(
+      HybridTime::FromMicrosecondsAndLogicalValue(1000, 10),
+      HybridTime::FromMicrosecondsAndLogicalValue(1001, 10),
       MonoDelta::FromNanoseconds(MonoTime::kNanosecondsPerMicrosecond + 1)));
 
-  ASSERT_NO_FATALS(HybridClock::GetPhysicalValueNanos(
-      HybridTime(std::numeric_limits<uint64_t>::max())));
+  ASSERT_NO_FATALS(HybridTime(std::numeric_limits<uint64_t>::max()).GetPhysicalValueNanos());
 
-  EXPECT_EQ(-1, HybridClock::CompareHybridClocksToDelta(
-      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 10),
-      HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 9),
+  EXPECT_EQ(-1, CompareHybridTimesToDelta(
+      HybridTime::FromMicrosecondsAndLogicalValue(1000, 10),
+      HybridTime::FromMicrosecondsAndLogicalValue(1000, 9),
       MonoDelta::FromMicroseconds(1)));
 }
 

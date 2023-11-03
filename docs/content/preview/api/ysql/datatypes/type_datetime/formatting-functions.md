@@ -3,7 +3,6 @@ title: Date and time formatting functions [YSQL]
 headerTitle: Date and time formatting functions
 linkTitle: Formatting functions
 description: Describes the date and time formatting functions. [YSQL]
-image: /images/section_icons/api/subsection.png
 menu:
   preview:
     identifier: date-time-formatting-functions
@@ -255,7 +254,7 @@ This is the result:
  timestamp without time zone | 2021-05-17 15:00:00
 ```
 
-See the subsection [_timestamptz_ to plain _timestamp_](../typecasting-between-date-time-values/#timestamptz-to-plain-timestamp) on the [Typecasting between values of different _date-time_ datatypes](../typecasting-between-date-time-values/) page. It explains that, in the exact scenario that's shown here where a _text_ value is converted first to a _timestamptz_ value and then, in the same statement, typecast to a plain _timestamp_ value, the result is insensitive to the value of the session timezone.
+See the subsection [_timestamptz_ to plain _timestamp_](../typecasting-between-date-time-values/#timestamptz-to-plain-timestamp) on the [Typecasting between values of different _date-time_ data types](../typecasting-between-date-time-values/) page. It explains that, in the exact scenario that's shown here where a _text_ value is converted first to a _timestamptz_ value and then, in the same statement, typecast to a plain _timestamp_ value, the result is insensitive to the value of the session timezone.
 
 In _to_date()_ and _to_timestamp()_, free text asks simply to skip as many characters as it contains before resuming parsing for actual template patterns in the normal way. The characters that are used to specify the free text, in the to _date-time_ direction are insignificant as long as the first and last are not whitespace. It's easy to show this by a test. First, do this, in the to _text_ direction:
 

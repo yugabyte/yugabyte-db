@@ -17,6 +17,7 @@
 #include <memory>
 #include <vector>
 
+#include "yb/tablet/tablet_retention_policy.h"
 #include "yb/util/env.h"
 #include "yb/util/threadpool.h"
 #include "yb/rocksdb/env.h"
@@ -49,6 +50,8 @@ class MetricRegistry;
 
 namespace tablet {
 
+struct TabletFullCompactionListener;
+
 // Common for all tablets within TabletManager.
 struct TabletOptions {
   std::shared_ptr<rocksdb::Cache> block_cache;
@@ -79,13 +82,17 @@ struct TabletInitData {
   IsSysCatalogTablet is_sys_catalog = IsSysCatalogTablet::kFalse;
   SnapshotCoordinator* snapshot_coordinator = nullptr;
   TabletSplitter* tablet_splitter = nullptr;
-  std::function<HybridTime(RaftGroupMetadata*)> allowed_history_cutoff_provider;
+  AllowedHistoryCutoffProvider allowed_history_cutoff_provider;
   TransactionManagerProvider transaction_manager_provider;
-  LocalWaitingTxnRegistry* waiting_txn_registry = nullptr;
+  docdb::LocalWaitingTxnRegistry* waiting_txn_registry = nullptr;
   ThreadPool* wait_queue_pool = nullptr;
   AutoFlagsManager* auto_flags_manager = nullptr;
   ThreadPool* full_compaction_pool;
+  ThreadPool* admin_triggered_compaction_pool;
   scoped_refptr<yb::AtomicGauge<uint64_t>> post_split_compaction_added;
+  client::YBMetaDataCache* metadata_cache;
+  std::function<SchemaVersion(const TableId&, const ColocationId&)>
+      get_min_xcluster_schema_version = nullptr;
 };
 
 } // namespace tablet

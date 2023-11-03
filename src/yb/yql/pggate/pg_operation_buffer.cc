@@ -24,13 +24,13 @@
 
 #include "yb/common/constants.h"
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/primitive_value.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/port.h"
@@ -38,6 +38,7 @@
 #include "yb/util/lw_function.h"
 #include "yb/util/status.h"
 
+#include "yb/yql/pggate/pg_doc_metrics.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 
@@ -46,20 +47,20 @@ namespace pggate {
 
 namespace {
 
-docdb::KeyEntryValue NullValue(SortingType sorting) {
+dockv::KeyEntryValue NullValue(SortingType sorting) {
   using SortingType = SortingType;
 
-  return docdb::KeyEntryValue(
+  return dockv::KeyEntryValue(
       sorting == SortingType::kAscendingNullsLast || sorting == SortingType::kDescendingNullsLast
-          ? docdb::KeyEntryType::kNullHigh
-          : docdb::KeyEntryType::kNullLow);
+          ? dockv::KeyEntryType::kNullHigh
+          : dockv::KeyEntryType::kNullLow);
 }
 
-std::vector<docdb::KeyEntryValue> InitKeyColumnPrimitiveValues(
+dockv::KeyEntryValues InitKeyColumnPrimitiveValues(
     const ArenaList<LWPgsqlExpressionPB> &column_values,
     const Schema &schema,
     size_t start_idx) {
-  std::vector<docdb::KeyEntryValue> result;
+  dockv::KeyEntryValues result;
   size_t column_idx = start_idx;
   for (const auto& column_value : column_values) {
     const auto sorting_type = schema.column(column_idx).sorting_type();
@@ -68,18 +69,14 @@ std::vector<docdb::KeyEntryValue> InitKeyColumnPrimitiveValues(
       result.push_back(
           IsNull(value)
           ? NullValue(sorting_type)
-          : docdb::KeyEntryValue::FromQLValuePB(value, sorting_type));
+          : dockv::KeyEntryValue::FromQLValuePB(value, sorting_type));
     } else {
       // TODO(neil) The current setup only works for CQL as it assumes primary key value must not
       // be dependent on any column values. This needs to be fixed as PostgreSQL expression might
       // require a read from a table.
       //
       // Use regular executor for now.
-      QLExprExecutor executor;
-      LWExprResult expr_result(&column_value.arena());
-      auto s = executor.EvalExpr(column_value, nullptr, expr_result.Writer());
-
-      result.push_back(docdb::KeyEntryValue::FromQLValuePB(expr_result.Value(), sorting_type));
+      LOG(FATAL) << "Expression instead of value";
     }
     ++column_idx;
   }
@@ -100,9 +97,9 @@ class RowIdentifier {
       auto range_components = InitKeyColumnPrimitiveValues(
           request.range_column_values(), schema, schema.num_hash_key_columns());
       if (hashed_components.empty()) {
-        ybctid_holder_ = docdb::DocKey(std::move(range_components)).Encode().ToStringBuffer();
+        ybctid_holder_ = dockv::DocKey(std::move(range_components)).Encode().ToStringBuffer();
       } else {
-        ybctid_holder_ = docdb::DocKey(request.hash_code(),
+        ybctid_holder_ = dockv::DocKey(request.hash_code(),
                                        std::move(hashed_components),
                                        std::move(range_components)).Encode().ToStringBuffer();
       }
@@ -201,10 +198,13 @@ size_t BufferableOperations::size() const {
 
 class PgOperationBuffer::Impl {
  public:
-  Impl(const Flusher& flusher, const BufferingSettings& buffering_settings)
-      : flusher_(flusher),
-        buffering_settings_(buffering_settings) {
-  }
+  Impl(
+    const Flusher& flusher,
+    const BufferingSettings& buffering_settings,
+    PgDocMetrics* metrics)
+    : flusher_(flusher),
+      buffering_settings_(buffering_settings),
+      metrics_(*metrics) {}
 
   Status Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional) {
     return ClearOnError(DoAdd(table, std::move(op), transactional));
@@ -239,13 +239,6 @@ class PgOperationBuffer::Impl {
       in_flight_ops.push_back(std::move(i));
     }
     in_flight_ops_.clear();
-  }
-
-  void GetAndResetRpcStats(uint64_t* count, uint64_t* wait_time) {
-    *count = rpc_count_;
-    rpc_count_ = 0;
-    *wait_time = rpc_wait_time_.ToNanoseconds();
-    rpc_wait_time_ = MonoDelta::FromNanoseconds(0);
   }
 
  private:
@@ -323,10 +316,12 @@ class PgOperationBuffer::Impl {
   }
 
   Status EnsureCompleted(size_t count) {
-    for(; count && !in_flight_ops_.empty(); --count) {
-      RETURN_NOT_OK(in_flight_ops_.front().future.Get(&rpc_wait_time_));
+    for (; count && !in_flight_ops_.empty(); --count) {
+      uint64_t duration = 0;
+      auto result = VERIFY_RESULT(metrics_.CallWithDuration(
+          [&future = in_flight_ops_.front().future] { return future.Get(); }, &duration));
+      metrics_.FlushRequest(duration);
       in_flight_ops_.pop_front();
-      ++rpc_count_;
     }
     return Status::OK();
   }
@@ -412,13 +407,13 @@ class PgOperationBuffer::Impl {
   BufferableOperations txn_ops_;
   RowKeys keys_;
   InFlightOps in_flight_ops_;
-  uint64_t rpc_count_ = 0;
-  MonoDelta rpc_wait_time_ = MonoDelta::FromNanoseconds(0);
+  PgDocMetrics& metrics_;
 };
 
 PgOperationBuffer::PgOperationBuffer(const Flusher& flusher,
-                                     const BufferingSettings& buffering_settings)
-    : impl_(new Impl(flusher, buffering_settings)) {
+                                     const BufferingSettings& buffering_settings,
+                                     PgDocMetrics* metrics)
+    : impl_(new Impl(flusher, buffering_settings, metrics)) {
 }
 
 PgOperationBuffer::~PgOperationBuffer() = default;
@@ -442,11 +437,6 @@ size_t PgOperationBuffer::Size() const {
 
 void PgOperationBuffer::Clear() {
     impl_->Clear();
-}
-
-void PgOperationBuffer::GetAndResetRpcStats(uint64_t* count,
-                                            uint64_t* wait_time) {
-  impl_->GetAndResetRpcStats(count, wait_time);
 }
 
 } // namespace pggate

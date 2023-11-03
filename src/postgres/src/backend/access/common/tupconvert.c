@@ -249,9 +249,8 @@ convert_tuples_by_name(TupleDesc indesc,
  * be used standalone.
  */
 AttrNumber *
-convert_tuples_by_name_map(TupleDesc indesc,
-						   TupleDesc outdesc,
-						   const char *msg)
+convert_tuples_by_name_map(TupleDesc indesc, TupleDesc outdesc, const char *msg,
+						   bool yb_ignore_type_mismatch)
 {
 	AttrNumber *attrMap;
 	int			n;
@@ -281,7 +280,9 @@ convert_tuples_by_name_map(TupleDesc indesc,
 			if (strcmp(attname, NameStr(inatt->attname)) == 0)
 			{
 				/* Found it, check type */
-				if (atttypid != inatt->atttypid || atttypmod != inatt->atttypmod)
+				if (!(IsYugaByteEnabled() && yb_ignore_type_mismatch) &&
+					(atttypid != inatt->atttypid ||
+					 atttypmod != inatt->atttypmod))
 					ereport(ERROR,
 							(errcode(ERRCODE_DATATYPE_MISMATCH),
 							 errmsg_internal("%s", _(msg)),
@@ -322,7 +323,8 @@ convert_tuples_by_name_map_if_req(TupleDesc indesc,
 	bool		same;
 
 	/* Verify compatibility and prepare attribute-number map */
-	attrMap = convert_tuples_by_name_map(indesc, outdesc, msg);
+	attrMap = convert_tuples_by_name_map(indesc, outdesc, msg,
+										 false /* yb_ignore_type_mismatch */);
 
 	/*
 	 * Check to see if the map is one-to-one, in which case we need not do a

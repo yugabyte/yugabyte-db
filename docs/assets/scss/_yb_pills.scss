@@ -17,6 +17,7 @@ ul.nav.yb-pills {
     margin: 0;
     height: 56px;
     position: relative;
+    min-width: 222px;
 
     @media (max-width: 991px) {
       max-width: calc(50% - 10px);
@@ -36,8 +37,14 @@ ul.nav.yb-pills {
       border-radius: 8px;
     }
 
+    &.text-overlap {
+      a {
+        width: 100%;
+        text-overflow: ellipsis;
+      }
+    }
+
     a {
-      width: 100%;
       background: transparent;
       text-decoration: none !important;
       align-items: center;
@@ -49,7 +56,8 @@ ul.nav.yb-pills {
       padding: 0 12px;
       overflow: hidden;
       display: inline-block;
-      text-overflow: ellipsis;
+      width: auto;
+      //text-overflow: ellipsis;
       white-space: nowrap;
 
       &::before {

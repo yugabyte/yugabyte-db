@@ -17,6 +17,8 @@
 
 #include <mutex>
 
+#include "yb/util/shared_lock.h"
+
 namespace yb {
 
 void MultiDriveTestEnvBase::AddFailedPath(const std::string& path) {
@@ -25,7 +27,7 @@ void MultiDriveTestEnvBase::AddFailedPath(const std::string& path) {
 }
 
 Status MultiDriveTestEnvBase::FailureStatus(const std::string& filename) const {
-  std::shared_lock lock(data_mutex_);
+  SharedLock lock(data_mutex_);
   if (failed_set_.empty()) {
     return Status::OK();
   }

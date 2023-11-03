@@ -2,8 +2,6 @@
 
 #include "yb/tablet/operations/snapshot_operation.h"
 
-#include <glog/logging.h>
-
 #include "yb/common/snapshot.h"
 
 #include "yb/consensus/consensus_round.h"
@@ -26,8 +24,8 @@
 
 using std::string;
 
-DEFINE_UNKNOWN_bool(consistent_restore, false,
-    "Whether to enable consistent restoration of snapshots");
+DEFINE_UNKNOWN_bool(
+    consistent_restore, true, "Whether to enable consistent restoration of snapshots");
 
 DEFINE_test_flag(bool, modify_flushed_frontier_snapshot_op, true,
                  "Whether to modify flushed frontier after "
@@ -69,7 +67,8 @@ Result<std::string> SnapshotOperation::GetSnapshotDir() const {
     snapshot_id_str = request.snapshot_id().ToBuffer();
   }
 
-  return JoinPathSegments(VERIFY_RESULT(tablet()->metadata()->TopSnapshotsDir()), snapshot_id_str);
+  auto tablet = VERIFY_RESULT(tablet_safe());
+  return JoinPathSegments(VERIFY_RESULT(tablet->metadata()->TopSnapshotsDir()), snapshot_id_str);
 }
 
 Status SnapshotOperation::DoCheckOperationRequirements() {
@@ -81,7 +80,7 @@ Status SnapshotOperation::DoCheckOperationRequirements() {
   if (snapshot_dir.empty()) {
     return Status::OK();
   }
-  Status s = tablet()->rocksdb_env().FileExists(snapshot_dir);
+  Status s = VERIFY_RESULT(tablet_safe())->rocksdb_env().FileExists(snapshot_dir);
 
   if (!s.ok()) {
     return s.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::INVALID_SNAPSHOT)).
@@ -107,7 +106,7 @@ bool SnapshotOperation::CheckOperationRequirements() {
 }
 
 Result<SnapshotCoordinator&> GetSnapshotCoordinator(SnapshotOperation* operation) {
-  auto snapshot_coordinator = operation->tablet()->snapshot_coordinator();
+  auto snapshot_coordinator = VERIFY_RESULT(operation->tablet_safe())->snapshot_coordinator();
   if (!snapshot_coordinator) {
     return STATUS_FORMAT(IllegalState, "Replicated $0 to tablet without snapshot coordinator",
                          TabletSnapshotOpRequestPB::Operation_Name(
@@ -128,13 +127,13 @@ Status SnapshotOperation::Apply(int64_t leader_term, Status* complete_status) {
       return VERIFY_RESULT(GetSnapshotCoordinator(this)).get().RestoreSysCatalogReplicated(
           leader_term, *this, complete_status);
     case TabletSnapshotOpRequestPB::CREATE_ON_TABLET:
-      return tablet()->snapshots().Create(this);
+      return VERIFY_RESULT(tablet_safe())->snapshots().Create(this);
     case TabletSnapshotOpRequestPB::RESTORE_ON_TABLET:
-      return tablet()->snapshots().Restore(this);
+      return VERIFY_RESULT(tablet_safe())->snapshots().Restore(this);
     case TabletSnapshotOpRequestPB::DELETE_ON_TABLET:
-      return tablet()->snapshots().Delete(*this);
+      return VERIFY_RESULT(tablet_safe())->snapshots().Delete(*this);
     case TabletSnapshotOpRequestPB::RESTORE_FINISHED:
-      return tablet()->snapshots().RestoreFinished(this);
+      return VERIFY_RESULT(tablet_safe())->snapshots().RestoreFinished(this);
     case google::protobuf::kint32min: FALLTHROUGH_INTENDED;
     case google::protobuf::kint32max: FALLTHROUGH_INTENDED;
     case TabletSnapshotOpRequestPB::UNKNOWN:
@@ -148,15 +147,15 @@ bool SnapshotOperation::NeedOperationFilter() const {
          request()->operation() == TabletSnapshotOpRequestPB::RESTORE_SYS_CATALOG;
 }
 
-void SnapshotOperation::AddedAsPending() {
+void SnapshotOperation::AddedAsPending(const TabletPtr& tablet) {
   if (NeedOperationFilter()) {
-    tablet()->RegisterOperationFilter(this);
+    tablet->RegisterOperationFilter(this);
   }
 }
 
-void SnapshotOperation::RemovedFromPending() {
+void SnapshotOperation::RemovedFromPending(const TabletPtr& tablet) {
   if (NeedOperationFilter()) {
-    tablet()->UnregisterOperationFilter(this);
+    tablet->UnregisterOperationFilter(this);
   }
 }
 
@@ -199,9 +198,9 @@ Status SnapshotOperation::CheckOperationAllowed(
 // SnapshotOperation
 // ------------------------------------------------------------------------------------------------
 
-Status SnapshotOperation::Prepare() {
+Status SnapshotOperation::Prepare(IsLeaderSide is_leader_side) {
   TRACE("PREPARE SNAPSHOT: Starting");
-  RETURN_NOT_OK(tablet()->snapshots().Prepare(this));
+  RETURN_NOT_OK(VERIFY_RESULT(tablet_safe())->snapshots().Prepare(this));
 
   TRACE("PREPARE SNAPSHOT: finished");
   return Status::OK();
@@ -223,11 +222,10 @@ Status SnapshotOperation::DoReplicated(int64_t leader_term, Status* complete_sta
     frontier.set_op_id(op_id());
     frontier.set_hybrid_time(hybrid_time());
     LOG(INFO) << "Forcing modify flushed frontier to " << frontier.op_id();
-    return tablet()->ModifyFlushedFrontier(
+    return VERIFY_RESULT(tablet_safe())->ModifyFlushedFrontier(
         frontier, rocksdb::FrontierModificationMode::kUpdate);
-  } else {
-    return Status::OK();
   }
+  return Status::OK();
 }
 
 }  // namespace tablet

@@ -1,4 +1,5 @@
 ---
+title: Alerts in YugabyteDB Anywhere
 headerTitle: Alerts
 linkTitle: Alerts
 description: Use alerts
@@ -16,6 +17,12 @@ YugabyteDB Anywhere allows you to view a list of generated alerts and manage the
 
 By default, the list is sorted in reverse chronological order by the alert issue time. You can reorder the list by clicking column headers.
 
+{{< tip title="Configure alerts" >}}
+
+For information on configuring your alerts, both for universe and YugabyteDB Anywhere metrics, refer to [Create and configure alerts](../../configure-yugabyte-platform/set-up-alerts-health-check/).
+
+{{< /tip >}}
+
 You can access detailed information about a specific alert by clicking on its name to open the **Alert Details** dialog shown in the following illustration:
 
 ![Alert Details](/images/yp/alerts-monitoring/alerts-view2.png)
@@ -26,5 +33,6 @@ To summarize, the alert status can be active, acknowledged, or resolved. You cha
 
 For additional information, see the following:
 
-- [Alerts and notifications in YugabyteDB Anywhere](https://blog.yugabyte.com/yugabytedb-2-8-alerts-and-notifications/)
+- [Create and configure alerts](../../configure-yugabyte-platform/set-up-alerts-health-check/)
+- [Alerts and notifications in YugabyteDB Anywhere](https://www.yugabyte.com/blog/yugabytedb-2-8-alerts-and-notifications/)
 - [Metrics in YugabyteDB Anywhere](../../troubleshoot/universe-issues/#use-metrics)

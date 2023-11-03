@@ -9,7 +9,20 @@ body:
     label: Description
     placeholder: |
       **Provide a clear description of the issue you want to report related to the UI in Yugabyte.**
-      
-      **NOTE: If you can, please specify the product in question. For example, if this is a platform issue, include it in your issue like so: [UI] [Platform] Title**
+
+      **NOTE: If you can, please specify the product in question. For example, if this is a YugabyteDB Anywhere issue, include it in your issue like so: [UI] [YBA] Title**
   validations:
-    required: true 
+    required: true
+- type: checkboxes
+  id: warning
+  attributes:
+    label: "Warning: Please confirm that this issue does not contain any sensitive information"
+    description: >
+      Sensitive Information includes any customer names, regulated data (e.g. privacy data,
+      cardholder data, protected health information, etc.), confidential or proprietary information
+      including but not limited to company identifying information, network proprietary information,
+      proprietary database schema information, log data, etc. If you are unsure whether your ticket
+      contains any sensitive information, please reach out to your security team for assistance.
+    options:
+      - label: I confirm this issue does not contain any sensitive information.
+        required: true

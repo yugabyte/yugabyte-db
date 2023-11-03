@@ -18,7 +18,6 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "yb/client/client_fwd.h"
@@ -29,8 +28,6 @@
 
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/server/hybrid_clock.h"
-
 #include "yb/tserver/tserver_util_fwd.h"
 
 #include "yb/util/lw_function.h"
@@ -38,19 +35,18 @@
 #include "yb/util/result.h"
 
 #include "yb/yql/pggate/pg_client.h"
+#include "yb/yql/pggate/pg_doc_metrics.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_operation_buffer.h"
 #include "yb/yql/pggate/pg_perform_future.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 YB_STRONGLY_TYPED_BOOL(OpBuffered);
 YB_STRONGLY_TYPED_BOOL(InvalidateOnPgClient);
 YB_STRONGLY_TYPED_BOOL(UseCatalogSession);
-YB_STRONGLY_TYPED_BOOL(EnsureReadTimeIsSet);
 YB_STRONGLY_TYPED_BOOL(ForceNonBufferable);
 
 class PgTxnManager;
@@ -116,17 +112,18 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   typedef scoped_refptr<PgSession> ScopedRefPtr;
 
   // Constructors.
-  PgSession(PgClient* pg_client,
-            const std::string& database_name,
-            scoped_refptr<PgTxnManager> pg_txn_manager,
-            scoped_refptr<server::HybridClock> clock,
-            const YBCPgCallbacks& pg_callbacks);
+  PgSession(
+      PgClient* pg_client,
+      const std::string& database_name,
+      scoped_refptr<PgTxnManager> pg_txn_manager,
+      const YBCPgCallbacks& pg_callbacks,
+      YBCPgExecStatsState* stats_state);
   virtual ~PgSession();
 
   // Resets the read point for catalog tables.
   // Next catalog read operation will read the very latest catalog's state.
   void ResetCatalogReadPoint();
-  [[nodiscard]] bool HasCatalogReadPoint() const;
+  [[nodiscard]] const ReadHybridTime& catalog_read_time() const { return catalog_read_time_; }
 
   //------------------------------------------------------------------------------------------------
   // Operations on Session.
@@ -145,6 +142,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Status DropDatabase(const std::string& database_name, PgOid database_oid);
 
   Status GetCatalogMasterVersion(uint64_t *version);
+
+  Status CancelTransaction(const unsigned char* transaction_id);
 
   // API for sequences data operations.
   Status CreateSequencesDataTable();
@@ -165,14 +164,20 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
                                    std::optional<int64_t> expected_last_val,
                                    std::optional<bool> expected_is_called);
 
+  Result<std::pair<int64_t, int64_t>> FetchSequenceTuple(int64_t db_oid,
+                                                         int64_t seq_oid,
+                                                         uint64_t ysql_catalog_version,
+                                                         bool is_db_catalog_version_mode,
+                                                         uint32_t fetch_count,
+                                                         int64_t inc_by,
+                                                         int64_t min_value,
+                                                         int64_t max_value,
+                                                         bool cycle);
+
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(int64_t db_oid,
                                                      int64_t seq_oid,
                                                      uint64_t ysql_catalog_version,
                                                      bool is_db_catalog_version_mode);
-
-  Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
-
-  Status DeleteDBSequences(int64_t db_oid);
 
   //------------------------------------------------------------------------------------------------
   // Operations on Tablegroup.
@@ -211,6 +216,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   PgIsolationLevel GetIsolationLevel();
 
+  bool IsHashBatchingEnabled();
+
   // Run (apply + flush) list of given operations to read and write database content.
   template<class OpPtr>
   struct TableOperation {
@@ -239,17 +246,30 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   }
 
   Result<PerformFuture> RunAsync(
-      const OperationGenerator& generator, uint64_t* in_txn_limit,
+      const OperationGenerator& generator, HybridTime in_txn_limit,
       ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);
   Result<PerformFuture> RunAsync(
-      const ReadOperationGenerator& generator, uint64_t* in_txn_limit,
+      const ReadOperationGenerator& generator, HybridTime in_txn_limit,
       ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);
-  Result<PerformFuture> RunAsyncCacheable(
-      const ReadOperationGenerator& generator, uint64_t* in_txn_limit, std::string&& cache_key);
+
+  struct CacheOptions {
+    uint64_t key_group;
+    std::string key_value;
+    std::optional<uint32_t> lifetime_threshold_ms;
+  };
+
+  Result<PerformFuture> RunAsync(const ReadOperationGenerator& generator, CacheOptions&& options);
+
+  // Lock functions.
+  // -------------
+  Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
+      const std::string& table_id, const std::string& transaction_id);
 
   // Smart driver functions.
   // -------------
   Result<client::TabletServersInfo> ListTabletServers();
+
+  Status GetIndexBackfillProgress(std::vector<PgObjectId> index_ids, uint64_t** backfill_statuses);
 
   //------------------------------------------------------------------------------------------------
   // Access functions.
@@ -318,19 +338,29 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     return pg_client_;
   }
 
-  bool ShouldUseFollowerReads() const;
-
   Status SetActiveSubTransaction(SubTransactionId id);
   Status RollbackToSubTransaction(SubTransactionId id);
 
   void ResetHasWriteOperationsInDdlMode();
   bool HasWriteOperationsInDdlMode() const;
 
+  void SetDdlHasSyscatalogChanges();
+
   Result<bool> CheckIfPitrActive();
 
-  void GetAndResetOperationFlushRpcStats(uint64_t* count, uint64_t* wait_time);
+  Result<boost::container::small_vector<RefCntSlice, 2>> GetTableKeyRanges(
+      const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
+
+  PgDocMetrics& metrics() { return metrics_; }
+
+  // Check whether the specified table has a CDC stream.
+  Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
+
+  Result<yb::tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
 
  private:
+  Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);
   Result<PerformFuture> FlushOperations(BufferableOperations ops, bool transactional);
 
   class RunHelper;
@@ -338,20 +368,16 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   struct PerformOptions {
     UseCatalogSession use_catalog_session = UseCatalogSession::kFalse;
     EnsureReadTimeIsSet ensure_read_time_is_set = EnsureReadTimeIsSet::kFalse;
-    std::string cache_key = std::string();
+    std::optional<CacheOptions> cache_options = std::nullopt;
+    HybridTime in_txn_limit = {};
   };
 
   Result<PerformFuture> Perform(BufferableOperations&& ops, PerformOptions&& options);
 
-  void ProcessPerformOnTxnSerialNo(
-      uint64_t txn_serial_no,
-      EnsureReadTimeIsSet force_set_read_time_for_current_txn_serial_no,
-      tserver::PgPerformOptionsPB* options);
-
   template<class Generator>
   Result<PerformFuture> DoRunAsync(
-      const Generator& generator, uint64_t* in_txn_limit,
-      ForceNonBufferable force_non_bufferable, std::string&& cache_key);
+      const Generator& generator, HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable,
+      std::optional<CacheOptions>&& cache_options = std::nullopt);
 
   struct TxnSerialNoPerformInfo {
     TxnSerialNoPerformInfo() : TxnSerialNoPerformInfo(0, ReadHybridTime()) {}
@@ -372,8 +398,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // A transaction manager allowing to begin/abort/commit transactions.
   scoped_refptr<PgTxnManager> pg_txn_manager_;
 
-  const scoped_refptr<server::HybridClock> clock_;
-
   ReadHybridTime catalog_read_time_;
 
   // Execution status.
@@ -387,6 +411,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   TableYbctidSet fk_reference_intent_;
   std::unordered_set<PgOid> fk_intent_region_local_tables_;
 
+  PgDocMetrics metrics_;
+
   // Should write operations be buffered?
   bool buffering_enabled_ = false;
   BufferingSettings buffering_settings_;
@@ -394,8 +420,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   const YBCPgCallbacks& pg_callbacks_;
   bool has_write_ops_in_ddl_mode_ = false;
-  std::variant<TxnSerialNoPerformInfo> last_perform_on_txn_serial_no_;
 };
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

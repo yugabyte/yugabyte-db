@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import './stylesheets/StepProgressBar.scss';
 
 export default class StepProgressBar extends Component {
@@ -16,7 +16,7 @@ export default class StepProgressBar extends Component {
     });
   };
 
-  normalizeTasks = (taskDetails , taskStatus) => {
+  normalizeTasks = (taskDetails, taskStatus) => {
     const taskDetailsNormalized = [
       ...taskDetails,
       {
@@ -35,7 +35,7 @@ export default class StepProgressBar extends Component {
       }
     } else if (taskStatus === 'Success') {
       taskDetailsNormalized.forEachclass = 'finished';
-      taskDetailsNormalized[taskDetailsNormalized.length -1]['state'] = taskStatus;
+      taskDetailsNormalized[taskDetailsNormalized.length - 1]['state'] = taskStatus;
     }
     return taskDetailsNormalized;
   };
@@ -68,20 +68,24 @@ export default class StepProgressBar extends Component {
       );
     });
     const progressbarClass =
-        (status === 'Failure' || status === 'Aborted')
-          ? 'failed'
-          : (status === 'Created' || status === 'Abort' || status === 'Running')
-            ? 'running'
-            : 'finished';
+      status === 'Failure' || status === 'Aborted'
+        ? 'failed'
+        : status === 'Created' || status === 'Abort' || status === 'Running'
+        ? 'running'
+        : 'finished';
     const barWidth =
-        tasksTotal === 0
-          ? ((status !== 'Success')? '0%' : '100%')
-          : (100 * (taskIndex + (this.isFailedIndex(taskDetailsNormalized) > -1 ? 0 : 0.5))) /
-            tasksTotal + '%';
+      tasksTotal === 0
+        ? status !== 'Success'
+          ? '0%'
+          : '100%'
+        : (100 * (taskIndex + (this.isFailedIndex(taskDetailsNormalized) > -1 ? 0 : 0.5))) /
+            tasksTotal +
+          '%';
 
     const listLabels = taskDetailsNormalized.map(function (item, idx) {
       taskClassName = getTaskClass(item.state);
       return (
+        // eslint-disable-next-line react/no-array-index-key
         <li key={idx} className={taskClassName + ' ' + item.class}>
           <span>{item.title}</span>
         </li>

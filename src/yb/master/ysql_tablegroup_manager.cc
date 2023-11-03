@@ -14,7 +14,9 @@
 
 #include "yb/master/ysql_tablegroup_manager.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
+
+#include "yb/common/colocated_util.h"
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_defaults.h"

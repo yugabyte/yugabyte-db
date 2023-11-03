@@ -112,6 +112,7 @@ Citrix
 Citus
 clonable
 Cloudwatch
+CMake
 Cobertura
 Codepen
 Cognito
@@ -139,6 +140,8 @@ crosslinks
 Crossplane
 CrowdIn
 CSV
+Cutover
+cutover
 cybersecurity
 Dangerfile
 Datadog
@@ -277,6 +280,7 @@ Heroku
 Herokuish
 Hexo
 HipChat
+HLCs
 hostname
 hostnames
 hotfix
@@ -824,6 +828,7 @@ unverify
 unverifying
 uploader
 uploaders
+upsert
 upstreams
 upvote
 upvoted

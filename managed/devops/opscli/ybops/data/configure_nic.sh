@@ -5,6 +5,7 @@ rtb_id=250 # Just free route table ID
 rtb_name="secondary" # This is customer side of the routing table
 mgmt_rtb_id=251
 mgmt_rtb_name="mgmt" # This is management side of the routing table
+tmp_dir="/tmp"
 
 # AWS - Primary - ens5 :: Secondary interface can be - eth0 eth1 ens6
 # GCP - Primary - eth0 or ens5 :: Secondary can be - eth1 ens6
@@ -72,7 +73,7 @@ configure_nics() {
   cat - >/etc/dhcp/dhclient-up-hooks <<EOF
 #!/usr/bin/env bash
 set -x
-log_file="/tmp/dhclient-script-up-hook-\${interface}-\$(date)-\$(uuidgen)"
+log_file="${tmp_dir}/dhclient-script-up-hook-\${interface}-\$(date)-\$(uuidgen)"
 log(){
  echo "\$*" >> "\${log_file}"
 }
@@ -187,6 +188,10 @@ while [[ $# -gt 0 ]]; do
         ;;
         --subnet_netmask)
             secondary_netmask="$2"
+            shift
+        ;;
+        --tmp_dir)
+            tmp_dir="$2"
             shift
         ;;
         -h | --help)

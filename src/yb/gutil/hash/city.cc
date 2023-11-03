@@ -34,15 +34,11 @@
 
 #include <sys/types.h>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/endian.h"
 #include "yb/gutil/hash/hash128to64.h"
 
-using std::copy;
-using std::max;
-using std::min;
-using std::swap;
 using std::make_pair;
 using std::pair;
 

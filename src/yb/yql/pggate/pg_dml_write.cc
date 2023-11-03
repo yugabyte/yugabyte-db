@@ -26,10 +26,10 @@ namespace pggate {
 
 PgDmlWrite::PgDmlWrite(PgSession::ScopedRefPtr pg_session,
                        const PgObjectId& table_id,
-                       bool is_single_row_txn,
-                       bool is_region_local)
+                       bool is_region_local,
+                       YBCPgTransactionSetting transaction_setting)
     : PgDml(std::move(pg_session), table_id, is_region_local),
-      is_single_row_txn_(is_single_row_txn) {
+      transaction_setting_(transaction_setting) {
 }
 
 PgDmlWrite::~PgDmlWrite() {
@@ -60,9 +60,10 @@ Status PgDmlWrite::DeleteEmptyPrimaryBinds() {
   // Either ybctid or primary key must be present.
   if (!ybctid_bind_) {
     // Remove empty binds from partition list.
+    size_t idx = 0;
     auto partition_iter = write_req_->mutable_partition_column_values()->begin();
     while (partition_iter != write_req_->mutable_partition_column_values()->end()) {
-      if (expr_binds_.find(&*partition_iter) == expr_binds_.end()) {
+      if (!bind_.ColumnForIndex(idx++).ValueBound()) {
         missing_primary_key = true;
         partition_iter = write_req_->mutable_partition_column_values()->erase(partition_iter);
       } else {
@@ -73,7 +74,7 @@ Status PgDmlWrite::DeleteEmptyPrimaryBinds() {
     // Remove empty binds from range list.
     auto range_iter = write_req_->mutable_range_column_values()->begin();
     while (range_iter != write_req_->mutable_range_column_values()->end()) {
-      if (expr_binds_.find(&*range_iter) == expr_binds_.end()) {
+      if (!bind_.ColumnForIndex(idx++).ValueBound()) {
         missing_primary_key = true;
         range_iter = write_req_->mutable_range_column_values()->erase(range_iter);
       } else {
@@ -102,7 +103,6 @@ Status PgDmlWrite::Exec(ForceNonBufferable force_non_bufferable) {
   RETURN_NOT_OK(DeleteEmptyPrimaryBinds());
 
   // First update protobuf with new bind values.
-  RETURN_NOT_OK(UpdateBindPBs());
   RETURN_NOT_OK(UpdateAssignPBs());
 
   if (write_req_->has_ybctid_column_value()) {
@@ -121,7 +121,9 @@ Status PgDmlWrite::Exec(ForceNonBufferable force_non_bufferable) {
 
   // Execute the statement. If the request has been sent, get the result and handle any rows
   // returned.
-  if (VERIFY_RESULT(doc_op_->Execute(force_non_bufferable)) == RequestSent::kTrue) {
+  if (VERIFY_RESULT(doc_op_->Execute(ForceNonBufferable(
+          force_non_bufferable.get() ||
+          (transaction_setting_ == YB_SINGLE_SHARD_TRANSACTION)))) == RequestSent::kTrue) {
     rowsets_.splice(rowsets_.end(), VERIFY_RESULT(doc_op_->GetResult()));
 
     // Save the number of rows affected by the op.
@@ -138,8 +140,11 @@ Status PgDmlWrite::SetWriteTime(const HybridTime& write_time) {
 }
 
 void PgDmlWrite::AllocWriteRequest() {
-  auto write_op = ArenaMakeShared<PgsqlWriteOp>(arena_ptr(), &arena(), !is_single_row_txn_,
-                                                is_region_local_);
+  auto write_op = ArenaMakeShared<PgsqlWriteOp>(
+      arena_ptr(), &arena(),
+      /* need_transaction */
+      (transaction_setting_ == YBCPgTransactionSetting::YB_TRANSACTIONAL),
+      is_region_local_);
 
   write_req_ = std::shared_ptr<LWPgsqlWriteRequestPB>(write_op, &write_op->write_request());
   write_req_->set_stmt_type(stmt_type());
@@ -151,8 +156,8 @@ void PgDmlWrite::AllocWriteRequest() {
   doc_op_ = std::make_shared<PgDocWriteOp>(pg_session_, &target_, std::move(write_op));
 }
 
-LWPgsqlExpressionPB *PgDmlWrite::AllocColumnBindPB(PgColumn *col) {
-  return col->AllocBindPB(write_req_.get());
+Result<LWPgsqlExpressionPB*> PgDmlWrite::AllocColumnBindPB(PgColumn* col, PgExpr* expr) {
+  return col->AllocBindPB(write_req_.get(), expr);
 }
 
 LWPgsqlExpressionPB *PgDmlWrite::AllocColumnAssignPB(PgColumn *col) {

@@ -37,7 +37,7 @@ import com.google.common.primitives.Shorts;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
 
-import static org.yb.Value.DataType;
+import static org.yb.Value.PersistentDataType;
 
 /**
  * Describes all the types available to build table schemas.
@@ -46,31 +46,35 @@ import static org.yb.Value.DataType;
 @InterfaceStability.Evolving
 public enum Type {
 
-  INT8 (DataType.INT8, "int8"),
-  INT16 (DataType.INT16, "int16"),
-  INT32 (DataType.INT32, "int32"),
-  INT64 (DataType.INT64, "int64"),
-  STRING (DataType.STRING, "string"),
-  BOOL (DataType.BOOL, "bool"),
-  FLOAT (DataType.FLOAT, "float"),
-  DOUBLE (DataType.DOUBLE, "double"),
-  BINARY (DataType.BINARY, "binary"),
-  TIMESTAMP (DataType.TIMESTAMP, "timestamp"),
-  DECIMAL (DataType.DECIMAL, "decimal"),
-  VARINT (DataType.VARINT, "varint"),
-  INET (DataType.INET, "inet"),
-  LIST (DataType.LIST, "list"),
-  MAP (DataType.MAP, "map"),
-  SET (DataType.SET, "set"),
-  UUID (DataType.UUID, "uuid"),
-  TIMEUUID (DataType.TIMEUUID, "timeuuid"),
-  FROZEN (DataType.FROZEN, "frozen"),
-  DATE (DataType.DATE, "date"),
-  TIME (DataType.TIME, "time"),
-  JSONB (DataType.JSONB, "jsonb"),
-  USER_DEFINED_TYPE (DataType.USER_DEFINED_TYPE, "user_defined_type");
+  INT8 (PersistentDataType.INT8, "int8"),
+  INT16 (PersistentDataType.INT16, "int16"),
+  INT32 (PersistentDataType.INT32, "int32"),
+  INT64 (PersistentDataType.INT64, "int64"),
+  STRING (PersistentDataType.STRING, "string"),
+  BOOL (PersistentDataType.BOOL, "bool"),
+  FLOAT (PersistentDataType.FLOAT, "float"),
+  DOUBLE (PersistentDataType.DOUBLE, "double"),
+  BINARY (PersistentDataType.BINARY, "binary"),
+  TIMESTAMP (PersistentDataType.TIMESTAMP, "timestamp"),
+  DECIMAL (PersistentDataType.DECIMAL, "decimal"),
+  VARINT (PersistentDataType.VARINT, "varint"),
+  INET (PersistentDataType.INET, "inet"),
+  LIST (PersistentDataType.LIST, "list"),
+  MAP (PersistentDataType.MAP, "map"),
+  SET (PersistentDataType.SET, "set"),
+  UUID (PersistentDataType.UUID, "uuid"),
+  TIMEUUID (PersistentDataType.TIMEUUID, "timeuuid"),
+  FROZEN (PersistentDataType.FROZEN, "frozen"),
+  DATE (PersistentDataType.DATE, "date"),
+  TIME (PersistentDataType.TIME, "time"),
+  JSONB (PersistentDataType.JSONB, "jsonb"),
+  USER_DEFINED_TYPE (PersistentDataType.USER_DEFINED_TYPE, "user_defined_type"),
+  NULL_VALUE_TYPE (PersistentDataType.NULL_VALUE_TYPE, "null_value_type"),
+  GIN_NULL (PersistentDataType.GIN_NULL, "gin_null"),
+  TYPEARGS (PersistentDataType.TYPEARGS, "typeargs"),
+  TUPLE (PersistentDataType.TUPLE, "tuple");
 
-  private final DataType dataType;
+  private final PersistentDataType dataType;
   private final String name;
   private final int size;
 
@@ -79,7 +83,7 @@ public enum Type {
    * @param dataType DataType from the common's pb
    * @param name string representation of the type
    */
-  private Type(DataType dataType, String name) {
+  private Type(PersistentDataType dataType, String name) {
     this.dataType = dataType;
     this.name = name;
     this.size = getTypeSize(this.dataType);
@@ -89,7 +93,7 @@ public enum Type {
    * Get the data type from the common's pb
    * @return A DataType
    */
-  public DataType getDataType() {
+  public PersistentDataType getDataType() {
     return this.dataType;
   }
 
@@ -119,7 +123,7 @@ public enum Type {
    * @param type pb type
    * @return size in bytes
    */
-  static int getTypeSize(DataType type) {
+  static int getTypeSize(PersistentDataType type) {
     switch (type) {
       case DECIMAL:
       case VARINT:
@@ -134,17 +138,22 @@ public enum Type {
       case JSONB:
       // TODO(mihnea) handle the cases above properly after cleaning up inherited code
       case STRING:
-      case BINARY: return 8 + 8; // offset then string length
+      case BINARY:
+      case TYPEARGS:
+      case TUPLE:
+        return 8 + 8; // offset then string length
       case BOOL:
       case INT8: return 1;
       case INT16: return Shorts.BYTES;
       case INT32:
       case FLOAT:
-      case DATE: return Ints.BYTES;
+      case DATE:
+      case GIN_NULL: return Ints.BYTES;
       case INT64:
       case DOUBLE:
       case TIMESTAMP:
       case TIME: return Longs.BYTES;
+      case NULL_VALUE_TYPE: return 0;
       default: throw new IllegalArgumentException("The provided data type doesn't map" +
           " to know any known one.");
     }
@@ -155,12 +164,15 @@ public enum Type {
    * @param type DataType to convert
    * @return a matching Type
    */
-  public static Type getTypeForDataType(DataType type) {
+  public static Type getTypeForDataType(PersistentDataType type) {
     switch (type) {
-      case INT8: return INT8;
-      case INT16: return INT16;
-      case INT32: return INT32;
-      case INT64: return INT64;
+      case INT8:
+      case UINT8: return INT8;
+      case INT16:
+      case UINT16: return INT16;
+      case INT32:
+      case UINT32: return INT32;
+      case INT64:
       case UINT64: return INT64;
       case STRING: return STRING;
       case BOOL: return BOOL;
@@ -181,6 +193,10 @@ public enum Type {
       case DATE: return DATE;
       case TIME: return TIME;
       case JSONB: return JSONB;
+      case NULL_VALUE_TYPE: return NULL_VALUE_TYPE;
+      case GIN_NULL: return GIN_NULL;
+      case TYPEARGS: return TYPEARGS;
+      case TUPLE: return TUPLE;
 
       default:
         throw new IllegalArgumentException("The provided data type doesn't map" +

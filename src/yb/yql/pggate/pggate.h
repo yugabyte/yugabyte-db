@@ -13,9 +13,9 @@
 
 #pragma once
 
-#include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -23,6 +23,9 @@
 
 #include "yb/common/pg_types.h"
 #include "yb/common/transaction.h"
+
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/doc_key.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"
@@ -35,22 +38,25 @@
 #include "yb/tserver/tserver_util_fwd.h"
 
 #include "yb/util/mem_tracker.h"
+#include "yb/util/memory/arena.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/uuid.h"
 
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_expr.h"
+#include "yb/yql/pggate/pg_function.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_statement.h"
+#include "yb/yql/pggate/pg_sys_table_prefetcher.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
 namespace pggate {
-class PgSysTablePrefetcher;
 class PgSession;
 
 struct PgMemctxComparator {
@@ -126,7 +132,9 @@ class PgApiImpl {
 
   // Initialize a session to process statements that come from the same client connection.
   // If database_name is empty, a session is created without connecting to any database.
-  Status InitSession(const std::string& database_name);
+  Status InitSession(const std::string& database_name, YBCPgExecStatsState* session_stats);
+
+  uint64_t GetSessionID() const;
 
   PgMemctx *CreateMemctx();
   Status DestroyMemctx(PgMemctx *memctx);
@@ -135,6 +143,10 @@ class PgApiImpl {
   // Cache statements in YB Memctx. When Memctx is destroyed, the statement is destructed.
   Status AddToCurrentPgMemctx(std::unique_ptr<PgStatement> stmt,
                               PgStatement **handle);
+
+  // Cache function calls in YB Memctx. When Memctx is destroyed, the function is destructed.
+  Status AddToCurrentPgMemctx(std::unique_ptr<PgFunction> func, PgFunction **handle);
+
   // Cache table descriptor in YB Memctx. When Memctx is destroyed, the descriptor is destructed.
   Status AddToCurrentPgMemctx(size_t table_desc_id,
                               const PgTableDescPtr &table_desc);
@@ -152,6 +164,11 @@ class PgApiImpl {
   Result<uint64_t> GetSharedCatalogVersion(std::optional<PgOid> db_oid = std::nullopt);
   Result<uint32_t> GetNumberOfDatabases();
   uint64_t GetSharedAuthKey() const;
+
+  Status NewTupleExpr(
+    YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,
+    const YBCPgTypeAttrs *type_attrs, int num_elems,
+    const YBCPgExpr *elems, YBCPgExpr *expr_handle);
 
   // Setup the table to store sequences data.
   Status CreateSequencesDataTable();
@@ -181,14 +198,24 @@ class PgApiImpl {
                              bool is_called,
                              bool* skipped);
 
+  Status FetchSequenceTuple(int64_t db_oid,
+                            int64_t seq_oid,
+                            uint64_t ysql_catalog_version,
+                            bool is_db_catalog_version_mode,
+                            uint32_t fetch_count,
+                            int64_t inc_by,
+                            int64_t min_value,
+                            int64_t max_value,
+                            bool cycle,
+                            int64_t *first_value,
+                            int64_t *last_value);
+
   Status ReadSequenceTuple(int64_t db_oid,
                            int64_t seq_oid,
                            uint64_t ysql_catalog_version,
                            bool is_db_catalog_version_mode,
                            int64_t *last_val,
                            bool *is_called);
-
-  Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
 
   void DeleteStatement(PgStatement *handle);
 
@@ -232,7 +259,12 @@ class PgApiImpl {
                      PgOid *begin_oid,
                      PgOid *end_oid);
 
+  // Allocate a new object id from the oid allocator of database db_oid.
+  Status GetNewObjectId(PgOid db_oid, PgOid *new_oid);
+
   Status GetCatalogMasterVersion(uint64_t *version);
+
+  Status CancelTransaction(const unsigned char* transaction_id);
 
   // Load table.
   Result<PgTableDescPtr> LoadTable(const PgObjectId& table_id);
@@ -288,7 +320,8 @@ class PgApiImpl {
                        PgStatement **handle);
 
   Status AlterTableAddColumn(PgStatement *handle, const char *name,
-                             int order, const YBCPgTypeEntity *attr_type);
+                             int order, const YBCPgTypeEntity *attr_type,
+                             YBCPgExpr missing_value);
 
   Status AlterTableRenameColumn(PgStatement *handle, const char *oldname,
                                 const char *newname);
@@ -299,6 +332,8 @@ class PgApiImpl {
                                const char *newname);
 
   Status AlterTableIncrementSchemaVersion(PgStatement *handle);
+
+  Status AlterTableSetTableId(PgStatement* handle, const PgObjectId& table_id);
 
   Status ExecAlterTable(PgStatement *handle);
 
@@ -337,6 +372,7 @@ class PgApiImpl {
                         bool is_unique_index,
                         const bool skip_index_backfill,
                         bool if_not_exist,
+                        bool is_colocated_via_database,
                         const PgObjectId& tablegroup_oid,
                         const YBCPgOid& colocation_id,
                         const PgObjectId& tablespace_oid,
@@ -361,15 +397,30 @@ class PgApiImpl {
 
   Status ExecDropTable(PgStatement *handle);
 
+  Status ExecDropIndex(PgStatement *handle);
+
+  Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version);
+
   Status BackfillIndex(const PgObjectId& table_id);
+
+  Status NewDropSequence(const YBCPgOid database_oid,
+                         const YBCPgOid sequence_oid,
+                         PgStatement **handle);
+
+  Status ExecDropSequence(PgStatement *handle);
+
+  Status NewDropDBSequences(const YBCPgOid database_oid,
+                            PgStatement **handle);
 
   //------------------------------------------------------------------------------------------------
   // All DML statements
   Status DmlAppendTarget(PgStatement *handle, PgExpr *expr);
 
+  Result<bool> DmlHasSystemTargets(PgStatement *handle);
+
   Status DmlAppendQual(PgStatement *handle, PgExpr *expr, bool is_primary);
 
-  Status DmlAppendColumnRef(PgStatement *handle, PgExpr *colref, bool is_primary);
+  Status DmlAppendColumnRef(PgStatement *handle, PgColumnRef *colref, bool is_primary);
 
   // Binding Columns: Bind column with a value (expression) in a statement.
   // + This API is used to identify the rows you want to operate on. If binding columns are not
@@ -396,9 +447,10 @@ class PgApiImpl {
                                   PgExpr *attr_value_end,
                                   bool end_inclusive);
   Status DmlBindColumnCondIn(YBCPgStatement handle,
-                             int attr_num,
+                             YBCPgExpr lhs,
                              int n_attr_values,
-                             YBCPgExpr *attr_value);
+                             YBCPgExpr *attr_values);
+  Status DmlBindColumnCondIsNotNull(PgStatement *handle, int attr_num);
 
   Status DmlBindHashCode(
       PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);
@@ -434,9 +486,7 @@ class PgApiImpl {
   Status DmlAddYBTupleIdColumn(PgStatement *handle, int attr_num, uint64_t datum,
                                bool is_null, const YBCPgTypeEntity *type_entity);
 
-  using YBTupleIdProcessor = std::function<Status(const Slice&)>;
-  Status ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
-                          const YBTupleIdProcessor& processor);
+  Result<dockv::KeyBytes> BuildTupleId(const YBCPgYBTupleIdDescriptor& descr);
 
   // DB Operations: SET, WHERE, ORDER_BY, GROUP_BY, etc.
   // + The following operations are run by DocDB.
@@ -453,14 +503,14 @@ class PgApiImpl {
   Status StopOperationsBuffering();
   void ResetOperationsBuffering();
   Status FlushBufferedOperations();
-  void GetAndResetOperationFlushRpcStats(uint64_t* count, uint64_t* wait_time);
 
   //------------------------------------------------------------------------------------------------
   // Insert.
   Status NewInsert(const PgObjectId& table_id,
-                   bool is_single_row_txn,
                    bool is_region_local,
-                   PgStatement **handle);
+                   PgStatement **handle,
+                   YBCPgTransactionSetting transaction_setting =
+                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecInsert(PgStatement *handle);
 
@@ -473,18 +523,20 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // Update.
   Status NewUpdate(const PgObjectId& table_id,
-                   bool is_single_row_txn,
                    bool is_region_local,
-                   PgStatement **handle);
+                   PgStatement **handle,
+                   YBCPgTransactionSetting transaction_setting =
+                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecUpdate(PgStatement *handle);
 
   //------------------------------------------------------------------------------------------------
   // Delete.
   Status NewDelete(const PgObjectId& table_id,
-                   bool is_single_row_txn,
                    bool is_region_local,
-                   PgStatement **handle);
+                   PgStatement **handle,
+                   YBCPgTransactionSetting transaction_setting =
+                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecDelete(PgStatement *handle);
 
@@ -493,9 +545,10 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // Colocated Truncate.
   Status NewTruncateColocated(const PgObjectId& table_id,
-                              bool is_single_row_txn,
                               bool is_region_local,
-                              PgStatement **handle);
+                              PgStatement **handle,
+                              YBCPgTransactionSetting transaction_setting =
+                                  YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecTruncateColocated(PgStatement *handle);
 
@@ -509,7 +562,28 @@ class PgApiImpl {
 
   Status SetForwardScan(PgStatement *handle, bool is_forward_scan);
 
+  Status SetDistinctPrefixLength(PgStatement *handle, int distinct_prefix_length);
+
   Status ExecSelect(PgStatement *handle, const PgExecParameters *exec_params);
+
+  //------------------------------------------------------------------------------------------------
+  // Functions.
+
+  Status NewSRF(PgFunction **handle, PgFunctionDataProcessor processor);
+
+  Status AddFunctionParam(
+      PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity,
+      uint64_t datum, bool is_null);
+
+  Status AddFunctionTarget(
+      PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity,
+      const YBCPgTypeAttrs type_attrs);
+
+  Status FinalizeFunctionTargets(PgFunction *handle);
+
+  Status SRFGetNext(PgFunction *handle, uint64_t *values, bool *is_nulls, bool *has_data);
+
+  Status NewGetLockStatusDataSRF(PgFunction **handle);
 
   //------------------------------------------------------------------------------------------------
   // Analyze.
@@ -528,25 +602,29 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Transaction control.
-  Status BeginTransaction();
+  Status BeginTransaction(int64_t start_time);
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
   Status RestartReadPoint();
+  bool IsRestartReadPointRequested();
   Status CommitTransaction();
   Status AbortTransaction();
   Status SetTransactionIsolationLevel(int isolation);
   Status SetTransactionReadOnly(bool read_only);
   Status SetTransactionDeferrable(bool deferrable);
+  Status SetEnableTracing(bool tracing);
   Status EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
   Status EnterSeparateDdlTxnMode();
   bool HasWriteOperationsInDdlTxnMode() const;
   Status ExitSeparateDdlTxnMode();
-  void ClearSeparateDdlTxnMode();
+  Status ClearSeparateDdlTxnMode();
   Status SetActiveSubTransaction(SubTransactionId id);
   Status RollbackToSubTransaction(SubTransactionId id);
   double GetTransactionPriority() const;
   TxnPriorityRequirement GetTransactionPriorityType() const;
+  Result<Uuid> GetActiveTransaction() const;
+  Status GetActiveTransactions(YBCPgSessionTxnInfo* infos, size_t num_infos);
 
   //------------------------------------------------------------------------------------------------
   // Expressions.
@@ -596,15 +674,19 @@ class PgApiImpl {
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
+  Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
+      const std::string &table_id, const std::string &transaction_id);
   Result<client::TabletServersInfo> ListTabletServers();
 
-  void StartSysTablePrefetching(uint64_t latest_known_ysql_catalog_version);
-  void StopSysTablePrefetching();
-  void RegisterSysTableForPrefetching(const PgObjectId& table_id, const PgObjectId& index_id);
+  Status GetIndexBackfillProgress(std::vector<PgObjectId> oids,
+                                  uint64_t** backfill_statuses);
 
-  // RPC stats for EXPLAIN ANALYZE
-  void GetAndResetReadRpcStats(PgStatement *handle, uint64_t* reads, uint64_t* read_wait,
-                               uint64_t* tbl_reads, uint64_t* tbl_read_wait);
+  void StartSysTablePrefetching(const PrefetcherOptions& options);
+  void StopSysTablePrefetching();
+  bool IsSysTablePrefetchingStarted() const;
+  void RegisterSysTableForPrefetching(
+      const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr);
+  Status PrefetchRegisteredSysTables();
 
   //------------------------------------------------------------------------------------------------
   // System Validation.
@@ -612,10 +694,49 @@ class PgApiImpl {
 
   Result<bool> CheckIfPitrActive();
 
+  Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
+
+  Result<boost::container::small_vector<RefCntSlice, 2>> GetTableKeyRanges(
+      const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
+
   MemTracker &GetMemTracker() { return *mem_tracker_; }
+
+  MemTracker &GetRootMemTracker() { return *MemTracker::GetRootTracker(); }
+
+  // Using this function instead of GetRootMemTracker allows us to avoid copying a shared_pointer
+  int64_t GetRootMemTrackerConsumption() { return MemTracker::GetRootTrackerConsumption(); }
+
+  //------------------------------------------------------------------------------------------------
+  // Replication Slots Functions.
+
+  // Create Replication Slot.
+  Status NewCreateReplicationSlot(const char *slot_name,
+                                  const PgOid database_oid,
+                                  PgStatement **handle);
+  Status ExecCreateReplicationSlot(PgStatement *handle);
+
+  Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
+
+  // Drop Replication Slot.
+  Status NewDropReplicationSlot(const char *slot_name,
+                                PgStatement **handle);
+  Status ExecDropReplicationSlot(PgStatement *handle);
 
  private:
   class Interrupter;
+
+  class TupleIdBuilder {
+   public:
+    Result<dockv::KeyBytes> Build(PgSession* session, const YBCPgYBTupleIdDescriptor& descr);
+
+   private:
+    void Prepare();
+
+    ThreadSafeArena arena_;
+    dockv::DocKey doc_key_;
+    size_t counter_ = 0;
+  };
 
   // Metrics.
   std::unique_ptr<MetricRegistry> metric_registry_;
@@ -645,11 +766,12 @@ class PgApiImpl {
   std::unordered_map<int, const YBCPgTypeEntity *> type_map_;
 
   scoped_refptr<PgSession> pg_session_;
-  std::unique_ptr<PgSysTablePrefetcher> pg_sys_table_prefetcher_;
+  std::optional<PgSysTablePrefetcher> pg_sys_table_prefetcher_;
   std::unordered_set<std::unique_ptr<PgMemctx>, PgMemctxHasher, PgMemctxComparator> mem_contexts_;
   std::optional<std::pair<PgOid, int32_t>> catalog_version_db_index_;
   // Used as a snapshot of the tserver catalog version map prior to MyDatabaseId is resolved.
   std::unique_ptr<tserver::PgGetTserverCatalogVersionInfoResponsePB> catalog_version_info_;
+  TupleIdBuilder tuple_id_builder_;
 };
 
 }  // namespace pggate

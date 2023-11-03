@@ -7,8 +7,8 @@ export GO111MODULE=on
 
 readonly protoc_version=21.5
 readonly package_name='node-agent'
-readonly default_platforms=("darwin/amd64" "linux/amd64" "linux/arm64")
-readonly skip_dirs=("third-party" "proto" "generated" "build", "resources")
+readonly default_platforms=("linux/amd64" "linux/arm64")
+readonly skip_dirs=("third-party" "proto" "generated" "build" "resources" "ybops" "target")
 
 readonly base_dir=$(dirname "$0")
 pushd "$base_dir"
@@ -18,21 +18,21 @@ popd
 export GOPATH=$project_dir/third-party
 export GOBIN=$GOPATH/bin
 export PATH=$GOBIN:$PATH
-mkdir -p $GOBIN
+mkdir -p "$GOBIN"
 
 readonly build_output_dir="${project_dir}/build"
 if [[ ! -d $build_output_dir ]]; then
-    mkdir $build_output_dir
+    mkdir "$build_output_dir"
 fi
 readonly grpc_output_dir="${project_dir}/generated"
 # Python does not support package option for protobuf.
 readonly grpc_python_output_dir="${grpc_output_dir}/ybops/node_agent"
-readonly grpc_proto_dir=${project_dir}/proto
-readonly grpc_proto_files="${grpc_proto_dir}/*.proto"
+readonly grpc_proto_dir="${project_dir}/proto"
+readonly grpc_proto_files="${grpc_proto_dir}"/*.proto
 
 to_lower() {
-  out=`awk '{print tolower($0)}' <<< "$1"`
-  echo $out
+  out=$(awk '{print tolower($0)}' <<< "$1")
+  echo "$out"
 }
 
 readonly build_os=$(to_lower "$(uname -s)")
@@ -40,24 +40,26 @@ readonly build_arch=$(to_lower "$(uname -m)")
 
 
 setup_protoc() {
-    if [ ! -f $GOBIN/protoc ]; then
+    if [ ! -f "$GOBIN"/protoc ]; then
+        pushd "$project_dir"
         go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28
         go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2
         local release_url=https://github.com/protocolbuffers/protobuf/releases
         local protoc_os=$build_os
-        if [ $protoc_os == "darwin" ]; then
+        if [ "$protoc_os" = "darwin" ]; then
             protoc_os=osx
         fi
         local protoc_arch=$build_arch
-        if [ $protoc_arch == "arm64" ]; then
+        if [ "$protoc_arch" = "arm64" ]; then
             protoc_arch=aarch_64
         fi
+        popd
         local protoc_filename=protoc-${protoc_version}-${protoc_os}-${protoc_arch}.zip
-        pushd $GOPATH
-        curl -fsSLO ${release_url}/download/v${protoc_version}/${protoc_filename}
-        unzip -o $protoc_filename -d tmp
-        cp -rf tmp/bin/protoc $GOBIN/protoc
-        rm -rf tmp $protoc_filename
+        pushd "$GOPATH"
+        curl -fsSLO ${release_url}/download/v"${protoc_version}"/"${protoc_filename}"
+        unzip -o "$protoc_filename" -d tmp
+        cp -rf tmp/bin/protoc "$GOBIN"/protoc
+        rm -rf tmp "$protoc_filename"
         popd
     fi
     which protoc
@@ -69,29 +71,29 @@ setup_protoc() {
 }
 
 generate_golang_grpc_files() {
-    if [[ ! -d $grpc_output_dir ]]; then
-        mkdir -p $grpc_output_dir
+    if [[ ! -d "$grpc_output_dir" ]]; then
+        mkdir -p "$grpc_output_dir"
     fi
-    protoc -I$grpc_proto_dir --go_out=$grpc_output_dir --go-grpc_out=$grpc_output_dir  \
+    protoc -I"$grpc_proto_dir" --go_out="$grpc_output_dir" --go-grpc_out="$grpc_output_dir"  \
     --go-grpc_opt=require_unimplemented_servers=false $grpc_proto_files
 }
 
 build_pymodule() {
-    if [[ ! -d $grpc_python_output_dir ]]; then
-        mkdir -p $grpc_python_output_dir
+    if [[ ! -d "$grpc_python_output_dir" ]]; then
+        mkdir -p "$grpc_python_output_dir"
     fi
-    pushd $grpc_output_dir
-    python3 -m grpc_tools.protoc -I$grpc_proto_dir --python_out=$grpc_python_output_dir \
-    --grpc_python_out=$grpc_python_output_dir $grpc_proto_files
+    pushd "$grpc_output_dir"
+    python3 -m grpc_tools.protoc -I"$grpc_proto_dir" --python_out="$grpc_python_output_dir" \
+    --grpc_python_out="$grpc_python_output_dir" $grpc_proto_files
     # Python does not support custom package. Workaround to change the package name.
-    if [ $build_os == "darwin" ]; then
+    if [ "$build_os" = "darwin" ]; then
         sed -i "" -e 's/^import \(server_pb2.*\) as/from ybops.node_agent import \1 as/' \
-        $grpc_python_output_dir/*.py
+        "$grpc_python_output_dir"/*.py
     else
         sed -i -e 's/^import \(server_pb2.*\) as/from ybops.node_agent import \1 as/' \
-        $grpc_python_output_dir/*.py
+        "$grpc_python_output_dir"/*.py
     fi
-    cp -rf ../ybops $grpc_output_dir/
+    cp -rf ../ybops "$grpc_output_dir"/
     popd
 }
 
@@ -99,7 +101,7 @@ get_executable_name() {
     local os=$1
     local arch=$2
     executable=${package_name}-${os}-${arch}
-    if [ $os == "windows" ]; then
+    if [ "$os" = "windows" ]; then
         executable+='.exe'
     fi
     echo "$executable"
@@ -113,14 +115,17 @@ prepare() {
 build_for_platform() {
     local os=$1
     local arch=$2
-    exec_name=$(get_executable_name $os $arch)
+    exec_name=$(get_executable_name "$os" "$arch")
     echo "Building ${exec_name}"
     executable="$build_output_dir/$exec_name"
-    env GOOS=$os GOARCH=$arch go build -o $executable $project_dir/cmd/cli/main.go
+    pushd "$project_dir"
+    env GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
+    go build -o "$executable" "$project_dir"/cmd/cli/main.go
     if [ $? -ne 0 ]; then
         echo "Build failed for $exec_name"
         exit 1
     fi
+    popd
 }
 
 build_for_platforms() {
@@ -129,24 +134,24 @@ build_for_platforms() {
         platform_split=(${platform//\// })
         local os=${platform_split[0]}
         local arch=${platform_split[1]}
-        build_for_platform $os $arch
+        build_for_platform "$os" "$arch"
     done
 }
 
 clean_build() {
-    rm -rf $build_output_dir
-    rm -rf $grpc_output_dir
+    rm -rf "$build_output_dir"
+    rm -rf "$grpc_output_dir"
 }
 
 
 
 format() {
+    pushd "$project_dir"
     go install github.com/segmentio/golines@latest
     go install golang.org/x/tools/cmd/goimports@latest
-    pushd $project_dir
     for dir in */ ; do
         # Remove trailing slash.
-        dir=$(echo ${dir} | sed 's/\/$//')
+        dir=$(echo "${dir}" | sed 's/\/$//')
         if [[ "${skip_dirs[@]}" =~ "${dir}" ]]; then
             continue
         fi
@@ -157,17 +162,17 @@ format() {
 
 run_tests() {
     # Run all tests if one fails.
-    pushd $project_dir
+    pushd "$project_dir"
     for dir in */ ; do
         # Remove trailing slash.
-        dir=$(echo ${dir} | sed 's/\/$//')
+        dir=$(echo "${dir}" | sed 's/\/$//')
         if [[ "${skip_dirs[@]}" =~ "${dir}" ]]; then
             echo "Skipping directory ${dir}"
             continue
         fi
         echo "Running tests in ${dir}..."
         set +e
-        go test --tags testonly -v ./$dir/...
+        go clean -testcache && go test --tags testonly -v ./"$dir"/...
         set -e
     done
     popd
@@ -182,28 +187,28 @@ package_for_platform() {
     script_dir="${version_dir}/scripts"
     bin_dir="${version_dir}/bin"
     echo "Packaging ${staging_dir_name}"
-    os_exec_name=$(get_executable_name $os $arch)
+    os_exec_name=$(get_executable_name "$os" "$arch")
     exec_name="node-agent"
     if [ $os == "windows" ]; then
         exec_name+='.exe'
     fi
-    pushd $build_output_dir
+    pushd "$build_output_dir"
     echo "Creating staging directory ${staging_dir_name}"
-    rm -rf $staging_dir_name
-    mkdir $staging_dir_name
-    mkdir -p $script_dir
-    mkdir -p $bin_dir
-    cp -rf $os_exec_name ${bin_dir}/$exec_name
-    cp -rf ../version.txt ${version_dir}/version.txt
-    cp -rf ../version_metadata.json ${version_dir}/version_metadata.json
+    rm -rf "$staging_dir_name"
+    mkdir "$staging_dir_name"
+    mkdir -p "$script_dir"
+    mkdir -p "$bin_dir"
+    cp -rf "$os_exec_name" "${bin_dir}/$exec_name"
+    # Follow the symlinks.
+    cp -Lf ../version.txt "${version_dir}"/version.txt
+    cp -Lf ../version_metadata.json "${version_dir}"/version_metadata.json
     pushd "$project_dir/resources"
-    cp -rf preflight_check.sh ${script_dir}/preflight_check.sh
-    cp -rf yb-node-agent.sh ${bin_dir}/yb-node-agent.sh
-    cp -rf node-agent-installer.sh ${bin_dir}/node-agent-installer.sh
-    chmod 755 ${script_dir}/*.sh
-    chmod 755 ${bin_dir}/*.sh
+    cp -rf preflight_check.sh "${script_dir}"/preflight_check.sh
+    cp -rf node-agent-installer.sh "${bin_dir}"/node-agent-installer.sh
+    chmod 755 "${script_dir}"/*.sh
+    chmod 755 "${bin_dir}"/*.sh
     popd
-    tar -zcf ${staging_dir_name}.tar.gz -C $staging_dir_name .
+    tar -zcf "${staging_dir_name}.tar.gz" -C "$staging_dir_name" .
     popd
 }
 
@@ -220,7 +225,9 @@ package_for_platforms() {
 }
 
 update_dependencies() {
+    pushd "$project_dir"
     go mod tidy -e
+    popd
 }
 
 # Initialize the vars.
@@ -248,7 +255,6 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     help)
       show_help >&2
-      exit 1
       ;;
     fmt)
       fmt=true
@@ -327,9 +333,11 @@ fi
 if [ "$build" == "true" ]; then
     help_needed=false
     echo "Building..."
+    pushd "$project_dir"
     if [ ! -f "go.mod" ]; then
         go mod init node-agent
     fi
+    popd
     format
     prepare
     build_for_platforms "${PLATFORMS[@]}"
@@ -348,7 +356,7 @@ if [ "$package" == "true" ]; then
     else
         help_needed=false
         echo "Packaging..."
-        package_for_platforms $version "${PLATFORMS[@]}"
+        package_for_platforms "$version" "${PLATFORMS[@]}"
     fi
 fi
 

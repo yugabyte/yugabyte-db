@@ -25,6 +25,8 @@
 
 #include <set>
 
+#include "yb/rocksdb/rocksdb_fwd.h"
+
 #include "yb/rocksdb/table/internal_iterator.h"
 
 namespace rocksdb {
@@ -33,14 +35,14 @@ namespace rocksdb {
 // caches the valid() and key() results for an underlying iterator.
 // This can help avoid virtual function calls and also gives better
 // cache locality.
-class IteratorWrapper {
+template<bool kSkipLastEntry>
+class IteratorWrapperBase {
  public:
-  IteratorWrapper() : iter_(nullptr), iters_pinned_(false), valid_(false) {}
-  explicit IteratorWrapper(InternalIterator* _iter)
-      : iter_(nullptr), iters_pinned_(false) {
+  IteratorWrapperBase() : entry_(&KeyValueEntry::Invalid()) {}
+  explicit IteratorWrapperBase(InternalIterator* _iter) {
     Set(_iter);
   }
-  ~IteratorWrapper() {}
+  ~IteratorWrapperBase() {}
   InternalIterator* iter() const { return iter_; }
 
   // Takes the ownership of "_iter" and will delete it when destroyed.
@@ -55,9 +57,9 @@ class IteratorWrapper {
 
     iter_ = _iter;
     if (iter_ == nullptr) {
-      valid_ = false;
+      entry_ = &KeyValueEntry::Invalid();
     } else {
-      Update();
+      Update(iter_->Entry());
       if (iters_pinned_) {
         // Pin new iterator
         Status s = iter_->PinData();
@@ -116,23 +118,80 @@ class IteratorWrapper {
   }
 
   // Iterator interface methods
-  bool Valid() const        { return valid_; }
-  Slice key() const         { assert(Valid()); return key_; }
-  Slice value() const       { assert(Valid()); return iter_->value(); }
+  bool Valid() const {
+    return entry_->Valid();
+  }
+
+  Slice key() const {
+    return entry_->key;
+  }
+
+  Slice value() const {
+    return entry_->value;
+  }
+
+  const KeyValueEntry& Entry() const {
+    return *entry_;
+  }
+
   // Methods below require iter() != nullptr
   Status status() const     { assert(iter_); return iter_->status(); }
-  void Next()               { assert(iter_); iter_->Next();        Update(); }
-  void Prev()               { assert(iter_); iter_->Prev();        Update(); }
-  void Seek(const Slice& k) { assert(iter_); iter_->Seek(k);       Update(); }
-  void SeekToFirst()        { assert(iter_); iter_->SeekToFirst(); Update(); }
-  void SeekToLast()         { assert(iter_); iter_->SeekToLast();  Update(); }
+
+  const KeyValueEntry& Next() {
+    DCHECK(iter_);
+    return Update(SkipLastIfNecessary(iter_->Next()));
+  }
+
+  const KeyValueEntry& Prev() {
+    DCHECK(iter_);
+    return Update(iter_->Prev());
+  }
+
+  const KeyValueEntry& Seek(const Slice& k) {
+    DCHECK(iter_);
+    return Update(SkipLastIfNecessary(iter_->Seek(k)));
+  }
+
+  const KeyValueEntry& SeekToFirst() {
+    DCHECK(iter_);
+    return Update(SkipLastIfNecessary(iter_->SeekToFirst()));
+  }
+
+  const KeyValueEntry& SeekToLast() {
+    DCHECK(iter_);
+    const auto& last_entry = iter_->SeekToLast();
+    if (!kSkipLastEntry || !last_entry.Valid()) {
+      return Update(last_entry);
+    }
+    return Update(iter_->Prev());
+  }
+
+  ScanForwardResult ScanForward(
+      const Comparator* user_key_comparator, const Slice& upperbound,
+      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
+    if (kSkipLastEntry) {
+      LOG(FATAL)
+          << "IteratorWrapperBase</* kSkipLastEntry = */ true>::ScanForward is not supported";
+    }
+    LOG_IF(DFATAL, !iter_) << "Iterator is invalid";
+    auto result =
+        iter_->ScanForward(user_key_comparator, upperbound, key_filter_callback, scan_callback);
+    Update(iter_->Entry());
+    return result;
+  }
 
  private:
-  void Update() {
-    valid_ = iter_->Valid();
-    if (valid_) {
-      key_ = iter_->key();
+  inline const KeyValueEntry& SkipLastIfNecessary(const KeyValueEntry& entry) {
+    if (!kSkipLastEntry || !entry.Valid()) {
+      return entry;
     }
+    const auto& next_entry = iter_->Next();
+    return next_entry.Valid() ? iter_->Prev() : next_entry;
+  }
+
+  const KeyValueEntry& Update(const KeyValueEntry& entry) {
+    entry_ = &entry;
+    return entry;
   }
 
   void DeletePinnedIterators(bool is_arena_mode) {
@@ -150,15 +209,14 @@ class IteratorWrapper {
     }
   }
 
-  InternalIterator* iter_;
+  InternalIterator* iter_ = nullptr;
   // If set to true, current and future iterators wont be deleted.
-  bool iters_pinned_;
+  bool iters_pinned_ = false;
   // List of past iterators that are pinned and wont be deleted as long as
   // iters_pinned_ is true. When we are pinning iterators this set will contain
   // iterators of previous data blocks to keep them from being deleted.
   std::set<InternalIterator*> pinned_iters_;
-  bool valid_;
-  Slice key_;
+  const KeyValueEntry* entry_;
 };
 
 class Arena;

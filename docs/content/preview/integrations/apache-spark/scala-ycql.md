@@ -1,11 +1,12 @@
 ---
-title: Build a Scala application using Apache Spark and YugabyteDB
+title: Build Scala applications using Apache Spark and YugabyteDB YCQL
+headerTitle: Build a Scala application using Apache Spark and YugabyteDB 
 linkTitle: YCQL
-description: Build a Scala application using Apache Spark and YugabyteDB
+description: Learn how to build a Scala application using Apache Spark and YugabyteDB YCQL
 aliases:
   - /preview/integrations/apache-spark/scala/
 menu:
-  preview:
+  preview_integrations:
     identifier: apache-spark-1-scala-ycql
     parent: apache-spark
     weight: 578

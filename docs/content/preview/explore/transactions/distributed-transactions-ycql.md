@@ -1,9 +1,9 @@
 ---
-title: Distributed transactions
+title: Distributed transactions in YCQL
 headerTitle: Distributed transactions
 linkTitle: Distributed transactions
-description: Distributed transactions in YugabyteDB.
-headcontent: Learn how a distributed transaction works in YugabyteDB
+description: Understand distributed transactions in YugabyteDB using YCQL.
+headcontent:
 menu:
   preview:
     name: Distributed transactions
@@ -31,13 +31,15 @@ type: docs
 
 </ul>
 
-This example shows how a distributed transaction works in YugabyteDB.
+The best way to understand distributed transactions in YugabyteDB is through examples.
+
+To learn about how YugabyteDB handles failures during transactions, see [High availability of transactions](../../fault-tolerance/transaction-availability/).
 
 {{% explore-setup-single %}}
 
 ## Create a table
 
-Create a keyspace as follows:
+Create a keyspace, as follows:
 
 ```sql
 ycqlsh> CREATE KEYSPACE banking;
@@ -71,7 +73,7 @@ where keyspace_name='banking' AND table_name = 'accounts';
 
 ## Insert sample data
 
-Seed the table with some sample data as follows:
+Populate the table with sample data, as follows:
 
 ```sql
 INSERT INTO banking.accounts (account_name, account_type, balance) VALUES ('John', 'savings', 1000);
@@ -80,7 +82,7 @@ INSERT INTO banking.accounts (account_name, account_type, balance) VALUES ('Smit
 INSERT INTO banking.accounts (account_name, account_type, balance) VALUES ('Smith', 'checking', 50);
 ```
 
-Here are the balances for John and Smith.
+Execute the following statement to retrieve the balances for John and Smith:
 
 ```sql
 ycqlsh> select * from banking.accounts;
@@ -95,7 +97,7 @@ ycqlsh> select * from banking.accounts;
         Smith |      savings |    2000
 ```
 
-Check John's balance as follows:
+Check John's balance, as follows:
 
 ```sql
 ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
@@ -107,7 +109,7 @@ ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account
           1100
 ```
 
-Check Smith's balance as follows:
+Check Smith's balance, as follows:
 
 ```sql
 ycqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE account_name='Smith';
@@ -122,7 +124,7 @@ ycqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE accoun
 
 ## Execute a transaction
 
-Suppose John transfers $200 from his savings account to his checking account. This has to be a transactional operation. This can be achieved as follows:
+Suppose John transfers $200 from his savings account to his checking account. This has to be a transactional operation, as per the following:
 
 ```sql
 BEGIN TRANSACTION
@@ -131,12 +133,11 @@ BEGIN TRANSACTION
 END TRANSACTION;
 ```
 
-If you now select the value of John's account, you should see the amounts reflected. The total balance should be the same $1100 as before.
+Execute the following statement to select the value of John's account:
 
 ```sql
 ycqlsh> select * from banking.accounts where account_name='John';
 ```
-
 ```output
  account_name | account_type | balance
 --------------+--------------+---------
@@ -144,11 +145,12 @@ ycqlsh> select * from banking.accounts where account_name='John';
          John |      savings |     800
 ```
 
-Check John's balance as follows:
+Execute the following statement to check John's balance:
 
 ```sql
 ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
 ```
+The following output demonstrates that the total balance is the same $1100 as before:
 
 ```output
  johns_balance
@@ -156,7 +158,7 @@ ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account
           1100
 ```
 
-Further, the checking and savings account balances for John should have been written at the same write timestamp.
+Further, the checking and savings account balances for John should have been written at the same write timestamp, as per the following:
 
 ```sql
 ycqlsh> select account_name, account_type, balance, writetime(balance)
@@ -181,7 +183,7 @@ END TRANSACTION;
 
 ## Verify
 
-Verify that the transfer was made as intended, and that the time at which the two accounts were updated are identical by performing the following query:
+Execute the following query to verify that the transfer was made as intended and that the time at which the two accounts were updated is identical:
 
 ```sql
 ycqlsh> select account_name, account_type, balance, writetime(balance) from banking.accounts;
@@ -196,7 +198,7 @@ ycqlsh> select account_name, account_type, balance, writetime(balance) from bank
         Smith |      savings |    2000 |   1517894361290020
 ```
 
-The net balance for John should have decreased by $200 which that of Smith should have increased by $200.
+Execute the following query to verify that the net balance for John has decreased by $200 which that of Smith has increased by $200:
 
 ```sql
 ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
@@ -208,7 +210,7 @@ ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account
            900
 ```
 
-Check Smith's balance as follows:
+Check Smith's balance, as follows:
 
 ```sql
 ycqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE account_name='Smith';

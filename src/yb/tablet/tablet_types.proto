@@ -79,3 +79,16 @@ enum TabletDataState {
   // moved to the TABLET_DATA_READY state.
   TABLET_DATA_INIT_STARTED = 5;
 }
+
+// The enum of full compaction states.
+// Full compaction states are sent in TabletReports and recorded in-memory on the master.
+enum FullCompactionState {
+  // Indicates that no full compaction is undergoing nor queued.
+  IDLE = 0;
+
+  // Indicates that a full compaction is currently queued or ongoing.
+  COMPACTING = 1;
+
+  // Indicates that we are are waiting for the next heartbeat.
+  FULL_COMPACTION_STATE_UNKNOWN = 2;
+}

@@ -1,10 +1,10 @@
 ---
-title: Configure Azure
+title: Configure YugabyteDB Anywhere on Azure
 headerTitle: Overview
 linkTitle: Overview
-description: Configuring YugabyteDB Anywhere on Azure
+description: Configure YugabyteDB Anywhere on Azure
 image: /images/section_icons/deploy/enterprise.png
-headcontent: Configuring YugabyteDB Anywhere on Azure
+headcontent: Configure YugabyteDB Anywhere on Azure
 menu:
   stable_yugabyte-platform:
     identifier: configure-3-azure
@@ -40,7 +40,7 @@ For overview of how to configure database nodes, select one of the following clo
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
@@ -54,16 +54,15 @@ For overview of how to configure database nodes, select one of the following clo
 
 </ul>
 
-<br>
-
-Click elements of the following chart to access detailed steps:
+The following diagram depicts the configuration process for Azure.
 
 <div class="image-with-map">
 <img src="/images/ee/flowchart/yb-configure-azure.png" usemap="#image-map">
 
 <map name="image-map">
-    <area alt="Configure Azure" title="Configure Azure" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure/" coords="264,368,624,423" shape="rect" style="top: 38%; left: 29%; width: 42%; height: 7%;">
-    <area alt="Create admin user" title="Create admin user" href="/preview/yugabyte-platform/configure-yugabyte-platform/create-admin-user/" coords="289,259,611,316" shape="rect" style="top:27%; left:31%; width:38%; height:6%;">
-    <area alt="configure cloud provider" title="configure cloud provider" href="/preview/yugabyte-platform/configure-yugabyte-platform/" coords="382,68,521,197" shape="rect" style=" top: 5%; left: 41%; width: 18%; height: 17%; ">
+    <area alt="Create admin user" title="Create admin user" href="../../create-admin-user/" coords="289,259,611,316" shape="rect" style="top:27%; left:31%; width:38%; height:6%;">
+    <area alt="Configure Azure" title="Configure Azure" href="../../set-up-cloud-provider/azure/" coords="264,368,624,423" shape="rect" style="top: 38%; left: 29%; width: 42%; height: 7%;">
+    <area alt="Azure provider - pre reqs" title="AWS provider - pre reqs" href="../../set-up-cloud-provider/azure/#prerequisites" coords="224,474,674,649" shape="rect" style=" width: 50%; height: 19%; top: 49.3%; left: 25%; ">
+    <area alt="Azure provider - configure cloud provider" title="AWS provider - configure cloud provider" href="../../set-up-cloud-provider/azure/#configure-azure" coords="302,703,602,793" shape="rect" style=" width: 34%; height: 10%; top: 73%; left: 33%; ">
 </map>
 </div>

@@ -10,39 +10,47 @@
 
 package com.yugabyte.yw.models;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.yugabyte.yw.models.AccessKey.MigratedKeyInfoFields;
+import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
+import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
 import io.swagger.annotations.ApiModelProperty;
-import io.swagger.annotations.ApiModelProperty.AccessMode;
-import java.util.Collections;
-import java.util.List;
+import java.util.Objects;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
 
-public class ProviderDetails {
-  // these are the fields in access key info that actually belong in provider
-  @ApiModelProperty public String sshUser;
-  @ApiModelProperty public Integer sshPort = 22;
-  @ApiModelProperty public boolean airGapInstall = false;
-  @ApiModelProperty public List<String> ntpServers = Collections.emptyList();
-  @ApiModelProperty public boolean setUpChrony = false;
-  // Indicates whether the provider was created before or after PLAT-3009
-  // True if it was created after, else it was created before.
-  // Dictates whether or not to show the set up NTP option in the provider UI
-  @ApiModelProperty public boolean showSetUpChrony = false;
+@JsonInclude(JsonInclude.Include.NON_NULL)
+@Data
+// Excluding cloudInfo as cloudInfo has its own equals & hashCode implementation.
+@EqualsAndHashCode(
+    callSuper = true,
+    exclude = {"cloudInfo"})
+@ToString(callSuper = true)
+public class ProviderDetails extends MigratedKeyInfoFields {
 
-  /// These need database migration before we make these read write
-  @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
-  public boolean passwordlessSudoAccess = true;
+  @Data
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  public static class CloudInfo {
+    @ApiModelProperty public AWSCloudInfo aws;
+    @ApiModelProperty public AzureCloudInfo azu;
+    @ApiModelProperty public GCPCloudInfo gcp;
+    @ApiModelProperty public KubernetesInfo kubernetes;
+    @ApiModelProperty public OnPremCloudInfo onprem;
+    @ApiModelProperty public LocalCloudInfo local;
+  }
 
-  @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
-  public String provisionInstanceScript = "";
+  @ApiModelProperty private CloudInfo cloudInfo;
+  // Flag to enable node agent for this provider depending on the runtime config settings.
+  @ApiModelProperty public boolean enableNodeAgent;
 
-  @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
-  public boolean installNodeExporter = true;
-
-  @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
-  public Integer nodeExporterPort = 9300;
-
-  @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
-  public String nodeExporterUser = "prometheus";
-
-  @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
-  public boolean skipProvisioning = false;
+  @JsonIgnore
+  public boolean isUpdateNeeded(ProviderDetails details) {
+    return !Objects.equals(this.getCloudInfo(), details.getCloudInfo());
+  }
 }

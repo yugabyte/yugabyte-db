@@ -1,22 +1,25 @@
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.google.inject.Inject;
 import com.google.common.base.Throwables;
+import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
-import com.typesafe.config.Config;
+import com.yugabyte.yw.common.AppConfigHelper;
+import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
+import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
+import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.SupportBundle;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.SupportBundle.SupportBundleStatusType;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.BundleDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
-import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
-import com.yugabyte.yw.common.SupportBundleUtil;
-import com.yugabyte.yw.common.Util;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -24,12 +27,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPOutputStream;
-import java.text.ParseException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.apache.commons.io.FileUtils;
@@ -41,6 +44,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
   @Inject private SupportBundleComponentFactory supportBundleComponentFactory;
   @Inject private SupportBundleUtil supportBundleUtil;
   @Inject private Config config;
+  @Inject private OperatorStatusUpdaterFactory statusUpdaterFactory;
 
   @Inject
   protected CreateSupportBundle(BaseTaskDependencies baseTaskDependencies) {
@@ -55,12 +59,17 @@ public class CreateSupportBundle extends AbstractTaskBase {
   @Override
   public void run() {
     SupportBundle supportBundle = taskParams().supportBundle;
+    OperatorStatusUpdater kubernetesStatusUpdater = statusUpdaterFactory.create();
     try {
       Path gzipPath = generateBundle(supportBundle);
       supportBundle.setPathObject(gzipPath);
       supportBundle.setStatus(SupportBundleStatusType.Success);
+      kubernetesStatusUpdater.markSupportBundleFinished(
+          supportBundle, taskParams().getKubernetesResourceDetails(), gzipPath);
     } catch (Exception e) {
       taskParams().supportBundle.setStatus(SupportBundleStatusType.Failed);
+      kubernetesStatusUpdater.markSupportBundleFailed(
+          supportBundle, taskParams().getKubernetesResourceDetails());
       Throwables.throwIfUnchecked(e);
       throw new RuntimeException(e);
     } finally {
@@ -77,7 +86,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
     Path gzipPath =
         Paths.get(bundlePath.toAbsolutePath().toString().concat(".tar.gz")); // test this path
     log.debug("gzip support bundle path: {}", gzipPath.toString());
-    log.debug("Fetching Universe {} logs", universe.name);
+    log.debug("Fetching Universe {} logs", universe.getName());
 
     // Simplified the following 4 cases to extract appropriate start and end date
     // 1. If both of the dates are given and valid
@@ -94,27 +103,6 @@ public class CreateSupportBundle extends AbstractTaskBase {
     } else {
       startDate = startDateIsValid ? supportBundle.getStartDate() : new Date(Long.MIN_VALUE);
       endDate = endDateIsValid ? supportBundle.getEndDate() : new Date(Long.MAX_VALUE);
-    }
-
-    // Downloads each type of global level support bundle component type into the bundle path
-    for (BundleDetails.ComponentType componentType :
-        supportBundle.getBundleDetails().getGlobalLevelComponents()) {
-      SupportBundleComponent supportBundleComponent =
-          supportBundleComponentFactory.getComponent(componentType);
-      try {
-        // Call the downloadComponentBetweenDates() function for all global level components with
-        // node = null.
-        // Each component verifies if the dates are required and calls the downloadComponent().
-        Path globalComponentsDirPath = Paths.get(bundlePath.toAbsolutePath().toString(), "YBA");
-        Files.createDirectories(globalComponentsDirPath);
-        supportBundleComponent.downloadComponentBetweenDates(
-            customer, universe, globalComponentsDirPath, startDate, endDate, null);
-      } catch (Exception e) {
-        throw new RuntimeException(
-            String.format(
-                "Error while trying to download the global level component files : %s",
-                e.getMessage()));
-      }
     }
 
     // Downloads each type of node level support bundle component type into the bundle path
@@ -134,11 +122,34 @@ public class CreateSupportBundle extends AbstractTaskBase {
           supportBundleComponent.downloadComponentBetweenDates(
               customer, universe, nodeComponentsDirPath, startDate, endDate, node);
         } catch (Exception e) {
+          log.error("Error occurred in support bundle collection", e);
           throw new RuntimeException(
               String.format(
                   "Error while trying to download the node level component files : %s",
                   e.getMessage()));
         }
+      }
+    }
+
+    // Downloads each type of global level support bundle component type into the bundle path
+    for (BundleDetails.ComponentType componentType :
+        supportBundle.getBundleDetails().getGlobalLevelComponents()) {
+      SupportBundleComponent supportBundleComponent =
+          supportBundleComponentFactory.getComponent(componentType);
+      try {
+        // Call the downloadComponentBetweenDates() function for all global level components with
+        // node = null.
+        // Each component verifies if the dates are required and calls the downloadComponent().
+        Path globalComponentsDirPath = Paths.get(bundlePath.toAbsolutePath().toString(), "YBA");
+        Files.createDirectories(globalComponentsDirPath);
+        supportBundleComponent.downloadComponentBetweenDates(
+            customer, universe, globalComponentsDirPath, startDate, endDate, null);
+      } catch (Exception e) {
+        log.error("Error occurred in support bundle collection", e);
+        throw new RuntimeException(
+            String.format(
+                "Error while trying to download the global level component files : %s",
+                e.getMessage()));
       }
     }
 
@@ -158,9 +169,9 @@ public class CreateSupportBundle extends AbstractTaskBase {
   }
 
   private Path generateBundlePath(Universe universe) {
-    String storagePath = runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path");
+    String storagePath = AppConfigHelper.getStoragePath();
     String datePrefix = new SimpleDateFormat("yyyyMMddHHmmss.SSS").format(new Date());
-    String bundleName = "yb-support-bundle-" + universe.name + "-" + datePrefix + "-logs";
+    String bundleName = "yb-support-bundle-" + universe.getName() + "-" + datePrefix + "-logs";
     Path bundlePath = Paths.get(storagePath + "/" + bundleName);
     return bundlePath;
   }

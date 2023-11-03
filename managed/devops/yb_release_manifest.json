@@ -1,10 +1,10 @@
 {
   ".": [
     "ansible.cfg",
+    "ansible_python_requirements.txt",
     "ansible_requirements_prod.yml",
     "configure-cluster-server.yml",
     "destroy-instance.yml",
-    "python_requirements_frozen.txt",
     "python3_requirements_frozen.txt",
     "python*_modules.tar.gz",
     "preprovision.yml",
@@ -17,9 +17,12 @@
     "setup-cgroup.yml",
     "edit_authorized_keys.yml",
     "configure_ssh2.yml",
-    "install-third-party.yml"
+    "install-third-party.yml",
+    "Dockerfile"
   ],
   "bin": [
+    "bin/ansible-playbook.sh",
+    "bin/build_ansible_pex.sh",
     "bin/common.sh",
     "bin/install_ansible_requirements.sh",
     "bin/install_python_requirements.sh",
@@ -36,7 +39,8 @@
     "bin/ybcloud.sh",
     "bin/edit_universe_details.py",
     "bin/filtered_logs.sh",
-    "bin/node_utils.sh"
+    "bin/node_utils.sh",
+    "bin/yb_attach_detach.py"
   ],
   "filter_plugins": [
     "filter_plugins/*"

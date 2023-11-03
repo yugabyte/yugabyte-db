@@ -23,19 +23,18 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import io.swagger.annotations.ApiModelProperty;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
-import org.yb.CommonTypes.TableType;
-import org.yb.client.YBClient;
-import org.yb.client.YBTable;
-
-import javax.inject.Inject;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.yb.CommonTypes.TableType;
+import org.yb.client.YBClient;
+import org.yb.client.YBTable;
 
 @Slf4j
 public class CreateTable extends AbstractTaskBase {
@@ -63,12 +62,15 @@ public class CreateTable extends AbstractTaskBase {
     // The name of the table to be created.
     @ApiModelProperty(value = "Table name")
     public String tableName;
+
     // The type of the table to be created (Redis, YSQL)
     @ApiModelProperty(value = "Table type")
     public TableType tableType;
+
     // The schema of the table to be created (required for YSQL)
     @ApiModelProperty(value = "Table details")
     public TableDetails tableDetails;
+
     // Flag, indicating that we need to create table only if not exists
     @ApiModelProperty(value = "Create only if table does not exist")
     public boolean ifNotExist;
@@ -84,7 +86,7 @@ public class CreateTable extends AbstractTaskBase {
       throw new IllegalArgumentException("No name specified for table.");
     }
     TableDetails tableDetails = taskParams().tableDetails;
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
 
     String createTableStatement = tableDetails.getPgSqlCreateTableString(taskParams().ifNotExist);
 
@@ -115,20 +117,20 @@ public class CreateTable extends AbstractTaskBase {
           "Failed to create table '"
               + tableDetails.keyspace
               + "."
-              + tableDetails.tableName
+              + CommonUtils.logTableName(tableDetails.tableName)
               + "' of type "
               + taskParams().tableType);
     }
     log.info(
         "Created table '{}.{}' of type {}.",
         tableDetails.keyspace,
-        taskParams().tableName,
+        CommonUtils.logTableName(taskParams().tableName),
         taskParams().tableType);
   }
 
   private Session getCassandraSession() {
     if (cassandraCluster == null) {
-      List<InetSocketAddress> addresses = Util.getNodesAsInet(taskParams().universeUUID);
+      List<InetSocketAddress> addresses = Util.getNodesAsInet(taskParams().getUniverseUUID());
       cassandraCluster = Cluster.builder().addContactPointsWithPorts(addresses).build();
       log.info("Connected to cluster: " + cassandraCluster.getClusterName());
     }
@@ -151,22 +153,22 @@ public class CreateTable extends AbstractTaskBase {
     log.info(
         "Created table '{}.{}' of type {}.",
         tableDetails.keyspace,
-        taskParams().tableName,
+        CommonUtils.logTableName(taskParams().tableName),
         taskParams().tableType);
   }
 
   private void createRedisTable() throws Exception {
     // Get the master addresses.
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String masterAddresses = universe.getMasterAddresses();
     log.info(
         "Running {}: universe = {}, masterAddress = {}",
         getName(),
-        taskParams().universeUUID,
+        taskParams().getUniverseUUID(),
         masterAddresses);
     if (masterAddresses == null || masterAddresses.isEmpty()) {
       throw new IllegalStateException(
-          "No master host/ports for a table creation op in " + taskParams().universeUUID);
+          "No master host/ports for a table creation op in " + taskParams().getUniverseUUID());
     }
     String certificate = universe.getCertificateNodetoNode();
 
@@ -178,7 +180,10 @@ public class CreateTable extends AbstractTaskBase {
         taskParams().tableName = YBClient.REDIS_DEFAULT_TABLE_NAME;
       }
       YBTable table = client.createRedisTable(taskParams().tableName, taskParams().ifNotExist);
-      log.info("Created table '{}' of type {}.", table.getName(), table.getTableType());
+      log.info(
+          "Created table '{}' of type {}.",
+          CommonUtils.logTableName(table.getName()),
+          table.getTableType());
     } finally {
       ybService.closeClient(client, masterAddresses);
     }
@@ -205,7 +210,11 @@ public class CreateTable extends AbstractTaskBase {
         createRedisTable();
       }
     } catch (Exception e) {
-      String msg = "Error " + e.getMessage() + " while creating table " + taskParams().tableName;
+      String msg =
+          "Error "
+              + e.getMessage()
+              + " while creating table "
+              + CommonUtils.logTableName(taskParams().tableName);
       log.error(msg, e);
       throw new RuntimeException(msg);
     }

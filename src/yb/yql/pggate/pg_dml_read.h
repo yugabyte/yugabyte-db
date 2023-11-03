@@ -32,8 +32,7 @@
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_tools.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 //--------------------------------------------------------------------------------------------------
 // DML_READ
@@ -73,6 +72,9 @@ class PgDmlRead : public PgDml {
   // Set forward (or backward) scan.
   void SetForwardScan(const bool is_forward_scan);
 
+  // Set prefix length, in columns, of distinct index scans.
+  void SetDistinctPrefixLength(const int distinct_prefix_length);
+
   // Bind a range column with a BETWEEN condition.
   Status BindColumnCondBetween(int attr_num, PgExpr *attr_value,
                                bool start_inclusive,
@@ -80,7 +82,10 @@ class PgDmlRead : public PgDml {
                                bool end_inclusive);
 
   // Bind a column with an IN condition.
-  Status BindColumnCondIn(int attnum, int n_attr_values, PgExpr **attr_values);
+  Status BindColumnCondIn(PgExpr *lhs, int n_attr_values, PgExpr **attr_values);
+
+  // Bind a column with an IS NOT NULL condition.
+  Status BindColumnCondIsNotNull(int attr_num);
 
   Status BindHashCode(const std::optional<Bound>& start, const std::optional<Bound>& end);
 
@@ -111,7 +116,7 @@ class PgDmlRead : public PgDml {
 
  protected:
   // Allocate column protobuf.
-  LWPgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) override;
+  Result<LWPgsqlExpressionPB*> AllocColumnBindPB(PgColumn* col, PgExpr* expr) override;
   LWPgsqlExpressionPB *AllocColumnBindConditionExprPB(PgColumn *col);
   LWPgsqlExpressionPB *AllocIndexColumnBindPB(PgColumn *col);
 
@@ -140,24 +145,15 @@ class PgDmlRead : public PgDml {
   // Indicates that current operation reads concrete row by specifying row's DocKey.
   bool IsConcreteRowRead() const;
   Status ProcessEmptyPrimaryBinds();
-  bool IsAllPrimaryKeysBound(size_t num_range_components_in_expected);
-  bool CanBuildYbctidsFromPrimaryBinds();
+  [[nodiscard]] bool IsAllPrimaryKeysBound() const;
   Result<std::vector<std::string>> BuildYbctidsFromPrimaryBinds();
   Status SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params);
-  Result<docdb::DocKey> EncodeRowKeyForBound(
+  Result<dockv::DocKey> EncodeRowKeyForBound(
       YBCPgStatement handle, size_t n_col_values, PgExpr **col_values, bool for_lower_bound);
-  Status MoveBoundKeyInOperator(PgColumn* col, const LWPgsqlConditionPB& in_operator);
-  Result<LWQLValuePB*> GetBoundValue(
-      const PgColumn& col, const LWPgsqlExpressionPB& src) const;
-  Result<docdb::KeyEntryValue> BuildKeyColumnValue(
-      const PgColumn& col, const LWPgsqlExpressionPB& src, LWQLValuePB** dest);
-  Result<docdb::KeyEntryValue> BuildKeyColumnValue(
-      const PgColumn& col, const LWPgsqlExpressionPB& src);
 
   // Holds original doc_op_ object after call of the UpgradeDocOp method.
   // Required to prevent structures related to request from being freed.
   PgDocOp::SharedPtr original_doc_op_;
 };
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

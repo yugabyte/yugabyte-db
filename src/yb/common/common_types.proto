@@ -146,4 +146,14 @@ enum ReplicationErrorPb {
 
   // There is a schema mismatch between the producer and consumer tables.
   REPLICATION_SCHEMA_MISMATCH = 2;
+
+  // There is a colocated table missing on the consumer side.
+  REPLICATION_MISSING_TABLE = 3;
+}
+
+// Stateful services.
+enum StatefulServiceKind {
+  // Test service.
+  TEST_ECHO = 0;
+  PG_AUTO_ANALYZE = 1;
 }

@@ -1,6 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../_style/colors.scss';
+@use '../../_style/colors.scss';
 
 .schedules-panel {
   .header {
@@ -27,7 +27,7 @@
         font-size: 18px;
         line-height: 16px;
         padding: 4px 12px;
-        color: $YB_GRAY_BORDER;
+        color: colors.$YB_GRAY_BORDER;
 
         &,
         &:hover,
@@ -51,7 +51,7 @@
 
         .menu-item-delete {
           .fa {
-            color: $YB_FAIL_COLOR;
+            color: colors.$YB_FAIL_COLOR;
           }
         }
       }

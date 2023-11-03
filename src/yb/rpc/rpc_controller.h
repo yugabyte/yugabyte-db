@@ -33,10 +33,12 @@
 
 #include <memory>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/macros.h"
+
 #include "yb/rpc/rpc_fwd.h"
+
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
@@ -140,8 +142,14 @@ class RpcController {
   // Return the configured timeout.
   MonoDelta timeout() const;
 
+  Sidecars& outbound_sidecars();
+
+  std::unique_ptr<Sidecars> MoveOutboundSidecars();
+
   // Assign sidecar with specified index to out.
-  Status AssignSidecarTo(int idx, std::string* out) const;
+  Result<RefCntSlice> ExtractSidecar(size_t idx) const;
+
+  size_t GetSidecarsCount() const;
 
   // Transfer all sidecars to specified context.
   size_t TransferSidecars(Sidecars* dest);
@@ -149,6 +157,16 @@ class RpcController {
   int32_t call_id() const;
 
   CallResponsePtr response() const;
+
+  Result<CallResponsePtr> CheckedResponse() const;
+
+  std::string CallStateDebugString() const;
+  // When call is present, marks the call as Failed by passing Forced timeout status.
+  void MarkCallAsFailed();
+
+  // Test only flag which is transferred to OutboundCall during its preparation time. This is used
+  // to reproduce the stuck RPC scenario seen in production.
+  void TEST_force_stuck_outbound_call() { TEST_disable_outbound_call_response_processing = true; }
 
  private:
   friend class OutboundCall;
@@ -162,6 +180,9 @@ class RpcController {
   OutboundCallPtr call_;
   bool allow_local_calls_in_curr_thread_ = false;
   InvokeCallbackMode invoke_callback_mode_ = InvokeCallbackMode::kThreadPoolNormal;
+
+  std::unique_ptr<Sidecars> outbound_sidecars_;
+  bool TEST_disable_outbound_call_response_processing = false;
 
   DISALLOW_COPY_AND_ASSIGN(RpcController);
 };

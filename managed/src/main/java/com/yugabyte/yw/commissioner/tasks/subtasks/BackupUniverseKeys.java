@@ -36,11 +36,12 @@ public class BackupUniverseKeys extends AbstractTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String hostPorts = universe.getMasterAddresses();
     try {
       log.info("Running {}: hostPorts={}.", getName(), hostPorts);
-      keyManager.backupUniverseKeyHistory(taskParams().universeUUID, taskParams().storageLocation);
+      keyManager.backupUniverseKeyHistory(
+          taskParams().getUniverseUUID(), taskParams().storageLocation);
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage(), e);
       throw new RuntimeException(e);

@@ -147,39 +147,42 @@ const auto kSecondaryIndexTestTableName =
 class CqlTabletSplitTest : public CqlTestBase<MiniCluster> {
  protected:
   void SetUp() override {
-    FLAGS_yb_num_shards_per_tserver = 1;
-    FLAGS_enable_automatic_tablet_splitting = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_num_shards_per_tserver) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = true;
 
     // Setting this very low will just cause to include metrics in every heartbeat, no overhead on
     // setting it lower than FLAGS_heartbeat_interval_ms.
-    FLAGS_tserver_heartbeat_metrics_interval_ms = 1;
-    FLAGS_heartbeat_interval_ms = 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 1000;
 
     // Reduce cleanup waiting time, so tests are completed faster.
-    FLAGS_cleanup_split_tablets_interval_sec = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
 
-    FLAGS_tablet_split_low_phase_size_threshold_bytes = 0;
-    FLAGS_tablet_split_high_phase_size_threshold_bytes = 0;
-    FLAGS_tablet_split_low_phase_shard_count_per_node = 0;
-    FLAGS_tablet_split_high_phase_shard_count_per_node = 0;
-    FLAGS_tablet_force_split_threshold_bytes = 64_KB;
-    FLAGS_db_write_buffer_size = FLAGS_tablet_force_split_threshold_bytes;
-    FLAGS_db_block_size_bytes = 2_KB;
-    FLAGS_db_filter_block_size_bytes = 2_KB;
-    FLAGS_db_index_block_size_bytes = 2_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_size_threshold_bytes) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_shard_count_per_node) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_force_split_threshold_bytes) = 64_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) =
+        FLAGS_tablet_force_split_threshold_bytes;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 2_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_filter_block_size_bytes) = 2_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_index_block_size_bytes) = 2_KB;
     CqlTestBase::SetUp();
 
     // We want to test default behaviour here without overrides done by
     // YBMiniClusterTestBase::SetUp.
     // See https://github.com/yugabyte/yugabyte-db/issues/8935#issuecomment-1142223006
-    FLAGS_use_priority_thread_pool_for_flushes = saved_use_priority_thread_pool_for_flushes_;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_priority_thread_pool_for_flushes) =
+        saved_use_priority_thread_pool_for_flushes_;
   }
 
   void WaitUntilAllCommittedOpsApplied(const MonoDelta timeout) {
     const auto splits_completion_deadline = MonoTime::Now() + timeout;
     for (auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-      auto consensus = peer->shared_consensus();
-      if (consensus) {
+      auto consensus_result = peer->GetConsensus();
+      if (consensus_result) {
+        auto consensus = consensus_result->get();
         ASSERT_OK(Wait([consensus]() -> Result<bool> {
           return consensus->GetLastAppliedOpId() >= consensus->GetLastCommittedOpId();
         }, splits_completion_deadline, "Waiting for all committed ops to be applied"));
@@ -581,7 +584,7 @@ Status RunBatchTimeSeriesTest(
 
   std::mutex random_mutex;
   auto get_random_source = [&rng, &random_mutex, &data_sources]() -> BatchTimeseriesDataSource* {
-    std::lock_guard<decltype(random_mutex)> lock(random_mutex);
+    std::lock_guard lock(random_mutex);
     return RandomElement(data_sources, &rng).get();
   };
 

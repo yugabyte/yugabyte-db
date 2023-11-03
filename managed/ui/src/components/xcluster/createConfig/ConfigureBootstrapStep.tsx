@@ -1,4 +1,3 @@
-import React from 'react';
 import { Field, FormikProps } from 'formik';
 import { useSelector } from 'react-redux';
 import { components } from 'react-select';
@@ -10,7 +9,7 @@ import {
   Badge_Types as BackupConfigBadgeType,
   StatusBadge as BackupStatusBadge
 } from '../../common/badge/StatusBadge';
-import { adaptTableUUID } from '../ReplicationUtils';
+import { formatUuidForXCluster } from '../ReplicationUtils';
 
 import { YBTable } from '../../../redesign/helpers/dtos';
 import { IStorageConfig as BackupStorageConfig } from '../../backupv2';
@@ -60,7 +59,7 @@ export const ConfigureBootstrapStep = ({
 
   const bootstrapRequiredTableUUIDsLookup = new Set(bootstrapRequiredTableUUIDs);
   const keyspaces = sourceTables.reduce((keyspaces, table) => {
-    if (bootstrapRequiredTableUUIDsLookup.has(adaptTableUUID(table.tableUUID))) {
+    if (bootstrapRequiredTableUUIDsLookup.has(formatUuidForXCluster(table.tableUUID))) {
       keyspaces.add(table.keySpace);
     }
     return keyspaces;
@@ -76,9 +75,9 @@ export const ConfigureBootstrapStep = ({
         target universe.
       </p>
       <p>
-        {`${bootstrapRequiredTableUUIDs.length} out of ${values.tableUUIDs.length} tables in
+        {`${bootstrapRequiredTableUUIDs.length} out of ${values.tableUUIDs.length} table(s) in
           ${keyspaces.size} `}
-        keyspaces selected for replication
+        database(s) selected for replication
         <b> contain data and need to be bootstrapped</b> to enable replication.
       </p>
       <div className={styles.formFieldContainer}>
@@ -88,6 +87,7 @@ export const ConfigureBootstrapStep = ({
           label="Select the storage config you want to use for your backup"
           options={groupedStorageConfigOptions}
           components={{
+            // eslint-disable-next-line react/display-name
             SingleValue: ({ data }: { data: any }) => (
               <>
                 <span className={styles.backupConfigLabelName}>{data.label}</span>
@@ -97,6 +97,7 @@ export const ConfigureBootstrapStep = ({
                 />
               </>
             ),
+            // eslint-disable-next-line react/display-name
             Option: (props: any) => {
               return (
                 <components.Option {...props}>

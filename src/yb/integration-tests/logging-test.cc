@@ -33,7 +33,6 @@
 #include <string>
 #include <vector>
 
-#include <glog/logging.h>
 #include <gmock/gmock.h>
 
 #include "yb/util/flags.h"
@@ -81,21 +80,28 @@ TEST(LoggingTest, TestThrottledLogging) {
 TEST(LoggingTest, VModule) {
   google::FlagSaver flag_saver;
 
-  ASSERT_OK(EnableVerboseLoggingForModule("logging-test", 1));
+  google::SetVLOGLevel("logging-test", 3);
 
   ASSERT_TRUE(VLOG_IS_ON(1));
+  ASSERT_TRUE(VLOG_IS_ON(2));
+  ASSERT_TRUE(VLOG_IS_ON(3));
+  ASSERT_FALSE(VLOG_IS_ON(4));
 
   constexpr auto kPattern = "vmodule-test";
   StringVectorSink sink;
   ScopedRegisterSink srs(&sink);
 
   VLOG(1) << kPattern;
+  VLOG_IF(3, true) << kPattern;
+  VLOG(5) << kPattern;
 
   const vector<string>& msgs = sink.logged_msgs();
 
-  ASSERT_GE(msgs.size(), 1);
+  ASSERT_GE(msgs.size(), 2);
 
   EXPECT_THAT(msgs[0], testing::HasSubstr(kPattern));
+  EXPECT_THAT(msgs[0], testing::HasSubstr("vlog1: "));
+  EXPECT_THAT(msgs[1], testing::HasSubstr("vlog3: "));
 }
 
 } // namespace yb

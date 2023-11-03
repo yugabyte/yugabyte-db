@@ -46,38 +46,56 @@ class KVIter : public Iterator {
  public:
   explicit KVIter(const stl_wrappers::KVMap* map)
       : map_(map), iter_(map_->end()) {}
-  bool Valid() const override { return iter_ != map_->end(); }
-  void SeekToFirst() override { iter_ = map_->begin(); }
-  void SeekToLast() override {
+  const KeyValueEntry& SeekToFirst() override {
+    iter_ = map_->begin();
+    return Entry();
+  }
+  const KeyValueEntry& SeekToLast() override {
     if (map_->empty()) {
       iter_ = map_->end();
     } else {
       iter_ = map_->find(map_->rbegin()->first);
     }
+    return Entry();
   }
-  void Seek(const Slice& k) override {
+  const KeyValueEntry& Seek(Slice k) override {
     iter_ = map_->lower_bound(k.ToString());
+    return Entry();
   }
-  void Next() override { ++iter_; }
-  void Prev() override {
+  const KeyValueEntry& Next() override {
+    ++iter_;
+    return Entry();
+  }
+  const KeyValueEntry& Prev() override {
     if (iter_ == map_->begin()) {
       iter_ = map_->end();
-      return;
+      return Entry();
     }
     --iter_;
+    return Entry();
   }
 
-  Slice key() const override { return iter_->first; }
-  Slice value() const override { return iter_->second; }
+  const KeyValueEntry& Entry() const override {
+    if (iter_ == map_->end()) {
+      return KeyValueEntry::Invalid();
+    }
+    entry_ = {
+      .key = iter_->first,
+      .value = iter_->second,
+    };
+    return entry_;
+  }
+
   Status status() const override { return Status::OK(); }
 
  private:
   const stl_wrappers::KVMap* const map_;
   stl_wrappers::KVMap::const_iterator iter_;
+  mutable KeyValueEntry entry_;
 };
 
 void AssertItersEqual(Iterator* iter1, Iterator* iter2) {
-  ASSERT_EQ(iter1->Valid(), iter2->Valid());
+  ASSERT_EQ(ASSERT_RESULT(iter1->CheckedValid()), ASSERT_RESULT(iter2->CheckedValid()));
   if (iter1->Valid()) {
     auto key1 = iter1->key().ToBuffer();
     auto key2 = iter2->key().ToBuffer();
@@ -130,6 +148,7 @@ void DoRandomIteraratorTest(DB* db, std::vector<std::string> source_strings,
     // same key and value
     int type = rnd->Uniform(6);
     ASSERT_OK(iter->status());
+    ASSERT_OK(result_iter->status());
     switch (type) {
       case 0:
         // Seek to First
@@ -182,7 +201,7 @@ void DoRandomIteraratorTest(DB* db, std::vector<std::string> source_strings,
       }
     }
     AssertItersEqual(iter.get(), result_iter.get());
-    is_valid = iter->Valid();
+    is_valid = ASSERT_RESULT(iter->CheckedValid());
   }
 }
 
@@ -192,7 +211,7 @@ class DoubleComparator : public Comparator {
 
   const char* Name() const override { return "DoubleComparator"; }
 
-  int Compare(const Slice& a, const Slice& b) const override {
+  int Compare(Slice a, Slice b) const override {
 #ifndef CYGWIN
     double da = std::stod(a.ToString());
     double db = std::stod(b.ToString());
@@ -220,7 +239,7 @@ class HashComparator : public Comparator {
 
   const char* Name() const override { return "HashComparator"; }
 
-  int Compare(const Slice& a, const Slice& b) const override {
+  int Compare(Slice a, Slice b) const override {
     uint32_t ha = Hash(a.data(), a.size(), 66);
     uint32_t hb = Hash(b.data(), b.size(), 66);
     if (ha == hb) {
@@ -243,7 +262,7 @@ class TwoStrComparator : public Comparator {
 
   const char* Name() const override { return "TwoStrComparator"; }
 
-  int Compare(const Slice& a, const Slice& b) const override {
+  int Compare(Slice a, Slice b) const override {
     assert(a.size() >= 2);
     assert(b.size() >= 2);
     size_t size_a1 = static_cast<size_t>(a[0]);

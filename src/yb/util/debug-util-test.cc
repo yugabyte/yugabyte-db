@@ -37,8 +37,9 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <set>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/ref_counted.h"
 
@@ -50,11 +51,17 @@
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/test_thread_holder.h"
+#include "yb/util/lockfree.h"
+#include "yb/util/random_util.h"
+#include "yb/util/tostring.h"
 
 using std::string;
 using std::vector;
 
 using namespace std::literals;
+
+DECLARE_bool(TEST_disable_thread_stack_collection_wait);
 
 namespace yb {
 
@@ -329,6 +336,106 @@ TEST_F(DebugUtilTest, TestConcurrentStackTrace) {
   }
 }
 
+TEST_F(DebugUtilTest, TestStackTraceSignalDuringAllocation) {
+  constexpr size_t kNumThreads = 10;
+  TestThreadHolder thread_holder;
+  // Each thread has a queue from which it consumes entries. Each thread will add entries to
+  // a random thread's queue.
+
+  struct Entry : public MPSCQueueEntry<Entry> {
+    char* bytes = nullptr;
+
+    explicit Entry(char* bytes_) : bytes(bytes_) {}
+    ~Entry() {
+      if (bytes) {
+        free(bytes);
+        bytes = nullptr;
+      }
+    }
+  };
+
+  std::vector<std::unique_ptr<MPSCQueue<Entry>>> queues;
+  for (size_t i = 0; i < kNumThreads; ++i) {
+    queues.push_back(std::make_unique<MPSCQueue<Entry>>());
+  }
+
+  std::mutex thread_ids_mutex;
+  std::vector<ThreadIdForStack> thread_ids;
+
+  CountDownLatch start_latch(kNumThreads);
+
+  for (size_t i = 0; i < kNumThreads; ++i) {
+    thread_holder.AddThreadFunctor([
+        &thread_ids_mutex,
+        &start_latch,
+        &thread_ids,
+        &queues,
+        thread_index = i,
+        &stop = thread_holder.stop_flag()
+      ]() {
+      {
+        std::lock_guard lock(thread_ids_mutex);
+        thread_ids.push_back(Thread::CurrentThreadIdForStack());
+      }
+      start_latch.CountDown();
+      while (!stop.load(std::memory_order_acquire)) {
+        if (RandomUniformBool()) {
+          // Allocate between 1 and 16 KB, with some random jitter.
+          size_t allocation_size =
+              (1L << RandomUniformInt(0, 10)) * RandomUniformInt(1, 16) + RandomUniformInt(1, 128);
+          char* bytes = pointer_cast<char*>(malloc(allocation_size));
+          size_t target_thread = RandomUniformInt<size_t>(0, kNumThreads - 1);
+          Entry* entry = new Entry(bytes);
+          queues[target_thread]->Push(entry);
+        } else {
+          Entry* entry = queues[thread_index]->Pop();
+          delete entry;
+        }
+      }
+    });
+  }
+  // Wait until all threads start running.
+  start_latch.Wait();
+  auto deadline = MonoTime::Now() + 10s;
+
+  // Keep dumping thread stacks.
+  while (MonoTime::Now() < deadline) {
+    for (size_t i = 0; i < 100; ++i) {
+      auto stacks = ThreadStacks(thread_ids);
+      int num_ok = 0;
+      int num_errors = 0;
+      int num_empty_stacks = 0;
+      std::set<std::string> error_statuses;
+      for (const auto& stack : stacks) {
+        if (stack.ok()) {
+          if (*stack) {
+            num_ok++;
+          } else {
+            num_empty_stacks++;
+          }
+        } else {
+          error_statuses.insert(stack.status().ToString());
+          num_errors++;
+        }
+      }
+      if (num_errors || num_empty_stacks) {
+        LOG(WARNING) << "OK stacks: " << num_ok << ", error stacks: " << num_errors
+                     << ", empty stacks: " << num_empty_stacks
+                     << ", errors statuses: " << ToString(error_statuses);
+      }
+    }
+  }
+  thread_holder.Stop();
+  thread_holder.JoinAll();
+
+  for (size_t i = 0; i < kNumThreads; ++i) {
+    auto& queue = queues[i];
+    while (auto* entry = queue->Pop()) {
+      delete entry;
+    }
+  }
+}
+
 TEST_F(DebugUtilTest, LongOperationTracker) {
   class TestLogSink : public google::LogSink {
    public:
@@ -336,17 +443,17 @@ TEST_F(DebugUtilTest, LongOperationTracker) {
               const char* base_filename, int line,
               const struct ::tm* tm_time,
               const char* message, size_t message_len) override {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       log_messages_.emplace_back(message, message_len);
     }
 
     size_t MessagesSize() {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       return log_messages_.size();
     }
 
     std::string MessageAt(size_t idx) {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       return log_messages_[idx];
     }
 
@@ -397,4 +504,65 @@ TEST_F(DebugUtilTest, LongOperationTracker) {
   }
 }
 
+TEST_F(DebugUtilTest, TestGetStackTraceWhileCreatingThreads) {
+  // This test makes sure we can collect stack traces while threads are being created.
+  // We create 10 threads that create threads in a loop. Then we create 100 threads that collect
+  // stack traces from the other 10 threads.
+  std::atomic<bool> stop = false;
+  TestThreadHolder thread_holder;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_thread_stack_collection_wait) = true;
+
+  // Run this once so that all first time initialization routines are executed.
+  DumpThreadStack(Thread::CurrentThreadIdForStack());
+
+  std::set<ThreadIdForStack> thread_ids_to_dump;
+  auto dump_threads_fn = [&thread_ids_to_dump, &stop]() {
+    int64_t count = 0;
+    while (!stop.load(std::memory_order_acquire)) {
+      for (auto& tid : thread_ids_to_dump) {
+        DumpThreadStack(tid);
+        count++;
+      }
+    }
+    LOG(INFO) << "Dumped " << count << " threads";
+  };
+
+  auto create_threads_fn = [&stop]() {
+    int64_t count = 0, failed = 0;
+    while (!stop.load(std::memory_order_acquire)) {
+      scoped_refptr<Thread> thread;
+      auto s = Thread::Create(
+          "test", "test thread", []() {}, &thread);
+      if (!s.ok()) {
+        failed++;
+        continue;
+      }
+      thread->Join();
+      count++;
+    }
+    LOG(INFO) << "Successfully created " << count << " threads, Failed to create " << failed
+              << " threads";
+  };
+
+  std::vector<scoped_refptr<Thread>> thread_creator_threads;
+  for (int i = 0; i < 10; i++) {
+    scoped_refptr<Thread> t;
+    ASSERT_OK(Thread::Create("test", "test thread", create_threads_fn, &t));
+    thread_ids_to_dump.insert(t->tid_for_stack());
+    thread_creator_threads.push_back(std::move(t));
+  }
+
+  for (int i = 0; i < 100; i++) {
+    thread_holder.AddThreadFunctor(dump_threads_fn);
+  }
+
+  SleepFor(1min);
+
+  stop.store(true, std::memory_order_release);
+
+  for (auto& creator_thread : thread_creator_threads) {
+    creator_thread->Join();
+  }
+  thread_holder.Stop();
+}
 } // namespace yb

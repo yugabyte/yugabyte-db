@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
@@ -15,7 +16,10 @@ import com.yugabyte.yw.common.utils.NaturalOrderComparator;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
+import com.yugabyte.yw.models.AccessKey.MigratedKeyInfoFields;
 import com.yugabyte.yw.models.InstanceType;
+import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.NodeConfig.Operation;
 import com.yugabyte.yw.models.helpers.NodeConfig.Type;
@@ -24,7 +28,9 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Function;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -44,24 +50,29 @@ public class NodeConfigValidator {
 
   private final ShellProcessHandler shellProcessHandler;
 
+  private final NodeAgentClient nodeAgentClient;
+
   @Inject
   public NodeConfigValidator(
-      RuntimeConfigFactory runtimeConfigFactory, ShellProcessHandler shellProcessHandler) {
+      RuntimeConfigFactory runtimeConfigFactory,
+      ShellProcessHandler shellProcessHandler,
+      NodeAgentClient nodeAgentClient) {
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.shellProcessHandler = shellProcessHandler;
+    this.nodeAgentClient = nodeAgentClient;
   }
 
   @Builder
   @Getter
   // Placeholder key for retrieving a config value.
   private static class ConfigKey {
-    private String path;
-    private Provider provider;
+    private final String path;
+    private final Provider provider;
 
     @Override
     public String toString() {
       return String.format(
-          "%s(path=%s, provider=%s)", getClass().getSimpleName(), path, provider.uuid);
+          "%s(path=%s, provider=%s)", getClass().getSimpleName(), path, provider.getUuid());
     }
   }
 
@@ -69,12 +80,13 @@ public class NodeConfigValidator {
   @Getter
   // Placeholder key for passing validation data.
   private static class ValidationData {
-    private AccessKey accessKey;
-    private InstanceType instanceType;
-    private Provider provider;
-    private NodeConfig nodeConfig;
-    private NodeInstanceData nodeInstanceData;
-    private Operation operation;
+    private final AccessKey accessKey;
+    private final InstanceType instanceType;
+    private final Provider provider;
+    private final NodeConfig nodeConfig;
+    private final NodeInstanceData nodeInstanceData;
+    private final Operation operation;
+    private final boolean isDetached;
   }
 
   private final Function<Provider, Config> PROVIDER_CONFIG =
@@ -93,26 +105,49 @@ public class NodeConfigValidator {
       key -> PROVIDER_CONFIG.apply(key.provider).getBoolean(key.path);
 
   /**
+   * Validates the node configs for an existing node instance.
+   *
+   * @param provider the provider.
+   * @param nodeInstanceUuid the node instance UUID.
+   * @param nodeConfigs the node configs to be validated.
+   * @param isDetached true if the validation is not tied to a universe.
+   * @return a map of config type to validation result.
+   */
+  public Map<Type, ValidationResult> validateNodeConfigs(
+      Provider provider, UUID nodeInstanceUuid, Set<NodeConfig> nodeConfigs, boolean isDetached) {
+    NodeInstance nodeInstance = NodeInstance.getOrBadRequest(nodeInstanceUuid);
+    NodeInstanceData instanceData = nodeInstance.getDetails();
+    instanceData.nodeConfigs = nodeConfigs;
+    return validateNodeConfigs(provider, instanceData, isDetached);
+  }
+
+  /**
    * Validates the node configs in the instance data.
    *
    * @param provider the provider.
    * @param nodeData the node instance data.
+   * @param isDetached true if the validation is not tied to a universe.
    * @return a map of config type to validation result.
    */
   public Map<Type, ValidationResult> validateNodeConfigs(
-      Provider provider, NodeInstanceData nodeData) {
-    InstanceType instanceType = InstanceType.getOrBadRequest(provider.uuid, nodeData.instanceType);
-    AccessKey accessKey = AccessKey.getLatestKey(provider.uuid);
-    KeyInfo keyInfo = accessKey.getKeyInfo();
+      Provider provider, NodeInstanceData nodeData, boolean isDetached) {
+    InstanceType instanceType =
+        InstanceType.getOrBadRequest(provider.getUuid(), nodeData.instanceType);
+    AccessKey accessKey = AccessKey.getLatestKey(provider.getUuid());
     Operation operation =
-        accessKey.getKeyInfo().skipProvisioning ? Operation.CONFIGURE : Operation.PROVISION;
+        provider.getDetails().skipProvisioning ? Operation.CONFIGURE : Operation.PROVISION;
 
     Set<NodeConfig> nodeConfigs =
         nodeData.nodeConfigs == null ? new HashSet<>() : new HashSet<>(nodeData.nodeConfigs);
     ImmutableMap.Builder<Type, ValidationResult> resultsBuilder = ImmutableMap.builder();
 
-    boolean canSshNode = sshIntoNode(provider, nodeData, operation);
-    nodeConfigs.add(new NodeConfig(Type.SSH_ACCESS, String.valueOf(canSshNode)));
+    boolean canConnect = sshIntoNode(provider, nodeData, operation);
+    nodeConfigs.add(new NodeConfig(Type.SSH_ACCESS, String.valueOf(canConnect)));
+
+    if (operation == Operation.CONFIGURE && nodeAgentClient.isClientEnabled(provider)) {
+      canConnect = connectToNodeAgent(provider, nodeData, operation);
+      nodeConfigs.add(new NodeConfig(Type.NODE_AGENT_ACCESS, String.valueOf(canConnect)));
+    }
 
     for (NodeConfig nodeConfig : nodeConfigs) {
       ValidationData input =
@@ -123,6 +158,7 @@ public class NodeConfigValidator {
               .nodeConfig(nodeConfig)
               .nodeInstanceData(nodeData)
               .operation(operation)
+              .isDetached(isDetached)
               .build();
       boolean isValid = isNodeConfigValid(input);
       boolean isRequired = isNodeConfigRequired(input);
@@ -147,8 +183,7 @@ public class NodeConfigValidator {
     InstanceType instanceType = input.getInstanceType();
     Provider provider = input.getProvider();
     NodeConfig.Type type = input.nodeConfig.getType();
-    AccessKey accessKey = input.getAccessKey();
-    KeyInfo keyInfo = accessKey.getKeyInfo();
+    MigratedKeyInfoFields keyInfo = provider.getDetails();
     switch (type) {
       case PROMETHEUS_SPACE:
         {
@@ -173,12 +208,13 @@ public class NodeConfigValidator {
       case RAM_SIZE:
         {
           return Double.compare(
-                  Double.parseDouble(nodeConfig.getValue()), instanceType.memSizeGB * 1024)
+                  Double.parseDouble(nodeConfig.getValue()), instanceType.getMemSizeGB() * 1024)
               >= 0;
         }
       case CPU_CORES:
         {
-          return Double.compare(Double.parseDouble(nodeConfig.getValue()), instanceType.numCores)
+          return Double.compare(
+                  Double.parseDouble(nodeConfig.getValue()), instanceType.getNumCores())
               >= 0;
         }
       case TMP_DIR_SPACE:
@@ -188,7 +224,7 @@ public class NodeConfigValidator {
         }
       case PAM_LIMITS_WRITABLE:
         {
-          return Boolean.valueOf(nodeConfig.getValue()) == false;
+          return !Boolean.parseBoolean(nodeConfig.getValue());
         }
       case PYTHON_VERSION:
         {
@@ -197,16 +233,12 @@ public class NodeConfigValidator {
         }
       case CHRONYD_RUNNING:
         {
-          return Boolean.valueOf(nodeConfig.getValue()) == !keyInfo.setUpChrony;
+          return Boolean.parseBoolean(nodeConfig.getValue()) == !keyInfo.setUpChrony;
         }
       case MOUNT_POINTS_VOLUME:
         {
           int value = getFromConfig(CONFIG_INT_SUPPLIER, provider, "min_mount_point_dir_space_mb");
           return checkJsonFieldsGreaterEquals(nodeConfig.getValue(), value);
-        }
-      case NODE_EXPORTER_PORT:
-        {
-          return Integer.parseInt(nodeConfig.getValue()) == keyInfo.nodeExporterPort;
         }
       case ULIMIT_CORE:
         {
@@ -229,6 +261,11 @@ public class NodeConfigValidator {
           int value = getFromConfig(CONFIG_INT_SUPPLIER, provider, "swappiness");
           return Integer.parseInt(nodeConfig.getValue()) == value;
         }
+      case VM_MAX_MAP_COUNT:
+        {
+          int value = getFromConfig(CONFIG_INT_SUPPLIER, provider, "vm_max_map_count");
+          return Integer.parseInt(nodeConfig.getValue()) >= value;
+        }
       case MOUNT_POINTS_WRITABLE:
       case MASTER_HTTP_PORT:
       case MASTER_RPC_PORT:
@@ -238,11 +275,12 @@ public class NodeConfigValidator {
       case YB_CONTROLLER_RPC_PORT:
       case REDIS_SERVER_HTTP_PORT:
       case REDIS_SERVER_RPC_PORT:
-      case YQL_SERVER_HTTP_PORT:
-      case YQL_SERVER_RPC_PORT:
+      case YCQL_SERVER_HTTP_PORT:
+      case YCQL_SERVER_RPC_PORT:
       case YSQL_SERVER_HTTP_PORT:
       case YSQL_SERVER_RPC_PORT:
       case SSH_PORT:
+      case NODE_EXPORTER_PORT:
         {
           return checkJsonFieldsEqual(nodeConfig.getValue(), "true");
         }
@@ -262,10 +300,11 @@ public class NodeConfigValidator {
       case LIBNCURSES6:
       case LIBATOMIC:
       case AZCOPY:
+      case CHRONYC:
       case GSUTIL:
       case S3CMD:
         {
-          return Boolean.valueOf(nodeConfig.getValue()) == true;
+          return Boolean.parseBoolean(nodeConfig.getValue());
         }
       default:
         return true;
@@ -273,8 +312,8 @@ public class NodeConfigValidator {
   }
 
   private boolean isNodeConfigRequired(ValidationData input) {
-    AccessKey accessKey = input.getAccessKey();
-    KeyInfo keyInfo = accessKey.getKeyInfo();
+    MigratedKeyInfoFields keyInfo = input.getProvider().getDetails();
+    Provider provider = input.getProvider();
     NodeConfig.Type type = input.nodeConfig.getType();
     switch (type) {
       case PROMETHEUS_NO_NODE_EXPORTER:
@@ -284,8 +323,25 @@ public class NodeConfigValidator {
       case NTP_SERVICE_STATUS:
         {
           return input.getOperation() == Operation.CONFIGURE
-              ? true
-              : CollectionUtils.isNotEmpty(keyInfo.ntpServers);
+              || CollectionUtils.isNotEmpty(keyInfo.ntpServers);
+        }
+      case SSH_ACCESS:
+        {
+          return input.getOperation() == Operation.PROVISION
+              || !nodeAgentClient.isClientEnabled(provider);
+        }
+      case NODE_AGENT_ACCESS:
+        {
+          return input.getOperation() == Operation.CONFIGURE
+              && nodeAgentClient.isClientEnabled(provider);
+        }
+      case VM_MAX_MAP_COUNT:
+        {
+          return input.getOperation() == Operation.CONFIGURE;
+        }
+      case CHRONYC:
+        {
+          return input.getOperation() == Operation.CONFIGURE;
         }
       case CHRONYD_RUNNING:
       case RSYNC:
@@ -295,20 +351,33 @@ public class NodeConfigValidator {
       case S3CMD:
       case SWAPPINESS:
       case SYSTEMD_SUDOER_ENTRY:
+        {
+          return false;
+        }
       case MASTER_HTTP_PORT:
       case MASTER_RPC_PORT:
       case TSERVER_HTTP_PORT:
       case TSERVER_RPC_PORT:
-      case YB_CONTROLLER_HTTP_PORT:
-      case YB_CONTROLLER_RPC_PORT:
       case REDIS_SERVER_HTTP_PORT:
       case REDIS_SERVER_RPC_PORT:
-      case YQL_SERVER_HTTP_PORT:
-      case YQL_SERVER_RPC_PORT:
+      case YCQL_SERVER_HTTP_PORT:
+      case YCQL_SERVER_RPC_PORT:
       case YSQL_SERVER_HTTP_PORT:
       case YSQL_SERVER_RPC_PORT:
         {
+          return !input.isDetached();
+        }
+      case YB_CONTROLLER_HTTP_PORT:
+      case YB_CONTROLLER_RPC_PORT:
+        {
+          // TODO change this to !input.isDetached() once the issue of not cleaning up yb_controller
+          // is fixed.
           return false;
+        }
+      case NODE_EXPORTER_PORT:
+        {
+          return input.getOperation() == Operation.PROVISION
+              && provider.getDetails().isInstallNodeExporter();
         }
       default:
         return true;
@@ -319,7 +388,7 @@ public class NodeConfigValidator {
     ConfigKey configKey =
         ConfigKey.builder().provider(provider).path(String.format(CONFIG_KEY_FORMAT, key)).build();
     T value = function.apply(configKey);
-    log.trace("Value for {}: {}", configKey, value);
+    log.debug("Value for {}: {}", configKey, value);
     return value;
   }
 
@@ -364,16 +433,17 @@ public class NodeConfigValidator {
   }
 
   public boolean sshIntoNode(Provider provider, NodeInstanceData nodeData, Operation operation) {
-    AccessKey accessKey = AccessKey.getLatestKey(provider.uuid);
+    AccessKey accessKey = AccessKey.getLatestKey(provider.getUuid());
     KeyInfo keyInfo = accessKey.getKeyInfo();
-    String sshUser = operation == Operation.CONFIGURE ? "yugabyte" : keyInfo.sshUser;
+    String sshUser = operation == Operation.CONFIGURE ? "yugabyte" : provider.getDetails().sshUser;
     List<String> commandList =
         ImmutableList.of(
             "ssh",
             "-i",
             keyInfo.privateKey,
+            "-oStrictHostKeyChecking=no",
             "-p",
-            Integer.toString(keyInfo.sshPort),
+            Integer.toString(provider.getDetails().sshPort),
             String.format("%s@%s", sshUser, nodeData.ip),
             "exit");
 
@@ -385,5 +455,20 @@ public class NodeConfigValidator {
     ShellResponse response = shellProcessHandler.run(commandList, shellProcessContext);
 
     return response.isSuccess();
+  }
+
+  public boolean connectToNodeAgent(
+      Provider provider, NodeInstanceData nodeData, Operation operation) {
+    Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(nodeData.ip);
+    if (optional.isPresent()) {
+      NodeAgent nodeAgent = optional.get();
+      try {
+        nodeAgentClient.ping(nodeAgent);
+        return true;
+      } catch (RuntimeException e) {
+        log.error("Failed to connect to node agent {} - {}", nodeAgent.getUuid(), e.getMessage());
+      }
+    }
+    return false;
   }
 }

@@ -30,6 +30,12 @@ type: docs
       Ebean ORM
     </a>
   </li>
+  <li>
+    <a href="../ysql-mybatis/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      MyBatis
+    </a>
+  </li>
 </ul>
 
 The following tutorial implements a REST API server using the [Hibernate ORM](https://hibernate.org/orm/). The scenario is that of an e-commerce application. Database access in this application is managed through Hibernate ORM.

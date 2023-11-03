@@ -11,14 +11,18 @@
 package com.yugabyte.yw.models;
 
 import io.ebean.annotation.EnumValue;
+import io.swagger.annotations.ApiModelProperty;
 import java.io.Serializable;
 import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.Embeddable;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import play.libs.Json;
 
+@EqualsAndHashCode
 @Embeddable
 public class KmsHistoryId implements Serializable {
   public enum TargetType {
@@ -36,10 +40,16 @@ public class KmsHistoryId implements Serializable {
   @Column(name = "type")
   public TargetType type;
 
-  public KmsHistoryId(String keyRef, UUID targetUuid, TargetType type) {
+  @Column(name = "re_encryption_count", nullable = false)
+  @ApiModelProperty(value = "Number of times master key rotation was performed.")
+  @Getter
+  public int reEncryptionCount;
+
+  public KmsHistoryId(String keyRef, UUID targetUuid, TargetType type, int reEncryptionCount) {
     this.keyRef = keyRef;
     this.targetUuid = targetUuid;
     this.type = type;
+    this.reEncryptionCount = reEncryptionCount;
   }
 
   @Override
@@ -48,24 +58,7 @@ public class KmsHistoryId implements Serializable {
         .put("key_ref", keyRef)
         .put("target_uuid", targetUuid.toString())
         .put("type", type.name())
+        .put("re_encryption_count", reEncryptionCount)
         .toString();
-  }
-
-  @Override
-  public boolean equals(Object o) {
-    if (!(o instanceof KmsHistoryId)) return false;
-    KmsHistoryId oCast = (KmsHistoryId) o;
-    return oCast.keyRef.equals(this.keyRef)
-        && oCast.targetUuid.equals(this.targetUuid)
-        && oCast.type.equals(this.type);
-  }
-
-  @Override
-  public int hashCode() {
-    int result = 11;
-    result = 31 * result + keyRef.hashCode();
-    result = 31 * result + targetUuid.hashCode();
-    result = 31 * result + type.hashCode();
-    return result;
   }
 }

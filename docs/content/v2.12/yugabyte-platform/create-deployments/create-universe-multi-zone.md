@@ -14,13 +14,13 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/preview/yugabyte-platform/create-deployments/create-universe-multi-zone" class="nav-link active">
+    <a href="../create-universe-multi-zone" class="nav-link active">
       <i class="fa-solid fa-building" aria-hidden="true"></i>
 Generic</a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes" class="nav-link">
+    <a href="../create-universe-multi-zone-kubernetes" class="nav-link">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -32,7 +32,7 @@ This document describes how to create a YugabyteDB universe using any cloud prov
 
 ## Prerequisites
 
-Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Configure a cloud provider](/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/).
+Before you start creating a universe, ensure that you performed steps applicable to the cloud provider of your choice, as described in [Configure a cloud provider](../../configure-yugabyte-platform/set-up-cloud-provider/).
 
 ## Create a universe
 
@@ -52,9 +52,9 @@ To create a multi-zone universe using [Google Cloud provider (GCP)](../../config
 
 - Change the instance type (**n1-standard-8**).
 
-- Accept default values for all of the remaining fields (replication factor = 3, number of nodes = 3), as per the following illustration:<br><br>
+- Accept default values for all of the remaining fields (replication factor = 3, number of nodes = 3), as per the following illustration:
 
-  ![Create Universe on GCP](/images/yp/create-uni-multi-zone-1.png)
+    ![Create Universe on GCP](/images/yp/create-uni-multi-zone-1.png)
 
 - Click **Create**.
 
@@ -74,23 +74,21 @@ The **Universes** view allows you to examine various aspects of the universe:
 
 ## Connect to a database node
 
-Once the universe is ready, its **Overview** tab should appear similar to the following illustration:
+After the universe is ready, its **Overview** tab should appear similar to the following illustration:
 
 ![Multi-zone universe ready](/images/yp/multi-zone-universe-ready-1.png)
 
 You connect to a database node as follows:
 
-- Open the **Nodes** tab to find a list of the IP addresses of the available nodes that have been created and configured, as shown in the following illustration:<br>
+- Open the **Nodes** tab to find a list of the IP addresses of the available nodes that have been created and configured, as shown in the following illustration:
 
-  ![Multi-zone universe nodes](/images/yp/multi-zone-universe-nodes-1.png)
-
-
+    ![Multi-zone universe nodes](/images/yp/multi-zone-universe-nodes-1.png)
 
 - Determine the node to which you wish to connect and click the corresponding **Action > Connect**.
 
 - Copy the SSH command displayed in the **Access your node** dialog shown in the following illustration:
 
-  ![Multi-zone universe connect](/images/yp/multi-zone-universe-connect-2.png)
+    ![Multi-zone universe connect](/images/yp/multi-zone-universe-connect-2.png)
 
 - Run the preceding command from the Yugabyte Platform server, as follows:
 
@@ -196,13 +194,13 @@ You can stop the load tester as follows:
   user@yugaware-1:~$ sudo docker container ls | grep "yugabytedb/yb-sample-apps"
   ```
 
-  <br>Expect an output similar to the following:
+  Expect an output similar to the following:
 
   ```output
   <container_id> yugabytedb/yb-sample-apps "/usr/bin/java -jar …" 17 seconds ago Up 16 seconds                                                                                                            jovial_morse
   ```
 
-  <br>For example, if the container ID is ac144a49d57d, you would see the following output:
+  For example, if the container ID is ac144a49d57d, you would see the following output:
 
   ```output
   ac144a49d57d yugabytedb/yb-sample-apps "/usr/bin/java -jar …" 17 seconds ago Up 16 seconds                                                                                                            jovial_morse
@@ -214,25 +212,23 @@ You can stop the load tester as follows:
   user@yugaware-1:~$ sudo docker container stop <container_id>
   ```
 
-  <br>Expect the following output:
+  Expect the following output:
 
   ```output
   <container_id>
   ```
 
-  <br>For example, for a container with ID ac144a49d57d, you would need to execute the following command:
+  For example, for a container with ID ac144a49d57d, you would need to execute the following command:
 
   ```shell
   user@yugaware-1:~$ sudo docker container stop ac144a49d57d
   ```
 
-  <br>You would see the following output:
+  You would see the following output:
 
   ```output
   ac144a49d57d
   ```
-
-
 
 <!--
 

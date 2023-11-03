@@ -118,7 +118,7 @@ class ReplicaState {
   ReplicaState(
       ConsensusOptions options, std::string peer_uuid, std::unique_ptr<ConsensusMetadata> cmeta,
       ConsensusContext* consensus_context, SafeOpIdWaiter* safe_op_id_waiter,
-      RetryableRequests* retryable_requests,
+      RetryableRequestsManager* retryable_requests_manager,
       std::function<void(const OpIds&)> applied_ops_tracker);
 
   ~ReplicaState();
@@ -317,6 +317,10 @@ class ReplicaState {
   // This must be called under a lock.
   void UpdateLastReceivedOpIdUnlocked(const OpId& op_id);
 
+  // Updates the last received operation from current leader.
+  // This must be called under a lock.
+  void UpdateLastReceivedOpIdFromCurrentLeaderIfEmptyUnlocked(const OpId& op_id);
+
   // Returns the last received op id. This must be called under the lock.
   const OpId& GetLastReceivedOpIdUnlocked() const;
 
@@ -388,6 +392,8 @@ class ReplicaState {
   // returns an uninitialized MonoDelta value.
   MonoDelta RemainingOldLeaderLeaseDuration(CoarseTimePoint* now = nullptr) const;
 
+  MonoDelta RemainingMajorityReplicatedLeaderLeaseDuration() const;
+
   const PhysicalComponentLease& old_leader_ht_lease() const {
     return old_leader_ht_lease_;
   }
@@ -414,11 +420,13 @@ class ReplicaState {
 
   OpId MinRetryableRequestOpId();
 
-  Result<bool> RegisterRetryableRequest(const ConsensusRoundPtr& round);
+  Result<bool> RegisterRetryableRequest(
+    const ConsensusRoundPtr& round, tablet::IsLeaderSide is_leader_side);
 
   RestartSafeCoarseMonoClock& Clock();
 
   RetryableRequestsCounts TEST_CountRetryableRequests();
+  bool TEST_HasRetryableRequestsOnDisk() const;
 
   void SetLeaderNoOpCommittedUnlocked(bool value);
 
@@ -426,10 +434,16 @@ class ReplicaState {
       const ConsensusRoundPtr& round, const Status& status, int64_t leader_term,
       OpIds* applied_op_ids);
 
-  const RetryableRequests& retryable_requests() const {
+  RetryableRequests& retryable_requests() {
     DCHECK(IsLocked());
-    return retryable_requests_;
+    return retryable_requests_manager_.retryable_requests();
   }
+
+  Status FlushRetryableRequests();
+
+  Status CopyRetryableRequestsTo(const std::string& dest_path);
+
+  OpId GetLastFlushedOpIdInRetryableRequests();
 
  private:
   typedef std::deque<ConsensusRoundPtr> PendingOperations;
@@ -522,14 +536,14 @@ class ReplicaState {
   // is allowed to serve up-to-date reads and accept writes only while the current time is less than
   // this. However, the leader might manage to replicate a lease extension without losing its
   // leadership.
-  CoarseTimePoint majority_replicated_lease_expiration_;
+  mutable CoarseTimePoint majority_replicated_lease_expiration_;
 
   // LEADER only: the latest committed hybrid time lease expiration deadline for the current leader.
   // The leader is allowed to add new log entries only when lease of old leader is expired.
   std::atomic<MicrosTime> majority_replicated_ht_lease_expiration_{
       PhysicalComponentLease::NoneValue()};
 
-  RetryableRequests retryable_requests_;
+  RetryableRequestsManager retryable_requests_manager_;
 
   // This leader is ready to serve only if NoOp was successfully committed
   // after the new leader successful election.
@@ -548,7 +562,7 @@ class ReplicaState {
     // Extra value meaning depends on actual status:
     // LEADER_AND_READY: leader term.
     // LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE: number of microseconds in remaining_old_leader_lease.
-    uint64_t packed_status;
+    uint64_t packed_status = 0;
     CoarseTimePoint expire_at;
 
     LeaderStateCache() noexcept {}

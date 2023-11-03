@@ -1,12 +1,13 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../_style/colors.scss';
+@use '../../_style/colors.scss';
+@use '../../_style/variables.scss';
 
 .full-height-container {
   position: absolute;
   min-height: 100%;
   width: 100%;
-  background-color: $YB_BACKGROUND;
+  background-color: colors.$YB_BACKGROUND;
 }
 
 .container {
@@ -20,7 +21,7 @@
 }
 
 .container-body {
-  padding: $YB_HEADER_HEIGHT 0 $YB_FOOTER_HEIGHT $YB_SIDEBAR_WIDTH;
+  padding: variables.$YB_HEADER_HEIGHT 0 variables.$YB_FOOTER_HEIGHT variables.$YB_SIDEBAR_WIDTH;
 
   & > *:first-child {
     &:before {
@@ -31,7 +32,8 @@
       right: 0;
       height: 60px;
       width: auto;
-      box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 7px rgba($YB_DARK_GRAY_2, 0.04);
+      box-shadow: 0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05),
+        0 0.5em 7px rgba(colors.$YB_DARK_GRAY_2, 0.04);
       background: white;
       z-index: 1020;
     }
@@ -128,7 +130,7 @@ pre {
 }
 
 .gray-text {
-  color: $YB_SUBTITLE_COLOR;
+  color: colors.$YB_SUBTITLE_COLOR;
 }
 
 .centered {
@@ -141,21 +143,21 @@ pre {
   }
   &.badge-orange {
     padding: 3px 6px;
-    background-color: $YB_ORANGE;
+    background-color: colors.$YB_ORANGE;
   }
   &.badge-green {
     padding: 3px 6px;
-    background-color: $YB_SUCCESS_COLOR;
+    background-color: colors.$YB_SUCCESS_COLOR;
   }
   &.badge-gray {
     padding: 3px 6px;
-    background-color: $YB_DARK_GRAY;
+    background-color: colors.$YB_DARK_GRAY;
   }
 }
 
 .popover {
-  background-color: rgba($YB_VIOLET_DARK, 0.85);
-  box-shadow: 0px 13px 20px rgba($YB_VIOLET_DARK, 0.25);
+  background-color: rgba(colors.$YB_VIOLET_DARK, 0.85);
+  box-shadow: 0px 13px 20px rgba(colors.$YB_VIOLET_DARK, 0.25);
   border: none;
   padding: 10px 15px;
   color: white;
@@ -178,7 +180,7 @@ pre {
     &:before {
       left: -8px;
       top: calc(50% - 8px);
-      border-color: transparent rgba($YB_VIOLET_DARK, 0.85);
+      border-color: transparent rgba(colors.$YB_VIOLET_DARK, 0.85);
       border-style: solid;
       border-width: 8px 8px 8px 0px;
       height: 0px;
@@ -205,7 +207,7 @@ dd {
   }
 
   dt {
-    color: $YB_SUBTITLE_COLOR;
+    color: colors.$YB_SUBTITLE_COLOR;
     font-weight: 400;
     float: left;
     overflow: hidden;
@@ -234,7 +236,7 @@ dd {
   }
 
   dt {
-    color: $YB_SUBTITLE_COLOR;
+    color: colors.$YB_SUBTITLE_COLOR;
     font-weight: 300;
     float: none;
     overflow: visible;
@@ -268,7 +270,7 @@ dd {
   }
 
   dt {
-    color: $YB_SUBTITLE_COLOR;
+    color: colors.$YB_SUBTITLE_COLOR;
     font-weight: 300;
     overflow: hidden;
     text-align: left;
@@ -280,12 +282,25 @@ dd {
   .dl-normal {
     dt {
       font-weight: 300;
-      color: $YB_SUBTITLE_COLOR;
+      color: colors.$YB_SUBTITLE_COLOR;
     }
   }
 }
 
-.api-token-component {
+.token-warning {
+  margin-bottom: 5px;
+
+  span {
+    margin-left: 5px;
+  }
+
+  .warning-color {
+    margin-top: 0;
+    color: colors.$YB_WARNING_ICON_COLOR;
+  }
+}
+
+.copy-text-field {
   position: relative;
 
   button {

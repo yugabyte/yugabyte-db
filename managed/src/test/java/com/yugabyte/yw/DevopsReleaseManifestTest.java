@@ -38,7 +38,6 @@ public class DevopsReleaseManifestTest {
                   "create_instance.yml",
                   "local_role.yml",
                   "python3_requirements.txt",
-                  "python_requirements.txt",
                   "replicated.yml",
                   "version.txt",
                   "yb_release",
@@ -47,7 +46,6 @@ public class DevopsReleaseManifestTest {
           .put(
               "bin",
               ImmutableSet.of(
-                  "ansible-playbook.sh",
                   "ansible_runner.sh",
                   "diagnostics.sh",
                   "filter_ansible_output.py",

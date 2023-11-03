@@ -2685,85 +2685,103 @@ check_batchable(RestrictInfo *restrictinfo)
 	if (!restrictinfo->mergeopfamilies)
 		return;
 
-	leftarg = linitial(opexpr->args);
-	rightarg = lsecond(opexpr->args);
-
-	Node *outer = leftarg;
-	Node *inner = rightarg;
-
-	if (!IsA(inner, Var) && !IsA(outer, Var))
-		return;
-
-	int num_batched_rinfos = 2;
-
-	if (!IsA(inner, Var))
-	{
-		outer = rightarg;
-		inner = leftarg;
-		num_batched_rinfos = 1;
-	}
-
 	if (bms_overlap(restrictinfo->left_relids, restrictinfo->right_relids))
 		return;
 
-	Oid outerType = exprType(outer);
-	int outerTypMod = exprTypmod(outer);
-	Oid innerType = exprType(inner);
-	int innerTypMod = exprTypmod(inner);
-	Oid opno = opexpr->opno;
+	leftarg = linitial(opexpr->args);
+	rightarg = lsecond(opexpr->args);
 
-	if (outerType != innerType)
+	Node *outer;
+	Node *inner;
+
+	Node *args[] = {leftarg, rightarg};
+
+	/*
+	 * Try to make batched expressions of the forms
+	 * leftarg = BatchedExpr(rightarg) or rightarg = BatchedExpr(leftarg)
+	 * with necessary type checking.
+	 */
+	for (int i = 0; i < 2; i++)
 	{
-		/* We need to coerce one of the operands to a common type. */
-		Oid finalargtype = innerType;
-		Oid finalargtypmod = innerTypMod;
-		Node *coerced = coerce_to_target_type(NULL, outer, outerType,
-											  finalargtype, finalargtypmod,
-											  COERCION_IMPLICIT,
-											  COERCE_IMPLICIT_CAST, -1);
-		if (coerced == NULL)
+		inner = args[i];
+		outer = args[1 - i];
+		if (!IsA(inner, Var) &&
+			 !(IsA(inner, RelabelType)
+				&& IsA(((RelabelType *) inner)->arg, Var)))
+			continue;
+
+		Oid outerType = exprType(outer);
+
+		Oid innerType = exprType(inner);
+		int innerTypMod = exprTypmod(inner);
+		Oid opno = opexpr->opno;
+
+		if (outerType != innerType)
 		{
-			finalargtype = outerType;
-			finalargtypmod = outerTypMod;
-			coerced = coerce_to_target_type(NULL, inner, innerType,
-											finalargtype, finalargtypmod,
-											COERCION_IMPLICIT,
-											COERCE_IMPLICIT_CAST, -1);
+			/* We need to coerce the outer operand to the inner type. */
+			Oid finalargtype = innerType;
+			Oid finalargtypmod = innerTypMod;
+			Node *coerced = NULL;
 
-			/* If we can't cast either operand, we can't batch. */
+			MemoryContext cxt = GetCurrentMemoryContext();
+			
+			PG_TRY();
+			{
+				coerced = coerce_to_target_type(NULL, outer, outerType,
+														  finalargtype, finalargtypmod,
+														  COERCION_IMPLICIT,
+														  COERCE_IMPLICIT_CAST, -1);
+			}
+			PG_CATCH();
+			{
+				/*
+				 * Doing nothing here as if we encounter an error during type
+				 * coercion, we'll consider this coercion impossible. One would
+				 * usually expect coerce_to_target_type to return NULL in all
+				 * cases. Unfortunately, in some cases like where a record type
+				 * is being coerced into an incompatible complex UDT, it logs an
+				 * error instead. Making this a workaround for now.
+				 */
+				
+				MemoryContext errcxt = MemoryContextSwitchTo(cxt);
+				ErrorData *errdata = CopyErrorData();
+				int errcode = errdata->sqlerrcode;
+				FreeErrorData(errdata);
+
+				if (errcode == ERRCODE_CANNOT_COERCE)
+				{
+					FlushErrorState();
+				}
+				else
+				{
+					MemoryContextSwitchTo(errcxt);
+					PG_RE_THROW();
+				}
+			}
+			PG_END_TRY();
+
+			
+			/* Outer can't be coerced to inner type, bail and continue. */
 			if (coerced == NULL)
-				return;
+				continue;
+			
+			/* Make outer the new coerced expression. */
+			outer = coerced;
 
-			inner = outer;
+			char *opname = get_opname(opno);
+			List *names = lappend(NIL, makeString(opname));
+			
+			/* Find an equivalent operator whose operands are of the same type. */
+			Oid newopno = 
+				OpernameGetOprid(names, finalargtype, finalargtype);
+			pfree(opname);
+
+			if (!OidIsValid(newopno))
+				continue;
+			
+			opno = newopno;
 		}
-		
-		/* Casted operand needs to always be on the outer side for now. */
-		/* 
-		 * If we can't swap outer and inner and outer isn't the correct one,
-		 * we can't batch. Bail.
-		 */
-		if (num_batched_rinfos == 1 && outer != coerced)
-			return;
-		outer = coerced;
 
-		char *opname = get_opname(opno);
-		List *names = lappend(NIL, makeString(opname));
-		
-		/* Find an equivalent operator whose operands are of the same type. */
-		Oid newopno = 
-			OpernameGetOprid(names, finalargtype, finalargtype);
-		if (!OidIsValid(newopno))
-			return;
-		
-		opno = newopno;
-		pfree(opname);
-
-		/* Only one isomoporh of this expression is batchable. */
-		num_batched_rinfos = 1;
-	}
-
-	for (size_t i = 0; i < num_batched_rinfos; i++)
-	{
 		YbBatchedExpr *bexpr = makeNode(YbBatchedExpr);
 		bexpr->orig_expr = (Expr*) copyObject(outer);
 
@@ -2785,9 +2803,5 @@ check_batchable(RestrictInfo *restrictinfo)
 							  restrictinfo->nullable_relids);
 		restrictinfo->yb_batched_rinfo =
 			lappend(restrictinfo->yb_batched_rinfo, batched);
-		
-		Node *tmp = outer;
-		outer = inner;
-		inner = tmp;
 	}
 }

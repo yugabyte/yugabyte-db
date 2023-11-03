@@ -28,6 +28,7 @@
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/index.h"
+#include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_attribute.h"
@@ -58,10 +59,13 @@
 #include "pg_yb_utils.h"
 
 #include "access/nbtree.h"
+#include "catalog/heap.h"
 #include "commands/defrem.h"
 #include "nodes/nodeFuncs.h"
+#include "optimizer/planner.h"
 #include "parser/parser.h"
 #include "parser/parse_coerce.h"
+#include "parser/parse_relation.h"
 #include "parser/parse_type.h"
 #include "parser/parse_utilcmd.h"
 
@@ -94,7 +98,8 @@ ColumnSortingOptions(SortByDir dir, SortByNulls nulls, bool* is_desc, bool* is_n
 /*  Database Functions. */
 
 void
-YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated)
+YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated,
+				  bool *retry_on_oid_collision)
 {
 	if (YBIsDBCatalogVersionMode())
 	{
@@ -119,9 +124,34 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bo
 										  next_oid,
 										  colocated,
 										  &handle));
-	HandleYBStatus(YBCPgExecCreateDatabase(handle));
+
+	YBCStatus createdb_status = YBCPgExecCreateDatabase(handle);
+	/* If OID collision happends for CREATE DATABASE, then we need to retry CREATE DATABASE. */
+	if (retry_on_oid_collision)
+	{
+		*retry_on_oid_collision = createdb_status &&
+				YBCStatusPgsqlError(createdb_status) == ERRCODE_DUPLICATE_DATABASE &&
+				*YBCGetGFlags()->ysql_enable_create_database_oid_collision_retry;
+
+		if (*retry_on_oid_collision)
+		{
+			YBCFreeStatus(createdb_status);
+			return;
+		}
+	}
+
+	HandleYBStatus(createdb_status);
+
 	if (YBIsDBCatalogVersionMode())
 		YbCreateMasterDBCatalogVersionTableEntry(dboid);
+}
+
+static void
+YBCDropDBSequences(Oid dboid)
+{
+	YBCPgStatement sequences_handle;
+	HandleYBStatus(YBCPgNewDropDBSequences(dboid, &sequences_handle));
+	YBSaveDdlHandle(sequences_handle);
 }
 
 void
@@ -136,6 +166,15 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 	HandleYBStatusIgnoreNotFound(YBCPgExecDropDatabase(handle), &not_found);
 	if (not_found)
 		return;
+
+	/*
+	 * Enqueue the DDL handle for the sequences of this database to be dropped
+	 * after the transaction commits. As of 2023-09-21, since Drop Database is
+	 * not atomic, this is pointless. However, with #16395, Drop Database will
+	 * be atomic and this will be useful.
+	*/
+	YBCDropDBSequences(dboid);
+
 	if (YBIsDBCatalogVersionMode())
 		YbDeleteMasterDBCatalogVersionTableEntry(dboid);
 }
@@ -169,6 +208,20 @@ YBCDropTablegroup(Oid grpoid)
 	YBCPgStatement handle;
 
 	HandleYBStatus(YBCPgNewDropTablegroup(MyDatabaseId, grpoid, &handle));
+	if (ddl_rollback_enabled)
+	{
+		/*
+		 * The following function marks the tablegroup for deletion. YB-Master
+		 * will delete the tablegroup after the transaction is successfully
+		 * committed.
+		 */
+		HandleYBStatus(YBCPgExecDropTablegroup(handle));
+		return;
+	}
+	/*
+	 * YSQL DDL Rollback is disabled. Fall back to performing the YB-Master
+	 * side deletion after the transaction commits.
+	 */
 	YBSaveDdlHandle(handle);
 }
 
@@ -556,9 +609,10 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 			IndexStmt  *idxstmt;
 			Oid         constraintOid;
 
-			attmap = convert_tuples_by_name_map(RelationGetDescr(rel),
-								RelationGetDescr(parentRel),
-								gettext_noop("could not convert row type"));
+			attmap = convert_tuples_by_name_map(
+				RelationGetDescr(rel), RelationGetDescr(parentRel),
+				gettext_noop("could not convert row type"),
+				false /* yb_ignore_type_mismatch */);
 			idxstmt =
 				generateClonedIndexStmt(NULL, RelationGetRelid(rel), idxRel,
 						attmap, RelationGetDescr(rel)->natts,
@@ -731,8 +785,8 @@ YBCDropTable(Relation relation)
 		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
 															   YbGetStorageRelid(relation),
 															   false,
-															   false,
-															   &handle),
+															   &handle,
+																 YB_TRANSACTIONAL),
 									 &not_found);
 		/*
 		 * Since the creation of the handle could return a 'NotFound' error,
@@ -760,11 +814,8 @@ YBCDropTable(Relation relation)
 		{
 			return;
 		}
-		/*
-		 * YSQL DDL Rollback is not yet supported for colocated tables.
-		 */
-		if (*YBCGetGFlags()->ysql_ddl_rollback_enabled &&
-			!yb_props->is_colocated)
+
+		if (ddl_rollback_enabled)
 		{
 			/*
 			 * The following issues a request to the YB-Master to drop the
@@ -785,6 +836,50 @@ YBCDropTable(Relation relation)
 }
 
 void
+YBCDropSequence(Oid sequence_oid)
+{
+	YBCPgStatement handle;
+
+	HandleYBStatus(YBCPgNewDropSequence(MyDatabaseId, sequence_oid, &handle));
+	YBSaveDdlHandle(handle);
+}
+
+/*
+ * This function is inspired by RelationSetNewRelfilenode() in
+ * backend/utils/cache/relcache.c It updates the tuple corresponding to the
+ * truncated relation in pg_class in the sys cache.
+ */
+static void
+YbOnTruncateUpdateCatalog(Relation rel)
+{
+	Relation	  pg_class;
+	HeapTuple	  tuple;
+	Form_pg_class classform;
+
+	pg_class = heap_open(RelationRelationId, RowExclusiveLock);
+
+	tuple = SearchSysCacheCopy1(RELOID, ObjectIdGetDatum(RelationGetRelid(rel)));
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "could not find tuple for relation %u", RelationGetRelid(rel));
+	classform = (Form_pg_class) GETSTRUCT(tuple);
+
+	if (rel->rd_rel->relkind != RELKIND_SEQUENCE)
+	{
+		classform->relpages = 0;
+		classform->reltuples = 0;
+		classform->relallvisible = 0;
+	}
+
+	CatalogTupleUpdate(pg_class, &tuple->t_self, tuple);
+
+	heap_freetuple(tuple);
+	heap_close(pg_class, RowExclusiveLock);
+
+	/* This makes the pg_class row change visible. */
+	CommandCounterIncrement();
+}
+
+void
 YbTruncate(Relation rel)
 {
 	YBCPgStatement handle;
@@ -800,9 +895,9 @@ YbTruncate(Relation rel)
 		 */
 		HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
 												 relationId,
-												 false,
 												 isRegionLocal,
-												 &handle));
+												 &handle,
+												 YB_TRANSACTIONAL));
 		HandleYBStatus(YBCPgDmlBindTable(handle));
 		int rows_affected_count = 0;
 		HandleYBStatus(YBCPgDmlExecWriteOp(handle, &rows_affected_count));
@@ -816,6 +911,9 @@ YbTruncate(Relation rel)
 		HandleYBStatus(YBCPgExecTruncateTable(handle));
 	}
 
+	/* Update catalog metadata of the truncated table */
+	YbOnTruncateUpdateCatalog(rel);
+
 	if (!rel->rd_rel->relhasindex)
 		return;
 
@@ -825,16 +923,19 @@ YbTruncate(Relation rel)
 	foreach(lc, indexlist)
 	{
 		Oid indexId = lfirst_oid(lc);
-
-		/* PK index is not secondary index, skip */
-		if (indexId == rel->rd_pkindex)
-			continue;
-
 		/*
 		 * Lock level doesn't fully work in YB.  Since YB TRUNCATE is already
 		 * considered to not be transaction-safe, it doesn't really matter.
 		 */
 		Relation indexRel = index_open(indexId, AccessExclusiveLock);
+
+		/* PK index is not secondary index, perform only catalog update */
+		if (indexId == rel->rd_pkindex) {
+			YbOnTruncateUpdateCatalog(indexRel);
+			index_close(indexRel, AccessExclusiveLock);
+			continue;
+		}
+
 		YbTruncate(indexRel);
 		index_close(indexRel, AccessExclusiveLock);
 	}
@@ -847,7 +948,8 @@ static void
 CreateIndexHandleSplitOptions(YBCPgStatement handle,
                               TupleDesc desc,
                               OptSplit *split_options,
-                              int16 * coloptions)
+                              int16 * coloptions,
+                              int numIndexKeyAttrs)
 {
 	/* Address both types of split options */
 	switch (split_options->split_type)
@@ -867,7 +969,7 @@ CreateIndexHandleSplitOptions(YBCPgStatement handle,
 			/* Construct array to SPLIT column datatypes */
 			Form_pg_attribute attrs[INDEX_MAX_KEYS];
 			int attr_count;
-			for (attr_count = 0; attr_count < desc->natts; ++attr_count)
+			for (attr_count = 0; attr_count < numIndexKeyAttrs; ++attr_count)
 			{
 				attrs[attr_count] = TupleDescAttr(desc, attr_count);
 			}
@@ -893,6 +995,7 @@ YBCCreateIndex(const char *indexName,
 			   Relation rel,
 			   OptSplit *split_options,
 			   const bool skip_index_backfill,
+			   bool is_colocated,
 			   Oid tablegroupId,
 			   Oid colocationId,
 			   Oid tablespaceId)
@@ -917,7 +1020,9 @@ YBCCreateIndex(const char *indexName,
 									   rel->rd_rel->relisshared,
 									   indexInfo->ii_Unique,
 									   skip_index_backfill,
-									   false, /* if_not_exists */
+									   false /* if_not_exists */,
+									   MyDatabaseColocated && is_colocated
+									   /* is_colocated_via_database */,
 									   tablegroupId,
 									   colocationId,
 									   tablespaceId,
@@ -957,7 +1062,8 @@ YBCCreateIndex(const char *indexName,
 
 	/* Handle SPLIT statement, if present */
 	if (split_options)
-		CreateIndexHandleSplitOptions(handle, indexTupleDesc, split_options, coloptions);
+		CreateIndexHandleSplitOptions(handle, indexTupleDesc, split_options, coloptions,
+		                              indexInfo->ii_NumIndexKeyAttrs);
 
 	/* Create the index. */
 	HandleYBStatus(YBCPgExecCreateIndex(handle));
@@ -1023,10 +1129,37 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			Assert(list_length(handles) == 1);
 			YBCPgStatement add_col_handle =
 				(YBCPgStatement) lfirst(list_head(handles));
+
+			YBCPgExpr res = NULL;
+			if (colDef->raw_default && yb_enable_add_column_missing_default)
+			{
+				ParseState *pstate = make_parsestate(NULL);
+				pstate->p_sourcetext = NULL;
+				RangeTblEntry *rte = addRangeTableEntryForRelation(pstate,
+																   rel,
+																   NULL,
+																   false,
+																   true);
+				addRTEtoQuery(pstate, rte, true, true, true);
+				Expr *expr = (Expr *) cookDefault(pstate, colDef->raw_default,
+												  typeOid, typmod,
+												  colDef->colname);
+				expr = expression_planner(expr);
+				EState *estate = CreateExecutorState();
+				ExprState *exprState = ExecPrepareExpr(expr, estate);
+				ExprContext *econtext = GetPerTupleExprContext(estate);
+				bool missingIsNull;
+				Datum missingval = ExecEvalExpr(exprState, econtext,
+												&missingIsNull);
+				res = YBCNewConstant(add_col_handle, typeOid, colDef->collOid,
+									 missingval, missingIsNull);
+				FreeExecutorState(estate);
+			}
 			HandleYBStatus(YBCPgAlterTableAddColumn(add_col_handle,
 													colDef->colname,
 													order,
-													col_type));
+													col_type,
+													res));
 			++(*col);
 			*needsYBAlter = true;
 
@@ -1086,17 +1219,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 
 		case AT_AlterColumnType:
 		{
-			/*
-			 * Only supports variants that don't require on-disk changes.
-			 * For now, that is just varchar and varbit.
-			 */
-			ColumnDef*			colDef = (ColumnDef *) cmd->def;
 			HeapTuple			typeTuple;
-			Form_pg_attribute	attTup;
-			Oid					curTypId;
-			Oid					newTypId;
-			int32				curTypMod;
-			int32				newTypMod;
 
 			/* Get current typid and typmod of the column. */
 			typeTuple = SearchSysCacheAttName(relationId, cmd->name);
@@ -1106,64 +1229,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 						errmsg("column \"%s\" of relation \"%s\" does not exist",
 								cmd->name, RelationGetRelationName(rel))));
 			}
-			attTup = (Form_pg_attribute) GETSTRUCT(typeTuple);
-			curTypId = attTup->atttypid;
-			curTypMod = attTup->atttypmod;
 			ReleaseSysCache(typeTuple);
-
-			/* Get the new typid and typmod of the column. */
-			typenameTypeIdAndMod(NULL, colDef->typeName, &newTypId, &newTypMod);
-
-			/* Only varbit and varchar don't cause on-disk changes. */
-			switch (newTypId)
-			{
-				case VARCHAROID:
-				case VARBITOID:
-				{
-					/*
-					* Check for type equality, and that the new size is greater than or equal
-					* to the old size, unless the current size is infinite (-1).
-					*/
-					if (newTypId != curTypId ||
-						(newTypMod < curTypMod && newTypMod != -1) ||
-						(newTypMod > curTypMod && curTypMod == -1))
-					{
-						ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								errmsg("This ALTER TABLE command is not yet supported.")));
-					}
-					break;
-				}
-
-				default:
-				{
-					if (newTypId == curTypId && newTypMod == curTypMod)
-					{
-						/* Types are the same, no changes will occur. */
-						break;
-					}
-					/* timestamp <-> timestamptz type change is allowed
-						if no rewrite is needed */
-					if (curTypId == TIMESTAMPOID && newTypId == TIMESTAMPTZOID &&
-						!TimestampTimestampTzRequiresRewrite()) {
-						break;
-					}
-					if (curTypId == TIMESTAMPTZOID && newTypId == TIMESTAMPOID &&
-						!TimestampTimestampTzRequiresRewrite()) {
-						break;
-					}
-					ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							errmsg("This ALTER TABLE command is not yet supported.")));
-				}
-			}
-			/*
-			 * Do not allow collation update because that requires different collation
-			 * encoding and therefore can cause on-disk changes.
-			 */
-			Oid cur_collation_id = attTup->attcollation;
-			Oid new_collation_id = GetColumnDefCollation(NULL, colDef, newTypId);
-			if (cur_collation_id != new_collation_id)
-				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						errmsg("This ALTER TABLE command is not yet supported.")));
 			break;
 		}
 
@@ -1228,8 +1294,21 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			if (cmd->subtype == AT_AttachPartition ||
 				cmd->subtype == AT_DetachPartition)
 			{
-				dependent_rel = heap_openrv(((PartitionCmd *)cmd->def)->name,
-											AccessExclusiveLock);
+				RangeVar *partition_rv = ((PartitionCmd *)cmd->def)->name;
+				Relation r = relation_openrv(partition_rv, AccessExclusiveLock);
+				char relkind = r->rd_rel->relkind;
+				relation_close(r, AccessShareLock);
+				/*
+				 * If alter is performed on an index as opposed to a table
+				 * skip schema version increment.
+				 */
+				if (relkind == RELKIND_INDEX ||
+					relkind == RELKIND_PARTITIONED_INDEX)
+				{
+					return handles;
+				}
+
+				dependent_rel = heap_openrv(partition_rv, AccessExclusiveLock);
 				/*
 				 * If the partition table is not YB supported table including
 				 * foreign table, skip schema version increment.
@@ -1261,7 +1340,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 					SearchSysCache1(RELOID, ObjectIdGetDatum(relationId));
 				if (!HeapTupleIsValid(reltup))
 					elog(ERROR,
-						 "Cache lookup failed for relation %u",
+						 "cache lookup failed for relation %u",
 						  relationId);
 				Form_pg_class relform = (Form_pg_class) GETSTRUCT(reltup);
 				ReleaseSysCache(reltup);
@@ -1269,7 +1348,15 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 				{
 					Oid constraint_oid = get_relation_constraint_oid(relationId,
 																	 cmd->name,
-																	 false);
+																	 cmd->missing_ok);
+					/*
+					 * If the constraint doesn't exists and IF EXISTS is specified,
+					 * A NOTICE will be reported later in ATExecDropConstraint.
+					 */
+					if (!OidIsValid(constraint_oid))
+					{
+						return handles;
+					}
 					HeapTuple tuple = SearchSysCache1(
 						CONSTROID, ObjectIdGetDatum(constraint_oid));
 					if (!HeapTupleIsValid(tuple))
@@ -1393,6 +1480,13 @@ YBCPrepareAlterTable(List** subcmds,
 }
 
 void
+YBCSetTableIdForAlterTable(YBCPgStatement handle, Oid databaseId,
+						   Oid relationId)
+{
+	HandleYBStatus(YBCPgAlterTableSetTableId(handle, databaseId, relationId));
+}
+
+void
 YBCExecAlterTable(YBCPgStatement handle, Oid relationId)
 {
 	if (handle)
@@ -1475,8 +1569,8 @@ YBCDropIndex(Relation index)
 		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
 															   indexId,
 															   false,
-															   false,
-															   &handle),
+															   &handle,
+																 YB_TRANSACTIONAL),
 									 &not_found);
 		const bool valid_handle = !not_found;
 		if (valid_handle)
@@ -1496,15 +1590,26 @@ YBCDropIndex(Relation index)
 													   false, /* if_exists */
 													   &handle),
 									 &not_found);
-		const bool valid_handle = !not_found;
-		if (valid_handle)
+		if (not_found)
+			return;
+
+		if (ddl_rollback_enabled)
 		{
 			/*
-			 * We cannot abort drop in DocDB so postpone the execution until
-			 * the rest of the statement/txn is finished executing.
+			 * The following issues a request to the YB-Master to drop the
+			 * index once this transaction commits.
 			 */
-			YBSaveDdlHandle(handle);
+			HandleYBStatusIgnoreNotFound(YBCPgExecDropIndex(handle),
+										 &not_found);
+			return;
 		}
+		/*
+		 * YSQL DDL Rollback is disabled. This means DocDB will not rollback
+		 * the drop if the transaction ends up failing. We cannot abort drop
+		 * in DocDB so postpone the execution until the rest of the statement/
+		 * txn finishes executing.
+		 */
+		YBSaveDdlHandle(handle);
 	}
 }
 
@@ -1655,4 +1760,51 @@ void
 YBCValidatePlacement(const char *placement_info)
 {
 	HandleYBStatus(YBCPgValidatePlacement(placement_info));
+}
+
+/* ------------------------------------------------------------------------- */
+/*  Replication Slot Functions. */
+
+void
+YBCCreateReplicationSlot(const char *slot_name)
+{
+	YBCPgStatement handle;
+
+	HandleYBStatus(YBCPgNewCreateReplicationSlot(slot_name,
+												 MyDatabaseId,
+												 &handle));
+
+	bool already_present = false;
+	HandleYBStatusIgnoreAlreadyPresent(YBCPgExecCreateReplicationSlot(handle),
+									   &already_present);
+	if (already_present)
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_OBJECT),
+				 errmsg("replication slot \"%s\" already exists",
+						slot_name)));
+}
+
+void
+YBCListReplicationSlots(YBCReplicationSlotDescriptor **replication_slots,
+						size_t* numreplicationslots)
+{
+	HandleYBStatus(
+		YBCPgListReplicationSlots(replication_slots, numreplicationslots));
+}
+
+void
+YBCDropReplicationSlot(const char *slot_name)
+{
+	YBCPgStatement handle;
+
+	HandleYBStatus(YBCPgNewDropReplicationSlot(slot_name,
+											   &handle));
+
+	bool not_found = false;
+	HandleYBStatusIgnoreNotFound(YBCPgExecDropReplicationSlot(handle),
+								 &not_found);
+	if (not_found)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("replication slot \"%s\" does not exist", slot_name)));
 }

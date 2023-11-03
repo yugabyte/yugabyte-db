@@ -4,7 +4,7 @@ linkTitle: Application development
 description: Building applications with Hasura
 aliases:
 menu:
-  preview:
+  preview_integrations:
     identifier: hasura-1
     parent: hasura
     weight: 580
@@ -142,10 +142,10 @@ You can also query the database using the array relationship. The following exam
 
 Optionally, you can stop YugabyteDB and Hasura, as follows:
 
-- Stop the YugabyteDB cluster by executing the following `yb-ctl stop` command:
+- Stop the YugabyteDB cluster by executing the following command:
 
   ```sh
-  ./bin/yb-ctl stop
+  ./bin/yugabyted stop
   ```
 
 - Stop the Hasura container by executing the following command:

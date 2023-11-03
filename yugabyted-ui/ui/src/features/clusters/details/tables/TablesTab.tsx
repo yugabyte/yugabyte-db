@@ -1,296 +1,250 @@
-import React, { FC, useState } from 'react';
-import clsx from 'clsx';
-import { useRouteMatch } from 'react-router-dom';
-import {
-  makeStyles,
-  Box,
-  Typography,
-  InputAdornment,
-  MenuItem,
-  LinearProgress
-} from '@material-ui/core';
+import React, { FC, useMemo } from 'react';
+import { makeStyles, Box, LinearProgress, Breadcrumbs, Link, Typography, MenuItem } from '@material-ui/core';
+import { AlertVariant, YBDropdown } from '@app/components';
+import { ApiError, useGetClusterTablesQuery, GetClusterTablesApiEnum, ClusterTable, 
+  useGetClusterHealthCheckQuery, useGetClusterNodesQuery, useGetClusterTabletsQuery } from '@app/api/src';
+import { useToast } from '@app/helpers';
+import { DatabaseList } from './DatabaseList';
+import TriangleDownIcon from '@app/assets/caret-down.svg';
+import { TableList } from './TableList';
+import { TabletList } from './TabletList';
 import { useTranslation } from 'react-i18next';
-import { AlertVariant, YBTable, YBLoadingBox, YBButton, YBInput, YBDropdown } from '@app/components';
-import { ApiError, useGetClusterTablesQuery, GetClusterTablesApiEnum } from '@app/api/src';
-import { getMemorySizeUnits, useToast } from '@app/helpers';
-import SearchIcon from '@app/assets/search.svg';
-import TriangleDownIcon from '@app/assets/triangle-down.svg';
-import RefreshIcon from '@app/assets/refresh.svg';
-import { TablesWidget } from './TablesWidget';
-import type { ClusterTable } from '@app/api/src';
 
+export type DatabaseListType = Array<{ name: string, tableCount: number, size: number }>
+export type TableListType = Array<ClusterTable & { isIndexTable?: boolean }>;
 
 const useStyles = makeStyles((theme) => ({
-  icon: {
-    marginLeft: 'auto',
-    color: theme.palette.grey[600]
-  },
-  apiButton: {
-    borderRadius: theme.shape.borderRadius,
-    marginRight: theme.spacing(1),
-
-    '&:hover': {
-      borderColor: theme.palette.grey[300]
-    }
-  },
-  buttonText: {
-    color: theme.palette.text.primary
-  },
-  selected: {
-    backgroundColor: theme.palette.grey[300],
-
-    '&:hover': {
-      backgroundColor: theme.palette.grey[300]
-    }
-  },
-  sizeCell: {
-    textAlign: 'right',
-    paddingRight: theme.spacing(1.25)
-  },
   dropdown: {
     cursor: 'pointer',
     marginRight: theme.spacing(1)
   },
-  tablesRow: {
-    display: 'flex',
-    alignItems: 'center',
-    margin: theme.spacing(2, 0)
+  link: {
+    '&:link, &:focus, &:active, &:visited, &:hover': {
+      textDecoration: 'none',
+      color: theme.palette.text.primary
+    }
+  },
+  breadcrumbs: {
+    marginTop: theme.spacing(3),
+    marginBottom: theme.spacing(4),
+  },
+  dropdownContent: {
+    color: "black"
+  },
+  dropdownHeader: {
+    fontWeight: 500,
+    color: theme.palette.grey[500],
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    fontSize: '11.5px',
+    textTransform: 'uppercase'
   }
 }));
 
-// enum ApiEnum {
-//   Ysql = "YSQL",
-//   Ycql = "YCQL"
-// };
+export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => {
+  const classes = useStyles();
+  const { t } = useTranslation();
 
-export const TablesTab: FC = () => {
-  const [dbApi, setDbApi] = useState(GetClusterTablesApiEnum.Ysql);
-  const { params } = useRouteMatch<App.RouteParams>();
+  const [selectedDB, setSelectedDB] = React.useState<string>();
+
+  type SelectedTable = {
+    name: string,
+    uuid: string
+  } | undefined
+
+  const [selectedTable, setSelectedTable] = React.useState<SelectedTable>();
+
+  React.useEffect(() => {
+    setSelectedDB(undefined);
+    setSelectedTable(undefined);
+  }, [dbApi]);
+
   const { addToast } = useToast();
 
   const { data: clusterTablesResponseYsql, isFetching: isFetchingYsql, refetch: refetchYsql } =
     useGetClusterTablesQuery({
-      ...params,
       api: GetClusterTablesApiEnum.Ysql
     },
-    {
-      query: {
-        onError: (error: ApiError) => {
-          const message = error?.error?.detail ?? '';
-          addToast(AlertVariant.Error, message);
+      {
+        query: {
+          onError: (error: ApiError) => {
+            const message = error?.error?.detail ?? '';
+            addToast(AlertVariant.Error, message);
+          }
         }
       }
-    }
-  );
+    );
   const { data: clusterTablesResponseYcql, isFetching: isFetchingYcql, refetch: refetchYcql } =
     useGetClusterTablesQuery({
-      ...params,
       api: GetClusterTablesApiEnum.Ycql
     },
-    {
-      query: {
-        onError: (error: ApiError) => {
-          const message = error?.error?.detail ?? '';
-          addToast(AlertVariant.Error, message);
+      {
+        query: {
+          onError: (error: ApiError) => {
+            const message = error?.error?.detail ?? '';
+            addToast(AlertVariant.Error, message);
+          }
         }
       }
+    );
+
+  const { refetch: refetchTablets } = useGetClusterTabletsQuery({ query: { enabled: false }});
+  const { refetch: refetchNodes } = useGetClusterNodesQuery({ query: { enabled: false }});
+  const { refetch: refetchHealth } = useGetClusterHealthCheckQuery({ query: { enabled: false }});
+
+  const refetchData = () => {
+    if (dbApi === GetClusterTablesApiEnum.Ycql) {
+      refetchYcql()
+    } else {
+      refetchYsql()
     }
+
+    refetchTablets();
+    refetchNodes();
+    refetchHealth();
+  };
+
+  const ysqlTableData = useMemo<TableListType>(
+    () =>
+      clusterTablesResponseYsql
+        ? [
+            ...clusterTablesResponseYsql.tables,
+            ...clusterTablesResponseYsql.indexes.map((indexTable) => ({
+              ...indexTable,
+              isIndexTable: true,
+            })),
+          ]
+        : [],
+    [clusterTablesResponseYsql?.tables, clusterTablesResponseYsql?.indexes]
   );
-  var ysqlTableData = clusterTablesResponseYsql?.data ?? [];
-  var ycqlTableData = clusterTablesResponseYcql?.data ?? [];
+  const ycqlTableData = useMemo<TableListType>(
+    () => clusterTablesResponseYcql?.tables ?? [],
+    [clusterTablesResponseYcql?.tables]
+  );
 
-  const classes = useStyles();
-  const { t } = useTranslation();
-
-  var tableRows:ClusterTable[] = [];
-  switch(dbApi) {
+  let isFetching = false;
+  let data: TableListType;
+  switch (dbApi) {
     case GetClusterTablesApiEnum.Ysql:
-      tableRows = ysqlTableData;
+      isFetching = isFetchingYsql;
+      data = ysqlTableData;
       break;
     case GetClusterTablesApiEnum.Ycql:
-      tableRows = ycqlTableData;
+      isFetching = isFetchingYcql;
+      data = ycqlTableData;
       break;
   }
-  const [keyspace, setKeyspace] = useState(0);
-  const [searchInput, setSearchInput] = useState<string>();
 
-  const clusterTablesColumns = [
-    {
-      name: 'id',
-      options: {
-        display: false,
-        filter: false
-      }
-    },
-    {
-      name: 'name',
-      label: t('clusterDetail.tables.tableName'),
-      options: {
-        filter: true
-      }
-    },
-    {
-      name: 'keyspace',
-      label:
-        dbApi === "YSQL"
-          ? t('clusterDetail.tables.database')
-          : t('clusterDetail.tables.keyspace'),
-      options: {
-        filter: true
-      }
-    },
-    {
-      name: 'size_bytes',
-      label: t('clusterDetail.tables.size'),
-      options: {
-        filter: true,
-        setCellHeaderProps: () => ({ style: { textAlign: 'right' } }),
-        setCellProps: () => ({ className: classes.sizeCell }),
-        customBodyRender: (value: number) => getMemorySizeUnits(value)
-      }
-    }
-  ];
+  const dbKeyframeList = React.useMemo<DatabaseListType>(() => 
+    Array.from(data.reduce((prev, curr) => prev.add(curr.keyspace), new Set<string>()))
+      .map(dbName => {
+        const filteredDb = data.filter(d => d.keyspace === dbName);
+        return {
+          name: dbName,
+          tableCount: filteredDb.length,
+          size: filteredDb.reduce((prev, curr) => prev + curr.size_bytes, 0)
+        }
+      }), [data]);
 
-  const handleKeyspaceChange = (index: number) => {
-    setKeyspace(index);
-  };
+  const tableList = React.useMemo(() => data.filter(d => d.keyspace === selectedDB), [selectedDB, data])
 
-  const keyspaceOptions = [{ label: t('common.all'), value: '' }];
-  tableRows
-    .reduce((items, curr) => items.add(curr.keyspace), new Set<string>())
-    .forEach((k) => keyspaceOptions.push({ label: k, value: k }));
-
-  let displayedTables = searchInput
-    ? tableRows.filter((x) => x.name.includes(searchInput) || x.keyspace.includes(searchInput))
-    : tableRows;
-  if (keyspace > 0) {
-    displayedTables = displayedTables.filter((x) => x.keyspace === keyspaceOptions[keyspace].value);
+  if (isFetching) {
+    return (
+      <Box textAlign="center" mt={2.5}>
+        <LinearProgress />
+      </Box>
+    );
   }
-
-  const getTableListing = () => {
-    let returnEl;
-    var isFetching = false;
-    switch(dbApi) {
-      case GetClusterTablesApiEnum.Ysql:
-        isFetching = isFetchingYsql;
-        break;
-      case GetClusterTablesApiEnum.Ycql:
-        isFetching = isFetchingYcql;
-      break;
-    }
-    if (isFetching) {
-      returnEl = (
-        <Box textAlign="center" mt={2.5}>
-          <LinearProgress />
-        </Box>
-      );
-    } else if (displayedTables.length) {
-      returnEl = (
-        <Box pb={4} pt={1}>
-          <YBTable data={displayedTables} columns={clusterTablesColumns}
-                   options={{ pagination: false }} />
-        </Box>
-      );
-    } else {
-      returnEl = <YBLoadingBox>{t('clusterDetail.tables.noTablesCopy')}</YBLoadingBox>;
-    }
-    return returnEl;
-  };
 
   return (
-    <>
-      {clusterTablesResponseYsql?.data && clusterTablesResponseYcql?.data &&
-        <TablesWidget ysqlTableData={ysqlTableData ?? []} ycqlTableData={ycqlTableData ?? []} />}
-      <Box className={classes.tablesRow}>
-        <>
-          <YBButton
-            className={
-                clsx(classes.apiButton, dbApi === GetClusterTablesApiEnum.Ysql && classes.selected)
-            }
-            onClick={() => {
-              handleKeyspaceChange(0);
-              setTimeout(() => {
-                setDbApi(GetClusterTablesApiEnum.Ysql);
-              });
-            }}
-          >
-            <Typography variant="body2" className={classes.buttonText}>
-              {'YSQL'}
-            </Typography>
-          </YBButton>
-          <YBButton
-            className={
-                clsx(classes.apiButton, dbApi === GetClusterTablesApiEnum.Ycql && classes.selected)
-            }
-            onClick={() => {
-              handleKeyspaceChange(0);
-              setTimeout(() => {
-                setDbApi(GetClusterTablesApiEnum.Ycql);
-              });
-            }}
-          >
-            <Typography variant="body2" className={classes.buttonText}>
-              {'YCQL'}
-            </Typography>
-          </YBButton>
-        </>
-        <Box ml="auto" display="flex" alignItems="center">
-          <YBDropdown
-            origin={
-              <Box display="flex" alignItems="center">
-                <strong>{`${
-                  dbApi === GetClusterTablesApiEnum.Ysql
-                    ? t('clusterDetail.tables.database')
-                    : t('clusterDetail.tables.keyspace')
-                }:`}</strong>
-                <Box pl={0.25}>{keyspaceOptions[keyspace].label}</Box>
-                <TriangleDownIcon />
-              </Box>
-            }
-            position={'bottom'}
-            growDirection={'left'}
-            className={classes.dropdown}
-          >
-            {keyspaceOptions.map((opt, index) => (
-              <MenuItem
-                key={`keyspaces-${opt.value.replace(' ', '-')}`}
-                selected={keyspace === index}
-                onClick={() => handleKeyspaceChange(index)}
+    <Box>
+      <Box className={classes.breadcrumbs}>
+        {selectedDB &&
+          <Breadcrumbs aria-label="breadcrumb">
+            <Link className={classes.link} 
+              onClick={() => { setSelectedTable(undefined); setSelectedDB(undefined); }}>
+              <Typography variant="body2" color="primary">{dbApi}</Typography>
+            </Link>
+            {selectedTable ?
+              <Link className={classes.link} 
+                onClick={() => { setSelectedTable(undefined); }}>
+                <Typography variant="body2" color="primary">
+                  {selectedDB}
+                </Typography>
+              </Link>
+              :
+              <YBDropdown
+                origin={
+                  <Box display="flex" alignItems="center" className={classes.dropdownContent}>
+                    {selectedDB}
+                    <TriangleDownIcon />
+                  </Box>
+                }
+                position={'bottom'}
+                growDirection={'right'}
+                className={classes.dropdown}
               >
-                {opt.label}
-              </MenuItem>
-            ))}
-          </YBDropdown>
-          <YBInput
-            placeholder={t('clusterDetail.tables.filterKeyword')}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="end">
-                  <SearchIcon />
-                </InputAdornment>
-              )
+                <Box className={classes.dropdownHeader}>{t('clusterDetail.databases.database')}</Box>
+                {dbKeyframeList.map(item => (
+                  <MenuItem
+                    key={`keyspaces-${item.name.replace(' ', '-')}`}
+                    selected={item.name === selectedDB}
+                    onClick={() => setSelectedDB(item.name)}
+                  >
+                    {item.name}
+                  </MenuItem>
+                ))}
+              </YBDropdown>
+            }
+            {selectedTable &&
+              <YBDropdown
+              origin={
+                <Box display="flex" alignItems="center" className={classes.dropdownContent}>
+                  {selectedTable.name}
+                  <TriangleDownIcon />
+                </Box>
+              }
+              position={'bottom'}
+              growDirection={'right'}
+              className={classes.dropdown}
+            >
+              <Box className={classes.dropdownHeader}>{t('clusterDetail.databases.table')}</Box>
+              {tableList.filter(table => !table.isIndexTable).map(item => (
+                <MenuItem
+                  key={`keyspaces-${item.name.replace(' ', '-')}`}
+                  selected={item.uuid === selectedTable.uuid}
+                  onClick={() => setSelectedTable({ name: item.name, uuid: item.uuid }) }
+                >
+                  {item.name}
+                </MenuItem>
+              ))}
+            </YBDropdown>
+          }
+          </Breadcrumbs>
+        }
+      </Box>
+      {selectedDB && selectedTable ? 
+        <TabletList
+          selectedTableUuid={selectedTable.uuid}
+          onRefetch={refetchData} />
+        :
+        (selectedDB ? 
+          <TableList
+            tableList={tableList}
+            onSelect={(name: string, uuid: string) => {
+                setSelectedTable({ name: name, uuid: uuid })
             }}
-            onChange={(ev) => setSearchInput(ev.target.value)}
+            onRefetch={refetchData}
           />
-        </Box>
-      </Box>
-      <Box mt={3} mb={2} display="flex" alignItems="center" justifyContent="space-between">
-        <Typography variant="h5">
-            {t('clusterDetail.tables.numTables', { count: displayedTables.length })}
-        </Typography>
-        <YBButton
-          variant="ghost"
-          startIcon={<RefreshIcon />}
-          onClick={() =>  {
-            refetchYsql();
-            refetchYcql();
-          }}
-          data-testid="btnRefreshLiveQueries"
-        >
-          {t('clusterDetail.performance.actions.refresh')}
-        </YBButton>
-      </Box>
-      {getTableListing()}
-    </>
+          :
+          <DatabaseList 
+            dbList={dbKeyframeList} 
+            isYcql={dbApi === GetClusterTablesApiEnum.Ycql}
+            onSelect={setSelectedDB}
+            onRefetch={refetchData}
+          />
+        )
+      }
+    </Box>
   );
 };

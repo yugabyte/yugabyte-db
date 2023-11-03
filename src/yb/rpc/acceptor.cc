@@ -44,7 +44,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest_prod.h>
 
 #include "yb/gutil/ref_counted.h"
@@ -60,8 +60,6 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
-
-using google::protobuf::Message;
 
 METRIC_DEFINE_counter(server, rpc_connections_accepted,
                       "RPC Connections Accepted",
@@ -103,7 +101,7 @@ Status Acceptor::Listen(const Endpoint& endpoint, Endpoint* bound_endpoint) {
 
   bool was_empty;
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (closing_) {
       return STATUS_SUBSTITUTE(ServiceUnavailable, "Acceptor closing");
     }
@@ -128,7 +126,7 @@ Status Acceptor::Start() {
 
 void Acceptor::Shutdown() {
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (closing_) {
       CHECK(sockets_to_add_.empty());
       VLOG(2) << "Acceptor already shut down";
@@ -187,7 +185,7 @@ void Acceptor::IoHandler(ev::io& io, int events) {
 void Acceptor::AsyncHandler(ev::async& async, int events) {
   bool closing;
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     closing = closing_;
     sockets_to_add_.swap(processing_sockets_to_add_);
   }

@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Link } from 'react-router';
 import Toggle from 'react-toggle';
@@ -9,7 +9,7 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import moment from 'moment';
 import { YBPanelItem } from '../../panels';
 import { YBCopyButton } from '../../common/descriptors';
-import { get } from '../../../utils/ObjectUtils';
+import { get, isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isAvailable, isNotHidden } from '../../../utils/LayoutUtils';
 import {
@@ -22,7 +22,6 @@ import { TableAction } from '../../tables';
 import ListTablesModal from './ListTablesModal';
 import SchedulesContainer from '../../schedules/SchedulesContainer';
 import './ListBackups.scss';
-import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 
 const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
 const YCQL_TABLE_TYPE = 'YQL_TABLE_TYPE';
@@ -111,7 +110,7 @@ export default class ListBackups extends Component {
   };
 
   displayMultiTableNames = (cell, rowData) => {
-    if (rowData.tableNameList && rowData.tableNameList.length) {
+    if (rowData.tableNameList?.length) {
       if (rowData.tableNameList.length > 3) {
         // Display list of table names truncated if longer than 3
         const additionalTablesLink = (
@@ -200,7 +199,7 @@ export default class ListBackups extends Component {
           )}
         </BootstrapTable>
       );
-    } else if (row.tableUUIDList && row.tableUUIDList.length) {
+    } else if (row.tableUUIDList?.length) {
       const displayedTablesText =
         row.tableNameList.length > 3 ? (
           <div>
@@ -450,14 +449,14 @@ export default class ListBackups extends Component {
     };
 
     const showBackupType = function (item, row) {
-      if (row.backupList && row.backupList.length) {
+      if (row.backupList?.length) {
         return (
           <div className="backup-type">
             <i className="fa fa-globe" aria-hidden="true" />{' '}
             {item === YCQL_TABLE_TYPE ? 'Multi-Keyspace backup' : 'Multi-Namespace backup'}
           </div>
         );
-      } else if (row.tableUUIDList && row.tableUUIDList.length) {
+      } else if (row.tableUUIDList?.length) {
         return (
           <div className="backup-type">
             <i className="fa fa-table" /> Multi-Table backup
@@ -469,6 +468,7 @@ export default class ListBackups extends Component {
             <i className="fa fa-file" /> Table backup
           </div>
         );
+        // eslint-disable-next-line eqeqeq
       } else if (row.keyspace != null) {
         const backupTableType =
           row.backupType === YSQL_TABLE_TYPE ? 'Namespace backup' : 'Keyspace backup';

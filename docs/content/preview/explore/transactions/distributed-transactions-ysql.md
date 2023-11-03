@@ -1,9 +1,9 @@
 ---
-title: Distributed transactions
+title: Distributed transactions in YSQL
 headerTitle: Distributed transactions
 linkTitle: Distributed transactions
-description: Distributed transactions in YugabyteDB.
-headcontent: Learn how a distributed transaction works in YugabyteDB
+description: Understand distributed transactions in YugabyteDB using YSQL.
+headcontent:
 menu:
   preview:
     name: Distributed transactions
@@ -31,7 +31,9 @@ type: docs
 
 </ul>
 
-This example shows how a distributed transaction works in YugabyteDB.
+The best way to understand distributed transactions in YugabyteDB is through examples.
+
+To learn about how YugabyteDB handles failures during transactions, see [High availability of transactions](../../fault-tolerance/transaction-availability/).
 
 {{% explore-setup-single %}}
 
@@ -48,7 +50,7 @@ CREATE TABLE accounts (
 );
 ```
 
-Insert some sample data into the table:
+Execute the following statements to insert sample data into the table:
 
 ```sql
 INSERT INTO accounts VALUES ('John', 'savings', 1000);
@@ -57,7 +59,7 @@ INSERT INTO accounts VALUES ('Smith', 'savings', 2000);
 INSERT INTO accounts VALUES ('Smith', 'checking', 50);
 ```
 
-Display the contents of the table:
+Display the contents of the table, as follows:
 
 ```sql
 yugabyte=# SELECT * FROM accounts;
@@ -110,7 +112,7 @@ The transaction can be broken down as follows:
     BEGIN TRANSACTION;
     ```
 
-    The node that receives this statement becomes the transaction coordinator. A new transaction record is created in the `transaction status` table for the current transaction. It has a unique transaction id with the state `PENDING`. Note that in practice, these records are pre-created to achieve high performance.
+    The node that receives this statement becomes the transaction coordinator. A new transaction record is created in the `transaction status` table for the current transaction. It has a unique transaction ID with the state `PENDING`. Note that in practice, these records are pre-created to achieve high performance.
 
 1. Update:
 
@@ -120,7 +122,7 @@ The transaction can be broken down as follows:
       AND account_type='savings';
     ```
 
-    The transaction coordinator writes a _provisional record_ to the tablet that contains this row. The provisional record consists of the transaction ID, so the state of the transaction can be determined. If a provisional record written by another transaction already exists, then the current transaction would use the transaction ID that is present in the provisional record to fetch details and check if there is a potential conflict.
+    The transaction coordinator writes a provisional record to the tablet that contains this row. The provisional record consists of the transaction ID, so the state of the transaction can be determined. If a provisional record written by another transaction already exists, then the current transaction would use the transaction ID that is present in the provisional record to fetch details and check if there is a potential conflict.
 
 1. Second update:
 
@@ -130,7 +132,7 @@ The transaction can be broken down as follows:
       AND account_type='checking';
     ```
 
-    This step is largely the same as the previous step. Note that the rows being accessed can live on different nodes. The transaction coordinator would need to perform a provisional write RPC to the appropriate node for each row.
+    This step is largely the same as the previous step. Note that the rows being accessed can be on different nodes. The transaction coordinator would need to perform a provisional write RPC to the appropriate node for each row.
 
 1. Commit:
 
@@ -138,7 +140,7 @@ The transaction can be broken down as follows:
     COMMIT;
     ```
 
-    To commit, all the provisional writes must have successfully completed. The `COMMIT` statement causes the transaction coordinator to update the transaction status in the `transaction status` table to `COMMITED`, at which point it is assigned the commit timestamp (which is a _hybrid timestamp_ to be precise). At this point, the transaction is completed. In the background, the `COMMIT` record along with the commit timestamp is applied to each of the rows that participated to make future lookups of these rows efficient.
+    To commit, all the provisional writes must have successfully completed. The `COMMIT` statement causes the transaction coordinator to update the transaction status in the `transaction status` table to `COMMITED`, at which point it is assigned the commit timestamp (a hybrid timestamp, to be precise). Now the transaction is completed. In the background, the `COMMIT` record along with the commit timestamp is applied to each of the rows that participated to make future lookups of these rows efficient.
 
 The following diagram shows the sequence of events that occur when a transaction is running:
 
@@ -146,7 +148,7 @@ The following diagram shows the sequence of events that occur when a transaction
 
 ### Scalability
 
-Because all nodes of the cluster can process transactions by becoming transaction coordinators, horizontal scalability can be achieved by distributing the queries evenly across the nodes of the cluster.
+Because all nodes of the universe can process transactions by becoming transaction coordinators, horizontal scalability can be achieved by distributing the queries evenly across the nodes of the universe.
 
 ### Resilience
 
@@ -154,13 +156,13 @@ Each update performed as a part of the transaction is replicated across multiple
 
 ### Concurrency control
 
-[Concurrency control](https://en.wikipedia.org/wiki/Concurrency_control) in databases ensures that multiple transactions can execute concurrently while preserving data integrity. Concurrency control is essential for correctness in environments where two or more transactions can access the same data at the same time. The two primary mechanisms to achieve concurrency control are *optimistic* and *pessimistic*.
+[Concurrency control](../../../architecture/transactions/concurrency-control/) in databases ensures that multiple transactions can execute concurrently while preserving data integrity. Concurrency control is essential for correctness in environments where two or more transactions can access the same data at the same time. The two primary mechanisms to achieve concurrency control are optimistic and pessimistic.
 
 YugabyteDB currently supports optimistic concurrency control, with pessimistic concurrency control being worked on actively.
 
 ## Transaction options
 
-You can see the various options supported by transactions by running the following `\h BEGIN` meta-command:
+To view options supported by transactions, execute the following `\h BEGIN` meta-command:
 
 ```sql
 yugabyte=# \h BEGIN
@@ -181,7 +183,7 @@ where transaction_mode is one of:
 
 ### transaction_mode
 
-The `transaction_mode` can be set to one of the following options:
+You can set the `transaction_mode` to one of the following:
 
 1. `READ WRITE` – You can perform read or write operations.
 2. `READ ONLY` – You can only perform read operations.
@@ -208,8 +210,6 @@ ERROR: cannot execute CREATE TABLE in a read-only transaction
 
 As in PostgreSQL, the `DEFERRABLE` transaction property is not used unless the transaction is also both `SERIALIZABLE` and `READ ONLY`.
 
-When all three of these properties (`SERIALIZABLE`, `DEFERRABLE`, and `READ ONLY`) are set for a transaction, the transaction may block when first acquiring its snapshot, after which it is able to run without the typical overhead of a `SERIALIZABLE` transaction and without any risk of contributing to or being canceled by a serialization failure.
+When all three of these properties (`SERIALIZABLE`, `DEFERRABLE`, and `READ ONLY`) are set for a transaction, the transaction may block when first acquiring its snapshot, after which it can run without the typical overhead of a `SERIALIZABLE` transaction and without any risk of contributing to or being canceled by a serialization failure.
 
-{{< tip title="Tip" >}}
 This mode is well-suited for long-running reports or backups without impacting or being impacted by other transactions.
-{{< /tip >}}

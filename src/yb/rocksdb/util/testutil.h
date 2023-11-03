@@ -49,13 +49,16 @@
 #include "yb/util/slice.h"
 
 DECLARE_bool(never_fsync);
+DECLARE_bool(TEST_enable_sync_points);
+
 namespace rocksdb {
 class SequentialFileReader;
 
 class RocksDBTest : public ::testing::Test {
  public:
   RocksDBTest() {
-    FLAGS_never_fsync = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = true;
   }
 };
 
@@ -102,7 +105,7 @@ class PlainInternalKeyComparator : public InternalKeyComparator {
 
   virtual ~PlainInternalKeyComparator() {}
 
-  virtual int Compare(const Slice& a, const Slice& b) const override {
+  virtual int Compare(Slice a, Slice b) const override {
     return user_comparator()->Compare(a, b);
   }
   virtual void FindShortestSeparator(std::string* start,
@@ -128,7 +131,7 @@ class SimpleSuffixReverseComparator : public Comparator {
     return "SimpleSuffixReverseComparator";
   }
 
-  virtual int Compare(const Slice& a, const Slice& b) const override {
+  virtual int Compare(Slice a, Slice b) const override {
     Slice prefix_a = Slice(a.data(), 8);
     Slice prefix_b = Slice(b.data(), 8);
     int prefix_comp = prefix_a.compare(prefix_b);
@@ -161,29 +164,51 @@ class VectorIterator : public InternalIterator {
     assert(keys_.size() == values_.size());
   }
 
-  virtual bool Valid() const override { return current_ < keys_.size(); }
-
-  virtual void SeekToFirst() override { current_ = 0; }
-  virtual void SeekToLast() override { current_ = keys_.size() - 1; }
-
-  virtual void Seek(const Slice& target) override {
-    current_ = std::lower_bound(keys_.begin(), keys_.end(), target.ToBuffer()) -
-               keys_.begin();
+  const KeyValueEntry& SeekToFirst() override {
+    current_ = 0;
+    return Entry();
   }
 
-  virtual void Next() override { current_++; }
-  virtual void Prev() override { current_--; }
+  const KeyValueEntry& SeekToLast() override {
+    current_ = keys_.size() - 1;
+    return Entry();
+  }
 
-  virtual Slice key() const override { return Slice(keys_[current_]); }
-  virtual Slice value() const override { return Slice(values_[current_]); }
+  const KeyValueEntry& Seek(Slice target) override {
+    current_ = std::lower_bound(keys_.begin(), keys_.end(), target.ToBuffer()) - keys_.begin();
+    return Entry();
+  }
 
-  virtual Status status() const override { return Status::OK(); }
+  const KeyValueEntry& Next() override {
+    current_++;
+    return Entry();
+  }
+
+  const KeyValueEntry& Prev() override {
+    current_--;
+    return Entry();
+  }
+
+  const KeyValueEntry& Entry() const override {
+    if (current_ >= keys_.size()) {
+      return KeyValueEntry::Invalid();
+    }
+    entry_ = KeyValueEntry {
+      .key = Slice(keys_[current_]),
+      .value = Slice(values_[current_]),
+    };
+    return entry_;
+  }
+
+  Status status() const override { return Status::OK(); }
 
  private:
   std::vector<std::string> keys_;
   std::vector<std::string> values_;
   size_t current_;
+  mutable KeyValueEntry entry_;
 };
+
 extern WritableFileWriter* GetWritableFileWriter(WritableFile* wf);
 
 extern RandomAccessFileReader* GetRandomAccessFileReader(RandomAccessFile* raf);
@@ -235,6 +260,11 @@ class StringSink: public WritableFile {
           reader_contents_->data(), reader_contents_->size() - bytes);
       last_flush_ = contents_.size();
     }
+  }
+
+  const std::string& filename() const override {
+    static const std::string kFilename = "StringSink";
+    return kFilename;
   }
 
  private:
@@ -468,6 +498,11 @@ class StringEnv : public EnvWrapper {
     virtual Status Append(const Slice& slice) override {
       contents_->append(slice.cdata(), slice.size());
       return Status::OK();
+    }
+
+    const std::string& filename() const override {
+      static const std::string kFilename = "StringSink";
+      return kFilename;
     }
 
    private:
@@ -753,9 +788,11 @@ class TestUserFrontier : public UserFrontier {
     return Status::OK();
   }
 
-  Slice Filter() const override {
+  Slice FilterAsSlice() override {
     return Slice();
   }
+
+  void ResetFilter() override {}
 
  private:
   uint64_t value_ = 0;
@@ -777,13 +814,13 @@ class TestUserFrontiers : public rocksdb::UserFrontiersBase<TestUserFrontier> {
 class FlushedFileCollector : public EventListener {
  public:
   virtual void OnFlushCompleted(DB* db, const FlushJobInfo& info) override {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     flushed_file_infos_.push_back(info);
   }
 
   std::vector<std::string> GetFlushedFiles() {
     std::vector<std::string> flushed_files;
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     for (const auto& info : flushed_file_infos_) {
       flushed_files.push_back(info.file_path);
     }
@@ -792,7 +829,7 @@ class FlushedFileCollector : public EventListener {
 
   std::vector<std::string> GetAndClearFlushedFiles() {
     std::vector<std::string> flushed_files;
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     for (const auto& info : flushed_file_infos_) {
       flushed_files.push_back(info.file_path);
     }
@@ -801,12 +838,12 @@ class FlushedFileCollector : public EventListener {
   }
 
   std::vector<FlushJobInfo> GetFlushedFileInfos() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     return flushed_file_infos_;
   }
 
   void Clear() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     flushed_file_infos_.clear();
   }
 

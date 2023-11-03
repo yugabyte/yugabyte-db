@@ -12,8 +12,8 @@ import io.ebean.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Optional;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import javax.persistence.EmbeddedId;
@@ -76,6 +76,15 @@ public class RuntimeConfigEntry extends Model {
         .findOneOrEmpty();
   }
 
+  public static List<RuntimeConfigEntry> get(UUID scope, List<String> paths) {
+    return RuntimeConfigEntry.find
+        .query()
+        .where()
+        .eq("scope_uuid", scope)
+        .in("path", paths)
+        .findList();
+  }
+
   public static RuntimeConfigEntry getOrBadRequest(UUID scope, String path) {
     RuntimeConfigEntry runtimeConfigEntry = get(scope, path);
     if (runtimeConfigEntry == null)
@@ -126,18 +135,20 @@ public class RuntimeConfigEntry extends Model {
 
   @Transactional
   public static RuntimeConfigEntry upsert(Customer customer, String path, String value) {
-    return upsertInternal(customer.uuid, path, value, () -> ScopedRuntimeConfig.ensure(customer));
+    return upsertInternal(
+        customer.getUuid(), path, value, () -> ScopedRuntimeConfig.ensure(customer));
   }
 
   @Transactional
   public static RuntimeConfigEntry upsert(Universe universe, String path, String value) {
     return upsertInternal(
-        universe.universeUUID, path, value, () -> ScopedRuntimeConfig.ensure(universe));
+        universe.getUniverseUUID(), path, value, () -> ScopedRuntimeConfig.ensure(universe));
   }
 
   @Transactional
   public static RuntimeConfigEntry upsert(Provider provider, String path, String value) {
-    return upsertInternal(provider.uuid, path, value, () -> ScopedRuntimeConfig.ensure(provider));
+    return upsertInternal(
+        provider.getUuid(), path, value, () -> ScopedRuntimeConfig.ensure(provider));
   }
 
   @Override

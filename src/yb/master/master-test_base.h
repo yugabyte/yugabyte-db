@@ -53,7 +53,6 @@
 
 #include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/master-test-util.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy_base.h"
@@ -121,6 +120,8 @@ namespace master {
 
 using strings::Substitute;
 
+class MiniMaster;
+
 class MasterTestBase : public YBTest {
  protected:
 
@@ -149,6 +150,14 @@ class MasterTestBase : public YBTest {
   Status CreatePgsqlTable(const NamespaceId& namespace_id,
                           const TableName& table_name,
                           const Schema& schema);
+  Status CreatePgsqlTable(const NamespaceId& namespace_id,
+                          const TableName& table_name,
+                          const TableId& table_id,
+                          const Schema& schema);
+  Status CreatePgsqlTable(const NamespaceId& namespace_id,
+                          const TableName& table_name,
+                          const Schema& schema,
+                          CreateTableRequestPB* req);
 
   Status CreateTablegroupTable(const NamespaceId& namespace_id,
                                const TableId& table_id,
@@ -203,9 +212,13 @@ class MasterTestBase : public YBTest {
   Status CreateNamespace(const NamespaceName& ns_name,
                          const boost::optional<YQLDatabase>& database_type,
                          CreateNamespaceResponsePB* resp);
+  Status CreatePgsqlNamespace(const NamespaceName& ns_name,
+                              const NamespaceId& ns_id,
+                              CreateNamespaceResponsePB* resp);
   Status CreateNamespaceAsync(const NamespaceName& ns_name,
                               const boost::optional<YQLDatabase>& database_type,
                               CreateNamespaceResponsePB* resp);
+  Result<CreateNamespaceResponsePB> CreateNamespaceAsync(const CreateNamespaceRequestPB& req);
   Status CreateNamespaceWait(const NamespaceId& ns_id,
                              const boost::optional<YQLDatabase>& database_type);
 

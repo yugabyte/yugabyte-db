@@ -14,6 +14,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_cluster.service.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_service_base.h"
@@ -21,6 +22,7 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
+#include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/util/service_util.h"
 #include "yb/util/flags.h"
 
@@ -29,6 +31,7 @@ using std::vector;
 
 DEFINE_UNKNOWN_double(master_slow_get_registration_probability, 0,
               "Probability of injecting delay in GetMasterRegistration.");
+DECLARE_bool(enable_ysql_tablespaces_for_placement);
 
 using namespace std::literals;
 
@@ -61,9 +64,74 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       server_->ts_manager()->GetAllLiveDescriptorsInCluster(&descs, *uuid_result);
     }
 
+    bool is_ysql_replication_info_required =
+        FLAGS_enable_ysql_tablespaces_for_placement &&
+        (req->has_tablespace_id() || req->has_replication_info());
+    std::unique_ptr<master::ReplicationInfoPB> replication_info;
+    if (is_ysql_replication_info_required) {
+      if (req->has_tablespace_id()) {
+        LOG(INFO) << "Retrieve placement info from tablespace ID";
+        auto result =
+            server_->catalog_manager_impl()->
+                GetTablespaceReplicationInfoWithRetry(req->tablespace_id());
+        if (!result.ok()) {
+          SetupErrorAndRespond(resp->mutable_error(), result.status(),
+                              MasterErrorPB_Code_UNKNOWN_ERROR, &rpc);
+          return;
+        }
+        auto tablespace_replication_pb = std::move(*result);
+        if (!tablespace_replication_pb ||
+            !tablespace_replication_pb.is_initialized()) {
+          LOG(INFO) << "Could not retrieve placement info from tablespace ID "
+                    << req->tablespace_id() << ". "
+                    << "Default to returning all tablet servers";
+          // In YSQL, CREATE TABLE using LOCATION parameter is syntactically
+          // accepted but semantically ignored. In this case, replication info
+          // does not exist through the tablespace ID. So skipping the filter
+          // process below and returning the tablet servers retrieved via
+          // GetAllLiveDescriptorsInCluster() which filters placement ID's
+          // based on master primary cluster's placement ID.
+          is_ysql_replication_info_required = false;
+        } else {
+          replication_info =
+              std::make_unique<master::ReplicationInfoPB>(*tablespace_replication_pb);
+        }
+      } else if (req->has_replication_info()) {
+        LOG(INFO) << "Retrieve placement info from user request";
+        replication_info =
+            std::make_unique<master::ReplicationInfoPB>(req->replication_info());
+      }
+    }
+
     for (const std::shared_ptr<TSDescriptor>& desc : descs) {
-      ListTabletServersResponsePB::Entry* entry = resp->add_servers();
       auto ts_info = *desc->GetTSInformationPB();
+      if (is_ysql_replication_info_required) {
+        LOG(INFO) << "Filter TServers based on placement ID "
+                  << "and cloud info against placement "
+                  << replication_info->live_replicas().placement_uuid();
+        // Filter based on placement ID
+        if (ts_info.registration().common().placement_uuid() !=
+            replication_info->live_replicas().placement_uuid())
+          continue;
+
+        // Filter based on cloud, region, zone IDs (all IDs must match)
+        bool is_cloud_match = false;
+        const auto& placement_blocks =
+            replication_info->live_replicas().placement_blocks();
+        for (const auto& pb : placement_blocks) {
+          if (CatalogManagerUtil::IsCloudInfoPrefix(
+                  ts_info.registration().common().cloud_info(),
+                  pb.cloud_info())) {
+            is_cloud_match = true;
+            break;
+          }
+        }
+        if (!is_cloud_match)
+          continue;
+        LOG(INFO) << "Placement info has matched against placement "
+                  << replication_info->live_replicas().placement_uuid();
+      }
+      ListTabletServersResponsePB::Entry* entry = resp->add_servers();
       *entry->mutable_instance_id() = std::move(*ts_info.mutable_tserver_instance());
       *entry->mutable_registration() = std::move(*ts_info.mutable_registration());
       auto last_heartbeat = desc->LastHeartbeatTime();
@@ -309,7 +377,15 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     (IsLoadBalancerIdle)
     (SetPreferredZones)
     (PromoteAutoFlags)
+    (RollbackAutoFlags)
+    (PromoteSingleAutoFlag)
+    (DemoteSingleAutoFlag)
   )
+
+  MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(XClusterManager,
+    (GetMasterXClusterConfig)
+  )
+
 };
 
 } // namespace

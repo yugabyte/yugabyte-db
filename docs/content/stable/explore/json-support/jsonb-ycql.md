@@ -1,9 +1,9 @@
 ---
-title: JSON Support
+title: JSON Support in YCQL
 headerTitle: JSON Support
 linkTitle: JSON support
-description: JSON Support in YugabyteDB.
-headcontent: JSON Support in YugabyteDB.
+description: YCQL JSON Support in YugabyteDB.
+headcontent: JSON Support in YugabyteDB
 image: <div class="icon"><i class="fa-solid fa-file-invoice"></i></div>
 menu:
   stable:
@@ -13,8 +13,6 @@ menu:
     weight: 260
 type: docs
 ---
-
-JSON data types are for storing JSON (JavaScript Object Notation) data, as specified in [RFC 7159](https://tools.ietf.org/html/rfc7159). Such data can also be stored as `text`, but the JSON data types have the advantage of enforcing that each stored value is valid according to the JSON rules. There are also assorted JSON-specific functions and operators available for data stored in these data types.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -34,24 +32,17 @@ JSON data types are for storing JSON (JavaScript Object Notation) data, as speci
 
 </ul>
 
+JSON data types are for storing JSON (JavaScript Object Notation) data, as specified in [RFC 7159](https://tools.ietf.org/html/rfc7159). Such data can also be stored as `text`, but the JSON data types have the advantage of enforcing that each stored value is valid according to the JSON rules. Assorted JSON-specific functions and operators are also available for data stored in these data types.
 
-The JSON data type supported in YCQL is `jsonb`. The JSON functionality in YCQL is **a subset** of the [JSON functionality in PostgreSQL](https://www.postgresql.org/docs/11/datatype-json.html).
+{{% explore-setup-single %}}
 
-## 1. Prerequisites
+JSON functionality in YCQL is **a subset** of the [JSON functionality in PostgreSQL](https://www.postgresql.org/docs/11/datatype-json.html).
 
-You need a YugabyteDB cluster to run through the steps below. If do not have a YugabyteDB cluster, you can create one on your local machine as shown below.
+YCQL supports the JSONB data type.
 
-```sh
-$ ./bin/yugabyted start
-```
+## Create a table
 
-Connect to the cluster using `ycqlsh` to run through the examples below.
-
-```sh
-$ ./bin/ycqlsh
-```
-
-Create table with a JSONB column
+Create a table with a JSONB column as follows:
 
 ```sql
 ycqlsh> CREATE KEYSPACE store;
@@ -61,7 +52,7 @@ ycqlsh> CREATE KEYSPACE store;
 ycqlsh> CREATE TABLE store.books ( id int PRIMARY KEY, details jsonb );
 ```
 
-Insert JSONB documents
+Insert JSONB documents:
 
 ```sql
 INSERT INTO store.books (id, details) VALUES
@@ -76,7 +67,7 @@ INSERT INTO store.books (id, details) VALUES
   (5, '{ "name": "A Brief History of Time", "author": { "first_name": "Stephen", "last_name": "Hawking" }, "year": 1988, "genre": "science", "editors": ["Melisa", "Mark", "John"] }');
 ```
 
-## 2. Query JSON documents
+## Query JSON documents
 
 You can list all the row inserted using the command below.
 
@@ -84,7 +75,7 @@ You can list all the row inserted using the command below.
 ycqlsh> SELECT * FROM store.books;
 ```
 
-```
+```output
  id | details
 ----+-------------------------------------------------------------------------------------------------------------------------------------------------------------
   5 | {"author":{"first_name":"Stephen","last_name":"Hawking"},"editors":["Melisa","Mark","John"],"genre":"science","name":"A Brief History of Time","year":1988}
@@ -96,61 +87,60 @@ ycqlsh> SELECT * FROM store.books;
 
 ### Using `->` and `->>`
 
-- Select with condition on JSONB object value
+Select with condition on JSONB object value:
 
-```sql
+```cql
 ycqlsh> SELECT * FROM store.books WHERE details->'author'->>'first_name' = 'William' AND details->'author'->>'last_name' = 'Shakespeare';
 ```
 
-```
+```output
  id | details
 ----+----------------------------------------------------------------------------------------------------------------------------------
   1 | {"author":{"first_name":"William","last_name":"Shakespeare"},"editors":["John","Elizabeth","Jeff"],"name":"Macbeth","year":1623}
   2 |     {"author":{"first_name":"William","last_name":"Shakespeare"},"editors":["Lysa","Mark","Robert"],"name":"Hamlet","year":1603}
 ```
 
-- Select with condition on JSONB array element
+Select with condition on JSONB array element:
 
-```sql
+```cql
 ycqlsh> SELECT * FROM store.books WHERE details->'editors'->>0 = 'Mark';
 ```
 
-```
+```output
  id | details
 ----+-------------------------------------------------------------------------------------------------------------------------------------------------
   3 | {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Mark","Tony","Britney"],"genre":"novel","name":"Oliver Twist","year":1838}
 ```
 
-- Select with condition using on JSONB element
+Select with condition using JSONB element:
 
 ```sql
 ycqlsh> SELECT * FROM store.books WHERE CAST(details->>'year' AS integer) = 1950;
 ```
 
-```
+```output
  id | details
 ----+--------------------------------------------------------------------------------------------------------------------------------------------------------
   4 | {"author":{"first_name":"Charles","last_name":"Dickens"},"editors":["Robert","John","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
 ```
 
+## Update JSON documents
 
-## 3. Update JSON documents
+You can update a JSON document in a number of ways.
 
-There are a number of ways to update a JSON document, as shown below.
+### Update an entire document
 
-### Update entire document
+To update an entire document, do the following:
 
-You can do this as shown below.
-
-```sql
+```cql
 ycqlsh> UPDATE store.books SET details = '{"author":{"first_name":"Carl","last_name":"Sagan"},"editors":["Ann","Rob","Neil"],"genre":"science","name":"Cosmos","year":1980}' WHERE id = 1;
 ```
 
-```sql
+```cql
 ycqlsh> SELECT * FROM store.books WHERE id = 1;
 ```
 
-```
+```output
  id | details
 ----+-----------------------------------------------------------------------------------------------------------------------------------
   1 | {"author":{"first_name":"Carl","last_name":"Sagan"},"editors":["Ann","Rob","Neil"],"genre":"science","name":"Cosmos","year":1980}
@@ -158,15 +148,17 @@ ycqlsh> SELECT * FROM store.books WHERE id = 1;
 
 ### Update an attribute
 
-```sql
+To update an attribute, do the following:
+
+```cql
 ycqlsh> UPDATE store.books SET details->'author'->>'first_name' = '"Steve"' WHERE id = 4;
 ```
 
-```sql
+```cql
 ycqlsh> SELECT * FROM store.books WHERE id = 4;
 ```
 
-```
+```output
  id | details
 ----+------------------------------------------------------------------------------------------------------------------------------------------------------
   4 | {"author":{"first_name":"Steve","last_name":"Dickens"},"editors":["Robert","John","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
@@ -174,53 +166,55 @@ ycqlsh> SELECT * FROM store.books WHERE id = 4;
 
 ### Update an array element
 
-```sql
+To update an array element, do the following:
+
+```cql
 ycqlsh> UPDATE store.books SET details->'editors'->>1 = '"Jack"' WHERE id = 4;
 ```
 
-```sql
+```cql
 ycqlsh> SELECT * FROM store.books WHERE id = 4;
 ```
 
-```
+```output
  id | details
 ----+------------------------------------------------------------------------------------------------------------------------------------------------------
   4 | {"author":{"first_name":"Steve","last_name":"Dickens"},"editors":["Robert","Jack","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
 ```
 
-- Update a subdocument.
+To update a subdocument:
 
-```sql
+```cql
 ycqlsh> UPDATE store.books SET details->'author' = '{"first_name":"John", "last_name":"Doe"}' WHERE id = 4;
 ```
 
-```sql
+```cql
 ycqlsh> SELECT * FROM store.books WHERE id = 4;
 ```
 
-```
+```output
  id | details
 ----+-------------------------------------------------------------------------------------------------------------------------------------------------
   4 | {"author":{"first_name":"John","last_name":"Doe"},"editors":["Robert","Jack","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
 ```
 
-## 4. Upserts
+## Upserts
 
 ### Add attributes
 
-Update a missing JSONB document resulting in an insert.
+Update a missing JSONB document resulting in an insert as follows:
 
-```sql
+```cql
 INSERT INTO store.books (id, details) VALUES
   (6, '{}');
 ycqlsh> UPDATE store.books SET details->'editors' = '["Adam", "Bryan", "Charles"]' WHERE id = 6;
 ```
 
-```sql
+```cql
 ycqlsh> SELECT * FROM store.books WHERE id = 6;
 ```
 
-```
+```output
  id | details
 ----+-------------------------------------------------------------------------------------------------------------------------------------------------
   6 | {"editors":["Adam","Bryan","Charles"]}
@@ -228,29 +222,22 @@ ycqlsh> SELECT * FROM store.books WHERE id = 6;
 
 ### Add subdocuments
 
-- Update a missing JSONB document resulting in an insert of a subdocument.
+Update a missing JSONB document resulting in an insert of a subdocument as follows:
 
-```sql
+```cql
 ycqlsh> UPDATE store.books SET details->'author' = '{"first_name":"Jack", "last_name":"Kerouac"}' WHERE id = 6;
 ```
 
-```sql
+```cql
 ycqlsh> SELECT * FROM store.books WHERE id = 6;
 ```
 
-```
+```output
  id | details
 ----+-------------------------------------------------------------------------------------------------------------------------------------------------
   6 | {"author":{"first_name":"Jack","last_name":"Kerouac"},"editors":["Adam","Bryan","Charles"]}
 ```
 
 {{< note title="Note" >}}
-JSONB upsert only works for JSON objects and not for other data types like arrays, integers, strings, etc. Additionally, only the leaf property of an object will be inserted if it is missing. Upsert on non-leaf properties is not supported presently.
+JSONB upsert only works for JSON objects and not for other data types like arrays, integers, strings, and so on. Additionally, only the leaf property of an object is inserted if it is missing. Upsert on non-leaf properties is not currently supported.
 {{< /note >}}
-
-## 5. Clean up (Optional)
-Optionally, you can shut down the local cluster you created earlier.
-
-```sh
-$ ./bin/yugabyted destroy
-```

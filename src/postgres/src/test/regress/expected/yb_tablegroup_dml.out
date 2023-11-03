@@ -19,7 +19,7 @@ Tablegroup: "tg_test1"
 
 -- Hash partitioned will fail
 CREATE TABLE tab_key (a INT, PRIMARY KEY(a HASH)) TABLEGROUP tg_test1;
-ERROR:  Invalid argument: Invalid table definition: Error creating table test_tablegroups.tab_key on the master: Cannot colocate hash partitioned table
+ERROR:  Invalid table definition: Error creating table test_tablegroups.tab_key on the master: Cannot colocate hash partitioned table
 \d tab_key
 -- Range primary key
 CREATE TABLE tab_range (a INT, PRIMARY KEY (a ASC)) TABLEGROUP tg_test1;

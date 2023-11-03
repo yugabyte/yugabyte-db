@@ -23,11 +23,11 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/merge_operator.h"
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-#include "yb/rocksdb/utilities/db_ttl.h"
 #include "yb/rocksdb/utilities/merge_operators/string_append/stringappend.h"
 #include "yb/rocksdb/utilities/merge_operators/string_append/stringappend2.h"
 
@@ -49,15 +49,6 @@ std::shared_ptr<DB> OpenNormalDb(char delim_char) {
   return std::shared_ptr<DB>(db);
 }
 
-// Open a TtlDB with a non-associative StringAppendTESTOperator
-std::shared_ptr<DB> OpenTtlDb(char delim_char) {
-  DBWithTTL* db;
-  Options options;
-  options.create_if_missing = true;
-  options.merge_operator.reset(new StringAppendTESTOperator(delim_char));
-  EXPECT_OK(DBWithTTL::Open(options, kDbName, &db, 123456));
-  return std::shared_ptr<DB>(db);
-}
 }  // namespace
 
 // StringLists represents a set of string-lists, each with a key-index.
@@ -117,32 +108,21 @@ class StringLists {
 
 };
 
-enum class DbTypeToUse {
-  NORMAL_DB,
-  TTL_DB
-};
-
 // The class for unit-testing
-class StringAppendOperatorTest : public RocksDBTest,
-                                 public testing::WithParamInterface<DbTypeToUse> {
+class StringAppendOperatorTest : public RocksDBTest {
  public:
   StringAppendOperatorTest() {
     CHECK_OK(DestroyDB(kDbName, Options()));    // Start each test with a fresh DB
   }
 
   std::shared_ptr<DB> OpenDb(char delim_char) {
-    if (GetParam() == DbTypeToUse::NORMAL_DB) {
-      return OpenNormalDb(delim_char);
-    } else {
-      return OpenTtlDb(delim_char);
-    }
+    return OpenNormalDb(delim_char);
   }
-
 };
 
 // THE TEST CASES BEGIN HERE
 
-TEST_P(StringAppendOperatorTest, IteratorTest) {
+TEST_F(StringAppendOperatorTest, IteratorTest) {
   auto db_ = OpenDb(',');
   StringLists slists(db_);
 
@@ -159,7 +139,7 @@ TEST_P(StringAppendOperatorTest, IteratorTest) {
   std::string k1("k1");
   std::string k2("k2");
   bool first = true;
-  for (it->Seek(k1); it->Valid(); it->Next()) {
+  for (it->Seek(k1); ASSERT_RESULT(it->CheckedValid()); it->Next()) {
     res = it->value().ToString();
     if (first) {
       ASSERT_EQ(res, "v1,v2,v3");
@@ -173,7 +153,7 @@ TEST_P(StringAppendOperatorTest, IteratorTest) {
 
   // Snapshot should still be the same. Should ignore a4 and v4.
   first = true;
-  for (it->Seek(k1); it->Valid(); it->Next()) {
+  for (it->Seek(k1); ASSERT_RESULT(it->CheckedValid()); it->Next()) {
     res = it->value().ToString();
     if (first) {
       ASSERT_EQ(res, "v1,v2,v3");
@@ -187,7 +167,7 @@ TEST_P(StringAppendOperatorTest, IteratorTest) {
   // Should release the snapshot and be aware of the new stuff now
   it.reset(db_->NewIterator(ReadOptions()));
   first = true;
-  for (it->Seek(k1); it->Valid(); it->Next()) {
+  for (it->Seek(k1); ASSERT_RESULT(it->CheckedValid()); it->Next()) {
     res = it->value().ToString();
     if (first) {
       ASSERT_EQ(res, "v1,v2,v3,v4");
@@ -198,7 +178,7 @@ TEST_P(StringAppendOperatorTest, IteratorTest) {
   }
 
   // start from k2 this time.
-  for (it->Seek(k2); it->Valid(); it->Next()) {
+  for (it->Seek(k2); ASSERT_RESULT(it->CheckedValid()); it->Next()) {
     res = it->value().ToString();
     if (first) {
       ASSERT_EQ(res, "v1,v2,v3,v4");
@@ -213,7 +193,7 @@ TEST_P(StringAppendOperatorTest, IteratorTest) {
   it.reset(db_->NewIterator(ReadOptions()));
   first = true;
   std::string k3("k3");
-  for(it->Seek(k2); it->Valid(); it->Next()) {
+  for(it->Seek(k2); ASSERT_RESULT(it->CheckedValid()); it->Next()) {
     res = it->value().ToString();
     if (first) {
       ASSERT_EQ(res, "a1,a2,a3,a4");
@@ -222,7 +202,7 @@ TEST_P(StringAppendOperatorTest, IteratorTest) {
       ASSERT_EQ(res, "g1");
     }
   }
-  for(it->Seek(k3); it->Valid(); it->Next()) {
+  for(it->Seek(k3); ASSERT_RESULT(it->CheckedValid()); it->Next()) {
     res = it->value().ToString();
     if (first) {
       // should not be hit
@@ -235,7 +215,7 @@ TEST_P(StringAppendOperatorTest, IteratorTest) {
 
 }
 
-TEST_P(StringAppendOperatorTest, SimpleTest) {
+TEST_F(StringAppendOperatorTest, SimpleTest) {
   auto db = OpenDb(',');
   StringLists slists(db);
 
@@ -250,7 +230,7 @@ TEST_P(StringAppendOperatorTest, SimpleTest) {
   ASSERT_EQ(res, "v1,v2,v3");
 }
 
-TEST_P(StringAppendOperatorTest, SimpleDelimiterTest) {
+TEST_F(StringAppendOperatorTest, SimpleDelimiterTest) {
   auto db = OpenDb('|');
   StringLists slists(db);
 
@@ -263,7 +243,7 @@ TEST_P(StringAppendOperatorTest, SimpleDelimiterTest) {
   ASSERT_EQ(res, "v1|v2|v3");
 }
 
-TEST_P(StringAppendOperatorTest, OneValueNoDelimiterTest) {
+TEST_F(StringAppendOperatorTest, OneValueNoDelimiterTest) {
   auto db = OpenDb('!');
   StringLists slists(db);
 
@@ -274,7 +254,7 @@ TEST_P(StringAppendOperatorTest, OneValueNoDelimiterTest) {
   ASSERT_EQ(res, "single_val");
 }
 
-TEST_P(StringAppendOperatorTest, VariousKeys) {
+TEST_F(StringAppendOperatorTest, VariousKeys) {
   auto db = OpenDb('\n');
   StringLists slists(db);
 
@@ -300,7 +280,7 @@ TEST_P(StringAppendOperatorTest, VariousKeys) {
 }
 
 // Generate semi random keys/words from a small distribution.
-TEST_P(StringAppendOperatorTest, RandomMixGetAppend) {
+TEST_F(StringAppendOperatorTest, RandomMixGetAppend) {
   auto db = OpenDb(' ');
   StringLists slists(db);
 
@@ -351,7 +331,7 @@ TEST_P(StringAppendOperatorTest, RandomMixGetAppend) {
 
 }
 
-TEST_P(StringAppendOperatorTest, BIGRandomMixGetAppend) {
+TEST_F(StringAppendOperatorTest, BIGRandomMixGetAppend) {
   auto db = OpenDb(' ');
   StringLists slists(db);
 
@@ -402,7 +382,7 @@ TEST_P(StringAppendOperatorTest, BIGRandomMixGetAppend) {
 
 }
 
-TEST_P(StringAppendOperatorTest, PersistentVariousKeys) {
+TEST_F(StringAppendOperatorTest, PersistentVariousKeys) {
   // Perform the following operations in limited scope
   {
     auto db = OpenDb('\n');
@@ -469,7 +449,7 @@ TEST_P(StringAppendOperatorTest, PersistentVariousKeys) {
   }
 }
 
-TEST_P(StringAppendOperatorTest, PersistentFlushAndCompaction) {
+TEST_F(StringAppendOperatorTest, PersistentFlushAndCompaction) {
   // Perform the following operations in limited scope
   {
     auto db = OpenDb('\n');
@@ -565,7 +545,7 @@ TEST_P(StringAppendOperatorTest, PersistentFlushAndCompaction) {
   }
 }
 
-TEST_P(StringAppendOperatorTest, SimpleTestNullDelimiter) {
+TEST_F(StringAppendOperatorTest, SimpleTestNullDelimiter) {
   auto db = OpenDb('\0');
   StringLists slists(db);
 

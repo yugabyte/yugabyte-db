@@ -40,7 +40,7 @@
 #include <string>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/strings/ascii_ctype.h"
 #include "yb/gutil/strings/charset.h"
@@ -118,7 +118,8 @@ size_t UnescapeCEscapeSequences(const char* source, char* dest, std::vector<std:
 //    *** DEPRECATED: Use CUnescape() in new code ***
 // ----------------------------------------------------------------------
 size_t UnescapeCEscapeString(const std::string& src, std::string* dest);
-size_t UnescapeCEscapeString(const std::string& src, std::string* dest, std::vector<std::string>* errors);
+size_t UnescapeCEscapeString(
+    const std::string& src, std::string* dest, std::vector<std::string>* errors);
 std::string UnescapeCEscapeString(const std::string& src);
 
 // ----------------------------------------------------------------------
@@ -363,7 +364,8 @@ void WebSafeBase64Escape(const std::string& src, std::string* dest);
 void WebSafeBase64EscapeWithPadding(const std::string& src, std::string* dest);
 
 void Base64Escape(const unsigned char* src, size_t szsrc, std::string* dest, bool do_padding);
-void WebSafeBase64Escape(const unsigned char* src, size_t szsrc, std::string* dest, bool do_padding);
+void WebSafeBase64Escape(
+    const unsigned char* src, size_t szsrc, std::string* dest, bool do_padding);
 
 // ----------------------------------------------------------------------
 // Base32Unescape()
@@ -517,7 +519,7 @@ inline int hex_digit_to_int(char c) {
 void a2b_hex(const char* from, unsigned char* to, size_t num);
 void a2b_hex(const char* from, char* to, size_t num);
 void a2b_hex(const char* from, std::string* to, size_t num);
-std::string a2b_hex(const std::string& a);
+std::string a2b_hex(const std::string_view& a);
 
 // ----------------------------------------------------------------------
 // a2b_bin()
@@ -547,7 +549,7 @@ void b2a_hex(const unsigned char* from, std::string* to, size_t num);
 //    Return value: 2*'num' characters of ascii string
 // ----------------------------------------------------------------------
 std::string b2a_hex(const char* from, size_t num);
-std::string b2a_hex(const GStringPiece& b);
+std::string b2a_hex(const std::string_view& b);
 
 // ----------------------------------------------------------------------
 // b2a_bin()
@@ -593,6 +595,10 @@ inline std::string ByteStringToAscii(const std::string& binary_string,
   std::string result;
   ByteStringToAscii(binary_string, bytes_to_read, &result);
   return result;
+}
+
+inline std::string ByteStringToAscii(const std::string& binary_string) {
+  return ByteStringToAscii(binary_string, binary_string.size());
 }
 
 // Converts the hex from ascii_string into binary data and

@@ -1,9 +1,9 @@
-@import '../../../../../_style/colors.scss';
+@use '../../../../../_style/colors.scss';
 
 .multi-region-enabled {
   &.with-border {
     background: rgba(247, 247, 247, 0.3);
-    border: 1px solid $YB_GRAY_HOVER;
+    border: 1px solid colors.$YB_GRAY_HOVER;
     width: 1100px;
   }
 
@@ -113,5 +113,5 @@
 }
 
 .field-error {
-  color: $YB_ERROR_TEXT_COLOR;
+  color: colors.$YB_ERROR_TEXT_COLOR;
 }

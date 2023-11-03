@@ -132,7 +132,7 @@ class PgCacheRefreshTest : public LibPqTestBase {
   }
 };
 
-TEST_F(PgCacheRefreshTest, YB_DISABLE_TEST_IN_TSAN(ExistingConnectionTransparentRetry)) {
+TEST_F(PgCacheRefreshTest, ExistingConnectionTransparentRetry) {
   // Create a table.
   auto stmt_conn = ASSERT_RESULT(Connect());
   TestSetup(&stmt_conn);
@@ -159,7 +159,7 @@ TEST_F(PgCacheRefreshTest, YB_DISABLE_TEST_IN_TSAN(ExistingConnectionTransparent
   ASSERT_OK(executeInsert(&stmt_conn));
 }
 
-TEST_F(PgCacheRefreshTest, YB_DISABLE_TEST_IN_TSAN(NewConnectionTransparentRetry)) {
+TEST_F(PgCacheRefreshTest, NewConnectionTransparentRetry) {
   auto stmt_conn = ASSERT_RESULT(Connect());
   TestSetup(&stmt_conn);
 
@@ -184,7 +184,7 @@ TEST_F(PgCacheRefreshTest, YB_DISABLE_TEST_IN_TSAN(NewConnectionTransparentRetry
   ASSERT_OK(executeInsert());
 }
 
-TEST_F(PgCacheRefreshTest, YB_DISABLE_TEST_IN_TSAN(ExistingConnTransparentRetryTxn)) {
+TEST_F(PgCacheRefreshTest, ExistingConnTransparentRetryTxn) {
   auto stmt_conn = ASSERT_RESULT(Connect());
   TestSetup(&stmt_conn);
 
@@ -213,7 +213,7 @@ TEST_F(PgCacheRefreshTest, YB_DISABLE_TEST_IN_TSAN(ExistingConnTransparentRetryT
   });
 }
 
-TEST_F(PgCacheRefreshTest, YB_DISABLE_TEST_IN_TSAN(NewConnectionTransparentRetryTxn)) {
+TEST_F(PgCacheRefreshTest, NewConnectionTransparentRetryTxn) {
   auto stmt_conn = ASSERT_RESULT(Connect());
   TestSetup(&stmt_conn);
 

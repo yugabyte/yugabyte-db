@@ -205,6 +205,8 @@ class SemContext : public ProcessContext {
 
   const MCSharedPtr<MCString>& bindvar_name() const;
 
+  const MCSharedPtr<MCVector<MCSharedPtr<MCString>>> &alternative_bindvar_names() const;
+
   const ColumnDesc *hash_col() const;
 
   const ColumnDesc *lhs_col() const;

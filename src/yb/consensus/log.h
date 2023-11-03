@@ -44,7 +44,7 @@
 #include <vector>
 
 #include <boost/atomic.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/common_fwd.h"
 
@@ -110,6 +110,8 @@ YB_DEFINE_ENUM(
 
 YB_STRONGLY_TYPED_BOOL(SkipWalWrite);
 
+using NewSegmentAllocationCallback = std::function<Status(void)>;
+
 // Log interface, inspired by Raft's (logcabin) Log. Provides durability to YugaByte as a normal
 // Write Ahead Log and also plays the role of persistent storage for the consensus state machine.
 //
@@ -151,6 +153,8 @@ class Log : public RefCountedThreadSafe<Log> {
                              ThreadPool* background_sync_threadpool,
                              int64_t cdc_min_replicated_index,
                              scoped_refptr<Log> *log,
+                             const PreLogRolloverCallback& pre_log_rollover_callback = {},
+                             NewSegmentAllocationCallback callback = {},
                              CreateNewSegment create_new_segment = CreateNewSegment::kTrue);
 
   ~Log();
@@ -247,9 +251,19 @@ class Log : public RefCountedThreadSafe<Log> {
   // readable segments. Note that this assumes there is already a valid active_segment_.
   Status AllocateSegmentAndRollOver();
 
+  // When WAL restarts from a crash, instead of allocating a new segment, we try to reuse the
+  // left in-progress segment as writable active_segment_. If return value is false, it means
+  // we fail to reuse the segment because the size of the segment is too large.
+  // If true, this function restored footer_builder_, log_index_, and other attributes of WAl,
+  // then reopen the file as writable active_segment_.
+  Result<bool>  ReuseAsActiveSegment(
+      const scoped_refptr<ReadableLogSegment>& recover_segment) EXCLUDES(active_segment_mutex_);
+
   // For a log created with CreateNewSegment::kFalse, this is used to finish log initialization by
-  // allocating a new segment.
-  Status EnsureInitialNewSegmentAllocated();
+  // either allocating a new segment or reused left in-progress segment that doesn't have footer.
+  Status EnsureSegmentInitialized();
+
+  Status EnsureSegmentInitializedUnlocked() REQUIRES(state_lock_);
 
   // Returns the total size of the current segments, in bytes.
   // Returns 0 if the log is shut down.
@@ -315,6 +329,8 @@ class Log : public RefCountedThreadSafe<Log> {
   // Waits until all entries flushed, then reset last received op id to specified one.
   Status ResetLastSyncedEntryOpId(const OpId& op_id);
 
+  Status TEST_WriteCorruptedEntryBatchAndSync();
+
  private:
   friend class LogTest;
   friend class LogTestBase;
@@ -348,6 +364,8 @@ class Log : public RefCountedThreadSafe<Log> {
       ThreadPool* append_thread_pool,
       ThreadPool* allocation_thread_pool,
       ThreadPool* background_sync_threadpool,
+      NewSegmentAllocationCallback callback,
+      const PreLogRolloverCallback& pre_log_rollover_callback,
       CreateNewSegment create_new_segment = CreateNewSegment::kTrue);
 
   Env* get_env() {
@@ -428,7 +446,10 @@ class Log : public RefCountedThreadSafe<Log> {
   Status UpdateSegmentReadableOffset() EXCLUDES(active_segment_mutex_);
 
   // Helper method to get the segment sequence to GC based on the provided min_op_idx.
-  Status GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segments_to_gc) const;
+  Status GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segments_to_gc) const
+      REQUIRES_SHARED(state_lock_);
+  Status GetSegmentsToGC(int64_t min_op_idx, SegmentSequence* segments_to_gc) const
+      EXCLUDES(state_lock_);
 
   // Discards segments from 'segments_to_gc' if they have not yet met the minimim retention time.
   void ApplyTimeRetentionPolicy(SegmentSequence* segments_to_gc) const;
@@ -520,7 +541,7 @@ class Log : public RefCountedThreadSafe<Log> {
   std::string next_segment_path_;
 
   // Lock to protect mutations to log_state_ and other shared state variables.
-  mutable percpu_rwlock state_lock_;
+  mutable PerCpuRwMutex state_lock_;
 
   LogState log_state_;
 
@@ -628,6 +649,10 @@ class Log : public RefCountedThreadSafe<Log> {
   int64_t log_copy_min_index_ GUARDED_BY(state_lock_) = std::numeric_limits<int64_t>::max();
 
   CreateNewSegment create_new_segment_at_start_;
+
+  NewSegmentAllocationCallback new_segment_allocation_callback_;
+
+  PreLogRolloverCallback pre_log_rollover_callback_;
 
   DISALLOW_COPY_AND_ASSIGN(Log);
 };

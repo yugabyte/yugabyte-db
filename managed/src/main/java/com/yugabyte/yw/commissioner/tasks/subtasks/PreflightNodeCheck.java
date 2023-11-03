@@ -1,22 +1,25 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.helpers.NodeConfigValidator;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import play.libs.Json;
 
 @Slf4j
 public class PreflightNodeCheck extends NodeTaskBase {
 
+  private final NodeConfigValidator nodeConfigValidator;
+
   @Inject
-  protected PreflightNodeCheck(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected PreflightNodeCheck(
+      BaseTaskDependencies baseTaskDependencies, NodeConfigValidator nodeConfigValidator) {
+    super(baseTaskDependencies);
+    this.nodeConfigValidator = nodeConfigValidator;
   }
 
   // Parameters for precheck task.
@@ -32,24 +35,21 @@ public class PreflightNodeCheck extends NodeTaskBase {
 
   @Override
   public void run() {
-    Params taskParams = taskParams();
-    log.info("Running preflight checks for node {}.", taskParams.nodeName);
+    log.info("Running preflight checks for node {}.", taskParams().nodeName);
     ShellResponse response =
-        getNodeManager()
-            .nodeCommand(NodeManager.NodeCommandType.Precheck, taskParams)
-            .processErrors();
-    JsonNode responseJson = Json.parse(response.message);
-    for (JsonNode nodeContent : responseJson) {
-      if (!nodeContent.isBoolean() || !nodeContent.asBoolean()) {
-        String errString =
-            "Failed preflight checks for node " + taskParams.nodeName + ":\n" + response.message;
-        log.error(errString);
-        if (!taskParams.reserveNodes) {
-          NodeInstance node = NodeInstance.getByName(taskParams.nodeName);
-          node.clearNodeDetails();
-        }
-        throw new RuntimeException(errString);
+        getNodeManager().nodeCommand(NodeManager.NodeCommandType.Precheck, taskParams());
+    try {
+      PrecheckNodeDetached.processPreflightResponse(
+          nodeConfigValidator, taskParams().getProvider(), taskParams().nodeUuid, false, response);
+    } catch (RuntimeException e) {
+      log.error(
+          "Failed preflight checks for node {}:\n{}", taskParams().nodeName, response.message);
+      // TODO this may not be applicable now.
+      if (!taskParams().reserveNodes) {
+        NodeInstance node = NodeInstance.getByName(taskParams().nodeName);
+        node.clearNodeDetails();
       }
+      throw e;
     }
   }
 }

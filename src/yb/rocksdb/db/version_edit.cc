@@ -36,6 +36,10 @@
 DEFINE_UNKNOWN_bool(use_per_file_metadata_for_flushed_frontier, false,
             "Allows taking per-file metadata in version edits into account when computing the "
             "flushed frontier.");
+
+DEFINE_RUNTIME_bool(allow_sensitive_data_in_logs, false,
+            "Allows potentially-sensitive debug data to be written unencrypted into logs.");
+
 TAG_FLAG(use_per_file_metadata_for_flushed_frontier, hidden);
 TAG_FLAG(use_per_file_metadata_for_flushed_frontier, advanced);
 
@@ -45,6 +49,32 @@ uint64_t PackFileNumberAndPathId(uint64_t number, uint64_t path_id) {
   assert(number <= kFileNumberMask);
   return number | (path_id * (kFileNumberMask + 1));
 }
+
+namespace {
+  std::string SanitizeDebugStringHelper(const VersionEditPB& pb, bool short_debug) {
+    if (!FLAGS_allow_sensitive_data_in_logs) {
+      VersionEditPB pbcopy;
+      pbcopy.CopyFrom(pb);
+      pbcopy.clear_new_files();
+      for(auto& file : pb.new_files()) {
+        NewFilePB* new_file_copy = pbcopy.add_new_files();
+        new_file_copy->CopyFrom(file);
+        new_file_copy->clear_smallest();
+        new_file_copy->clear_largest();
+      }
+      return short_debug ? pbcopy.ShortDebugString() : pbcopy.DebugString();
+    }
+    return short_debug ? pb.ShortDebugString() : pb.DebugString();
+  }
+
+  std::string SanitizeDebugString(const VersionEditPB& pb) {
+    return SanitizeDebugStringHelper(pb, false /* short_debug */);
+  }
+
+  std::string SanitizeShortDebugString(const VersionEditPB& pb) {
+    return SanitizeDebugStringHelper(pb, true /* short_debug */);
+  }
+}  // namespace
 
 FileMetaData::FileMetaData()
     : refs(0),
@@ -116,7 +146,7 @@ void FileMetaData::UpdateBoundariesExceptKey(
 }
 
 Slice FileMetaData::UserFilter() const {
-  return largest.user_frontier ? largest.user_frontier->Filter() : Slice();
+  return largest.user_frontier ? largest.user_frontier->FilterAsSlice() : Slice();
 }
 
 std::string FileMetaData::FrontiersToString() const {
@@ -277,7 +307,7 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
     return STATUS(Corruption, "VersionEdit");
   }
 
-  VLOG(1) << "Parsed version edit: " << pb.ShortDebugString();
+  VLOG(1) << "Parsed version edit: " << SanitizeShortDebugString(pb);
 
   if (pb.has_comparator()) {
     comparator_ = std::move(*pb.mutable_comparator());
@@ -352,7 +382,7 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
       if (!flushed_frontier_) {
         LOG(DFATAL) << "Flushed frontier not present but a file's largest user frontier present: "
                     << meta.largest.user_frontier->ToString()
-                    << ", version edit protobuf:\n" << pb.DebugString();
+                    << ", version edit protobuf:\n" << SanitizeDebugString(pb);
       } else if (!flushed_frontier_->Dominates(*meta.largest.user_frontier,
                                                UpdateUserValueType::kLargest)) {
         // The flushed frontier of this VersionEdit must already include the information provided
@@ -361,7 +391,7 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
                     << "file boundary: flushed_frontier=" << flushed_frontier_->ToString()
                     << ", a file's larget user frontier: "
                     << meta.largest.user_frontier->ToString()
-                    << ", version edit protobuf:\n" << pb.DebugString();
+                    << ", version edit protobuf:\n" << SanitizeDebugString(pb);
       }
       UpdateUserFrontier(
           &flushed_frontier_, meta.largest.user_frontier, UpdateUserValueType::kLargest);
@@ -382,7 +412,7 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
 std::string VersionEdit::DebugString(bool hex_key) const {
   VersionEditPB pb;
   EncodeTo(&pb);
-  return pb.DebugString();
+  return SanitizeDebugString(pb);
 }
 
 void VersionEdit::InitNewDB() {

@@ -16,6 +16,11 @@
     mount_cores_dir: "{{ _mount_points[0] }}/cores"
   tags: always
 
+- set_fact:
+    systemd_unit_dir: "/usr/lib/systemd/system"
+  when: ansible_os_family == "Suse"
+  tags: always
+
 - name: Configure | Add yb server ctl script
   vars:
     mount_paths: "{{ _mount_points | join(' ') }}"
@@ -83,8 +88,8 @@
 
   - name: Setup cron to cleanup core files.
     cron:
-      name: "cleanup core files hourly"
-      minute: "0"
+      name: "cleanup core files every 5 minutes"
+      minute: "*/5"
       user: "{{ user_name }}"
       job: "{{ yb_bin_dir }}/clean_cores.sh"
     register: cron_result
@@ -94,8 +99,8 @@
 
   - name: Setup cron to cleanup log files.
     cron:
-      name: "cleanup yb log files hourly"
-      minute: "5"
+      name: "cleanup yb log files every 5 minutes"
+      minute: "*/5"
       user: "{{ user_name }}"
       job: "{{ yb_bin_dir }}/zip_purge_yb_logs.sh"
     register: cron_result
@@ -122,13 +127,13 @@
   # Remove old cron jobs that clean cores, purge logs and collect metrics
   - name: Remove old cron job that cleans cores (for upgrades)
     cron:
-      name: "cleanup core files hourly"
+      name: "cleanup core files every 5 minutes"
       user: "{{ user_name }}"
       state: absent
 
   - name: Remove old cron job that purges logs (for upgrades)
     cron:
-      name: "cleanup yb log files hourly"
+      name: "cleanup yb log files every 5 minutes"
       user: "{{ user_name }}"
       state: absent
 
@@ -190,7 +195,7 @@
     # Necessary for yb-master/tserver to be accessible. 'After' in service file.
     - name: Link network-online.target
       shell:
-        cmd: "systemctl --user link /lib/systemd/system/network-online.target"
+        cmd: "systemctl --user link {{ systemd_unit_dir }}/network-online.target"
 
     - name: Start network-online.target
       systemd:

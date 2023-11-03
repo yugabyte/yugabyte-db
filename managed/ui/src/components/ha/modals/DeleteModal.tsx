@@ -1,4 +1,4 @@
-import React, { FC, useRef } from 'react';
+import { FC, useRef } from 'react';
 import { FormikProps } from 'formik';
 import { useMutation, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
@@ -64,9 +64,11 @@ export const DeleteModal: FC<DeleteModalProps> = ({
           return (
             <div data-testid="ha-delete-confirmation-modal">
               <p />
-              Are you sure you want to <strong>delete</strong> this {instanceId ? ' platform instance' : ' replication configuration'}?
+              Are you sure you want to <strong>delete</strong> this{' '}
+              {instanceId ? ' platform instance' : ' replication configuration'}?
               <br />
-              {isStandby && "You'd need to remove this standby instance from the active instance configuration as well."}
+              {isStandby &&
+                "You'd need to remove this standby instance from the active instance configuration as well."}
               <p />
             </div>
           );

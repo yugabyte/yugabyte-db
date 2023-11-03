@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { YBModal } from '../../common/forms/fields';
 import PropTypes from 'prop-types';
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';
@@ -12,17 +12,13 @@ export default class DeleteBackup extends Component {
 
   confirmDeleteBackup = async () => {
     const {
-      tableInfo: {
-        backupUUID,
-        data,
-        type
-      },
+      tableInfo: { backupUUID, data, type },
       deleteBackup,
       onHide,
       onSubmit,
       onError
-    } = this.props;   
-    const payload = type === "bulkDelete" ? data : [backupUUID];
+    } = this.props;
+    const payload = type === 'bulkDelete' ? data : [backupUUID];
 
     try {
       const response = await deleteBackup(payload);
@@ -40,10 +36,7 @@ export default class DeleteBackup extends Component {
     if (!isNonEmptyObject(this.props.tableInfo)) {
       return <span />;
     }
-    const {
-      visible,
-      onHide,
-    } = this.props;
+    const { visible, onHide } = this.props;
 
     return (
       <div className="universe-apps-modal">

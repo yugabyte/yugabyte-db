@@ -20,7 +20,7 @@
 #include "c.h"
 #include "nodes/memnodes.h"
 
-#include "yb/common/ybc_util.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 /*
  * MaxAllocSize, MaxAllocHugeSize

@@ -59,11 +59,12 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kAddServer)
   (kAddTableToTablet)
   (kAlterTable)
+  (kBackendsCatalogVersion)
+  (kBackendsCatalogVersionTs)
   (kBackfillDone)
   (kBackfillTable)
   (kBackfillTabletChunk)
   (kChangeConfig)
-  (kCopartitionTable)
   (kCreateReplica)
   (kDeleteReplica)
   (kFlushTablets)
@@ -75,14 +76,17 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kSnapshotOp)
   (kSplitTablet)
   (kStartElection)
-  (kTestRetry)
+  (kTestRetryTs)
+  (kTestRetryMaster)
   (kTruncateTablet)
   (kTryStepDown)
   (kUpdateTransactionTablesVersion)
-);
+  (kAddTableToXClusterReplication));
 
 class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
  public:
+  MonitoredTask() : start_timestamp_(MonoTime::Now()) {}
+
   virtual ~MonitoredTask() {}
 
   // Abort this task and return its value before it was successfully aborted. If the task entered
@@ -90,7 +94,7 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
   virtual MonitoredTaskState AbortAndReturnPrevState(const Status& status) = 0;
 
   // Task State.
-  virtual MonitoredTaskState state() const = 0;
+  virtual MonitoredTaskState state() const { return state_.load(std::memory_order_acquire); }
 
   virtual MonitoredTaskType type() const = 0;
 
@@ -101,10 +105,12 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
   virtual std::string description() const = 0;
 
   // Task start time, may be !Initialized().
-  virtual MonoTime start_timestamp() const = 0;
+  virtual MonoTime start_timestamp() const { return start_timestamp_; }
 
   // Task completion time, may be !Initialized().
-  virtual MonoTime completion_timestamp() const = 0;
+  virtual MonoTime completion_timestamp() const {
+    return completion_timestamp_.load(std::memory_order_acquire);
+  }
 
   // Whether task was started by the LB.
   virtual bool started_by_lb() const {
@@ -118,6 +124,15 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
            state == MonitoredTaskState::kFailed ||
            state == MonitoredTaskState::kAborted;
   }
+
+ protected:
+  std::atomic<MonoTime> start_timestamp_, completion_timestamp_;
+  std::atomic<server::MonitoredTaskState> state_{server::MonitoredTaskState::kWaiting};
+};
+
+class RunnableMonitoredTask : public MonitoredTask {
+ public:
+  virtual Status Run() = 0;
 };
 
 } // namespace server

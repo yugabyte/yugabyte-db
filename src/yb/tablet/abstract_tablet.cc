@@ -13,9 +13,10 @@
 
 #include "yb/tablet/abstract_tablet.h"
 
-#include "yb/common/ql_resultset.h"
+#include "yb/qlexpr/ql_resultset.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_read_context.h"
@@ -26,10 +27,7 @@
 
 #include "yb/util/trace.h"
 
-using std::vector;
-
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 Result<HybridTime> AbstractTablet::SafeTime(RequireLease require_lease,
                                             HybridTime min_allowed,
@@ -37,35 +35,26 @@ Result<HybridTime> AbstractTablet::SafeTime(RequireLease require_lease,
   return DoGetSafeTime(require_lease, min_allowed, deadline);
 }
 
-Status AbstractTablet::HandleQLReadRequest(CoarseTimePoint deadline,
-                                           const ReadHybridTime& read_time,
-                                           const QLReadRequestPB& ql_read_request,
-                                           const TransactionOperationContext& txn_op_context,
-                                           QLReadRequestResult* result,
-                                           WriteBuffer* rows_data) {
-
+Status AbstractTablet::HandleQLReadRequest(
+    const docdb::ReadOperationData& read_operation_data,
+    const QLReadRequestPB& ql_read_request,
+    const TransactionOperationContext& txn_op_context,
+    const docdb::YQLStorageIf& ql_storage,
+    std::reference_wrapper<const ScopedRWOperation> pending_op,
+    QLReadRequestResult* result,
+    WriteBuffer* rows_data) {
   // TODO(Robert): verify that all key column values are provided
   docdb::QLReadOperation doc_op(ql_read_request, txn_op_context);
 
   // Form a schema of columns that are referenced by this query.
   const auto doc_read_context = GetDocReadContext();
-  Schema projection;
-  const QLReferencedColumnsPB& column_pbs = ql_read_request.column_refs();
-  vector<ColumnId> column_refs;
-  for (int32_t id : column_pbs.static_ids()) {
-    column_refs.emplace_back(id);
-  }
-  for (int32_t id : column_pbs.ids()) {
-    column_refs.emplace_back(id);
-  }
-  RETURN_NOT_OK(doc_read_context->schema.CreateProjectionByIdsIgnoreMissing(
-      column_refs, &projection));
 
-  const QLRSRowDesc rsrow_desc(ql_read_request.rsrow_desc());
-  QLResultSet resultset(&rsrow_desc, rows_data);
+  const qlexpr::QLRSRowDesc rsrow_desc(ql_read_request.rsrow_desc());
+  qlexpr::QLResultSet resultset(&rsrow_desc, rows_data);
+
   TRACE("Start Execute");
   const Status s = doc_op.Execute(
-      QLStorage(), deadline, read_time, *doc_read_context, projection, &resultset,
+      ql_storage, read_operation_data, *doc_read_context, pending_op, &resultset,
       &result->restart_read_ht);
   TRACE("Done Execute");
   if (!s.ok()) {
@@ -86,28 +75,37 @@ Status AbstractTablet::HandleQLReadRequest(CoarseTimePoint deadline,
   return Status::OK();
 }
 
-Status AbstractTablet::ProcessPgsqlReadRequest(CoarseTimePoint deadline,
-                                               const ReadHybridTime& read_time,
-                                               bool is_explicit_request_read_time,
-                                               const PgsqlReadRequestPB& pgsql_read_request,
-                                               const std::shared_ptr<TableInfo>& table_info,
-                                               const TransactionOperationContext& txn_op_context,
-                                               PgsqlReadRequestResult* result) {
+Status AbstractTablet::ProcessPgsqlReadRequest(
+    const docdb::ReadOperationData& read_operation_data,
+    bool is_explicit_request_read_time,
+    const PgsqlReadRequestPB& pgsql_read_request,
+    const std::shared_ptr<TableInfo>& table_info,
+    const TransactionOperationContext& txn_op_context,
+    const docdb::YQLStorageIf& ql_storage,
+    const docdb::DocDBStatistics* statistics,
+    std::reference_wrapper<const ScopedRWOperation> pending_op,
+    PgsqlReadRequestResult* result) {
   docdb::PgsqlReadOperation doc_op(pgsql_read_request, txn_op_context);
 
   // Form a schema of columns that are referenced by this query.
-  const auto doc_read_context = rpc::SharedField(table_info, table_info->doc_read_context.get());
+  const auto doc_read_context = table_info->doc_read_context;
   const auto index_doc_read_context = pgsql_read_request.has_index_request()
-      ? GetDocReadContext(pgsql_read_request.index_request().table_id()) : nullptr;
+    ? VERIFY_RESULT(GetDocReadContext(pgsql_read_request.index_request().table_id())) : nullptr;
 
   TRACE("Start Execute");
   auto fetched_rows = doc_op.Execute(
-      QLStorage(), deadline, read_time, is_explicit_request_read_time, *doc_read_context,
-      index_doc_read_context.get(), result->rows_data, &result->restart_read_ht);
+      ql_storage, read_operation_data, is_explicit_request_read_time, *doc_read_context,
+      index_doc_read_context.get(), pending_op, result->rows_data, &result->restart_read_ht,
+      statistics);
   TRACE("Done Execute");
   if (!fetched_rows.ok()) {
     result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
     const auto& s = fetched_rows.status();
+
+    // TODO(14814, 18387): At the moment only one error status is supported.
+    result->response.mutable_error_status()->Clear();
+    StatusToPB(s, result->response.add_error_status());
+    // For backward compatibility set also deprecated error message
     result->response.set_error_message(s.message().cdata(), s.message().size());
     return Status::OK();
   }
@@ -130,5 +128,4 @@ Status AbstractTablet::ProcessPgsqlReadRequest(CoarseTimePoint deadline,
   return Status::OK();
 }
 
-}  // namespace tablet
-}  // namespace yb
+}  // namespace yb::tablet

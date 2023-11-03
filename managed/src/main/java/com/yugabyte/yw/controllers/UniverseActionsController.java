@@ -12,33 +12,42 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.empty;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UpdateLoadBalancerConfig;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
+import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.forms.AlertConfigFormData;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
-import com.yugabyte.yw.forms.ToggleTlsParams;
-import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-
 import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
-import play.libs.Json;
+import play.mvc.Http;
+import play.mvc.Http.Request;
 import play.mvc.Result;
 
 @Api(
@@ -53,25 +62,40 @@ public class UniverseActionsController extends AuthenticatedController {
       value = "Configure alerts for a universe",
       nickname = "configureUniverseAlerts",
       response = YBPSuccess.class)
-  public Result configureAlerts(UUID customerUUID, UUID universeUUID) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
+  public Result configureAlerts(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     universeActionsHandler.configureAlerts(
-        universe, formFactory.getFormDataOrBadRequest(AlertConfigFormData.class));
+        universe, formFactory.getFormDataOrBadRequest(request, AlertConfigFormData.class));
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
-            Audit.ActionType.ConfigUniverseAlert,
-            request().body().asJson());
+            Audit.ActionType.ConfigUniverseAlert);
     return empty();
   }
 
   @ApiOperation(value = "Pause a universe", nickname = "pauseUniverse", response = YBPTask.class)
-  public Result pause(UUID customerUUID, UUID universeUUID) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.PAUSE_RESUME),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
+  public Result pause(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     // Check if the universe is of type kubernetes, if yes throw an exception
     Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
     List<Cluster> readOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
@@ -84,29 +108,39 @@ public class UniverseActionsController extends AuthenticatedController {
 
     if (isKubernetesCluster) {
       String msg =
-          String.format("Pause task is not supported for Kubernetes universe - %s", universe.name);
+          String.format(
+              "Pause task is not supported for Kubernetes universe - %s", universe.getName());
       log.error(msg);
       throw new IllegalArgumentException(msg);
     }
 
     UUID taskUUID = universeActionsHandler.pause(customer, universe);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.Pause,
             taskUUID);
-    return new YBPTask(taskUUID, universe.universeUUID).asResult();
+    return new YBPTask(taskUUID, universe.getUniverseUUID()).asResult();
   }
 
   @ApiOperation(
       value = "Resume a paused universe",
       nickname = "resumeUniverse",
       response = YBPTask.class)
-  public Result resume(UUID customerUUID, UUID universeUUID) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.PAUSE_RESUME),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
+  public Result resume(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     UUID taskUUID;
     try {
@@ -117,34 +151,41 @@ public class UniverseActionsController extends AuthenticatedController {
     }
 
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.Resume,
             taskUUID);
-    return new YBPTask(taskUUID, universe.universeUUID).asResult();
+    return new YBPTask(taskUUID, universe.getUniverseUUID()).asResult();
   }
 
   @ApiOperation(
       value = "Set a universe's key",
       nickname = "setUniverseKey",
       response = UniverseResp.class)
-  public Result setUniverseKey(UUID customerUUID, UUID universeUUID) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
+  public Result setUniverseKey(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
-    log.info("Updating universe key {} for {}.", universe.universeUUID, customer.uuid);
+    log.info("Updating universe key {} for {}.", universe.getUniverseUUID(), customer.getUuid());
     // Get the user submitted form data.
 
     EncryptionAtRestKeyParams taskParams =
-        EncryptionAtRestKeyParams.bindFromFormData(universe.universeUUID, request());
+        EncryptionAtRestKeyParams.bindFromFormData(universe.getUniverseUUID(), request);
 
     UUID taskUUID = universeActionsHandler.setUniverseKey(customer, universe, taskParams);
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.SetUniverseKey,
@@ -154,30 +195,39 @@ public class UniverseActionsController extends AuthenticatedController {
     return PlatformResults.withData(resp);
   }
 
-  @Deprecated
   @ApiOperation(
-      value = "Toggle a universe's TLS state",
-      notes =
-          "Enable or disable node-to-node and client-to-node encryption. "
-              + "Supports rolling and non-rolling universe upgrades.",
-      nickname = "toggleUniverseTLS",
-      response = UniverseResp.class)
-  public Result toggleTls(UUID customerUuid, UUID universeUuid) {
-    Customer customer = Customer.getOrBadRequest(customerUuid);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUuid, customer);
-    ObjectNode formData = (ObjectNode) request().body().asJson();
-    ToggleTlsParams requestParams = ToggleTlsParams.bindFromFormData(formData);
-    UUID taskUUID = universeActionsHandler.toggleTls(customer, universe, requestParams);
+      value = "Update load balancer config",
+      nickname = "updateLoadBalancerConfig",
+      response = UpdateLoadBalancerConfig.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
+  public Result updateLoadBalancerConfig(
+      UUID customerUUID, UUID universeUUID, Http.Request request) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+
+    log.info(
+        "Updating load balancer config {} for {}.", universe.getUniverseUUID(), customer.getUuid());
+
+    UUID taskUUID =
+        universeActionsHandler.updateLoadBalancerConfig(
+            customer,
+            universe,
+            formFactory.getFormDataOrBadRequest(
+                request.body().asJson(), UniverseDefinitionTaskParams.class));
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
-            universeUuid.toString(),
-            Audit.ActionType.ToggleTls,
-            Json.toJson(formData),
+            universeUUID.toString(),
+            Audit.ActionType.UpdateLoadBalancerConfig,
             taskUUID);
-    return PlatformResults.withData(
-        UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf()));
+    return new YBPTask(taskUUID, universe.getUniverseUUID()).asResult();
   }
 
   /**
@@ -190,14 +240,22 @@ public class UniverseActionsController extends AuthenticatedController {
       nickname = "setUniverseBackupFlag",
       tags = {"Universe management", "Backups"},
       response = YBPSuccess.class)
-  public Result setBackupFlag(UUID customerUUID, UUID universeUUID, Boolean markActive) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
+  public Result setBackupFlag(
+      UUID customerUUID, UUID universeUUID, Boolean markActive, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     universeActionsHandler.setBackupFlag(universe, markActive);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.SetBackupFlag);
@@ -213,13 +271,20 @@ public class UniverseActionsController extends AuthenticatedController {
       value = "Flag a universe as Helm 3-compatible",
       nickname = "setUniverseHelm3Compatible",
       response = YBPSuccess.class)
-  public Result setHelm3Compatible(UUID customerUUID, UUID universeUUID) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
+  public Result setHelm3Compatible(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     universeActionsHandler.setHelm3Compatible(universe);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.SetHelm3Compatible);
@@ -236,16 +301,44 @@ public class UniverseActionsController extends AuthenticatedController {
       value = "Reset universe version",
       nickname = "resetUniverseVersion",
       response = YBPSuccess.class)
-  public Result resetVersion(UUID customerUUID, UUID universeUUID) {
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public Result resetVersion(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.ResetUniverseVersion);
     universe.resetVersion();
+    return empty();
+  }
+
+  @ApiOperation(
+      hidden = true,
+      value = "Unlock a universe",
+      notes = "Unlock a universe",
+      response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
+  public Result unlockUniverse(UUID customerUUID, UUID universeUUID, Request request) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    Util.unlockUniverse(universe);
+    auditService()
+        .createAuditEntry(
+            request, Audit.TargetType.Universe, universeUUID.toString(), Audit.ActionType.Unlock);
     return empty();
   }
 }

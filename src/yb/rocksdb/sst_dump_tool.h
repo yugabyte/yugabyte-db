@@ -20,9 +20,12 @@
 
 #pragma once
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/docdb/docdb_types.h"
+
+#include "yb/rocksdb/status.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/slice.h"
 
@@ -36,17 +39,19 @@ class DocDBKVFormatter {
 
   virtual std::string Format(
       const yb::Slice&, const yb::Slice&, yb::docdb::StorageDbType) const = 0;
+
+  virtual Status ProcessArgument(const std::string& argument) = 0;
 };
 
 class SSTDumpTool {
  public:
-  explicit SSTDumpTool(const rocksdb::DocDBKVFormatter* formatter = nullptr)
+  explicit SSTDumpTool(rocksdb::DocDBKVFormatter* formatter = nullptr)
       : formatter_(formatter) {}
 
   int Run(int argc, char** argv);
 
  private:
-  const rocksdb::DocDBKVFormatter* formatter_;
+  rocksdb::DocDBKVFormatter* formatter_;
 };
 
 }  // namespace rocksdb

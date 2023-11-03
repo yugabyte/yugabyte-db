@@ -7,7 +7,9 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
@@ -26,13 +28,26 @@ public class NetworkManager extends DevopsBase {
 
   public JsonNode bootstrap(UUID regionUUID, UUID providerUUID, String customPayload) {
     List<String> commandArgs = new ArrayList<>();
-    commandArgs.add("--custom_payload");
-    commandArgs.add(customPayload);
+
+    Map<String, String> sensitiveData = new HashMap<String, String>();
+    sensitiveData.put("--custom_payload", customPayload);
 
     if (regionUUID != null) {
-      return execAndParseCommandRegion(regionUUID, "bootstrap", commandArgs);
+      return execAndParseShellResponse(
+          DevopsCommand.builder()
+              .regionUUID(regionUUID)
+              .command("bootstrap")
+              .commandArgs(commandArgs)
+              .sensitiveData(sensitiveData)
+              .build());
     } else {
-      return execAndParseCommandCloud(providerUUID, "bootstrap", commandArgs);
+      return execAndParseShellResponse(
+          DevopsCommand.builder()
+              .providerUUID(providerUUID)
+              .command("bootstrap")
+              .commandArgs(commandArgs)
+              .sensitiveData(sensitiveData)
+              .build());
     }
   }
 
@@ -40,11 +55,22 @@ public class NetworkManager extends DevopsBase {
     List<String> commandArgs = new ArrayList<>();
     commandArgs.add("--custom_payload");
     commandArgs.add(customPayload);
-    return execAndParseCommandRegion(regionUUID, "query", commandArgs);
+    return execAndParseShellResponse(
+        DevopsCommand.builder()
+            .regionUUID(regionUUID)
+            .command("query")
+            .commandArgs(commandArgs)
+            .build());
   }
 
   public JsonNode cleanupOrFail(UUID regionUUID) {
-    JsonNode response = execAndParseCommandRegion(regionUUID, "cleanup", Collections.emptyList());
+    JsonNode response =
+        execAndParseShellResponse(
+            DevopsCommand.builder()
+                .regionUUID(regionUUID)
+                .command("cleanup")
+                .commandArgs(Collections.emptyList())
+                .build());
     if (response.has("error")) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, response.get("error").asText());
     }

@@ -160,7 +160,7 @@ You should see an output which looks like the following:
 (1 row)
 ```
 
-Next, run a query to select the `id`, `title`, `category` and `price` columns for the first five products.
+The following query selects the `id`, `title`, `category`, `price`, and `rating` columns for the first five products.
 
 ```plpgsql
 yb_demo=# SELECT id, title, category, price, rating

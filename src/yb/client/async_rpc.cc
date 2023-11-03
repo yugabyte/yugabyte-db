@@ -28,7 +28,6 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -47,19 +46,19 @@
 
 // TODO: do we need word Redis in following two metrics? ReadRpc and WriteRpc objects emitting
 // these metrics are used not only in Redis service.
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     server, handler_latency_yb_client_write_remote, "yb.client.Write remote call time",
     yb::MetricUnit::kMicroseconds, "Microseconds spent in the remote Write call ");
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     server, handler_latency_yb_client_read_remote, "yb.client.Read remote call time",
     yb::MetricUnit::kMicroseconds, "Microseconds spent in the remote Read call ");
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     server, handler_latency_yb_client_write_local, "yb.client.Write local call time",
     yb::MetricUnit::kMicroseconds, "Microseconds spent in the local Write call ");
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     server, handler_latency_yb_client_read_local, "yb.client.Read local call time",
     yb::MetricUnit::kMicroseconds, "Microseconds spent in the local Read call ");
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     server, handler_latency_yb_client_time_to_send,
     "Time taken for a Write/Read rpc to be sent to the server", yb::MetricUnit::kMicroseconds,
     "Microseconds spent before sending the request to the server");
@@ -87,40 +86,32 @@ DEFINE_UNKNOWN_bool(forward_redis_requests, true,
     "attempt to read from leaders, so redis_allow_reads_from_followers will be ignored.");
 
 DEFINE_UNKNOWN_bool(detect_duplicates_for_retryable_requests, true,
-            "Enable tracking of write requests that prevents the same write from being applied "
-                "twice.");
+    "Enable tracking of write requests that prevents the same write from being applied twice.");
 
 DEFINE_UNKNOWN_bool(ysql_forward_rpcs_to_local_tserver, false,
-            "DEPRECATED. Feature has been removed");
+    "DEPRECATED. Feature has been removed");
 
+DEFINE_test_flag(bool, asyncrpc_finished_set_timedout, false,
+    "Whether to reset asyncrpc response status to Timedout.");
+
+DEFINE_test_flag(bool, asyncrpc_common_response_check_fail_once, false,
+    "For testing only. When set to true triggers AsyncRpc::Failure() with RuntimeError status "
+    "inside AsyncRpcBase::CommonResponseCheck() and returns false from this method.");
+
+// DEPRECATED. It is assumed that all t-servers and masters in the cluster has this capability.
+// Remove it completely when it won't be necessary to support upgrade from releases which checks
+// the existence on this capability.
 DEFINE_CAPABILITY(PickReadTimeAtTabletServer, 0x8284d67b);
 
 DECLARE_bool(collect_end_to_end_traces);
 
-DEFINE_test_flag(bool, asyncrpc_finished_set_timedout, false,
-                 "Whether to reset asyncrpc response status to Timedout.");
-
 using namespace std::placeholders;
 
-namespace yb {
-
-using std::shared_ptr;
-using rpc::ErrorStatusPB;
-using rpc::Messenger;
-using rpc::Rpc;
-using rpc::RpcController;
-using tserver::WriteRequestPB;
-using tserver::WriteResponsePB;
-using tserver::WriteResponsePB_PerRowErrorPB;
-using strings::Substitute;
-
-namespace client {
-
-namespace internal {
+namespace yb::client::internal {
 
 bool IsTracingEnabled() {
   auto *trace = Trace::CurrentTrace();
-  return FLAGS_collect_end_to_end_traces || (trace && trace->end_to_end_traces_requested());
+  return trace && (FLAGS_collect_end_to_end_traces || trace->end_to_end_traces_requested());
 }
 
 namespace {
@@ -137,12 +128,9 @@ bool LocalTabletServerOnly(const InFlightOps& ops) {
           !FLAGS_forward_redis_requests);
 }
 
-void FillRequestIds(const RetryableRequestId request_id,
-                    const RetryableRequestId min_running_request_id,
-                    InFlightOps* ops) {
+void FillRequestIds(const RetryableRequestId request_id, InFlightOps* ops) {
   for (auto& op : *ops) {
     op.yb_op->set_request_id(request_id);
-    op.yb_op->set_min_running_request_id(min_running_request_id);
   }
 }
 
@@ -196,15 +184,17 @@ AsyncRpc::~AsyncRpc() {
   if (trace_) {
     if (trace_->must_print()) {
       LOG(INFO) << ToString() << " took " << ToMicroseconds(CoarseMonoClock::Now() - start_)
-                << "us. Trace:\n"
-                << trace_->DumpToString(true);
+                << "us. Trace:";
+      trace_->DumpToLogInfo(true);
     } else {
       const auto print_trace_every_n = GetAtomicFlag(&FLAGS_ybclient_print_trace_every_n);
       if (print_trace_every_n > 0) {
+        bool was_printed = false;
         YB_LOG_EVERY_N(INFO, print_trace_every_n)
             << ToString() << " took " << ToMicroseconds(CoarseMonoClock::Now() - start_)
-            << "us. Trace:\n"
-            << trace_->DumpToString(true);
+            << "us. Trace:" << Trace::SetTrue(&was_printed);
+        if (was_printed)
+          trace_->DumpToLogInfo(true);
       }
     }
   }
@@ -244,13 +234,14 @@ std::shared_ptr<const YBTable> AsyncRpc::table() const {
 }
 
 void AsyncRpc::Finished(const Status& status) {
+  VLOG_WITH_FUNC(4) << "status: " << status << ", error: " << AsString(response_error());
   Status new_status = status;
   if (status.ok()) {
     if (PREDICT_FALSE(ANNOTATE_UNPROTECTED_READ(FLAGS_TEST_asyncrpc_finished_set_timedout))) {
       new_status = STATUS(
           TimedOut, "Fake TimedOut for testing due to FLAGS_TEST_asyncrpc_finished_set_timedout");
-      TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:1");
-      TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:2");
+      DEBUG_ONLY_TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:1");
+      DEBUG_ONLY_TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:2");
     }
 
   }
@@ -269,6 +260,7 @@ void AsyncRpc::Finished(const Status& status) {
 }
 
 void AsyncRpc::Failed(const Status& status) {
+  VLOG_WITH_FUNC(4) << "status: " << status.ToString();
   std::string error_message = status.message().ToBuffer();
   auto redis_error_code = status.IsInvalidCommand() || status.IsInvalidArgument() ?
       RedisResponsePB_RedisStatusCode_PARSING_ERROR : RedisResponsePB_RedisStatusCode_SERVER_ERROR;
@@ -289,8 +281,8 @@ void AsyncRpc::Failed(const Status& status) {
         // cluster map instead.
         if (status.IsIllegalState()) {
           resp->set_code(RedisResponsePB_RedisStatusCode_SERVER_ERROR);
-          resp->set_error_message(Substitute("MOVED $0 0.0.0.0:0",
-                                             down_cast<YBRedisOp*>(yb_op)->hash_code()));
+          resp->set_error_message(Format("MOVED $0 0.0.0.0:0",
+                                         down_cast<YBRedisOp*>(yb_op)->hash_code()));
         } else {
           resp->set_code(redis_error_code);
           resp->set_error_message(error_message);
@@ -311,6 +303,10 @@ void AsyncRpc::Failed(const Status& status) {
         PgsqlResponsePB* resp = down_cast<YBPgsqlOp*>(yb_op)->mutable_response();
         resp->set_status(status.IsTryAgain() ? PgsqlResponsePB::PGSQL_STATUS_RESTART_REQUIRED_ERROR
                                              : PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
+        // TODO(14814, 18387): At the moment only one error status is supported.
+        resp->mutable_error_status()->Clear();
+        StatusToPB(status, resp->add_error_status());
+        // For backward compatibility set also deprecated fields
         resp->set_error_message(error_message);
         const uint8_t* pg_err_ptr = status.ErrorData(PgsqlErrorTag::kCategory);
         if (pg_err_ptr != nullptr) {
@@ -349,6 +345,7 @@ void SetMetadata(const InFlightOpsTransactionMetadata& metadata,
   } else {
     metadata.transaction.TransactionIdToPB(transaction);
   }
+  transaction->set_pg_txn_start_us(metadata.transaction.pg_txn_start_us);
   dest->set_deprecated_may_have_metadata(true);
 
   if (metadata.subtransaction && !metadata.subtransaction->IsDefaultState()) {
@@ -412,6 +409,14 @@ AsyncRpcBase<Req, Resp>::~AsyncRpcBase() {
 
 template <class Req, class Resp>
 bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
+  if (PREDICT_FALSE(ANNOTATE_UNPROTECTED_READ(
+      FLAGS_TEST_asyncrpc_common_response_check_fail_once))) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_asyncrpc_common_response_check_fail_once) = false;
+    const auto status = STATUS(RuntimeError, "CommonResponseCheck test runtime error");
+    LOG_WITH_FUNC(INFO) << "Generating failure: " << status;
+    Failed(status);
+    return false;
+  }
   if (!status.ok()) {
     return false;
   }
@@ -445,19 +450,6 @@ bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
 
 template <class Req, class Resp>
 void AsyncRpcBase<Req, Resp>::SendRpcToTserver(int attempt_num) {
-  if (!tablet_invoker_.current_ts().HasCapability(CAPABILITY_PickReadTimeAtTabletServer)) {
-    ConsistentReadPoint* read_point = batcher_->read_point();
-    if (read_point && !read_point->GetReadTime()) {
-      auto txn = batcher_->transaction();
-      // If txn is not set, this is a consistent scan across multiple tablets of a
-      // non-transactional YCQL table.
-      if (!txn || txn->isolation() == IsolationLevel::SNAPSHOT_ISOLATION) {
-        read_point->SetCurrentReadTime();
-        read_point->GetReadTime().AddToPB(&req_);
-      }
-    }
-  }
-
   req_.set_rejection_score(batcher_->RejectionScore(attempt_num));
   AsyncRpc::SendRpcToTserver(attempt_num);
 }
@@ -466,10 +458,12 @@ template <class Req, class Resp>
 void AsyncRpcBase<Req, Resp>::ProcessResponseFromTserver(const Status& status) {
   TRACE_TO(trace_, "ProcessResponseFromTserver($0)", status.ToString(false));
   if (resp_.has_trace_buffer()) {
-    TRACE_TO(trace_, "Received from server: \n BEGIN\n$0 END.", resp_.trace_buffer());
+    TRACE_TO(
+        trace_, "Received from server: \nBEGIN AsyncRpc\n$0END AsyncRpc", resp_.trace_buffer());
   }
   NotifyBatcher(status);
   if (!CommonResponseCheck(status)) {
+    VLOG_WITH_FUNC(4) << "CommonResponseCheck failed, status: " << status;
     return;
   }
   auto swap_status = SwapResponses();
@@ -519,7 +513,7 @@ void FillOps(
     auto* concrete_op = down_cast<OpType*>(op.yb_op.get());
     out->AddAllocated(concrete_op->mutable_request());
     HandleExtraFields(concrete_op, req);
-    VLOG(4) << ++idx << ") encoded row: " << op.yb_op->ToString();
+    VLOG(5) << ++idx << ") encoded row: " << op.yb_op->ToString();
   }
 }
 
@@ -583,29 +577,43 @@ WriteRpc::WriteRpc(const AsyncRpcData& data)
   VLOG(3) << "Created batch for " << data.tablet->tablet_id() << ":\n"
           << req_.ShortDebugString();
 
+  if (batcher_->GetLeaderTerm() != OpId::kUnknownTerm) {
+    req_.set_leader_term(batcher_->GetLeaderTerm());
+  }
+
   const auto& client_id = batcher_->client_id();
   if (!client_id.IsNil() && FLAGS_detect_duplicates_for_retryable_requests) {
     auto temp = client_id.ToUInt64Pair();
     req_.set_client_id1(temp.first);
     req_.set_client_id2(temp.second);
     const auto& first_yb_op = ops_.begin()->yb_op;
-    if (first_yb_op->request_id().has_value()) {
-      req_.set_request_id(first_yb_op->request_id().value());
-      req_.set_min_running_request_id(first_yb_op->min_running_request_id().value());
+    // That means we are trying to resend all ops from this RPC and need to reuse retryable
+    // request ID and details (see https://github.com/yugabyte/yugabyte-db/issues/14005).
+    if (first_yb_op->request_id()) {
+      const auto& request_detail = batcher_->GetRequestDetails(*first_yb_op->request_id());
+      req_.set_request_id(*first_yb_op->request_id());
+      req_.set_min_running_request_id(request_detail.min_running_request_id);
+      if (request_detail.start_time_micros > 0) {
+        req_.set_start_time_micros(request_detail.start_time_micros);
+      }
     } else {
       const auto request_pair = batcher_->NextRequestIdAndMinRunningRequestId();
+      if (batcher_->Clock()) {
+        req_.set_start_time_micros(batcher_->Clock()->Now().GetPhysicalValueMicros());
+      }
       req_.set_request_id(request_pair.first);
       req_.set_min_running_request_id(request_pair.second);
+      batcher_->RegisterRequest(request_pair.first, request_pair.second, req_.start_time_micros());
     }
-    FillRequestIds(req_.request_id(), req_.min_running_request_id(), &ops_);
+    FillRequestIds(req_.request_id(), &ops_);
   }
 }
 
 WriteRpc::~WriteRpc() {
   if (async_rpc_metrics_) {
-    scoped_refptr<Histogram> write_rpc_time = IsLocalCall() ?
-                                              async_rpc_metrics_->local_write_rpc_time :
-                                              async_rpc_metrics_->remote_write_rpc_time;
+    scoped_refptr<EventStats> write_rpc_time = IsLocalCall() ?
+                                                    async_rpc_metrics_->local_write_rpc_time :
+                                                    async_rpc_metrics_->remote_write_rpc_time;
     write_rpc_time->Increment(ToMicroseconds(CoarseMonoClock::Now() - start_));
   }
 
@@ -660,8 +668,8 @@ Status WriteRpc::SwapResponses() {
         const auto& ql_response = ql_op->response();
         if (ql_response.has_rows_data_sidecar()) {
           // TODO avoid copying sidecar here.
-          RETURN_NOT_OK(retrier().controller().AssignSidecarTo(
-              ql_response.rows_data_sidecar(), ql_op->mutable_rows_data()));
+          ql_op->set_rows_data(VERIFY_RESULT(
+              retrier().controller().ExtractSidecar(ql_response.rows_data_sidecar())));
         }
         ql_idx++;
         break;
@@ -739,9 +747,9 @@ ReadRpc::ReadRpc(const AsyncRpcData& data, YBConsistencyLevel yb_consistency_lev
 ReadRpc::~ReadRpc() {
   // Get locality metrics if enabled, but skip for system tables as those go to the master.
   if (async_rpc_metrics_ && !table()->name().is_system()) {
-    scoped_refptr<Histogram> read_rpc_time = IsLocalCall() ?
-                                             async_rpc_metrics_->local_read_rpc_time :
-                                             async_rpc_metrics_->remote_read_rpc_time;
+    scoped_refptr<EventStats> read_rpc_time = IsLocalCall() ?
+                                                   async_rpc_metrics_->local_read_rpc_time :
+                                                   async_rpc_metrics_->remote_read_rpc_time;
 
     read_rpc_time->Increment(ToMicroseconds(CoarseMonoClock::Now() - start_));
   }
@@ -790,8 +798,8 @@ Status ReadRpc::SwapResponses() {
         const auto& ql_response = ql_op->response();
         if (ql_response.has_rows_data_sidecar()) {
           // TODO avoid copying sidecar here.
-          RETURN_NOT_OK(retrier().controller().AssignSidecarTo(
-              ql_response.rows_data_sidecar(), ql_op->mutable_rows_data()));
+          ql_op->set_rows_data(VERIFY_RESULT(
+              retrier().controller().ExtractSidecar(ql_response.rows_data_sidecar())));
         }
         ql_idx++;
         break;
@@ -803,7 +811,8 @@ Status ReadRpc::SwapResponses() {
         if (!used_read_time_set && resp_.has_used_read_time()) {
           // Single operation in a group required used read time.
           used_read_time_set = true;
-          pgsql_op->SetUsedReadTime(ReadHybridTime::FromPB(resp_.used_read_time()));
+          pgsql_op->SetUsedReadTime(
+              ReadHybridTime::FromPB(resp_.used_read_time()), tablet().tablet_id());
         }
         pgsql_op->mutable_response()->Swap(resp_.mutable_pgsql_batch(pgsql_idx));
         const auto& pgsql_response = pgsql_op->response();
@@ -835,6 +844,4 @@ void ReadRpc::NotifyBatcher(const Status& status) {
   batcher_->ProcessReadResponse(*this, status);
 }
 
-}  // namespace internal
-}  // namespace client
-}  // namespace yb
+}  // namespace yb::client::internal

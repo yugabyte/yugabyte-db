@@ -1,7 +1,7 @@
 ---
 title: Date and time in YSQL
 headerTitle: Date and time
-linkTitle: 7. Date and time
+linkTitle: Date and time
 description: Learn how to work with date and time in YSQL.
 aliases:
   - /preview/explore/date-and-time/
@@ -9,29 +9,13 @@ aliases:
 menu:
   preview:
     parent: learn
-    name: 7. Date and time
+    name: Date and time
     identifier: date-and-time-1-ysql
     weight: 569
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-
-  <li >
-    <a href="{{< relref "./date-and-time-ysql.md" >}}" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-  <li >
-    <a href="{{< relref "./date-and-time-ycql.md" >}}" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-
-</ul>
+{{<api-tabs list="ysql">}}
 
 ## Introduction
 
@@ -347,9 +331,9 @@ If your application assumes a local time, ensure that it issues a `SET` command 
 
 A database normally obtains its date and time from the underlying server. However, a distributed database is one synchronized database that is spread across many servers that are unlikely to have synchronized time.
 
-For a detailed explanation of how time is obtained, refer to the blog post describing the [architecture of the storage layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-storage-layer/).
+For a detailed explanation of how time is obtained, refer to the blog post describing the [architecture of the storage layer](https://www.yugabyte.com/blog/distributed-postgresql-on-a-google-spanner-architecture-storage-layer/).
 
-A simpler explanation is that the time is determined by the 'Shard Leader' of the table and this is the time used by all followers of the leader. Therefore the UTC timestamp of the underlying server can differ from the current timestamp that is used for a transaction on a particular table.
+A simpler explanation is that the time is determined by the [tablet leader](../../../architecture/core-functions/write-path/#preparation-of-the-operation-for-replication-by-tablet-leader) of the table and this is the time used by all followers of the leader. Therefore the UTC timestamp of the underlying server can differ from the current timestamp that is used for a transaction on a particular table.
 
 The following example assumes that you have created and connected to the `yb_demo` database with the [Retail Analytics sample dataset](../../../sample-data/retail-analytics/):
 

@@ -33,7 +33,7 @@ public class PersistSystemdUpgrade extends UniverseTaskBase {
     String ret =
         super.getName()
             + "("
-            + taskParams().universeUUID
+            + taskParams().getUniverseUUID()
             + ", useSystemd: "
             + taskParams().useSystemd
             + ")";

@@ -12,18 +12,23 @@ menu:
 type: docs
 ---
 
-A peering connection connects a YugabyteDB Managed VPC with a VPC on the corresponding cloud provider - typically one that hosts an application that you want to have access to your cluster. A VPC must be created before you can configure a peering connection.
+A peering connection connects a YugabyteDB Managed VPC with a VPC on the same cloud provider (AWS or GCP) - typically one that hosts an application that you want to have access to your cluster. Peering connections are not supported in Azure (use a [private service endpoint](../cloud-add-endpoint/)).
 
-> To learn about VPC networking in YugabyteDB Managed, refer to [VPC network overview](../cloud-vpc-intro/).\
-> To learn how to create a VPC network, refer to [Create a VPC Network](../cloud-add-vpc-aws/).
+{{< youtube id="Yu59wX8Rsug" title="Create a peering connection to access a cluster in YugabyteDB Managed" >}}
 
-**Peering Connections** on the **VPC Network** tab of the **Network Access** page displays a list of peering connections configured for your account that includes the peering connection name, cloud provider, the network name (GCP) or VPC ID (AWS) of the peered VPC, the name of the Yugabyte VPC, and [status](#peering-connection-status) of the connection (Pending or Active).
+In the context of YugabyteDB Managed, when a Yugabyte cluster is deployed in a VPC, it can connect to an application running on a peered VPC as though it was located on the same network; all traffic stays in the cloud provider's network. The VPCs can be in different regions, but ideally should be in the same region. You must create a VPC before you can configure a peering connection.
+
+- To learn how to peer VPCs, refer to [Peer VPCs](../cloud-add-vpc-aws/).
+
+![VPC network using peering](/images/yb-cloud/managed-vpc-diagram.png)
+
+**Peering Connections** on the **VPC Network** tab of the **Networking** page displays a list of peering connections configured for your account that includes the peering connection name, cloud provider, the network name (GCP) or ID (AWS) of the peered VPC, the name of the YugabyteDB VPC, and [status](#peering-connection-status) of the connection (Pending or Active).
 
 ![Peering connections](/images/yb-cloud/cloud-vpc-peering.png)
 
 To view the peering connection details, select a peering connection in the list to display the **Peering Details** sheet.
 
-To create a peering connection, click **Add Peering Connection**. For details, refer to [Create a VPC Network](../cloud-add-vpc-aws/).
+To create a peering connection, click **Add Peering Connection**. For details, refer to [Peer VPCs](../cloud-add-vpc-aws/).
 
 To terminate a peering connection, click the **Delete** icon for the peering connection in the list you want to terminate, then click **Terminate**. You can also terminate a peering connection by clicking **Terminate Peering** in the **Peering Details** sheet.
 

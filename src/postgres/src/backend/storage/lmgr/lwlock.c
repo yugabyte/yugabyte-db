@@ -1325,11 +1325,17 @@ LWLockConditionalAcquire(LWLock *lock, LWLockMode mode)
 	 */
 	HOLD_INTERRUPTS();
 
+	if (MyProc != NULL)
+		MyProc->ybAnyLockAcquired = true;
+
 	/* Check for the lock */
 	mustwait = LWLockAttemptLock(lock, mode);
 
 	if (mustwait)
 	{
+		if (MyProc != NULL && !num_held_lwlocks)
+			MyProc->ybAnyLockAcquired = false;
+
 		/* Failed to get lock, so release interrupt holdoff */
 		RESUME_INTERRUPTS();
 
@@ -1339,8 +1345,6 @@ LWLockConditionalAcquire(LWLock *lock, LWLockMode mode)
 	else
 	{
 		/* Add lock to list of locks held by this backend */
-		if (MyProc != NULL)
-			MyProc->ybAnyLockAcquired = true;
 		held_lwlocks[num_held_lwlocks].lock = lock;
 		held_lwlocks[num_held_lwlocks++].mode = mode;
 		TRACE_POSTGRESQL_LWLOCK_CONDACQUIRE(T_NAME(lock), mode);

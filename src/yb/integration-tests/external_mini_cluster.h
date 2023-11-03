@@ -59,6 +59,7 @@
 
 #include "yb/server/server_fwd.h"
 
+#include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_types.pb.h"
 
@@ -83,6 +84,10 @@ class HostPort;
 class OpIdPB;
 class NodeInstancePB;
 class Subprocess;
+
+namespace rpc {
+class SecureContext;
+}
 
 namespace server {
 class ServerStatusPB;
@@ -183,12 +188,20 @@ struct ExternalMiniClusterOptions {
   // set to a non-zero value, this value is used instead.
   int transaction_table_num_tablets = 0;
 
+  // Specifies the replication factor for the cluster. If this is not set, default to the number
+  // of masters in the cluster.
+  int replication_factor = 0;
+
+  bool allow_crashes_during_init_db = false;
+
   Status RemovePort(const uint16_t port);
   Status AddPort(const uint16_t port);
 
   // Make sure we have the correct number of master RPC ports specified.
   void AdjustMasterRpcPorts();
 };
+
+YB_STRONGLY_TYPED_BOOL(RequireExitCode0);
 
 // A mini-cluster made up of subprocesses running each of the daemons separately. This is useful for
 // black-box or grey-box failure testing purposes -- it provides the ability to forcibly kill or
@@ -214,6 +227,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   Status Start(rpc::Messenger* messenger = nullptr);
 
   // Restarts the cluster. Requires that it has been Shutdown() first.
+  // TODO: #14902 Shutdown the process if it is running.
   Status Restart();
 
   // Like the previous method but performs initialization synchronously, i.e.  this will wait for
@@ -232,7 +246,9 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Shuts down the whole cluster or part of it, depending on the selected 'mode'.  Currently, this
   // uses SIGKILL on each daemon for a non-graceful shutdown.
-  void Shutdown(NodeSelectionMode mode = ALL);
+  void Shutdown(
+      NodeSelectionMode mode = ALL,
+      RequireExitCode0 require_exit_code_0 = RequireExitCode0::kFalse);
 
   // Waits for the master to finishing running initdb.
   Status WaitForInitDb();
@@ -313,6 +329,11 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // This API waits for the commit indices of all the master peers to reach the target index.
   Status WaitForMastersToCommitUpTo(int64_t target_index);
+
+  // This API waits for the commit indices of the given master peers to reach the target index.
+  Status WaitForMastersToCommitUpTo(
+      int64_t target_index, const std::vector<ExternalMaster*>& masters,
+      MonoDelta timeout = MonoDelta());
 
   Status WaitForAllIntentsApplied(const MonoDelta& timeout);
 
@@ -419,6 +440,8 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   Result<std::vector<TabletId>> GetTabletIds(ExternalTabletServer* ts);
 
+  Result<size_t> GetSegmentCounts(ExternalTabletServer* ts);
+
   Result<tserver::GetTabletStatusResponsePB> GetTabletStatus(
       const ExternalTabletServer& ts, const yb::TabletId& tablet_id);
 
@@ -428,7 +451,7 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   Status FlushTabletsOnSingleTServer(
       ExternalTabletServer* ts, const std::vector<yb::TabletId> tablet_ids,
-      bool is_compaction);
+      tserver::FlushTabletsRequestPB_Operation operation);
 
   Status WaitForTSToCrash(const ExternalTabletServer* ts,
                           const MonoDelta& timeout = MonoDelta::FromSeconds(60));
@@ -454,10 +477,14 @@ class ExternalMiniCluster : public MiniClusterBase {
   uint16_t AllocateFreePort();
 
   // Step down the master leader. error_code tracks rpc error info that can be used by the caller.
-  Status StepDownMasterLeader(tserver::TabletServerErrorPB::Code* error_code);
+  // A random peer becomes leader, unless new_leader_uuid is set. If set to the same as the current
+  // leader, it performs a stepdown regardless, increasing the term.
+  Status StepDownMasterLeader(
+      tserver::TabletServerErrorPB::Code* error_code, const std::string& new_leader_uuid = "");
 
-  // Step down the master leader and wait for a new leader to be elected.
-  Status StepDownMasterLeaderAndWaitForNewLeader();
+  // Step down the master leader and wait for a new leader to be elected.  No stepdown will occur if
+  // new_leader_uuid is set to the current leader uuid.
+  Status StepDownMasterLeaderAndWaitForNewLeader(const std::string& new_leader_uuid = "");
 
   // Find out if the master service considers itself ready. Return status OK() implies it is ready.
   Status GetIsMasterLeaderServiceReady(ExternalMaster* master);
@@ -524,10 +551,11 @@ class ExternalMiniCluster : public MiniClusterBase {
   Status CheckPortAndMasterSizes() const;
 
   // Return the list of opid's for all master's in this cluster.
-  Status GetLastOpIdForEachMasterPeer(
+  Status GetLastOpIdForMasterPeers(
       const MonoDelta& timeout,
       consensus::OpIdType opid_type,
-      std::vector<OpIdPB>* op_ids);
+      std::vector<OpIdPB>* op_ids,
+      const std::vector<ExternalMaster*>& masters);
 
   // Ensure that the leader server is allowed to process a config change (by having at least one
   // commit in the current term as leader).
@@ -562,6 +590,8 @@ class ExternalMiniCluster : public MiniClusterBase {
  private:
   DISALLOW_COPY_AND_ASSIGN(ExternalMiniCluster);
 };
+
+YB_STRONGLY_TYPED_BOOL(SafeShutdown);
 
 class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
  public:
@@ -602,13 +632,18 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   // Return true if we have explicitly shut down the process.
   bool IsShutdown() const;
 
+  // Was SIGKILL used to shutdown the process?
+  bool WasUnsafeShutdown() const;
+
   // Return true if the process is still running.  This may return false if the process crashed,
   // even if we didn't explicitly call Shutdown().
-  bool IsProcessAlive() const;
+  bool IsProcessAlive(RequireExitCode0 require_exit_code_0 = RequireExitCode0::kFalse) const;
 
   bool IsProcessPaused() const;
 
-  virtual void Shutdown();
+  virtual void Shutdown(
+      SafeShutdown safe_shutdown = SafeShutdown::kFalse,
+      RequireExitCode0 require_exit_code_0 = RequireExitCode0::kFalse);
 
   std::vector<std::string> GetDataDirs() const { return data_dirs_; }
 
@@ -763,6 +798,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   std::unique_ptr<Subprocess> process_;
   bool is_paused_ = false;
+  bool sigkill_used_for_shutdown_ = false;
 
   std::unique_ptr<server::ServerStatusPB> status_;
 
@@ -833,6 +869,10 @@ class ExternalMaster : public ExternalDaemon {
   // Restarts the daemon. Requires that it has previously been shutdown.
   Status Restart();
 
+  uint16_t http_port() const {
+    return http_port_;
+  }
+
  private:
   friend class RefCountedThreadSafe<ExternalMaster>;
   virtual ~ExternalMaster();
@@ -862,6 +902,7 @@ class ExternalTabletServer : public ExternalDaemon {
   void UpdateMasterAddress(const std::vector<HostPort>& master_addrs);
 
   // Restarts the daemon. Requires that it has previously been shutdown.
+  // TODO: #14902 Shutdown the process if it is running.
   Status Restart(
       bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
       std::vector<std::pair<std::string, std::string>> flags = {});
@@ -955,6 +996,22 @@ T ExternalMiniCluster::GetProxy(const ExternalDaemon* daemon) {
 
 Status RestartAllMasters(ExternalMiniCluster* cluster);
 
-Status CompactTablets(ExternalMiniCluster* cluster);
+Status CompactTablets(
+    ExternalMiniCluster* cluster,
+    const MonoDelta& timeout = MonoDelta::FromSeconds(60* kTimeMultiplier));
+
+Status FlushAndCompactSysCatalog(ExternalMiniCluster* cluster, const MonoDelta& timeout);
+
+Status CompactSysCatalog(ExternalMiniCluster* cluster, const MonoDelta& timeout);
+
+void StartSecure(
+  std::unique_ptr<ExternalMiniCluster>* cluster,
+  std::unique_ptr<rpc::SecureContext>* secure_context,
+  std::unique_ptr<rpc::Messenger>* messenger,
+  const std::vector<std::string>& master_flags = std::vector<std::string>());
+
+Status WaitForTableIntentsApplied(
+    ExternalMiniCluster* cluster, const TableId& table_id,
+    MonoDelta timeout = MonoDelta::FromSeconds(30));
 
 }  // namespace yb

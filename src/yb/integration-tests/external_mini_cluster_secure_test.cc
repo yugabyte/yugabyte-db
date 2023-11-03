@@ -16,7 +16,6 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/integration-tests/cql_test_util.h"
-#include "yb/integration-tests/external_mini_cluster_ent.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
@@ -39,10 +38,10 @@ class ExternalMiniClusterSecureTest :
     public MiniClusterTestWithClient<ExternalMiniCluster> {
  public:
   void SetUp() override {
-    FLAGS_use_node_to_node_encryption = true;
-    FLAGS_use_client_to_server_encryption = true;
-    FLAGS_allow_insecure_connections = false;
-    FLAGS_certs_dir = GetCertsDir();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_node_to_node_encryption) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_client_to_server_encryption) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_insecure_connections) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) = GetCertsDir();
 
     SetUpFlags();
 
@@ -157,7 +156,7 @@ TEST_F(ExternalMiniClusterSecureTest, Simple) {
 class ExternalMiniClusterSecureAllowInsecureTest : public ExternalMiniClusterSecureTest {
  public:
   void SetUpFlags() override {
-    FLAGS_allow_insecure_connections = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_insecure_connections) = true;
   }
 };
 
@@ -174,7 +173,7 @@ TEST_F_EX(ExternalMiniClusterSecureTest, InsecureCql, ExternalMiniClusterSecureA
 
 class ExternalMiniClusterSecureWithClientCertsTest : public ExternalMiniClusterSecureTest {
   void SetUp() override {
-    FLAGS_node_to_node_encryption_use_client_certificates = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_use_client_certificates) = true;
     ExternalMiniClusterSecureTest::SetUp();
   }
 };
@@ -191,7 +190,7 @@ TEST_F_EX(ExternalMiniClusterSecureTest, YbTsCli, ExternalMiniClusterSecureWithC
 class ExternalMiniClusterSecureReloadTest : public ExternalMiniClusterSecureTest {
  public:
   void SetUpFlags() override {
-    FLAGS_certs_dir = JoinPathSegments(GetTestDataDirectory(), "certs");
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) = JoinPathSegments(GetTestDataDirectory(), "certs");
 
     const auto src_certs_dir = GetCertsDir();
     ASSERT_OK(CopyDirectory(Env::Default(), src_certs_dir, FLAGS_certs_dir,

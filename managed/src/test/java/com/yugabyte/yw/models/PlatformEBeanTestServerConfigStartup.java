@@ -11,7 +11,7 @@
 package com.yugabyte.yw.models;
 
 import com.yugabyte.yw.common.YbH2DbEncrypt;
-import io.ebean.config.ServerConfig;
+import io.ebean.config.DatabaseConfig;
 import io.ebean.event.ServerConfigStartup;
 
 /**
@@ -20,8 +20,10 @@ import io.ebean.event.ServerConfigStartup;
  */
 public class PlatformEBeanTestServerConfigStartup implements ServerConfigStartup {
   @Override
-  public void onStart(ServerConfig serverConfig) {
-    serverConfig.setDatabasePlatform(new H2V2Platform());
-    serverConfig.setDbEncrypt(new YbH2DbEncrypt());
+  public void onStart(DatabaseConfig databaseConfig) {
+    if (databaseConfig.getName().equals("default")) {
+      databaseConfig.setDatabasePlatform(new H2V2Platform());
+      databaseConfig.setDbEncrypt(new YbH2DbEncrypt());
+    }
   }
 }

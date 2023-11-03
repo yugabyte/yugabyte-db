@@ -1,6 +1,7 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
+@use '../../../_style/mixins.scss';
 
 .rootContainer {
 }
@@ -46,8 +47,7 @@
         overflow: inherit !important;
       }
 
-      padding: 6px 0 !important;        
-
+      padding: 6px 0 !important;
 
       .actionButton {
         border: none;
@@ -58,7 +58,6 @@
           // Align font awesome icon with text
           margin: 0 0 3px 0;
         }
-
       }
 
       & > *:not(:last-child) {
@@ -67,12 +66,12 @@
     }
     tbody {
       a {
-        color: $YB_VIOLET_TEXT;
-        @include transition(0.125s);
+        color: colors.$YB_VIOLET_TEXT;
+        @include mixins.transition(0.125s);
       }
       a:hover {
-        color: $YB_ORANGE;
-        @include transition(0.125s);
+        color: colors.$YB_ORANGE;
+        @include mixins.transition(0.125s);
       }
     }
   }

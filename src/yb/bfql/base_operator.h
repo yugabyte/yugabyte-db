@@ -26,10 +26,11 @@
 #include <memory>
 
 #include "yb/bfql/bfdecl.h"
-#include "yb/bfql/gen_opcodes.h"
 
 namespace yb {
 namespace bfql {
+
+enum class BFOpcode : int32_t;
 
 class BFOperator {
  public:

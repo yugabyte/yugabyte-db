@@ -3914,34 +3914,43 @@ static bool afterTriggerCheckState(AfterTriggerShared evtshared);
 static Tuplestorestate *
 GetCurrentFDWTuplestore(AfterTriggerShared evtshared)
 {
-	Tuplestorestate *ret;
-
-	/* Check trigger has subtransaction level tuplestore (deferred trigger). */
+	/* Check trigger has transaction level tuplestore (deferred trigger). */
 	if (evtshared->ybc_txn_fdw_tuplestore)
 		return evtshared->ybc_txn_fdw_tuplestore;
 
 	Assert(afterTriggers.query_depth > -1);
-	AfterTriggersQueryData* trigger_data = &afterTriggers.query_stack[afterTriggers.query_depth];
+	AfterTriggersQueryData *trigger_data = &afterTriggers.query_stack[afterTriggers.query_depth];
 	const bool is_deferred = IsYugaByteEnabled() && afterTriggerCheckState(evtshared);
-	ret = is_deferred ? trigger_data->ybc_txn_fdw_tuplestore : trigger_data->fdw_tuplestore;
+	Tuplestorestate *ret = is_deferred ? trigger_data->ybc_txn_fdw_tuplestore
+									   : trigger_data->fdw_tuplestore;
 	if (ret == NULL)
 	{
 		/*
 		 * Make the tuplestore valid until end of subtransaction.  We really
 		 * only need it until AfterTriggerEndQuery().
-		 * In YugaByte mode deferred trigger will access tuplestore
-		 * at the end of subtransaction (after AfterTriggerEndQuery).
+		 * If deferred, it needs to live longer, as the deferred triggers are
+		 * fired at the end of the top transaction.
 		 */
-		MemoryContext oldcxt = MemoryContextSwitchTo(CurTransactionContext);
+		MemoryContext oldcxt;
 		ResourceOwner saveResourceOwner = CurrentResourceOwner;
-		CurrentResourceOwner = CurTransactionResourceOwner;
+		if (is_deferred)
+		{
+			oldcxt = MemoryContextSwitchTo(TopTransactionContext);
+			CurrentResourceOwner = TopTransactionResourceOwner;
+		}
+		else
+		{
+			oldcxt = MemoryContextSwitchTo(CurTransactionContext);
+			CurrentResourceOwner = CurTransactionResourceOwner;
+		}
 
 		ret = tuplestore_begin_heap(false, false, work_mem);
 
 		if (is_deferred)
 		{
 			trigger_data->ybc_txn_fdw_tuplestore = ret;
-			afterTriggers.ybc_txn_fdw_tuplestores = lappend(afterTriggers.ybc_txn_fdw_tuplestores, ret);
+			afterTriggers.ybc_txn_fdw_tuplestores =
+				lappend(afterTriggers.ybc_txn_fdw_tuplestores, ret);
 		}
 		else
 			trigger_data->fdw_tuplestore = ret;

@@ -1,39 +1,37 @@
+// Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.commissioner.tasks;
 
-import static com.yugabyte.yw.common.BackupUtil.TABLE_TYPE_TO_YQL_DATABASE_MAP;
-import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.TABLE_TYPE_TO_YQL_DATABASE_MAP;
 
-import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
-import lombok.extern.slf4j.Slf4j;
-import java.lang.StringBuilder;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import org.yb.client.CreateSnapshotScheduleResponse;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.ListSnapshotsResponse;
 import org.yb.client.SnapshotInfo;
 import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.YBClient;
-import org.yb.CommonTypes.YQLDatabase;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 
 @Slf4j
 @Abortable
 public class CreatePitrConfig extends UniverseTaskBase {
 
-  private Set<State> ACCEPTED_STATES = new HashSet<>(Arrays.asList(State.CREATING, State.COMPLETE));
-  private static final int WAIT_DURATION_IN_MS = 15000;
+  private final Set<State> ACCEPTED_STATES =
+      new HashSet<>(Arrays.asList(State.CREATING, State.COMPLETE));
+  private static final int WAIT_DURATION_MS = 15000;
 
   @Inject
   protected CreatePitrConfig(BaseTaskDependencies baseTaskDependencies) {
@@ -47,55 +45,68 @@ public class CreatePitrConfig extends UniverseTaskBase {
 
   @Override
   public String getName() {
-    return super.getName()
-        + "("
-        + taskParams().universeUUID
-        + ", keyspaceName="
-        + taskParams().keyspaceName
-        + ")";
+    return String.format(
+        "%s(universeUuid=%s,tableType=%s,keyspaceName=%s)",
+        super.getName(),
+        taskParams().getUniverseUUID(),
+        taskParams().tableType,
+        taskParams().keyspaceName);
   }
 
   @Override
   public void run() {
-    CreateSnapshotScheduleResponse resp;
-    YBClient client = null;
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-    String masterHostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    try {
-      log.info("Running {}: masterHostPorts={}.", getName(), masterHostPorts);
+    log.info("Running {}", getName());
 
-      client = ybService.getClient(masterHostPorts, certificate);
-      resp =
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    String masterAddresses = universe.getMasterAddresses();
+    String universeCertificate = universe.getCertificateNodetoNode();
+    try (YBClient client = ybService.getClient(masterAddresses, universeCertificate)) {
+
+      // Find the keyspace id of the keyspace name specified in the task params.
+      String keyspaceId =
+          getKeyspaceNameKeyspaceIdMap(client, taskParams().tableType)
+              .get(taskParams().keyspaceName);
+      if (Objects.isNull(keyspaceId)) {
+        throw new IllegalArgumentException(
+            String.format(
+                "A keyspace with name %s and table type %s could not be found",
+                taskParams().keyspaceName, taskParams().tableType));
+      }
+      log.debug("Found keyspace id {} for keyspace name {}", keyspaceId, taskParams().keyspaceName);
+
+      // Create the PITR config on DB.
+      CreateSnapshotScheduleResponse resp =
           client.createSnapshotSchedule(
               TABLE_TYPE_TO_YQL_DATABASE_MAP.get(taskParams().tableType),
               taskParams().keyspaceName,
+              keyspaceId,
               taskParams().retentionPeriodInSeconds,
               taskParams().intervalInSeconds);
-
-      if (!resp.hasError()) {
-        UUID snapshotScheduleUUID = resp.getSnapshotScheduleUUID();
-        PitrConfig.create(snapshotScheduleUUID, taskParams());
-        waitFor(Duration.ofMillis(WAIT_DURATION_IN_MS));
-        ListSnapshotSchedulesResponse scheduleResp =
-            client.listSnapshotSchedules(snapshotScheduleUUID);
-        List<SnapshotScheduleInfo> scheduleInfoList = scheduleResp.getSnapshotScheduleInfoList();
-        SnapshotInfo latestSnapshot =
-            validateSnapshotSchedule(snapshotScheduleUUID, scheduleInfoList);
-        pollSnapshotCreationTask(client, latestSnapshot.getSnapshotUUID());
+      if (resp.hasError()) {
+        String errorMsg = getName() + " failed due to error: " + resp.errorMessage();
+        log.error(errorMsg);
+        throw new RuntimeException(errorMsg);
       }
+
+      UUID snapshotScheduleUUID = resp.getSnapshotScheduleUUID();
+      PitrConfig pitrConfig = PitrConfig.create(snapshotScheduleUUID, taskParams());
+      if (Objects.nonNull(taskParams().xClusterConfig)) {
+        // This PITR config is created as part of an xCluster config.
+        taskParams().xClusterConfig.addPitrConfig(pitrConfig);
+      }
+      waitFor(Duration.ofMillis(WAIT_DURATION_MS));
+      ListSnapshotSchedulesResponse scheduleResp =
+          client.listSnapshotSchedules(snapshotScheduleUUID);
+      List<SnapshotScheduleInfo> scheduleInfoList = scheduleResp.getSnapshotScheduleInfoList();
+      SnapshotInfo latestSnapshot =
+          validateSnapshotSchedule(snapshotScheduleUUID, scheduleInfoList);
+      pollSnapshotCreationTask(client, latestSnapshot.getSnapshotUUID());
     } catch (Exception e) {
       log.error("{} hit exception : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
-    } finally {
-      ybService.closeClient(client, masterHostPorts);
     }
 
-    if (resp.hasError()) {
-      String errorMsg = getName() + " failed due to error: " + resp.errorMessage();
-      log.error(errorMsg);
-      throw new RuntimeException(errorMsg);
-    }
+    log.info("Completed {}", getName());
   }
 
   private SnapshotInfo validateSnapshotSchedule(
@@ -170,7 +181,7 @@ public class CreatePitrConfig extends UniverseTaskBase {
         default:
           throw new RuntimeException();
       }
-      waitFor(Duration.ofMillis(WAIT_DURATION_IN_MS));
+      waitFor(Duration.ofMillis(WAIT_DURATION_MS));
     }
   }
 }

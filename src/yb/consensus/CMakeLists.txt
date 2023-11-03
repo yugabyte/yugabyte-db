@@ -106,7 +106,6 @@ set(LOG_SRCS
   log_index.cc
   log_reader.cc
   log_metrics.cc
-  ${LOG_SRCS_EXTENSIONS}
 )
 
 add_library(log ${LOG_SRCS})
@@ -181,5 +180,6 @@ ADD_YB_TEST(raft_consensus-test)
 add_executable(log-dump log-dump.cc)
 target_link_libraries(log-dump
   log
+  yb_docdb
   ${YB_BASE_LIBS})
 add_dependencies(log-dump gen_src_yb_rpc_any_proto)

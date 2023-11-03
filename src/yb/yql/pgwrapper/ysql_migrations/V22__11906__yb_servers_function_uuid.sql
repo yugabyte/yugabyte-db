@@ -11,4 +11,5 @@ SET proallargtypes =  '{25,20,20,25,25,25,25,25,25}',
     proargmodes = '{o,o,o,o,o,o,o,o,o}',
     proargnames = '{host,port,num_connections,node_type,cloud,region,zone,public_ip,uuid}'
 WHERE (proname = 'yb_servers' AND
+       proargtypes = '' AND
        pronamespace = 'pg_catalog'::regnamespace);

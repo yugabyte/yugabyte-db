@@ -17,4 +17,4 @@ set -euo pipefail
 
 activate_virtualenv
 set_pythonpath
-"$YB_SRC_ROOT"/python/yb/dependency_graph.py "$@"
+"$YB_SCRIPT_PATH_DEPENDENCY_GRAPH" "$@"

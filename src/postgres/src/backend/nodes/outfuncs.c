@@ -559,8 +559,8 @@ _outYbSeqScan(StringInfo str, const YbSeqScan *node)
 	WRITE_NODE_TYPE("YBSEQSCAN");
 
 	_outScanInfo(str, (const Scan *) node);
-	WRITE_NODE_FIELD(remote.qual);
-	WRITE_NODE_FIELD(remote.colrefs);
+	WRITE_NODE_FIELD(yb_pushdown.quals);
+	WRITE_NODE_FIELD(yb_pushdown.colrefs);
 }
 
 static void
@@ -588,10 +588,12 @@ _outIndexScan(StringInfo str, const IndexScan *node)
 	WRITE_NODE_FIELD(indexorderbyops);
 	WRITE_NODE_FIELD(indextlist);
 	WRITE_ENUM_FIELD(indexorderdir, ScanDirection);
-	WRITE_NODE_FIELD(index_remote.qual);
-	WRITE_NODE_FIELD(index_remote.colrefs);
-	WRITE_NODE_FIELD(rel_remote.qual);
-	WRITE_NODE_FIELD(rel_remote.colrefs);
+	WRITE_NODE_FIELD(yb_idx_pushdown.quals);
+	WRITE_NODE_FIELD(yb_idx_pushdown.colrefs);
+	WRITE_NODE_FIELD(yb_rel_pushdown.quals);
+	WRITE_NODE_FIELD(yb_rel_pushdown.colrefs);
+	WRITE_INT_FIELD(yb_distinct_prefixlen);
+	WRITE_ENUM_FIELD(yb_lock_mechanism, YbLockMechanism);
 }
 
 static void
@@ -606,8 +608,9 @@ _outIndexOnlyScan(StringInfo str, const IndexOnlyScan *node)
 	WRITE_NODE_FIELD(indexorderby);
 	WRITE_NODE_FIELD(indextlist);
 	WRITE_ENUM_FIELD(indexorderdir, ScanDirection);
-	WRITE_NODE_FIELD(remote.qual);
-	WRITE_NODE_FIELD(remote.colrefs);
+	WRITE_NODE_FIELD(yb_pushdown.quals);
+	WRITE_NODE_FIELD(yb_pushdown.colrefs);
+	WRITE_INT_FIELD(yb_distinct_prefixlen);
 }
 
 static void
@@ -771,12 +774,25 @@ _outNestLoop(StringInfo str, const NestLoop *node)
 static void
 _outYbBatchedNestLoop(StringInfo str, const YbBatchedNestLoop *node)
 {
-	WRITE_NODE_TYPE("YbBatchedNestLoop");
+	WRITE_NODE_TYPE("YBBATCHEDNESTLOOP");
 
-	_outNestLoop(str, &node->nl);
-	WRITE_NODE_FIELD(hashOps);
-	WRITE_NODE_FIELD(innerHashAttNos);
-	WRITE_NODE_FIELD(outerParamExprs);
+	_outJoinPlanInfo(str, (const Join *) node);
+	WRITE_NODE_FIELD(nl.nestParams);
+	WRITE_INT_FIELD(num_hashClauseInfos);
+	appendStringInfoString(str, " :hashOps");
+	for (int i = 0; i < node->num_hashClauseInfos; i++)
+		appendStringInfo(str, " %u", node->hashClauseInfos[i].hashOp);
+
+	appendStringInfoString(str, " :innerHashAttNos");
+	for (int i = 0; i < node->num_hashClauseInfos; i++)
+		appendStringInfo(str, " %d", node->hashClauseInfos[i].innerHashAttNo);
+
+	appendStringInfoString(str, " :outerParamExprs");
+	for (int i = 0; i < node->num_hashClauseInfos; i++)
+	{
+		appendStringInfoString(str, " ");
+		outNode(str, node->hashClauseInfos[i].outerParamExpr);
+	}
 }
 
 static void
@@ -1032,6 +1048,7 @@ _outNestLoopParam(StringInfo str, const NestLoopParam *node)
 
 	WRITE_INT_FIELD(paramno);
 	WRITE_NODE_FIELD(paramval);
+	WRITE_INT_FIELD(yb_batch_size);
 }
 
 static void
@@ -1903,6 +1920,7 @@ _outIndexPath(StringInfo str, const IndexPath *node)
 	WRITE_ENUM_FIELD(indexscandir, ScanDirection);
 	WRITE_FLOAT_FIELD(indextotalcost, "%.2f");
 	WRITE_FLOAT_FIELD(indexselectivity, "%.4f");
+	WRITE_ENUM_FIELD(yb_index_path_info.yb_lock_mechanism, YbLockMechanism);
 }
 
 static void
@@ -3751,9 +3769,9 @@ _outPartitionRangeDatum(StringInfo str, const PartitionRangeDatum *node)
 }
 
 static void
-_outYbExprParamDesc(StringInfo str, const YbExprParamDesc *node)
+_outYbExprColrefDesc(StringInfo str, const YbExprColrefDesc *node)
 {
-	WRITE_NODE_TYPE("YBEXPRPARAMDESC");
+	WRITE_NODE_TYPE("YBEXPRCOLREFDESC");
 
 	WRITE_INT_FIELD(attno);
 	WRITE_INT_FIELD(typid);
@@ -4427,8 +4445,8 @@ outNode(StringInfo str, const void *obj)
 			case T_PartitionRangeDatum:
 				_outPartitionRangeDatum(str, obj);
 				break;
-			case T_YbExprParamDesc:
-				_outYbExprParamDesc(str, obj);
+			case T_YbExprColrefDesc:
+				_outYbExprColrefDesc(str, obj);
 				break;
 
 			default:

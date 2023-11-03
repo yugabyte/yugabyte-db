@@ -50,4 +50,13 @@ export interface ClusterNodeInfo  {
    * @memberof ClusterNodeInfo
    */
   num_cores: number;
+  /**
+   * The total size of provisioned ram (GB)
+   * @type {number}
+   * @memberof ClusterNodeInfo
+   */
+  ram_provisioned_gb: number;
 }
+
+
+

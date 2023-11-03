@@ -20,6 +20,7 @@
 #include "nodes/bitmapset.h"
 #include "nodes/lockoptions.h"
 #include "nodes/primnodes.h"
+#include "nodes/relation.h"
 
 
 /* ----------------------------------------------------------------
@@ -374,14 +375,14 @@ typedef Scan SeqScan;
 
 typedef struct PushdownExprs
 {
-	List *qual;
+	List *quals;
 	List *colrefs;
 } PushdownExprs;
 
 typedef struct YbSeqScan
 {
 	Scan		scan;
-	PushdownExprs remote;
+	PushdownExprs yb_pushdown;
 } YbSeqScan;
 
 /* ----------------
@@ -443,8 +444,12 @@ typedef struct IndexScan
 	List	   *indexorderbyops;	/* OIDs of sort ops for ORDER BY exprs */
 	List	   *indextlist;		/* TargetEntry list describing index's cols */
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
-	PushdownExprs index_remote;
-	PushdownExprs rel_remote;
+	PushdownExprs yb_idx_pushdown;
+	PushdownExprs yb_rel_pushdown;
+	double		estimated_num_nexts;
+	double		estimated_num_seeks;
+	int         yb_distinct_prefixlen; /* distinct index scan prefix */
+	YbLockMechanism	yb_lock_mechanism;	/* locks possible as part of the scan */
 } IndexScan;
 
 /* ----------------
@@ -472,13 +477,16 @@ typedef struct IndexOnlyScan
 	List	   *indexorderby;	/* list of index ORDER BY exprs */
 	List	   *indextlist;		/* TargetEntry list describing index's cols */
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
-	PushdownExprs remote;
+	PushdownExprs yb_pushdown;
 	/*
 	 * yb_indexqual_for_recheck is the modified version of indexqual.
 	 * It is used in tuple recheck step only.
 	 * In majority of cases it is NULL which means that indexqual will be used for tuple recheck.
 	 */
 	List	   *yb_indexqual_for_recheck;
+	double		estimated_num_nexts;
+	double		estimated_num_seeks;
+	int         yb_distinct_prefixlen; /* distinct index scan prefix */
 } IndexOnlyScan;
 
 /* ----------------
@@ -745,6 +753,18 @@ typedef struct NestLoop
 	List	   *nestParams;		/* list of NestLoopParam nodes */
 } NestLoop;
 
+/*
+ * Information to use for each hashable clause in a batched nested loop join.
+ * This is used by the hash batching strategy of BNL.
+ */
+typedef struct YbBNLHashClauseInfo
+{
+	Oid hashOp;				/* Operator to hash the outer side of this clause
+							   with. */
+	int innerHashAttNo;		/* Attno of inner side variable. */
+	Expr *outerParamExpr;	/* Outer expression of this clause. */
+} YbBNLHashClauseInfo;
+
 typedef struct YbBatchedNestLoop
 {
 	NestLoop nl;
@@ -752,14 +772,12 @@ typedef struct YbBatchedNestLoop
 	/*
 	 * Only relevant if we're using the hash batching strategy.
 	 */
-	List	   *hashOps;		 /* List of operators to hash with for local
-									join phase of batching */
-	List	   *innerHashAttNos; /* List of attributes of inner tuple that
-									are to be hashed if we are using the hash
-									strategy. */
-	List	   *outerParamExprs; /* List of expressions on outer tuple that
-									are to be hashed if we are using the hash
-									strategy. */
+
+	YbBNLHashClauseInfo *hashClauseInfos; /*
+										   * Array of information about each
+										   * hashable join clause.
+										   */
+	int num_hashClauseInfos;
 } YbBatchedNestLoop;
 
 typedef struct NestLoopParam

@@ -2,371 +2,87 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
+
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.typesafe.config.Config;
-import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.ConfigHelper.ConfigType;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.ReinstallNodeAgent;
 import com.yugabyte.yw.common.NodeAgentClient;
-import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.certmgmt.CertificateHelper;
-import com.yugabyte.yw.controllers.JWTVerifier;
-import com.yugabyte.yw.controllers.JWTVerifier.ClientType;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.NodeAgentForm;
-import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.forms.NodeAgentResp;
+import com.yugabyte.yw.forms.ReinstallNodeAgentForm;
+import com.yugabyte.yw.forms.paging.NodeAgentPagedApiResponse;
 import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.NodeAgent.ArchType;
+import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
-import com.yugabyte.yw.models.NodeInstance;
-import io.ebean.annotation.Transactional;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
-import java.nio.file.Files;
+import com.yugabyte.yw.models.filters.NodeAgentFilter;
+import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.paging.NodeAgentPagedQuery;
+import com.yugabyte.yw.models.paging.NodeAgentPagedResponse;
+import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
+import io.ebean.Query;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.security.KeyPair;
-import java.security.PrivateKey;
-import java.security.PublicKey;
-import java.security.cert.X509Certificate;
-import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.EnumUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.apache.commons.lang3.tuple.Pair;
-import org.bouncycastle.asn1.x500.X500Name;
-import org.bouncycastle.asn1.x509.GeneralName;
-import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder;
+import org.threeten.bp.Duration;
+import play.mvc.Http;
 import play.mvc.Http.Status;
 
 @Slf4j
 @Singleton
 public class NodeAgentHandler {
-  public static final String NODE_AGENT_ID_CLAIM = "nodeAgentId";
-  public static final String NODE_AGENT_USER_ID_CLAIM = "userId";
-  public static final String NODE_AGENT_CUSTOMER_ID_CLAIM = "customerId";
-  public static final String CLAIM_SESSION_PROPERTY = "jwt-claims";
-  public static final String UPGRADE_CHECK_INTERVAL_PROPERTY =
-      "yb.node_agent.upgrade_check_interval";
-  public static final Duration UPDATER_SERVICE_INITIAL_DELAY = Duration.ofMinutes(1);
+  private static final String NODE_AGENT_INSTALLER_FILE = "node-agent-installer.sh";
+  private static final Duration NODE_AGENT_HEARTBEAT_TIMEOUT = Duration.ofMinutes(5);
 
-  public static final String CLEANER_CHECK_INTERVAL_PROPERTY =
-      "yb.node_agent.cleaner_check_interval";
-  public static final Duration CLEANER_SERVICE_INITIAL_DELAY = Duration.ofMinutes(10);
-
-  public static final String CLEANER_RETENTION_DURATION_PROPERTY =
-      "yb.node_agent.retention_duration";
-
-  public static final int CERT_EXPIRY_YEARS = 5;
-
-  public static final Set<State> UPDATABLE_STATES_BY_NODE_AGENT =
-      ImmutableSet.<State>builder().add(State.UPGRADING, State.UPGRADED, State.LIVE).build();
-
-  private final Config appConfig;
-  private final PlatformScheduler platformScheduler;
-  private final ConfigHelper configHelper;
+  private final Commissioner commissioner;
+  private final NodeAgentManager nodeAgentManager;
   private final NodeAgentClient nodeAgentClient;
-
   private boolean validateConnection = true;
 
   @Inject
   public NodeAgentHandler(
-      Config appConfig,
-      ConfigHelper configHelper,
-      PlatformScheduler platformScheduler,
+      Commissioner commissioner,
+      NodeAgentManager nodeAgentManager,
       NodeAgentClient nodeAgentClient) {
-    this.appConfig = appConfig;
-    this.configHelper = configHelper;
-    this.platformScheduler = platformScheduler;
+    this.commissioner = commissioner;
+    this.nodeAgentManager = nodeAgentManager;
     this.nodeAgentClient = nodeAgentClient;
   }
 
-  /** Starts background tasks. */
-  public void init() {
-    Duration updateCheckInterval = appConfig.getDuration(UPGRADE_CHECK_INTERVAL_PROPERTY);
-    if (updateCheckInterval.isZero()) {
-      throw new IllegalArgumentException(
-          String.format("%s cannot be 0", UPGRADE_CHECK_INTERVAL_PROPERTY));
-    }
-    Duration cleanerCheckInterval = appConfig.getDuration(CLEANER_CHECK_INTERVAL_PROPERTY);
-    if (updateCheckInterval.isZero()) {
-      throw new IllegalArgumentException(
-          String.format("%s cannot be 0", CLEANER_CHECK_INTERVAL_PROPERTY));
-    }
-    log.info("Scheduling updater service");
-    platformScheduler.schedule(
-        NodeAgentHandler.class.getSimpleName() + "Updater",
-        UPDATER_SERVICE_INITIAL_DELAY,
-        updateCheckInterval,
-        this::updaterService);
-    log.info("Scheduling cleaner service");
-    platformScheduler.schedule(
-        NodeAgentHandler.class.getSimpleName() + "Cleaner",
-        CLEANER_SERVICE_INITIAL_DELAY,
-        cleanerCheckInterval,
-        this::cleanerService);
+  @AllArgsConstructor
+  public static class NodeAgentDownloadFile {
+    @Getter String ContentType;
+    @Getter InputStream Content;
+    @Getter String FileName;
   }
 
-  /**
-   * This method is run in interval. Some node agents may not be responding at the moment. Once they
-   * come up, they may recover from their states and change to LIVE. Then, they are notified to
-   * upgrade. After that, this method becomes idle. It can be improved to do in batches.
-   */
-  @VisibleForTesting
-  void updaterService() {
-    try {
-      String softwareVersion =
-          Objects.requireNonNull(
-              (String) configHelper.getConfig(ConfigType.SoftwareVersion).get("version"));
-      Customer.getAll()
-          .stream()
-          .map(c -> c.uuid)
-          .flatMap(
-              cUuid -> {
-                log.info("Fetching updatable node agents for customer {}", cUuid);
-                return NodeAgent.getUpdatableNodeAgents(cUuid, softwareVersion).stream();
-              })
-          .forEach(
-              n -> {
-                log.info("Initiating upgrade for node agent {}", n.uuid);
-                n.state = State.UPGRADE;
-                n.save();
-              });
-    } catch (Exception e) {
-      log.error("Error occurred in updater service", e);
-    }
-  }
-
-  /**
-   * This method is run in interval. Node agents whose IPs are not found in node instance and have
-   * not sent heartbeats beyond a retention time are deleted.
-   */
-  @VisibleForTesting
-  void cleanerService() {
-    try {
-      Duration duration = appConfig.getDuration(CLEANER_RETENTION_DURATION_PROPERTY);
-      Date expiryDate = Date.from(Instant.now().minus(duration.toMinutes(), ChronoUnit.MINUTES));
-      Set<String> nodeIps =
-          NodeInstance.getAll()
-              .stream()
-              .map(node -> node.getDetails().ip)
-              .collect(Collectors.toSet());
-      Customer.getAll()
-          .stream()
-          .map(c -> c.uuid)
-          .flatMap(cUuid -> NodeAgent.getNodeAgents(cUuid).stream())
-          .filter(n -> expiryDate.after(n.updatedAt))
-          .filter(n -> !nodeIps.contains(n.ip))
-          .forEach(
-              n -> {
-                try {
-                  nodeAgentClient.validateConnection(n, true);
-                  log.warn(
-                      "Node agent {} is still reachable but not heartbeating. Skipping clean-up",
-                      n.uuid);
-                  // TODO may need to update time.
-                } catch (Exception e) {
-                  log.info(
-                      "Purging node agent {} because connection failed. Error: {}",
-                      n.uuid,
-                      e.getMessage());
-                  n.purge(getNodeAgentBaseCertDirectory(n));
-                }
-              });
-    } catch (Exception e) {
-      log.error("Error occurred in cleaner service", e);
-    }
-  }
-
-  @VisibleForTesting
-  Path getNodeAgentBaseCertDirectory(NodeAgent nodeAgent) {
-    return Paths.get(
-        appConfig.getString("yb.storage.path"),
-        "node-agent",
-        "certs",
-        nodeAgent.customerUuid.toString(),
-        nodeAgent.uuid.toString());
-  }
-
-  private Path getOrCreateCertDirectory(NodeAgent nodeAgent, String certDir) {
-    Path certDirPath = getNodeAgentBaseCertDirectory(nodeAgent).resolve(certDir);
-    log.info("Creating node agent cert directory {}", certDirPath);
-    return Util.getOrCreateDir(certDirPath);
-  }
-
-  // Certs are created in each directory <base-cert-dir>/<index>/.
-  // The index keeps increasing.
-  private Path getOrCreateNextCertDirectory(NodeAgent nodeAgent) {
-    String certDirPath = nodeAgent.config.get(NodeAgent.CERT_DIR_PATH_PROPERTY);
-    if (StringUtils.isBlank(certDirPath)) {
-      return getOrCreateCertDirectory(nodeAgent, "0");
-    }
-    String certDir = Paths.get(certDirPath).getFileName().toString();
-    return getOrCreateCertDirectory(nodeAgent, String.valueOf(Integer.parseInt(certDir) + 1));
-  }
-
-  private Pair<X509Certificate, KeyPair> createRootCert(
-      NodeAgent nodeAgent, String certPath, String keyPath) {
-    try {
-      String certLabel = nodeAgent.uuid.toString();
-      KeyPair keyPair = CertificateHelper.getKeyPairObject();
-      X509Certificate x509 =
-          CertificateHelper.generateCACertificate(certLabel, keyPair, CERT_EXPIRY_YEARS);
-      CertificateHelper.writeCertFileContentToCertPath(x509, certPath);
-      CertificateHelper.writeKeyFileContentToKeyPath(keyPair.getPrivate(), keyPath);
-      return new ImmutablePair<>(x509, keyPair);
-    } catch (RuntimeException e) {
-      log.error("Failed to create root cert for node agent {}", nodeAgent.uuid, e);
-      throw e;
-    } catch (Exception e) {
-      log.error("Failed to create root cert for node agent {}", nodeAgent.uuid, e);
-      throw new RuntimeException(e.getMessage(), e);
-    }
-  }
-
-  private Pair<X509Certificate, KeyPair> createServerCert(
-      NodeAgent nodeAgent,
-      X509Certificate caCert,
-      PrivateKey caPrivateKey,
-      String serverCertPath,
-      String serverKeyPath) {
-    try {
-      Map<String, Integer> sans =
-          ImmutableMap.<String, Integer>builder().put(nodeAgent.ip, GeneralName.iPAddress).build();
-
-      // Add the security provider in case createSignedCertificate was never called.
-      KeyPair keyPair = CertificateHelper.getKeyPairObject();
-      // The first entry will be the certificate that needs to sign the necessary certificate.
-      X500Name subject = new JcaX509CertificateHolder(caCert).getSubject();
-      X509Certificate x509 =
-          CertificateHelper.createAndSignCertificate(
-              nodeAgent.ip,
-              subject,
-              keyPair,
-              caCert,
-              caPrivateKey,
-              sans,
-              appConfig.getInt("yb.tlsCertificate.server.maxLifetimeInYears"));
-      CertificateHelper.writeCertFileContentToCertPath(x509, serverCertPath);
-      CertificateHelper.writeKeyFileContentToKeyPath(keyPair.getPrivate(), serverKeyPath);
-      return new ImmutablePair<>(x509, keyPair);
-    } catch (RuntimeException e) {
-      log.error("Failed to create server cert for node agent {}", nodeAgent.uuid, e);
-      throw e;
-    } catch (Exception e) {
-      log.error("Failed to create server cert for node agent {}", nodeAgent.uuid, e);
-      throw new RuntimeException(e.getMessage(), e);
-    }
-  }
-
-  private void updateNodeAgentCerts(NodeAgent nodeAgent) {
-    Path currentCertDirPath = Paths.get(nodeAgent.config.get(NodeAgent.CERT_DIR_PATH_PROPERTY));
-    Path newCertDirPath = getOrCreateNextCertDirectory(nodeAgent);
-    if (!Files.exists(newCertDirPath)) {
-      throw new IllegalStateException(
-          String.format("New cert directory %s does not exist", newCertDirPath));
-    }
-    // Point to the new directory and persist in the DB before deleting.
-    nodeAgent.config.put(NodeAgent.CERT_DIR_PATH_PROPERTY, newCertDirPath.toString());
-    nodeAgent.save();
-    try {
-      // Delete the old cert directory.
-      FileUtils.deleteDirectory(currentCertDirPath.toFile());
-    } catch (Exception e) {
-      // Ignore error.
-      log.warn("Error deleting old cert directory {}", currentCertDirPath, e);
-    }
-  }
-
-  private Pair<X509Certificate, KeyPair> generateNodeAgentCerts(NodeAgent nodeAgent, Path dirPath) {
-    try {
-      String caCertPath = dirPath.resolve(NodeAgent.ROOT_CA_CERT_NAME).toString();
-      String caKeyPath = dirPath.resolve(NodeAgent.ROOT_CA_KEY_NAME).toString();
-      String serverCertPath = dirPath.resolve(NodeAgent.SERVER_CERT_NAME).toString();
-      String serverKeyPath = dirPath.resolve(NodeAgent.SERVER_KEY_NAME).toString();
-
-      Pair<X509Certificate, KeyPair> pair = createRootCert(nodeAgent, caCertPath, caKeyPath);
-      log.info(
-          "Generated root cert for node agent: {} at key path: {} and cert path: {}",
-          nodeAgent.uuid,
-          caKeyPath,
-          caCertPath);
-
-      Pair<X509Certificate, KeyPair> serverPair =
-          createServerCert(
-              nodeAgent,
-              pair.getLeft(),
-              pair.getRight().getPrivate(),
-              serverCertPath,
-              serverKeyPath);
-
-      log.info(
-          "Generated self-signed server cert for node agent: {} at key path: {} and cert path: {}",
-          nodeAgent.uuid,
-          serverKeyPath,
-          serverKeyPath);
-      return serverPair;
-    } catch (RuntimeException e) {
-      log.error("Failed to generate certs for node agent {}", nodeAgent.uuid, e);
-      throw e;
-    } catch (Exception e) {
-      log.error("Failed to generate certs for node agent {}", nodeAgent.uuid, e);
-      throw new RuntimeException(e.getMessage(), e);
-    }
-  }
-
-  /**
-   * Returns the public key of the given node agent.
-   *
-   * @param nodeAgentUuid node agent UUID.
-   * @return the public key.
-   */
-  public static PublicKey getNodeAgentPublicKey(UUID nodeAgentUuid) {
-    Optional<NodeAgent> nodeAgentOp = NodeAgent.maybeGet(nodeAgentUuid);
-    if (!nodeAgentOp.isPresent()) {
-      throw new RuntimeException(String.format("Node agent %s does not exist", nodeAgentUuid));
-    }
-    return nodeAgentOp.get().getPublicKey();
-  }
-
-  public static PrivateKey getNodeAgentPrivateKey(UUID nodeAgentUuid) {
-    Optional<NodeAgent> nodeAgentOp = NodeAgent.maybeGet(nodeAgentUuid);
-    if (!nodeAgentOp.isPresent()) {
-      throw new RuntimeException(String.format("Node agent %s does not exist", nodeAgentUuid));
-    }
-    return nodeAgentOp.get().getPrivateKey();
-  }
-
-  /**
-   * Returns the JWT to authenticate a client request to the given node agent.
-   *
-   * @param nodeAgentUuid node agent UUID.
-   * @return the JWT for sending request to the node agent.
-   */
-  public String getClientToken(UUID nodeAgentUuid, UUID userUuid) {
-    PrivateKey privateKey = getNodeAgentPrivateKey(nodeAgentUuid);
-    return Jwts.builder()
-        .setIssuer("https://www.yugabyte.com")
-        .setSubject(ClientType.NODE_AGENT.name())
-        .setIssuedAt(Date.from(Instant.now()))
-        .setExpiration(Date.from(Instant.now().plusSeconds(600)))
-        .claim(JWTVerifier.CLIENT_ID_CLAIM, nodeAgentUuid.toString())
-        .claim(JWTVerifier.USER_ID_CLAIM, userUuid.toString())
-        .signWith(SignatureAlgorithm.RS256, privateKey)
-        .compact();
+  private enum DownloadType {
+    INSTALLER,
+    PACKAGE;
   }
 
   @VisibleForTesting
@@ -380,10 +96,10 @@ public class NodeAgentHandler {
    * @param nodeAgent Partially populated node agent.
    * @return the fully populated node agent.
    */
-  @Transactional
   public NodeAgent register(UUID customerUuid, NodeAgentForm payload) {
     Optional<NodeAgent> nodeAgentOp = NodeAgent.maybeGetByIp(payload.ip);
     if (nodeAgentOp.isPresent()) {
+      log.error("Node {} is already registered with {}", payload.ip, nodeAgentOp.get().getUuid());
       throw new PlatformServiceException(Status.BAD_REQUEST, "Node agent is already registered");
     }
     if (StringUtils.isBlank(payload.version)) {
@@ -392,27 +108,85 @@ public class NodeAgentHandler {
     }
     NodeAgent nodeAgent = payload.toNodeAgent(customerUuid);
     if (validateConnection) {
-      nodeAgentClient.validateConnection(nodeAgent, false);
+      nodeAgentClient.ping(nodeAgent, false);
     }
-    // Save within the transaction to get DB generated column values.
-    nodeAgent.saveState(State.REGISTERING);
-    Path certDirPath = getOrCreateNextCertDirectory(nodeAgent);
-    Pair<X509Certificate, KeyPair> serverPair = generateNodeAgentCerts(nodeAgent, certDirPath);
-    nodeAgent.config.put(NodeAgent.CERT_DIR_PATH_PROPERTY, certDirPath.toString());
-    nodeAgent.save();
+    return nodeAgentManager.create(nodeAgent, true);
+  }
 
-    X509Certificate serverCert = serverPair.getLeft();
-    KeyPair serverKeyPair = serverPair.getRight();
-    // Add the contents to the response.
-    nodeAgent.config =
-        ImmutableMap.<String, String>builder()
-            .putAll(nodeAgent.config)
-            .put(NodeAgent.SERVER_CERT_PROPERTY, CertificateHelper.getAsPemString(serverCert))
-            .put(
-                NodeAgent.SERVER_KEY_PROPERTY,
-                CertificateHelper.getAsPemString(serverKeyPair.getPrivate()))
-            .build();
-    return nodeAgent;
+  private List<NodeAgentResp> transformNodeAgentResponse(
+      List<Map<String, Object>> joinResults, Collection<NodeAgent> nodeAgents) {
+    Date startTime =
+        Date.from(Instant.now().minusSeconds(NODE_AGENT_HEARTBEAT_TIMEOUT.getSeconds()));
+    String ybaVersion = nodeAgentManager.getSoftwareVersion();
+    Map<UUID, NodeAgent> uuidNodeAgentMap =
+        nodeAgents.stream().collect(Collectors.toMap(NodeAgent::getUuid, Function.identity()));
+    return joinResults.stream()
+        .map(
+            r -> {
+              NodeAgent nodeAgent = uuidNodeAgentMap.get(r.get("uuid"));
+              NodeAgentResp nodeAgentResp = new NodeAgentResp(nodeAgent);
+              nodeAgentResp.setReachable(nodeAgent.getUpdatedAt().after(startTime));
+              nodeAgentResp.setVersionMatched(
+                  Util.compareYbVersions(ybaVersion, nodeAgent.getVersion(), true) == 0);
+              Object obj = r.get("provider_name");
+              if (obj != null) {
+                nodeAgentResp.setProviderName((String) obj);
+              }
+              obj = r.get("provider_uuid");
+              if (obj != null) {
+                nodeAgentResp.setProviderUuid((UUID) obj);
+              }
+              obj = r.get("universe_name");
+              if (obj != null) {
+                nodeAgentResp.setUniverseName((String) obj);
+              }
+              obj = r.get("universe_uuid");
+              if (obj != null) {
+                nodeAgentResp.setUniverseUuid((UUID) obj);
+              }
+              return nodeAgentResp;
+            })
+        .collect(Collectors.toList());
+  }
+
+  /**
+   * Returns the node agents for the customer with additional node agent IP filter.
+   *
+   * @param customerUuid customer UUID.
+   * @param nodeAgentIp optional node agent IP.
+   * @return the node agent.
+   */
+  public Collection<NodeAgentResp> list(UUID customerUuid, String nodeAgentIp) {
+    NodeAgentFilter.NodeAgentFilterBuilder builder = NodeAgentFilter.builder();
+    if (StringUtils.isNotEmpty(nodeAgentIp)) {
+      builder.nodeIps(ImmutableSet.of(nodeAgentIp)).build();
+    }
+    List<Map<String, Object>> joinResults = NodeAgent.getJoinResults(customerUuid, builder.build());
+    return transformNodeAgentResponse(joinResults, NodeAgent.list(customerUuid, nodeAgentIp));
+  }
+
+  /**
+   * Returns a page of node agents for the customer with additional node agent IP filter.
+   *
+   * @param customerUuid the customer UUID.
+   * @param pagedQuery the page query with filter and page param.
+   * @return a page of node agents.
+   */
+  public NodeAgentPagedApiResponse pagedList(UUID customerUuid, NodeAgentPagedQuery pagedQuery) {
+    List<Map<String, Object>> joinResults =
+        NodeAgent.getJoinResults(customerUuid, pagedQuery.getFilter());
+    if (pagedQuery.getSortBy() == null) {
+      pagedQuery.setSortBy(NodeAgent.SortBy.ip);
+      pagedQuery.setDirection(SortDirection.DESC);
+    }
+    Set<UUID> nodeAgentUuids =
+        joinResults.stream().map(m -> (UUID) m.get("uuid")).collect(Collectors.toSet());
+    Query<NodeAgent> query = NodeAgent.createQuery(customerUuid, nodeAgentUuids).query();
+    NodeAgentPagedResponse response =
+        performPagedQuery(query, pagedQuery, NodeAgentPagedResponse.class);
+    return response.setData(
+        transformNodeAgentResponse(joinResults, response.getEntities()),
+        new NodeAgentPagedApiResponse());
   }
 
   /**
@@ -422,8 +196,13 @@ public class NodeAgentHandler {
    * @param nodeAgentUuid node agent UUID.
    * @return the node agent.
    */
-  public NodeAgent get(UUID customerUuid, UUID nodeAgentUuid) {
-    return NodeAgent.getOrBadRequest(customerUuid, nodeAgentUuid);
+  public NodeAgentResp get(UUID customerUuid, UUID nodeAgentUuid) {
+    NodeAgent nodeAgent = NodeAgent.getOrBadRequest(customerUuid, nodeAgentUuid);
+    List<Map<String, Object>> joinResults =
+        NodeAgent.getJoinResults(
+            customerUuid,
+            NodeAgentFilter.builder().nodeIps(ImmutableSet.of(nodeAgent.getIp())).build());
+    return transformNodeAgentResponse(joinResults, Arrays.asList(nodeAgent)).get(0);
   }
 
   /**
@@ -435,55 +214,13 @@ public class NodeAgentHandler {
    * @return the node agent.
    */
   public NodeAgent updateState(UUID customerUuid, UUID nodeAgentUuid, NodeAgentForm payload) {
-    NodeAgent nodeAgent = NodeAgent.getOrBadRequest(customerUuid, nodeAgentUuid);
-    nodeAgent.validateStateTransition(payload.state);
-    if (!UPDATABLE_STATES_BY_NODE_AGENT.contains(payload.state)) {
+    State state = State.parse(payload.state);
+    if (state != State.READY) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "Invalid node agent state " + payload.state);
     }
-    if (payload.state == State.UPGRADED) {
-      if (StringUtils.isBlank(payload.version)) {
-        throw new PlatformServiceException(
-            Status.BAD_REQUEST, "Node agent version must be specified");
-      }
-      // Node agent is ready after an upgrade.
-      nodeAgent.state = payload.state;
-      nodeAgent.version = payload.version;
-      updateNodeAgentCerts(nodeAgent);
-    } else {
-      boolean updated = nodeAgent.updateState(payload.state);
-      if (!updated) {
-        throw new PlatformServiceException(
-            Status.CONFLICT, String.format("Expected state %s has changed", nodeAgent.state));
-      }
-      nodeAgent.state = payload.state;
-    }
-    return nodeAgent;
-  }
-
-  /**
-   * Updates the registration.
-   *
-   * @param customerUuid customer UUID.
-   * @param nodeAgentUuid node agent UUID.
-   * @return the node agent.
-   */
-  public NodeAgent updateRegistration(UUID customerUuid, UUID nodeAgentUuid) {
     NodeAgent nodeAgent = NodeAgent.getOrBadRequest(customerUuid, nodeAgentUuid);
-    nodeAgent.ensureState(State.UPGRADING);
-    Path certDirPath = getOrCreateNextCertDirectory(nodeAgent);
-    Pair<X509Certificate, KeyPair> serverPair = generateNodeAgentCerts(nodeAgent, certDirPath);
-    X509Certificate serverCert = serverPair.getLeft();
-    KeyPair serverKeyPair = serverPair.getRight();
-    // Add the contents to the response.
-    nodeAgent.config =
-        ImmutableMap.<String, String>builder()
-            .putAll(nodeAgent.config)
-            .put(NodeAgent.SERVER_CERT_PROPERTY, CertificateHelper.getAsPemString(serverCert))
-            .put(
-                NodeAgent.SERVER_KEY_PROPERTY,
-                CertificateHelper.getAsPemString(serverKeyPair.getPrivate()))
-            .build();
+    nodeAgent.saveState(state);
     return nodeAgent;
   }
 
@@ -493,6 +230,51 @@ public class NodeAgentHandler {
    * @param uuid the node UUID.
    */
   public void unregister(UUID uuid) {
-    NodeAgent.maybeGet(uuid).ifPresent(n -> n.purge(getNodeAgentBaseCertDirectory(n)));
+    NodeAgent.maybeGet(uuid).ifPresent(n -> nodeAgentManager.purge(n));
+  }
+
+  @VisibleForTesting
+  void validateDownloadType(DownloadType downloadType, OSType osType, ArchType archType) {
+    if (downloadType == null) {
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST, "Incorrect download step provided");
+    }
+    if (downloadType == DownloadType.PACKAGE && (osType == null || archType == null)) {
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST, "Incorrect OS or Arch passed for package download step");
+    }
+  }
+
+  /**
+   * Validates the request type and returns the node agent download file.
+   *
+   * @param type download type, os type, arch type.
+   * @return the Node Agent download file (installer or build package).
+   */
+  public NodeAgentDownloadFile validateAndGetDownloadFile(String type, String os, String arch) {
+    DownloadType downloadType =
+        StringUtils.isBlank(type)
+            ? DownloadType.INSTALLER
+            : EnumUtils.getEnumIgnoreCase(DownloadType.class, type);
+    OSType osType = EnumUtils.getEnumIgnoreCase(OSType.class, os);
+    ArchType archType = EnumUtils.getEnumIgnoreCase(ArchType.class, arch);
+    validateDownloadType(downloadType, osType, archType);
+    if (downloadType == DownloadType.PACKAGE) {
+      Path packagePath = nodeAgentManager.getNodeAgentPackagePath(osType, archType);
+      return new NodeAgentDownloadFile(
+          "application/gzip",
+          FileUtils.getInputStreamOrFail(packagePath.toFile()),
+          packagePath.getFileName().toString());
+    }
+    byte[] contents = nodeAgentManager.getInstallerScript();
+    return new NodeAgentDownloadFile(
+        "application/x-sh", new ByteArrayInputStream(contents), NODE_AGENT_INSTALLER_FILE);
+  }
+
+  public UUID reinstall(UUID customerUuid, UUID universeUuid, ReinstallNodeAgentForm payload) {
+    ReinstallNodeAgent.Params taskParams = new ReinstallNodeAgent.Params();
+    taskParams.setUniverseUUID(universeUuid);
+    taskParams.nodeNames = payload.nodeNames;
+    return commissioner.submit(TaskType.ReinstallNodeAgent, taskParams);
   }
 }

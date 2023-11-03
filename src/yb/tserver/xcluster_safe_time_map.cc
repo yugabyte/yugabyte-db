@@ -39,14 +39,15 @@
 namespace yb {
 XClusterSafeTimeMap::XClusterSafeTimeMap() : map_initialized_(false) {}
 
-Result<HybridTime> XClusterSafeTimeMap::GetSafeTime(const NamespaceId& namespace_id) const {
+Result<std::optional<HybridTime>> XClusterSafeTimeMap::GetSafeTime(
+    const NamespaceId& namespace_id) const {
   SharedLock l(xcluster_safe_time_map_mutex_);
   SCHECK(map_initialized_, TryAgain, "XCluster safe time not yet initialized");
   auto* safe_time = FindOrNull(xcluster_safe_time_map_, namespace_id);
   // We store System Namespace safe time for transaction status tables but dont use it for
   // consistency
   if (!safe_time || namespace_id == master::kSystemNamespaceId) {
-    return STATUS(NotFound, Format("XCluster safe time not found for namespace $0", namespace_id));
+    return std::nullopt;
   }
 
   HybridTime safe_ht = HybridTime(*safe_time);

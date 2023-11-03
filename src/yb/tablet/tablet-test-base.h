@@ -38,11 +38,11 @@
 #include <vector>
 
 #include <boost/thread/thread.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
-#include "yb/common/partial_row.h"
-#include "yb/common/ql_expr.h"
+#include "yb/dockv/partial_row.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_value.h"
 
@@ -102,9 +102,9 @@ struct CompositeKeyTestSetup {
 template<DataType Type>
 struct IntKeyTestSetup {
   static Schema CreateSchema() {
-    return Schema({ ColumnSchema("key", Type, false, true),
-                    ColumnSchema("key_idx", INT32),
-                    ColumnSchema("val", INT32) }, 1);
+    return Schema({ ColumnSchema("key", Type, ColumnKind::HASH),
+                    ColumnSchema("key_idx", DataType::INT32),
+                    ColumnSchema("val", DataType::INT32) });
   }
 
   void BuildRowKey(QLWriteRequestPB *req, int64_t i) {
@@ -113,7 +113,7 @@ struct IntKeyTestSetup {
 
   // builds a row key from an existing row for updates
   template<class RowType>
-  void BuildRowKeyFromExistingRow(YBPartialRow *dst_row, const RowType& row) {
+  void BuildRowKeyFromExistingRow(dockv::YBPartialRow *dst_row, const RowType& row) {
     CHECK(false) << "Unsupported type";
   }
 
@@ -139,71 +139,75 @@ struct IntKeyTestSetup {
 };
 
 template<>
-void IntKeyTestSetup<INT8>::BuildRowKey(QLWriteRequestPB *req, int64_t i) {
+void IntKeyTestSetup<DataType::INT8>::BuildRowKey(QLWriteRequestPB *req, int64_t i) {
   QLAddInt8HashValue(req, i * (i % 2 == 0 ? -1 : 1));
 }
 
 template<>
-void IntKeyTestSetup<INT16>::BuildRowKey(QLWriteRequestPB *req, int64_t i) {
+void IntKeyTestSetup<DataType::INT16>::BuildRowKey(QLWriteRequestPB *req, int64_t i) {
   QLAddInt16HashValue(req, i * (i % 2 == 0 ? -1 : 1));
 }
 
 template<>
-void IntKeyTestSetup<INT32>::BuildRowKey(QLWriteRequestPB *req, int64_t i) {
+void IntKeyTestSetup<DataType::INT32>::BuildRowKey(QLWriteRequestPB *req, int64_t i) {
   QLAddInt32HashValue(req, narrow_cast<int32_t>(i * (i % 2 == 0 ? -1 : 1)));
 }
 
 template<>
-void IntKeyTestSetup<INT64>::BuildRowKey(QLWriteRequestPB *req, int64_t i) {
+void IntKeyTestSetup<DataType::INT64>::BuildRowKey(QLWriteRequestPB *req, int64_t i) {
   QLAddInt64HashValue(req, i * (i % 2 == 0 ? -1 : 1));
 }
 
 template<> template<class RowType>
-void IntKeyTestSetup<INT8>::BuildRowKeyFromExistingRow(YBPartialRow *row,
-                                                       const RowType& src_row) {
+void IntKeyTestSetup<DataType::INT8>::BuildRowKeyFromExistingRow(dockv::YBPartialRow *row,
+                                                                 const RowType& src_row) {
   CHECK_OK(row->SetInt8(0, *reinterpret_cast<const int8_t*>(src_row.cell_ptr(0))));
 }
 
 template<> template<class RowType>
-void IntKeyTestSetup<INT16>::BuildRowKeyFromExistingRow(YBPartialRow *row,
-                                                        const RowType& src_row) {
+void IntKeyTestSetup<DataType::INT16>::BuildRowKeyFromExistingRow(dockv::YBPartialRow *row,
+                                                                  const RowType& src_row) {
   CHECK_OK(row->SetInt16(0, *reinterpret_cast<const int16_t*>(src_row.cell_ptr(0))));
 }
 template<> template<class RowType>
-void IntKeyTestSetup<INT32>::BuildRowKeyFromExistingRow(YBPartialRow *row,
-                                                        const RowType& src_row) {
+void IntKeyTestSetup<DataType::INT32>::BuildRowKeyFromExistingRow(dockv::YBPartialRow *row,
+                                                                  const RowType& src_row) {
   CHECK_OK(row->SetInt32(0, *reinterpret_cast<const int32_t*>(src_row.cell_ptr(0))));
 }
 
 template<> template<class RowType>
-void IntKeyTestSetup<INT64>::BuildRowKeyFromExistingRow(YBPartialRow *row,
-                                                        const RowType& src_row) {
+void IntKeyTestSetup<DataType::INT64>::BuildRowKeyFromExistingRow(dockv::YBPartialRow *row,
+                                                                  const RowType& src_row) {
   CHECK_OK(row->SetInt64(0, *reinterpret_cast<const int64_t*>(src_row.cell_ptr(0))));
 }
 
 template<>
-std::string IntKeyTestSetup<INT8>::FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
+std::string IntKeyTestSetup<DataType::INT8>::FormatDebugRow(
+    int64_t key_idx, int32_t val, bool updated) {
   return strings::Substitute(
     "{ int8_value: $0 int32_value: $1 int32_value: $2 }",
     (key_idx % 2 == 0) ? -key_idx : key_idx, key_idx, val);
 }
 
 template<>
-std::string IntKeyTestSetup<INT16>::FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
+std::string IntKeyTestSetup<DataType::INT16>::FormatDebugRow(
+    int64_t key_idx, int32_t val, bool updated) {
   return strings::Substitute(
     "{ int16_value: $0 int32_value: $1 int32_value: $2 }",
     (key_idx % 2 == 0) ? -key_idx : key_idx, key_idx, val);
 }
 
 template<>
-std::string IntKeyTestSetup<INT32>::FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
+std::string IntKeyTestSetup<DataType::INT32>::FormatDebugRow(
+    int64_t key_idx, int32_t val, bool updated) {
   return strings::Substitute(
     "{ int32_value: $0 int32_value: $1 int32_value: $2 }",
     (key_idx % 2 == 0) ? -key_idx : key_idx, key_idx, val);
 }
 
 template<>
-std::string IntKeyTestSetup<INT64>::FormatDebugRow(int64_t key_idx, int32_t val, bool updated) {
+std::string IntKeyTestSetup<DataType::INT64>::FormatDebugRow(
+    int64_t key_idx, int32_t val, bool updated) {
   return strings::Substitute(
     "{ int64_value: $0 int32_value: $1 int32_value: $2 }",
     (key_idx % 2 == 0) ? -key_idx : key_idx, key_idx, val);
@@ -212,9 +216,9 @@ std::string IntKeyTestSetup<INT64>::FormatDebugRow(int64_t key_idx, int32_t val,
 // Setup for testing nullable columns
 struct NullableValueTestSetup {
   static Schema CreateSchema() {
-    return Schema({ ColumnSchema("key", INT32, false, true),
-                    ColumnSchema("key_idx", INT32),
-                    ColumnSchema("val", INT32, true) }, 1);
+    return Schema({ ColumnSchema("key", DataType::INT32, ColumnKind::HASH),
+                    ColumnSchema("key_idx", DataType::INT32),
+                    ColumnSchema("val", DataType::INT32, ColumnKind::VALUE, Nullable::kTrue) });
   }
 
   void BuildRowKey(QLWriteRequestPB *req, int32_t i) {
@@ -223,7 +227,7 @@ struct NullableValueTestSetup {
 
   // builds a row key from an existing row for updates
   template<class RowType>
-  void BuildRowKeyFromExistingRow(YBPartialRow *row, const RowType& src_row) {
+  void BuildRowKeyFromExistingRow(dockv::YBPartialRow *row, const RowType& src_row) {
     CHECK_OK(row->SetInt32(0, *reinterpret_cast<const int32_t*>(src_row.cell_ptr(0))));
   }
 
@@ -260,10 +264,10 @@ struct NullableValueTestSetup {
 // Use this with TYPED_TEST_CASE from gtest
 typedef ::testing::Types<
                          StringKeyTestSetup,
-                         IntKeyTestSetup<INT8>,
-                         IntKeyTestSetup<INT16>,
-                         IntKeyTestSetup<INT32>,
-                         IntKeyTestSetup<INT64>,
+                         IntKeyTestSetup<DataType::INT8>,
+                         IntKeyTestSetup<DataType::INT16>,
+                         IntKeyTestSetup<DataType::INT32>,
+                         IntKeyTestSetup<DataType::INT64>,
                          NullableValueTestSetup
                          > TabletTestHelperTypes;
 

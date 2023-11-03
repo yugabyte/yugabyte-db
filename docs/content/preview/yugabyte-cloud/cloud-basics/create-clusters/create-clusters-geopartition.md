@@ -1,9 +1,8 @@
 ---
 title: Partition by region
 linkTitle: Partition by region
-description: Deploy multi-region synchronous clusters in YugabyteDB Managed.
+description: Deploy geo-partitioned clusters in YugabyteDB Managed.
 headcontent: Use geo-partitioning to pin data to regions
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-cloud:
     identifier: create-clusters-geopartition
@@ -15,6 +14,8 @@ type: docs
 Use [partition-by-region](../../create-clusters-topology/#partition-by-region) clusters to geo-locate data in specific regions.
 
 Clusters consist of a primary region and any number of additional secondary regions, where the partitioned, region-specific data resides. You can add or remove regions as required. When first deploying, you can deploy a single cluster in the primary region.
+
+{{< youtube id="9ESTXEa9QZY" title="Create a geo-partitioned cluster in YugabyteDB Managed" >}}
 
 ## Tablespaces
 
@@ -28,6 +29,8 @@ To view your cluster tablespaces, you can enter the following command:
 SELECT * FROM pg_tablespace;
 ```
 
+Note that data pinned to a single region via tablespaces is not replicated to other regions, and remains subject to the fault tolerance of the cluster (Node- or Availability Zone-level).
+
 For more information on specifying data placement for tables and indexes, refer to [Tablespaces](../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/).
 
 ## Features
@@ -39,13 +42,14 @@ Partition-by-region clusters include the following features:
 - Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
 - VPC networking required.
 - Automated and on-demand backups.
-- Available in all [regions](../../../release-notes#cloud-provider-regions).
+- Available in all [regions](../../create-clusters-overview/#cloud-provider-regions).
 - Enterprise support.
 
 ## Prerequisites
 
-- Must be deployed in a VPC. Create a VPC for each region where you want to deploy the nodes in the cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [Create a VPC Network](../../cloud-vpcs/cloud-add-vpc-aws/).
-- Create a billing profile and add a payment method before you can create a Dedicated cluster. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
+- Partition-by-region clusters must be deployed in a VPC. Create a VPC for each region where you want to deploy the nodes in the cluster. Refer to [VPC network overview](../../cloud-vpcs/cloud-vpc-intro/).
+- By default, clusters deployed in VPCs do not expose any publicly-accessible IP addresses. Unless you enable [Public Access](../../../cloud-secure-clusters/add-connections/), you can only connect from resources inside the VPC network. Refer to [VPC network overview](../../cloud-vpcs/).
+- A billing profile and payment method. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
 
 ## Create a partition-by-region cluster
 
@@ -55,6 +59,8 @@ The **Create Cluster** wizard has the following pages:
 
 1. [General Settings](#general-settings)
 1. [Cluster Setup](#cluster-setup)
+1. [Network Access](#network-access)
+1. [Security](#security)
 1. [DB Credentials](#database-credentials)
 
 {{% includeMarkdown "include-general-settings.md" %}}
@@ -83,7 +89,7 @@ Fault tolerance is applied to all regions in the cluster, including those added 
 
 **Regions** - For each region, choose the following:
 
-- the [region](../../../release-notes#cloud-provider-regions) where the nodes will be located.
+- the [region](../../create-clusters-overview/#cloud-provider-regions) where the nodes will be located.
 - the VPC in which to deploy the nodes. Only VPCs using the selected cloud provider and available in the selected region are listed. For multi-region GCP clusters, the same VPC is used for all regions. VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
 - the number of nodes to deploy in the regions; each region has the same number of nodes.
 
@@ -91,9 +97,13 @@ To add additional regions to the cluster, click **Add Region**.
 
 **Node size** - enter the number of virtual CPUs per node and the disk size per node (in GB).
 
-Partiton-by-region clusters support both horizontal and vertical scaling; you can add regions and change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
+Partiton-by-region clusters support both horizontal and vertical scaling; you can add regions and change the cluster configuration after the cluster is created. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
 
 Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
+
+{{% includeMarkdown "network-access.md" %}}
+
+{{% includeMarkdown "include-security-settings.md" %}}
 
 ### Database Credentials
 
@@ -101,7 +111,7 @@ The database admin credentials are required to connect to the YugabyteDB databas
 
 You can use the default credentials generated by YugabyteDB Managed, or add your own.
 
-For security reasons, the admin user does not have YSQL superuser privileges, but does have sufficient privileges for most tasks. For more information on database roles and privileges in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../../../cloud-secure-clusters/cloud-users/).
+For security reasons, the database admin user does not have YSQL superuser privileges, but does have sufficient privileges for most tasks. For more information on database roles and privileges in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../../../cloud-secure-clusters/cloud-users/).
 
 After the cluster is provisioned, you can [add more users and change your password](../../../cloud-secure-clusters/add-users/).
 

@@ -11,11 +11,11 @@ main {
       font-size: inherit !important;
       line-height: 110%;
       max-width: 100%;
-      background: #f2f6ff;
-      border: 1px solid #cbdbff;
+      background: #f7fafc!important;
+      border: 1px solid #d7dee4;
       border-radius: 4px;
       color: $yb-font-gray;
-      padding: 0 3px;
+      padding: 3 6px;
     }
 
     p > a {
@@ -29,13 +29,15 @@ main {
     dl dt > code,
     dl dd > code,
     td > code,
+    td > a > code,
     li > a > code,
     li p > a > code,
     li > code,
     li > em code,
+    p > strong > code,
     p > a > code,
     p > code {
-      font-size: 12px !important;
+      font-size: 13px !important;
       line-height: 16px;
     }
 
@@ -95,6 +97,7 @@ main {
       font-size: 13px;
       margin-top: 20px;
       margin-bottom: 20px;
+      max-width: calc(100% - 5px);
 
       > code {
         font-size: 100%;
@@ -113,6 +116,10 @@ main {
         word-break: keep-all;
         overflow: auto;
         scrollbar-width: thin;
+
+        &:only-child {
+          padding: 11px 15px;
+        }
 
         &:not(:only-child) {
           > span > span {
@@ -150,7 +157,7 @@ main {
         right: 3px;
         top: 6.7px;
         border-radius: 8px;
-        background-image: url(/icons/copy-icon.svg);
+        background-image: url(/icons/copy.svg);
         background-repeat: no-repeat;
         z-index: 1;
         box-shadow: none;
@@ -252,6 +259,23 @@ main {
           color: transparent;
           background-color: transparent;
           transform: none;
+        }
+      }
+    }
+
+    .badcode {
+      > pre {
+        button.copy.unclicked:not(:hover) {
+          filter: contrast(100);
+        }
+
+        > code {
+          background: #efb2b2 !important;
+          border-color: #f00 !important;
+        }
+
+        &::after {
+          background: #efb2b2;
         }
       }
     }

@@ -29,6 +29,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/redis_protocol.pb.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
@@ -338,9 +339,8 @@ class SessionPool {
   std::shared_ptr<client::YBSession> Take() {
     client::YBSession* result = nullptr;
     if (!queue_.pop(result)) {
-      std::lock_guard<std::mutex> lock(mutex_);
-      auto session = client_->NewSession();
-      session->SetTimeout(
+      std::lock_guard lock(mutex_);
+      auto session = client_->NewSession(
           MonoDelta::FromMilliseconds(FLAGS_redis_service_yb_client_timeout_millis));
       sessions_.push_back(session);
       allocated_sessions_metric_->IncrementBy(1);
@@ -1040,14 +1040,9 @@ RedisServiceImplData::RedisServiceImplData(RedisServer* server, string&& yb_tier
       initialized_(false),
       server_(server) {}
 
-yb::Result<std::shared_ptr<client::YBTable>> RedisServiceImplData::GetYBTableForDB(
-    const string& db_name) {
-  std::shared_ptr<client::YBTable> table;
+Result<client::YBTablePtr> RedisServiceImplData::GetYBTableForDB(const std::string& db_name) {
   YBTableName table_name = GetYBTableNameForRedisDatabase(db_name);
-  bool was_cached = false;
-  auto res = tables_cache_->GetTable(table_name, &table, &was_cached);
-  if (!res.ok()) return res;
-  return table;
+  return tables_cache_->GetTable(table_name);
 }
 
 void RedisServiceImplData::AppendToMonitors(Connection* conn) {
@@ -1297,7 +1292,9 @@ int RedisServiceImplData::PublishToLocalClients(
     // Handle Monitor and Subscribe clients.
     for (auto connection : *clients) {
       DVLOG(3) << "Publishing to subscribed client " << connection->ToString();
-      connection->QueueOutboundData(out);
+      auto queuing_status = connection->QueueOutboundData(out);
+      LOG_IF(DFATAL, !queuing_status.ok())
+          << "Failed to queue outbound data: " << queuing_status;
       num_pushed_to++;
     }
   }
@@ -1313,7 +1310,9 @@ int RedisServiceImplData::PublishToLocalClients(
       OutboundDataPtr out = std::make_shared<yb::rpc::StringOutboundData>(
           PMessageFor(pattern, channel, message), "Publishing to Channel");
       for (auto remote : clients_subscribed_to_pattern) {
-        remote->QueueOutboundData(out);
+        auto queuing_status = remote->QueueOutboundData(out);
+        LOG_IF(DFATAL, !queuing_status.ok())
+            << "Failed to queue outbound data: " << queuing_status;
         num_pushed_to++;
       }
     }
@@ -1369,7 +1368,7 @@ void RedisServiceImplData::CleanYBTableFromCacheForDB(const string& db) {
 Status RedisServiceImplData::GetRedisPasswords(vector<string>* passwords) {
   MonoTime now = MonoTime::Now();
 
-  std::lock_guard<std::mutex> lock(redis_password_mutex_);
+  std::lock_guard lock(redis_password_mutex_);
   if (redis_cached_password_validity_expiry_.Initialized() &&
       now < redis_cached_password_validity_expiry_) {
     *passwords = redis_cached_passwords_;

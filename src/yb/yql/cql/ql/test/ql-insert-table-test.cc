@@ -139,7 +139,7 @@ TEST_F(TestQLInsertTable, TestQLInsertCast) {
 
   // Get a processor.
   TestQLProcessor *processor = GetQLProcessor();
-  std::shared_ptr<QLRowBlock> row_block;
+  std::shared_ptr<qlexpr::QLRowBlock> row_block;
   LOG(INFO) << "Test inserting with cast(... as text) built-in.";
 
   // Create table.
@@ -197,7 +197,7 @@ TEST_F(TestQLInsertTable, TestQLInsertToJson) {
 
   // Get a processor.
   TestQLProcessor *processor = GetQLProcessor();
-  std::shared_ptr<QLRowBlock> row_block;
+  std::shared_ptr<qlexpr::QLRowBlock> row_block;
   LOG(INFO) << "Test inserting with ToJson() built-in.";
 
   auto to_json_str = [](const QLValue& value) -> string {

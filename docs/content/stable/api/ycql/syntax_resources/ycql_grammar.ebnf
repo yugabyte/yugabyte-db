@@ -2,15 +2,15 @@ alter_table ::= 'ALTER' 'TABLE' table_name ('ADD' ( column_name column_type ) { 
 
 column_type ::= '<type>';
 
-create_index ::= 'CREATE' 'INDEX' [ 'IF' 'NOT' 'EXISTS' ] index_name 'ON' \
-                     table_name '(' partition_key_columns [ clustering_key_columns ] ')' \
-                     [ clustering_key_column_ordering ] [ covering_columns ] [ 'WHERE' index_predicate];
+create_index ::= 'CREATE' [ 'UNIQUE' ] 'INDEX' [ 'IF' 'NOT' 'EXISTS' ] index_name 'ON' \
+                     table_name '(' partition_key_columns ',' [ clustering_key_columns ] ')' \
+                     [ covering_columns ] [ index_properties ] [ 'WHERE' index_predicate];
 
 partition_key_columns = ( index_column | '(' index_column { ',' index_column } ')' );
 
 clustering_key_columns = index_column { ',' index_column };
 
-clustering_key_column_ordering = 'WITH' 'CLUSTERING' 'ORDER' 'BY' '(' ( index_column [ ( 'ASC' | 'DESC' ) ] ) {',' ( index_column [ ( 'ASC' | 'DESC' ) ] ) } ')';
+index_properties = 'WITH' ( property_name '=' property_literal | 'CLUSTERING' 'ORDER' 'BY' '(' ( index_column [ 'ASC' | 'DESC' ] ) { ',' ( index_column [ 'ASC' | 'DESC' ] ) } ')' ) { 'AND' ( property_name '=' property_literal | 'CLUSTERING' 'ORDER' 'BY' '(' ( index_column [ 'ASC' | 'DESC' ] ) { ',' ( index_column [ 'ASC' | 'DESC' ] ) } ')') } ;
 
 index_column = column_name | jsonb_attribute;
 
@@ -30,7 +30,7 @@ create_table ::= 'CREATE' 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] table_name '(' table_s
 
 table_schema ::= ( ( column_name column_type ( 'PRIMARY' 'KEY' | 'STATIC' )+ ) | ( 'PRIMARY' 'KEY' '(' '(' column_name {',' column_name } ')' { ','  column_name } ')' ) ) { ','  ( ( column_name column_type ( 'PRIMARY' 'KEY' | 'STATIC' )+ ) | ( 'PRIMARY' 'KEY' '(' '(' column_name {',' column_name } ')' { ','  column_name } ')' ) ) } ;
 
-table_properties ::= 'WITH' ( property_name = property_literal | 'CLUSTERING' 'ORDER' 'BY' '(' ( column_name [ 'ASC' | 'DESC' ] ) { ',' ( column_name [ 'ASC' | 'DESC' ] ) } ')' | 'COMPACT' 'STORAGE' ) { 'AND' ( property_name = property_literal | 'CLUSTERING' 'ORDER' 'BY' '(' ( column_name [ 'ASC' | 'DESC' ] ) { ',' ( column_name [ 'ASC' | 'DESC' ] ) } ')' | 'COMPACT' 'STORAGE' ) } ;
+table_properties ::= 'WITH' ( property_name '=' property_literal | 'CLUSTERING' 'ORDER' 'BY' '(' ( column_name [ 'ASC' | 'DESC' ] ) { ',' ( column_name [ 'ASC' | 'DESC' ] ) } ')' | 'COMPACT' 'STORAGE' ) { 'AND' ( property_name '=' property_literal | 'CLUSTERING' 'ORDER' 'BY' '(' ( column_name [ 'ASC' | 'DESC' ] ) { ',' ( column_name [ 'ASC' | 'DESC' ] ) } ')' | 'COMPACT' 'STORAGE' ) } ;
 
 create_type ::= 'CREATE' 'TYPE' [ 'IF' 'NOT' 'EXISTS' ] type_name
                     '(' (field_name field_type ) { ',' ( field_name field_type ) } ')' ;
@@ -79,7 +79,7 @@ update ::= 'UPDATE' table_name
               [ 'USING' using_expression ]
               'SET' assignment { ',' assignment } \
               'WHERE' where_expression
-              [ 'IF' ( [ 'NOT' ] 'EXISTS' | if_expression ) ]
+              [ 'IF' ( if_expression | [ 'NOT' ] 'EXISTS' | if_expression 'OR' [ 'NOT' ] 'EXISTS') ]
               [ 'RETURNS STATUS AS ROW' ];
 
 transaction_block ::= 'BEGIN' 'TRANSACTION' \
@@ -117,7 +117,7 @@ field_name ::= '<Text Literal>' ;
 
 alter_role ::= 'ALTER' 'ROLE' role_name  'WITH' ( role_property ) { 'AND' ( role_property ) } ;
 
-create_role ::= 'CREATE' 'ROLE' role_name [ 'WITH' ( role_property ) { 'AND' ( role_property ) } ] ;
+create_role ::= 'CREATE' 'ROLE' [ 'IF' 'NOT' 'EXISTS' ] role_name [ 'WITH' ( role_property ) { 'AND' ( role_property ) } ] ;
 
 role_property ::=  'PASSWORD' '=' '<Text Literal>'
                    | 'LOGIN' '=' '<Boolean Literal>'
@@ -143,6 +143,6 @@ resource ::=   'ALL' ('KEYSPACES' | 'ROLES')
              | [ 'TABLE' ] table_name
              | 'ROLE' role_name ;
 
-alter_keyspace ::= 'ALTER' ('KEYSPACE' | 'SCHEMA') keyspae_name keyspace_properties;
+alter_keyspace ::= 'ALTER' ('KEYSPACE' | 'SCHEMA') keyspace_name keyspace_properties;
 
 explain ::= 'EXPLAIN' (select | update | insert | delete);

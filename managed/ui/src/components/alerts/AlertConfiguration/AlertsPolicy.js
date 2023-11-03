@@ -1,4 +1,4 @@
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Field } from 'redux-form';
 import { YBInputField, YBSelect } from '../../common/forms/fields';
@@ -47,7 +47,10 @@ export class AlertsPolicy extends Component {
       Greater Than
     </option>,
     <option key={2} value="LESS_THAN">
-      Less than
+      Less Than
+    </option>,
+    <option key={3} value="NOT_EQUAL">
+      Not Equal
     </option>
   ];
 
@@ -82,6 +85,7 @@ export class AlertsPolicy extends Component {
           <Col lg={5}>Threshold</Col>
         </Row>
         {fields.map((instanceTypeItem, instanceTypeIdx) => (
+          // eslint-disable-next-line react/no-array-index-key
           <Row key={instanceTypeIdx}>
             <Col lg={2}>
               <Field
@@ -127,17 +131,16 @@ export class AlertsPolicy extends Component {
         {!isReadOnly &&
         currentMetric?.name &&
         fields.length < MAX_SEVERITY_ALLOWED &&
-        !currentMetric.thresholdReadOnly ?
-          (
-            <Row>
-              <Col lg={2}>
-                <a href="# " className="on-prem-add-link" onClick={this.addRow}>
-                  <i className="fa fa-plus-circle fa-2x on-prem-row-add-btn" onClick={this.addRow} />
-                  Add Severity
-                </a>
-              </Col>
-            </Row>
-          ) : null}
+        !currentMetric.thresholdReadOnly ? (
+          <Row>
+            <Col lg={2}>
+              <a href="# " className="on-prem-add-link" onClick={this.addRow}>
+                <i className="fa fa-plus-circle fa-2x on-prem-row-add-btn" onClick={this.addRow} />
+                Add Severity
+              </a>
+            </Col>
+          </Row>
+        ) : null}
       </div>
     );
   }

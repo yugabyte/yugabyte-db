@@ -226,7 +226,7 @@ YbBuildTupleHashTableExt(PlanState *parent,
 	 * functions (i.e. nothing that'd employ RegisterExprContextCallback()).
 	 */
 	hashtable->exprcontext =
-    	expr_cxt ? expr_cxt : CreateStandaloneExprContext();
+	expr_cxt ? expr_cxt : CreateStandaloneExprContext();
 
 	MemoryContextSwitchTo(oldcontext);
 

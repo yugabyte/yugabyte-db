@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { Row, Col } from 'react-bootstrap';
 
 import { UniverseViewContainer } from '..';

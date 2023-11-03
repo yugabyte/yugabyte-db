@@ -19,7 +19,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.BuildTypeUtil;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -30,7 +30,7 @@ import java.util.Set;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestPgDdlFaultTolerance extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgDdlFaultTolerance.class);
 
@@ -166,8 +166,8 @@ public class TestPgDdlFaultTolerance extends BasePgSQLTest {
         statement.execute("INSERT INTO ddl_ft_table VALUES (7, '8', 9.0, 10)");
 
         expectedRows.clear();
-        expectedRows.add(new Row(1, "2", 3.0, null));
-        expectedRows.add(new Row(4, "5", 6.0, null));
+        expectedRows.add(new Row(1, "2", 3.0, 99));
+        expectedRows.add(new Row(4, "5", 6.0, 99));
         expectedRows.add(new Row(7, "8", 9.0, 10));
         assertRowSet(statement, selectStmt, expectedRows);
 

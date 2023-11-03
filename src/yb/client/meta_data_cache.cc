@@ -14,13 +14,16 @@
 #include "yb/client/meta_data_cache.h"
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/permissions.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/roles_permissions.h"
 
+#include "yb/util/memory/memory.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/flags.h"
@@ -72,8 +75,83 @@ Status GenerateUnauthorizedError(const std::string& canonical_resource,
 
 } // namespace
 
-YBMetaDataCache::YBMetaDataCache(client::YBClient* client,
-                                 bool create_roles_permissions_cache) : client_(client)  {
+struct YBMetaDataCacheEntry {
+  using FetchCallback = std::function<void(const Result<YBTablePtr>&)>;
+
+  // Protects concurrent calls to YBClient::OpenTable for the entry.
+  std::mutex mutex_;
+
+  YBTablePtr table_;
+  ScopedTrackedConsumption consumption_;
+
+  std::vector<FetchCallback> callbacks;
+
+  YBTablePtr GetFetched() {
+    std::lock_guard lock(mutex_);
+    return table_;
+  }
+
+  template <class Id>
+  void Fetch(
+      YBMetaDataCache* cache, const Id& id, const YBMetaDataCacheEntryPtr& self,
+      FetchCallback callback) {
+    YBTablePtr table;
+    {
+      std::lock_guard lock(mutex_);
+      table = table_;
+      if (!table) {
+        bool was_empty = callbacks.empty();
+        callbacks.push_back(std::move(callback));
+        if (!was_empty) {
+          return;
+        }
+      }
+    }
+
+    if (table) {
+      callback(table);
+      return;
+    }
+
+    PerformFetch(cache, id, self);
+  }
+
+  template <class Id>
+  void PerformFetch(YBMetaDataCache* cache, const Id& id, const YBMetaDataCacheEntryPtr& self) {
+    cache->client_->OpenTableAsync(id, [this, cache, self](const Result<YBTablePtr>& open_result) {
+      std::vector<FetchCallback> to_notify;
+      {
+        std::lock_guard lock(mutex_);
+        to_notify.swap(callbacks);
+        if (open_result.ok()) {
+          table_ = *open_result;
+          if (cache->mem_tracker_) {
+            consumption_ = ScopedTrackedConsumption(
+                cache->mem_tracker_, table_->DynamicMemoryUsage() + sizeof(*this));
+            VLOG(1) << "Consumption for table " << table_->name().ToString() << " is "
+                  << consumption_.consumption() << ", memtrackerid: " << cache->mem_tracker_->id()
+                  << ", schema version - " << table_->schema().version();
+          }
+        }
+      }
+
+      if (open_result.ok()) {
+        std::lock_guard lock(cache->cached_tables_mutex_);
+        const auto& table = **open_result;
+        cache->cached_tables_by_name_[table.name()] = self;
+        cache->cached_tables_by_id_[table.id()] = self;
+      }
+
+      for (const auto& callback : to_notify) {
+        callback(open_result);
+      }
+    });
+  }
+};
+
+YBMetaDataCache::YBMetaDataCache(
+    client::YBClient* client, bool create_roles_permissions_cache, const MemTrackerPtr& mem_tracker)
+    : client_(client), mem_tracker_(mem_tracker) {
   if (create_roles_permissions_cache) {
     permissions_cache_ = std::make_shared<client::internal::PermissionsCache>(client);
   } else {
@@ -83,99 +161,124 @@ YBMetaDataCache::YBMetaDataCache(client::YBClient* client,
 
 YBMetaDataCache::~YBMetaDataCache() = default;
 
-Status YBMetaDataCache::GetTable(const YBTableName& table_name,
-                                 std::shared_ptr<YBTable>* table,
-                                 bool* cache_used) {
-  {
-    std::lock_guard<std::mutex> lock(cached_tables_mutex_);
-    auto itr = cached_tables_by_name_.find(table_name);
-    if (itr != cached_tables_by_name_.end()) {
-      *table = itr->second;
-      *cache_used = true;
-      return Status::OK();
-    }
-  }
-
-  RETURN_NOT_OK(client_->OpenTable(table_name, table));
-  {
-    std::lock_guard<std::mutex> lock(cached_tables_mutex_);
-    cached_tables_by_name_[(*table)->name()] = *table;
-    cached_tables_by_id_[(*table)->id()] = *table;
-  }
-  *cache_used = false;
-  return Status::OK();
+void YBMetaDataCache::GetTableAsync(
+    const YBTableName& table_name, const GetTableAsyncCallback& callback) {
+  return DoGetTableAsync(table_name, callback, &cached_tables_by_name_);
 }
 
-Status YBMetaDataCache::GetTable(const TableId& table_id,
-                                 std::shared_ptr<YBTable>* table,
-                                 bool* cache_used) {
+void YBMetaDataCache::GetTableAsync(
+    const TableId& table_id, const GetTableAsyncCallback& callback) {
+  return DoGetTableAsync(table_id, callback, &cached_tables_by_id_);
+}
+
+template <class Id, class Cache>
+void YBMetaDataCache::DoGetTableAsync(
+    const Id& id, const GetTableAsyncCallback& callback, Cache* cache) {
+  std::shared_ptr<YBMetaDataCacheEntry> entry;
+  YBTablePtr table;
   {
-    std::lock_guard<std::mutex> lock(cached_tables_mutex_);
-    auto itr = cached_tables_by_id_.find(table_id);
-    if (itr != cached_tables_by_id_.end()) {
-      *table = itr->second;
-      *cache_used = true;
-      return Status::OK();
-    }
+    std::lock_guard lock(cached_tables_mutex_);
+    entry = cache->try_emplace(id, LazySharedPtrFactory()).first->second;
+    table = entry->GetFetched();
   }
 
-  RETURN_NOT_OK(client_->OpenTable(table_id, table));
-  {
-    std::lock_guard<std::mutex> lock(cached_tables_mutex_);
-    cached_tables_by_name_[(*table)->name()] = *table;
-    cached_tables_by_id_[table_id] = *table;
+  if (table) {
+    callback(GetTableResult {
+      .table = table,
+      .cache_used = true,
+    });
+    return;
   }
-  *cache_used = false;
-  return Status::OK();
+
+  entry->Fetch(this, id, entry, [callback](const auto& result) {
+    if (!result.ok()) {
+      callback(result.status());
+    } else {
+      callback(GetTableResult {
+        .table = *result,
+        .cache_used = false,
+      });
+    }
+  });
 }
 
 void YBMetaDataCache::RemoveCachedTable(const YBTableName& table_name) {
+  RemoveFromCache<YBTableName, TableId>(
+      &cached_tables_by_name_, &cached_tables_by_id_, table_name,
+      [](const std::shared_ptr<YBTable>& table) { return table->id(); },
+      [](const std::shared_ptr<YBTable>& table) { return true; });
+}
+
+void YBMetaDataCache::RemoveCachedTable(const TableId& table_id, SchemaVersion schema_version) {
+  RemoveFromCache<TableId, YBTableName>(
+      &cached_tables_by_id_, &cached_tables_by_name_, table_id,
+      [](const std::shared_ptr<YBTable>& table) { return table->name(); },
+      [schema_version](const std::shared_ptr<YBTable>& table) {
+        if (table->schema().version() < schema_version) {
+          VLOG(1) << "Removing table " << table->name().ToString()
+                  << " from cache as cached schema version " << table->schema().version()
+                  << " is older than " << schema_version;
+          return true;
+        }
+        return false;
+      });
+}
+
+template <typename T, typename V, typename F, typename CanRemoveFunc>
+void YBMetaDataCache::RemoveFromCache(
+    std::unordered_map<T, std::shared_ptr<YBMetaDataCacheEntry>, boost::hash<T>>* direct_cache,
+    std::unordered_map<V, std::shared_ptr<YBMetaDataCacheEntry>, boost::hash<V>>* indirect_cache,
+    const T& direct_key,
+    const F& get_indirect_key,
+    const CanRemoveFunc& can_remove) {
   std::lock_guard<std::mutex> lock(cached_tables_mutex_);
-  const auto itr = cached_tables_by_name_.find(table_name);
-  if (itr != cached_tables_by_name_.end()) {
-    const auto table_id = itr->second->id();
-    cached_tables_by_name_.erase(itr);
-    cached_tables_by_id_.erase(table_id);
+  const auto itr = direct_cache->find(direct_key);
+  if (itr != direct_cache->end()) {
+    YBTablePtr table;
+    {
+      std::unique_lock<std::mutex> table_lock(itr->second->mutex_);
+      if (itr->second->table_ != nullptr && can_remove(itr->second->table_)) {
+        table = itr->second->table_;
+      }
+    }
+
+    if (table) {
+      const auto indirect_cache_key = get_indirect_key(table);
+      indirect_cache->erase(indirect_cache_key);
+
+      direct_cache->erase(itr);
+    }
   }
 }
 
-void YBMetaDataCache::RemoveCachedTable(const TableId& table_id) {
+void YBMetaDataCache::Reset() {
   std::lock_guard<std::mutex> lock(cached_tables_mutex_);
-  const auto itr = cached_tables_by_id_.find(table_id);
-  if (itr != cached_tables_by_id_.end()) {
-    const auto table_name = itr->second->name();
-    cached_tables_by_name_.erase(table_name);
-    cached_tables_by_id_.erase(itr);
-  }
+  cached_tables_by_id_.clear();
+  cached_tables_by_name_.clear();
 }
 
-Status YBMetaDataCache::GetUDType(const string& keyspace_name,
-                                  const string& type_name,
-                                  std::shared_ptr<QLType> *type,
-                                  bool *cache_used) {
+Result<std::pair<std::shared_ptr<QLType>, bool>> YBMetaDataCache::GetUDType(
+    const string& keyspace_name, const string& type_name) {
   auto type_path = std::make_pair(keyspace_name, type_name);
   {
-    std::lock_guard<std::mutex> lock(cached_types_mutex_);
+    std::lock_guard lock(cached_types_mutex_);
     auto itr = cached_types_.find(type_path);
     if (itr != cached_types_.end()) {
-      *type = itr->second;
-      *cache_used = true;
-      return Status::OK();
+      return std::make_pair(itr->second, true);
     }
   }
 
-  RETURN_NOT_OK(client_->GetUDType(keyspace_name, type_name, type));
+  auto type = VERIFY_RESULT(client_->GetUDType(keyspace_name, type_name));
   {
-    std::lock_guard<std::mutex> lock(cached_types_mutex_);
-    cached_types_[type_path] = *type;
+    std::lock_guard lock(cached_types_mutex_);
+    cached_types_[type_path] = type;
   }
-  *cache_used = false;
-  return Status::OK();
+  return std::make_pair(std::move(type), false);
 }
 
 void YBMetaDataCache::RemoveCachedUDType(const string& keyspace_name,
                                          const string& type_name) {
-  std::lock_guard<std::mutex> lock(cached_types_mutex_);
+  std::lock_guard lock(cached_types_mutex_);
   cached_types_.erase(std::make_pair(keyspace_name, type_name));
 }
 

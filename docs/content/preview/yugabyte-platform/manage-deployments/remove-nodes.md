@@ -20,8 +20,9 @@ If a virtual machine or a physical server in a universe reaches its end of life 
 When this happens, new Master leaders are elected for the underlying data shards, but since the universe enters a partially under-replicated state, it would not be able to tolerate additional failures. To remedy the situation, you can eliminate the unreachable node by taking actions in the following sequence:
 
 - Step 1: [Remove node](#remove-node)
-- Step 2: [Release instance](#release-instance)
-- Step 3: [Delete node](#delete-node)
+- Step 2: [Start a new Master process](#start-a-new-master-process), if necessary
+- Step 3: [Release node instance](#release-node-instance)
+- Step 4: [Delete node](#delete-node)
 
 {{< note title="Note" >}}
 
@@ -45,7 +46,15 @@ The action to remove a node is available from the following internal states of t
 
 Taking this action transfers the node to a Removing and then Removed internal state, as follows:
 
+<!--
+
+Comment by Liza: this bullet point was replaced by Sanketh
+
 1. If the node is a Master leader, it is removed (the Master process is stopped and there is a wait for the new Master leader).
+
+-->
+
+1. If the node is running a Master process, the Master is removed from the Master quorum. The Master process is stopped if the node is still reachable. YugabyteDB Anywhere waits for a new Master leader to be elected. At this point, there is less than a replication factor (RF) number of Masters running, which affects the resilience of the Master quorum. For information on how to restore resilience, see [Start a new Master process](#start-a-new-master-process).
 2. The TServer is marked as blacklisted on the Master leader.
 3. There is a wait for tablet quorums to remove the blacklisted TServer.
 4. Data migration is performed and the TServer process stops only if it is reachable.
@@ -53,6 +62,28 @@ Taking this action transfers the node to a Removing and then Removed internal st
 6. DNS entries are updated.
 
 The node removal action results in the instance still being allocated but not involved in any schemas.
+
+## Start a new Master process
+
+A typical universe has an RF of 3 or 5. At the end of the [node removal](#remove-node) action, the Master quorum is reduced to (RF - 1) number of Masters. To restore the resilience of the Master quorum, you can start a new Master process, as follows:
+
+1. Select a node in the same availability zone as the removed node.
+
+2. Click **Actions > Start Master** corresponding to the node, as per the following illustration. 
+
+   This action is only available if there are additional nodes in the same availability zone and these nodes do not have a running Master process.
+
+![Start master](/images/yp/start-master.png)
+
+When you execute the start Master action, YugabyteDB Anywhere performs the following:
+1. Configures the Master on the subject node.
+
+2. Starts a new Master process on the subject node (in Shell mode).
+
+3. Adds the new Master to the existing Master quorum.
+
+4. Updates the Master addresses g-flag on all other nodes to inform them of the new Master.
+
 
 ## Release node instance
 

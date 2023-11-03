@@ -21,13 +21,28 @@ Because YugabyteDB is a distributed database, supporting all PostgreSQL features
 
 The following PostgreSQL features are not supported in YugabyteDB:
 
-- Pessimistic locking (except Read Committed, which is in beta, _supports_ [pessimistic locking](../../../architecture/transactions/read-committed/#cross-feature-interaction))
-- Table locks
-- [Inheritance](https://www.postgresql.org/docs/11/tutorial-inheritance.html)
-- Exclusion Constraints
-- GiST indexes
-- Kerberos/GSSAPI
-- Events (Listen/Notify)
-- Drop primary key
-- XML Functions
-- XA syntax
+| Unsupported PostgreSQL feature      | Track feature request GitHub issue |
+| ----------- | ----------- |
+| LOCK TABLE to obtain a table-level lock | [5384](https://github.com/yugabyte/yugabyte-db/issues/5384)|
+| Table inheritance    | [5956](https://github.com/yugabyte/yugabyte-db/issues/5956)|
+| Exclusion constraints | [3944](https://github.com/yugabyte/yugabyte-db/issues/3944)|
+| Deferrable constraints | [1709](https://github.com/yugabyte/yugabyte-db/issues/1709)|
+| GiST indexes | [1337](https://github.com/yugabyte/yugabyte-db/issues/1337)|
+| Events (Listen/Notify) | [1872](https://github.com/yugabyte/yugabyte-db/issues/1872)|
+| Drop primary key constraints |[8735](https://github.com/yugabyte/yugabyte-db/issues/8735)|
+| XML Functions | [1043](https://github.com/yugabyte/yugabyte-db/issues/1043)|
+| XA syntax | [11084](https://github.com/yugabyte/yugabyte-db/issues/11084)|
+| ALTER TYPE | [1893](https://github.com/yugabyte/yugabyte-db/issues/1893)|
+| CREATE CONVERSION | [10866](https://github.com/yugabyte/yugabyte-db/issues/10866)|
+| Primary/Foreign key constraints on foreign tables | [10698](https://github.com/yugabyte/yugabyte-db/issues/10698), [10699](https://github.com/yugabyte/yugabyte-db/issues/10699) |
+| LIKE ALL | [10697](https://github.com/yugabyte/yugabyte-db/issues/10697)|
+| GENERATED ALWAYS AS STORED columns | [10695](https://github.com/yugabyte/yugabyte-db/issues/10695)|
+| Multicolumn GIN indexes| [10652](https://github.com/yugabyte/yugabyte-db/issues/10652)|
+| CREATE ACCESS METHOD | [10693](https://github.com/yugabyte/yugabyte-db/issues/10693)|
+| DESC/HASH on GIN indexes (ASC supported) | [10653](https://github.com/yugabyte/yugabyte-db/issues/10653)|
+| CREATE SCHEMA with elements | [10865](https://github.com/yugabyte/yugabyte-db/issues/10865)|
+| Index on citext column | [9698](https://github.com/yugabyte/yugabyte-db/issues/9698)|
+| ABSTIME type | [15637](https://github.com/yugabyte/yugabyte-db/issues/15637)|
+| transaction ids (xid) <br/> YugabyteDB uses [Hybrid logical clocks](../../../architecture/transactions/transactions-overview/#hybrid-logical-clocks) instead of transaction ids. | [15638](https://github.com/yugabyte/yugabyte-db/issues/15638)|
+| DDL operations within transaction| [1404](https://github.com/yugabyte/yugabyte-db/issues/1404)|
+| Some ALTER TABLE variants| [1124](https://github.com/yugabyte/yugabyte-db/issues/1124)|

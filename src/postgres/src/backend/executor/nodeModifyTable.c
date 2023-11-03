@@ -609,11 +609,13 @@ ExecInsert(ModifyTableState *mtstate,
 			 */
 			if (IsYBRelation(resultRelationDesc))
 			{
+				MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 				newId = YBCHeapInsert(slot, tuple, estate);
 
 				/* insert index entries for tuple */
 				if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
 					recheckIndexes = ExecInsertIndexTuples(slot, tuple, estate, false, NULL, NIL);
+				MemoryContextSwitchTo(oldContext);
 			}
 			else
 			{
@@ -687,7 +689,7 @@ ExecInsert(ModifyTableState *mtstate,
 		ExecWithCheckOptions(WCO_VIEW_CHECK, resultRelInfo, slot, estate);
 
 	/* Process RETURNING if present */
-  if (resultRelInfo->ri_projectReturning)
+  	if (resultRelInfo->ri_projectReturning)
 		result = ExecProcessReturning(resultRelInfo, slot, planSlot);
 
 conflict_resolved:
@@ -812,8 +814,11 @@ ExecDelete(ModifyTableState *mtstate,
 										  planSlot,
 										  ((ModifyTable *) mtstate->ps.plan)->ybReturningColumns,
 										  mtstate->yb_fetch_target_tuple,
-										  estate->yb_es_is_single_row_modify_txn,
-										  changingPart);
+										  estate->yb_es_is_single_row_modify_txn
+													? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL,
+										  changingPart,
+										  estate);
+
 		if (!row_found)
 		{
 			/*
@@ -1472,8 +1477,10 @@ ExecUpdate(ModifyTableState *mtstate,
 				actualUpdatedCols = extraUpdatedCols;
 			}
 		}
-		bool is_pk_updated =
-			bms_overlap(YBGetTablePrimaryKeyBms(resultRelationDesc), actualUpdatedCols);
+
+		Bitmapset *primary_key_bms = YBGetTablePrimaryKeyBms(resultRelationDesc);
+		bool is_pk_updated = bms_overlap(primary_key_bms, actualUpdatedCols);
+		bms_free(primary_key_bms);
 
 		/*
 		 * TODO(alex): It probably makes more sense to pass a
@@ -1484,7 +1491,7 @@ ExecUpdate(ModifyTableState *mtstate,
 		ModifyTable *plan = (ModifyTable *) mtstate->ps.plan;
 		if (is_pk_updated)
 		{
-			YBCExecuteUpdateReplace(resultRelationDesc, planSlot, tuple);
+			YBCExecuteUpdateReplace(resultRelationDesc, planSlot, tuple, estate);
 			row_found = true;
 		}
 		else
@@ -1496,7 +1503,8 @@ ExecUpdate(ModifyTableState *mtstate,
 										 estate,
 										 plan,
 										 mtstate->yb_fetch_target_tuple,
-										 estate->yb_es_is_single_row_modify_txn,
+										 estate->yb_es_is_single_row_modify_txn
+										 		? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL,
 										 actualUpdatedCols,
 										 canSetTag);
 		}

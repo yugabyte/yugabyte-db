@@ -85,7 +85,8 @@ extern Oid YBCExecuteInsertForDb(Oid dboid,
                                  TupleDesc tupleDesc,
                                  HeapTuple tuple,
                                  OnConflictAction onConflictAction,
-                                 Datum *ybctid);
+                                 Datum *ybctid,
+                                 YBCPgTransactionSetting transaction_setting);
 
 /*
  * Execute the insert outside of a transaction.
@@ -137,8 +138,9 @@ extern bool YBCExecuteDelete(Relation rel,
 							 TupleTableSlot *slot,
 							 List *returning_columns,
 							 bool target_tuple_fetched,
-							 bool is_single_row_txn,
-							 bool changingPart);
+							 YBCPgTransactionSetting transaction_setting,
+							 bool changingPart,
+							 EState *estate);
 /*
  * Delete a tuple (identified by index columns and base table ybctid) from an
  * index's backing YugaByte index table.
@@ -163,9 +165,21 @@ extern bool YBCExecuteUpdate(Relation rel,
 							 EState *estate,
 							 ModifyTable *mt_plan,
 							 bool target_tuple_fetched,
-							 bool is_single_row_txn,
+							 YBCPgTransactionSetting transaction_setting,
 							 Bitmapset *updatedCols,
 							 bool canSetTag);
+
+/*
+ * Update a row (identified by the roleid) in a pg_yb_role_profile. This is a
+ * stripped down and specific version of YBCExecuteUpdate. It is used by
+ * auth.c, since the typical method of writing does not work at that stage of
+ * the DB initialization.
+ *
+ * Returns true if a row was updated.
+ */
+extern bool YBCExecuteUpdateLoginAttempts(Oid roleid,
+										  int failed_attempts,
+										  char rolprfstatus);
 
 /*
  * Replace a row in a YugaByte table by first deleting an existing row
@@ -176,7 +190,8 @@ extern bool YBCExecuteUpdate(Relation rel,
  */
 extern Oid YBCExecuteUpdateReplace(Relation rel,
 								   TupleTableSlot *slot,
-								   HeapTuple tuple);
+								   HeapTuple tuple,
+								   EState *estate);
 
 //------------------------------------------------------------------------------
 // System tables modify-table API.

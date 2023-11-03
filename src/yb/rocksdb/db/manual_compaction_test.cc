@@ -98,10 +98,11 @@ TEST_F(ManualCompactionTest, CompactTouchesAllKeys) {
     ASSERT_OK(db->CompactRange(CompactRangeOptions(), nullptr, &key4));
     Iterator* itr = db->NewIterator(ReadOptions());
     itr->SeekToFirst();
-    ASSERT_TRUE(itr->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(itr->CheckedValid()));
     ASSERT_EQ("key3", itr->key().ToString());
     itr->Next();
-    ASSERT_TRUE(!itr->Valid());
+    ASSERT_TRUE(!ASSERT_RESULT(itr->CheckedValid()));
+    ASSERT_OK(itr->status());
     delete itr;
 
     delete options.compaction_filter;
@@ -153,7 +154,7 @@ TEST_F(ManualCompactionTest, Test) {
   // count the keys
   rocksdb::Iterator* iter = db->NewIterator(rocksdb::ReadOptions());
   int num_keys = 0;
-  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+  for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
     num_keys++;
   }
   delete iter;

@@ -72,7 +72,7 @@ class WriteOperation : public OperationBase<OperationType::kWrite, LWWritePB>  {
   //
   // Decodes the operations in the request PB and acquires row locks for each of the
   // affected rows.
-  Status Prepare() override;
+  Status Prepare(IsLeaderSide is_leader_side) override;
 
   // Executes an Apply for a write transaction.
   //

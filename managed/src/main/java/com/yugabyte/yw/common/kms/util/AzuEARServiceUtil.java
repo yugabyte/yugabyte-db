@@ -11,14 +11,6 @@
 
 package com.yugabyte.yw.common.kms.util;
 
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
-import java.time.OffsetDateTime;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Random;
-import java.util.UUID;
-import org.apache.commons.lang3.StringUtils;
 import com.azure.core.credential.TokenCredential;
 import com.azure.core.exception.ResourceNotFoundException;
 import com.azure.identity.ClientSecretCredential;
@@ -35,18 +27,61 @@ import com.azure.security.keyvault.keys.models.KeyOperation;
 import com.azure.security.keyvault.keys.models.KeyProperties;
 import com.azure.security.keyvault.keys.models.KeyVaultKey;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.time.OffsetDateTime;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Random;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class AzuEARServiceUtil {
 
-  public static final String CLIENT_ID_FIELDNAME = "CLIENT_ID";
-  public static final String CLIENT_SECRET_FIELDNAME = "CLIENT_SECRET";
-  public static final String TENANT_ID_FIELDNAME = "TENANT_ID";
-  public static final String AZU_VAULT_URL_FIELDNAME = "AZU_VAULT_URL";
-  public static final String AZU_KEY_NAME_FIELDNAME = "AZU_KEY_NAME";
-  public static final String AZU_KEY_ALGORITHM_FIELDNAME = "AZU_KEY_ALGORITHM";
-  public static final String AZU_KEY_SIZE_FIELDNAME = "AZU_KEY_SIZE";
+  // All fields in Azure KMS authConfig object sent from UI
+  public enum AzuKmsAuthConfigField {
+    CLIENT_ID("CLIENT_ID", true, false),
+    CLIENT_SECRET("CLIENT_SECRET", true, false),
+    TENANT_ID("TENANT_ID", true, false),
+    AZU_VAULT_URL("AZU_VAULT_URL", false, true),
+    AZU_KEY_NAME("AZU_KEY_NAME", false, true),
+    AZU_KEY_ALGORITHM("AZU_KEY_ALGORITHM", false, false),
+    AZU_KEY_SIZE("AZU_KEY_SIZE", false, false);
+
+    public final String fieldName;
+    public final boolean isEditable;
+    public final boolean isMetadata;
+
+    AzuKmsAuthConfigField(String fieldName, boolean isEditable, boolean isMetadata) {
+      this.fieldName = fieldName;
+      this.isEditable = isEditable;
+      this.isMetadata = isMetadata;
+    }
+
+    public static List<String> getEditableFields() {
+      return Arrays.asList(values()).stream()
+          .filter(configField -> configField.isEditable)
+          .map(configField -> configField.fieldName)
+          .collect(Collectors.toList());
+    }
+
+    public static List<String> getNonEditableFields() {
+      return Arrays.asList(values()).stream()
+          .filter(configField -> !configField.isEditable)
+          .map(configField -> configField.fieldName)
+          .collect(Collectors.toList());
+    }
+
+    public static List<String> getMetadataFields() {
+      return Arrays.asList(values()).stream()
+          .filter(configField -> configField.isMetadata)
+          .map(configField -> configField.fieldName)
+          .collect(Collectors.toList());
+    }
+  }
 
   public ObjectNode getAuthConfig(UUID configUUID) {
     return EncryptionAtRestUtil.getAuthConfig(configUUID);
@@ -60,9 +95,10 @@ public class AzuEARServiceUtil {
    * @return the token credentials object
    */
   public TokenCredential getCredentials(ObjectNode authConfig) {
-    String clientId = getConfigFieldValue(authConfig, CLIENT_ID_FIELDNAME);
-    String clientSecret = getConfigFieldValue(authConfig, CLIENT_SECRET_FIELDNAME);
-    String tenantId = getConfigFieldValue(authConfig, TENANT_ID_FIELDNAME);
+    String clientId = getConfigFieldValue(authConfig, AzuKmsAuthConfigField.CLIENT_ID.fieldName);
+    String clientSecret =
+        getConfigFieldValue(authConfig, AzuKmsAuthConfigField.CLIENT_SECRET.fieldName);
+    String tenantId = getConfigFieldValue(authConfig, AzuKmsAuthConfigField.TENANT_ID.fieldName);
 
     if (clientId == null || clientSecret == null || tenantId == null) {
       String errMsg = "Cannot get credentials. clientId, clientSecret, or tenantId is null.";
@@ -89,7 +125,7 @@ public class AzuEARServiceUtil {
    */
   public KeyClient getKeyClient(ObjectNode authConfig) {
     return new KeyClientBuilder()
-        .vaultUrl(getConfigFieldValue(authConfig, AZU_VAULT_URL_FIELDNAME))
+        .vaultUrl(getConfigFieldValue(authConfig, AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName))
         .credential(getCredentials(authConfig))
         .buildClient();
   }
@@ -103,7 +139,7 @@ public class AzuEARServiceUtil {
    */
   public String getKeyId(ObjectNode authConfig, String keyVersion) {
     KeyClient keyClient = getKeyClient(authConfig);
-    String keyName = getConfigFieldValue(authConfig, AZU_KEY_NAME_FIELDNAME);
+    String keyName = getConfigFieldValue(authConfig, AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName);
     String keyId = keyClient.getKey(keyName, keyVersion).getId();
     return keyId;
   }
@@ -152,8 +188,8 @@ public class AzuEARServiceUtil {
    */
   public Integer getConfigKeySize(ObjectNode authConfig) {
     Integer keySize = null;
-    if (authConfig.has(AZU_KEY_SIZE_FIELDNAME)) {
-      keySize = authConfig.path(AZU_KEY_SIZE_FIELDNAME).asInt();
+    if (authConfig.has(AzuKmsAuthConfigField.AZU_KEY_SIZE.fieldName)) {
+      keySize = authConfig.path(AzuKmsAuthConfigField.AZU_KEY_SIZE.fieldName).asInt();
     } else {
       log.warn("Could not get AZU config key size. 'AZU_KEY_SIZE' not found.");
       return null;
@@ -170,7 +206,7 @@ public class AzuEARServiceUtil {
    */
   public void createKey(ObjectNode authConfig) {
     KeyClient keyClient = getKeyClient(authConfig);
-    String keyName = getConfigFieldValue(authConfig, AZU_KEY_NAME_FIELDNAME);
+    String keyName = getConfigFieldValue(authConfig, AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName);
     CreateRsaKeyOptions createRsaKeyOptions = new CreateRsaKeyOptions(keyName);
     createRsaKeyOptions =
         createRsaKeyOptions
@@ -191,7 +227,7 @@ public class AzuEARServiceUtil {
    */
   public KeyVaultKey getKey(ObjectNode authConfig) {
     KeyClient keyClient = getKeyClient(authConfig);
-    String keyName = getConfigFieldValue(authConfig, AZU_KEY_NAME_FIELDNAME);
+    String keyName = getConfigFieldValue(authConfig, AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName);
     KeyVaultKey keyVaultKey = keyClient.getKey(keyName);
     return keyVaultKey;
   }
@@ -250,7 +286,8 @@ public class AzuEARServiceUtil {
       return keyBytes;
     } catch (Exception E) {
       // Else try to decrypt against all key versions for that key name
-      String keyName = getConfigFieldValue(authConfig, AZU_KEY_NAME_FIELDNAME);
+      String keyName =
+          getConfigFieldValue(authConfig, AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName);
       log.debug(
           "Could not decrypt/unwrap using primary key version of key name '{}'. "
               + "Trying other key versions.",
@@ -288,12 +325,12 @@ public class AzuEARServiceUtil {
    * @throws RuntimeException if wrap and unwrap operations don't give same output as original
    */
   public void testWrapAndUnwrapKey(ObjectNode authConfig) throws RuntimeException {
-    byte[] fakeKeyBytes = new byte[20];
+    byte[] fakeKeyBytes = new byte[32];
     new Random().nextBytes(fakeKeyBytes);
     byte[] wrappedKey = wrapKey(authConfig, fakeKeyBytes);
     byte[] unwrappedKey = unwrapKey(authConfig, wrappedKey);
     if (!Arrays.equals(fakeKeyBytes, unwrappedKey)) {
-      String errMsg = "Wrap and unwrap operations gave different key than the original fake key.";
+      String errMsg = "Wrap and unwrap operations gave different key in AZU KMS.";
       log.error(errMsg);
       throw new RuntimeException(errMsg);
     }
@@ -315,7 +352,7 @@ public class AzuEARServiceUtil {
     } catch (Exception e) {
       log.error(
           "Key vault or credentials are invalid for config with key vault url = "
-              + getConfigFieldValue(authConfig, AZU_VAULT_URL_FIELDNAME));
+              + getConfigFieldValue(authConfig, AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName));
       return false;
     }
     return false;
@@ -340,7 +377,8 @@ public class AzuEARServiceUtil {
       String msg =
           String.format(
               "Key does not exist in the key vault with key name = '%s' and key vault url = '%s'",
-              keyName, getConfigFieldValue(authConfig, AZU_VAULT_URL_FIELDNAME));
+              keyName,
+              getConfigFieldValue(authConfig, AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName));
       log.error(msg);
       return false;
     }
@@ -361,17 +399,18 @@ public class AzuEARServiceUtil {
       String errMsg =
           String.format(
               "Key vault or the credentials are invalid for key vault url = '%s'",
-              getConfigFieldValue(authConfig, AZU_VAULT_URL_FIELDNAME));
+              getConfigFieldValue(authConfig, AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName));
       log.error(errMsg);
       throw new RuntimeException(errMsg);
     }
     // Ensure the key with given name exists in the key vault
-    String keyName = getConfigFieldValue(authConfig, AZU_KEY_NAME_FIELDNAME);
+    String keyName = getConfigFieldValue(authConfig, AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName);
     if (!checkKeyExists(authConfig, keyName)) {
       String errMsg =
           String.format(
               "Key does not exist in the key vault with key name = '%s' and key vault url = '%s'",
-              keyName, getConfigFieldValue(authConfig, AZU_VAULT_URL_FIELDNAME));
+              keyName,
+              getConfigFieldValue(authConfig, AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName));
       log.error(errMsg);
       throw new RuntimeException(errMsg);
     }
@@ -436,13 +475,13 @@ public class AzuEARServiceUtil {
   public boolean checkFieldsExist(ObjectNode formData) {
     List<String> fieldsList =
         Arrays.asList(
-            CLIENT_ID_FIELDNAME,
-            CLIENT_SECRET_FIELDNAME,
-            TENANT_ID_FIELDNAME,
-            AZU_VAULT_URL_FIELDNAME,
-            AZU_KEY_NAME_FIELDNAME,
-            AZU_KEY_ALGORITHM_FIELDNAME,
-            AZU_KEY_SIZE_FIELDNAME);
+            AzuKmsAuthConfigField.CLIENT_ID.fieldName,
+            AzuKmsAuthConfigField.CLIENT_SECRET.fieldName,
+            AzuKmsAuthConfigField.TENANT_ID.fieldName,
+            AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName,
+            AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName,
+            AzuKmsAuthConfigField.AZU_KEY_ALGORITHM.fieldName,
+            AzuKmsAuthConfigField.AZU_KEY_SIZE.fieldName);
     for (String fieldKey : fieldsList) {
       if (!formData.has(fieldKey) || StringUtils.isBlank(formData.path(fieldKey).toString())) {
         return false;

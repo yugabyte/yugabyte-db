@@ -19,13 +19,13 @@ Use the `DROP TABLE` statement to remove one or more tables (with all of their d
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
     <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
     <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
@@ -54,9 +54,9 @@ Specify the name of the table to be dropped. Objects associated with the table, 
 
 #### RESTRICT / CASCADE
 
-`RESTRICT` is the default and it will not drop the procedure if any objects depend on it.
+`RESTRICT` is the default and it will not drop the table if any objects depend on it.
 
-`CASCADE` will drop any objects that transitively depend on the procedure.
+`CASCADE` will drop any objects that transitively depend on the table.
 
 ## Example
 

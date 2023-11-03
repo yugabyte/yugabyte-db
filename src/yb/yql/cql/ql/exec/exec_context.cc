@@ -17,11 +17,12 @@
 
 #include <boost/function.hpp>
 
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/schema.h"
 
 #include "yb/gutil/casts.h"
@@ -89,10 +90,9 @@ Status ExecContext::StartTransaction(
   }
 
   if (!transactional_session_) {
-    transactional_session_ = ql_env->NewSession();
+    transactional_session_ = ql_env->NewSession(rescheduler->GetDeadline());
     transactional_session_->RestartNonTxnReadPoint(client::Restart::kFalse);
   }
-  transactional_session_->SetDeadline(rescheduler->GetDeadline());
   transactional_session_->SetTransaction(transaction_);
 
   return Status::OK();
@@ -248,7 +248,7 @@ Status TnodeContext::AppendRowsResult(RowsResult::SharedPtr&& rows_result) {
   }
 
   int64_t number_of_new_rows =
-    VERIFY_RESULT(QLRowBlock::GetRowCount(YQL_CLIENT_CQL, rows_result->rows_data()));
+    VERIFY_RESULT(qlexpr::QLRowBlock::GetRowCount(YQL_CLIENT_CQL, rows_result->rows_data()));
 
   if (query_state_) {
     RSTATUS_DCHECK(tnode_->opcode() == TreeNodeOpcode::kPTSelectStmt,
@@ -370,7 +370,7 @@ void TnodeContext::SetUncoveredSelectOp(const YBqlReadOpPtr& select_op) {
   for (size_t idx = 0; idx < schema.num_key_columns(); idx++) {
     key_column_ids.emplace_back(schema.column_id(idx));
   }
-  keys_ = std::make_unique<QLRowBlock>(schema, key_column_ids);
+  keys_ = std::make_unique<qlexpr::QLRowBlock>(schema, key_column_ids);
 }
 
 QueryPagingState *TnodeContext::CreateQueryState(const StatementParameters& user_params,
@@ -412,10 +412,20 @@ Status TnodeContext::ComposeRowsResultForUser(const TreeNode* child_select_node,
 
   // Case 2:
   //   SELECT <fully_covered_columns> FROM <index>;
-  // Move result from index query (child) to the table query (this parent node).
-  const auto* child_select = static_cast<const PTSelectStmt *>(child_select_node);
+  // Move result from index query (child) to the table query (this parent node). This result would
+  // also contain the paging state to be sent in the response. The paging state would contain the
+  // schema version of the Index which should be overriden to be the schema version of the indexed
+  // table. This is done so that the schema version check while fetching the next page can succeed
+  // as it expects the schema version of the indexed table. This is OK to do because the schema
+  // version of the indexed table changes on every ADD/DROP index operation.
+  const auto* child_select = static_cast<const PTSelectStmt*>(child_select_node);
   if (child_select->covers_fully()) {
-    return AppendRowsResult(std::move(child_context_->rows_result()));
+    auto child_rows_result = std::move(child_context_->rows_result());
+    if (child_rows_result->has_paging_state()) {
+      child_rows_result->OverrideSchemaVersionInPagingState(
+          select_stmt->table()->schema().version());
+    }
+    return AppendRowsResult(std::move(child_rows_result));
   }
 
   // Case 3:
@@ -423,18 +433,22 @@ Status TnodeContext::ComposeRowsResultForUser(const TreeNode* child_select_node,
   // Compose result of the following fields.
   // - The rows_result should be from this node (rows_result_).
   // - The counter_state should be from this node (query_state_::counter_pb_).
-  // - The read paging_state should be from the CHILD node (query_state_::query_pb_)
+  // - The read paging_state should be from the CHILD node (query_state_::query_pb_) except the
+  // schema version which should be from the indexed table.
   if (!rows_result_) {
     // Allocate an empty rows_result that will be filled with paging state.
     rows_result_ = std::make_shared<RowsResult>(select_stmt);
   }
 
-  if (child_context_->rows_result()->has_paging_state() &&
-      !query_state_->reached_select_limit()) {
+  if (child_context_->rows_result()->has_paging_state() && !query_state_->reached_select_limit()) {
     // If child node has paging state and LIMIT is not yet reached, provide paging state to users
     // to continue reading.
-    RETURN_NOT_OK(
-        query_state_->ComposePagingStateForUser(child_context_->query_state()->query_pb()));
+    // Set the schema version from the indexed table in the paging state. This is done so that the
+    // schema version check while fetching the next page can succeed as it expects the schema
+    // version of the indexed table. This is OK to do because the schema version of the indexed
+    // table changes on every ADD/DROP index operation.
+    RETURN_NOT_OK(query_state_->ComposePagingStateForUser(
+        child_context_->query_state()->query_pb(), select_stmt->table()->schema().version()));
     rows_result_->SetPagingState(query_state_->query_pb());
   } else {
     // Clear paging state once all requested rows were retrieved.
@@ -453,7 +467,7 @@ QueryPagingState::QueryPagingState(const StatementParameters& user_params,
 
   // Just default it to max_int.
   if (max_fetch_size_ <= 0) {
-    max_fetch_size_ = INT_MAX;
+    max_fetch_size_ = INT64_MAX;
   }
 }
 
@@ -516,6 +530,13 @@ Status QueryPagingState::ComposePagingStateForUser(const QLPagingStatePB& child_
   // Write the counters into the paging_state.
   query_pb_.mutable_row_counter()->CopyFrom(counter_pb_);
 
+  return Status::OK();
+}
+
+Status QueryPagingState::ComposePagingStateForUser(const QLPagingStatePB& child_state,
+                                                   uint32_t overridden_schema_version) {
+  RETURN_NOT_OK(ComposePagingStateForUser(child_state));
+  query_pb_.set_schema_version(overridden_schema_version);
   return Status::OK();
 }
 

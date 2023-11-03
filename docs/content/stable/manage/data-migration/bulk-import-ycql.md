@@ -1,8 +1,8 @@
 ---
-title: Bulk import for YCQL
-headerTitle: Bulk import
+title: Bulk import YCQL
+headerTitle: Bulk import for YCQL
 linkTitle: Bulk import
-description: Export data from Apache Cassandra and MySQL and bulk import data into YugabyteDB for YCQL.
+description: Import data from Apache Cassandra to YugabyteDB.
 menu:
   stable:
     identifier: manage-bulk-import-ycql
@@ -26,7 +26,7 @@ type: docs
   </li>
 </ul>
 
-Depending on the data volume imported, various bulk import tools can be used to load data into YugabyteDB. This page documents bulk import for YugabyteDB’s [Cassandra-compatible YCQL API](../../../api/ycql/).
+Depending on the data volume imported, various bulk import tools can be used to load data into YugabyteDB. This page documents bulk import for YugabyteDB's [Cassandra-compatible YCQL API](../../../api/ycql/).
 
 You should first export data from existing Apache Cassandra and MySQL tables. Next, you can import the data using the various bulk load options supported by YugabyteDB.
 
@@ -34,7 +34,7 @@ The import process is illustrated as follows, using a generic IoT time series da
 
 ## Create destination table
 
-Following is the schema of the destination YugabyteDB table.
+Following is the schema of the destination YugabyteDB table:
 
 ```sql
 CREATE KEYSPACE example;
@@ -51,11 +51,11 @@ CREATE TABLE SensorData (
 
 ## Prepare source data
 
-Prepare a CSV (comma-separated values) file where each row of entries must match with the column types declared in the table schema above. Concretely, each CSV must be a valid Cassandra Query Language (CQL) literal for its corresponding type, except for the top-level quotes (for example, use foo rather than 'foo' for strings).
+Prepare a comma-separated values (CSV) file where each row of entries matches the column types declared in the table schema provided in [Create destination table](#create-destination-table). Concretely, each CSV must be a valid Cassandra Query Language (CQL) literal for its corresponding type, except for the top-level quotes (for example, use foo rather than 'foo' for strings).
 
 ### Generate sample data
 
-If you don't have the data already available in a database table, you can create sample data for the import using the following example:
+If you do not have the data already available in a database table, you can create sample data for the import using the following example:
 
 ```sh
 #!/bin/bash
@@ -73,7 +73,7 @@ fi
 > $2 # clearing file
 for i in `seq 1 $1`
 do
-  echo customer$((i%10)),$((i%3)),2017-11-11 12:30:$((i%60)).000000+0000,\"{temp:$i, humidity:$i}\" >> $2
+  echo customer$((i)),$((i)),2017-11-11 12:30:$((i%60)).000000+0000,\"{temp:$i, humidity:$i}\" >> $2
 done
 ```
 
@@ -88,7 +88,7 @@ customer6,0,2017-11-11 12:32:6.000000+0000,"{temp:6, humidity:6}"
 
 ### Export from Apache Cassandra
 
-If you already have the data in an Apache Cassandra table, then use the following command to create a CSV file with that data.
+If you already have the data in an Apache Cassandra table, then use the following command to create a CSV file with that data:
 
 ```sql
 ycqlsh> COPY example.SensorData TO '/path/to/sample.csv';
@@ -96,7 +96,7 @@ ycqlsh> COPY example.SensorData TO '/path/to/sample.csv';
 
 ### Export from MySQL
 
-If you already have the data in a MySQL table named `SensorData`, then use the following command to create a CSV file with that data.
+If you already have the data in a MySQL table named `SensorData`, then use the following command to create a CSV file with that data:
 
 ```sql
 SELECT customer_name, device_id, ts, sensor_data
@@ -106,25 +106,23 @@ INTO OUTFILE '/path/to/sample.csv' FIELDS TERMINATED BY ',';
 
 ## Import data
 
-The import data instructions are organized by the size of the input datasets, ranging from small (MBs of data) to larger datasets (GBs of data).
+The import data instructions are organized by the size of the input datasets, ranging from small (megabytes of data) to larger datasets (gigabytes of data).
 
-### Small datasets (MBs)
+### Small datasets
 
-Cassandra’s CQL shell provides the [`COPY FROM`](../../../admin/ycqlsh/#copy-from) (see also [`COPY TO`](../../../admin/ycqlsh/#copy-to)) command which allows importing data from CSV files.
+Cassandra's CQL shell provides the [`COPY FROM`](../../../admin/ycqlsh/#copy-from) command, which allows importing data from CSV files:
 
 ```sql
 ycqlsh> COPY example.SensorData FROM '/path/to/sample.csv';
 ```
 
-{{< note title="Note" >}}
+By default, `COPY` exports timestamps in the `yyyy-MM-dd HH:mm:ss.SSSZ` format.
 
-By default, `COPY` exports timestamps in `yyyy-MM-dd HH:mm:ss.SSSZ` format.
+See also [`COPY TO`](../../../admin/ycqlsh/#copy-to) .
 
-{{< /note >}}
+### Large datasets
 
-### Large datasets (GBs)
-
-[`cassandra-loader`](https://github.com/brianmhess/cassandra-loader) is a general purpose bulk loader for CQL that supports various types of delimited files (particularly CSV files). For more details, review the README of the [YugabyteDB cassandra-loader fork](https://github.com/yugabyte/cassandra-loader/). Note that cassandra-loader requires quotes for collection types (for example, “[1,2,3]” rather than [1,2,3] for lists).
+[`cassandra-loader`](https://github.com/brianmhess/cassandra-loader) is a general-purpose bulk loader for CQL that supports various types of delimited files (particularly CSV files). For details, review the README of the [YugabyteDB cassandra-loader fork](https://github.com/yugabyte/cassandra-loader/). Note that `cassandra-loader` requires quotes for collection types (for example, "[1,2,3]" rather than [1,2,3] for lists).
 
 #### Install cassandra-loader
 
@@ -150,11 +148,11 @@ time ./cassandra-loader \
   -schema "example.SensorData(customer_name, device_id, ts, sensor_data)"
 ```
 
-For additional options, refer to the [cassandra-loader options](https://github.com/yugabyte/cassandra-loader#options).
+For additional options, refer to [cassandra-loader options](https://github.com/yugabyte/cassandra-loader#options).
 
 ## Verify a migration
 
-Following are some steps that can be verified to ensure that the migration was successful.
+To ensure that the migration was successful, you can perform a number of steps.
 
 ### Verify database objects
 
@@ -165,13 +163,13 @@ Following are some steps that can be verified to ensure that the migration was s
 
 In YCQL, the `count()` query can be executed using the [ycrc](https://github.com/yugabyte/yb-tools/tree/main/ycrc) tool.
 
-The tool uses the exposed `hash_partition` function in order to execute smaller, more manageable queries which are individually less resource intensive, and so they don't time out.
+The tool uses the exposed `partition_hash` function in order to execute smaller, more manageable queries which are individually less resource intensive and tend to not time out.
 
 Set up and run the ycrc tool using the following steps:
 
-1. Download the [ycrc](https://github.com/yugabyte/yb-tools/tree/main/ycrc) tool by compiling the source from the GitHub repository.
+1. Download the ycrc tool by compiling the source from the GitHub repository.
 
-1. Run `./ycrc --help` to confirm if the ycrc tool is working.
+1. Run the following command to confirm that the ycrc tool is working:
 
     ```sh
     ./ycrc --help

@@ -12,15 +12,20 @@
 //
 
 #include "yb/client/schema.h"
+#include "yb/client/session.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/txn-test-base.h"
+#include "yb/client/yb_op.h"
+
+#include "yb/common/colocated_util.h"
 
 #include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_util.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -34,9 +39,11 @@
 
 using namespace std::literals;
 
+DECLARE_bool(enable_fast_pitr);
 DECLARE_bool(enable_history_cutoff_propagation);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 
@@ -46,9 +53,9 @@ namespace client {
 class SnapshotScheduleTest : public TransactionTestBase<MiniCluster> {
  public:
   void SetUp() override {
-    FLAGS_enable_history_cutoff_propagation = true;
-    FLAGS_snapshot_coordinator_poll_interval_ms = 250;
-    FLAGS_history_cutoff_propagation_interval_ms = 100;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_history_cutoff_propagation) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 250;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 100;
     num_tablets_ = 1;
     TransactionTestBase<MiniCluster>::SetUp();
     snapshot_util_ = std::make_unique<SnapshotTestUtil>();
@@ -61,8 +68,10 @@ class SnapshotScheduleTest : public TransactionTestBase<MiniCluster> {
 TEST_F(SnapshotScheduleTest, Create) {
   std::vector<SnapshotScheduleId> ids;
   for (int i = 0; i != 3; ++i) {
+    ASSERT_OK(client_->CreateNamespaceIfNotExists(
+        Format("demo.$0", i), YQLDatabase::YQL_DATABASE_CQL));
     auto id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
-      table_, YQLDatabase::YQL_DATABASE_PGSQL, Format("yugabyte.$0", i)));
+        nullptr, YQLDatabase::YQL_DATABASE_CQL, Format("demo.$0", i), WaitSnapshot::kFalse));
     LOG(INFO) << "Schedule " << i << " id: " << id;
     ids.push_back(id);
 
@@ -87,11 +96,12 @@ TEST_F(SnapshotScheduleTest, Create) {
 }
 
 TEST_F(SnapshotScheduleTest, Snapshot) {
-  FLAGS_timestamp_history_retention_interval_sec = kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = kTimeMultiplier;
 
   ASSERT_NO_FATALS(WriteData());
   auto schedule_id = ASSERT_RESULT(
-    snapshot_util_->CreateSchedule(table_, YQLDatabase::YQL_DATABASE_PGSQL, "yugabyte"));
+    snapshot_util_->CreateSchedule(table_, kTableName.namespace_type(),
+                                   kTableName.namespace_name()));
   ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id));
 
   // Write data to update history retention.
@@ -114,8 +124,10 @@ TEST_F(SnapshotScheduleTest, Snapshot) {
         "T $0 P $1 Table $2", peer->tablet_id(), peer->permanent_uuid(),
         peer->tablet_metadata()->table_name()));
     auto tablet = peer->tablet();
-    auto history_cutoff = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
-    ASSERT_LE(history_cutoff, first_snapshot_hybrid_time);
+    auto history_cutoff =
+        tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+    ASSERT_LE(history_cutoff.primary_cutoff_ht, first_snapshot_hybrid_time);
+    ASSERT_EQ(history_cutoff.cotables_cutoff_ht, HybridTime::kInvalid);
   }
 
   ASSERT_OK(WaitFor([this]() -> Result<bool> {
@@ -128,8 +140,12 @@ TEST_F(SnapshotScheduleTest, Snapshot) {
   ASSERT_OK(WaitFor([first_snapshot_hybrid_time, peers]() -> Result<bool> {
     for (const auto& peer : peers) {
       auto tablet = peer->tablet();
-      auto history_cutoff = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
-      if (history_cutoff <= first_snapshot_hybrid_time) {
+      auto history_cutoff =
+          tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+      if (history_cutoff.primary_cutoff_ht <= first_snapshot_hybrid_time) {
+        return false;
+      }
+      if (history_cutoff.cotables_cutoff_ht != HybridTime::kInvalid) {
         return false;
       }
     }
@@ -138,10 +154,10 @@ TEST_F(SnapshotScheduleTest, Snapshot) {
 }
 
 TEST_F(SnapshotScheduleTest, GC) {
-  FLAGS_snapshot_coordinator_cleanup_delay_ms = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 100;
   // When retention matches snapshot interval we expect at most 3 snapshots for schedule.
   ASSERT_RESULT(snapshot_util_->CreateSchedule(
-      table_, YQLDatabase::YQL_DATABASE_PGSQL, "yugabyte", kSnapshotInterval,
+      table_, kTableName.namespace_type(), kTableName.namespace_name(), kSnapshotInterval,
       kSnapshotInterval * 2));
 
   std::unordered_set<SnapshotScheduleId, SnapshotScheduleIdHash> all_snapshot_ids;
@@ -178,16 +194,16 @@ TEST_F(SnapshotScheduleTest, TablegroupGC) {
   NamespaceId namespace_id;
   TablegroupId tablegroup_id = "11223344556677889900aabbccddeeff";
   TablespaceId tablespace_id = "";
-  auto client_ = ASSERT_RESULT(cluster_->CreateClient());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
 
-  ASSERT_OK(client_->CreateNamespace(namespace_name, YQL_DATABASE_PGSQL, "" /* creator */,
+  ASSERT_OK(client->CreateNamespace(namespace_name, YQL_DATABASE_PGSQL, "" /* creator */,
                                      "" /* ns_id */, "" /* src_ns_id */,
                                      boost::none /* next_pg_oid */, nullptr /* txn */, false));
   {
-    auto namespaces = ASSERT_RESULT(client_->ListNamespaces(boost::none));
+    auto namespaces = ASSERT_RESULT(client->ListNamespaces(boost::none));
     for (const auto& ns : namespaces) {
-      if (ns.name() == namespace_name) {
-        namespace_id = ns.id();
+      if (ns.id.name() == namespace_name) {
+        namespace_id = ns.id.id();
         break;
       }
     }
@@ -195,19 +211,23 @@ TEST_F(SnapshotScheduleTest, TablegroupGC) {
   }
 
   // Since this is just for testing purposes, we do not bother generating a valid PgsqlTablegroupId.
-  ASSERT_OK(client_->CreateTablegroup(namespace_name, namespace_id, tablegroup_id, tablespace_id));
+  ASSERT_OK(client->CreateTablegroup(namespace_name,
+                                      namespace_id,
+                                      tablegroup_id,
+                                      tablespace_id,
+                                      nullptr /* txn */));
 
   // Ensure that the newly created tablegroup shows up in the list.
-  auto exist = ASSERT_RESULT(client_->TablegroupExists(namespace_name, tablegroup_id));
+  auto exist = ASSERT_RESULT(client->TablegroupExists(namespace_name, tablegroup_id));
   ASSERT_TRUE(exist);
-  TableId parent_table_id = master::GetTablegroupParentTableId(tablegroup_id);
+  TableId parent_table_id = GetTablegroupParentTableId(tablegroup_id);
 
   // When retention matches snapshot interval we expect at most 3 snapshots for schedule.
   ASSERT_RESULT(snapshot_util_->CreateSchedule(
       nullptr, YQLDatabase::YQL_DATABASE_PGSQL, namespace_name, WaitSnapshot::kTrue,
       kSnapshotInterval, kSnapshotInterval * 2));
 
-  ASSERT_OK(client_->DeleteTablegroup(tablegroup_id));
+  ASSERT_OK(client->DeleteTablegroup(tablegroup_id, nullptr /* txn */));
 
   // We give 2 rounds of retention period for cleanup.
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
@@ -222,10 +242,10 @@ TEST_F(SnapshotScheduleTest, TablegroupGC) {
 }
 
 TEST_F(SnapshotScheduleTest, Index) {
-  FLAGS_timestamp_history_retention_interval_sec = kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = kTimeMultiplier;
 
   auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
-    table_, YQLDatabase::YQL_DATABASE_PGSQL, "yugabyte"));
+    table_, kTableName.namespace_type(), kTableName.namespace_name()));
   ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id));
 
   CreateIndex(Transactional::kTrue, 1, false);
@@ -235,9 +255,12 @@ TEST_F(SnapshotScheduleTest, Index) {
 
   auto session = CreateSession();
   for (size_t r = 0; r != kNumRows; ++r) {
-    ASSERT_OK(kv_table_test::WriteRow(
-        &index_, session, KeyForTransactionAndIndex(kTransaction, r),
-        ValueForTransactionAndIndex(kTransaction, r, op_type), op_type));
+    const auto op = index_.NewInsertOp();
+    auto* const req = op->mutable_request();
+    QLAddInt32HashValue(req, KeyForTransactionAndIndex(kTransaction, r));
+    QLAddInt32RangeValue(req, ValueForTransactionAndIndex(kTransaction, r, op_type));
+    session->Apply(op);
+    ASSERT_OK(session->TEST_Flush());
   }
 
   LOG(INFO) << "Index columns: " << AsString(index_.AllColumnNames());
@@ -263,8 +286,10 @@ TEST_F(SnapshotScheduleTest, Index) {
           "T $0 P $1 Table $2", peer->tablet_id(), peer->permanent_uuid(),
           peer->tablet_metadata()->table_name()));
       auto tablet = peer->tablet();
-      auto history_cutoff = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
-      SCHECK_LE(history_cutoff, hybrid_time, IllegalState, "Too big history cutoff");
+      auto history_cutoff =
+          tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+      SCHECK_LE(history_cutoff.primary_cutoff_ht,
+                hybrid_time, IllegalState, "Too big history cutoff");
     }
 
     return false;
@@ -274,7 +299,8 @@ TEST_F(SnapshotScheduleTest, Index) {
 TEST_F(SnapshotScheduleTest, Restart) {
   ASSERT_NO_FATALS(WriteData());
   auto schedule_id = ASSERT_RESULT(
-    snapshot_util_->CreateSchedule(table_, YQLDatabase::YQL_DATABASE_PGSQL, "yugabyte"));
+    snapshot_util_->CreateSchedule(
+        table_, kTableName.namespace_type(), kTableName.namespace_name()));
   ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id));
   ASSERT_OK(cluster_->RestartSync());
 
@@ -287,7 +313,8 @@ TEST_F(SnapshotScheduleTest, Restart) {
 TEST_F(SnapshotScheduleTest, RestoreSchema) {
   ASSERT_NO_FATALS(WriteData());
   auto schedule_id = ASSERT_RESULT(
-    snapshot_util_->CreateSchedule(table_, YQLDatabase::YQL_DATABASE_PGSQL, "yugabyte"));
+    snapshot_util_->CreateSchedule(table_, kTableName.namespace_type(),
+                                   kTableName.namespace_name()));
   auto hybrid_time = cluster_->mini_master(0)->master()->clock()->Now();
   auto old_schema = table_.schema();
   auto alterer = client_->NewTableAlterer(table_.name());
@@ -321,8 +348,8 @@ TEST_F(SnapshotScheduleTest, RemoveNewTablets) {
   const auto kInterval = 5s * kTimeMultiplier;
   const auto kRetention = kInterval * 2;
   auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
-      table_, YQLDatabase::YQL_DATABASE_PGSQL, "yugabyte", WaitSnapshot::kTrue, kInterval,
-      kRetention));
+      table_, kTableName.namespace_type(), kTableName.namespace_name(),
+      WaitSnapshot::kTrue, kInterval, kRetention));
   auto before_index_ht = cluster_->mini_master(0)->master()->clock()->Now();
   CreateIndex(Transactional::kTrue, 1, false);
   auto after_time_ht = cluster_->mini_master(0)->master()->clock()->Now();
@@ -343,6 +370,147 @@ TEST_F(SnapshotScheduleTest, RemoveNewTablets) {
     }
     return true;
   }, kRetention + kInterval * 2, "Cleanup obsolete tablets"));
+}
+
+// Tests that deleted namespaces are ignored on restore.
+// Duplicate namespaces can have implications on restore for e.g. if we have
+// 2 dbs with the same name - one DELETED and one RUNNING.
+// Snapshot schedule should also have the namespace id persisted in the filter.
+TEST_F(SnapshotScheduleTest, DeletedNamespace) {
+  const auto kInterval = 1s * kTimeMultiplier;
+  const auto kRetention = kInterval * 2;
+  const std::string db_name = "demo";
+  // Create namespace.
+  int32_t db_oid = 16900;
+  ASSERT_OK(client_->CreateNamespace(db_name, YQL_DATABASE_PGSQL, "" /* creator */,
+                                     GetPgsqlNamespaceId(db_oid), "" /* src_ns_id */,
+                                     boost::none /* next_pg_oid */, nullptr /* txn */, false));
+  // Drop the namespace.
+  ASSERT_OK(client_->DeleteNamespace(db_name, YQL_DATABASE_PGSQL));
+  // Create namespace again.
+  db_oid++;
+  ASSERT_OK(client_->CreateNamespace(db_name, YQL_DATABASE_PGSQL, "" /* creator */,
+                                     GetPgsqlNamespaceId(db_oid), "" /* src_ns_id */,
+                                     boost::none /* next_pg_oid */, nullptr /* txn */, false));
+  // Create schedule and PITR.
+  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, db_name,
+      WaitSnapshot::kTrue, kInterval, kRetention));
+  // Validate the filter has namespace id set.
+  auto schedule = ASSERT_RESULT(snapshot_util_->ListSchedules(schedule_id));
+  ASSERT_EQ(schedule.size(), 1);
+  ASSERT_EQ(schedule[0].options().filter().tables().tables_size(), 1);
+  ASSERT_TRUE(schedule[0].options().filter().tables().tables(0).namespace_().has_id());
+
+  // Restore should not fatal.
+  auto hybrid_time = cluster_->mini_master(0)->master()->clock()->Now();
+  ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id, hybrid_time));
+  auto snapshot_id = ASSERT_RESULT(snapshot_util_->PickSuitableSnapshot(
+      schedule_id, hybrid_time));
+  ASSERT_OK(snapshot_util_->RestoreSnapshot(snapshot_id, hybrid_time));
+}
+
+TEST_F(SnapshotScheduleTest, MasterHistoryRetentionNoSchedule) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_history_cutoff_propagation) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_fast_pitr) = true;
+  // Without snapshot schedule, the retention should be
+  // min(t - timestamp_history_retention_interval_sec,
+  //     t - timestamp_syscatalog_history_retention_interval_sec).
+  // Case: 1
+  // timestamp_history_retention_interval_sec <
+  // timestamp_syscatalog_history_retention_interval_sec.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) = 120;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 60;
+  // Since FLAGS_timestamp_syscatalog_history_retention_interval_sec is 120,
+  // history retention should be t-120 where t is the current time obtained by
+  // GetRetentionDirective() call.
+  auto& sys_catalog = cluster_->mini_master(0)->master()->sys_catalog();
+  auto tablet = ASSERT_RESULT(sys_catalog.tablet_peer()->shared_tablet_safe());
+  auto directive = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+  // current_time-120 should be >= t-120 since current_time >= t.
+  // We bound this error by 1s * kTimeMultiplier.
+  HybridTime expect = cluster_->mini_master(0)->master()->clock()->Now().AddSeconds(
+      -FLAGS_timestamp_syscatalog_history_retention_interval_sec);
+  ASSERT_GE(expect, directive.primary_cutoff_ht);
+  ASSERT_LE(expect, directive.primary_cutoff_ht.AddSeconds(1 * kTimeMultiplier));
+  // Cotables should also have the same cutoff.
+  ASSERT_EQ(directive.cotables_cutoff_ht, directive.primary_cutoff_ht);
+  LOG(INFO) << "History retention directive - primary: "
+            << directive.primary_cutoff_ht << ", cotables: "
+            << directive.cotables_cutoff_ht
+            << ", expected primary: " << expect
+            << ", expected cotables: " << expect;
+  // Case: 2
+  // timestamp_history_retention_interval_sec >
+  // timestamp_syscatalog_history_retention_interval_sec.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) = 120;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 240;
+  // Since FLAGS_timestamp_history_retention_interval_sec is 240,
+  // history retention should be t-240 where t is the current time obtained by
+  // GetRetentionDirective() call.
+  directive = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+  // current_time-120 should be >= t-120 since current_time >= t.
+  // We bound this error by 1s * kTimeMultiplier.
+  expect = cluster_->mini_master(0)->master()->clock()->Now().AddSeconds(
+      -FLAGS_timestamp_history_retention_interval_sec);
+  ASSERT_GE(expect, directive.primary_cutoff_ht);
+  ASSERT_LE(expect, directive.primary_cutoff_ht.AddSeconds(1 * kTimeMultiplier));
+  // Cotables should also have the same cutoff.
+  ASSERT_EQ(directive.cotables_cutoff_ht, directive.primary_cutoff_ht);
+  LOG(INFO) << "History retention directive - primary: "
+            << directive.primary_cutoff_ht << ", cotables: "
+            << directive.cotables_cutoff_ht
+            << ", expected primary retention: " << expect
+            << ", expected cotables retention: " << expect;
+}
+
+TEST_F(SnapshotScheduleTest, MasterHistoryRetentionWithSchedule) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_history_cutoff_propagation) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_fast_pitr) = true;
+  // Create a snapshot schedule and wait for a snapshot.
+  const auto kInterval = 10s * kTimeMultiplier;
+  const auto kRetention = kInterval * 4;
+  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
+      table_, kTableName.namespace_type(), kTableName.namespace_name(),
+      WaitSnapshot::kTrue, kInterval, kRetention));
+  // Since both the above flags is 0, history retention should be
+  // last_snapshot_time for all the tables except docdb metadata table
+  // for which it should be t-kRetention where t is the current time
+  // obtained by AllowedHistoryCutoffProvider().
+  auto& sys_catalog = cluster_->mini_master(0)->master()->sys_catalog();
+  auto tablet = ASSERT_RESULT(sys_catalog.tablet_peer()->shared_tablet_safe());
+  // Because the snapshot interval is quite high (10s), at some point
+  // the returned history retention should become equal to last snapshot time.
+  // This takes care of races between GetRetentionDirective() calls and
+  // snapshot creation that happens in the background; because we are calling
+  // GetRetentionDirective() very frequently, at some point it should catch up.
+  ASSERT_OK(WaitFor([&tablet, this, schedule_id, kRetention]() -> Result<bool> {
+    auto directive = tablet->RetentionPolicy()->GetRetentionDirective().history_cutoff;
+    auto expect = cluster_->mini_master(0)->master()->clock()->Now().AddDelta(-kRetention);
+    auto schedules = VERIFY_RESULT(snapshot_util_->ListSchedules(schedule_id));
+    RSTATUS_DCHECK_EQ(schedules.size(), 1, Corruption, "There should be only one schedule");
+    HybridTime most_recent = HybridTime::kMin;
+    for (const auto& s : schedules[0].snapshots()) {
+      if (s.entry().state() == master::SysSnapshotEntryPB::COMPLETE) {
+        most_recent.MakeAtLeast(HybridTime::FromPB(s.entry().snapshot_hybrid_time()));
+      }
+    }
+    LOG(INFO) << "History retention directive - primary: "
+              << directive.primary_cutoff_ht
+              << ", cotables: " << directive.cotables_cutoff_ht
+              << ", expected primary retention: " << most_recent
+              << ", expected cotables retention: " << expect;
+    if (directive.primary_cutoff_ht != most_recent) {
+      return false;
+    }
+    if (expect >= directive.cotables_cutoff_ht &&
+        expect <= directive.cotables_cutoff_ht.AddSeconds(1 * kTimeMultiplier)) {
+      return true;
+    }
+    return false;
+  }, 120s, "Wait for history retention to stablilize"));
 }
 
 } // namespace client

@@ -19,7 +19,7 @@ import java.net.URL;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.Scanner;
-
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -167,6 +167,7 @@ public class Metrics {
      public final double mean_time;
      public final double stddev_time;
      public final long rows;
+     public final JsonArray yb_latency_histogram;
 
      /**
       * Constructs a {@code YSQLStat} stat.
@@ -186,6 +187,7 @@ public class Metrics {
       mean_time = metric.get("mean_time").getAsDouble();
       stddev_time = metric.get("stddev_time").getAsDouble();
       rows = metric.get("rows").getAsLong();
+      yb_latency_histogram = metric.get("yb_latency_histogram").getAsJsonArray();
      }
    }
 

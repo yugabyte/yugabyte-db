@@ -1,8 +1,8 @@
 ---
-title: Node.js ORM example application that uses Sequelize ORM and YSQL
+title: Node.js Prisma ORM example application
 headerTitle: Node.js ORM example application
 linkTitle: Node.js
-description: Node.js ORM example application that uses Sequelize ORM and YSQL.
+description: Node.js ORM example application that uses Prisma and YSQL.
 menu:
   preview:
     identifier: nodejs-prisma
@@ -13,13 +13,13 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="{{< relref "./ysql-sequelize.md" >}}" class="nav-link">
+    <a href="../ysql-sequelize/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       Sequelize ORM
     </a>
   </li>
   <li>
-    <a href="{{< relref "./ysql-prisma.md" >}}" class="nav-link active">
+    <a href="../ysql-prisma/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       Prisma ORM
     </a>
@@ -32,7 +32,7 @@ The source for this application can be found in the [Using ORMs with YugabyteDB]
 
 {{< tip title="YugabyteDB Managed requires SSL" >}}
 
-Are you using YugabyteDB Managed? Install the [prerequisites](#prerequisites).
+Are you using YugabyteDB Managed? Install the [prerequisites](../../../../develop/build-apps/cloud-add-ip/).
 
 {{</ tip >}}
 
@@ -58,7 +58,7 @@ $ npm install
 
 ## Set up the database connection
 
-From your local YugabyteDB installation directory, connect to the [YSQL](../../../admin/ysqlsh/) shell using the following command:
+From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using the following command:
 
 ```sh
 $ ./bin/ysqlsh

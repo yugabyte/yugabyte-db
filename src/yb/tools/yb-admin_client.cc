@@ -34,6 +34,7 @@
 
 #include <sstream>
 #include <type_traits>
+#include <unordered_map>
 
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/global_fun.hpp>
@@ -43,13 +44,16 @@
 #include <google/protobuf/util/json_util.h>
 #include <gtest/gtest.h>
 
+#include "yb/cdc/cdc_service.h"
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_info.h"
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/json_util.h"
+#include "yb/common/ql_type_util.h"
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
@@ -66,15 +70,23 @@
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_encryption.proxy.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_replication.proxy.h"
+#include "yb/master/master_test.proxy.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
+#include "yb/rpc/secure_stream.h"
 
+#include "yb/server/secure.h"
+#include "yb/tools/yb-admin_util.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
+
+#include "yb/encryption/encryption_util.h"
 
 #include "yb/util/format.h"
 #include "yb/util/net/net_util.h"
@@ -85,6 +97,7 @@
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/tostring.h"
 
 DEFINE_UNKNOWN_bool(wait_if_no_leader_master, false,
             "When yb-admin connects to the cluster and no leader master is present, "
@@ -96,10 +109,15 @@ DEFINE_UNKNOWN_string(certs_dir_name, "",
 
 DEFINE_UNKNOWN_string(client_node_name, "", "Client node name.");
 
-DEFINE_UNKNOWN_bool(
-    disable_graceful_transition, false,
+DEFINE_UNKNOWN_bool(disable_graceful_transition, false,
     "During a leader stepdown, disable graceful leadership transfer "
     "to an up to date peer");
+
+DEFINE_test_flag(int32, metadata_file_format_version, 0,
+    "Used in 'export_snapshot' metadata file format (0 means using latest format).");
+
+DECLARE_bool(use_client_to_server_encryption);
+DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
 // Maximum number of elements to dump on unexpected errors.
 static constexpr int MAX_NUM_ELEMENTS_TO_SHOW_ON_ERROR = 10;
@@ -107,6 +125,7 @@ static constexpr int MAX_NUM_ELEMENTS_TO_SHOW_ON_ERROR = 10;
 PB_ENUM_FORMATTERS(yb::PeerRole);
 PB_ENUM_FORMATTERS(yb::AppStatusPB::ErrorCode);
 PB_ENUM_FORMATTERS(yb::tablet::RaftGroupStatePB);
+PB_ENUM_FORMATTERS(yb::master::SysSnapshotEntryPB::State);
 
 namespace yb {
 namespace tools {
@@ -125,8 +144,8 @@ using google::protobuf::util::MessageToJsonString;
 
 using client::YBClientBuilder;
 using client::YBTableName;
-using rpc::MessengerBuilder;
 using rpc::RpcController;
+using pb_util::ParseFromSlice;
 using strings::Substitute;
 using tserver::TabletServerServiceProxy;
 using tserver::TabletServerAdminServiceProxy;
@@ -140,10 +159,36 @@ using consensus::RaftPeerPB;
 using consensus::RunLeaderElectionRequestPB;
 using consensus::RunLeaderElectionResponsePB;
 
+using master::BackupRowEntryPB;
+using master::CreateSnapshotRequestPB;
+using master::CreateSnapshotResponsePB;
+using master::DeleteSnapshotRequestPB;
+using master::DeleteSnapshotResponsePB;
+using master::AbortSnapshotRestoreRequestPB;
+using master::AbortSnapshotRestoreResponsePB;
+using master::IdPairPB;
+using master::ImportSnapshotMetaRequestPB;
+using master::ImportSnapshotMetaResponsePB;
+using master::ImportSnapshotMetaResponsePB_TableMetaPB;
 using master::ListMastersRequestPB;
 using master::ListMastersResponsePB;
+using master::ListSnapshotRestorationsResponsePB;
+using master::ListSnapshotsRequestPB;
+using master::ListSnapshotsResponsePB;
+using master::ListTablesRequestPB;
+using master::ListTablesResponsePB;
 using master::ListTabletServersRequestPB;
 using master::ListTabletServersResponsePB;
+using master::RestoreSnapshotRequestPB;
+using master::RestoreSnapshotResponsePB;
+using master::SnapshotInfoPB;
+using master::SysNamespaceEntryPB;
+using master::SysRowEntry;
+using master::SysRowEntryType;
+using master::SysSnapshotEntryPB;
+using master::SysTablesEntryPB;
+using master::SysTabletsEntryPB;
+using master::SysUDTypeEntryPB;
 using master::TabletLocationsPB;
 using master::TSInfoPB;
 
@@ -151,10 +196,6 @@ namespace {
 
 static constexpr const char* kRpcHostPortHeading = "RPC Host/Port";
 static constexpr const char* kBroadcastHeading = "Broadcast Host/Port";
-static constexpr const char* kDBTypePrefixUnknown = "unknown";
-static constexpr const char* kDBTypePrefixCql = "ycql";
-static constexpr const char* kDBTypePrefixYsql = "ysql";
-static constexpr const char* kDBTypePrefixRedis = "yedis";
 static constexpr const char* kTableIDPrefix = "tableid";
 
 string FormatFirstHostPort(
@@ -201,17 +242,6 @@ Result<Response> ResponseResult(Response&& response,
     typename std::enable_if<!HasMemberFunctionHasError<Response>, void*>::type = nullptr) {
   // Response has no has_error method, nothing to check
   return std::move(response);
-}
-
-const char* DatabasePrefix(YQLDatabase db) {
-  switch(db) {
-    case YQL_DATABASE_UNKNOWN: break;
-    case YQL_DATABASE_CQL: return kDBTypePrefixCql;
-    case YQL_DATABASE_PGSQL: return kDBTypePrefixYsql;
-    case YQL_DATABASE_REDIS: return kDBTypePrefixRedis;
-  }
-  CHECK(false) << "Unexpected db type " << db;
-  return kDBTypePrefixUnknown;
 }
 
 Result<TypedNamespaceName> ResolveNamespaceName(
@@ -304,6 +334,69 @@ DotStringParts SplitByDot(const std::string& str) {
     result.value.remove_prefix(dot_pos + 1);
   }
   return result;
+}
+
+template <class Allocator>
+Result<rapidjson::Value> SnapshotScheduleInfoToJson(
+    const master::SnapshotScheduleInfoPB& schedule, Allocator* allocator) {
+  rapidjson::Value json_schedule(rapidjson::kObjectType);
+  AddStringField(
+      "id", VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule.id())).ToString(), &json_schedule,
+      allocator);
+
+  const auto& filter = schedule.options().filter();
+  string filter_output;
+  // The user input should only have 1 entry, at namespace level.
+  if (filter.tables().tables_size() == 1) {
+    const auto& table_id = filter.tables().tables(0);
+    if (table_id.has_namespace_()) {
+      string database_type;
+      if (table_id.namespace_().database_type() == YQL_DATABASE_PGSQL) {
+        database_type = "ysql";
+      } else if (table_id.namespace_().database_type() == YQL_DATABASE_CQL) {
+        database_type = "ycql";
+      }
+      if (!database_type.empty()) {
+        filter_output = Format("$0.$1", database_type, table_id.namespace_().name());
+      }
+    }
+  }
+  // If the user input was non standard, just display the whole debug PB.
+  if (filter_output.empty()) {
+    filter_output = filter.ShortDebugString();
+    DCHECK(false) << "Non standard filter " << filter_output;
+  }
+  rapidjson::Value options(rapidjson::kObjectType);
+  AddStringField("filter", filter_output, &options, allocator);
+  auto interval_min = schedule.options().interval_sec() / MonoTime::kSecondsPerMinute;
+  AddStringField("interval", Format("$0 min", interval_min), &options, allocator);
+  auto retention_min = schedule.options().retention_duration_sec() / MonoTime::kSecondsPerMinute;
+  AddStringField("retention", Format("$0 min", retention_min), &options, allocator);
+  auto delete_time = HybridTime::FromPB(schedule.options().delete_time());
+  if (delete_time) {
+    AddStringField("delete_time", HybridTimeToString(delete_time), &options, allocator);
+  }
+
+  json_schedule.AddMember("options", options, *allocator);
+  rapidjson::Value json_snapshots(rapidjson::kArrayType);
+  for (const auto& snapshot : schedule.snapshots()) {
+    rapidjson::Value json_snapshot(rapidjson::kObjectType);
+    AddStringField(
+        "id", VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id())).ToString(), &json_snapshot,
+        allocator);
+    auto snapshot_ht = HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time());
+    AddStringField("snapshot_time", HybridTimeToString(snapshot_ht), &json_snapshot, allocator);
+    auto previous_snapshot_ht =
+        HybridTime::FromPB(snapshot.entry().previous_snapshot_hybrid_time());
+    if (previous_snapshot_ht) {
+      AddStringField(
+          "previous_snapshot_time", HybridTimeToString(previous_snapshot_ht), &json_snapshot,
+          allocator);
+    }
+    json_snapshots.PushBack(json_snapshot, *allocator);
+  }
+  json_schedule.AddMember("snapshots", json_snapshots, *allocator);
+  return json_schedule;
 }
 
 }  // anonymous namespace
@@ -569,6 +662,9 @@ void ClusterAdminClient::ResetMasterProxy(const HostPort& leader_addr) {
 
   master_replication_proxy_ = std::make_unique<master::MasterReplicationProxy>(
       proxy_cache_.get(), leader_addr_);
+
+  master_test_proxy_ = std::make_unique<master::MasterTestProxy>(
+      proxy_cache_.get(), leader_addr_);
 }
 
 Status ClusterAdminClient::MasterLeaderStepDown(
@@ -680,6 +776,122 @@ Status ClusterAdminClient::GetWalRetentionSecs(const YBTableName& table_name) {
          << info.wal_retention_secs.get() << " seconds" << endl;
   }
   return Status::OK();
+}
+
+Status ClusterAdminClient::PromoteAutoFlags(
+    const string& max_flag_class, const bool promote_non_runtime_flags, const bool force) {
+  master::PromoteAutoFlagsRequestPB req;
+  master::PromoteAutoFlagsResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+  req.set_max_flag_class(max_flag_class);
+  req.set_promote_non_runtime_flags(promote_non_runtime_flags);
+  req.set_force(force);
+  RETURN_NOT_OK(master_cluster_proxy_->PromoteAutoFlags(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::cout << "PromoteAutoFlags completed successfully" << std::endl;
+  if (!resp.flags_promoted()) {
+    std::cout << "No new AutoFlags eligible to promote" << std::endl;
+    if (resp.has_new_config_version()) {
+      std::cout << "Current config version: " << resp.new_config_version() << std::endl;
+    }
+    return Status::OK();
+  }
+    std::cout << "New AutoFlags were promoted" << std::endl;
+    std::cout << "New config version: " << resp.new_config_version() << std::endl;
+    if (resp.non_runtime_flags_promoted()) {
+      std::cout << "All yb-master and yb-tserver processes need to be restarted in order to apply "
+                   "the promoted AutoFlags"
+                << std::endl;
+    }
+
+  return Status::OK();
+}
+
+Status ClusterAdminClient::RollbackAutoFlags(uint32_t rollback_version) {
+  master::RollbackAutoFlagsRequestPB req;
+  master::RollbackAutoFlagsResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+  req.set_rollback_version(rollback_version);
+  RETURN_NOT_OK(master_cluster_proxy_->RollbackAutoFlags(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::cout << "RollbackAutoFlags completed successfully" << std::endl;
+  if (!resp.flags_rolledback()) {
+    std::cout << "No AutoFlags have been promoted since version " << rollback_version << std::endl;
+    std::cout << "Current config version: " << resp.new_config_version() << std::endl;
+    return Status::OK();
+  }
+
+    std::cout << "AutoFlags that were promoted after config version " << rollback_version
+              << " were successfully rolled back" << std::endl;
+    std::cout << "New config version: " << resp.new_config_version() << std::endl;
+
+    return Status::OK();
+}
+
+Status ClusterAdminClient::PromoteSingleAutoFlag(
+    const std::string& process_name, const std::string& flag_name) {
+    master::PromoteSingleAutoFlagRequestPB req;
+    master::PromoteSingleAutoFlagResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(timeout_);
+    req.set_process_name(process_name);
+    req.set_auto_flag_name(flag_name);
+    RETURN_NOT_OK(master_cluster_proxy_->PromoteSingleAutoFlag(req, &resp, &rpc));
+    if (resp.has_error()) {
+     return StatusFromPB(resp.error().status());
+    }
+    if (!resp.flag_promoted()) {
+     std::cout << "AutoFlag " << flag_name << " from process " << process_name
+               << " was not promoted. Check the logs for more information" << std::endl;
+     std::cout << "Current config version: " << resp.new_config_version() << std::endl;
+     return Status::OK();
+    }
+
+    std::cout << "AutoFlag " << flag_name << " from process " << process_name
+              << " was successfully promoted" << std::endl;
+    std::cout << "New config version: " << resp.new_config_version() << std::endl;
+    if (resp.non_runtime_flag_promoted()) {
+     std::cout << "All yb-master and yb-tserver processes need to be restarted in order to apply "
+                  "the promoted AutoFlag"
+               << std::endl;
+    }
+
+    return Status::OK();
+}
+
+Status ClusterAdminClient::DemoteSingleAutoFlag(
+    const std::string& process_name, const std::string& flag_name) {
+    master::DemoteSingleAutoFlagRequestPB req;
+    master::DemoteSingleAutoFlagResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(timeout_);
+    req.set_process_name(process_name);
+    req.set_auto_flag_name(flag_name);
+    RETURN_NOT_OK(master_cluster_proxy_->DemoteSingleAutoFlag(req, &resp, &rpc));
+    if (resp.has_error()) {
+     return StatusFromPB(resp.error().status());
+    }
+    if (!resp.flag_demoted()) {
+     std::cout << "AutoFlag " << flag_name << " from process " << process_name
+               << " was not demoted. Either the flag does not exist or it is not promoted"
+               << std::endl;
+     std::cout << "Current config version: " << resp.new_config_version() << std::endl;
+     return Status::OK();
+    }
+
+    std::cout << "AutoFlag " << flag_name << " from process " << process_name
+              << " was successfully demoted" << std::endl;
+    std::cout << "New config version: " << resp.new_config_version() << std::endl;
+
+    return Status::OK();
 }
 
 Status ClusterAdminClient::ParseChangeType(
@@ -1233,7 +1445,7 @@ Status ClusterAdminClient::ListTables(bool include_db_type,
     if (include_db_type) {
       const auto db_type_iter = namespace_metadata.find(table.namespace_id());
       if (db_type_iter != namespace_metadata.end()) {
-        str << DatabasePrefix(db_type_iter->second.database_type()) << '.';
+        str << DatabasePrefix(db_type_iter->second.id.database_type()) << '.';
       } else {
         LOG(WARNING) << "Table in unknown namespace found " << table.ToString();
         continue;
@@ -1256,7 +1468,10 @@ Status ClusterAdminClient::ListTables(bool include_db_type,
           str << " index";
           break;
         case master::MATVIEW_TABLE_RELATION:
-          str << "matview";
+          str << " matview";
+          break;
+        case master::COLOCATED_PARENT_TABLE_RELATION:
+          str << " parent_table";
           break;
         default:
           str << " other";
@@ -1458,6 +1673,30 @@ Status ClusterAdminClient::DeleteIndexById(const TableId& table_id) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::ListAllNamespaces() {
+  cout << "name | UUID | language | state | colocated" << endl << endl;
+  const auto namespaces = VERIFY_RESULT_REF(GetNamespaceMap());
+  const auto list_namespaces = [&] (bool for_system_namespace) -> void {
+    cout << (for_system_namespace ? "System Namespaces:" : "User Namespaces:") << endl;
+    for (const auto& namespace_info_pair : namespaces) {
+      const auto namespace_info = namespace_info_pair.second;
+      if (for_system_namespace == master::IsSystemNamespace(namespace_info.id.name())) {
+        cout << namespace_info.id.name()
+        << " " << namespace_info.id.id()
+        << " " << DatabasePrefix(namespace_info.id.database_type())
+        << " " << SysNamespaceEntryPB_State_Name(namespace_info.state)
+        << " " << (namespace_info.colocated ? "true" : "false")
+        << endl;
+      }
+    }
+  };
+
+  list_namespaces(false /* for_system_namespace */);
+  cout << endl;
+  list_namespaces(true /* for_system_namespace */);
+  return Status::OK();
+}
+
 Status ClusterAdminClient::DeleteNamespace(const TypedNamespaceName& namespace_name) {
   RETURN_NOT_OK(yb_client_->DeleteNamespace(namespace_name.name, namespace_name.db_type));
   cout << "Deleted namespace " << namespace_name.name << endl;
@@ -1592,7 +1831,7 @@ Status ClusterAdminClient::FlushTables(const std::vector<YBTableName>& table_nam
                                        bool is_compaction) {
   RETURN_NOT_OK(yb_client_->FlushTables(table_names, add_indexes, timeout_secs, is_compaction));
   cout << (is_compaction ? "Compacted " : "Flushed ")
-       << ToString(table_names) << " tables"
+       << yb::ToString(table_names) << " tables"
        << (add_indexes ? " and associated indexes." : ".") << endl;
   return Status::OK();
 }
@@ -1604,8 +1843,76 @@ Status ClusterAdminClient::FlushTablesById(
     bool is_compaction) {
   RETURN_NOT_OK(yb_client_->FlushTables(table_ids, add_indexes, timeout_secs, is_compaction));
   cout << (is_compaction ? "Compacted " : "Flushed ")
-       << ToString(table_ids) << " tables"
+       << yb::ToString(table_ids) << " tables"
        << (add_indexes ? " and associated indexes." : ".") << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::CompactionStatus(const YBTableName& table_name, bool show_tablets) {
+  const auto compaction_status =
+      VERIFY_RESULT(yb_client_->GetCompactionStatus(table_name, show_tablets));
+
+  const auto ShowTablets = [&compaction_status]() {
+    std::map<TabletServerId, std::vector<client::TabletReplicaFullCompactionStatus>>
+        replica_statuses;
+    for (const auto& replica_status : compaction_status.replica_statuses) {
+      replica_statuses[replica_status.ts_id].push_back(replica_status);
+    }
+
+    for (const auto& [ts_id, statuses] : replica_statuses) {
+      cout << "tserver uuid: " << ts_id << endl
+           << " tablet id | full compaction state | last full compaction completion time" << endl
+           << endl;
+      for (const auto& status : statuses) {
+        cout << " " << status.tablet_id << " ";
+        if (status.full_compaction_state == tablet::FULL_COMPACTION_STATE_UNKNOWN) {
+          cout << "UNKNOWN" << endl;
+          continue;
+        }
+        cout << tablet::FullCompactionState_Name(status.full_compaction_state) << " ";
+        if (status.last_full_compaction_time.ToUint64() == 0) {
+          cout << "never been full compacted" << endl;
+        } else {
+          cout << HybridTimeToString(status.last_full_compaction_time) << endl;
+        }
+      }
+      cout << endl;
+    }
+  };
+
+  switch (compaction_status.full_compaction_state) {
+    case tablet::FULL_COMPACTION_STATE_UNKNOWN:
+      cout << "Compaction status unavailable. Waiting for heartbeats" << endl;
+      break;
+    case tablet::COMPACTING:
+      cout << "A full compaction is currently ongoing" << endl;
+      break;
+    case tablet::IDLE:
+      cout << "No full compaction taking place" << endl;
+      break;
+  }
+
+  if (show_tablets) {
+    cout << endl;
+    ShowTablets();
+  }
+
+  if (compaction_status.full_compaction_state == tablet::COMPACTING ||
+      compaction_status.full_compaction_state == tablet::IDLE) {
+    if (compaction_status.last_full_compaction_time.ToUint64() == 0) {
+      cout << "A full compaction has never been completed" << endl;
+    } else {
+      cout << "Last full compaction completion time: "
+           << HybridTimeToString(compaction_status.last_full_compaction_time) << endl;
+    }
+  }
+
+  if (compaction_status.last_request_time.ToUint64() == 0) {
+    cout << "An admin compaction has never been requested" << endl;
+  } else {
+    cout << "Last admin compaction request time: "
+         << HybridTimeToString(compaction_status.last_request_time) << endl;
+  }
   return Status::OK();
 }
 
@@ -1742,40 +2049,47 @@ Status ClusterAdminClient::DeleteReadReplicaPlacementInfo() {
 
 Status ClusterAdminClient::FillPlacementInfo(
     master::PlacementInfoPB* placement_info_pb, const string& placement_str) {
+  placement_info_pb->clear_placement_blocks();
 
-  std::vector<std::string> placement_info_split = strings::Split(
-      placement_str, ",", strings::SkipEmpty());
-  if (placement_info_split.size() < 1) {
-    return STATUS(InvalidCommand, "Cluster config must be a list of "
-                                  "placement infos seperated by commas. "
-                                  "Format: 'cloud1.region1.zone1:rf,cloud2.region2.zone2:rf, ..."
-        + std::to_string(placement_info_split.size()));
+  std::vector<std::string> placement_info_splits = strings::Split(
+      placement_str, ",", strings::AllowEmpty());
+
+  std::unordered_map<std::string, int> placement_to_min_replicas;
+  for (auto& placement_info_split : placement_info_splits) {
+    std::vector<std::string> placement_block_split =
+        strings::Split(placement_info_split, ":", strings::AllowEmpty());
+
+    if (placement_block_split.size() == 0 || placement_block_split.size() > 2) {
+      return STATUS(
+          InvalidCommand,
+          "Each placement block must be of the form 'cloud.region.zone:[min_replica_count]'. "
+          "Invalid placement block: " + placement_info_split);
+    }
+
+    int min_replicas = 1;
+    if (placement_block_split.size() == 2) {
+      min_replicas = VERIFY_RESULT(CheckedStoi(placement_block_split[1]));
+    }
+    placement_to_min_replicas[placement_block_split[0]] += min_replicas;
   }
 
-  for (size_t iter = 0; iter < placement_info_split.size(); iter++) {
-    std::vector<std::string> placement_block = strings::Split(placement_info_split[iter], ":",
-                                                              strings::SkipEmpty());
-
-    if (placement_block.size() != 2) {
-      return STATUS(InvalidCommand, "Each placement info must be in format placement:rf");
+  for (auto& [placement_block, min_replicas] : placement_to_min_replicas) {
+    std::vector<std::string> blocks = strings::Split(placement_block, ".",
+                                                    strings::AllowEmpty());
+    auto* pb = placement_info_pb->add_placement_blocks();
+    if (blocks.size() > 0 && !blocks[0].empty()) {
+      pb->mutable_cloud_info()->set_placement_cloud(blocks[0]);
     }
 
-    int min_num_replicas = VERIFY_RESULT(CheckedStoInt<int>(placement_block[1]));
-
-    std::vector<std::string> block = strings::Split(placement_block[0], ".",
-                                                    strings::SkipEmpty());
-    if (block.size() != 3) {
-      return STATUS(InvalidCommand,
-          "Each placement info must have exactly 3 values seperated"
-          "by dots that denote cloud, region and zone. Block: " + placement_info_split[iter]
-          + " is invalid");
+    if (blocks.size() > 1 && !blocks[1].empty()) {
+      pb->mutable_cloud_info()->set_placement_region(blocks[1]);
     }
-    auto pb = placement_info_pb->add_placement_blocks();
-    pb->mutable_cloud_info()->set_placement_cloud(block[0]);
-    pb->mutable_cloud_info()->set_placement_region(block[1]);
-    pb->mutable_cloud_info()->set_placement_zone(block[2]);
 
-    pb->set_min_num_replicas(min_num_replicas);
+    if (blocks.size() > 2 && !blocks[2].empty()) {
+      pb->mutable_cloud_info()->set_placement_zone(blocks[2]);
+    }
+
+    pb->set_min_num_replicas(min_replicas);
   }
 
   return Status::OK();
@@ -1791,40 +2105,16 @@ Status ClusterAdminClient::ModifyTablePlacementInfo(
     return STATUS(InvalidCommand, "Placement cannot be modified for the global transactions table");
   }
 
-  std::vector<std::string> placement_info_split = strings::Split(
-      placement_info, ",", strings::SkipEmpty());
-  if (placement_info_split.size() < 1) {
-    return STATUS(InvalidCommand, "Table placement config must be a list of "
-    "placement infos seperated by commas. "
-    "Format: 'cloud1.region1.zone1,cloud2.region2.zone2,cloud3.region3.zone3 ..."
-    + std::to_string(placement_info_split.size()));
-  }
-
-  master::PlacementInfoPB* live_replicas = new master::PlacementInfoPB;
-  live_replicas->set_num_replicas(replication_factor);
-  // Iterate over the placement blocks of the placementInfo structure.
-  for (size_t iter = 0; iter < placement_info_split.size(); iter++) {
-    std::vector<std::string> block = strings::Split(placement_info_split[iter], ".",
-                                                    strings::SkipEmpty());
-    if (block.size() != 3) {
-      return STATUS(InvalidCommand, "Each placement info must have exactly 3 values seperated"
-          "by dots that denote cloud, region and zone. Block: " + placement_info_split[iter]
-          + " is invalid");
-    }
-    auto pb = live_replicas->add_placement_blocks();
-    pb->mutable_cloud_info()->set_placement_cloud(block[0]);
-    pb->mutable_cloud_info()->set_placement_region(block[1]);
-    pb->mutable_cloud_info()->set_placement_zone(block[2]);
-    // TODO: Should this also be passed in as input?
-    pb->set_min_num_replicas(1);
-  }
+  master::PlacementInfoPB live_replicas;
+  live_replicas.set_num_replicas(replication_factor);
+  RETURN_NOT_OK(FillPlacementInfo(&live_replicas, placement_info));
 
   if (!optional_uuid.empty()) {
-    // If we have an optional uuid, set it.
-    live_replicas->set_placement_uuid(optional_uuid);
+    // If we have a placement uuid, set it.
+    live_replicas.set_placement_uuid(optional_uuid);
   }
 
-  return yb_client_->ModifyTablePlacementInfo(table_name, live_replicas);
+  return yb_client_->ModifyTablePlacementInfo(table_name, std::move(live_replicas));
 }
 
 Status ClusterAdminClient::ModifyPlacementInfo(
@@ -1837,74 +2127,13 @@ Status ClusterAdminClient::ModifyPlacementInfo(
   auto resp_cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
 
   // Create a new cluster config.
-  std::vector<std::string> placement_info_split = strings::Split(
-      placement_info, ",", strings::AllowEmpty());
-  if (placement_info_split.size() < 1) {
-    return STATUS(
-        InvalidCommand,
-        "Cluster config must be a list of placement infos seperated by commas. Format: "
-        "cloud1.region1.zone1:[min_replica_count1],cloud2.region2.zone2:[min_replica_count2] ..."
-        + std::to_string(placement_info_split.size()));
-  }
   master::ChangeMasterClusterConfigRequestPB req_new_cluster_config;
   master::SysClusterConfigEntryPB* sys_cluster_config_entry =
       resp_cluster_config.mutable_cluster_config();
-  master::PlacementInfoPB* live_replicas = new master::PlacementInfoPB;
+  master::PlacementInfoPB* live_replicas =
+      sys_cluster_config_entry->mutable_replication_info()->mutable_live_replicas();
   live_replicas->set_num_replicas(replication_factor);
-
-  int total_min_replica_count = 0;
-
-  // Iterate over the placement blocks of the placementInfo structure.
-  std::unordered_map<std::string, int> placement_to_min_replicas;
-  for (const auto& placement_block : placement_info_split) {
-    std::vector<std::string> placement_info_min_replica_split =
-        strings::Split(placement_block, ":", strings::AllowEmpty());
-
-    if (placement_info_min_replica_split.size() == 0 ||
-        placement_info_min_replica_split.size() > 2) {
-      return STATUS(
-          InvalidCommand,
-          "Each placement info must have at most 2 values separated by a colon. "
-          "Format: cloud.region.zone:[min_replica_count]. Invalid placement info: "
-          + placement_block);
-    }
-
-    std::string placement_target = placement_info_min_replica_split[0];
-    int placement_min_replica_count = 1;
-
-    if (placement_info_min_replica_split.size() == 2) {
-      placement_min_replica_count = VERIFY_RESULT(CheckedStoi(placement_info_min_replica_split[1]));
-    }
-
-    total_min_replica_count += placement_min_replica_count;
-    placement_to_min_replicas[placement_target] += placement_min_replica_count;
-  }
-
-  if (total_min_replica_count > replication_factor) {
-    return STATUS(
-        InvalidCommand,
-        "replication_factor should be greater than or equal to the total of replica counts "
-        "specified in placement_info.");
-  }
-
-  for (const auto& placement_block : placement_to_min_replicas) {
-    std::vector<std::string> block = strings::Split(placement_block.first, ".",
-                                                    strings::AllowEmpty());
-    auto pb = live_replicas->add_placement_blocks();
-    if (block.size() > 0 && block[0] != "") {
-      pb->mutable_cloud_info()->set_placement_cloud(block[0]);
-    }
-
-    if (block.size() > 1 && block[1] != "") {
-      pb->mutable_cloud_info()->set_placement_region(block[1]);
-    }
-
-    if (block.size() > 2 && block[2] != "") {
-      pb->mutable_cloud_info()->set_placement_zone(block[2]);
-    }
-
-    pb->set_min_num_replicas(placement_block.second);
-  }
+  RETURN_NOT_OK(FillPlacementInfo(live_replicas, placement_info));
 
   if (!optional_uuid.empty()) {
     // If we have an optional uuid, set it.
@@ -1915,7 +2144,6 @@ Status ClusterAdminClient::ModifyPlacementInfo(
         sys_cluster_config_entry->replication_info().live_replicas().placement_uuid());
   }
 
-  sys_cluster_config_entry->mutable_replication_info()->set_allocated_live_replicas(live_replicas);
   req_new_cluster_config.mutable_cluster_config()->CopyFrom(*sys_cluster_config_entry);
 
   RETURN_NOT_OK(InvokeRpc(
@@ -1953,6 +2181,24 @@ Status ClusterAdminClient::GetUniverseConfig() {
   std::string output;
   MessageToJsonString(cluster_config.cluster_config(), &output);
   cout << output << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::GetXClusterConfig() {
+  const auto xcluster_config = VERIFY_RESULT(GetMasterXClusterConfig());
+  const auto cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
+  std::string producer_registry_output;
+  std::string consumer_registry_output;
+  MessageToJsonString(
+      xcluster_config.xcluster_config().xcluster_producer_registry(), &producer_registry_output);
+  MessageToJsonString(
+      cluster_config.cluster_config().consumer_registry(), &consumer_registry_output);
+  cout << Format(
+              "{\"version\":$0,\"xcluster_producer_registry\":$1,\"consumer_"
+              "registry\":$2}",
+              xcluster_config.xcluster_config().version(), producer_registry_output,
+              consumer_registry_output)
+       << endl;
   return Status::OK();
 }
 
@@ -2090,8 +2336,9 @@ Result<const master::NamespaceIdentifierPB&> ClusterAdminClient::GetNamespaceInf
       "Resolving namespace id for '$0' of type '$1'", namespace_name, DatabasePrefix(db_type));
   for (const auto& item : VERIFY_RESULT_REF(GetNamespaceMap())) {
     const auto& namespace_info = item.second;
-    if (namespace_info.database_type() == db_type && namespace_name == namespace_info.name()) {
-      return namespace_info;
+    if (namespace_info.id.database_type() == db_type &&
+        namespace_name == namespace_info.id.name()) {
+      return namespace_info.id;
     }
   }
   return STATUS_FORMAT(
@@ -2104,12 +2351,24 @@ Result<master::GetMasterClusterConfigResponsePB> ClusterAdminClient::GetMasterCl
                    "MasterServiceImpl::GetMasterClusterConfig call failed.");
 }
 
+Result<master::GetMasterXClusterConfigResponsePB> ClusterAdminClient::GetMasterXClusterConfig() {
+  return InvokeRpc(&master::MasterClusterProxy::GetMasterXClusterConfig,
+                   *master_cluster_proxy_, master::GetMasterXClusterConfigRequestPB(),
+                   "MasterServiceImpl::GetMasterXClusterConfig call failed.");
+}
+
 Status ClusterAdminClient::SplitTablet(const std::string& tablet_id) {
   master::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id);
   const auto resp = VERIFY_RESULT(InvokeRpc(
       &master::MasterAdminProxy::SplitTablet, *master_admin_proxy_, req));
-  std::cout << "Response: " << AsString(resp) << std::endl;
+  if (resp.has_error()) {
+    std::cout << "Response: " << AsString(resp);
+  } else {
+    std::cout << "split_tablet \"" << tablet_id << "\" was sent asynchronously. "
+                 "Check master logs for more details about the status of the task.";
+  }
+  std::cout << std::endl;
   return Status::OK();
 }
 
@@ -2129,10 +2388,12 @@ Status ClusterAdminClient::DisableTabletSplitting(
 }
 
 Result<master::IsTabletSplittingCompleteResponsePB>
-    ClusterAdminClient::IsTabletSplittingCompleteInternal(bool wait_for_parent_deletion) {
+    ClusterAdminClient::IsTabletSplittingCompleteInternal(
+    bool wait_for_parent_deletion, const MonoDelta timeout) {
   master::IsTabletSplittingCompleteRequestPB req;
   req.set_wait_for_parent_deletion(wait_for_parent_deletion);
-  return InvokeRpc(&master::MasterAdminProxy::IsTabletSplittingComplete, *master_admin_proxy_, req);
+  return InvokeRpc(&master::MasterAdminProxy::IsTabletSplittingComplete, *master_admin_proxy_, req,
+      nullptr /* error_message */, timeout);
 }
 
 Status ClusterAdminClient::IsTabletSplittingComplete(bool wait_for_parent_deletion) {
@@ -2152,9 +2413,9 @@ Status ClusterAdminClient::AddTransactionStatusTablet(const TableId& table_id) {
 template<class Response, class Request, class Object>
 Result<Response> ClusterAdminClient::InvokeRpcNoResponseCheck(
     Status (Object::*func)(const Request&, Response*, rpc::RpcController*) const,
-    const Object& obj, const Request& req, const char* error_message) {
+    const Object& obj, const Request& req, const char* error_message, const MonoDelta timeout) {
   rpc::RpcController rpc;
-  rpc.set_timeout(timeout_);
+  rpc.set_timeout(timeout.Initialized() ? timeout : timeout_);
   Response response;
   auto result = (obj.*func)(req, &response, &rpc);
   if (error_message) {
@@ -2168,15 +2429,16 @@ Result<Response> ClusterAdminClient::InvokeRpcNoResponseCheck(
 template<class Response, class Request, class Object>
 Result<Response> ClusterAdminClient::InvokeRpc(
     Status (Object::*func)(const Request&, Response*, rpc::RpcController*) const,
-    const Object& obj, const Request& req, const char* error_message) {
-  return ResponseResult(VERIFY_RESULT(InvokeRpcNoResponseCheck(func, obj, req, error_message)));
+    const Object& obj, const Request& req, const char* error_message, const MonoDelta timeout) {
+  return ResponseResult(
+      VERIFY_RESULT(InvokeRpcNoResponseCheck(func, obj, req, error_message, timeout)));
 }
 
 Result<const ClusterAdminClient::NamespaceMap&> ClusterAdminClient::GetNamespaceMap() {
   if (namespace_map_.empty()) {
     auto v = VERIFY_RESULT(yb_client_->ListNamespaces());
     for (auto& ns : v) {
-      auto ns_id = ns.id();
+      auto ns_id = ns.id.id();
       namespace_map_.emplace(std::move(ns_id), std::move(ns));
     }
   }
@@ -2185,8 +2447,2001 @@ Result<const ClusterAdminClient::NamespaceMap&> ClusterAdminClient::GetNamespace
 
 Result<TableNameResolver> ClusterAdminClient::BuildTableNameResolver(
     TableNameResolver::Values* tables) {
+      const auto namespaces = VERIFY_RESULT(yb_client_->ListNamespaces());
+      vector<master::NamespaceIdentifierPB> namespace_ids;
+      for (const auto& ns : namespaces) {
+        namespace_ids.push_back(ns.id);
+      }
   return TableNameResolver(
-      tables, VERIFY_RESULT(yb_client_->ListTables()), VERIFY_RESULT(yb_client_->ListNamespaces()));
+      tables, VERIFY_RESULT(yb_client_->ListTables()), std::move(namespace_ids));
+}
+
+Result<ListSnapshotsResponsePB> ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
+  ListSnapshotsResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    ListSnapshotsRequestPB req;
+    req.set_list_deleted_snapshots(flags.Test(ListSnapshotsFlag::SHOW_DELETED));
+    auto* flags_pb = req.mutable_detail_options();
+    // Explicitly set all boolean fields as the defaults of this proto are inconsistent.
+    if (flags.Test(ListSnapshotsFlag::SHOW_DETAILS)) {
+      flags_pb->set_show_namespace_details(true);
+      flags_pb->set_show_udtype_details(true);
+      flags_pb->set_show_table_details(true);
+      flags_pb->set_show_tablet_details(false);
+    } else {
+      flags_pb->set_show_namespace_details(false);
+      flags_pb->set_show_udtype_details(false);
+      flags_pb->set_show_table_details(false);
+      flags_pb->set_show_tablet_details(false);
+    }
+    return master_backup_proxy_->ListSnapshots(req, &resp, rpc);
+  }));
+  return resp;
+}
+
+Status ClusterAdminClient::CreateSnapshot(
+    const vector<YBTableName>& tables, std::optional<int32_t> retention_duration_hours,
+    const bool add_indexes, const int flush_timeout_secs) {
+  if (flush_timeout_secs > 0) {
+        const auto status = FlushTables(tables, add_indexes, flush_timeout_secs, false);
+        if (status.IsTimedOut()) {
+      cout << status.ToString(false) << " (ignored)" << endl;
+        } else if (!status.ok() && !status.IsNotFound()) {
+      return status;
+        }
+  }
+
+  CreateSnapshotResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    CreateSnapshotRequestPB req;
+    for (const YBTableName& table_name : tables) {
+      table_name.SetIntoTableIdentifierPB(req.add_tables());
+    }
+
+    req.set_add_indexes(add_indexes);
+    req.set_add_ud_types(true);  // No-op for YSQL.
+    req.set_transaction_aware(true);
+    if (retention_duration_hours && *retention_duration_hours <= 0) {
+      req.set_retention_duration_hours(-1);
+    } else if (retention_duration_hours) {
+      req.set_retention_duration_hours(*retention_duration_hours);
+    }
+    return master_backup_proxy_->CreateSnapshot(req, &resp, rpc);
+  }));
+
+  cout << "Started snapshot creation: " << SnapshotIdToString(resp.snapshot_id()) << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::CreateNamespaceSnapshot(
+    const TypedNamespaceName& ns, std::optional<int32_t> retention_duration_hours,
+    bool add_indexes) {
+  ListTablesResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    ListTablesRequestPB req;
+
+    req.mutable_namespace_()->set_name(ns.name);
+    req.mutable_namespace_()->set_database_type(ns.db_type);
+    req.set_exclude_system_tables(true);
+    req.add_relation_type_filter(master::USER_TABLE_RELATION);
+    if (add_indexes) {
+      req.add_relation_type_filter(master::INDEX_TABLE_RELATION);
+    }
+    req.add_relation_type_filter(master::MATVIEW_TABLE_RELATION);
+    return master_ddl_proxy_->ListTables(req, &resp, rpc);
+  }));
+
+  if (resp.tables_size() == 0) {
+        return STATUS_FORMAT(InvalidArgument, "No tables found in namespace: $0", ns.name);
+  }
+
+  vector<YBTableName> tables(resp.tables_size());
+  for (int i = 0; i < resp.tables_size(); ++i) {
+        const auto& table = resp.tables(i);
+        tables[i].set_table_id(table.id());
+        tables[i].set_namespace_id(table.namespace_().id());
+        tables[i].set_pgschema_name(table.pgschema_name());
+
+        RSTATUS_DCHECK(
+            table.relation_type() == master::USER_TABLE_RELATION ||
+                table.relation_type() == master::INDEX_TABLE_RELATION ||
+                table.relation_type() == master::MATVIEW_TABLE_RELATION,
+            InternalError, Format("Invalid relation type: $0", table.relation_type()));
+        RSTATUS_DCHECK_EQ(
+            table.namespace_().name(), ns.name, InternalError,
+            Format("Invalid namespace name: $0", table.namespace_().name()));
+        RSTATUS_DCHECK_EQ(
+            table.namespace_().database_type(), ns.db_type, InternalError,
+            Format(
+                "Invalid namespace type: $0",
+                YQLDatabase_Name(table.namespace_().database_type())));
+  }
+
+  return CreateSnapshot(tables, retention_duration_hours, /* add_indexes */ false);
+}
+
+Result<ListSnapshotRestorationsResponsePB> ClusterAdminClient::ListSnapshotRestorations(
+    const TxnSnapshotRestorationId& restoration_id) {
+  master::ListSnapshotRestorationsResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    master::ListSnapshotRestorationsRequestPB req;
+    if (restoration_id) {
+      req.set_restoration_id(restoration_id.data(), restoration_id.size());
+    }
+    return master_backup_proxy_->ListSnapshotRestorations(req, &resp, rpc);
+  }));
+  return resp;
+}
+
+Result<rapidjson::Document> ClusterAdminClient::CreateSnapshotSchedule(
+    const client::YBTableName& keyspace, MonoDelta interval, MonoDelta retention) {
+  master::CreateSnapshotScheduleResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    master::CreateSnapshotScheduleRequestPB req;
+
+    auto& options = *req.mutable_options();
+    auto& filter_tables = *options.mutable_filter()->mutable_tables()->mutable_tables();
+    keyspace.SetIntoTableIdentifierPB(filter_tables.Add());
+
+    options.set_interval_sec(interval.ToSeconds());
+    options.set_retention_duration_sec(retention.ToSeconds());
+    return master_backup_proxy_->CreateSnapshotSchedule(req, &resp, rpc);
+  }));
+
+  rapidjson::Document document;
+  document.SetObject();
+
+  AddStringField(
+      "schedule_id",
+      VERIFY_RESULT(FullyDecodeSnapshotScheduleId(resp.snapshot_schedule_id())).ToString(),
+      &document, &document.GetAllocator());
+  return document;
+}
+
+Result<rapidjson::Document> ClusterAdminClient::ListSnapshotSchedules(
+    const SnapshotScheduleId& schedule_id) {
+  master::ListSnapshotSchedulesResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [this, &resp, &schedule_id](RpcController* rpc) {
+    master::ListSnapshotSchedulesRequestPB req;
+    if (schedule_id) {
+      req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+    }
+    return master_backup_proxy_->ListSnapshotSchedules(req, &resp, rpc);
+  }));
+
+  rapidjson::Document result;
+  result.SetObject();
+  rapidjson::Value json_schedules(rapidjson::kArrayType);
+  for (const auto& schedule : resp.schedules()) {
+        json_schedules.PushBack(
+            VERIFY_RESULT(SnapshotScheduleInfoToJson(schedule, &result.GetAllocator())),
+            result.GetAllocator());
+  }
+  result.AddMember("schedules", json_schedules, result.GetAllocator());
+  return result;
+}
+
+Result<rapidjson::Document> ClusterAdminClient::DeleteSnapshotSchedule(
+    const SnapshotScheduleId& schedule_id) {
+  master::DeleteSnapshotScheduleResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [this, &resp, &schedule_id](RpcController* rpc) {
+    master::DeleteSnapshotScheduleRequestPB req;
+    req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+
+    return master_backup_proxy_->DeleteSnapshotSchedule(req, &resp, rpc);
+  }));
+
+  rapidjson::Document document;
+  document.SetObject();
+  AddStringField("schedule_id", schedule_id.ToString(), &document, &document.GetAllocator());
+  return document;
+}
+
+bool SnapshotSuitableForRestoreAt(const SysSnapshotEntryPB& entry, HybridTime restore_at) {
+  return (entry.state() == master::SysSnapshotEntryPB::COMPLETE ||
+          entry.state() == master::SysSnapshotEntryPB::CREATING) &&
+         HybridTime::FromPB(entry.snapshot_hybrid_time()) >= restore_at &&
+         HybridTime::FromPB(entry.previous_snapshot_hybrid_time()) < restore_at;
+}
+
+Result<TxnSnapshotId> ClusterAdminClient::SuitableSnapshotId(
+    const SnapshotScheduleId& schedule_id, HybridTime restore_at, CoarseTimePoint deadline) {
+  for (;;) {
+        auto last_snapshot_time = HybridTime::kMin;
+        {
+      RpcController rpc;
+      rpc.set_deadline(deadline);
+      master::ListSnapshotSchedulesRequestPB req;
+      master::ListSnapshotSchedulesResponsePB resp;
+      if (schedule_id) {
+        req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+      }
+
+      RETURN_NOT_OK_PREPEND(
+          master_backup_proxy_->ListSnapshotSchedules(req, &resp, &rpc),
+          "Failed to list snapshot schedules");
+
+      if (resp.has_error()) {
+        return StatusFromPB(resp.error().status());
+      }
+
+      if (resp.schedules().size() < 1) {
+        return STATUS_FORMAT(InvalidArgument, "Unknown schedule: $0", schedule_id);
+      }
+
+      for (const auto& snapshot : resp.schedules()[0].snapshots()) {
+        auto snapshot_hybrid_time = HybridTime::FromPB(snapshot.entry().snapshot_hybrid_time());
+        last_snapshot_time = std::max(last_snapshot_time, snapshot_hybrid_time);
+        if (SnapshotSuitableForRestoreAt(snapshot.entry(), restore_at)) {
+          return VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id()));
+        }
+      }
+      if (last_snapshot_time > restore_at) {
+        return STATUS_FORMAT(
+            IllegalState, "Cannot restore at $0, last snapshot: $1, snapshots: $2", restore_at,
+            last_snapshot_time, resp.schedules()[0].snapshots());
+      }
+        }
+        RpcController rpc;
+        rpc.set_deadline(deadline);
+        master::CreateSnapshotRequestPB req;
+        master::CreateSnapshotResponsePB resp;
+        req.set_schedule_id(schedule_id.data(), schedule_id.size());
+        RETURN_NOT_OK_PREPEND(
+            master_backup_proxy_->CreateSnapshot(req, &resp, &rpc), "Failed to create snapshot");
+        if (resp.has_error()) {
+      auto status = StatusFromPB(resp.error().status());
+      if (master::MasterError(status) == master::MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION) {
+        std::this_thread::sleep_until(std::min(deadline, CoarseMonoClock::now() + 1s));
+        continue;
+      }
+      return status;
+        }
+        return FullyDecodeTxnSnapshotId(resp.snapshot_id());
+  }
+}
+
+Status ClusterAdminClient::DisableTabletSplitsDuringRestore(CoarseTimePoint deadline) {
+  // TODO(Sanket): Eventually all of this logic needs to be moved
+  // to the master and exposed as APIs for the clients to consume.
+  const auto splitting_disabled_until =
+      CoarseMonoClock::Now() + MonoDelta::FromSeconds(kPitrSplitDisableDurationSecs);
+  // Disable splitting and then wait for all pending splits to complete before
+  // starting restoration.
+  VERIFY_RESULT_PREPEND(
+      DisableTabletSplitsInternal(kPitrSplitDisableDurationSecs * 1000, kPitrFeatureName),
+      "Failed to disable tablet split before restore.");
+
+  while (CoarseMonoClock::Now() < std::min(splitting_disabled_until, deadline)) {
+        // Wait for existing split operations to complete.
+        const auto resp = VERIFY_RESULT_PREPEND(
+            IsTabletSplittingCompleteInternal(
+                true /* wait_for_parent_deletion */,
+                deadline - CoarseMonoClock::now() /* timeout */),
+            "Tablet splitting did not complete. Cannot restore.");
+        if (resp.is_tablet_splitting_complete()) {
+      break;
+        }
+        SleepFor(MonoDelta::FromMilliseconds(kPitrSplitDisableCheckFreqMs));
+  }
+
+  if (CoarseMonoClock::now() >= deadline) {
+        return STATUS(TimedOut, "Timed out waiting for tablet splitting to complete.");
+  }
+
+  // Return if we have used almost all of our time in waiting for splitting to complete,
+  // since we can't guarantee that another split does not start.
+  if (CoarseMonoClock::now() + MonoDelta::FromSeconds(3) >= splitting_disabled_until) {
+        return STATUS(
+            TimedOut, "Not enough time after disabling splitting to disable ", "splitting again.");
+  }
+
+  // Disable for kPitrSplitDisableDurationSecs again so the restore has the full amount of time with
+  // splitting disables. This overwrites the previous value since the feature_name is the same so
+  // overall the time is still kPitrSplitDisableDurationSecs.
+  VERIFY_RESULT_PREPEND(
+      DisableTabletSplitsInternal(kPitrSplitDisableDurationSecs * 1000, kPitrFeatureName),
+      "Failed to disable tablet split before restore.");
+
+  return Status::OK();
+}
+
+Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotScheduleDeprecated(
+    const SnapshotScheduleId& schedule_id, HybridTime restore_at) {
+  auto deadline = CoarseMonoClock::now() + timeout_;
+
+  // Disable splitting for the entire run of restore.
+  RETURN_NOT_OK(DisableTabletSplitsDuringRestore(deadline));
+
+  // Get the suitable snapshot to restore from.
+  auto snapshot_id = VERIFY_RESULT(SuitableSnapshotId(schedule_id, restore_at, deadline));
+
+  for (;;) {
+        RpcController rpc;
+        rpc.set_deadline(deadline);
+        master::ListSnapshotsRequestPB req;
+        req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+        master::ListSnapshotsResponsePB resp;
+        RETURN_NOT_OK_PREPEND(
+            master_backup_proxy_->ListSnapshots(req, &resp, &rpc), "Failed to list snapshots");
+        if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+        }
+        if (resp.snapshots().size() != 1) {
+      return STATUS_FORMAT(
+          IllegalState, "Wrong number of snapshots received $0", resp.snapshots().size());
+        }
+        if (resp.snapshots()[0].entry().state() == master::SysSnapshotEntryPB::COMPLETE) {
+      if (SnapshotSuitableForRestoreAt(resp.snapshots()[0].entry(), restore_at)) {
+        break;
+      }
+      return STATUS_FORMAT(IllegalState, "Snapshot is not suitable for restore at $0", restore_at);
+        }
+        auto now = CoarseMonoClock::now();
+        if (now >= deadline) {
+      return STATUS_FORMAT(TimedOut, "Timed out to complete a snapshot $0", snapshot_id);
+        }
+        std::this_thread::sleep_until(std::min(deadline, now + 100ms));
+  }
+
+  RpcController rpc;
+  rpc.set_deadline(deadline);
+  RestoreSnapshotRequestPB req;
+  RestoreSnapshotResponsePB resp;
+  req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+  req.set_restore_ht(restore_at.ToUint64());
+  RETURN_NOT_OK_PREPEND(
+      master_backup_proxy_->RestoreSnapshot(req, &resp, &rpc), "Failed to restore snapshot");
+
+  if (resp.has_error()) {
+        return StatusFromPB(resp.error().status());
+  }
+
+  auto restoration_id = VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(resp.restoration_id()));
+
+  rapidjson::Document document;
+  document.SetObject();
+
+  AddStringField("snapshot_id", snapshot_id.ToString(), &document, &document.GetAllocator());
+  AddStringField("restoration_id", restoration_id.ToString(), &document, &document.GetAllocator());
+
+  return document;
+}
+
+Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
+    const SnapshotScheduleId& schedule_id, HybridTime restore_at) {
+  auto deadline = CoarseMonoClock::now() + timeout_;
+
+  RpcController rpc;
+  rpc.set_deadline(deadline);
+  master::RestoreSnapshotScheduleRequestPB req;
+  master::RestoreSnapshotScheduleResponsePB resp;
+  req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+  req.set_restore_ht(restore_at.ToUint64());
+
+  Status s = master_backup_proxy_->RestoreSnapshotSchedule(req, &resp, &rpc);
+  if (!s.ok()) {
+        if (s.IsRemoteError() &&
+            rpc.error_response()->code() == rpc::ErrorStatusPB::ERROR_NO_SUCH_METHOD) {
+      cout << "WARNING: fallback to RestoreSnapshotScheduleDeprecated." << endl;
+      return RestoreSnapshotScheduleDeprecated(schedule_id, restore_at);
+        }
+        RETURN_NOT_OK_PREPEND(
+            s, Format("Failed to restore snapshot from schedule: $0", schedule_id.ToString()));
+  }
+
+  if (resp.has_error()) {
+        return StatusFromPB(resp.error().status());
+  }
+
+  auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(resp.snapshot_id()));
+  auto restoration_id = VERIFY_RESULT(FullyDecodeTxnSnapshotRestorationId(resp.restoration_id()));
+
+  rapidjson::Document document;
+  document.SetObject();
+
+  AddStringField("snapshot_id", snapshot_id.ToString(), &document, &document.GetAllocator());
+  AddStringField("restoration_id", restoration_id.ToString(), &document, &document.GetAllocator());
+
+  return document;
+}
+
+Result<rapidjson::Document> ClusterAdminClient::EditSnapshotSchedule(
+    const SnapshotScheduleId& schedule_id, std::optional<MonoDelta> new_interval,
+    std::optional<MonoDelta> new_retention) {
+  master::EditSnapshotScheduleResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    master::EditSnapshotScheduleRequestPB req;
+    req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+    if (new_interval) {
+      req.set_interval_sec(new_interval->ToSeconds());
+    }
+    if (new_retention) {
+      req.set_retention_duration_sec(new_retention->ToSeconds());
+    }
+    return master_backup_proxy_->EditSnapshotSchedule(req, &resp, rpc);
+  }));
+  if (resp.has_error()) {
+        return StatusFromPB(resp.error().status());
+  }
+  rapidjson::Document document;
+  document.SetObject();
+  rapidjson::Value json_schedule =
+      VERIFY_RESULT(SnapshotScheduleInfoToJson(resp.schedule(), &document.GetAllocator()));
+  document.AddMember("schedule", json_schedule, document.GetAllocator());
+  return document;
+}
+
+Status ClusterAdminClient::RestoreSnapshot(const string& snapshot_id, HybridTime timestamp) {
+  RestoreSnapshotResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    RestoreSnapshotRequestPB req;
+    req.set_snapshot_id(StringToSnapshotId(snapshot_id));
+    if (timestamp) {
+      req.set_restore_ht(timestamp.ToUint64());
+    }
+    return master_backup_proxy_->RestoreSnapshot(req, &resp, rpc);
+  }));
+
+  cout << "Started restoring snapshot: " << snapshot_id << endl
+       << "Restoration id: " << FullyDecodeTxnSnapshotRestorationId(resp.restoration_id()) << endl;
+  if (timestamp) {
+        cout << "Restore at: " << timestamp << endl;
+  }
+  return Status::OK();
+}
+
+Status ClusterAdminClient::DeleteSnapshot(const std::string& snapshot_id) {
+  DeleteSnapshotResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    DeleteSnapshotRequestPB req;
+    req.set_snapshot_id(StringToSnapshotId(snapshot_id));
+    return master_backup_proxy_->DeleteSnapshot(req, &resp, rpc);
+  }));
+
+  cout << "Deleted snapshot: " << snapshot_id << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::AbortSnapshotRestore(const TxnSnapshotRestorationId& restoration_id) {
+  AbortSnapshotRestoreResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    AbortSnapshotRestoreRequestPB req;
+    req.set_restoration_id(restoration_id.data(), restoration_id.size());
+    return master_backup_proxy_->AbortSnapshotRestore(req, &resp, rpc);
+  }));
+
+  cout << "Aborted snapshot restore: " << restoration_id.ToString() << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::CreateSnapshotMetaFile(
+    const string& snapshot_id, const string& file_name) {
+  ListSnapshotsResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    ListSnapshotsRequestPB req;
+    req.set_snapshot_id(StringToSnapshotId(snapshot_id));
+
+    // Format 0 - latest format (== Format 2 at the moment).
+    // Format -1 - old format (no 'namespace_name' in the Table entry).
+    // Format 1 - old format.
+    // Format 2 - new format.
+    if (FLAGS_TEST_metadata_file_format_version == 0 ||
+        FLAGS_TEST_metadata_file_format_version >= 2) {
+      req.set_prepare_for_backup(true);
+    }
+    return master_backup_proxy_->ListSnapshots(req, &resp, rpc);
+  }));
+
+  if (resp.snapshots_size() > 1) {
+        LOG(WARNING) << "Requested snapshot metadata for snapshot '" << snapshot_id << "', but got "
+                     << resp.snapshots_size() << " snapshots in the response";
+  }
+
+  SnapshotInfoPB* snapshot = nullptr;
+  for (SnapshotInfoPB& snapshot_entry : *resp.mutable_snapshots()) {
+        if (SnapshotIdToString(snapshot_entry.id()) == snapshot_id) {
+      snapshot = &snapshot_entry;
+      break;
+        }
+  }
+  if (!snapshot) {
+        return STATUS_FORMAT(
+            InternalError, "Response contained $0 entries but no entry for snapshot '$1'",
+            resp.snapshots_size(), snapshot_id);
+  }
+
+  if (FLAGS_TEST_metadata_file_format_version == -1) {
+        // Remove 'namespace_name' from SysTablesEntryPB.
+        SysSnapshotEntryPB& sys_entry = *snapshot->mutable_entry();
+        for (SysRowEntry& entry : *sys_entry.mutable_entries()) {
+      if (entry.type() == SysRowEntryType::TABLE) {
+        auto meta = VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
+        meta.clear_namespace_name();
+        entry.set_data(meta.SerializeAsString());
+      }
+        }
+  }
+
+  cout << "Exporting snapshot " << snapshot_id << " (" << snapshot->entry().state() << ") to file "
+       << file_name << endl;
+
+  // Serialize snapshot protobuf to given path.
+  RETURN_NOT_OK(pb_util::WritePBContainerToPath(
+      Env::Default(), file_name, *snapshot, pb_util::OVERWRITE, pb_util::SYNC));
+
+  cout << "Snapshot metadata was saved into file: " << file_name << endl;
+  return Status::OK();
+}
+
+string ClusterAdminClient::GetDBTypeName(const SysNamespaceEntryPB& pb) {
+  const YQLDatabase db_type = GetDatabaseType(pb);
+  switch (db_type) {
+        case YQL_DATABASE_UNKNOWN:
+      return "UNKNOWN DB TYPE";
+        case YQL_DATABASE_CQL:
+      return "YCQL keyspace";
+        case YQL_DATABASE_PGSQL:
+      return "YSQL database";
+        case YQL_DATABASE_REDIS:
+      return "YEDIS namespace";
+  }
+  FATAL_INVALID_ENUM_VALUE(YQLDatabase, db_type);
+}
+
+Status ClusterAdminClient::UpdateUDTypes(
+    QLTypePB* pb_type, bool* update_meta, const NSNameToNameMap& ns_name_to_name) {
+  return IterateAndDoForUDT(
+      pb_type, [update_meta, &ns_name_to_name](QLTypePB::UDTypeInfo* udtype_info) -> Status {
+        auto ns_it = ns_name_to_name.find(udtype_info->keyspace_name());
+        if (ns_it == ns_name_to_name.end()) {
+          return STATUS_FORMAT(
+              InvalidArgument, "No metadata for keyspace '$0' referenced in UDType '$1'",
+              udtype_info->keyspace_name(), udtype_info->name());
+        }
+
+        if (udtype_info->keyspace_name() != ns_it->second) {
+          udtype_info->set_keyspace_name(ns_it->second);
+          *DCHECK_NOTNULL(update_meta) = true;
+        }
+        return Status::OK();
+      });
+}
+
+class ImportSnapshotTableFilter {
+ public:
+  typedef std::unique_ptr<ImportSnapshotTableFilter> Ptr;
+
+  explicit ImportSnapshotTableFilter(SnapshotInfoPB* req_snapshot_info) :
+    req_snapshot_info_(req_snapshot_info), table_index_(0) {}
+  virtual ~ImportSnapshotTableFilter() {}
+
+  virtual YBTableName CurrentInputTable() const { return YBTableName(); }
+  virtual bool IsDatabaseTypeSupported(YQLDatabase type) const { return true; }
+  virtual bool ShouldProcessTable(const string &table_name, const string &table_id) {
+    // Default is to process all tables
+    table_index_++;
+    return true;
+  }
+  virtual Status UpdateRequestSnapshotInfo() { return Status::OK(); }
+  virtual SnapshotInfoPB* WorkingSnapshotInfo() { return req_snapshot_info_; }
+  virtual size_t CurrentTableIndex() const { return table_index_; }
+ protected:
+  SnapshotInfoPB* req_snapshot_info_;
+  size_t table_index_;
+};
+
+class ImportSnapshotRenameAllTables : public ImportSnapshotTableFilter {
+ public:
+  ImportSnapshotRenameAllTables(
+      SnapshotInfoPB* req_snapshot_info, const vector<YBTableName> tables) :
+    ImportSnapshotTableFilter(req_snapshot_info), tables_(tables) {}
+
+  virtual YBTableName CurrentInputTable() const {
+    return table_index_ < tables_.size() ? tables_[table_index_] : YBTableName();
+  }
+ protected:
+  std::vector<YBTableName> tables_;
+};
+
+class ImportSnapshotSelectiveTableFilter : public ImportSnapshotTableFilter {
+ public:
+  ImportSnapshotSelectiveTableFilter(
+      SnapshotInfoPB* req_snapshot_info, const vector<YBTableName> tables) :
+    ImportSnapshotTableFilter(req_snapshot_info) {
+    for (auto &t : tables) {
+      table_name_map_[t.table_name()] = t;
+    }
+  }
+  virtual bool IsDatabaseTypeSupported(YQLDatabase type) const {
+    return type == YQL_DATABASE_CQL ? true : false;
+  }
+
+  virtual bool ShouldProcessTable(const string &table_name, const string &table_id) {
+    auto table_it = table_name_map_.find(table_name);
+    if (table_it == table_name_map_.end()) {
+      return false;
+    }
+    table_it->second.set_table_id(table_id);
+    table_id_map_[table_id] = table_name;
+    table_index_++;
+    return true;
+  }
+  virtual SnapshotInfoPB* WorkingSnapshotInfo() { return &snapshot_info_; }
+  virtual Status UpdateRequestSnapshotInfo();
+ private:
+  std::unordered_map<string, YBTableName> table_name_map_;
+  std::unordered_map<string, string> table_id_map_;
+  master::SnapshotInfoPB snapshot_info_;
+};
+
+Status ImportSnapshotSelectiveTableFilter::UpdateRequestSnapshotInfo() {
+  // Do sanity checks
+  for (auto& it : table_name_map_) {
+    if (!it.second.has_table_id()) {
+      return STATUS_FORMAT(
+          InvalidArgument, "Table $0 not found in backup", it.second.table_name());
+    }
+    auto id_it = table_id_map_.find(it.second.table_id());
+    if (id_it == table_id_map_.end()) {
+      return STATUS_FORMAT(
+          InvalidArgument, "Table id $0 not found in map", it.second.table_id());
+    }
+    CHECK_EQ(id_it->second, it.second.table_name());
+  }
+
+  for (BackupRowEntryPB& backup_entry : *snapshot_info_.mutable_backup_entries()) {
+    SysRowEntry& entry = *backup_entry.mutable_entry();
+    if (entry.type() == SysRowEntryType::TABLET) {
+      auto meta = VERIFY_RESULT(ParseFromSlice<SysTabletsEntryPB>(entry.data()));
+      auto id_it = table_id_map_.find(meta.table_id());
+      if (id_it == table_id_map_.end()) {
+        entry.set_data("");
+      }
+    }
+    if (entry.data().length()) {
+      req_snapshot_info_->add_backup_entries()->CopyFrom(backup_entry);
+    }
+  }
+  if (snapshot_info_.has_id()) {
+    req_snapshot_info_->set_id(snapshot_info_.id());
+  }
+  if (snapshot_info_.has_entry()) {
+    req_snapshot_info_->mutable_entry()->CopyFrom(snapshot_info_.entry());
+  }
+  if (snapshot_info_.has_format_version()) {
+    req_snapshot_info_->set_format_version(snapshot_info_.format_version());
+  }
+  return Status::OK();
+}
+
+Status ClusterAdminClient::ProcessSnapshotInfoPBFile(
+    const string& file_name,
+    const TypedNamespaceName& keyspace,
+    ImportSnapshotTableFilter *table_filter) {
+  SnapshotInfoPB* snapshot_info = table_filter->WorkingSnapshotInfo();
+  // Read snapshot protobuf from given path.
+  RETURN_NOT_OK(pb_util::ReadPBContainerFromPath(Env::Default(), file_name, snapshot_info));
+
+  if (!snapshot_info->has_format_version()) {
+    SCHECK_EQ(
+        0, snapshot_info->backup_entries_size(), InvalidArgument,
+        Format( "Metadata file in Format 1 has backup entries from Format 2: $0",
+          snapshot_info->backup_entries_size()));
+
+    // Repack PB data loaded in the old format.
+    // Init BackupSnapshotPB based on loaded SnapshotInfoPB.
+    SysSnapshotEntryPB& sys_entry = *snapshot_info->mutable_entry();
+    snapshot_info->mutable_backup_entries()->Reserve(sys_entry.entries_size());
+    for (SysRowEntry& entry : *sys_entry.mutable_entries()) {
+      snapshot_info->add_backup_entries()->mutable_entry()->Swap(&entry);
+    }
+
+    sys_entry.clear_entries();
+    snapshot_info->set_format_version(2);
+  }
+
+  cout << "Importing snapshot " << SnapshotIdToString(snapshot_info->id()) << " ("
+       << snapshot_info->entry().state() << ")" << endl;
+
+  // Map: Old namespace ID -> [Old name, New name] pair.
+  typedef pair<NamespaceName, NamespaceName> NSNamePair;
+  typedef std::unordered_map<NamespaceId, NSNamePair> NSIdToNameMap;
+  NSIdToNameMap ns_id_to_name;
+  NSNameToNameMap ns_name_to_name;
+
+  bool was_table_renamed = false;
+  for (BackupRowEntryPB& backup_entry : *snapshot_info->mutable_backup_entries()) {
+    SysRowEntry& entry = *backup_entry.mutable_entry();
+    YBTableName table_name = table_filter->CurrentInputTable();
+
+    switch (entry.type()) {
+      case SysRowEntryType::NAMESPACE: {
+        auto meta = VERIFY_RESULT(ParseFromSlice<SysNamespaceEntryPB>(entry.data()));
+        if (!table_filter->IsDatabaseTypeSupported(meta.database_type())) {
+          return STATUS_FORMAT(
+              InvalidArgument, "Selective restore is supported only for YCQL keyspaces");
+        }
+        const string db_type = GetDBTypeName(meta);
+        cout << "Target imported " << db_type
+             << " name: " << (keyspace.name.empty() ? meta.name() : keyspace.name) << endl
+             << db_type << " being imported: " << meta.name() << endl;
+
+        if (!keyspace.name.empty() && keyspace.name != meta.name()) {
+          ns_id_to_name[entry.id()] = NSNamePair(meta.name(), keyspace.name);
+          ns_name_to_name[meta.name()] = keyspace.name;
+
+          meta.set_name(keyspace.name);
+          entry.set_data(meta.SerializeAsString());
+        } else {
+          ns_id_to_name[entry.id()] = NSNamePair(meta.name(), meta.name());
+          ns_name_to_name[meta.name()] = meta.name();
+        }
+        break;
+      }
+      case SysRowEntryType::UDTYPE: {
+        // Note: UDT renaming is not supported.
+        auto meta = VERIFY_RESULT(ParseFromSlice<SysUDTypeEntryPB>(entry.data()));
+        const auto ns_it = ns_id_to_name.find(meta.namespace_id());
+        cout << "Target imported user-defined type name: "
+             << (ns_it == ns_id_to_name.end() ? "[" + meta.namespace_id() + "]"
+                                              : ns_it->second.second)
+             << "." << meta.name() << endl
+             << "User-defined type being imported: "
+             << (ns_it == ns_id_to_name.end() ? "[" + meta.namespace_id() + "]"
+                                              : ns_it->second.first)
+             << "." << meta.name() << endl;
+
+        bool update_meta = false;
+        // Update QLTypePB::UDTypeInfo::keyspace_name in the UDT params.
+        for (int i = 0; i < meta.field_names_size(); ++i) {
+          RETURN_NOT_OK(UpdateUDTypes(meta.mutable_field_types(i), &update_meta, ns_name_to_name));
+        }
+
+        if (update_meta) {
+          entry.set_data(meta.SerializeAsString());
+        }
+        break;
+      }
+      case SysRowEntryType::TABLE: {
+        if (was_table_renamed && table_name.empty()) {
+          // Renaming is allowed for all tables OR for no one table.
+          return STATUS_FORMAT(
+              InvalidArgument,
+              "There is no name for table (including indexes) number: $0",
+              table_filter->CurrentTableIndex());
+        }
+
+        auto meta = VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
+        if (!table_filter->ShouldProcessTable(meta.name(), entry.id())) {
+          entry.set_data("");
+          break;
+        }
+        const auto colocated_prefix = meta.colocated() ? "colocated " : "";
+
+        if (meta.indexed_table_id().empty()) {
+          cout << "Table type: " << colocated_prefix << "table" << endl;
+        } else {
+          cout << "Table type: " << colocated_prefix << "index (attaching to the old table id "
+               << meta.indexed_table_id() << ")" << endl;
+        }
+
+        if (!table_name.empty()) {
+          DCHECK(table_name.has_namespace());
+          DCHECK(table_name.has_table());
+          cout << "Target imported " << colocated_prefix << "table name: " << table_name.ToString()
+               << endl;
+        } else if (!keyspace.name.empty()) {
+          if (IsColocatedDbParentTableName(meta.name())) {
+            // Check whether the import_snapshot command is invoked for a colocation migration.
+            // And adjust the output message if a colocation migration happens.
+            master::GetNamespaceInfoResponsePB ns_resp;
+            RETURN_NOT_OK(RequestMasterLeader(&ns_resp, [&](RpcController* rpc) {
+              master::GetNamespaceInfoRequestPB req;
+              req.mutable_namespace_()->set_name(keyspace.name);
+              req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+              return master_ddl_proxy_->GetNamespaceInfo(req, &ns_resp, rpc);
+            }));
+            if (ns_resp.has_legacy_colocated_database()
+                && !ns_resp.legacy_colocated_database()) {
+              master::ListTablegroupsResponsePB resp;
+              RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+                master::ListTablegroupsRequestPB req;
+                req.set_namespace_id(ns_resp.namespace_().id());
+                return master_ddl_proxy_->ListTablegroups(req, &resp, rpc);
+              }));
+              // For colocation migration, there should be only one default tablegroup in the target
+              // imported database because we don't support tablespace in a legacy colocated
+              // database.
+              DCHECK_EQ(resp.tablegroups().size(), 1);
+              cout << "Target imported " << colocated_prefix << "table name: "
+                   << keyspace.name << "."
+                   << GetColocationParentTableName(resp.tablegroups()[0].id()) << endl;
+            }
+          } else {
+            cout << "Target imported " << colocated_prefix << "table name: " << keyspace.name << "."
+                 << meta.name() << endl;
+          }
+        }
+
+        // Print old table name before the table renaming in the code below.
+        cout << (meta.colocated() ? "Colocated t" : "T") << "able being imported: "
+             << (meta.namespace_name().empty() ? "[" + meta.namespace_id() + "]"
+                                               : meta.namespace_name())
+             << "." << meta.name() << endl;
+
+        bool update_meta = false;
+        if (!table_name.empty() && table_name.table_name() != meta.name()) {
+          meta.set_name(table_name.table_name());
+          update_meta = true;
+          was_table_renamed = true;
+        }
+        if (!keyspace.name.empty() && keyspace.name != meta.namespace_name()) {
+          meta.set_namespace_name(keyspace.name);
+          update_meta = true;
+        }
+
+        if (meta.name().empty()) {
+          return STATUS(IllegalState, "Could not find table name from snapshot metadata");
+        }
+
+        // Update QLTypePB::UDTypeInfo::keyspace_name in all UDT params in the table Schema.
+        SchemaPB* const schema = meta.mutable_schema();
+        // Recursively update ids in used user-defined types.
+        for (int i = 0; i < schema->columns_size(); ++i) {
+          QLTypePB* const pb_type = schema->mutable_columns(i)->mutable_type();
+          RETURN_NOT_OK(UpdateUDTypes(pb_type, &update_meta, ns_name_to_name));
+        }
+
+        // Update the table name if needed.
+        if (update_meta) {
+          entry.set_data(meta.SerializeAsString());
+        }
+
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  RETURN_NOT_OK(table_filter->UpdateRequestSnapshotInfo());
+  return Status::OK();
+}
+
+Status ClusterAdminClient::ImportSnapshotMetaFile(
+    const string& file_name,
+    const TypedNamespaceName& keyspace,
+    const vector<YBTableName>& tables,
+    bool selective_import) {
+  ImportSnapshotMetaRequestPB req;
+  SnapshotInfoPB* snapshot_info = req.mutable_snapshot();
+
+  ImportSnapshotTableFilter::Ptr table_filter_ptr;
+  if (!tables.size()) {
+    table_filter_ptr = std::make_unique<ImportSnapshotTableFilter>(snapshot_info);
+  } else if (!selective_import) {
+    table_filter_ptr = std::make_unique<ImportSnapshotRenameAllTables>(snapshot_info, tables);
+  } else {
+    table_filter_ptr = std::make_unique<ImportSnapshotSelectiveTableFilter>(snapshot_info, tables);
+  }
+  cout << "Read snapshot meta file " << file_name << endl;
+
+  RETURN_NOT_OK(ProcessSnapshotInfoPBFile(file_name, keyspace, table_filter_ptr.get()));
+  size_t table_index = table_filter_ptr->CurrentTableIndex();
+
+  // RPC timeout is a function of the number of tables that needs to be imported.
+  ImportSnapshotMetaResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(
+      &resp,
+      [&](RpcController* rpc) { return master_backup_proxy_->ImportSnapshotMeta(req, &resp, rpc); },
+      timeout_ * std::max(static_cast<size_t>(1), table_index)));
+
+  const int kObjectColumnWidth = 16;
+  const auto pad_object_type = [](const string& s) {
+    return RightPadToWidth(s, kObjectColumnWidth);
+  };
+
+  cout << "Successfully applied snapshot." << endl
+       << pad_object_type("Object") << kColumnSep << RightPadToUuidWidth("Old ID") << kColumnSep
+       << RightPadToUuidWidth("New ID") << endl;
+
+  const RepeatedPtrField<ImportSnapshotMetaResponsePB_TableMetaPB>& tables_meta =
+      resp.tables_meta();
+  CreateSnapshotRequestPB snapshot_req;
+  CreateSnapshotResponsePB snapshot_resp;
+
+  for (int i = 0; i < tables_meta.size(); ++i) {
+        const ImportSnapshotMetaResponsePB_TableMetaPB& table_meta = tables_meta.Get(i);
+        const string& new_table_id = table_meta.table_ids().new_id();
+
+        cout << pad_object_type("Keyspace") << kColumnSep << table_meta.namespace_ids().old_id()
+             << kColumnSep << table_meta.namespace_ids().new_id() << endl;
+
+        if (!ImportSnapshotMetaResponsePB_TableType_IsValid(table_meta.table_type())) {
+          return STATUS_FORMAT(InternalError, "Found unknown table type: ",
+              table_meta.table_type());
+        }
+
+        const string table_type = AllCapsToCamelCase(
+            ImportSnapshotMetaResponsePB_TableType_Name(table_meta.table_type()));
+        cout << pad_object_type(table_type) << kColumnSep << table_meta.table_ids().old_id()
+             << kColumnSep << new_table_id << endl;
+
+        const RepeatedPtrField<IdPairPB>& udts_map = table_meta.ud_types_ids();
+        for (int j = 0; j < udts_map.size(); ++j) {
+          const IdPairPB& pair = udts_map.Get(j);
+          cout << pad_object_type("UDType") << kColumnSep << pair.old_id() << kColumnSep
+            << pair.new_id() << endl;
+        }
+
+        const RepeatedPtrField<IdPairPB>& tablets_map = table_meta.tablets_ids();
+        for (int j = 0; j < tablets_map.size(); ++j) {
+          const IdPairPB& pair = tablets_map.Get(j);
+          cout << pad_object_type(Format("Tablet $0", j)) << kColumnSep << pair.old_id()
+            << kColumnSep << pair.new_id() << endl;
+        }
+
+        RETURN_NOT_OK(yb_client_->WaitForCreateTableToFinish(
+            new_table_id,
+            CoarseMonoClock::Now() +
+                MonoDelta::FromSeconds(FLAGS_yb_client_admin_operation_timeout_sec)));
+
+        snapshot_req.mutable_tables()->Add()->set_table_id(new_table_id);
+  }
+
+  // All indexes already are in the request. Do not add them twice.
+  snapshot_req.set_add_indexes(false);
+  snapshot_req.set_transaction_aware(true);
+  snapshot_req.set_imported(true);
+  // Create new snapshot.
+  RETURN_NOT_OK(RequestMasterLeader(&snapshot_resp, [&](RpcController* rpc) {
+    return master_backup_proxy_->CreateSnapshot(snapshot_req, &snapshot_resp, rpc);
+  }));
+
+  cout << pad_object_type("Snapshot") << kColumnSep << SnapshotIdToString(snapshot_info->id())
+       << kColumnSep << SnapshotIdToString(snapshot_resp.snapshot_id()) << endl;
+
+  return Status::OK();
+}
+
+Status ClusterAdminClient::ListReplicaTypeCounts(const YBTableName& table_name) {
+  vector<string> tablet_ids, ranges;
+  RETURN_NOT_OK(yb_client_->GetTablets(table_name, 0, &tablet_ids, &ranges));
+  master::GetTabletLocationsResponsePB resp;
+  RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
+    master::GetTabletLocationsRequestPB req;
+    for (const auto& tablet_id : tablet_ids) {
+      req.add_tablet_ids(tablet_id);
+    }
+    return master_client_proxy_->GetTabletLocations(req, &resp, rpc);
+  }));
+
+  struct ReplicaCounts {
+        int live_count;
+        int read_only_count;
+        string placement_uuid;
+  };
+  std::map<TabletServerId, ReplicaCounts> replica_map;
+
+  std::cout << "Tserver ID\t\tPlacement ID\t\tLive count\t\tRead only count\n";
+
+  for (int tablet_idx = 0; tablet_idx < resp.tablet_locations_size(); tablet_idx++) {
+        const master::TabletLocationsPB& locs = resp.tablet_locations(tablet_idx);
+        for (int replica_idx = 0; replica_idx < locs.replicas_size(); replica_idx++) {
+      const auto& replica = locs.replicas(replica_idx);
+      const string& ts_uuid = replica.ts_info().permanent_uuid();
+      const string& placement_uuid =
+          replica.ts_info().has_placement_uuid() ? replica.ts_info().placement_uuid() : "";
+      bool is_replica_read_only =
+          replica.member_type() == consensus::PeerMemberType::PRE_OBSERVER ||
+          replica.member_type() == consensus::PeerMemberType::OBSERVER;
+      int live_count = is_replica_read_only ? 0 : 1;
+      int read_only_count = 1 - live_count;
+      if (replica_map.count(ts_uuid) == 0) {
+        replica_map[ts_uuid].live_count = live_count;
+        replica_map[ts_uuid].read_only_count = read_only_count;
+        replica_map[ts_uuid].placement_uuid = placement_uuid;
+      } else {
+        ReplicaCounts* counts = &replica_map[ts_uuid];
+        counts->live_count += live_count;
+        counts->read_only_count += read_only_count;
+      }
+        }
+  }
+
+  for (auto const& tserver : replica_map) {
+        std::cout << tserver.first << "\t\t" << tserver.second.placement_uuid << "\t\t"
+                  << tserver.second.live_count << "\t\t" << tserver.second.read_only_count
+                  << std::endl;
+  }
+
+  return Status::OK();
+}
+
+Status ClusterAdminClient::SetPreferredZones(const std::vector<string>& preferred_zones) {
+  rpc::RpcController rpc;
+  master::SetPreferredZonesRequestPB req;
+  master::SetPreferredZonesResponsePB resp;
+  rpc.set_timeout(timeout_);
+
+  std::set<string> zones;
+  std::set<int> visited_priorities;
+
+  for (const string& zone : preferred_zones) {
+        if (zones.find(zone) != zones.end()) {
+      return STATUS_SUBSTITUTE(
+          InvalidArgument, "Invalid argument for preferred zone $0, values should not repeat",
+          zone);
+        }
+
+        std::vector<std::string> zone_priority_split =
+            strings::Split(zone, ":", strings::AllowEmpty());
+        if (zone_priority_split.size() == 0 || zone_priority_split.size() > 2) {
+      return STATUS_SUBSTITUTE(
+          InvalidArgument,
+          "Invalid argument for preferred zone $0, should have format cloud.region.zone[:priority]",
+          zone);
+        }
+
+        std::vector<string> tokens =
+            strings::Split(zone_priority_split[0], ".", strings::AllowEmpty());
+        if (tokens.size() != 3) {
+      return STATUS_SUBSTITUTE(
+          InvalidArgument,
+          "Invalid argument for preferred zone $0, should have format cloud.region.zone:[priority]",
+          zone);
+        }
+
+        uint priority = 1;
+
+        if (zone_priority_split.size() == 2) {
+      auto result = CheckedStoi(zone_priority_split[1]);
+      if (!result.ok() || result.get() < 1) {
+        return STATUS_SUBSTITUTE(
+            InvalidArgument,
+            "Invalid argument for preferred zone $0, priority should be non-zero positive integer",
+            zone);
+      }
+      priority = static_cast<uint>(result.get());
+        }
+
+        // Max priority if each zone has a unique priority value can only be the size of the input
+        // array
+        if (priority > preferred_zones.size()) {
+      return STATUS(
+          InvalidArgument,
+          "Priority value cannot be more than the number of zones in the preferred list since each "
+          "priority should be associated with at least one zone from the list");
+        }
+
+        CloudInfoPB* cloud_info = nullptr;
+        visited_priorities.insert(priority);
+
+        while (req.multi_preferred_zones_size() < static_cast<int>(priority)) {
+      req.add_multi_preferred_zones();
+        }
+
+        auto current_list = req.mutable_multi_preferred_zones(priority - 1);
+        cloud_info = current_list->add_zones();
+
+        cloud_info->set_placement_cloud(tokens[0]);
+        cloud_info->set_placement_region(tokens[1]);
+        cloud_info->set_placement_zone(tokens[2]);
+
+        zones.emplace(zone);
+
+        if (priority == 1) {
+      // Handle old clusters which can only handle a single priority. New clusters will ignore this
+      // member as multi_preferred_zones is already set.
+      cloud_info = req.add_preferred_zones();
+      cloud_info->set_placement_cloud(tokens[0]);
+      cloud_info->set_placement_region(tokens[1]);
+      cloud_info->set_placement_zone(tokens[2]);
+        }
+  }
+
+  int size = static_cast<int>(visited_priorities.size());
+  if (size > 0 && (*(visited_priorities.rbegin()) != size)) {
+        return STATUS_SUBSTITUTE(
+            InvalidArgument, "Invalid argument, each priority should have at least one zone");
+  }
+
+  RETURN_NOT_OK(master_cluster_proxy_->SetPreferredZones(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+        return STATUS(ServiceUnavailable, resp.error().status().message());
+  }
+
+  return Status::OK();
+}
+
+Status ClusterAdminClient::RotateUniverseKey(const std::string& key_path) {
+  return SendEncryptionRequest(key_path, true);
+}
+
+Status ClusterAdminClient::DisableEncryption() { return SendEncryptionRequest("", false); }
+
+Status ClusterAdminClient::SendEncryptionRequest(
+    const std::string& key_path, bool enable_encryption) {
+  RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+
+  // Get the cluster config from the master leader.
+  master::ChangeEncryptionInfoRequestPB encryption_info_req;
+  master::ChangeEncryptionInfoResponsePB encryption_info_resp;
+  encryption_info_req.set_encryption_enabled(enable_encryption);
+  if (key_path != "") {
+        encryption_info_req.set_key_path(key_path);
+  }
+  RETURN_NOT_OK_PREPEND(
+      master_encryption_proxy_->ChangeEncryptionInfo(
+          encryption_info_req, &encryption_info_resp, &rpc),
+      "MasterServiceImpl::ChangeEncryptionInfo call fails.")
+
+  if (encryption_info_resp.has_error()) {
+        return StatusFromPB(encryption_info_resp.error().status());
+  }
+  return Status::OK();
+}
+
+Status ClusterAdminClient::IsEncryptionEnabled() {
+  RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+
+  master::IsEncryptionEnabledRequestPB req;
+  master::IsEncryptionEnabledResponsePB resp;
+  RETURN_NOT_OK_PREPEND(
+      master_encryption_proxy_->IsEncryptionEnabled(req, &resp, &rpc),
+      "MasterServiceImpl::IsEncryptionEnabled call fails.");
+  if (resp.has_error()) {
+        return StatusFromPB(resp.error().status());
+  }
+
+  std::cout << "Encryption status: "
+            << (resp.encryption_enabled() ? Format("ENABLED with key id $0", resp.key_id())
+                                          : "DISABLED")
+            << std::endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::AddUniverseKeyToAllMasters(
+    const std::string& key_id, const std::string& universe_key) {
+  RETURN_NOT_OK(encryption::EncryptionParams::IsValidKeySize(
+      universe_key.size() - encryption::EncryptionParams::kBlockSize));
+
+  master::AddUniverseKeysRequestPB req;
+  master::AddUniverseKeysResponsePB resp;
+  auto* universe_keys = req.mutable_universe_keys();
+  (*universe_keys->mutable_map())[key_id] = universe_key;
+
+  for (auto hp : VERIFY_RESULT(HostPort::ParseStrings(master_addr_list_, 7100))) {
+        rpc::RpcController rpc;
+        rpc.set_timeout(timeout_);
+        master::MasterEncryptionProxy proxy(proxy_cache_.get(), hp);
+        RETURN_NOT_OK_PREPEND(
+            proxy.AddUniverseKeys(req, &resp, &rpc),
+            Format("MasterServiceImpl::AddUniverseKeys call fails on host $0.", hp.ToString()));
+        if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+        }
+        std::cout << Format("Successfully added key to the node $0.\n", hp.ToString());
+  }
+
+  return Status::OK();
+}
+
+Status ClusterAdminClient::AllMastersHaveUniverseKeyInMemory(const std::string& key_id) {
+  master::HasUniverseKeyInMemoryRequestPB req;
+  master::HasUniverseKeyInMemoryResponsePB resp;
+  req.set_version_id(key_id);
+
+  for (auto hp : VERIFY_RESULT(HostPort::ParseStrings(master_addr_list_, 7100))) {
+        rpc::RpcController rpc;
+        rpc.set_timeout(timeout_);
+        master::MasterEncryptionProxy proxy(proxy_cache_.get(), hp);
+        RETURN_NOT_OK_PREPEND(
+            proxy.HasUniverseKeyInMemory(req, &resp, &rpc),
+            "MasterServiceImpl::ChangeEncryptionInfo call fails.");
+
+        if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+        }
+        if (!resp.has_key()) {
+      return STATUS_FORMAT(TryAgain, "Node $0 does not have universe key in memory", hp);
+        }
+
+        std::cout << Format(
+            "Node $0 has universe key in memory: $1\n", hp.ToString(), resp.has_key());
+  }
+
+  return Status::OK();
+}
+
+Status ClusterAdminClient::RotateUniverseKeyInMemory(const std::string& key_id) {
+  RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+
+  master::ChangeEncryptionInfoRequestPB req;
+  master::ChangeEncryptionInfoResponsePB resp;
+  req.set_encryption_enabled(true);
+  req.set_in_memory(true);
+  req.set_version_id(key_id);
+  RETURN_NOT_OK_PREPEND(
+      master_encryption_proxy_->ChangeEncryptionInfo(req, &resp, &rpc),
+      "MasterServiceImpl::ChangeEncryptionInfo call fails.");
+  if (resp.has_error()) {
+        return StatusFromPB(resp.error().status());
+  }
+
+  std::cout << "Rotated universe key in memory\n";
+  return Status::OK();
+}
+
+Status ClusterAdminClient::DisableEncryptionInMemory() {
+  RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+
+  master::ChangeEncryptionInfoRequestPB req;
+  master::ChangeEncryptionInfoResponsePB resp;
+  req.set_encryption_enabled(false);
+  RETURN_NOT_OK_PREPEND(
+      master_encryption_proxy_->ChangeEncryptionInfo(req, &resp, &rpc),
+      "MasterServiceImpl::ChangeEncryptionInfo call fails.");
+  if (resp.has_error()) {
+        return StatusFromPB(resp.error().status());
+  }
+
+  std::cout << "Encryption disabled\n";
+  return Status::OK();
+}
+
+Status ClusterAdminClient::WriteUniverseKeyToFile(
+    const std::string& key_id, const std::string& file_name) {
+  RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+
+  master::GetUniverseKeyRegistryRequestPB req;
+  master::GetUniverseKeyRegistryResponsePB resp;
+  RETURN_NOT_OK_PREPEND(
+      master_encryption_proxy_->GetUniverseKeyRegistry(req, &resp, &rpc),
+      "MasterServiceImpl::ChangeEncryptionInfo call fails.");
+  if (resp.has_error()) {
+        return StatusFromPB(resp.error().status());
+  }
+
+  auto universe_keys = resp.universe_keys();
+  const auto& it = universe_keys.map().find(key_id);
+  if (it == universe_keys.map().end()) {
+        return STATUS_FORMAT(NotFound, "Could not find key with id $0", key_id);
+  }
+
+  RETURN_NOT_OK(WriteStringToFile(Env::Default(), Slice(it->second), file_name));
+
+  std::cout << "Finished writing to file\n";
+  return Status::OK();
+}
+
+Status ClusterAdminClient::CreateCDCSDKDBStream(
+    const TypedNamespaceName& ns, const std::string& checkpoint_type,
+    const std::string& record_type) {
+  HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS());
+  auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(proxy_cache_.get(), ts_addr);
+
+  cdc::CreateCDCStreamRequestPB req;
+  cdc::CreateCDCStreamResponsePB resp;
+
+  req.set_namespace_name(ns.name);
+  req.set_db_type(ns.db_type);
+  if (record_type == yb::ToString("ALL")) {
+    req.set_record_type(cdc::CDCRecordType::ALL);
+  } else if (record_type == yb::ToString("FULL_ROW_NEW_IMAGE")) {
+    req.set_record_type(cdc::CDCRecordType::FULL_ROW_NEW_IMAGE);
+  } else if (record_type == yb::ToString("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES")) {
+    req.set_record_type(cdc::CDCRecordType::MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES);
+  } else {
+    req.set_record_type(cdc::CDCRecordType::CHANGE);
+  }
+
+  req.set_record_format(cdc::CDCRecordFormat::PROTO);
+  req.set_source_type(cdc::CDCRequestSource::CDCSDK);
+  if (checkpoint_type == yb::ToString("EXPLICIT")) {
+        req.set_checkpoint_type(cdc::CDCCheckpointType::EXPLICIT);
+  } else {
+        req.set_checkpoint_type(cdc::CDCCheckpointType::IMPLICIT);
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(cdc_proxy->CreateCDCStream(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+        cout << "Error creating stream: " << resp.error().status().message() << endl;
+        return StatusFromPB(resp.error().status());
+  }
+
+  cout << "CDC Stream ID: " << resp.db_stream_id() << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::CreateCDCStream(const TableId& table_id) {
+  master::CreateCDCStreamRequestPB req;
+  master::CreateCDCStreamResponsePB resp;
+  req.set_table_id(table_id);
+  req.mutable_options()->Reserve(3);
+
+  auto record_type_option = req.add_options();
+  record_type_option->set_key(cdc::kRecordType);
+  record_type_option->set_value(CDCRecordType_Name(cdc::CDCRecordType::CHANGE));
+
+  auto record_format_option = req.add_options();
+  record_format_option->set_key(cdc::kRecordFormat);
+  record_format_option->set_value(CDCRecordFormat_Name(cdc::CDCRecordFormat::JSON));
+
+  auto source_type_option = req.add_options();
+  source_type_option->set_key(cdc::kSourceType);
+  source_type_option->set_value(CDCRequestSource_Name(cdc::CDCRequestSource::XCLUSTER));
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->CreateCDCStream(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+        cout << "Error creating stream: " << resp.error().status().message() << endl;
+        return StatusFromPB(resp.error().status());
+  }
+
+  cout << "CDC Stream ID: " << resp.stream_id() << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::DeleteCDCSDKDBStream(const std::string& db_stream_id) {
+  master::DeleteCDCStreamRequestPB req;
+  master::DeleteCDCStreamResponsePB resp;
+  req.add_stream_id(db_stream_id);
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->DeleteCDCStream(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+        cout << "Error deleting stream: " << resp.error().status().message() << endl;
+        return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Successfully deleted Change Data Stream ID: " << db_stream_id << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::DeleteCDCStream(const std::string& stream_id, bool force_delete) {
+  master::DeleteCDCStreamRequestPB req;
+  master::DeleteCDCStreamResponsePB resp;
+  req.add_stream_id(stream_id);
+  req.set_force_delete(force_delete);
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->DeleteCDCStream(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+        cout << "Error deleting stream: " << resp.error().status().message() << endl;
+        return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Successfully deleted CDC Stream ID: " << stream_id << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::ListCDCStreams(const TableId& table_id) {
+  master::ListCDCStreamsRequestPB req;
+  master::ListCDCStreamsResponsePB resp;
+  req.set_id_type(yb::master::IdTypePB::TABLE_ID);
+  if (!table_id.empty()) {
+        req.set_table_id(table_id);
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->ListCDCStreams(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+        cout << "Error getting CDC stream list: " << resp.error().status().message() << endl;
+        return StatusFromPB(resp.error().status());
+  }
+
+  cout << "CDC Streams: \r\n" << resp.DebugString();
+  return Status::OK();
+}
+
+Status ClusterAdminClient::ListCDCSDKStreams(const std::string& namespace_name) {
+  master::ListCDCStreamsRequestPB req;
+  master::ListCDCStreamsResponsePB resp;
+  req.set_id_type(yb::master::IdTypePB::NAMESPACE_ID);
+
+  if (!namespace_name.empty()) {
+        cout << "Filtering out DB streams for the namespace: " << namespace_name << "\n\n";
+        master::GetNamespaceInfoResponsePB namespace_info_resp;
+        RETURN_NOT_OK(yb_client_->GetNamespaceInfo(
+            "", namespace_name, YQL_DATABASE_PGSQL, &namespace_info_resp));
+        req.set_namespace_id(namespace_info_resp.namespace_().id());
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->ListCDCStreams(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+        cout << "Error getting CDC stream list: " << resp.error().status().message() << endl;
+        return StatusFromPB(resp.error().status());
+  }
+
+  cout << "CDC Streams: \r\n" << resp.DebugString();
+  return Status::OK();
+}
+
+Status ClusterAdminClient::GetCDCDBStreamInfo(const std::string& db_stream_id) {
+  master::GetCDCDBStreamInfoRequestPB req;
+  master::GetCDCDBStreamInfoResponsePB resp;
+  req.set_db_stream_id(db_stream_id);
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->GetCDCDBStreamInfo(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+        cout << "Error getting info corresponding to CDC db stream : "
+             << resp.error().status().message() << endl;
+        return StatusFromPB(resp.error().status());
+  }
+
+  cout << "CDC DB Stream Info: \r\n" << resp.DebugString();
+  return Status::OK();
+}
+
+Status ClusterAdminClient::WaitForSetupUniverseReplicationToFinish(
+    const string& replication_group_id) {
+  master::IsSetupUniverseReplicationDoneRequestPB req;
+  req.set_producer_id(replication_group_id);
+  for (;;) {
+        master::IsSetupUniverseReplicationDoneResponsePB resp;
+        RpcController rpc;
+        rpc.set_timeout(timeout_);
+        Status s = master_replication_proxy_->IsSetupUniverseReplicationDone(req, &resp, &rpc);
+
+        if (!s.ok() || resp.has_error()) {
+      LOG(WARNING) << "Encountered error while waiting for setup_universe_replication to complete"
+                   << " : " << (!s.ok() ? s.ToString() : resp.error().status().message());
+        }
+        if (resp.has_done() && resp.done()) {
+      return StatusFromPB(resp.replication_error());
+        }
+
+        // Still processing, wait and then loop again.
+        std::this_thread::sleep_for(100ms);
+  }
+}
+
+using ReplicationBootstrapState = master::SysUniverseReplicationBootstrapEntryPB::State;
+Status ClusterAdminClient::WaitForReplicationBootstrapToFinish(const std::string& replication_id) {
+  const auto initial_delay = MonoDelta::FromMilliseconds(100);
+  const auto delay_increment = MonoDelta::FromMilliseconds(250);
+  const auto max_delay_time = MonoDelta::FromSeconds(5);
+  auto delay_time = initial_delay;
+
+  master::IsSetupNamespaceReplicationWithBootstrapDoneRequestPB req;
+  ReplicationBootstrapState state =
+      ReplicationBootstrapState::SysUniverseReplicationBootstrapEntryPB_State_INITIALIZING;
+  req.set_replication_group_id(replication_id);
+  for (;;) {
+        master::IsSetupNamespaceReplicationWithBootstrapDoneResponsePB resp;
+        RpcController rpc;
+        rpc.set_timeout(timeout_);
+        Status s = master_replication_proxy_->IsSetupNamespaceReplicationWithBootstrapDone(
+            req, &resp, &rpc);
+
+        if (!s.ok() || resp.has_error()) {
+      LOG(WARNING) << Format(
+          "Encountered error while waiting for setup_namespace_replication_with_bootstrap to "
+          "complete : $0",
+          !s.ok() ? s.ToString() : resp.error().status().message());
+        }
+        if (resp.has_done() && resp.done()) {
+      return StatusFromPB(resp.bootstrap_error());
+        }
+        if (resp.state() != state) {
+      state = resp.state();
+      delay_time = initial_delay;
+      cout << Format(
+          "Replication bootstrap in state $0",
+          master::SysUniverseReplicationBootstrapEntryPB_State_Name(state)) << endl;
+        } else {
+      delay_time = std::min(max_delay_time, delay_time + delay_increment);
+        }
+        // Still processing, wait and then loop again.
+        SleepFor(delay_time);
+  }
+}
+
+Status ClusterAdminClient::SetupNamespaceReplicationWithBootstrap(
+    const std::string& replication_id, const std::vector<std::string>& producer_addresses,
+    const TypedNamespaceName& ns, bool transactional) {
+  if (ns.db_type == YQL_DATABASE_CQL && transactional) {
+        return STATUS(
+            InvalidArgument, "Transactional replication is not supported for non-YSQL namespace");
+  }
+
+  master::SetupNamespaceReplicationWithBootstrapRequestPB req;
+  master::SetupNamespaceReplicationWithBootstrapResponsePB resp;
+  req.set_replication_id(replication_id);
+  req.set_transactional(transactional);
+  req.mutable_producer_namespace()->set_name(ns.name);
+  req.mutable_producer_namespace()->set_database_type(ns.db_type);
+
+  req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_addresses.size()));
+  for (const auto& addr : producer_addresses) {
+        // HostPort::FromString() expects a default port.
+        auto hp = VERIFY_RESULT(HostPort::FromString(addr, master::kMasterDefaultPort));
+        HostPortToPB(hp, req.add_producer_master_addresses());
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  auto setup_result_status =
+      master_replication_proxy_->SetupNamespaceReplicationWithBootstrap(req, &resp, &rpc);
+
+  setup_result_status = WaitForReplicationBootstrapToFinish(replication_id);
+
+  if (resp.has_error()) {
+        cout << "Error bootstrapping replication: " << resp.error().status().message() << endl;
+        Status status_from_error = StatusFromPB(resp.error().status());
+
+        return status_from_error;
+  }
+
+  if (!setup_result_status.ok()) {
+        cout << "Error waiting for bootstrap replication to complete: "
+             << setup_result_status.message().ToBuffer() << endl;
+        return setup_result_status;
+  }
+
+  cout << "Replication bootstrap completed successfully, waiting for setup universe replication"
+       << endl;
+
+  setup_result_status = WaitForSetupUniverseReplicationToFinish(replication_id);
+
+  if (resp.has_error()) {
+        cout << "Error setting up universe replication: " << resp.error().status().message()
+             << endl;
+        Status status_from_error = StatusFromPB(resp.error().status());
+
+        return status_from_error;
+  }
+
+  if (!setup_result_status.ok()) {
+        cout << "Error waiting for universe replication setup to complete: "
+             << setup_result_status.message().ToBuffer() << endl;
+        return setup_result_status;
+  }
+
+  cout << "Replication setup successfully" << endl;
+
+  return Status::OK();
+}
+
+Status ClusterAdminClient::SetupUniverseReplication(
+    const string& replication_group_id, const vector<string>& producer_addresses,
+    const vector<TableId>& tables, const vector<string>& producer_bootstrap_ids,
+    bool transactional) {
+  master::SetupUniverseReplicationRequestPB req;
+  master::SetupUniverseReplicationResponsePB resp;
+  req.set_producer_id(replication_group_id);
+  req.set_transactional(transactional);
+
+  req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_addresses.size()));
+  for (const auto& addr : producer_addresses) {
+        // HostPort::FromString() expects a default port.
+        auto hp = VERIFY_RESULT(HostPort::FromString(addr, master::kMasterDefaultPort));
+        HostPortToPB(hp, req.add_producer_master_addresses());
+  }
+
+  req.mutable_producer_table_ids()->Reserve(narrow_cast<int>(tables.size()));
+  for (const auto& table : tables) {
+        req.add_producer_table_ids(table);
+  }
+
+  for (const auto& producer_bootstrap_id : producer_bootstrap_ids) {
+        req.add_producer_bootstrap_ids(producer_bootstrap_id);
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  auto setup_result_status = master_replication_proxy_->SetupUniverseReplication(req, &resp, &rpc);
+
+  setup_result_status = WaitForSetupUniverseReplicationToFinish(replication_group_id);
+
+  if (resp.has_error()) {
+        cout << "Error setting up universe replication: " << resp.error().status().message()
+             << endl;
+        Status status_from_error = StatusFromPB(resp.error().status());
+
+        return status_from_error;
+  }
+
+  // Clean up config files if setup fails to complete.
+  if (!setup_result_status.ok()) {
+        cout << "Error waiting for universe replication setup to complete: "
+             << setup_result_status.message().ToBuffer() << endl;
+        return setup_result_status;
+  }
+
+  cout << "Replication setup successfully" << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::DeleteUniverseReplication(
+    const std::string& producer_id, bool ignore_errors) {
+  master::DeleteUniverseReplicationRequestPB req;
+  master::DeleteUniverseReplicationResponsePB resp;
+  req.set_producer_id(producer_id);
+  req.set_ignore_errors(ignore_errors);
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->DeleteUniverseReplication(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+        cout << "Error deleting universe replication: " << resp.error().status().message() << endl;
+        return StatusFromPB(resp.error().status());
+  }
+
+  if (resp.warnings().size() > 0) {
+        cout << "Encountered the following warnings while running delete_universe_replication:"
+             << endl;
+        for (const auto& warning : resp.warnings()) {
+      cout << " - " << warning.message() << endl;
+        }
+  }
+
+  cout << "Replication deleted successfully" << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::AlterUniverseReplication(
+    const std::string& replication_group_id,
+    const std::vector<std::string>& producer_addresses,
+    const std::vector<TableId>& add_tables,
+    const std::vector<TableId>& remove_tables,
+    const std::vector<std::string>& producer_bootstrap_ids_to_add,
+    const std::string& new_producer_universe_id,
+    bool remove_table_ignore_errors) {
+  master::AlterUniverseReplicationRequestPB req;
+  master::AlterUniverseReplicationResponsePB resp;
+  req.set_producer_id(replication_group_id);
+  req.set_remove_table_ignore_errors(remove_table_ignore_errors);
+
+  if (!producer_addresses.empty()) {
+        req.mutable_producer_master_addresses()->Reserve(
+            narrow_cast<int>(producer_addresses.size()));
+        for (const auto& addr : producer_addresses) {
+      // HostPort::FromString() expects a default port.
+      auto hp = VERIFY_RESULT(HostPort::FromString(addr, master::kMasterDefaultPort));
+      HostPortToPB(hp, req.add_producer_master_addresses());
+        }
+  }
+
+  if (!add_tables.empty()) {
+        req.mutable_producer_table_ids_to_add()->Reserve(narrow_cast<int>(add_tables.size()));
+        for (const auto& table : add_tables) {
+      req.add_producer_table_ids_to_add(table);
+        }
+
+        if (!producer_bootstrap_ids_to_add.empty()) {
+      // There msut be a bootstrap id for every table id.
+      if (producer_bootstrap_ids_to_add.size() != add_tables.size()) {
+        cout << "The number of bootstrap ids must equal the number of table ids. "
+             << "Use separate alter commands if only some tables are being bootstrapped." << endl;
+        return STATUS(InternalError, "Invalid number of bootstrap ids");
+      }
+
+      req.mutable_producer_bootstrap_ids_to_add()->Reserve(
+          narrow_cast<int>(producer_bootstrap_ids_to_add.size()));
+      for (const auto& bootstrap_id : producer_bootstrap_ids_to_add) {
+        req.add_producer_bootstrap_ids_to_add(bootstrap_id);
+      }
+        }
+  }
+
+  if (!remove_tables.empty()) {
+        req.mutable_producer_table_ids_to_remove()->Reserve(narrow_cast<int>(remove_tables.size()));
+        for (const auto& table : remove_tables) {
+      req.add_producer_table_ids_to_remove(table);
+        }
+  }
+
+  if (!new_producer_universe_id.empty()) {
+        req.set_new_producer_universe_id(new_producer_universe_id);
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->AlterUniverseReplication(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+        cout << "Error altering universe replication: " << resp.error().status().message() << endl;
+        return StatusFromPB(resp.error().status());
+  }
+
+  if (!add_tables.empty()) {
+        // If we are adding tables, then wait for the altered producer to be deleted (this happens
+        // once it is merged with the original).
+        RETURN_NOT_OK(WaitForSetupUniverseReplicationToFinish(
+            cdc::GetAlterReplicationGroupId(replication_group_id).ToString()));
+  }
+
+  cout << "Replication altered successfully" << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::ChangeXClusterRole(cdc::XClusterRole role) {
+  master::ChangeXClusterRoleRequestPB req;
+  master::ChangeXClusterRoleResponsePB resp;
+  req.set_role(role);
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->ChangeXClusterRole(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+        cout << "Error changing role: " << resp.error().status().message() << endl;
+        return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Changed role successfully" << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::SetUniverseReplicationEnabled(
+    const std::string& producer_id, bool is_enabled) {
+  master::SetUniverseReplicationEnabledRequestPB req;
+  master::SetUniverseReplicationEnabledResponsePB resp;
+  req.set_producer_id(producer_id);
+  req.set_is_enabled(is_enabled);
+  const string toggle = (is_enabled ? "enabl" : "disabl");
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->SetUniverseReplicationEnabled(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+        cout << "Error " << toggle << "ing "
+             << "universe replication: " << resp.error().status().message() << endl;
+        return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Replication " << toggle << "ed successfully" << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::PauseResumeXClusterProducerStreams(
+    const std::vector<std::string>& stream_ids, bool is_paused) {
+  master::PauseResumeXClusterProducerStreamsRequestPB req;
+  master::PauseResumeXClusterProducerStreamsResponsePB resp;
+  for (const auto& stream_id : stream_ids) {
+        req.add_stream_ids(stream_id);
+  }
+  req.set_is_paused(is_paused);
+  const auto toggle = (is_paused ? "paus" : "resum");
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->PauseResumeXClusterProducerStreams(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+        cout << "Error " << toggle << "ing "
+             << "replication: " << resp.error().status().message() << endl;
+        return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Replication " << toggle << "ed successfully" << endl;
+  return Status::OK();
+}
+
+Result<HostPort> ClusterAdminClient::GetFirstRpcAddressForTS() {
+  RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
+  RETURN_NOT_OK(ListTabletServers(&servers));
+  for (const ListTabletServersResponsePB::Entry& server : servers) {
+        if (server.has_registration() &&
+            !server.registration().common().private_rpc_addresses().empty()) {
+      return HostPortFromPB(server.registration().common().private_rpc_addresses(0));
+        }
+  }
+
+  return STATUS(NotFound, "Didn't find a server registered with the Master");
+}
+
+Status ClusterAdminClient::BootstrapProducer(const vector<TableId>& table_ids) {
+  HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS());
+  auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(proxy_cache_.get(), ts_addr);
+
+  cdc::BootstrapProducerRequestPB bootstrap_req;
+  cdc::BootstrapProducerResponsePB bootstrap_resp;
+  for (const auto& table_id : table_ids) {
+        bootstrap_req.add_table_ids(table_id);
+  }
+  RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(std::max(timeout_.ToSeconds(), 120.0)));
+  RETURN_NOT_OK(cdc_proxy->BootstrapProducer(bootstrap_req, &bootstrap_resp, &rpc));
+
+  if (bootstrap_resp.has_error()) {
+        cout << "Error bootstrapping consumer: " << bootstrap_resp.error().status().message()
+             << endl;
+        return StatusFromPB(bootstrap_resp.error().status());
+  }
+
+  if (implicit_cast<size_t>(bootstrap_resp.cdc_bootstrap_ids().size()) != table_ids.size()) {
+        cout << "Received invalid number of bootstrap ids: " << bootstrap_resp.ShortDebugString();
+        return STATUS(InternalError, "Invalid number of bootstrap ids");
+  }
+
+  int i = 0;
+  for (const auto& bootstrap_id : bootstrap_resp.cdc_bootstrap_ids()) {
+        cout << "table id: " << table_ids[i++] << ", CDC bootstrap id: " << bootstrap_id << endl;
+  }
+  return Status::OK();
+}
+
+Status ClusterAdminClient::WaitForReplicationDrain(
+    const std::vector<xrepl::StreamId>& stream_ids, const string& target_time) {
+  master::WaitForReplicationDrainRequestPB req;
+  master::WaitForReplicationDrainResponsePB resp;
+  for (const auto& stream_id : stream_ids) {
+        req.add_stream_ids(stream_id.ToString());
+  }
+  // If target_time is not provided, it will be set to current time in the master API.
+  if (!target_time.empty()) {
+        auto result = HybridTime::ParseHybridTime(target_time);
+        if (!result.ok()) {
+      return STATUS(InvalidArgument, "Error parsing target_time: " + result.ToString());
+        }
+        req.set_target_time(result->GetPhysicalValueMicros());
+  }
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->WaitForReplicationDrain(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+        cout << "Error waiting for replication drain: " << resp.error().status().message() << endl;
+        return StatusFromPB(resp.error().status());
+  }
+
+  std::unordered_map<xrepl::StreamId, std::vector<TabletId>> undrained_streams;
+  for (const auto& stream_info : resp.undrained_stream_info()) {
+        undrained_streams[VERIFY_RESULT(xrepl::StreamId::FromString(stream_info.stream_id()))]
+            .push_back(stream_info.tablet_id());
+  }
+  if (!undrained_streams.empty()) {
+        cout << "Found undrained replications:" << endl;
+        for (const auto& stream_to_tablets : undrained_streams) {
+      cout << "- Under Stream " << stream_to_tablets.first << ":" << endl;
+      for (const auto& tablet_id : stream_to_tablets.second) {
+        cout << "  - Tablet: " << tablet_id << endl;
+      }
+        }
+  } else {
+        cout << "All replications are caught-up." << endl;
+  }
+  return Status::OK();
+}
+
+Status ClusterAdminClient::SetupNSUniverseReplication(
+    const std::string& replication_group_id,
+    const std::vector<std::string>& producer_addresses,
+    const TypedNamespaceName& producer_namespace) {
+  switch (producer_namespace.db_type) {
+        case YQL_DATABASE_CQL:
+      break;
+        case YQL_DATABASE_PGSQL:
+      return STATUS(
+          InvalidArgument, "YSQL not currently supported for namespace-level replication setup");
+        default:
+      return STATUS(InvalidArgument, "Unsupported namespace type");
+  }
+
+  master::SetupNSUniverseReplicationRequestPB req;
+  master::SetupNSUniverseReplicationResponsePB resp;
+  req.set_producer_id(replication_group_id);
+  req.set_producer_ns_name(producer_namespace.name);
+  req.set_producer_ns_type(producer_namespace.db_type);
+
+  req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_addresses.size()));
+  for (const auto& addr : producer_addresses) {
+        auto hp = VERIFY_RESULT(HostPort::FromString(addr, master::kMasterDefaultPort));
+        HostPortToPB(hp, req.add_producer_master_addresses());
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->SetupNSUniverseReplication(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+        cout << "Error setting up namespace-level universe replication: "
+             << resp.error().status().message() << endl;
+        return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Namespace-level replication setup successfully" << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::GetReplicationInfo(const std::string& universe_uuid) {
+  master::GetReplicationStatusRequestPB req;
+  master::GetReplicationStatusResponsePB resp;
+
+  if (!universe_uuid.empty()) {
+        req.set_universe_id(universe_uuid);
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->GetReplicationStatus(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+        cout << "Error getting replication status: " << resp.error().status().message() << endl;
+        return StatusFromPB(resp.error().status());
+  }
+
+  cout << resp.DebugString();
+  return Status::OK();
+}
+
+Result<rapidjson::Document> ClusterAdminClient::GetXClusterSafeTime(bool include_lag_and_skew) {
+  master::GetXClusterSafeTimeRequestPB req;
+  master::GetXClusterSafeTimeResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->GetXClusterSafeTime(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error getting xCluster safe time values: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  rapidjson::Document document;
+  document.SetArray();
+  for (const auto& safe_time : resp.namespace_safe_times()) {
+    rapidjson::Value json_entry(rapidjson::kObjectType);
+    AddStringField("namespace_id", safe_time.namespace_id(), &json_entry, &document.GetAllocator());
+    AddStringField(
+        "namespace_name", safe_time.namespace_name(), &json_entry, &document.GetAllocator());
+    const auto& safe_time_ht = HybridTime::FromPB(safe_time.safe_time_ht());
+    AddStringField(
+        "safe_time", HybridTimeToString(safe_time_ht), &json_entry, &document.GetAllocator());
+    AddStringField(
+        "safe_time_epoch", std::to_string(safe_time_ht.GetPhysicalValueMicros()), &json_entry,
+        &document.GetAllocator());
+
+    if (include_lag_and_skew) {
+      // Print safe lag and skew in seconds with 2 decimal points.
+      // Safe time lag is calculated as (current time - current safe time).
+      std::string safe_time_lag = FormatDouble(
+          MonoDelta::FromMicroseconds(safe_time.safe_time_lag()).ToMilliseconds() / 1000.0);
+      AddStringField("safe_time_lag_sec", safe_time_lag, &json_entry, &document.GetAllocator());
+      // Safe time skew is calculated as (safe time of most caught up tablet - safe time of
+      // laggiest tablet).
+      std::string safe_time_skew = FormatDouble(
+          MonoDelta::FromMicroseconds(safe_time.safe_time_skew()).ToMilliseconds() / 1000.0);
+      AddStringField("safe_time_skew_sec", safe_time_skew, &json_entry, &document.GetAllocator());
+    }
+
+    document.PushBack(json_entry, document.GetAllocator());
+  }
+
+  return document;
 }
 
 string RightPadToUuidWidth(const string &s) {

@@ -14,20 +14,25 @@
 
 #include "yb/docdb/docdb_pgapi.h"
 
-#include "postgres/src/include/ybgate/ybgate_api.h"
-
 #include "yb/common/pg_types.h"
-#include "yb/common/ql_expr.h"
 #include "yb/common/schema.h"
 
+#include "yb/dockv/pg_row.h"
+#include "yb/dockv/reader_projection.h"
+
 #include "yb/gutil/singleton.h"
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
-#include "yb/yql/pggate/pg_value.h"
+
+#include "yb/qlexpr/ql_expr.h"
+
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+
 #include "yb/yql/pggate/pg_expr.h"
+#include "yb/yql/pggate/pg_value.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
-#include "yb/util/result.h"
-#include "yb/util/logging.h"
+#include "ybgate/ybgate_status.h"
 
 // This file comes from this directory:
 // postgres_build/src/include/catalog
@@ -36,25 +41,9 @@
 
 using std::string;
 
-using yb::pggate::PgValueFromPB;
-using yb::pggate::PgValueToPB;
+namespace yb::docdb {
 
-namespace yb {
-namespace docdb {
-
-#define PG_RETURN_NOT_OK(status) \
-  do { \
-    if (status.err_code != 0) { \
-      std::string msg; \
-      if (status.err_msg != nullptr) { \
-        msg = std::string(status.err_msg); \
-      } else { \
-        msg = std::string("Unexpected error while evaluating expression"); \
-      } \
-      YbgResetMemoryContext(); \
-      return STATUS(QLError, msg); \
-    } \
-  } while(0);
+using pggate::PgValueToDatum;
 
 #define SET_ELEM_LEN_BYVAL_ALIGN(elemlen, elembyval, elemalign) \
   do { \
@@ -82,8 +71,7 @@ namespace docdb {
     range_elmalign = range_elemalign; \
   } while (0);
 
-Status DocPgInit()
-{
+Status DocPgInit() {
   PG_RETURN_NOT_OK(YbgInit());
   return Status::OK();
 }
@@ -131,7 +119,7 @@ const YBCPgTypeEntity* DocPgGetTypeEntity(YbgTypeDesc pg_type) {
     return Singleton<DocPgTypeAnalyzer>::get()->GetTypeEntity(pg_type.type_id);
 }
 
-Status DocPgAddVarRef(const ColumnId& column_id,
+Status DocPgAddVarRef(size_t column_idx,
                       int32_t attno,
                       int32_t typid,
                       int32_t typmod,
@@ -141,10 +129,13 @@ Status DocPgAddVarRef(const ColumnId& column_id,
     VLOG(1) << "Attribute " << attno << " is already processed";
     return Status::OK();
   }
-  const YBCPgTypeEntity *arg_type = DocPgGetTypeEntity({typid, typmod});
   var_map->emplace(std::piecewise_construct,
-                   std::forward_as_tuple(attno),
-                   std::forward_as_tuple(column_id.rep(), arg_type, typmod));
+                   std::tuple(attno),
+                   std::tuple(DocPgVarRef {
+                     .var_col_idx = column_idx,
+                     .var_type = DocPgGetTypeEntity({typid, typmod}),
+                     .var_type_attrs = {typmod},
+                   }));
   VLOG(1) << "Attribute " << attno << " has been processed";
   return Status::OK();
 }
@@ -160,9 +151,11 @@ Status DocPgPrepareExpr(const std::string& expr_str,
     int32_t typmod;
     PG_RETURN_NOT_OK(YbgExprType(*expr, &typid));
     PG_RETURN_NOT_OK(YbgExprTypmod(*expr, &typmod));
-    YbgTypeDesc pg_arg_type = {typid, typmod};
-    const YBCPgTypeEntity *arg_type = DocPgGetTypeEntity(pg_arg_type);
-    *ret_type = DocPgVarRef(0, arg_type, typmod);
+    *ret_type = DocPgVarRef {
+      .var_col_idx = dockv::ReaderProjection::kNotFoundIndex,
+      .var_type = DocPgGetTypeEntity({typid, typmod}),
+      .var_type_attrs = {typmod},
+    };
     VLOG(1) << "Processed expression return type";
   }
   return Status::OK();
@@ -182,55 +175,48 @@ Status DocPgCreateExprCtx(const std::map<int, const DocPgVarRef>& var_map,
   return Status::OK();
 }
 
-// Wrapper for PgValueFromPB to safely call from the YbGate.
-// The PgValueFromPB function was initially designed to be used in the PgGate where it converts
+// Wrapper for PgValueToDatum to safely call from the YbGate.
+// The PgValueToDatum function was initially designed to be used in the PgGate where it converts
 // values coming from DocDB into Postgres format. The PgGate runs within Postgres where exception
 // handling is available. YbGate runs within DocDB, so it requires PG_SETUP_ERROR_REPORTING macro.
 // The PG_SETUP_ERROR_REPORTING requires the surrounding function to return YbgStatus,
 // hence the wrapper.
-YbgStatus YbgValueFromPB(const YBCPgTypeEntity *type_entity,
-                         YBCPgTypeAttrs type_attrs,
-                         const QLValuePB& ql_value,
-                         uint64_t* datum,
-                         bool *is_null) {
+YbgStatus PgValueToDatumHelper(const YBCPgTypeEntity *type_entity,
+                               YBCPgTypeAttrs type_attrs,
+                               const dockv::PgValue& value,
+                               uint64_t* datum) {
   PG_SETUP_ERROR_REPORTING();
-  Status s = PgValueFromPB(type_entity, type_attrs, ql_value, datum, is_null);
+  Status s = PgValueToDatum(type_entity, type_attrs, value, datum);
   if (!s.ok()) {
-    // Error code currently has no special meaning, any non-zero value is an error
-    return PG_STATUS(1, s.message().cdata());
+    return YbgStatusCreateError(s.message().cdata(), __FILE__, __LINE__);
   }
-  return PG_STATUS_OK;
+  PG_STATUS_OK();
 }
 
-Status DocPgPrepareExprCtx(const QLTableRow& table_row,
+Status DocPgPrepareExprCtx(const dockv::PgTableRow& table_row,
                            const std::map<int, const DocPgVarRef>& var_map,
                            YbgExprContext expr_ctx) {
   PG_RETURN_NOT_OK(YbgExprContextReset(expr_ctx));
   // Set the column values (used to resolve scan variables in the expression).
-  for (auto it = var_map.begin(); it != var_map.end(); it++) {
-    const int& attno = it->first;
-    const DocPgVarRef& arg_ref = it->second;
-    const QLValuePB* val = table_row.GetColumn(arg_ref.var_colid);
-    bool is_null = false;
+  for (const auto& [attno, arg_ref] : var_map) {
+    auto val = table_row.GetValueByIndex(arg_ref.var_col_idx);
     uint64_t datum = 0;
-    PG_RETURN_NOT_OK(YbgValueFromPB(arg_ref.var_type,
-                                    arg_ref.var_type_attrs,
-                                    *val,
-                                    &datum,
-                                    &is_null));
+    const bool is_null = !val;
+    if (!is_null) {
+      PG_RETURN_NOT_OK(PgValueToDatumHelper(
+          arg_ref.var_type, arg_ref.var_type_attrs, *val, &datum));
+    }
     VLOG(1) << "Adding value for attno " << attno;
     PG_RETURN_NOT_OK(YbgExprContextAddColValue(expr_ctx, attno, datum, is_null));
   }
   return Status::OK();
 }
 
-Status DocPgEvalExpr(YbgPreparedExpr expr,
-                     YbgExprContext expr_ctx,
-                     uint64_t *datum,
-                     bool *is_null) {
-  // Evaluate the expression and get the result.
-  PG_RETURN_NOT_OK(YbgEvalExpr(expr, expr_ctx, datum, is_null));
-  return Status::OK();
+Result<std::pair<uint64_t, bool>> DocPgEvalExpr(YbgPreparedExpr expr, YbgExprContext expr_ctx) {
+  uint64_t datum = {};
+  bool is_null = false;
+  PG_RETURN_NOT_OK(YbgEvalExpr(expr, expr_ctx, &datum, &is_null));
+  return std::make_pair(datum, is_null);
 }
 
 Status SetValueFromQLBinary(
@@ -269,7 +255,7 @@ Result<std::vector<std::string>> ExtractVectorFromQLBinaryValueHelper(
   YbgTypeDesc elem_pg_arg_type {elem_type, -1 /* typmod */};
   const YBCPgTypeEntity *elem_arg_type = DocPgGetTypeEntity(elem_pg_arg_type);
   VLOG(4) << "Number of parsed elements: " << num_elems;
-  Arena arena;
+  ThreadSafeArena arena;
   std::vector<std::string> result;
   for (int i = 0; i < num_elems; ++i) {
     pggate::PgConstant value(&arena,
@@ -2112,7 +2098,6 @@ Status SetValueFromQLBinaryHelper(
       break;
   }
   return Status::OK();
-}
+} // NOLINT(readability/fn_size)
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

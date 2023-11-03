@@ -1,21 +1,26 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import _ from 'lodash';
+import { useSelector } from 'react-redux';
 import { Field } from 'formik';
+import clsx from 'clsx';
 import { ListGroupItem, ListGroup, Row, Col, Badge } from 'react-bootstrap';
 import { YBButton, YBFormInput, YBInputField } from '../../common/forms/fields';
 import { YBLabel } from '../../common/descriptors';
 import { YBLoading } from '../../common/indicators';
 import { FlexShrink, FlexContainer } from '../../common/flexbox/YBFlexBox';
 import { fetchGFlags, fetchParticularFlag } from '../../../actions/universe';
-import clsx from 'clsx';
+import { GFlagsConf } from './GFlagsConf';
+import { GFLAG_EDIT, MULTILINE_GFLAGS_ARRAY } from '../../../utils/UniverseUtils';
+import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 //Icons
 import Bulb from '../images/bulb.svg';
 import BookOpen from '../images/book_open.svg';
+// Styles
+import './UniverseForm.scss';
 
-//modes
-const EDIT = 'EDIT';
-
-const AddGFlag = ({ formProps, gFlagProps }) => {
-  const { mode, server, dbVersion } = gFlagProps;
+const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus }) => {
+  const featureFlags = useSelector((state) => state.featureFlags);
+  const { mode, server, dbVersion, existingFlags, isGFlagMultilineConfEnabled } = gFlagProps;
   const [searchVal, setSearchVal] = useState('');
   const [isLoading, setLoader] = useState(true);
   const [toggleMostUsed, setToggleMostUsed] = useState(true);
@@ -31,6 +36,11 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
 
   const handleFlagSelect = (flag) => {
     let flagvalue = null;
+    const existingFlagValue = _.get(
+      existingFlags.find((f) => f.Name === flag?.name),
+      server
+    );
+    // eslint-disable-next-line no-prototype-builtins
     const defaultKey = flag?.hasOwnProperty('current') ? 'current' : 'default'; // Guard condition to handle inconstintency in gflag metadata
     if (flag?.type === 'bool')
       if (['false', false].includes(flag[defaultKey])) flagvalue = false;
@@ -41,7 +51,8 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
     formProps.setValues({
       ...gFlagProps,
       flagname: flag?.name,
-      flagvalue
+      flagvalue: isDefinedNotNull(existingFlagValue) ? existingFlagValue : flagvalue,
+      tags: flag?.tags
     });
   };
 
@@ -72,12 +83,14 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
       setFilteredArr([flag?.data]);
       setSelectedFlag(flag?.data);
       if (flagvalue === undefined) {
+        // eslint-disable-next-line no-prototype-builtins
         const defaultKey = flag?.data?.hasOwnProperty('current') ? 'current' : 'default';
         formProps.setValues({
           ...gFlagProps,
-          flagvalue: flag?.data[defaultKey]
+          flagvalue: flag?.data[defaultKey],
+          tags: flag?.data?.tags
         });
-      } else formProps.setValues(gFlagProps);
+      } else formProps.setValues({ ...gFlagProps, tags: flag?.data?.tags });
       setLoader(false);
     } catch (e) {
       setAPIError(e?.error);
@@ -86,7 +99,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
   };
 
   const onInit = () => {
-    if (mode === EDIT) {
+    if (mode === GFLAG_EDIT) {
       getFlagByName();
     } else getAllFlags();
   };
@@ -138,7 +151,13 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
 
   //renderers
   const renderFormComponent = (flag) => {
-    const defaultKey = selectedFlag?.hasOwnProperty('current') ? 'current' : 'default';
+    // eslint-disable-next-line no-prototype-builtins
+    const defaultKey = selectedFlag?.hasOwnProperty('current')
+      ? 'current'
+      : selectedFlag?.hasOwnProperty('default')
+      ? 'default'
+      : 'target';
+
     switch (flag?.type) {
       case 'bool':
         return (
@@ -167,7 +186,19 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
         );
 
       case 'string':
-        return <Field name="flagvalue" type="text" label={valueLabel} component={YBFormInput} />;
+        if (MULTILINE_GFLAGS_ARRAY.includes(flag?.name) && isGFlagMultilineConfEnabled) {
+          return (
+            <GFlagsConf
+              dbVersion={dbVersion}
+              formProps={formProps}
+              serverType={server}
+              flagName={flag?.name}
+              updateJWKSDialogStatus={updateJWKSDialogStatus}
+            />
+          );
+        } else {
+          return <Field name="flagvalue" type="text" label={valueLabel} component={YBFormInput} />;
+        }
 
       default:
         //number type
@@ -195,7 +226,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
       <FlexShrink className="button-container">
         <YBButton
           btnText="Most used"
-          disabled={mode === EDIT}
+          disabled={mode === GFLAG_EDIT}
           active={!toggleMostUsed}
           btnClass={clsx(toggleMostUsed ? 'btn btn-orange' : 'btn btn-default', 'gflag-button')}
           onClick={() => {
@@ -208,7 +239,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
         &nbsp;
         <YBButton
           btnText="All Flags"
-          disabled={mode === EDIT}
+          disabled={mode === GFLAG_EDIT}
           active={toggleMostUsed}
           btnClass={clsx(!toggleMostUsed ? 'btn btn-orange' : 'btn btn-default', 'gflag-button')}
           onClick={() => {
@@ -221,7 +252,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
       </FlexShrink>
       <div className="g-flag-list">
         <ListGroup>
-          {(filteredArr || []).map((flag, i) => {
+          {(filteredArr ?? []).map((flag, i) => {
             const isSelected = flag.name === selectedFlag?.name;
             return (
               <ListGroupItem
@@ -246,8 +277,9 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
   );
 
   const renderFlagDetails = () => {
-    const showDocLink = mode !== EDIT && (toggleMostUsed || isMostUsed(selectedFlag?.name));
+    const showDocLink = mode !== GFLAG_EDIT && (toggleMostUsed || isMostUsed(selectedFlag?.name));
     if (selectedFlag) {
+      // eslint-disable-next-line no-prototype-builtins
       const defaultKey = selectedFlag?.hasOwnProperty('current') ? 'current' : 'default';
       return (
         <>
@@ -269,6 +301,9 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
             </div>
           </div>
           <div className="gflag-form">{renderFormComponent(selectedFlag)}</div>
+          {!MULTILINE_GFLAGS_ARRAY.includes(selectedFlag.name) && (
+            <span className="gflag-form-separator" />
+          )}
         </>
       );
     } else return infoText;

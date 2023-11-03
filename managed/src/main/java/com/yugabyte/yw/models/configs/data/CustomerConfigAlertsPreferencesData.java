@@ -4,15 +4,15 @@ package com.yugabyte.yw.models.configs.data;
 
 import io.swagger.annotations.ApiModelProperty;
 import javax.validation.constraints.Min;
+import javax.validation.constraints.Size;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
-import play.data.validation.Constraints.Email;
 
 @Data
 @EqualsAndHashCode(callSuper = false)
 public class CustomerConfigAlertsPreferencesData extends CustomerConfigAlertsData {
   @ApiModelProperty(value = "Alert email address", example = "test@example.com")
-  @Email
+  @Size(max = 4000)
   private String alertingEmail;
 
   @ApiModelProperty(value = "Send alerts to YB as well as to customer")

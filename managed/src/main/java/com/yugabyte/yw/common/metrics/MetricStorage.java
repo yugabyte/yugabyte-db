@@ -9,6 +9,8 @@
  */
 package com.yugabyte.yw.common.metrics;
 
+import static com.yugabyte.yw.common.Util.NULL_UUID;
+
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
@@ -16,9 +18,7 @@ import com.yugabyte.yw.models.MetricSourceKey;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.MetricSourceState;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +28,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
@@ -47,8 +49,6 @@ import org.apache.commons.collections.CollectionUtils;
 @Singleton
 @Slf4j
 public class MetricStorage {
-
-  private static final UUID NULL_UUID = UUID.fromString("00000000-0000-0000-0000-000000000000");
   private final Map<String, NamedMetricStore> metricsByKey = new ConcurrentHashMap<>();
   private final Map<String, Lock> metricNameLock = new ConcurrentHashMap<>();
   private final Map<Pair<UUID, UUID>, MetricSourceState> sourceStateMap = new ConcurrentHashMap<>();
@@ -87,12 +87,19 @@ public class MetricStorage {
   }
 
   public void markSource(UUID customerUuid, UUID metricSource, MetricSourceState state) {
+    if (customerUuid == null) {
+      throw new IllegalArgumentException("Customer UUID can't be null");
+    }
+    log.info(
+        "Setting metric source status for customer {} and source {} to {}",
+        customerUuid,
+        metricSource,
+        state.name());
     sourceStateMap.put(new Pair<>(customerUuid, metricSource), state);
   }
 
   private void acquireLocks(Collection<Metric> metrics) {
-    metrics
-        .stream()
+    metrics.stream()
         .map(Metric::getName)
         .distinct()
         .sorted()
@@ -102,8 +109,7 @@ public class MetricStorage {
   }
 
   private void releaseLocks(Collection<Metric> metrics) {
-    metrics
-        .stream()
+    metrics.stream()
         .map(Metric::getName)
         .distinct()
         .sorted()
@@ -116,9 +122,7 @@ public class MetricStorage {
 
   private Stream<NamedMetricStore> get(MetricFilter filter) {
     Set<String> names = getNames(filter);
-    return metricsByKey
-        .entrySet()
-        .stream()
+    return metricsByKey.entrySet().stream()
         .filter(e -> names.contains(e.getKey()))
         .map(Entry::getValue);
   }
@@ -130,17 +134,13 @@ public class MetricStorage {
     }
     if (CollectionUtils.isNotEmpty(filter.getSourceKeys())) {
       names.addAll(
-          filter
-              .getSourceKeys()
-              .stream()
+          filter.getSourceKeys().stream()
               .map(MetricSourceKey::getName)
               .collect(Collectors.toList()));
     }
     if (CollectionUtils.isNotEmpty(filter.getKeys())) {
       names.addAll(
-          filter
-              .getKeys()
-              .stream()
+          filter.getKeys().stream()
               .map(MetricKey::getSourceKey)
               .map(MetricSourceKey::getName)
               .collect(Collectors.toList()));
@@ -174,10 +174,7 @@ public class MetricStorage {
       }
     }
 
-    NamedMetricStore store =
-        metricsByKey.computeIfAbsent(metric.getName(), n -> new NamedMetricStore());
-
-    store.save(metric);
+    metricsByKey.computeIfAbsent(metric.getName(), n -> new NamedMetricStore()).save(metric);
   }
 
   private static UUID getUuidKey(UUID uuid) {
@@ -186,7 +183,7 @@ public class MetricStorage {
 
   @Value
   private static class NamedMetricStore {
-    Map<UUID, CustomerMetricStore> customerMetrics = new HashMap<>();
+    ConcurrentMap<UUID, CustomerMetricStore> customerMetrics = new ConcurrentHashMap<>();
 
     private Optional<CustomerMetricStore> get(UUID uuid) {
       return Optional.ofNullable(customerMetrics.get(getUuidKey(uuid)));
@@ -199,27 +196,21 @@ public class MetricStorage {
       }
       if (CollectionUtils.isNotEmpty(filter.getSourceKeys())) {
         uuids.addAll(
-            filter
-                .getSourceKeys()
-                .stream()
+            filter.getSourceKeys().stream()
                 .map(MetricSourceKey::getCustomerUuid)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList()));
       }
       if (CollectionUtils.isNotEmpty(filter.getKeys())) {
         uuids.addAll(
-            filter
-                .getKeys()
-                .stream()
+            filter.getKeys().stream()
                 .map(MetricKey::getSourceKey)
                 .map(MetricSourceKey::getCustomerUuid)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList()));
       }
 
-      return customerMetrics
-          .entrySet()
-          .stream()
+      return customerMetrics.entrySet().stream()
           .filter(e -> CollectionUtils.isEmpty(uuids) || uuids.contains(e.getKey()))
           .map(Entry::getValue);
     }
@@ -233,7 +224,7 @@ public class MetricStorage {
 
   @Value
   private static class CustomerMetricStore {
-    Map<UUID, SourceMetricStore> sourceMetrics = new HashMap<>();
+    ConcurrentMap<UUID, SourceMetricStore> sourceMetrics = new ConcurrentHashMap<>();
 
     private Optional<SourceMetricStore> get(UUID uuid) {
       return Optional.ofNullable(sourceMetrics.get(getUuidKey(uuid)));
@@ -246,27 +237,21 @@ public class MetricStorage {
       }
       if (CollectionUtils.isNotEmpty(filter.getSourceKeys())) {
         uuids.addAll(
-            filter
-                .getSourceKeys()
-                .stream()
+            filter.getSourceKeys().stream()
                 .map(MetricSourceKey::getSourceUuid)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList()));
       }
       if (CollectionUtils.isNotEmpty(filter.getKeys())) {
         uuids.addAll(
-            filter
-                .getKeys()
-                .stream()
+            filter.getKeys().stream()
                 .map(MetricKey::getSourceKey)
                 .map(MetricSourceKey::getSourceUuid)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList()));
       }
 
-      return sourceMetrics
-          .entrySet()
-          .stream()
+      return sourceMetrics.entrySet().stream()
           .filter(e -> CollectionUtils.isEmpty(uuids) || uuids.contains(e.getKey()))
           .map(Entry::getValue);
     }
@@ -280,16 +265,13 @@ public class MetricStorage {
 
   @Value
   private static class SourceMetricStore {
-    List<Metric> sourceMetrics = new ArrayList<>();
+    List<Metric> sourceMetrics = new CopyOnWriteArrayList<>();
 
     private Optional<Metric> get(Map<String, String> labels) {
-      return sourceMetrics
-          .stream()
+      return sourceMetrics.stream()
           .filter(
               metric ->
-                  labels
-                      .entrySet()
-                      .stream()
+                  labels.entrySet().stream()
                       .allMatch(
                           l -> Objects.equals(metric.getLabelValue(l.getKey()), l.getValue())))
           .findFirst();

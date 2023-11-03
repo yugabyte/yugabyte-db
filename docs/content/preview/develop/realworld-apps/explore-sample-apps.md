@@ -6,7 +6,6 @@ description: Install the Yugastore sample application.
 headcontent: Run the Yugastore sample application
 aliases:
   - /preview/quick-start/run-sample-apps/
-  - /quick-start/run-sample-apps/
   - /develop/explore-sample-apps/
 menu:
   preview:

@@ -18,15 +18,14 @@
 #include <cds/init.h>
 
 #include "yb/util/scope_exit.h"
+#include "yb/util/thread.h"
 
 namespace yb {
 
 void Delayer::Delay(MonoTime when, std::function<void()> action) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (!thread_.joinable()) {
-    thread_ = std::thread([this] {
-      Execute();
-    });
+  std::lock_guard lock(mutex_);
+  if (!thread_) {
+    CHECK_OK(yb::Thread::Create("delayer", "delay", &Delayer::Execute, this, &thread_));
   }
   queue_.emplace_back(when, std::move(action));
   cond_.notify_one();
@@ -34,19 +33,16 @@ void Delayer::Delay(MonoTime when, std::function<void()> action) {
 
 Delayer::~Delayer() {
   {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!thread_.joinable()) {
-      return;
-    }
+    std::lock_guard lock(mutex_);
     stop_ = true;
     cond_.notify_one();
   }
-  thread_.join();
+  if (thread_) {
+    thread_->Join();
+  }
 }
 
 void Delayer::Execute() {
-  cds::threading::Manager::attachThread();
-
   std::vector<std::function<void()>> actions;
   std::unique_lock<std::mutex> lock(mutex_);
   while (!stop_) {

@@ -235,25 +235,36 @@ ALTER TABLE onek DROP CONSTRAINT onek_unique1_constraint_foo;
 -- renaming constraint
 ALTER TABLE onek ADD CONSTRAINT onek_check_constraint CHECK (unique1 >= 0);
 ALTER TABLE onek RENAME CONSTRAINT onek_check_constraint TO onek_check_constraint_foo;
-ERROR:  ALTER TABLE RENAME CONSTRAINT not supported yet
-LINE 1: ALTER TABLE onek RENAME CONSTRAINT onek_check_constraint TO ...
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
-/*
-TODO: Uncomment when renaming constraint is supported (GHI #3943).
 ALTER TABLE onek DROP CONSTRAINT onek_check_constraint_foo;
-
 -- renaming constraint should rename index as well
 ALTER TABLE onek ADD CONSTRAINT onek_unique1_constraint UNIQUE (unique1);
 DROP INDEX onek_unique1_constraint;  -- to see whether it's there
+ERROR:  cannot drop index onek_unique1_constraint because constraint onek_unique1_constraint on table onek requires it
+HINT:  You can drop constraint onek_unique1_constraint on table onek instead.
 ALTER TABLE onek RENAME CONSTRAINT onek_unique1_constraint TO onek_unique1_constraint_foo;
 DROP INDEX onek_unique1_constraint_foo;  -- to see whether it's there
+ERROR:  cannot drop index onek_unique1_constraint_foo because constraint onek_unique1_constraint_foo on table onek requires it
+HINT:  You can drop constraint onek_unique1_constraint_foo on table onek instead.
 ALTER TABLE onek DROP CONSTRAINT onek_unique1_constraint_foo;
-
 -- renaming constraints vs. inheritance
 CREATE TABLE constraint_rename_test (a int CONSTRAINT con1 CHECK (a > 0), b int, c int);
 \d constraint_rename_test
+       Table "public.constraint_rename_test"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           |          |
+ b      | integer |           |          |
+ c      | integer |           |          |
+Check constraints:
+    "con1" CHECK (a > 0)
+
 CREATE TABLE constraint_rename_test2 (a int CONSTRAINT con1 CHECK (a > 0), d int) INHERITS (constraint_rename_test);
+ERROR:  INHERITS not supported yet
+LINE 1: ...est2 (a int CONSTRAINT con1 CHECK (a > 0), d int) INHERITS (...
+                                                             ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
+/*
+TODO: Uncomment when inheritance is supported (https://github.com/yugabyte/yugabyte-db/issues/1129).
 \d constraint_rename_test2
 ALTER TABLE constraint_rename_test2 RENAME CONSTRAINT con1 TO con1foo; -- fail
 ALTER TABLE ONLY constraint_rename_test RENAME CONSTRAINT con1 TO con1foo; -- fail
@@ -273,7 +284,7 @@ DROP TABLE constraint_rename_test2;
 DROP TABLE constraint_rename_test;
 ALTER TABLE IF EXISTS constraint_not_exist RENAME CONSTRAINT con3 TO con3foo; -- ok
 ALTER TABLE IF EXISTS constraint_rename_test ADD CONSTRAINT con4 UNIQUE (a);
-
+*/
 -- renaming constraints with cache reset of target relation
 CREATE TABLE constraint_rename_cache (a int,
   CONSTRAINT chk_a CHECK (a > 0),
@@ -285,11 +296,17 @@ ALTER TABLE constraint_rename_cache
 CREATE TABLE like_constraint_rename_cache
   (LIKE constraint_rename_cache INCLUDING ALL);
 \d like_constraint_rename_cache
+    Table "public.like_constraint_rename_cache"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           | not null |
+Indexes:
+    "like_constraint_rename_cache_pkey" PRIMARY KEY, lsm (a HASH)
+Check constraints:
+    "chk_a_new" CHECK (a > 0)
+
 DROP TABLE constraint_rename_cache;
 DROP TABLE like_constraint_rename_cache;
-*/
--- YB Note: Remove following line when the above tests are uncommented.
-ALTER TABLE onek DROP CONSTRAINT onek_check_constraint;
 --
 -- lock levels
 --
@@ -597,7 +614,6 @@ CREATE TABLE fail_part (
 ALTER TABLE list_parted ATTACH PARTITION fail_part FOR VALUES IN (1);
 ERROR:  child table "fail_part" has different type for column "b"
 ALTER TABLE fail_part ALTER b TYPE char (2) COLLATE "POSIX";
-ERROR:  This ALTER TABLE command is not yet supported.
 -- Uncomment when ALTER TABLE COLLATE is supported (#1013)
 -- ALTER TABLE list_parted ATTACH PARTITION fail_part FOR VALUES IN (1);
 DROP TABLE fail_part;

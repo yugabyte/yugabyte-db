@@ -7,39 +7,35 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.SupportBundle;
-import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.UUID;
+import java.io.File;
+import java.io.IOException;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.List;
-import java.io.File;
-import java.io.IOException;
-import org.junit.Before;
+import java.util.UUID;
 import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
-import org.yb.client.YBClient;
+import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 public class CreateSupportBundleTest extends CommissionerBaseTest {
-  @Mock private YBClient mockYBClientActual;
-
   private Universe universe;
   private Customer customer;
   protected RuntimeConfigFactory runtimeConfigFactory;
@@ -49,9 +45,8 @@ public class CreateSupportBundleTest extends CommissionerBaseTest {
   public void setUp() {
     super.setUp();
     this.customer = ModelFactory.testCustomer();
-    this.universe = ModelFactory.createUniverse(customer.getCustomerId());
+    this.universe = ModelFactory.createUniverse(customer.getId());
     this.runtimeConfigFactory = mockBaseTaskDependencies.getRuntimeConfigFactory();
-    when(mockYBClient.getClient(any(), any())).thenReturn(mockYBClientActual);
   }
 
   @After

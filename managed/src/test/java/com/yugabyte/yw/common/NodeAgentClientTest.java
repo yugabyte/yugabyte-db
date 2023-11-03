@@ -10,10 +10,14 @@ import static org.mockito.Mockito.mock;
 import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.NodeAgentClient.NodeAgentUpgradeParam;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.NodeAgent.ArchType;
+import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.nodeagent.NodeAgentGrpc.NodeAgentImplBase;
 import com.yugabyte.yw.nodeagent.Server.DownloadFileRequest;
 import com.yugabyte.yw.nodeagent.Server.DownloadFileResponse;
@@ -21,6 +25,8 @@ import com.yugabyte.yw.nodeagent.Server.ExecuteCommandRequest;
 import com.yugabyte.yw.nodeagent.Server.ExecuteCommandResponse;
 import com.yugabyte.yw.nodeagent.Server.PingRequest;
 import com.yugabyte.yw.nodeagent.Server.PingResponse;
+import com.yugabyte.yw.nodeagent.Server.UpdateRequest;
+import com.yugabyte.yw.nodeagent.Server.UpdateResponse;
 import com.yugabyte.yw.nodeagent.Server.UploadFileRequest;
 import com.yugabyte.yw.nodeagent.Server.UploadFileResponse;
 import io.grpc.ManagedChannel;
@@ -62,13 +68,16 @@ public class NodeAgentClientTest extends FakeDBApplication {
     payload.version = "2.12.0";
     payload.name = "node";
     payload.ip = "10.20.30.40";
+    payload.osType = OSType.LINUX.name();
+    payload.archType = ArchType.AMD64.name();
+    payload.home = "/home/yugabyte/node-agent";
     nodeAgentHandler.enableConnectionValidation(false);
-    nodeAgent = nodeAgentHandler.register(customer.uuid, payload);
+    nodeAgent = nodeAgentHandler.register(customer.getUuid(), payload);
     nodeAgentImpl =
         new NodeAgentImplBase() {
           @Override
           public void ping(PingRequest request, StreamObserver<PingResponse> responseObserver) {
-            responseObserver.onNext(PingResponse.newBuilder().setData(request.getData()).build());
+            responseObserver.onNext(PingResponse.newBuilder().build());
             responseObserver.onCompleted();
           }
 
@@ -102,6 +111,13 @@ public class NodeAgentClientTest extends FakeDBApplication {
               responseObserver.onError(e);
             }
           }
+
+          @Override
+          public void update(
+              UpdateRequest request, StreamObserver<UpdateResponse> responseObserver) {
+            responseObserver.onNext(UpdateResponse.newBuilder().build());
+            responseObserver.onCompleted();
+          }
         };
 
     serviceImpl = mock(NodeAgentImplBase.class, delegatesTo(nodeAgentImpl));
@@ -120,7 +136,8 @@ public class NodeAgentClientTest extends FakeDBApplication {
     ManagedChannel channel =
         grpcCleanup.register(InProcessChannelBuilder.forName(serverName).directExecutor().build());
 
-    nodeAgentClient = new NodeAgentClient(mock(Config.class), config -> channel);
+    nodeAgentClient =
+        new NodeAgentClient(mock(Config.class), mock(RuntimeConfGetter.class), config -> channel);
   }
 
   static class UploadFileRequestObserver implements StreamObserver<UploadFileRequest> {
@@ -159,7 +176,7 @@ public class NodeAgentClientTest extends FakeDBApplication {
 
   @Test
   public void testPingSuccess() {
-    nodeAgentClient.validateConnection(nodeAgent, true);
+    nodeAgentClient.ping(nodeAgent);
   }
 
   @Test
@@ -196,5 +213,17 @@ public class NodeAgentClientTest extends FakeDBApplication {
     } finally {
       path.toFile().delete();
     }
+  }
+
+  @Test
+  public void testStartUpgrade() {
+    NodeAgentUpgradeParam param =
+        NodeAgentUpgradeParam.builder().certDir("test1").packagePath(Paths.get("/tmp/pkg")).build();
+    nodeAgentClient.startUpgrade(nodeAgent, param);
+  }
+
+  @Test
+  public void testFinalizeUpgrade() {
+    nodeAgentClient.finalizeUpgrade(nodeAgent);
   }
 }

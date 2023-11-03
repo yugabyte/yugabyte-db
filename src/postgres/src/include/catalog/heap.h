@@ -157,4 +157,6 @@ extern void RemovePartitionKeyByRelId(Oid relid);
 extern void StorePartitionBound(Relation rel, Relation parent,
 					PartitionBoundSpec *bound);
 
+Node *YbCookConstraint(ParseState *pstate, Node *raw_constraint, char *relname);
+
 #endif							/* HEAP_H */

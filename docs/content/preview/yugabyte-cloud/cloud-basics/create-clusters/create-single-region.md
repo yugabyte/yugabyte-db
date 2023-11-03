@@ -16,7 +16,7 @@ type: docs
 
 Single-region dedicated clusters support multi-node and highly available deployments and are suitable for production deployments.
 
-{{< youtube id="qYMcNzWotkI" title="Deploy a fault tolerant cluster in YugabyteDB Managed" >}}
+{{< youtube id="1eo7YXs3uTw" title="Deploy a fault tolerant cluster in YugabyteDB Managed" >}}
 
 ## Features
 
@@ -27,13 +27,13 @@ Single-region dedicated clusters include the following features:
 - Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
 - VPC networking support.
 - Automated and on-demand backups.
-- Available in all [regions](../../../release-notes#cloud-provider-regions).
+- Available in all [regions](../../create-clusters-overview/#cloud-provider-regions).
 - Enterprise support.
 
 ## Prerequisites
 
-- If you want to use dedicated VPCs for network isolation and security, create the VPC before you create your cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [VPC networking](../../cloud-vpcs/).
-- Create a billing profile and add a payment method before you can create a Dedicated cluster. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
+- If you want to use dedicated VPCs for network isolation and security, create the VPC before you create your cluster. YugabyteDB Managed supports AWC and GCP for peering, and AWC and Azure for private linking. Single-region clusters on Azure must be deployed in a VPC. Refer to [VPC network](../../cloud-vpcs/).
+- A billing profile and a payment method. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
 
 ## Create a single-region cluster
 
@@ -43,6 +43,8 @@ The **Create Cluster** wizard has the following pages:
 
 1. [General Settings](#general-settings)
 1. [Cluster Setup](#cluster-setup)
+1. [Network Access](#network-access)
+1. [Security](#security)
 1. [DB Credentials](#database-credentials)
 
 {{% includeMarkdown "include-general-settings.md" %}}
@@ -67,15 +69,17 @@ You can't change the Fault tolerance of a cluster after it's created.
 
 ![Add Cluster Wizard - Region and size](/images/yb-cloud/cloud-addcluster-paid3.2.png)
 
-**Region**: Choose the [region](../../../release-notes#cloud-provider-regions) where the cluster will be located, or click **Request a multi-region cluster** to contact Yugabyte Support to arrange multi-region deployment.
+**Region**: Choose the [region](../../create-clusters-overview/#cloud-provider-regions) where the cluster will be located.
 
-**Nodes**: Enter the number of nodes for the cluster. Node and Availability zone level clusters have a minimum of 3 nodes; Availability zone level clusters increment by 3.
+**Nodes**: Enter the number of nodes for the cluster. Node and Availability Zone Level clusters have a minimum of 3 nodes; Availability Zone Level clusters increment by 3.
 
 **vCPU/Node**: Enter the number of virtual CPUs per node.
 
 **Disk size/Node**: Enter the disk size per node in GB.
 
-Dedicated clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
+**Disk IOPS/Node** (AWS only): Enter the disk input output (I/O) operations per second (IOPS) per node. The node throughput will be scaled according to this IOPS value. For large datasets or clusters with high concurrent transactions, higher IOPS is recommended. As disk IOPS is capped by vCPU, your vCPU and IOPS should be scaled together. Reference your current read and write IOPS performance for an estimation.
+
+Dedicated clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
 
 Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
 
@@ -83,7 +87,11 @@ Monthly total costs for the cluster are based on the number of vCPUs and estimat
 
 ![Add Cluster Wizard - Configure VPC](/images/yb-cloud/cloud-addcluster-paid3.3.png)
 
-To use a VPC for network isolation and security, select **Use VPC peering**, then select the VPC. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
+To use a VPC for network isolation and security, choose **Select a VPC to use a dedicated network isolated from others**, then select the VPC. Only VPCs using the selected cloud provider are listed. The VPC must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
+
+{{% includeMarkdown "network-access.md" %}}
+
+{{% includeMarkdown "include-security-settings.md" %}}
 
 ### Database Credentials
 
@@ -91,7 +99,7 @@ The database admin credentials are required to connect to the YugabyteDB databas
 
 You can use the default credentials generated by YugabyteDB Managed, or add your own.
 
-For security reasons, the admin user does not have YSQL superuser privileges, but does have sufficient privileges for most tasks. For more information on database roles and privileges in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../../../cloud-secure-clusters/cloud-users/).
+For security reasons, the database admin user does not have YSQL superuser privileges, but does have sufficient privileges for most tasks. For more information on database roles and privileges in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../../../cloud-secure-clusters/cloud-users/).
 
 After the cluster is provisioned, you can [add more users and change your password](../../../cloud-secure-clusters/add-users/).
 

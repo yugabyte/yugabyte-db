@@ -84,17 +84,17 @@ MetricPrototypeRegistry* MetricPrototypeRegistry::get() {
 }
 
 void MetricPrototypeRegistry::AddMetric(const MetricPrototype* prototype) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   metrics_.push_back(prototype);
 }
 
 void MetricPrototypeRegistry::AddEntity(const MetricEntityPrototype* prototype) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   entities_.push_back(prototype);
 }
 
 void MetricPrototypeRegistry::WriteAsJson(JsonWriter* writer) const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   MetricJsonOptions opts;
   opts.include_schema_info = true;
   writer->StartObject();
@@ -142,8 +142,9 @@ MetricEntityPrototype::~MetricEntityPrototype() {
 scoped_refptr<MetricEntity> MetricEntityPrototype::Instantiate(
     MetricRegistry* registry,
     const std::string& id,
-    const MetricEntity::AttributeMap& initial_attrs) const {
-  return registry->FindOrCreateEntity(this, id, initial_attrs);
+    const MetricEntity::AttributeMap& initial_attrs,
+    std::shared_ptr<MemTracker> mem_tracker) const {
+  return registry->FindOrCreateEntity(this, id, initial_attrs, std::move(mem_tracker));
 }
 
 scoped_refptr<MetricEntity> MetricEntityPrototype::Instantiate(
@@ -156,14 +157,15 @@ scoped_refptr<MetricEntity> MetricEntityPrototype::Instantiate(
 //
 
 MetricEntity::MetricEntity(const MetricEntityPrototype* prototype,
-                           std::string id, AttributeMap attributes)
+                           std::string id, AttributeMap attributes,
+                           std::shared_ptr<MemTracker> mem_tracker)
     : prototype_(prototype),
       id_(std::move(id)),
-      attributes_(std::move(attributes)) {
+      attributes_(std::move(attributes)),
+      mem_tracker_(std::move(mem_tracker)) {
 }
 
-MetricEntity::~MetricEntity() {
-}
+MetricEntity::~MetricEntity() = default;
 
 const std::regex& PrometheusNameRegex() {
   return prometheus_name_regex;
@@ -178,8 +180,18 @@ void MetricEntity::CheckInstantiation(const MetricPrototype* proto) const {
 }
 
 scoped_refptr<Metric> MetricEntity::FindOrNull(const MetricPrototype& prototype) const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   return FindPtrOrNull(metric_map_, &prototype);
+}
+
+bool MetricEntity::TEST_ContainMetricName(const std::string& metric_name) const {
+  std::lock_guard l(lock_);
+  for (const MetricMap::value_type& val : metric_map_) {
+    if (val.first->name() == metric_name) {
+      return true;
+    }
+  }
+  return false;
 }
 
 namespace {
@@ -218,7 +230,7 @@ Status MetricEntity::WriteAsJson(JsonWriter* writer,
   {
     // Snapshot the metrics, attributes & external metrics callbacks in this metrics entity. (Note:
     // this is not guaranteed to be a consistent snapshot).
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     attrs = attributes_;
     external_metrics_cbs = external_json_metrics_cbs_;
     for (const MetricMap::value_type& val : metric_map_) {
@@ -287,11 +299,16 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
   {
     // Snapshot the metrics, attributes & external metrics callbacks in this metrics entity. (Note:
     // this is not guaranteed to be a consistent snapshot).
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     attrs = attributes_;
     external_metrics_cbs = external_prometheus_metrics_cbs_;
     for (const auto& [prototype, metric] : metric_map_) {
-      if (MatchMetricInList(prototype->name(), entity_options.exclude_metrics)) {
+      // Since AggregationMetricLevel is attached to each individual metric rather than the writer's
+      // AggregationMetricLevel, we need to check that the metric's aggregation level matches the
+      // writer's.
+      if ((writer->GetAggregationMetricLevel() != AggregationMetricLevel::kServer &&
+           writer->GetAggregationMetricLevel() != prototype->aggregation_metric_level()) ||
+          MatchMetricInList(prototype->name(), entity_options.exclude_metrics)) {
         continue;
       }
       if (select_all || MatchMetricInList(prototype->name(), entity_options.metrics)) {
@@ -314,6 +331,7 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
   if (strcmp(prototype_->name(), "tablet") == 0 || strcmp(prototype_->name(), "table") == 0) {
     prometheus_attr["table_id"] = attrs["table_id"];
     prometheus_attr["table_name"] = attrs["table_name"];
+    prometheus_attr["table_type"] = attrs["table_type"];
     prometheus_attr["namespace_name"] = attrs["namespace_name"];
   } else if (
       strcmp(prototype_->name(), "server") == 0 || strcmp(prototype_->name(), "cluster") == 0) {
@@ -323,6 +341,7 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
   } else if (strcmp(prototype_->name(), "cdc") == 0) {
     prometheus_attr["table_id"] = attrs["table_id"];
     prometheus_attr["table_name"] = attrs["table_name"];
+    prometheus_attr["table_type"] = attrs["table_type"];
     prometheus_attr["namespace_name"] = attrs["namespace_name"];
     prometheus_attr["stream_id"] = attrs["stream_id"];
   } else if (strcmp(prototype_->name(), "cdcsdk") == 0) {
@@ -352,14 +371,14 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
 }
 
 void MetricEntity::Remove(const MetricPrototype* proto) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   metric_map_.erase(proto);
 }
 
 void MetricEntity::RetireOldMetrics() {
   MonoTime now = MonoTime::Now();
 
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   for (auto it = metric_map_.begin(); it != metric_map_.end();) {
     const scoped_refptr<Metric>& metric = it->second;
 
@@ -402,95 +421,18 @@ void MetricEntity::RetireOldMetrics() {
 }
 
 void MetricEntity::NeverRetire(const scoped_refptr<Metric>& metric) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   never_retire_metrics_.push_back(metric);
 }
 
 void MetricEntity::SetAttributes(const AttributeMap& attrs) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   attributes_ = attrs;
 }
 
 void MetricEntity::SetAttribute(const string& key, const string& val) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   attributes_[key] = val;
-}
-
-scoped_refptr<Counter> MetricEntity::FindOrCreateCounter(
-    const CounterPrototype* proto) {
-  CheckInstantiation(proto);
-  std::lock_guard<simple_spinlock> l(lock_);
-  scoped_refptr<Counter> m = down_cast<Counter*>(FindPtrOrNull(metric_map_, proto).get());
-  if (!m) {
-    m = new Counter(proto);
-    InsertOrDie(&metric_map_, proto, m);
-  }
-  return m;
-}
-
-scoped_refptr<Counter> MetricEntity::FindOrCreateCounter(
-    std::unique_ptr<CounterPrototype> proto) {
-  CheckInstantiation(proto.get());
-  std::lock_guard<simple_spinlock> l(lock_);
-  auto m = down_cast<Counter*>(FindPtrOrNull(metric_map_, proto.get()).get());
-  if (!m) {
-    m = new Counter(std::move(proto));
-    InsertOrDie(&metric_map_, m->prototype(), m);
-  }
-  return m;
-}
-
-scoped_refptr<MillisLag> MetricEntity::FindOrCreateMillisLag(
-    const MillisLagPrototype* proto) {
-  CheckInstantiation(proto);
-  std::lock_guard<simple_spinlock> l(lock_);
-  scoped_refptr<MillisLag> m = down_cast<MillisLag*>(FindPtrOrNull(metric_map_, proto).get());
-  if (!m) {
-    m = new MillisLag(proto);
-    InsertOrDie(&metric_map_, proto, m);
-  }
-  return m;
-}
-
-scoped_refptr<AtomicMillisLag> MetricEntity::FindOrCreateAtomicMillisLag(
-    const MillisLagPrototype* proto) {
-  CheckInstantiation(proto);
-  std::lock_guard<simple_spinlock> l(lock_);
-  scoped_refptr<AtomicMillisLag> m = down_cast<AtomicMillisLag*>(
-      FindPtrOrNull(metric_map_, proto).get());
-  if (!m) {
-    m = new AtomicMillisLag(proto);
-    InsertOrDie(&metric_map_, proto, m);
-  }
-  return m;
-}
-
-scoped_refptr<Histogram> MetricEntity::FindOrCreateHistogram(
-    const HistogramPrototype* proto) {
-  CheckInstantiation(proto);
-  std::lock_guard<simple_spinlock> l(lock_);
-  scoped_refptr<Histogram> m = down_cast<Histogram*>(FindPtrOrNull(metric_map_, proto).get());
-  if (!m) {
-    m = new Histogram(proto);
-    InsertOrDie(&metric_map_, proto, m);
-  }
-  return m;
-}
-
-scoped_refptr<Histogram> MetricEntity::FindOrCreateHistogram(
-    std::unique_ptr<HistogramPrototype> proto) {
-  CheckInstantiation(proto.get());
-  std::lock_guard<simple_spinlock> l(lock_);
-  auto m = down_cast<Histogram*>(FindPtrOrNull(metric_map_, proto.get()).get());
-  if (!m) {
-    uint64_t highest_trackable_value = proto->max_trackable_value();
-    int num_significant_digits = proto->num_sig_digits();
-    const ExportPercentiles export_percentile = proto->export_percentiles();
-    m = new Histogram(std::move(proto), highest_trackable_value, num_significant_digits,
-                      export_percentile);
-    InsertOrDie(&metric_map_, m->prototype(), m);
-  }
-  return m;
 }
 
 void WriteRegistryAsJson(JsonWriter* writer) {

@@ -9,6 +9,7 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 check_type="provision"
+node_agent_mode=false
 airgap=false
 install_node_exporter=true
 skip_ntp_check=false
@@ -21,10 +22,21 @@ ssh_port=""
 package_manager_cmd=""
 is_aarch64=false
 is_debian=false
+master_http_port="7000"
+master_rpc_port="7100"
+tserver_http_port="9000"
+tserver_rpc_port="9100"
+yb_controller_http_port="14000"
+yb_controller_rpc_port="18018"
+redis_server_http_port="11000"
+redis_server_rpc_port="6379"
+ycql_server_http_port="12000"
+ycql_server_rpc_port="9042"
+ysql_server_http_port="13000"
+ysql_server_rpc_port="5433"
+node_exporter_port="9300"
 
 preflight_provision_check() {
-
-
   # Check for internet access.
   if [[ "$airgap" = false ]]; then
     # Attempt to run "/dev/tcp" 3 times with a 3 second timeout and return success if any succeed.
@@ -61,6 +73,7 @@ preflight_provision_check() {
 
     check_free_space "prometheus_space" "/opt/prometheus"
     check_free_space "tmp_dir_space" "/tmp"
+    check_port "node_exporter_port" "$node_exporter_port"
   fi
 
   # Check ulimit settings.
@@ -177,6 +190,7 @@ check_package_installed() {
 }
 
 check_binaries_installed() {
+  check_binary_installed "chronyc"
   if [[ "$is_aarch64" = false ]]; then
     check_binary_installed "azcopy" # Optional.
   fi
@@ -187,12 +201,8 @@ check_binaries_installed() {
 
 check_binary_installed() {
   binary_name=$1
-  binary_exists=false
-  result="type -P $binary_name | grep $binary_name"
-  if [[ -n "$result" ]]; then
-    binary_exists=true
-  fi
-  update_result_json "$binary_name" "$binary_exists"
+  command -v $binary_name >/dev/null 2>&1;
+  update_result_json_with_rc "$binary_name" "$?"
 }
 
 preflight_configure_check() {
@@ -211,9 +221,13 @@ preflight_configure_check() {
 
 
   # Check that node exporter is listening on correct port (default: 9300).
-  node_exporter_port=$(ps -ef | grep "node_exporter" | grep -v "grep" |
+  running_port=$(ps -ef | grep "node_exporter" | grep -v "grep" |
             grep -v "preflight" | grep -oP '(?<=web.listen-address=:)\w+')
-  update_result_json "node_exporter_port" "$node_exporter_port"
+  check_passed=false
+  if [[ "$running_port" == "$node_exporter_port" ]]; then
+    check_passed=true
+  fi
+  update_result_json "node_exporter_port:$node_exporter_port" "$check_passed"
 
   # Check swappiness (optional).
   swappiness=$(cat /proc/sys/vm/swappiness)
@@ -234,6 +248,10 @@ preflight_configure_check() {
   else
     update_result_json "systemd_sudoer_entry" false
   fi
+
+  # Check virtual memory max map limit.
+  vm_max_map_count=$(cat /proc/sys/vm/max_map_count 2> /dev/null)
+  update_result_json "vm_max_map_count" "${vm_max_map_count:-0}"
 }
 
 preflight_all_checks() {
@@ -252,18 +270,18 @@ preflight_all_checks() {
   fi
 
   # Check all the communication ports
-  check_port "master_http_port" "7000"
-  check_port "master_rpc_port" "7100"
-  check_port "tserver_http_port" "9000"
-  check_port "tserver_rpc_port" "9100"
-  check_port "yb_controller_http_port" "14000"
-  check_port "yb_controller_rpc_port" "18018"
-  check_port "redis_server_http_port" "11000"
-  check_port "redis_server_rpc_port" "6379"
-  check_port "yql_server_http_port" "12000"
-  check_port "yql_server_rpc_port" "9042"
-  check_port "ysql_server_http_port" "13000"
-  check_port "ysql_server_rpc_port" "5433"
+  check_port "master_http_port" "$master_http_port"
+  check_port "master_rpc_port" "$master_rpc_port"
+  check_port "tserver_http_port" "$tserver_http_port"
+  check_port "tserver_rpc_port" "$tserver_rpc_port"
+  check_port "yb_controller_http_port" "$yb_controller_http_port"
+  check_port "yb_controller_rpc_port" "$yb_controller_rpc_port"
+  check_port "redis_server_http_port" "$redis_server_http_port"
+  check_port "redis_server_rpc_port" "$redis_server_rpc_port"
+  check_port "ycql_server_http_port" "$ycql_server_http_port"
+  check_port "ycql_server_rpc_port" "$ycql_server_rpc_port"
+  check_port "ysql_server_http_port" "$ysql_server_http_port"
+  check_port "ysql_server_rpc_port" "$ysql_server_rpc_port"
 
   # Check mount points volume size.
   IFS="," read -ra mount_points_arr <<< "$mount_points"
@@ -283,7 +301,6 @@ preflight_all_checks() {
   check_yugabyte_user
 
   check_free_space "home_dir_space" "$yb_home_dir"
-
 }
 
 check_port() {
@@ -295,7 +312,6 @@ check_port() {
     check_passed=false
   fi
   update_result_json "$name:$port" "$check_passed"
-
 }
 
 # Checks if given filepath is writable.
@@ -414,6 +430,9 @@ while [[ $# -gt 0 ]]; do
       check_type="$2"
       shift
     ;;
+    --node_agent_mode)
+      node_agent_mode=true
+    ;;
     --airgap)
       airgap=true
     ;;
@@ -425,6 +444,58 @@ while [[ $# -gt 0 ]]; do
     ;;
     --mount_points)
       mount_points="$2"
+      shift
+    ;;
+    --master_http_port)
+      master_http_port="$2"
+      shift
+    ;;
+    --master_rpc_port)
+      master_rpc_port="$2"
+      shift
+    ;;
+    --tserver_http_port)
+      tserver_http_port="$2"
+      shift
+    ;;
+    --tserver_rpc_port)
+      tserver_rpc_port="$2"
+      shift
+    ;;
+    --yb_controller_http_port)
+      yb_controller_http_port="$2"
+      shift
+    ;;
+    --yb_controller_rpc_port)
+      yb_controller_rpc_port="$2"
+      shift
+    ;;
+    --redis_server_http_port)
+      redis_server_http_port="$2"
+      shift
+    ;;
+    --redis_server_rpc_port)
+      redis_server_rpc_port="$2"
+      shift
+    ;;
+    --ycql_server_http_port)
+      ycql_server_http_port="$2"
+      shift
+    ;;
+    --ycql_server_rpc_port)
+      ycql_server_rpc_port="$2"
+      shift
+    ;;
+    --ysql_server_http_port)
+      ysql_server_http_port="$2"
+      shift
+    ;;
+    --ysql_server_rpc_port)
+      ysql_server_rpc_port="$2"
+      shift
+    ;;
+    --node_exporter_port)
+      node_exporter_port="$2"
       shift
     ;;
     --ssh_port)
@@ -460,4 +531,19 @@ else
   preflight_configure_check >/dev/null 2>&1
 fi
 
-echo "{$result_kvs}"
+if [[ "$node_agent_mode" == "false" ]]; then
+  python - "{$result_kvs}" <<EOF
+import json
+import sys
+dict=json.loads(sys.argv[1])
+keys = list(dict.keys())
+keys.sort()
+idx = 1
+for key in keys:
+  val = dict[key].get("value")
+  print('{}. {} is {}'.format(idx, key, val))
+  idx += 1
+EOF
+else
+  echo "{$result_kvs}"
+fi

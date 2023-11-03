@@ -41,7 +41,7 @@ public class AddOnClusterDelete extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
-    log.info("Started {} task for uuid={}", getName(), params().universeUUID);
+    log.info("Started {} task for uuid={}", getName(), params().getUniverseUUID());
 
     try {
 
@@ -62,7 +62,7 @@ public class AddOnClusterDelete extends UniverseDefinitionTaskBase {
       if (clusterToDelete == null || clusterToDelete.clusterType != ClusterType.ADDON) {
         String msg =
             "Unable to delete add-on cluster from universe \""
-                + universe.name
+                + universe.getName()
                 + "\" as it doesn't have the specified add-on cluster.";
         log.error(msg);
         throw new RuntimeException(msg);

@@ -197,8 +197,8 @@ Result<string> GetNamespaceIdByNamespaceName(YBClient* client,
                                              const string& namespace_name) {
   const auto namespaces = VERIFY_RESULT(client->ListNamespaces(YQL_DATABASE_PGSQL));
   for (const auto& ns : namespaces) {
-    if (ns.name() == namespace_name) {
-      return ns.id();
+    if (ns.id.name() == namespace_name) {
+      return ns.id.id();
     }
   }
   return STATUS_SUBSTITUTE(NotFound, "The namespace $0 does not exist", namespace_name);

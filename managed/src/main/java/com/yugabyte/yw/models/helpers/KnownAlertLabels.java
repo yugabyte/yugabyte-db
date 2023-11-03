@@ -13,6 +13,7 @@ package com.yugabyte.yw.models.helpers;
 public enum KnownAlertLabels {
   CONFIGURATION_UUID,
   CONFIGURATION_TYPE,
+  ALERT_TYPE,
   DEFINITION_UUID,
   DEFINITION_NAME,
   UNIVERSE_UUID,
@@ -39,7 +40,16 @@ public enum KnownAlertLabels {
   ALERTNAME,
   MESSAGE,
   MAINTENANCE_WINDOW_UUIDS,
-  ALERT_EXPRESSION;
+  ALERT_EXPRESSION,
+  NODE_AGENT_UUID,
+  NAMESPACE,
+  POD_NAME,
+  CONTAINER_NAME,
+  NODE_ADDRESS,
+  NODE_IDENTIFIER,
+  PARENT_TASK_TYPE,
+
+  YBA_VERSION;
 
   public String labelName() {
     return name().toLowerCase();

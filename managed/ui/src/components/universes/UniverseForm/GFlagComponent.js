@@ -23,6 +23,8 @@ import Edit from '../images/edit_pen.svg';
 import Close from '../images/close.svg';
 import Plus from '../images/plus.svg';
 import MoreIcon from '../images/ellipsis.svg';
+// Styles
+import './UniverseForm.scss';
 
 //server
 const MASTER = 'MASTER';
@@ -140,7 +142,11 @@ export default function GFlagComponent(props) {
       }
 
       case ADD_GFLAG: {
-        const obj = { Name: values?.flagname, [values?.server]: values?.flagvalue };
+        const obj = {
+          Name: values?.flagname,
+          [values?.server]: values?.flagvalue,
+          tags: values?.tags
+        };
         checkExistsAndPush(obj);
         callValidation([obj]);
         setToggleModal(false);
@@ -232,9 +238,9 @@ export default function GFlagComponent(props) {
   const valueFormatter = (cell, row, index, server) => {
     const valueExists = cell !== undefined;
     const eInfo = validationError?.find((e) => e.Name === row?.Name); //error info
-    const isError = eInfo && eInfo[server]?.error;
-    const isFlagExist = eInfo && eInfo[server]?.exist === true;
-    const notExists = eInfo && eInfo[server]?.exist === false;
+    const isError = eInfo?.[server]?.error;
+    const isFlagExist = eInfo?.[server]?.exist === true;
+    const notExists = eInfo?.[server]?.exist === false;
 
     let modalProps = {
       server,
@@ -255,6 +261,7 @@ export default function GFlagComponent(props) {
         return (
           eInfo &&
           (eInfo[MASTER]?.exist === true || eInfo[TSERVER]?.exist === true) &&
+          // eslint-disable-next-line no-prototype-builtins
           row?.hasOwnProperty(serverType === MASTER ? TSERVER : MASTER)
         );
       };
@@ -325,7 +332,7 @@ export default function GFlagComponent(props) {
         flagname: row?.Name
       };
       return (
-        <div className="table-val-column">
+        <div className={clsx('table-val-column', 'empty-cell', notExists && 'no-border')}>
           {isFlagExist && (
             <Button
               bsClass="flag-icon-button display-inline-flex mb-2"
@@ -379,7 +386,12 @@ export default function GFlagComponent(props) {
       }
 
       case ADD_GFLAG:
-        return <AddGFlag formProps={formProps} gFlagProps={{ ...selectedProps, dbVersion }} />;
+        return (
+          <AddGFlag
+            formProps={formProps}
+            gFlagProps={{ ...selectedProps, dbVersion, existingFlags: fields.getAll() }}
+          />
+        );
 
       default:
         return null;

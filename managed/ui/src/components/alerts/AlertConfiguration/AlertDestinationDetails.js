@@ -5,7 +5,6 @@
 // This file will hold all the details related to the channels
 // for the respective destination.
 
-import React from 'react';
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { YBModal } from '../../common/forms/fields';
 
@@ -116,13 +115,20 @@ export const AlertDestinationDetails = ({ details, visible, onHide }) => {
       );
 
       const details =
-        detail.channelType === 'Email' ? emailDetails :
-          detail.channelType === 'Slack' ? slackDetails :
-            detail.channelType === 'PagerDuty' ? pagerDutyDetails :
-              detail.channelType === 'WebHook' ? webHookDetails :
-                null;
+        detail.channelType === 'Email'
+          ? emailDetails
+          : detail.channelType === 'Slack'
+          ? slackDetails
+          : detail.channelType === 'PagerDuty'
+          ? pagerDutyDetails
+          : detail.channelType === 'WebHook'
+          ? webHookDetails
+          : null;
       showList.push(
-        <ul key={i} className="cert-details-modal__list alertDestinationDetail">
+        <ul
+          key={`${detail.channelName}-${detail.channelType}`}
+          className="cert-details-modal__list alertDestinationDetail"
+        >
           {details}
         </ul>
       );

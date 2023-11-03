@@ -23,7 +23,8 @@
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
-#include "yb/docdb/value.h"
+#include "yb/docdb/read_operation_data.h"
+#include "yb/dockv/value.h"
 
 #include "yb/rocksdb/cache.h"
 
@@ -31,6 +32,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
+#include "yb/util/operation_counter.h"
 
 namespace yb {
 namespace docdb {
@@ -45,7 +47,8 @@ class ValueRef {
                     SortingType sorting_type = SortingType::kNotSpecified,
                     bfql::TSOpcode write_instruction = bfql::TSOpcode::kScalarInsert)
       : value_pb_(&value_pb), sorting_type_(sorting_type), write_instruction_(write_instruction),
-        list_extend_order_(ListExtendOrder::APPEND), value_type_(ValueEntryType::kInvalid) {
+        list_extend_order_(dockv::ListExtendOrder::APPEND),
+        value_type_(dockv::ValueEntryType::kInvalid) {
   }
 
   explicit ValueRef(const QLValuePB& value_pb,
@@ -53,18 +56,18 @@ class ValueRef {
       : value_pb_(&value_pb), sorting_type_(value_ref.sorting_type_),
         write_instruction_(value_ref.write_instruction_),
         list_extend_order_(value_ref.list_extend_order_),
-        value_type_(ValueEntryType::kInvalid) {
+        value_type_(dockv::ValueEntryType::kInvalid) {
   }
 
   explicit ValueRef(const QLValuePB& value_pb,
-                    ListExtendOrder list_extend_order)
+                    dockv::ListExtendOrder list_extend_order)
       : value_pb_(&value_pb), sorting_type_(SortingType::kNotSpecified),
         write_instruction_(bfql::TSOpcode::kScalarInsert),
         list_extend_order_(list_extend_order),
-        value_type_(ValueEntryType::kInvalid) {
+        value_type_(dockv::ValueEntryType::kInvalid) {
   }
 
-  explicit ValueRef(ValueEntryType key_entry_type);
+  explicit ValueRef(dockv::ValueEntryType key_entry_type);
 
   explicit ValueRef(std::reference_wrapper<const Slice> encoded_value)
       : encoded_value_(&encoded_value.get()) {}
@@ -81,19 +84,19 @@ class ValueRef {
     return sorting_type_;
   }
 
-  ListExtendOrder list_extend_order() const {
+  dockv::ListExtendOrder list_extend_order() const {
     return list_extend_order_;
   }
 
-  void set_list_extend_order(ListExtendOrder value) {
+  void set_list_extend_order(dockv::ListExtendOrder value) {
     list_extend_order_ = value;
   }
 
-  void set_custom_value_type(ValueEntryType value) {
+  void set_custom_value_type(dockv::ValueEntryType value) {
     value_type_ = value;
   }
 
-  ValueEntryType custom_value_type() const {
+  dockv::ValueEntryType custom_value_type() const {
     return value_type_;
   }
 
@@ -115,7 +118,7 @@ class ValueRef {
 
   bool is_map() const;
 
-  ValueEntryType ContainerValueType() const;
+  dockv::ValueEntryType ContainerValueType() const;
 
   bool IsTombstoneOrPrimitive() const;
 
@@ -125,8 +128,8 @@ class ValueRef {
   const QLValuePB* value_pb_;
   SortingType sorting_type_;
   bfql::TSOpcode write_instruction_;
-  ListExtendOrder list_extend_order_;
-  ValueEntryType value_type_;
+  dockv::ListExtendOrder list_extend_order_;
+  dockv::ValueEntryType value_type_;
   const Slice* encoded_value_ = nullptr;
 };
 
@@ -157,35 +160,34 @@ class DocWriteBatch {
  public:
   explicit DocWriteBatch(const DocDB& doc_db,
                          InitMarkerBehavior init_marker_behavior,
+                         std::reference_wrapper<const ScopedRWOperation> pending_op,
                          std::atomic<int64_t>* monotonic_counter = nullptr);
 
   // Custom write_id could specified. Such write_id should be previously allocated with
   // ReserveWriteId. In this case the value will be put to batch into preallocated position.
   Status SetPrimitive(
-      const DocPath& doc_path,
-      const ValueControlFields& control_fields,
+      const dockv::DocPath& doc_path,
+      const dockv::ValueControlFields& control_fields,
       const ValueRef& value,
-      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const ReadOperationData& read_operation_data = {},
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       std::optional<IntraTxnWriteId> write_id = {});
 
   Status SetPrimitive(
-      const DocPath& doc_path,
-      const ValueControlFields& control_fields,
+      const dockv::DocPath& doc_path,
+      const dockv::ValueControlFields& control_fields,
       const ValueRef& value,
       std::unique_ptr<IntentAwareIterator> intent_iter);
 
   Status SetPrimitive(
-      const DocPath& doc_path,
+      const dockv::DocPath& doc_path,
       const ValueRef& value,
-      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const ReadOperationData& read_operation_data = {},
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
-      UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp) {
+      UserTimeMicros user_timestamp = dockv::ValueControlFields::kInvalidTimestamp) {
     return SetPrimitive(
-        doc_path, ValueControlFields { .timestamp = user_timestamp }, value, read_ht,
-        deadline, query_id);
+        doc_path, dockv::ValueControlFields { .timestamp = user_timestamp }, value,
+        read_operation_data, query_id);
   }
 
   // Extend the SubDocument in the given key. We'll support List with Append and Prepend mode later.
@@ -193,63 +195,57 @@ class DocWriteBatch {
   // In each SetPrimitive call, some common work is repeated. It may be made more
   // efficient by not calling SetPrimitive internally.
   Status ExtendSubDocument(
-      const DocPath& doc_path,
+      const dockv::DocPath& doc_path,
       const ValueRef& value,
-      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const ReadOperationData& read_operation_data = {},
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
-      MonoDelta ttl = ValueControlFields::kMaxTtl,
-      UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp);
+      MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
+      UserTimeMicros user_timestamp = dockv::ValueControlFields::kInvalidTimestamp);
 
   Status InsertSubDocument(
-      const DocPath& doc_path,
+      const dockv::DocPath& doc_path,
       const ValueRef& value,
-      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const ReadOperationData& read_operation_data = {},
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
-      MonoDelta ttl = ValueControlFields::kMaxTtl,
-      UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp,
+      MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
+      UserTimeMicros user_timestamp = dockv::ValueControlFields::kInvalidTimestamp,
       bool init_marker_ttl = true);
 
   Status ExtendList(
-      const DocPath& doc_path,
+      const dockv::DocPath& doc_path,
       const ValueRef& value,
-      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const ReadOperationData& read_operation_data = {},
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
-      MonoDelta ttl = ValueControlFields::kMaxTtl,
-      UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp);
+      MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
+      UserTimeMicros user_timestamp = dockv::ValueControlFields::kInvalidTimestamp);
 
   // 'indices' must be sorted. List indexes are not zero indexed, the first element is list[1].
   Status ReplaceRedisInList(
-      const DocPath& doc_path,
+      const dockv::DocPath& doc_path,
       int64_t index,
       const ValueRef& value,
-      const ReadHybridTime& read_ht,
-      const CoarseTimePoint deadline,
+      const ReadOperationData& read_operation_data,
       const rocksdb::QueryId query_id,
       const Direction dir = Direction::kForward,
       const int64_t start_index = 0,
       std::vector<std::string>* results = nullptr,
-      MonoDelta default_ttl = ValueControlFields::kMaxTtl,
-      MonoDelta write_ttl = ValueControlFields::kMaxTtl);
+      MonoDelta default_ttl = dockv::ValueControlFields::kMaxTtl,
+      MonoDelta write_ttl = dockv::ValueControlFields::kMaxTtl);
 
   Status ReplaceCqlInList(
-      const DocPath &doc_path,
+      const dockv::DocPath &doc_path,
       const int index,
       const ValueRef& value,
-      const ReadHybridTime& read_ht,
-      const CoarseTimePoint deadline,
+      const ReadOperationData& read_operation_data,
       const rocksdb::QueryId query_id,
-      MonoDelta default_ttl = ValueControlFields::kMaxTtl,
-      MonoDelta write_ttl = ValueControlFields::kMaxTtl);
+      MonoDelta default_ttl = dockv::ValueControlFields::kMaxTtl,
+      MonoDelta write_ttl = dockv::ValueControlFields::kMaxTtl);
 
   Status DeleteSubDoc(
-      const DocPath& doc_path,
-      const ReadHybridTime& read_ht = ReadHybridTime::Max(),
-      const CoarseTimePoint deadline = CoarseTimePoint::max(),
+      const dockv::DocPath& doc_path,
+      const ReadOperationData& read_operation_data = {},
       rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
-      UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp);
+      UserTimeMicros user_timestamp = dockv::ValueControlFields::kInvalidTimestamp);
 
   void Clear();
   bool IsEmpty() const { return put_batch_.empty(); }
@@ -272,7 +268,10 @@ class DocWriteBatch {
 
   const DocDB& doc_db() { return doc_db_; }
 
-  boost::optional<DocWriteBatchCache::Entry> LookupCache(const KeyBytes& encoded_key_prefix) {
+  std::reference_wrapper<const ScopedRWOperation> pending_op() { return pending_op_; }
+
+  boost::optional<DocWriteBatchCache::Entry> LookupCache(
+      const dockv::KeyBytes& encoded_key_prefix) {
     return cache_.Get(encoded_key_prefix);
   }
 
@@ -297,14 +296,22 @@ class DocWriteBatch {
     return narrow_cast<IntraTxnWriteId>(put_batch_.size()) - 1;
   }
 
+  void RollbackReservedWriteId() {
+    put_batch_.pop_back();
+  }
+
+  void SetDocReadContext(const DocReadContextPtr& doc_read_context) {
+    doc_read_context_ = doc_read_context;
+  }
+
  private:
   struct LazyIterator;
 
   // Set the primitive at the given path to the given value. Intermediate subdocuments are created
   // if necessary and possible.
   Status DoSetPrimitive(
-      const DocPath& doc_path,
-      const ValueControlFields& control_fields,
+      const dockv::DocPath& doc_path,
+      const dockv::ValueControlFields& control_fields,
       const ValueRef& value,
       LazyIterator* doc_iter,
       std::optional<IntraTxnWriteId> write_id);
@@ -317,16 +324,16 @@ class DocWriteBatch {
   // subkey_index. This method assumes responsibility of ensuring the proper DocDB structure
   // (e.g: init markers) is maintained for subdocuments starting at the given subkey_index.
   Status SetPrimitiveInternal(
-      const DocPath& doc_path,
-      const ValueControlFields& control_fields,
+      const dockv::DocPath& doc_path,
+      const dockv::ValueControlFields& control_fields,
       const ValueRef& value,
       LazyIterator* doc_iter,
       bool is_deletion,
       std::optional<IntraTxnWriteId> write_id);
 
   // Handle the user provided timestamp during writes.
-  Result<bool> SetPrimitiveInternalHandleUserTimestamp(const ValueControlFields& control_fields,
-                                                       LazyIterator* doc_iter);
+  Result<bool> SetPrimitiveInternalHandleUserTimestamp(
+      const dockv::ValueControlFields& control_fields, LazyIterator* doc_iter);
 
   bool required_init_markers() {
     return init_marker_behavior_ == InitMarkerBehavior::kRequired;
@@ -339,17 +346,44 @@ class DocWriteBatch {
   DocWriteBatchCache cache_;
 
   DocDB doc_db_;
-
   InitMarkerBehavior init_marker_behavior_;
+  std::reference_wrapper<const ScopedRWOperation> pending_op_;
+  DocReadContextPtr doc_read_context_;
   std::atomic<int64_t>* monotonic_counter_;
+
   std::vector<DocWriteBatchEntry> put_batch_;
 
   // Taken from internal_doc_iterator
-  KeyBytes key_prefix_;
+  dockv::KeyBytes key_prefix_;
   bool subdoc_exists_ = true;
   DocWriteBatchCache::Entry current_entry_;
 
+  KeyBuffer packed_row_key_;
+  const dockv::SchemaPacking* packed_row_packing_;
+  ValueBuffer packed_row_value_;
+  EncodedDocHybridTime packed_row_write_time_;
+
   MonoDelta ttl_;
+};
+
+// A helper handler for converting a RocksDB write batch to a string.
+class DocWriteBatchFormatter : public WriteBatchFormatter {
+ public:
+  DocWriteBatchFormatter(
+      StorageDbType storage_db_type,
+      BinaryOutputFormat binary_output_format,
+      WriteBatchOutputFormat batch_output_format,
+      std::string line_prefix,
+      SchemaPackingProvider* schema_packing_provider);
+
+ protected:
+  std::string FormatKey(const Slice& key) override;
+
+  std::string FormatValue(const Slice& key, const Slice& value) override;
+
+ private:
+  StorageDbType storage_db_type_;
+  SchemaPackingProvider* schema_packing_provider_;
 };
 
 // Converts a RocksDB WriteBatch to a string.
@@ -359,7 +393,8 @@ Result<std::string> WriteBatchToString(
     StorageDbType storage_db_type,
     BinaryOutputFormat binary_output_format,
     WriteBatchOutputFormat batch_output_format,
-    const std::string& line_prefix);
+    std::string line_prefix,
+    SchemaPackingProvider* schema_packing_provider /*null ok*/);
 
 }  // namespace docdb
 }  // namespace yb

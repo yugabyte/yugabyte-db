@@ -5,7 +5,6 @@ linkTitle: Quick start
 description: Follow the steps to quickly get started using YEDIS (Redis-compatible) in YugabyteDB.
 image: /images/section_icons/quick_start/explore_yedis.png
 aliases:
-  - /quick-start/test-redis/
   - /preview/quick-start/test-redis/
   - /preview/quick-start/test-yedis/
   - /preview/yedis/quick-start/test-redis/
@@ -44,7 +43,7 @@ After [creating a local cluster](../../quick-start/), follow the instructions be
   </li>
   <li>
     <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab" role="tab" aria-controls="kubernetes" aria-selected="false">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>

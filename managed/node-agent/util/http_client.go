@@ -3,6 +3,7 @@ package util
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -55,6 +56,7 @@ func NewHttpClient(timeout int, url string) *HttpClient {
 }
 
 func (c *HttpClient) Do(
+	ctx context.Context,
 	method string,
 	url string,
 	headers map[string]string,
@@ -65,7 +67,7 @@ func (c *HttpClient) Do(
 	basicUrl := fmt.Sprintf("%s%s", c.url, url)
 	err := validate(method, queryParams, data)
 	if err != nil {
-		FileLogger().Errorf("Validation failed for the method: %s, err: %s", method, err.Error())
+		FileLogger().Errorf(ctx, "Validation failed for the method: %s, err: %s", method, err.Error())
 		return nil, err
 	}
 	//Add Query parameters to the request
@@ -81,7 +83,7 @@ func (c *HttpClient) Do(
 			basicUrl = fmt.Sprintf("%s%s=%s", basicUrl, k, v)
 		}
 	}
-	FileLogger().Infof("Sending request to %s", basicUrl)
+	FileLogger().Infof(ctx, "Sending request to %s", basicUrl)
 	if data == nil {
 		req, err = http.NewRequest(method, basicUrl, nil)
 	} else {
@@ -95,6 +97,7 @@ func (c *HttpClient) Do(
 
 	if err != nil {
 		FileLogger().Errorf(
+			ctx,
 			"Error while creating new request url: %s, method: %s, err: %s",
 			url,
 			method,
@@ -111,11 +114,11 @@ func (c *HttpClient) Do(
 
 	res, err := c.client.Do(req)
 	if err != nil {
-		FileLogger().Errorf("Http url: %s method: %s call failed %s", url, method, err.Error())
+		FileLogger().Errorf(ctx, "Http url: %s method: %s call failed %s", url, method, err.Error())
 		return nil, err
 	}
 
-	FileLogger().Infof("Http url: %s method: %s call succesful", url, method)
+	FileLogger().Infof(ctx, "Http url: %s method: %s call succesful", url, method)
 
 	return res, nil
 }

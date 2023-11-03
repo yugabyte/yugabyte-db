@@ -11,7 +11,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -27,7 +27,7 @@ public class CustomerLicenseTest extends FakeDBApplication {
   public void testValidUpload() {
     String licenseType = "test_license_type";
     String license = "/opt/yugaware/licenses/license1.txt";
-    CustomerLicense cLicense = CustomerLicense.create(customer.uuid, license, licenseType);
+    CustomerLicense cLicense = CustomerLicense.create(customer.getUuid(), license, licenseType);
 
     assertNotNull(cLicense);
     JsonNode licenseInfoJson = Json.toJson(cLicense);
@@ -39,14 +39,14 @@ public class CustomerLicenseTest extends FakeDBApplication {
   public void testValidUploadAndRetrieval() {
     String licenseType = "test_license_type";
     String license = "/opt/yugaware/licenses/license1.txt";
-    CustomerLicense cLicense = CustomerLicense.create(customer.uuid, license, licenseType);
+    CustomerLicense cLicense = CustomerLicense.create(customer.getUuid(), license, licenseType);
 
     assertNotNull(cLicense);
     JsonNode licenseInfoJson = Json.toJson(cLicense);
     assertValue(licenseInfoJson, "licenseType", "test_license_type");
     assertValue(licenseInfoJson, "license", "/opt/yugaware/licenses/license1.txt");
 
-    CustomerLicense cl = CustomerLicense.get(cLicense.licenseUUID);
+    CustomerLicense cl = CustomerLicense.get(cLicense.getLicenseUUID());
     assertNotNull(cl);
     JsonNode cLInfoJson = Json.toJson(cl);
     assertValue(cLInfoJson, "licenseType", licenseType);

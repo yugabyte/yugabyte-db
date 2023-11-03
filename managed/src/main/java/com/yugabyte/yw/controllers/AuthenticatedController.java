@@ -10,7 +10,7 @@ import play.mvc.With;
 @With(TokenAuthenticator.class)
 public abstract class AuthenticatedController extends AbstractPlatformController {
   protected Optional<ClientType> maybeGetJWTClientType() {
-    ClientType clientType = (ClientType) ctx().args.get(JWTVerifier.CLIENT_TYPE_CLAIM);
+    ClientType clientType = RequestContext.getIfPresent(JWTVerifier.CLIENT_TYPE_CLAIM);
     if (clientType == null) {
       return Optional.empty();
     }
@@ -18,6 +18,6 @@ public abstract class AuthenticatedController extends AbstractPlatformController
   }
 
   protected UUID getJWTClientUuid() {
-    return (UUID) ctx().args.get(JWTVerifier.CLIENT_ID_CLAIM);
+    return RequestContext.getIfPresent(JWTVerifier.CLIENT_ID_CLAIM);
   }
 }

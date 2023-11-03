@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: Java Driver 3.10 for YCQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: Java driver for YCQL
+description: Connect a Java application using YCQL 3.10 driver
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -32,9 +33,9 @@ type: docs
     </a>
   </li>
    <li >
-    <a href="../ycql-4.6/" class="nav-link">
+    <a href="../ycql-4.x/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YugabyteDB Java Driver for YCQL (4.6)
+      YugabyteDB Java Driver for YCQL (4.15)
     </a>
   </li>
 </ul>

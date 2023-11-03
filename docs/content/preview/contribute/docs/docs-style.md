@@ -10,6 +10,8 @@ menu:
     parent: docs
     weight: 2950
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 The YugabyteDB documentation style is based on the [Microsoft style guide](https://docs.microsoft.com/en-us/style-guide/welcome/), with some input from [Apple's style guide](https://help.apple.com/applestyleguide/#/). We aim to automate as much as possible through Vale.
@@ -48,9 +50,23 @@ Prefer markdown-style `[link text](link-target)` links over HTML tags. Markdown'
 
 **Prompts may be necessary.** In a given procedure, the first code block should show the prompt; subsequent blocks can omit it, provided it doesn't impact clarity. Don't omit prompts (particularly shell prompts) if a procedure takes input in more than one way, such as an operation in ysqlsh followed by one in bash.
 
+You can use the following attributes to modify code blocks:
+
+- **Highlight bad code.** To highlight wrong coding practices, add the attribute `{.badcode}` to the code block. For example, ```sql{.badcode}```:
+
+  ```sql{.badcode}
+  ysqlsh> CREATE TABLE $$__banking__$$;
+  ```
+
+- **Remove the copy button.** To remove the Copy button from any code block, add the attribute `{.nocopy}` to the code block. For example, ```sql{.nocopy}```:
+
+  ```sql{.nocopy}
+  CREATE TABLE users(id INT PRIMARY KEY, name TEXT);
+  ```
+
 #### YSQL and YCQL code blocks
 
-Tag YSQL code blocks as `sql`, and YCQL code blocks as `cql`. The source highlighting differs slightly between the two.
+Tag YSQL code blocks as `plpgsql`, and YCQL code blocks as `cql`. The source highlighting differs slightly between the two.
 
 ### Admonitions
 

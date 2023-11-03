@@ -2,10 +2,6 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
-import java.util.Collection;
-import java.util.UUID;
-import org.apache.commons.lang.StringUtils;
-
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
@@ -49,7 +45,7 @@ public class RotateAccessKey extends UniverseTaskBase {
   public void run() {
     log.info("Running {}", getName());
     UUID customerUUID = taskParams().customerUUID;
-    UUID universeUUID = taskParams().universeUUID;
+    UUID universeUUID = taskParams().getUniverseUUID();
     UUID providerUUID = taskParams().providerUUID;
     AccessKey newAccessKey = taskParams().newAccessKey;
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -63,11 +59,11 @@ public class RotateAccessKey extends UniverseTaskBase {
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
         AccessKey clusterAccessKey =
             AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
-        String sudoSSHUser = clusterAccessKey.getKeyInfo().sshUser;
+        String sudoSSHUser = provider.getDetails().sshUser;
         if (sudoSSHUser == null) {
           sudoSSHUser =
-              provider.details.sshUser != null
-                  ? provider.details.sshUser
+              provider.getDetails().sshUser != null
+                  ? provider.getDetails().sshUser
                   : Util.DEFAULT_SUDO_SSH_USER;
         }
         Collection<NodeDetails> clusterNodes = universe.getNodesInCluster(cluster.uuid);
@@ -146,8 +142,8 @@ public class RotateAccessKey extends UniverseTaskBase {
     } catch (Exception e) {
       log.error(
           "Access Key Rotation failed for universe: {} with uuid {}",
-          universe.name,
-          universe.universeUUID);
+          universe.getName(),
+          universe.getUniverseUUID());
       setSSHKeyRotationFailureMetric(universe);
       throw new RuntimeException(e);
     } finally {
@@ -165,12 +161,12 @@ public class RotateAccessKey extends UniverseTaskBase {
       AccessKey taskAccessKey,
       String command,
       String sshUser) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(command, executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup(command);
     for (NodeDetails node : nodes) {
       NodeAccessTaskParams params =
           new NodeAccessTaskParams(
               customerUUID, providerUUID, node.azUuid, universeUUID, accessKey, sshUser);
-      params.regionUUID = params.getRegion().uuid;
+      params.regionUUID = params.getRegion().getUuid();
       params.nodeName = node.nodeName;
       params.taskAccessKey = taskAccessKey;
       NodeTaskBase task;
@@ -182,7 +178,7 @@ public class RotateAccessKey extends UniverseTaskBase {
         task = createTask(VerifyNodeSSHAccess.class);
       }
       task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       subTaskGroup.addSubTask(task);
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -191,16 +187,15 @@ public class RotateAccessKey extends UniverseTaskBase {
 
   public SubTaskGroup createUpdateUniverseAccessKeyTask(
       UUID universeUUID, UUID clusterUUID, String newAccessKeyCode) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("UpdateUniverseAccessKey", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateUniverseAccessKey");
 
     UpdateUniverseAccessKey.Params params = new UpdateUniverseAccessKey.Params();
     params.newAccessKeyCode = newAccessKeyCode;
-    params.universeUUID = universeUUID;
+    params.setUniverseUUID(universeUUID);
     params.clusterUUID = clusterUUID;
     UpdateUniverseAccessKey task = createTask(UpdateUniverseAccessKey.class);
     task.initialize(params);
-    task.setUserTaskUUID(userTaskUUID);
+    task.setUserTaskUUID(getUserTaskUUID());
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
@@ -211,7 +206,7 @@ public class RotateAccessKey extends UniverseTaskBase {
       setSSHKeyRotationFailureMetric(universe);
       throw new RuntimeException(
           "The universe "
-              + universe.name
+              + universe.getName()
               + " is paused,"
               + " cannot run access key rotation. Retry with access key "
               + newAccessKey.getKeyCode()
@@ -223,7 +218,7 @@ public class RotateAccessKey extends UniverseTaskBase {
       setSSHKeyRotationFailureMetric(universe);
       throw new RuntimeException(
           "The universe "
-              + universe.name
+              + universe.getName()
               + " has non-live nodes,"
               + " cannot run access key rotation. Retry with access key "
               + newAccessKey.getKeyCode()

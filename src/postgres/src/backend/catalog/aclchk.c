@@ -57,6 +57,7 @@
 #include "catalog/pg_ts_parser.h"
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_transform.h"
+#include "catalog/pg_yb_catalog_version.h"
 #include "catalog/pg_yb_tablegroup.h"
 #include "commands/dbcommands.h"
 #include "commands/event_trigger.h"
@@ -3804,6 +3805,9 @@ aclcheck_error(AclResult aclerr, ObjectType objtype,
 					case OBJECT_TABLESPACE:
 						msg = gettext_noop("permission denied for tablespace %s");
 						break;
+					case OBJECT_YBPROFILE:
+						msg = gettext_noop("permission denied for profile %s");
+						break;
 					case OBJECT_TSCONFIGURATION:
 						msg = gettext_noop("permission denied for text search configuration %s");
 						break;
@@ -3968,6 +3972,7 @@ aclcheck_error(AclResult aclerr, ObjectType objtype,
 					case OBJECT_DEFACL:
 					case OBJECT_DOMCONSTRAINT:
 					case OBJECT_PUBLICATION_REL:
+					case OBJECT_YBPROFILE:
 					case OBJECT_ROLE:
 					case OBJECT_TRANSFORM:
 					case OBJECT_TSPARSER:
@@ -4220,6 +4225,8 @@ pg_class_aclmask(Oid table_oid, Oid roleid,
 		IsSystemClass(table_oid, classForm) &&
 		classForm->relkind != RELKIND_VIEW &&
 		!superuser_arg(roleid) &&
+		/* yb_db_admin is allowed to update pg_yb_catalog_version. */
+		!(IsYbDbAdminUser(roleid) && table_oid == YBCatalogVersionRelationId) &&
 		!allowSystemTableMods)
 	{
 #ifdef ACLDEBUG

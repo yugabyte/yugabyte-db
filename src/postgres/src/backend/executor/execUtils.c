@@ -174,27 +174,30 @@ CreateExecutorState(void)
 	estate->yb_es_is_single_row_modify_txn = false;
 	estate->yb_es_is_fk_check_disabled = false;
 	estate->yb_conflict_slot = NULL;
-	/*
-	 * The in txn limit used for this query. This will be initialized by the first
-	 * read operation invoked for this query, and all later reads performed by
-	 * this query will not read any data written past this time.
-	 *
-	 * TODO: Each query can have multiple "EState"s. Fix logic for such cases.
-	 */
-	estate->yb_es_in_txn_limit_ht = 0;
+	estate->yb_es_in_txn_limit_ht_for_reads = 0;
 
 	estate->yb_exec_params.limit_count = 0;
 	estate->yb_exec_params.limit_offset = 0;
 	estate->yb_exec_params.limit_use_default = true;
 	estate->yb_exec_params.rowmark = -1;
 	estate->yb_exec_params.is_index_backfill = false;
+
 	/*
-	 * Pointer to the query's in txn limit. This pointer is passed
-	 * down to all the DocDB read operations invoked for this query. Only
-	 * the first read operation initializes its value, and all the other
-	 * operations ensure that they don't read any value written past this time.
+	 * Pointer to the query's in_txn_limit_ht for read ops. This pointer is passed
+	 * down via PgDocOp instances to the DocDB read operations invoked for this
+	 * query. Only the first read operation initializes its value, and all the
+	 * other operations ensure that they don't read any value written past this
+	 * time.
+	 *
+	 * TODO(#16239): Each SQL statement can have multiple "EState"s. But we need
+	 * to ensure that only one in_txn_limit_ht is used for reads in one SQL
+	 * statement. Fix logic for such cases.
 	 */
-	estate->yb_exec_params.statement_in_txn_limit = &estate->yb_es_in_txn_limit_ht;
+	estate->yb_exec_params.stmt_in_txn_limit_ht_for_reads =
+		&estate->yb_es_in_txn_limit_ht_for_reads;
+
+	estate->yb_exec_params.yb_fetch_row_limit = yb_fetch_row_limit;
+	estate->yb_exec_params.yb_fetch_size_limit = yb_fetch_size_limit;
 
 	return estate;
 }

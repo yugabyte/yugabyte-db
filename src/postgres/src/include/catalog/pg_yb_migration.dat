@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V28__13762__yb_transaction_priority_and_effective_isolation_level_functions.sql
-{ major => '28', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V44__19211__yb_stream_id_in_pg_replication_slots.sql
+{ major => '44', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

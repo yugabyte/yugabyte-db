@@ -54,14 +54,15 @@ Select your cloud provider to see the steps for configuration of database nodes.
 
 </ul>
 
+The following diagram depicts the configuration process for on-premises deployments.
+
 <div class="image-with-map">
 <img src="/images/ee/flowchart/yb-configure-onprem.png" usemap="#image-map">
 
 <map name="image-map">
-    <area alt="Configure yugabyte platform" title="Configure yugabyte platform" href="/preview/yugabyte-platform/configure-yugabyte-platform/" coords="378,60,520,198" shape="rect" style="top: 3%;height: 10%;left: 41%;width: 18%;">
-    <area alt="Create admin user" title="Create admin user" href="/preview/yugabyte-platform/configure-yugabyte-platform/create-admin-user/" coords="296,260,607,320" shape="rect" style="top: 15.9%;height: 3.7%;left: 31%;width: 38%;">
-    <area alt="On prem cloud provider" title="On prem cloud provider" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/" coords="247,369,653,424" shape="rect" style="top: 22.5%;height: 3.7%;left: 27%;width: 46%;">
-    <area alt="configure on prem provider-1" title="configure on prem provider-1" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/#step-1-configure-the-on-premises-provider" coords="204,1230,425,1331" shape="rect" style="top: 75.3%;height: 6.1%;left: 22%;width: 25%;">
-    <area alt="configure on prem provider-2" title="configure on prem provider-2" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/#step-1-configure-the-on-premises-provider" coords="474,1230,695,1328" shape="rect" style="top: 75.3%;height: 6.1%;left: 52.4%;width: 25%;">
+    <area alt="Create admin user" title="Create admin user" href="../../create-admin-user/" coords="296,260,607,320" shape="rect" style="top: 15.9%;height: 3.7%;left: 31%;width: 38%;">
+    <area alt="On prem cloud provider" title="On prem cloud provider" href="../../set-up-cloud-provider/on-premises/" coords="247,369,653,424" shape="rect" style="top: 22.5%;height: 3.7%;left: 27%;width: 46%;">
+    <area alt="configure on prem provider-1" title="configure on prem provider-1" href="../../set-up-cloud-provider/on-premises/#step-1-configure-the-on-premises-provider" coords="204,1230,425,1331" shape="rect" style="top: 75.3%;height: 6.1%;left: 22%;width: 25%;">
+    <area alt="configure on prem provider-2" title="configure on prem provider-2" href="../../set-up-cloud-provider/on-premises/#step-1-configure-the-on-premises-provider" coords="474,1230,695,1328" shape="rect" style="top: 75.3%;height: 6.1%;left: 52.4%;width: 25%;">
 </map>
 </div>

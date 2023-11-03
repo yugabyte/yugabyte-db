@@ -46,6 +46,7 @@
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/leader_election.h"
 #include "yb/consensus/log.h"
+#include "yb/consensus/opid_util.h"
 #include "yb/consensus/peer_manager.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/replica_state.h"
@@ -54,6 +55,8 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stringprintf.h"
+
+#include "yb/master/sys_catalog_constants.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/periodic.h"
@@ -151,6 +154,12 @@ DEFINE_test_flag(int32, inject_delay_leader_change_role_append_secs, 0,
 DEFINE_test_flag(double, return_error_on_change_config, 0.0,
                  "Fraction of the time when ChangeConfig will return an error.");
 
+DEFINE_test_flag(bool, pause_before_replicate_batch, false,
+                 "Whether to pause before doing DoReplicateBatch.");
+
+DEFINE_test_flag(bool, request_vote_respond_leader_still_alive, false,
+                 "Fake rejection to vote due to leader still alive");
+
 METRIC_DEFINE_counter(tablet, follower_memory_pressure_rejections,
                       "Follower Memory Pressure Rejections",
                       yb::MetricUnit::kRequests,
@@ -173,7 +182,7 @@ METRIC_DEFINE_gauge_int64(tablet, is_raft_leader,
                           "Keeps track whether tablet is raft leader"
                           "1 indicates that the tablet is raft leader");
 
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
   table, dns_resolve_latency_during_update_raft_config,
   "yb.consensus.RaftConsensus.UpdateRaftConfig DNS Resolve",
   yb::MetricUnit::kMicroseconds,
@@ -216,7 +225,7 @@ DEFINE_test_flag(int32, log_change_config_every_n, 1,
                  "Used to reduce the number of lines being printed for change config requests "
                  "when a test simulates a failure that would generate a log of these requests.");
 
-DEFINE_UNKNOWN_bool(enable_lease_revocation, false, "Enables lease revocation mechanism");
+DEFINE_UNKNOWN_bool(enable_lease_revocation, true, "Enables lease revocation mechanism");
 
 DEFINE_UNKNOWN_bool(quick_leader_election_on_create, false,
             "Do we trigger quick leader elections on table creation.");
@@ -240,6 +249,9 @@ DEFINE_UNKNOWN_int64(protege_synchronization_timeout_ms, 1000,
 
 DEFINE_test_flag(bool, skip_election_when_fail_detected, false,
                  "Inside RaftConsensus::ReportFailureDetectedTask, skip normal election.");
+
+DEFINE_test_flag(bool, pause_replica_start_before_triggering_pending_operations, false,
+                 "Whether to pause before triggering pending operations in RaftConsensus::Start");
 
 namespace yb {
 namespace consensus {
@@ -280,16 +292,17 @@ class NonTrackedRoundCallback : public ConsensusRoundCallback {
       : round_(DCHECK_NOTNULL(round)), callback_(callback) {
   }
 
-  void AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override {
+  Status AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override {
     auto& replicate_msg = *round_->replicate_msg();
     op_id.ToPB(replicate_msg.mutable_id());
     committed_op_id.ToPB(replicate_msg.mutable_committed_op_id());
+    return Status::OK();
   }
 
   void ReplicationFinished(
       const Status& status, int64_t leader_term, OpIds* applied_op_ids) override {
-    down_cast<RaftConsensus*>(round_->consensus())->NonTrackedRoundReplicationFinished(
-        round_, callback_, status);
+    down_cast<RaftConsensus*>(round_->consensus())
+        ->NonTrackedRoundReplicationFinished(round_, callback_, status);
   }
 
  private:
@@ -332,7 +345,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     ThreadPool* raft_pool,
-    RetryableRequests* retryable_requests,
+    RetryableRequestsManager* retryable_requests_manager,
     MultiRaftManager* multi_raft_manager) {
 
   auto rpc_factory = std::make_unique<RpcPeerProxyFactory>(
@@ -387,7 +400,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       parent_mem_tracker,
       mark_dirty_clbk,
       table_type,
-      retryable_requests);
+      retryable_requests_manager);
 }
 
 RaftConsensus::RaftConsensus(
@@ -403,7 +416,7 @@ RaftConsensus::RaftConsensus(
     shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
-    RetryableRequests* retryable_requests)
+    RetryableRequestsManager* retryable_requests_manager)
     : raft_pool_token_(std::move(raft_pool_token)),
       log_(log),
       clock_(clock),
@@ -415,14 +428,14 @@ RaftConsensus::RaftConsensus(
       step_down_check_tracker_(&peer_proxy_factory_->messenger()->scheduler()),
       mark_dirty_clbk_(std::move(mark_dirty_clbk)),
       shutdown_(false),
-      follower_memory_pressure_rejections_(tablet_metric_entity->FindOrCreateCounter(
+      follower_memory_pressure_rejections_(tablet_metric_entity->FindOrCreateMetric<Counter>(
           &METRIC_follower_memory_pressure_rejections)),
-      term_metric_(tablet_metric_entity->FindOrCreateGauge(&METRIC_raft_term,
-                                                    cmeta->current_term())),
+      term_metric_(tablet_metric_entity->FindOrCreateMetric<AtomicGauge<int64_t>>(
+          &METRIC_raft_term, cmeta->current_term())),
       follower_last_update_time_ms_metric_(
-          tablet_metric_entity->FindOrCreateAtomicMillisLag(&METRIC_follower_lag_ms)),
-      is_raft_leader_metric_(tablet_metric_entity->FindOrCreateGauge(&METRIC_is_raft_leader,
-                                                              static_cast<int64_t>(0))),
+          tablet_metric_entity->FindOrCreateMetric<AtomicMillisLag>(&METRIC_follower_lag_ms)),
+      is_raft_leader_metric_(tablet_metric_entity->FindOrCreateMetric<AtomicGauge<int64_t>>(
+          &METRIC_is_raft_leader, static_cast<int64_t>(0))),
       parent_mem_tracker_(std::move(parent_mem_tracker)),
       table_type_(table_type),
       update_raft_config_dns_latency_(
@@ -442,7 +455,7 @@ RaftConsensus::RaftConsensus(
       std::move(cmeta),
       DCHECK_NOTNULL(consensus_context),
       this,
-      retryable_requests,
+      retryable_requests_manager,
       std::bind(&PeerMessageQueue::TrackOperationsMemory, queue_.get(), _1));
 
   peer_manager_->SetConsensus(this);
@@ -468,6 +481,9 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
       MinimumElectionTimeout());
 
   {
+    if (table_type_ != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+      TEST_PAUSE_IF_FLAG(TEST_pause_replica_start_before_triggering_pending_operations);
+    }
     ReplicaState::UniqueLock lock;
     RETURN_NOT_OK(state_->LockForStart(&lock));
     state_->ClearLeaderUnlocked();
@@ -617,7 +633,7 @@ Status RaftConsensus::DoStartElection(const LeaderElectionData& data, PreElected
 
     if (start_now) {
       if (state_->HasLeaderUnlocked()) {
-        LOG_WITH_PREFIX(INFO) << "Fail of leader " << state_->GetLeaderUuidUnlocked()
+        LOG_WITH_PREFIX(INFO) << "Fail or stepdown of leader " << state_->GetLeaderUuidUnlocked()
                               << " detected. Triggering leader " << election_name
                               << ", mode=" << data.mode;
       } else {
@@ -1104,6 +1120,9 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
       std::numeric_limits<int64_t>::max());
   is_raft_leader_metric_->set_value(1);
 
+  // we don't care about this timestamp from leader because it doesn't accept Update requests.
+  follower_last_update_received_time_ms_.store(0, std::memory_order_release);
+
   return Status::OK();
 }
 
@@ -1169,6 +1188,7 @@ Status RaftConsensus::ReplicateBatch(const ConsensusRounds& rounds) {
 
 Status RaftConsensus::DoReplicateBatch(const ConsensusRounds& rounds, size_t* processed_rounds) {
   RETURN_NOT_OK(ExecuteHook(PRE_REPLICATE));
+  TEST_PAUSE_IF_FLAG(TEST_pause_before_replicate_batch);
   {
     ReplicaState::UniqueLock lock;
 #ifndef NDEBUG
@@ -1278,7 +1298,9 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
     ++*processed_rounds;
 
     if (round->replicate_msg()->op_type() == OperationType::WRITE_OP) {
-      auto result = state_->RegisterRetryableRequest(round);
+      DCHECK_EQ(state_->GetActiveRoleUnlocked(), PeerRole::LEADER);
+      auto result = state_->RegisterRetryableRequest(
+          round, tablet::IsLeaderSide(state_->GetActiveRoleUnlocked() == PeerRole::LEADER));
       if (!result.ok()) {
         round->NotifyReplicationFinished(
             result.status(), round->bound_term(), /* applied_op_ids = */ nullptr);
@@ -1295,7 +1317,7 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
     // the write batch inside the write operation.
     //
     // TODO: we could allocate multiple HybridTimes in batch, only reading system clock once.
-    round->NotifyAddedToLeader(op_id, committed_op_id);
+    RETURN_NOT_OK(round->NotifyAddedToLeader(op_id, committed_op_id));
 
     auto s = state_->AddPendingOperation(round, OperationMode::kLeader);
     if (!s.ok()) {
@@ -1378,9 +1400,8 @@ void RaftConsensus::UpdateMajorityReplicated(
   s = state_->UpdateMajorityReplicatedUnlocked(
       majority_replicated_data.op_id, committed_op_id, &committed_index_changed,
       last_applied_op_id);
-  auto leader_state = state_->GetLeaderStateUnlocked();
-  if (leader_state.ok() && leader_state.status == LeaderStatus::LEADER_AND_READY) {
-    state_->context()->MajorityReplicated();
+  if (s.ok() && state_->GetLeaderStateUnlocked().ok()) {
+    s = state_->context()->MajorityReplicated();
   }
   if (PREDICT_FALSE(!s.ok())) {
     string msg = Format("Unable to mark committed up to $0: $1", majority_replicated_data.op_id, s);
@@ -1499,6 +1520,8 @@ void RaftConsensus::TryRemoveFollowerTask(const string& uuid,
 Status RaftConsensus::Update(
     const std::shared_ptr<LWConsensusRequestPB>& request_ptr,
     LWConsensusResponsePB* response, CoarseTimePoint deadline) {
+  follower_last_update_received_time_ms_.store(
+      clock_->Now().GetPhysicalValueMillis(), std::memory_order_release);
   if (PREDICT_FALSE(FLAGS_TEST_follower_reject_update_consensus_requests)) {
     return STATUS(IllegalState, "Rejected: --TEST_follower_reject_update_consensus_requests "
                                 "is set to true.");
@@ -2204,16 +2227,21 @@ Status RaftConsensus::MarkOperationsAsCommittedUnlocked(const LWConsensusRequest
   // watermark to the last message that remains in 'deduped_req'.
   //
   // It's possible that the leader didn't send us any new data -- it might be a completely
-  // duplicate request. In that case, we don't need to update LastReceived at all.
+  // duplicate request. In that case, we only update LastReceivedOpIdFromCurrentLeader
+  // Not updating this may result in the leader resending the same set of op-ids
+  // and resulting in empty de-duped requests forever. See GH #15629.
   if (!deduped_req.messages.empty()) {
     OpId last_appended = OpId::FromPB(deduped_req.messages.back()->id());
     TRACE(Format("Updating last received op as $0", last_appended));
     state_->UpdateLastReceivedOpIdUnlocked(last_appended);
-  } else if (state_->GetLastReceivedOpIdUnlocked().index < deduped_req.preceding_op_id.index) {
-    return STATUS_FORMAT(InvalidArgument,
-                         "Bad preceding_opid: $0, last received: $1",
-                         deduped_req.preceding_op_id,
-                         state_->GetLastReceivedOpIdUnlocked());
+  } else {
+    if (state_->GetLastReceivedOpIdUnlocked().index < deduped_req.preceding_op_id.index) {
+      return STATUS_FORMAT(InvalidArgument,
+                          "Bad preceding_opid: $0, last received: $1",
+                          deduped_req.preceding_op_id,
+                          state_->GetLastReceivedOpIdUnlocked());
+    }
+    state_->UpdateLastReceivedOpIdFromCurrentLeaderIfEmptyUnlocked(deduped_req.preceding_op_id);
   }
 
   VLOG_WITH_PREFIX(1) << "Marking committed up to " << apply_up_to;
@@ -2253,7 +2281,7 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   // Lock ordering: The update lock must be acquired before the ReplicaState lock.
   std::unique_lock<decltype(update_mutex_)> update_guard(update_mutex_, std::defer_lock);
   if (FLAGS_enable_leader_failure_detection) {
-    update_guard.try_lock();
+    auto try_lock_result [[maybe_unused]] = update_guard.try_lock();  // NOLINT
   } else {
     // If failure detection is not enabled, then we can't just reject the vote,
     // because there will be no automatic retry later. So, block for the lock.
@@ -2274,6 +2302,10 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   // Acquire the replica state lock so we can read / modify the consensus state.
   ReplicaState::UniqueLock state_guard;
   RETURN_NOT_OK(state_->LockForConfigChange(&state_guard));
+
+  if (PREDICT_FALSE(FLAGS_TEST_request_vote_respond_leader_still_alive)) {
+    return RequestVoteRespondLeaderIsAlive(request, response, "fake_peed_uuid");
+  }
 
   // If the node is not in the configuration, allow the vote (this is required by Raft)
   // but log an informational message anyway.
@@ -2353,12 +2385,26 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
     response->set_remaining_leader_lease_duration_ms(
         narrow_cast<int32_t>(remaining_old_leader_lease.ToMilliseconds()));
     response->set_leader_lease_uuid(state_->old_leader_lease().holder_uuid);
+  } else {
+    remaining_old_leader_lease = state_->RemainingMajorityReplicatedLeaderLeaseDuration();
+    if (remaining_old_leader_lease.Initialized()) {
+      response->set_remaining_leader_lease_duration_ms(
+        narrow_cast<int32_t>(remaining_old_leader_lease.ToMilliseconds()));
+      response->set_leader_lease_uuid(peer_uuid());
+    }
   }
 
   const auto& old_leader_ht_lease = state_->old_leader_ht_lease();
   if (old_leader_ht_lease) {
     response->set_leader_ht_lease_expiration(old_leader_ht_lease.expiration);
     response->set_leader_ht_lease_uuid(old_leader_ht_lease.holder_uuid);
+  } else {
+    const auto ht_lease = VERIFY_RESULT(MajorityReplicatedHtLeaseExpiration(
+        /* min_allowed = */ 0, /* deadline = */ CoarseTimePoint::max()));
+    if (ht_lease) {
+      response->set_leader_ht_lease_expiration(ht_lease);
+      response->set_leader_ht_lease_uuid(peer_uuid());
+    }
   }
 
   // Passed all our checks. Vote granted.
@@ -2373,9 +2419,8 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
 }
 
 Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type,
-                                                           const string& server_uuid) {
+                                                           const std::string& server_uuid) {
   const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
-
   // Check that all the following requirements are met:
   // 1. We are required by Raft to reject config change operations until we have
   //    committed at least one operation in our current term as leader.
@@ -2394,7 +2439,53 @@ Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type
                              state_->GetPendingConfigUnlocked().ShortDebugString() : "",
                          state_->GetCurrentTermUnlocked(), state_->GetCommittedOpIdUnlocked());
   }
-
+  // For sys catalog tablet, additionally ensure that there are no servers currently in transition.
+  // If not, it could lead to data loss.
+  // For instance, assuming that we allow processing of ChangeConfig requests for sys catalog amidst
+  // transition (like with the other tablets), consider a full master move operation where we want
+  // to go from  A,B,C -> D,E,F. Let's assume that D,E,F are added but get stuck in PRE_VOTER state.
+  // The initial remove requests for B and C would succeed and we would end up in the state A,D,E,F.
+  // Though the removal of A would throw an error, if the operator mistakenly assumes that D,E,F are
+  // caught up and overrides the master server conf file, the new peers would form a quorum and kick
+  // out A, thus leading to orphaned tablet cleanup resulting in data loss.
+  //
+  // We have this additional safeguard in place for sys catalog tablet since the config change ops
+  // are driver by the user/admin, and the safeguard helps prevent us from going into the state
+  // described above.
+  //
+  // We don't have similar restrictions for user tablets since the config change operations are run
+  // by the load balancer. Additionally, we explicitly prevent raft from kicking out an unavailable
+  // VOTER peer if it leads to < 2 VOTERS in the new config. Hence it is okay for the leader to
+  // process new config change operations for user tablets even when a peer is in transition hoping
+  // that it would expedite the process.
+  //
+  // TODO(#19453): A more optimized approach would be to allow changes amidst sys catalog transition
+  // while ensuring we have >= rf/2 + 1 VOTERS in the new config.
+  if (tablet_id() == master::kSysCatalogTabletId) {
+      size_t servers_in_transition = 0;
+      if (type == ADD_SERVER) {
+        servers_in_transition = CountServersInTransition(active_config);
+      } else if (type == REMOVE_SERVER) {
+        // If we are trying to remove the server in transition, then servers_in_transition shouldn't
+        // count it so we can proceed with the operation.
+        servers_in_transition = CountServersInTransition(active_config, server_uuid);
+      }
+      if (servers_in_transition != 0) {
+        return STATUS_FORMAT(IllegalState,
+                             "Leader is not ready for Config Change, there is already one server "
+                             "in transition. Try again once the transition completes or remove the "
+                             "server in transition. Type: $0. Has opid: $1. Committed config: $2. "
+                             "Pending config: $3. Current term: $4. Committed op id: $5. "
+                             "Num peers in transit: $6",
+                             ChangeConfigType_Name(type),
+                             active_config.has_opid_index(),
+                             state_->GetCommittedConfigUnlocked().ShortDebugString(),
+                             state_->IsConfigChangePendingUnlocked() ?
+                                 state_->GetPendingConfigUnlocked().ShortDebugString() : "",
+                             state_->GetCurrentTermUnlocked(), state_->GetCommittedOpIdUnlocked(),
+                             servers_in_transition);
+      }
+  }
   return Status::OK();
 }
 
@@ -2409,6 +2500,13 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
     *error_code = TabletServerErrorPB::INVALID_CONFIG;
     return STATUS(InvalidArgument, "Must specify 'server' argument to ChangeConfig()",
                                    req.ShortDebugString());
+  }
+  if (PREDICT_FALSE(req.tablet_id() != tablet_id())) {
+    *error_code = TabletServerErrorPB::INVALID_CONFIG;
+    return STATUS_SUBSTITUTE(
+        InvalidArgument,
+        "ChangeConfig request received for a different tablet at RaftConsensus serving tablet $0. "
+        "ChangeConfigRequestPB: $1", tablet_id(), req.ShortDebugString());
   }
   YB_LOG_EVERY_N(INFO, FLAGS_TEST_log_change_config_every_n)
       << "Received ChangeConfig request " << req.ShortDebugString();
@@ -2656,12 +2754,12 @@ Status RaftConsensus::UnsafeChangeConfig(
   for (const auto& peer : committed_config.peers()) {
     const string& peer_uuid = peer.permanent_uuid();
     if (!ContainsKey(retained_peer_uuids, peer_uuid)) {
-      ChangeConfigRequestPB req;
-      req.set_tablet_id(tablet_id());
-      req.mutable_server()->set_permanent_uuid(peer_uuid);
-      req.set_type(REMOVE_SERVER);
-      req.set_cas_config_opid_index(committed_config.opid_index());
-      CHECK(RemoveFromRaftConfig(&new_config, req));
+      ChangeConfigRequestPB change_config_request;
+      change_config_request.set_tablet_id(tablet_id());
+      change_config_request.mutable_server()->set_permanent_uuid(peer_uuid);
+      change_config_request.set_type(REMOVE_SERVER);
+      change_config_request.set_cas_config_opid_index(committed_config.opid_index());
+      CHECK(RemoveFromRaftConfig(&new_config, change_config_request));
     }
   }
   // Check that local peer is part of the new config and is a VOTER.
@@ -3110,6 +3208,31 @@ const TabletId& RaftConsensus::split_parent_tablet_id() const {
   return split_parent_tablet_id_;
 }
 
+LeaderLeaseStatus RaftConsensus::GetLeaderLeaseStatusIfLeader(MicrosTime* ht_lease_exp) const {
+  auto lock = state_->LockForRead();
+  LeaderLeaseStatus leader_lease_status = LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
+  if (GetRoleUnlocked() == PeerRole::LEADER) {
+    leader_lease_status = GetLeaderLeaseStatusUnlocked(ht_lease_exp);
+  }
+  return leader_lease_status;
+}
+
+LeaderLeaseStatus RaftConsensus::GetLeaderLeaseStatusUnlocked(MicrosTime* ht_lease_exp) const {
+  auto leader_lease_status = state_->GetLeaderLeaseStatusUnlocked();
+  if (leader_lease_status == LeaderLeaseStatus::HAS_LEASE && ht_lease_exp) {
+    auto ht_lease = MajorityReplicatedHtLeaseExpiration(
+        /* min_allowed = */ 0, /* deadline = */ CoarseTimePoint::max());
+    if (!ht_lease.ok()) {
+      LOG(WARNING) <<
+          Format("Tablet $0 failed to get ht lease expiration $1", tablet_id(), ht_lease.status());
+      return LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
+    } else {
+      *ht_lease_exp = *ht_lease;
+    }
+  }
+  return leader_lease_status;
+}
+
 ConsensusStatePB RaftConsensus::ConsensusState(
     ConsensusConfigType type,
     LeaderLeaseStatus* leader_lease_status) const {
@@ -3123,7 +3246,7 @@ ConsensusStatePB RaftConsensus::ConsensusStateUnlocked(
   CHECK(state_->IsLocked());
   if (leader_lease_status) {
     if (GetRoleUnlocked() == PeerRole::LEADER) {
-      *leader_lease_status = state_->GetLeaderLeaseStatusUnlocked();
+      *leader_lease_status = GetLeaderLeaseStatusUnlocked(/* ht_lease_exp = */ nullptr);
     } else {
       // We'll still return a valid value if we're not a leader.
       *leader_lease_status = LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
@@ -3149,16 +3272,45 @@ void RaftConsensus::DumpStatusHtml(std::ostream& out) const {
 
   // Dump the queues on a leader.
   PeerRole role;
+  std::string state_str;
   {
     auto lock = state_->LockForRead();
     role = state_->GetActiveRoleUnlocked();
+    state_str = state_->ToStringUnlocked();
   }
+
   if (role == PeerRole::LEADER) {
+    peer_manager_->DumpToHtml(out);
+    out << "<hr/>" << std::endl;
     out << "<h2>Queue overview</h2>" << std::endl;
     out << "<pre>" << EscapeForHtmlToString(queue_->ToString()) << "</pre>" << std::endl;
     out << "<hr/>" << std::endl;
     out << "<h2>Queue details</h2>" << std::endl;
     queue_->DumpToHtml(out);
+  } else if (role == PeerRole::FOLLOWER || role == PeerRole::READ_REPLICA) {
+    out << "<h2>Replica State</h2>" << std::endl;
+    out << "<ul>\n";
+    out << "<li>State: { " << EscapeForHtmlToString(state_str) << " }</li>" << std::endl;
+    const auto follower_last_update_received_time_ms =
+        follower_last_update_received_time_ms_.load(std::memory_order_acquire);
+    const auto last_update_received_time_lag = follower_last_update_received_time_ms > 0
+        ? clock_->Now().GetPhysicalValueMillis() - follower_last_update_received_time_ms
+        : 0;
+    out << "<li>Last update received time: "
+        << last_update_received_time_lag << "ms ago</li>" << std::endl;
+    out << "</ul>\n";
+
+    out << "<hr/>" << std::endl;
+    out << "<h2>Raft Config</h2>" << std::endl;
+    RaftConfigPB config = CommittedConfig();
+    out << "<ul>\n";
+    for (const RaftPeerPB& peer : config.peers()) {
+      out << "<li>Peer:\n<ul>\n";
+      out << Format("  <li>Host: $0</li>\n", peer.last_known_private_addr()[0].host());
+      out << Format("  <li>UUID: $0</li>\n", peer.permanent_uuid());
+      out << "</ul>\n";
+    }
+    out << "</ul>\n";
   }
 }
 
@@ -3506,6 +3658,26 @@ Result<RetryableRequests> RaftConsensus::GetRetryableRequests() const {
     return STATUS_FORMAT(IllegalState, "Replica is in $0 state", state_->state());
   }
   return state_->retryable_requests();
+}
+
+OpId RaftConsensus::GetLastFlushedOpIdInRetryableRequests() {
+  return state_->GetLastFlushedOpIdInRetryableRequests();
+}
+
+Status RaftConsensus::FlushRetryableRequests() {
+  return state_->FlushRetryableRequests();
+}
+
+Status RaftConsensus::CopyRetryableRequestsTo(const std::string &dest_path) {
+  auto lock = state_->LockForRead();
+  if(state_->state() != ReplicaState::kRunning) {
+    return STATUS_FORMAT(IllegalState, "Replica is in $0 state", state_->state());
+  }
+  return state_->CopyRetryableRequestsTo(dest_path);
+}
+
+bool RaftConsensus::TEST_HasRetryableRequestsOnDisk() const {
+  return state_->TEST_HasRetryableRequestsOnDisk();
 }
 
 RetryableRequestsCounts RaftConsensus::TEST_CountRetryableRequests() {

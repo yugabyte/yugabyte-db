@@ -31,7 +31,8 @@
 #include "nodes/tidbitmap.h"
 #include "storage/condition_variable.h"
 
-#include "pg_yb_utils.h"
+/* YB includes. */
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 struct PlanState;				/* forward references in this file */
 struct ParallelHashJoinState;
@@ -598,12 +599,21 @@ typedef struct EState
 	YBCPgExecParameters yb_exec_params;
 
 	/*
-	 *  The in txn limit used for this query. This value is initialized
-	 *  to 0, and later updated by the first read operation initiated for this
-	 *  query. All later read operations are then ensured that they will never
-	 *  read any data written past this time.
+	 * The in_txn_limit used by all reads executed by this executor state. This is done to satisfy
+	 * requirement 1 in src/yb/yql/pggate/README i.e., all reads of a SQL statement should use the
+	 * same in_txn_limit. A pointer to this is passed down via PgExecParameters to all PgDocOp
+	 * instances invoked by the SQL statement. The first read operation by the statement finds that
+	 * this is unset i.e., 0 and hence initializes the in txn limit for read operations. All future
+	 * operations see this to be non-zero and hence don't change the picked in txn limit for reads.
+	 *
+	 * So, all read operations in the statement use the txn limit picked on the first read op of the
+	 * statement.
+	 *
+	 * NOTE: This is slightly incorrect and causes a bug as explained in requirement 1 of
+	 * src/yb/yql/pggate/README. But apart from that corner case, this ensures that read operations of
+	 * a SQL statement don't read any value written by the same statement.
 	 */
-	uint64_t yb_es_in_txn_limit_ht;
+	uint64_t yb_es_in_txn_limit_ht_for_reads;
 } EState;
 
 /*
@@ -676,14 +686,14 @@ typedef struct YbPgExecOutParam {
 	int64_t status_code;
 } YbPgExecOutParam;
 
-typedef struct YbExprParamDesc {
+typedef struct YbExprColrefDesc {
 	NodeTag type;
 
 	int32_t attno;
 	int32_t typid;
 	int32_t typmod;
 	int32_t collid;
-} YbExprParamDesc;
+} YbExprColrefDesc;
 
 
 /* ----------------------------------------------------------------
@@ -1291,6 +1301,7 @@ typedef struct YbSeqScanState
 {
 	ScanState	ss;				/* its first field is NodeTag */
 	// TODO handle;				/* size of parallel heap scan descriptor */
+	List	   *aggrefs;		/* aggregate pushdown information */
 } YbSeqScanState;
 
 /* ----------------
@@ -1357,6 +1368,11 @@ typedef struct
  *		OrderByTypByVals   is the datatype of order by expression pass-by-value?
  *		OrderByTypLens	   typlens of the datatypes of order by expressions
  *		pscan_len		   size of parallel index scan descriptor
+ *
+ *	YB specific attributes
+ *		might_recheck	   true if the scan might recheck indexquals (currently
+ *						   only used for aggregate pushdown purposes)
+ *		aggrefs			   aggregate pushdown information
  * ----------------
  */
 typedef struct IndexScanState
@@ -1384,6 +1400,10 @@ typedef struct IndexScanState
 	bool	   *iss_OrderByTypByVals;
 	int16	   *iss_OrderByTypLens;
 	Size		iss_PscanLen;
+
+	/* YB specific attributes. */
+	bool		yb_iss_might_recheck;
+	List	   *yb_iss_aggrefs;
 } IndexScanState;
 
 /* ----------------
@@ -1402,6 +1422,11 @@ typedef struct IndexScanState
  *		ScanDesc		   index scan descriptor
  *		VMBuffer		   buffer in use for visibility map testing, if any
  *		ioss_PscanLen	   Size of parallel index-only scan descriptor
+ *
+ *	YB specific attributes
+ *		might_recheck	   true if the scan might recheck indexquals (currently
+ *						   only used for aggregate pushdown purposes)
+ *		aggrefs			   aggregate pushdown information
  * ----------------
  */
 typedef struct IndexOnlyScanState
@@ -1420,6 +1445,10 @@ typedef struct IndexOnlyScanState
 	IndexScanDesc ioss_ScanDesc;
 	Buffer		ioss_VMBuffer;
 	Size		ioss_PscanLen;
+
+	/* YB specific attributes. */
+	bool		yb_ioss_might_recheck;
+	List	   *yb_ioss_aggrefs;
 	/*
 	 * yb_indexqual_for_recheck is the modified version of indexqual.
 	 * It is used in tuple recheck step only.
@@ -1740,7 +1769,7 @@ typedef struct ForeignScanState
 	void	   *fdw_state;		/* foreign-data wrapper can keep state here */
 
 	/* YB specific attributes. */
-	List	   *yb_fdw_aggs;	/* aggregate pushdown information */
+	List	   *yb_fdw_aggrefs;	/* aggregate pushdown information */
 } ForeignScanState;
 
 /* ----------------
@@ -1854,9 +1883,11 @@ typedef struct YbBatchedNestLoopState
 	JoinState	js;				/* its first field is NodeTag */
 	TupleTableSlot *nl_NullInnerTupleSlot;
 
+	bool bnl_outerdone;
+	NLBatchStatus bnl_currentstatus;
+
 	/* State for tuplestore batch strategy */
 	Tuplestorestate *bnl_tupleStoreState;
-	NLBatchStatus bnl_currentstatus;
 	List *bnl_batchMatchedInfo;
 	int bnl_batchTupNo;
 

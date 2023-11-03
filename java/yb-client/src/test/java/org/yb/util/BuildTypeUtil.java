@@ -62,11 +62,13 @@ public final class BuildTypeUtil {
 
   /** @return a timeout multiplier to apply in tests based on the build type */
   public static double getTimeoutMultiplier() {
+    if (isRelease())
+      return 1;
     if (isTSAN())
       return 3;
     if (isASAN())
       return 1.5;
-    return 1;
+    return 1.5;
   }
 
   public static long adjustTimeout(long timeout) {

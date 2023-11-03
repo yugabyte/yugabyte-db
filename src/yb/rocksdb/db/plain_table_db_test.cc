@@ -255,7 +255,7 @@ class PlainTableDBTest : public RocksDBTest,
     if (iter->Valid()) {
       result = iter->key().ToString() + "->" + iter->value().ToString();
     } else {
-      result = "(invalid)";
+      result = "(invalid)" + (iter->status().ok() ? "" : ": " + iter->status().ToString());
     }
     return result;
   }
@@ -606,53 +606,53 @@ TEST_P(PlainTableDBTest, Iterator) {
         ASSERT_EQ("v__3", Get("1000000000foo003"));
         Iterator* iter = dbfull()->NewIterator(ReadOptions());
         iter->Seek("1000000000foo000");
-        ASSERT_TRUE(iter->Valid());
+        ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
         ASSERT_EQ("1000000000foo001", iter->key().ToString());
         ASSERT_EQ("v1", iter->value().ToString());
 
         iter->Next();
-        ASSERT_TRUE(iter->Valid());
+        ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
         ASSERT_EQ("1000000000foo002", iter->key().ToString());
         ASSERT_EQ("v_2", iter->value().ToString());
 
         iter->Next();
-        ASSERT_TRUE(iter->Valid());
+        ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
         ASSERT_EQ("1000000000foo003", iter->key().ToString());
         ASSERT_EQ("v__3", iter->value().ToString());
 
         iter->Next();
-        ASSERT_TRUE(iter->Valid());
+        ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
         ASSERT_EQ("1000000000foo004", iter->key().ToString());
         ASSERT_EQ("v__4", iter->value().ToString());
 
         iter->Seek("3000000000000bar");
-        ASSERT_TRUE(iter->Valid());
+        ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
         ASSERT_EQ("3000000000000bar", iter->key().ToString());
         ASSERT_EQ("bar_v", iter->value().ToString());
 
         iter->Seek("1000000000foo000");
-        ASSERT_TRUE(iter->Valid());
+        ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
         ASSERT_EQ("1000000000foo001", iter->key().ToString());
         ASSERT_EQ("v1", iter->value().ToString());
 
         iter->Seek("1000000000foo005");
-        ASSERT_TRUE(iter->Valid());
+        ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
         ASSERT_EQ("1000000000foo005", iter->key().ToString());
         ASSERT_EQ("v__5", iter->value().ToString());
 
         iter->Seek("1000000000foo006");
-        ASSERT_TRUE(iter->Valid());
+        ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
         ASSERT_EQ("1000000000foo007", iter->key().ToString());
         ASSERT_EQ("v__7", iter->value().ToString());
 
         iter->Seek("1000000000foo008");
-        ASSERT_TRUE(iter->Valid());
+        ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
         ASSERT_EQ("1000000000foo008", iter->key().ToString());
         ASSERT_EQ("v__8", iter->value().ToString());
 
         if (total_order == 0) {
           iter->Seek("1000000000foo009");
-          ASSERT_TRUE(iter->Valid());
+          ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
           ASSERT_EQ("3000000000000bar", iter->key().ToString());
         }
 
@@ -662,7 +662,7 @@ TEST_P(PlainTableDBTest, Iterator) {
             // Neither key nor value should exist.
             expect_bloom_not_match = true;
             iter->Seek("2not000000000bar");
-            ASSERT_TRUE(!iter->Valid());
+            ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
             ASSERT_EQ("NOT_FOUND", Get("2not000000000bar"));
             expect_bloom_not_match = false;
           } else {
@@ -718,13 +718,13 @@ TEST_P(PlainTableDBTest, IteratorLargeKeys) {
   iter->Seek(key_list[0]);
 
   for (size_t i = 0; i < 7; i++) {
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(key_list[i], iter->key().ToString());
     ASSERT_EQ(ToString(i), iter->value().ToString());
     iter->Next();
   }
 
-  ASSERT_TRUE(!iter->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 
   delete iter;
 }
@@ -766,13 +766,13 @@ TEST_P(PlainTableDBTest, IteratorLargeKeysWithPrefix) {
   iter->Seek(key_list[0]);
 
   for (size_t i = 0; i < 7; i++) {
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(key_list[i], iter->key().ToString());
     ASSERT_EQ(ToString(i), iter->value().ToString());
     iter->Next();
   }
 
-  ASSERT_TRUE(!iter->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 
   delete iter;
 }
@@ -800,47 +800,47 @@ TEST_P(PlainTableDBTest, IteratorReverseSuffixComparator) {
   ASSERT_EQ("v__3", Get("1000000000foo003"));
   Iterator* iter = dbfull()->NewIterator(ReadOptions());
   iter->Seek("1000000000foo009");
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ("1000000000foo008", iter->key().ToString());
   ASSERT_EQ("v__8", iter->value().ToString());
 
   iter->Next();
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ("1000000000foo007", iter->key().ToString());
   ASSERT_EQ("v__7", iter->value().ToString());
 
   iter->Next();
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ("1000000000foo005", iter->key().ToString());
   ASSERT_EQ("v__5", iter->value().ToString());
 
   iter->Next();
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ("1000000000foo004", iter->key().ToString());
   ASSERT_EQ("v__4", iter->value().ToString());
 
   iter->Seek("3000000000000bar");
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ("3000000000000bar", iter->key().ToString());
   ASSERT_EQ("bar_v", iter->value().ToString());
 
   iter->Seek("1000000000foo005");
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ("1000000000foo005", iter->key().ToString());
   ASSERT_EQ("v__5", iter->value().ToString());
 
   iter->Seek("1000000000foo006");
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ("1000000000foo005", iter->key().ToString());
   ASSERT_EQ("v__5", iter->value().ToString());
 
   iter->Seek("1000000000foo008");
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ("1000000000foo008", iter->key().ToString());
   ASSERT_EQ("v__8", iter->value().ToString());
 
   iter->Seek("1000000000foo000");
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ("3000000000000bar", iter->key().ToString());
 
   delete iter;
@@ -889,50 +889,50 @@ TEST_P(PlainTableDBTest, HashBucketConflict) {
       Iterator* iter = dbfull()->NewIterator(ro);
 
       iter->Seek("5000000000000fo0");
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_EQ("5000000000000fo0", iter->key().ToString());
       iter->Next();
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_EQ("5000000000000fo1", iter->key().ToString());
 
       iter->Seek("5000000000000fo1");
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_EQ("5000000000000fo1", iter->key().ToString());
 
       iter->Seek("2000000000000fo0");
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_EQ("2000000000000fo0", iter->key().ToString());
       iter->Next();
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_EQ("2000000000000fo1", iter->key().ToString());
 
       iter->Seek("2000000000000fo1");
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_EQ("2000000000000fo1", iter->key().ToString());
 
       iter->Seek("2000000000000bar");
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_EQ("2000000000000fo0", iter->key().ToString());
 
       iter->Seek("5000000000000bar");
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_EQ("5000000000000fo0", iter->key().ToString());
 
       iter->Seek("2000000000000fo8");
-      ASSERT_TRUE(!iter->Valid() ||
+      ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()) ||
                   options.comparator->Compare(iter->key(), "20000001") > 0);
 
       iter->Seek("5000000000000fo8");
-      ASSERT_TRUE(!iter->Valid());
+      ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 
       iter->Seek("1000000000000fo2");
-      ASSERT_TRUE(!iter->Valid());
+      ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 
       iter->Seek("3000000000000fo2");
-      ASSERT_TRUE(!iter->Valid());
+      ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 
       iter->Seek("8000000000000fo2");
-      ASSERT_TRUE(!iter->Valid());
+      ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 
       delete iter;
     }
@@ -983,49 +983,49 @@ TEST_P(PlainTableDBTest, HashBucketConflictReverseSuffixComparator) {
       Iterator* iter = dbfull()->NewIterator(ro);
 
       iter->Seek("5000000000000fo1");
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_EQ("5000000000000fo1", iter->key().ToString());
       iter->Next();
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_EQ("5000000000000fo0", iter->key().ToString());
 
       iter->Seek("5000000000000fo1");
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_EQ("5000000000000fo1", iter->key().ToString());
 
       iter->Seek("2000000000000fo1");
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_EQ("2000000000000fo1", iter->key().ToString());
       iter->Next();
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_EQ("2000000000000fo0", iter->key().ToString());
 
       iter->Seek("2000000000000fo1");
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_EQ("2000000000000fo1", iter->key().ToString());
 
       iter->Seek("2000000000000var");
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_EQ("2000000000000fo3", iter->key().ToString());
 
       iter->Seek("5000000000000var");
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       ASSERT_EQ("5000000000000fo2", iter->key().ToString());
 
       std::string seek_key = "2000000000000bar";
       iter->Seek(seek_key);
-      ASSERT_TRUE(!iter->Valid() ||
+      ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()) ||
                   options.prefix_extractor->Transform(iter->key()) !=
                       options.prefix_extractor->Transform(seek_key));
 
       iter->Seek("1000000000000fo2");
-      ASSERT_TRUE(!iter->Valid());
+      ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 
       iter->Seek("3000000000000fo2");
-      ASSERT_TRUE(!iter->Valid());
+      ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 
       iter->Seek("8000000000000fo2");
-      ASSERT_TRUE(!iter->Valid());
+      ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 
       delete iter;
     }
@@ -1061,17 +1061,17 @@ TEST_P(PlainTableDBTest, NonExistingKeyToNonEmptyBucket) {
   Iterator* iter = dbfull()->NewIterator(ReadOptions());
 
   iter->Seek("5000000000000bar");
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ("5000000000000fo0", iter->key().ToString());
 
   iter->Seek("5000000000000fo8");
-  ASSERT_TRUE(!iter->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 
   iter->Seek("1000000000000fo2");
-  ASSERT_TRUE(!iter->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 
   iter->Seek("8000000000000fo2");
-  ASSERT_TRUE(!iter->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 
   delete iter;
 }

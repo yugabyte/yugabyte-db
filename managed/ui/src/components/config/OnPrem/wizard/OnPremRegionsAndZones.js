@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Field, FieldArray } from 'redux-form';
 import { YBInputField, YBButton, YBSelect } from '../../../common/forms/fields';
@@ -109,6 +109,7 @@ class OnPremListRegionsAndZones extends Component {
         {fields.map((fieldItem, fieldIdx) => {
           const isReadOnly = self.isFieldReadOnly(fieldIdx);
           return (
+            // eslint-disable-next-line react/no-array-index-key
             <Row key={`region-zone-${fieldIdx}`}>
               <Col lg={1}>
                 {fields.length > 1 ? (
@@ -122,7 +123,6 @@ class OnPremListRegionsAndZones extends Component {
                 <Field
                   name={`${fieldItem}.code`}
                   component={YBInputField}
-                  insetError={true}
                   isReadOnly={isReadOnly}
                 />
               </Col>
@@ -130,7 +130,6 @@ class OnPremListRegionsAndZones extends Component {
                 <Field
                   name={`${fieldItem}.location`}
                   component={YBSelect}
-                  insetError={true}
                   options={onPremRegionLocations}
                   readOnlySelect={isReadOnly}
                 />
@@ -139,7 +138,6 @@ class OnPremListRegionsAndZones extends Component {
                 <Field
                   name={`${fieldItem}.zones`}
                   component={YBInputField}
-                  insetError={true}
                   isReadOnly={isReadOnly}
                 />
               </Col>

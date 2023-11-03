@@ -40,13 +40,13 @@
 
   <groupId>org.yb</groupId>
   <artifactId>yb-parent</artifactId>
-  <version>0.8.36-SNAPSHOT</version>
+  <version>0.8.70-SNAPSHOT</version>
   <packaging>pom</packaging>
 
-  <name>YugaByte</name>
+  <name>Yugabyte</name>
 
   <description>
-    YugaByte client, YBCli, CQL.
+    Yugabyte client, YBCli, CQL.
   </description>
 
   <!-- Properties Management -->
@@ -102,10 +102,9 @@
     <junit.groupId>junit</junit.groupId>
     <junit.version>4.12</junit.version>
 
-    <log4j.version>1.2.17</log4j.version>
     <mockito-inline.version>4.7.0</mockito-inline.version>
     <murmur.version>1.0.0</murmur.version>
-    <netty-all.version>4.1.80.Final</netty-all.version>
+    <netty-all.version>4.1.86.Final</netty-all.version>
     <protobuf.version>3.21.7</protobuf.version>
     <slf4j.version>1.7.32</slf4j.version>
     <spark.version>2.4.8</spark.version>
@@ -123,7 +122,8 @@
     </testArgLine>
 
     <yb.collect.tests.only>false</yb.collect.tests.only>
-    <yb.forked.test.process.timeout.sec>3600</yb.forked.test.process.timeout.sec>
+    <!-- By default we allow 32 minutes, slightly more than the 30 minutes inside JUnit. -->
+    <yb.forked.test.process.timeout.sec>1920</yb.forked.test.process.timeout.sec>
   </properties>
 
   <modules>
@@ -138,6 +138,7 @@
     <module>yb-cdc</module>
     <module>yb-multiapi</module>
     <module>yb-sample</module>
+    <module>yb-ysql-conn-mgr</module>
   </modules>
 
   <build>
@@ -354,7 +355,7 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.36-SNAPSHOT</version>
+        <version>0.8.70-SNAPSHOT</version>
       </dependency>
       <dependency>
         <groupId>org.yb</groupId>
@@ -525,7 +526,7 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.36-SNAPSHOT</version>
+        <version>0.8.70-SNAPSHOT</version>
         <type>test-jar</type>
       </dependency>
       <dependency>

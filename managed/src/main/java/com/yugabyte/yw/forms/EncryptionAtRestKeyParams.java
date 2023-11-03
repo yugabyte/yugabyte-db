@@ -24,7 +24,7 @@ public class EncryptionAtRestKeyParams extends UniverseTaskParams {
   public static EncryptionAtRestKeyParams bindFromFormData(
       UUID universeUUID, Http.Request request) {
     EncryptionAtRestKeyParams taskParams = new EncryptionAtRestKeyParams();
-    taskParams.universeUUID = universeUUID;
+    taskParams.setUniverseUUID(universeUUID);
     try {
       taskParams.encryptionAtRestConfig =
           Json.mapper().treeToValue(request.body().asJson(), EncryptionAtRestConfig.class);

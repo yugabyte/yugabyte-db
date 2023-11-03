@@ -24,6 +24,11 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 import java.sql.Connection;
 import java.sql.Statement;
 
+import org.yb.util.json.Checkers;
+import org.yb.util.json.JsonUtil;
+import org.yb.pgsql.ExplainAnalyzeUtils.PlanCheckerBuilder;
+import org.yb.pgsql.ExplainAnalyzeUtils.TopLevelCheckerBuilder;
+
 import static org.yb.AssertionWrappers.*;
 import com.google.common.collect.ImmutableMap;
 
@@ -75,6 +80,90 @@ public class TestPgRegressTablespaces extends BasePgSQLTest {
   @Test
   public void testPgRegressTablespaces() throws Exception {
     runPgRegressTest("yb_tablespaces_schedule");
+  }
+
+  private static TopLevelCheckerBuilder makeTopLevelBuilder() {
+    return JsonUtil.makeCheckerBuilder(TopLevelCheckerBuilder.class, false /* nullify */);
+  }
+
+  private static PlanCheckerBuilder makePlanBuilder() {
+    return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false /* nullify */);
+  }
+
+  @Test
+  public void testYBTablespaceLeaderPreference() throws Exception {
+    // Test that leader preference is a cost component when calculating
+    // the cost of identical indexes on different tablespaces. In particular,
+    // this test checks that connecting to different nodes will result in
+    // different indexes being chosen; it's otherwise very basic. More
+    // tests for leader preference can be found in the postgres regression
+    // tests for tablespaces.
+
+    try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
+         Statement statement1 = connection1.createStatement()) {
+
+      assertOneRow(statement1, "SELECT yb_server_region()", "region1");
+      assertOneRow(statement1, "SELECT yb_server_cloud()", "cloud1");
+      assertOneRow(statement1, "SELECT yb_server_zone()", "zone1");
+
+      // Create tablespaces, with the same placements but different leader preferences.
+      statement1.execute("CREATE TABLESPACE localtablespace " +
+          "  WITH (replica_placement=" +
+          "'{\"num_replicas\":2, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1, \"leader_preference\":1}," +
+          "{\"cloud\":\"cloud2\",\"region\":\"region2\",\"zone\":\"zone2\"," +
+          "\"min_num_replicas\":1}]}')");
+
+      statement1.execute("CREATE TABLESPACE remotetablespace " +
+          "  WITH (replica_placement=" +
+          "'{\"num_replicas\":2, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud2\",\"region\":\"region2\",\"zone\":\"zone2\"," +
+          "\"min_num_replicas\":1, \"leader_preference\":1}," +
+          "{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1}]}')");
+
+      statement1.executeUpdate("CREATE TABLE foo(x int, y int)");
+      // Create identical indexes, one in each tablespace.
+      statement1.executeUpdate(
+        "CREATE UNIQUE INDEX localind ON foo(x) INCLUDE (y) TABLESPACE localtablespace");
+      statement1.executeUpdate(
+        "CREATE UNIQUE INDEX remoteind ON foo(x) INCLUDE (y) TABLESPACE remotetablespace");
+
+      // Expect to use the index in the tablespace with leader preference closer to us.
+      ExplainAnalyzeUtils.testExplain(
+        statement1,
+        "SELECT * FROM foo WHERE x = 5",
+        makeTopLevelBuilder()
+          .storageReadRequests(Checkers.greater(0))
+          .storageWriteRequests(Checkers.equal(0))
+          .storageExecutionTime(Checkers.greaterOrEqual(0.0))
+          .plan(makePlanBuilder()
+            .indexName("localind")
+            .build())
+          .build());
+    }
+
+    // Try connecting to a different node, which should change the chosen index.
+    try (Connection connection2 = getConnectionBuilder().withTServer(1).connect();
+         Statement statement2 = connection2.createStatement()) {
+
+      assertOneRow(statement2, "SELECT yb_server_region()", "region2");
+      assertOneRow(statement2, "SELECT yb_server_cloud()", "cloud2");
+      assertOneRow(statement2, "SELECT yb_server_zone()", "zone2");
+
+      ExplainAnalyzeUtils.testExplain(
+        statement2,
+        "SELECT * FROM foo WHERE x = 5",
+        makeTopLevelBuilder()
+          .storageReadRequests(Checkers.greater(0))
+          .storageWriteRequests(Checkers.equal(0))
+          .storageExecutionTime(Checkers.greaterOrEqual(0.0))
+          .plan(makePlanBuilder()
+            .indexName("remoteind")
+            .build())
+          .build());
+    }
   }
 
   @Test

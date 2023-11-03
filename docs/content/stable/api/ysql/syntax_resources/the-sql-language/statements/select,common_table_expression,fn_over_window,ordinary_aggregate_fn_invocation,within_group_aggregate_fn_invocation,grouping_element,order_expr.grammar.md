@@ -14,11 +14,11 @@ select ::= [ WITH [ RECURSIVE ] { common_table_expression [ , ... ] } ]
            [ WINDOW { { name AS window_definition } [ , ... ] } ]  
            [ { UNION | INTERSECT | EXCEPT } [ ALL | DISTINCT ] select ] 
             [ ORDER BY { order_expr [ , ... ] } ]  
-           [ LIMIT { integer | ALL } ]  
-           [ OFFSET integer [ ROW | ROWS ] ]  
-           [ FETCH { FIRST | NEXT } integer { ROW | ROWS } ONLY ]  
-           [ FOR { UPDATE | NO KEY UPDATE | SHARE | KEY SHARE } 
-             [ OF table_name [ , ... ] ] [ NOWAIT | SKIP LOCKED ] [ ... ] ]
+           [ LIMIT { int_expression | ALL } ]  
+           [ OFFSET int_expression [ ROW | ROWS ] ]  
+           [ FETCH { FIRST | NEXT } int_expression { ROW | ROWS } ONLY ] 
+            [ FOR { UPDATE | NO KEY UPDATE | SHARE | KEY SHARE } 
+              [ OF table_name [ , ... ] ] [ NOWAIT | SKIP LOCKED ] [ ... ] ]
 
 common_table_expression ::= name [ ( name [ , ... ] ) ] AS ( 
                             { select

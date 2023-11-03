@@ -1,13 +1,13 @@
 ---
-title: Isolation Levels
-headerTitle: Isolation Levels
-linkTitle: Isolation Levels
+title: Isolation levels
+headerTitle: Isolation levels
+linkTitle: Isolation levels
 description: Isolation Levels in YugabyteDB.
-headcontent: Isolation Levels in YugabyteDB.
+headcontent: Serializable, Snapshot, and Read committed isolation in YugabyteDB
 image: <div class="icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
 menu:
   stable:
-    name: Isolation Levels
+    name: Isolation levels
     identifier: explore-transactions-isolation-levels-1-ysql
     parent: explore-transactions
     weight: 235
@@ -32,45 +32,44 @@ type: docs
 -->
 </ul>
 
-Yugabyte supports three isolation levels in the transactional layer - Serializable, Snapshot, and Read Committed<sup>$</sup>. PostgreSQL (and the SQL standard) have four isolation levels - Serializable, Repeatable read, Read Committed, and Read uncommitted. The mapping between the PostgreSQL isolation levels in YSQL, along with which transaction anomalies can occur at each isolation level are shown below.
+YugabyteDB supports three isolation levels in the transactional layer: Serializable, Snapshot, and Read committed. PostgreSQL (and the SQL standard) have four isolation levels: Serializable, Repeatable read, Read committed, and Read uncommitted. 
 
-PostgreSQL Isolation  | YugabyteDB Equivalent | Dirty Read | Nonrepeatable Read | Phantom Read | Serialization Anomaly
------------------|--------------|------------------------|---|---|---
-Read <br/>uncommitted | Read Committed<sup>$</sup> | Allowed, but not in YSQL |  Possible | Possible | Possible
-Read <br/>committed   | Read Committed<sup>$</sup> | Not possible | Possible | Possible | Possible
-Repeatable <br/>read  | Snapshot | Not possible | Not possible | Allowed, but not in YSQL | Possible
+The following table shows the mapping between the PostgreSQL isolation levels in YSQL, along with transaction anomalies that can occur at each isolation level:
+
+| PostgreSQL Isolation | YugabyteDB Equivalent | Dirty Read | Non-repeatable Read | Phantom Read | Serialization Anomaly |
+| :------------------- | :-------------------- | :--------- | :------------------ | :----------- | :-------------------- |
+Read uncommitted | Read Committed<sup>$</sup> | Allowed, but not in YSQL |  Possible | Possible | Possible
+Read committed   | Read Committed<sup>$</sup> | Not possible | Possible | Possible | Possible
+Repeatable read  | Snapshot | Not possible | Not possible | Allowed, but not in YSQL | Possible
 Serializable     | Serializable | Not possible | Not possible | Not possible | Not possible
 
-<sup>$</sup> Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Read Committed Isolation is supported only if the YB-TServer gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+<sup>$</sup> Read Committed support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability). Read committed isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot isolation).
 
-{{< note title="Note" >}}
-The default isolation level for the YSQL API is essentially Snapshot (that is, the same as PostgreSQL's `REPEATABLE READ`) because `READ COMMITTED`, which is the YSQL APIs (and also PostgreSQL) syntactic default, maps to Snapshot Isolation (unless the YB-TServer gflag `yb_enable_read_committed_isolation` is set to `true`).
+The default isolation level for the YSQL API is essentially Snapshot (that is, the same as PostgreSQL's `REPEATABLE READ`) because `READ COMMITTED`, which is the YSQL API and PostgreSQL syntactic default, maps to Snapshot isolation (unless the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`).
 
 To set the transaction isolation level of a transaction, use the command `SET TRANSACTION`.
 
-{{< /note >}}
+As per the information in the preceding table, the most strict isolation level is `Serializable`, which requires that any concurrent execution of a set of `Serializable` transactions is guaranteed to produce the same effect as running them in some serial order (one transaction at a time). The other levels are defined by which anomalies must not occur as a result of interactions between concurrent transactions. Due to the definition of Serializable isolation, none of these anomalies are possible at that level. For reference, the following are various transaction anomalies:
 
-As seen from the table above, the most strict isolation level is `Serializable`, which requires that any concurrent execution of a set of `Serializable` transactions is guaranteed to produce the same effect as running them in some serial (one transaction at a time) order. The other levels are defined by which anomalies must not occur as a result of interactions between concurrent transactions. Due to the definition of Serializable isolation, none of these anomalies are possible at that level. For reference, the various transaction anomalies are described briefly below:
+* Dirty read: A transaction reads data written by a concurrent uncommitted transaction.
 
-* `Dirty read`: A transaction reads data written by a concurrent uncommitted transaction.
+* Nonrepeatable read: A transaction rereads data it has previously read and finds that data has been modified by another transaction committed after the initial read.
 
-* `Nonrepeatable read`: A transaction re-reads data it has previously read and finds that data has been modified by another transaction (that committed since the initial read).
+* Phantom read: A transaction re-executes a query returning a set of rows that satisfy a search condition and finds that the set of rows satisfying the condition has changed due to another recently-committed transaction.
 
-* `Phantom read`: A transaction re-executes a query returning a set of rows that satisfy a search condition and finds that the set of rows satisfying the condition has changed due to another recently-committed transaction.
+* Serialization anomaly: The result of successfully committing a group of transactions is inconsistent with all possible orderings of running those transactions one at a time.
 
-* `Serialization anomaly`: The result of successfully committing a group of transactions is inconsistent with all possible orderings of running those transactions one at a time.
+## Serializable isolation
 
-Let us now look at how Serializable, Snapshot and Read Committed isolation works in YSQL.
+The Serializable isolation level provides the strictest transaction isolation. This level emulates serial transaction execution for all committed transactions, as if transactions had been executed one after another, serially rather than concurrently. Serializable isolation can detect read-write conflicts in addition to write-write conflicts. This is accomplished by writing provisional records for read operations as well.
 
-## Serializable Isolation
+The Serializable isolation can be demonstrated by a bank overdraft protection example. Before you can start using the example, you need to [create a YugabyteDB universe](../../#set-up-yugabytedb-universe).
 
-The *Serializable* isolation level provides the strictest transaction isolation. This level emulates serial transaction execution for all committed transactions; as if transactions had been executed one after another, serially, rather than concurrently. Serializable isolation can detect read-write conflicts in addition to write-write conflicts. This is accomplished by writing *provisional records* for read operations as well.
+The hypothetical case is that there is a bank which allows depositors to withdraw money up to the total of what they have in all accounts. The bank later automatically transfers funds as needed to close the day with a positive balance in each account. In a single transaction, they check that the total of all accounts exceeds the amount requested.
 
-Let's use a bank overdraft protection example to illustrate this case. The hypothetical case is that there is a bank which allows depositors to withdraw money up to the total of what they have in all accounts. The bank will later automatically transfer funds as needed to close the day with a positive balance in each account. Within a single transaction they check that the total of all accounts exceeds the amount requested.
+Suppose someone tries to withdraw $900 from two of their accounts simultaneously, each with $500 balances. At the `REPEATABLE READ` transaction isolation level, that could work, but if the `SERIALIZABLE` transaction isolation level is used, a read-write conflict is detected and one of the transactions is rejected.
 
-Let's say someone tries to withdraw $900 from two of their accounts simultaneously, each with $500 balances. At the `REPEATABLE READ` transaction isolation level, that could work; but if the `SERIALIZABLE` transaction isolation level is used, a read/write conflict will be detected and one of the transactions will be rejected.
-
-The example can be set up with these statements:
+Set up the example with the following statements:
 
 ```sql
 create table account
@@ -85,310 +84,390 @@ insert into account values
   ('kevin','checking', 500);
 ```
 
-<table style="margin:0 5px;">
+Next, connect to the universe using two independent `ysqlsh` instances, referred to as session #1 and session #2.
+
+<table>
   <tr>
-   <td style="text-align:center;"><span style="font-size: 22px;">session #1</span></td>
-   <td style="text-align:center; border-left:1px solid rgba(158,159,165,0.5);"><span style="font-size: 22px;">session #2</span></td>
+   <td style="text-align:center;">session #1</td>
+   <td style="text-align:center;">session #2</td>
   </tr>
 
   <tr>
-    <td style="width:50%;">
-    Begin a transaction in session #1 with the Serializable isolation level. The account total is $1000, so a $900 withdrawal is OK.
-    <pre><code style="padding: 0 10px;">
-begin isolation level serializable;<br/>
+    <td>
+
+Begin a transaction in session #1 with the Serializable isolation level. The account total is $1000, so a $900 withdrawal is fine.
+
+```sql
+begin isolation level serializable;
 select type, balance from account
-  where name = 'kevin';<br/>
+  where name = 'kevin';
+```
+
+```output
    type   | balance
 ----------+---------
  saving   | $500.00
  checking | $500.00
 (2 rows)
-    </code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
+```
+
+  </td>
+    <td>
     </td>
   </tr>
 
   <tr>
-    <td style="width:50%;">
+    <td>
     </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
-    Begin a transaction in session #2 with the Serializable isolation level as well. Once again, the account total is $1000, so a $900 withdrawal is OK.
-    <pre><code style="padding: 0 10px;">
-begin isolation level serializable;<br/>
+    <td>
+
+Begin a transaction in session #2 also with the Serializable isolation level. Once again, the account total is $1000, so a $900 withdrawal is fine.
+
+```sql
+begin isolation level serializable;
 select type, balance from account
-  where name = 'kevin';<br/>
+  where name = 'kevin';
+```
+
+```output
    type   | balance
 ----------+---------
  saving   | $500.00
  checking | $500.00
 (2 rows)
-    </code></pre>
-    </td>
+```
+
+  </td>
   </tr>
 
   <tr>
-    <td style="width:50%;">
-    Withdraw $900 from the savings account, given the total is $1000 this should be OK.
-    <pre><code style="padding: 0 10px;">
+    <td>
+
+Withdraw $900 from the savings account, given the total is $1000 this should be fine.
+
+```sql
 update account
   set balance = balance - 900::money
   where name = 'kevin' and type = 'saving';
-    </code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
+```
+
+  </td>
+    <td>
     </td>
   </tr>
 
   <tr>
-    <td style="width:50%;">
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
-    Simultaneously, withdrawing $900 from the checking account is going to be a problem. This cannot co-exist with the other transaction's activity. This transaction would fail immediately.
-    <pre><code style="padding: 0 10px;">
+    <td></td>
+    <td>
+
+However, simultaneously withdrawing $900 from the checking account is going to be a problem. This cannot co-exist with the other transaction's activity. This transaction would fail immediately.
+
+```sql
 update account
   set balance = balance - 900::money
   where name = 'kevin' and type = 'checking';
+```
 
+```output
 ERROR:  40001: Operation failed.
   Try again.: Transaction aborted: XXXX
-    </code></pre>
-    </td>
+```
+
+  </td>
   </tr>
 
   <tr>
-    <td style="width:50%;">
-    This transaction can now be committed.
-    <pre><code style="padding: 0 10px;">
-commit;<br/>
+    <td>
+
+This transaction can now be committed.
+
+```sql
+commit;
 select type, balance from account
-  where name = 'kevin';<br/>
+  where name = 'kevin';
+```
+
+```output
    type   | balance
 ----------+----------
  checking |  $500.00
  saving   | -$400.00
 (2 rows)
-    </code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
+```
+
+  </td>
+    <td>
     </td>
   </tr>
 
 </table>
 
-## Snapshot Isolation
+## Snapshot isolation
 
-The Snapshot isolation level only sees data committed before the transaction began (or in other words, it works on a "snapshot" of the table). Transactions running under Snapshot isolation do not see either uncommitted data or changes committed during transaction execution by other concurrently running transactions. Note that the query does see the effects of previous updates executed within its own transaction, even though they are not yet committed. This is a stronger guarantee than is required by the SQL standard for the `REPEATABLE READ` isolation level.
+The Snapshot isolation level is only aware of data committed before the transaction began (in other words, it works on a snapshot of the table). Transactions running under Snapshot isolation are not aware of either uncommitted data or changes committed during transaction execution by other concurrently running transactions. Note that the query is aware of the effects of previous updates executed in its own transaction, even though they are not yet committed. This is a stronger guarantee than is required by the SQL standard for the `REPEATABLE READ` isolation level.
 
-Snapshot isolation detects only write-write conflicts, it does not detect read-write conflicts. In other words:
+Snapshot isolation detects only write-write conflicts; it does not detect read-write conflicts. That is:
 
-* `INSERT`, `UPDATE`, and `DELETE` commands behave the same as SELECT in terms of searching for target rows. They will only find target rows that were committed as of the transaction start time.
-* If such a target row might have already been updated (or deleted or locked) by another concurrent transaction by the time it is found. This scenario is called a *transaction conflict*, where the current transaction conflicts with the transaction that made (or is attempting to make) an update. In such cases, one of the two transactions get aborted, depending on priority.
+* `INSERT`, `UPDATE`, and `DELETE` commands behave in the same way as `SELECT` in terms of searching for target rows. They can only find target rows that were committed as of the transaction start time.
+* If such a target row might have already been updated, deleted, or locked by another concurrent transaction by the time it is found. This is called a transaction conflict, where the current transaction conflicts with the transaction that made or is attempting to make an update. In such cases, one of the two transactions is aborted, depending on priority.
 
-{{< note title="Note" >}}
 Applications using this level must be prepared to retry transactions due to serialization failures.
-{{< /note >}}
 
-Let's run through the scenario below to understand how transactions behave under the snapshot isolation level (which PostgreSQL's *Repeatable Read* maps to).
+Consider an example of transactions' behavior under the Snapshot isolation level (mapped to PostgreSQL's Repeatable Read level).
 
-First, create an example table with sample data.
+Create a table with sample data, as follows:
 
 ```sql
 CREATE TABLE IF NOT EXISTS example (k INT PRIMARY KEY);
 TRUNCATE TABLE example;
 ```
 
-Next, connect to the cluster using two independent `ysqlsh` instances called *session #1* and *session #2* below.
+Next, connect to the universe using two independent `ysqlsh` instances, referred to as session #1 and session #2:
 
-{{< note title="Note" >}}
-You can connect the session #1 and session #2 `ysqlsh` instances to the same server, or to different servers.
-{{< /note >}}
-
-<table style="margin:0 5px;">
+<table>
   <tr>
-   <td style="text-align:center;"><span style="font-size: 22px;">session #1</span></td>
-   <td style="text-align:center; border-left:1px solid rgba(158,159,165,0.5);"><span style="font-size: 22px;">session #2</span></td>
+   <td style="text-align:center;">session #1</td>
+   <td style="text-align:center;">session #2</td>
   </tr>
 
   <tr>
-    <td style="width:50%;">
-    Begin a transaction in session #1. This will be snapshot isolation by default, meaning it will work against a snapshot of the database as of this point.
-    <pre><code style="padding: 0 10px;">
+    <td>
+
+Begin a transaction in session #1. This is Snapshot isolation by default, meaning it will work against a snapshot of the database as of this point:
+
+```sql
 BEGIN TRANSACTION;
-    </code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
+```
+
+  </td>
+    <td>
     </td>
   </tr>
 
   <tr>
-    <td style="width:50%;">
-    Insert a row, but let's not commit the transaction. This row should be visible only to this transaction.
-    <pre><code style="padding: 0 10px;">
-INSERT INTO example VALUES (1);<br/>
+    <td>
+
+Insert a row, but do not commit the transaction. This row should be visible only to this transaction:
+
+```sql
+INSERT INTO example VALUES (1);
 SELECT * FROM example;
+```
+
+```output
  k
 ---
  1
 (1 row)
-    </code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
+```
+
+  </td>
+    <td>
     </td>
   </tr>
 
   <tr>
-    <td style="width:50%;">
+    <td>
     </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
-    Insert a different row here. Verify that the row inserted in the transaction in session #1 is not visible in this session.
-    <pre><code style="padding: 0 10px;">
-INSERT INTO example VALUES (2);<br/>
+    <td>
+
+Insert a different row. Verify that the row inserted in the transaction in session #1 is not visible in this session, as follows:
+
+```sql
+INSERT INTO example VALUES (2);
 SELECT * FROM example;
+```
+
+```output
  k
 ---
  2
 (1 row)
-    </code></pre>
-    </td>
+```
+
+  </td>
   </tr>
 
   <tr>
-    <td style="width:50%;">
-    The row inserted in the other session would not be visible here, because we're working against an older snapshot of the database. Let's verify that.
-    <pre><code style="padding: 0 10px;">
+    <td>
+
+The row inserted in the other session is not visible here because you are working against an older snapshot of the database. Verify that, as follows:
+
+```sql
 SELECT * FROM example;
+```
+
+```output
  k
 ---
  1
 (1 row)
-    </code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
+```
+
+  </td>
+    <td>
     </td>
   </tr>
 
   <tr>
-    <td style="width:50%;">
-    Now let's commit this transaction. As long as the row(s) we're writing as a part of this transaction are not modified during the lifetime of the transaction, there would be no conflicts. Let's verify we can see all rows after the commit.
-    <pre><code style="padding: 0 10px;">
-COMMIT; <br/>
+    <td>
+
+Commit this transaction. As long as the rows you are writing as a part of this transaction are not modified during the lifetime of the transaction, there would be no conflicts. Verify that all rows are visible after the commit, as follows:
+
+```sql
+COMMIT;
 SELECT * FROM example;
+```
+
+```output
  k
 ---
  1
  2
 (2 rows)
-    </code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
+```
+
+  </td>
+    <td>
     </td>
   </tr>
 
 </table>
 
-## Read Committed Isolation
+## Read committed isolation
 
-Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+Read Committed support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
 
-This is same as Snapshot Isolation except that every statement in the transaction will see all data that has been committed before it is issued (note that this implicitly also means that the statement will see a consistent snapshot). In other words, each statement works on a new "snapshot" of the database that includes everything that is committed before the statement is issued. Conflict detection is the same as in Snapshot Isolation.
+Read committed isolation is the same as Snapshot isolation, except that every statement in the transaction is aware of all data that has been committed before it has been issued (this implicitly means that the statement will see a consistent snapshot). In other words, each statement works on a new snapshot of the database that includes everything that has been committed before the statement is issued. Conflict detection is the same as in Snapshot isolation.
 
-<table style="margin:0 5px;">
-  <tr>
-   <td style="text-align:center;"><span style="font-size: 22px;">session #1</span></td>
-   <td style="text-align:center; border-left:1px solid rgba(158,159,165,0.5);"><span style="font-size: 22px;">session #2</span></td>
-  </tr>
+Consider an example of transactions' behavior under the Read committed isolation level.
 
-  <tr>
-    <td style="width:50%;">
-    Create a sample table.
-    <pre><code style="padding: 0 10px;">
+Create a table, as follows:
+
+```sql
 CREATE TABLE test (k int PRIMARY KEY, v int);
 INSERT INTO test VALUES (1, 2);
-    </code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
-    </td>
+```
+
+Connect to the universe using two independent `ysqlsh` instances, referred to as session #1 and session #2:
+
+<table>
+  <tr>
+   <td style="text-align:center;">session #1</td>
+   <td style="text-align:center;">session #2</td>
   </tr>
 
   <tr>
-    <td style="width:50%;">
-    By default, the YB-TServer gflag yb_enable_read_committed_isolation=false. In this case, Read Committed maps to Snapshot Isolation at the transactional layer. So, READ COMMITTED of YSQL API in turn maps to Snapshot Isolation.
-    <pre><code style="padding: 0 10px;">BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
-SELECT * FROM test;<br/>
+    <td>
+
+By default, the YB-TServer flag `yb_enable_read_committed_isolation` is false. In this case, Read committed maps to Snapshot isolation at the transactional layer. So, `READ COMMITTED` of YSQL API in turn maps to Snapshot Isolation:
+
+```sql
+BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+SELECT * FROM test;
+```
+
+```output
  k | v
 ---+---
  1 | 2
-(1 row)</code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
+(1 row)
+```
+
+  </td>
+    <td>
     </td>
   </tr>
 
   <tr>
-    <td style="width:50%;">
+    <td>
     </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
-    Insert a new row.
-    <pre><code style="padding: 0 10px;">INSERT INTO test VALUES (2, 3);</code></pre>
-    </td>
+    <td>
+
+Insert a new row, as follows:
+
+```sql
+INSERT INTO test VALUES (2, 3);
+```
+
+  </td>
   </tr>
 
   <tr>
-    <td style="width:50%;">
-    Perform read again in the same transaction. Note that the recently inserted row (2, 3) isn't
-    visible to the statement because Read Committed is disabled at the transactional layer and maps to
-    Snapshot (in which the whole transaction sees a consistent snapshot of the database).
-    <pre><code style="padding: 0 10px;">SELECT * FROM test;
-COMMIT;<br/>
+    <td>
+
+Perform the read again in the same transaction, as follows:
+
+```sql
+SELECT * FROM test;
+COMMIT;
+```
+
+```output
  k | v
 ---+---
  1 | 2
-(1 row)</code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
-    </td>
-  </tr>
+(1 row)
+```
 
-  <tr>
-    <td style="width:50%;">
-    Set the YB-TServer gflag yb_enable_read_committed_isolation=true
-    <pre><code style="padding: 0 10px;">BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
-SELECT * FROM test;<br/>
+The inserted row (2, 3) is not visible because Read committed is disabled at the transactional layer and maps to Snapshot in which the whole transaction sees a consistent snapshot of the database.
+
+Set the YB-Tserver flag `yb_enable_read_committed_isolation` to `true`:
+
+```sql
+BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+SELECT * FROM test;
+```
+
+```output
  k | v
 ---+---
  1 | 2
  2 | 3
-(2 rows)</code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
+(2 rows)
+```
+
+  </td>
+    <td>
     </td>
   </tr>
 
   <tr>
-    <td style="width:50%;">
+    <td>
     </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
-    In another session, insert a new row.
-    <pre><code style="padding: 0 10px;">INSERT INTO test VALUES (3, 4);</code></pre>
-    </td>
+    <td>
+
+Insert a new row, as follows:
+
+```sql
+INSERT INTO test VALUES (3, 4);
+```
+
+  </td>
   </tr>
 
   <tr>
-    <td style="width:50%;">
-    Perform read again in the same transaction. This time, the statement will be able to see the
-    row (3, 4) that was committed after this transaction was started but before the statement was issued.
-    <pre><code style="padding: 0 10px;">
+    <td>
+
+Perform the read again in the same transaction, as follows:
+
+```sql
 SELECT * FROM test;
+```
+
+```output
  k | v
 ---+---
  1 | 2
  2 | 3
  3 | 4
 (3 rows)
-    </code></pre>
-    </td>
-    <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
+```
+
+This time, the statement can see the row (3, 4) that was committed after this transaction had been started but before the statement has been issued.
+
+  </td>
+    <td>
     </td>
   </tr>
 

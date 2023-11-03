@@ -8,8 +8,8 @@ User={{ user_name }}
 Group={{ user_name }}
 {% endif %}
 Unit=yb-clean_cores.service
-# Run every 10 minutes offset by 5 (5, 15, 25...)
-OnCalendar=*:0/10:30
+# Run every 5 minutes
+OnCalendar=*:0/5
 
 [Install]
 WantedBy=timers.target

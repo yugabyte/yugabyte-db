@@ -44,7 +44,7 @@
 
 #include <boost/container/small_vector.hpp>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest_prod.h>
 
 #include "yb/consensus/consensus_fwd.h"
@@ -60,6 +60,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
 #include "yb/util/opid.h"
+#include "yb/util/trace.h"
 #include "yb/util/restart_safe_clock.h"
 #include "yb/util/status_callback.h"
 
@@ -78,8 +79,6 @@ class ReplicateMsg;
 struct ReadOpsResult {
   ReplicateMsgs messages;
   OpId preceding_op;
-  SchemaPB header_schema;
-  uint32_t header_schema_version;
   HaveMoreMessages have_more_messages = HaveMoreMessages::kFalse;
   int64_t read_from_disk_size = 0;
 };
@@ -227,6 +226,7 @@ class LogCache {
 
   void LogCallback(bool overwrite,
                    int64_t last_idx_in_batch,
+                   yb::TracePtr trace,
                    const StatusCallback& user_callback,
                    const Status& log_status);
 

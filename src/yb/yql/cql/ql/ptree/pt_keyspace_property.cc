@@ -27,7 +27,6 @@ namespace yb {
 namespace ql {
 
 using strings::Substitute;
-using client::YBColumnSchema;
 
 PTKeyspaceProperty::PTKeyspaceProperty(MemoryContext *memctx,
                                        YBLocation::SharedPtr loc,

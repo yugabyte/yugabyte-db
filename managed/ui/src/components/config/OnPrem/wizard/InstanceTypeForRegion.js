@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { YBSelect, YBInputField } from '../../../common/forms/fields';
 import { Field } from 'redux-form';
@@ -41,6 +41,7 @@ export default class InstanceTypeForRegion extends Component {
           </Col>
         </Row>
         {fields.map((instanceTypeItem, instanceTypeIdx) => (
+          // eslint-disable-next-line react/no-array-index-key
           <Row key={instanceTypeIdx}>
             <Col lg={1}>
               {fields.length > 1 ? (

@@ -35,10 +35,12 @@ import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
-import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
@@ -77,15 +79,39 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
 
   private final Set<TaskType> RETRYABLE_TASKS =
       ImmutableSet.of(
+          TaskType.CreateKubernetesUniverse,
+          TaskType.DestroyKubernetesUniverse,
           TaskType.CreateUniverse,
           TaskType.EditUniverse,
           TaskType.ReadOnlyClusterCreate,
+          TaskType.AddNodeToUniverse,
           TaskType.RemoveNodeFromUniverse,
           TaskType.DeleteNodeFromUniverse,
           TaskType.ReleaseInstanceFromUniverse,
           TaskType.RebootNodeInUniverse,
           TaskType.MultiTableBackup,
-          TaskType.BackupUniverse);
+          TaskType.BackupUniverse,
+          TaskType.ResizeNode,
+          TaskType.StartNodeInUniverse,
+          TaskType.StopNodeInUniverse,
+          TaskType.CloudProviderDelete,
+          TaskType.ReinstallNodeAgent,
+          TaskType.CloudBootstrap,
+          TaskType.KubernetesOverridesUpgrade,
+          TaskType.GFlagsKubernetesUpgrade,
+          TaskType.SoftwareKubernetesUpgrade,
+          TaskType.SoftwareKubernetesUpgradeYB,
+          TaskType.FinalizeUpgrade,
+          TaskType.RollbackUpgrade,
+          TaskType.RollbackKubernetesUpgrade,
+          TaskType.SoftwareUpgrade,
+          TaskType.SoftwareUpgradeYB,
+          TaskType.VMImageUpgrade,
+          TaskType.GFlagsUpgrade,
+          TaskType.RebootUniverse,
+          TaskType.RestartUniverse,
+          TaskType.ThirdpartySoftwareUpgrade,
+          TaskType.FinalizeUpgrade);
 
   @Override
   protected Application provideApplication() {
@@ -163,7 +189,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
               ITask task = (ITask) objects[0];
               // Create a new task info object.
               TaskInfo taskInfo = new TaskInfo(TaskType.BackupUniverse);
-              taskInfo.setTaskDetails(RedactingService.filterSecretFields(task.getTaskDetails()));
+              taskInfo.setDetails(
+                  RedactingService.filterSecretFields(task.getTaskDetails(), RedactionTarget.APIS));
               taskInfo.setOwner("test-owner");
               return taskInfo;
             })
@@ -192,7 +219,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
     assertEquals(0, subTaskInfos.size());
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
-    String errMsg = taskInfo.getTaskDetails().get("errorString").asText();
+    String errMsg = taskInfo.getDetails().get("errorString").asText();
     assertTrue("Found " + errMsg, errMsg.contains("Error occurred in task"));
   }
 
@@ -257,11 +284,11 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     assertEquals(1, subTasksByPosition.size());
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
 
-    String errMsg = taskInfo.getTaskDetails().get("errorString").asText();
+    String errMsg = taskInfo.getDetails().get("errorString").asText();
     assertTrue("Found " + errMsg, errMsg.contains("Failed to execute task"));
 
     assertEquals(TaskInfo.State.Failure, subTaskInfos.get(0).getTaskState());
-    errMsg = subTaskInfos.get(0).getTaskDetails().get("errorString").asText();
+    errMsg = subTaskInfos.get(0).getDetails().get("errorString").asText();
     assertTrue("Found " + errMsg, errMsg.contains("Error occurred in subtask"));
   }
 
@@ -338,6 +365,10 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     verify(subTask1, times(1)).run();
     verify(subTask2, times(0)).run();
 
+    verify(task, times(1)).onCancelled(any());
+    verify(subTask1, times(0)).onCancelled(any());
+    verify(subTask2, times(1)).onCancelled(any());
+
     List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTaskInfos.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -393,6 +424,10 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
 
     verify(subTask1, times(1)).run();
     verify(subTask2, times(0)).run();
+
+    verify(task, times(1)).onCancelled(any());
+    verify(subTask1, times(0)).onCancelled(any());
+    verify(subTask2, times(1)).onCancelled(any());
 
     List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -539,7 +574,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     TaskInfo taskInfo = waitForTask(taskUUID);
     verify(subTask).setUserTaskUUID(eq(taskUUID));
     assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
-    JsonNode errNode = taskInfo.getSubTasks().get(0).getTaskDetails().get("errorString");
+    JsonNode errNode = taskInfo.getSubTasks().get(0).getDetails().get("errorString");
     assertThat(errNode.toString(), containsString("is aborted while waiting"));
   }
 
@@ -547,8 +582,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   public void testRetryableAnnotation() {
     // Iterate through allowed Task Types by Commissioner only
     Set<TaskType> retryableTaskTypes =
-        TaskType.filteredValues()
-            .stream()
+        TaskType.filteredValues().stream()
             .filter(taskType -> TaskExecutor.isTaskRetryable(taskType.getTaskClass()))
             .collect(Collectors.toSet());
     assertEquals(RETRYABLE_TASKS, retryableTaskTypes);
@@ -604,5 +638,12 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     verify(subTask, times(1)).setTaskUUID(any());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     assertEquals(TaskInfo.State.Success, subTaskInfos.get(0).getTaskState());
+  }
+
+  @Test
+  public void testTaskValidationFailure() {
+    ITask task = mockTaskCommon(false);
+    doThrow(new RuntimeException("Validation failed")).when(task).validateParams(true);
+    assertThrows(PlatformServiceException.class, () -> taskExecutor.createRunnableTask(task));
   }
 }

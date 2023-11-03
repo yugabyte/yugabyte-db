@@ -15,6 +15,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/cdc/cdc_service.pb.h"
 #include "yb/consensus/log.h"
 
 #include "yb/rpc/rpc_controller.h"
@@ -22,7 +23,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
-#include "yb/tserver/cdc_consumer.h"
+#include "yb/tserver/xcluster_consumer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -43,22 +44,23 @@ void AssertIntKey(const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>&
   ASSERT_EQ(key[0].value().int32_value(), value);
 }
 
-void CreateCDCStream(const std::unique_ptr<CDCServiceProxy>& cdc_proxy,
-                     const TableId& table_id,
-                     CDCStreamId* stream_id,
-                     cdc::CDCRequestSource source_type) {
+Result<xrepl::StreamId> CreateCDCStream(
+    const std::unique_ptr<CDCServiceProxy>& cdc_proxy,
+    const TableId& table_id,
+    cdc::CDCRequestSource source_type) {
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
   req.set_table_id(table_id);
   req.set_source_type(source_type);
+  req.set_checkpoint_type(IMPLICIT);
 
   rpc::RpcController rpc;
-  ASSERT_OK(cdc_proxy->CreateCDCStream(req, &resp, &rpc));
-  ASSERT_FALSE(resp.has_error());
-
-  if (stream_id) {
-    *stream_id = resp.stream_id();
+  RETURN_NOT_OK(cdc_proxy->CreateCDCStream(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
   }
+
+  return xrepl::StreamId::FromString(resp.stream_id());
 }
 
 void WaitUntilWalRetentionSecs(std::function<int()> get_wal_retention_secs,
@@ -103,10 +105,11 @@ size_t NumProducerTabletsPolled(MiniCluster* cluster) {
   size_t size = 0;
   for (const auto& mini_tserver : cluster->mini_tablet_servers()) {
     size_t new_size = 0;
-    auto* tserver = dynamic_cast<tserver::enterprise::TabletServer*>(mini_tserver->server());
-    tserver::enterprise::CDCConsumer* cdc_consumer;
-    if (tserver && (cdc_consumer = tserver->GetCDCConsumer()) && mini_tserver->is_started()) {
-      auto tablets_running = cdc_consumer->TEST_producer_tablets_running();
+    auto* tserver = mini_tserver->server();
+    tserver::XClusterConsumer* xcluster_consumer;
+    if (tserver && (xcluster_consumer = tserver->GetXClusterConsumer()) &&
+        mini_tserver->is_started()) {
+      auto tablets_running = xcluster_consumer->TEST_producer_tablets_running();
       new_size = tablets_running.size();
     }
     size += new_size;

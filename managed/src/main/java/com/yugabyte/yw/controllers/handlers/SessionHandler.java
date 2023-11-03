@@ -8,28 +8,35 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Universe;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.text.SimpleDateFormat;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
+import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@Singleton
 public class SessionHandler {
 
   public static final Logger LOG = LoggerFactory.getLogger(SessionHandler.class);
   public static final String FILTERED_LOGS_SCRIPT = "bin/filtered_logs.sh";
-  public static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+  public static final DateTimeFormatter DATE_FORMAT =
+      DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 
   @Inject private Config config;
 
   @Inject private ShellProcessHandler shellProcessHandler;
+
+  @Inject private RuntimeConfGetter confGetter;
 
   public Path getFilteredLogs(
       Integer maxLines,
@@ -38,25 +45,21 @@ public class SessionHandler {
       String startDateStr,
       String endDateStr)
       throws PlatformServiceException {
-    String appHomeDir =
-        config.hasPath("application.home") ? config.getString("application.home") : ".";
-    String logDir =
-        config.hasPath("log.override.path")
-            ? config.getString("log.override.path")
-            : String.format("%s/logs", appHomeDir);
+    String logDir = config.getString("log.override.path");
     Path logPath = Paths.get(logDir);
 
     List<String> regexBuilder = new ArrayList<>();
     if (universe != null) {
-      regexBuilder.add(universe.universeUUID.toString());
+      regexBuilder.add(universe.getUniverseUUID().toString());
     }
 
     if (queryRegex != null) {
       regexBuilder.add(queryRegex);
     }
 
+    String tmpDirectory = confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath);
     String grepRegex = buildRegexString(regexBuilder);
-    String saveFileStr = "/tmp/" + UUID.randomUUID().toString() + "-logs";
+    String saveFileStr = tmpDirectory + "/" + UUID.randomUUID().toString() + "-logs";
     ShellResponse response =
         execCommand(
             logPath.toAbsolutePath().toString(),

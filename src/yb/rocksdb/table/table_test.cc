@@ -98,7 +98,7 @@ class ReverseKeyComparator : public Comparator {
     return "rocksdb.ReverseBytewiseComparator";
   }
 
-  int Compare(const Slice& a, const Slice& b) const override {
+  int Compare(Slice a, Slice b) const override {
     return BytewiseComparator()->Compare(Reverse(a), Reverse(b));
   }
 
@@ -239,11 +239,12 @@ class BlockConstructor: public Constructor {
 };
 
 // A helper class that converts internal format keys into user keys
-class KeyConvertingIterator : public InternalIterator {
+class KeyConvertingIterator final : public InternalIterator {
  public:
   explicit KeyConvertingIterator(InternalIterator* iter,
                                  bool arena_mode = false)
       : iter_(iter), arena_mode_(arena_mode) {}
+
   virtual ~KeyConvertingIterator() {
     if (arena_mode_) {
       iter_->~InternalIterator();
@@ -251,29 +252,51 @@ class KeyConvertingIterator : public InternalIterator {
       delete iter_;
     }
   }
-  bool Valid() const override { return iter_->Valid(); }
-  void Seek(const Slice& target) override {
+
+  const KeyValueEntry& Seek(Slice target) override {
     ParsedInternalKey ikey(target, kMaxSequenceNumber, kTypeValue);
     std::string encoded;
     AppendInternalKey(&encoded, ikey);
     iter_->Seek(encoded);
+    return Entry();
   }
-  void SeekToFirst() override { iter_->SeekToFirst(); }
-  void SeekToLast() override { iter_->SeekToLast(); }
-  void Next() override { iter_->Next(); }
-  void Prev() override { iter_->Prev(); }
 
-  Slice key() const override {
-    assert(Valid());
+  const KeyValueEntry& SeekToFirst() override {
+    iter_->SeekToFirst();
+    return Entry();
+  }
+
+  const KeyValueEntry& SeekToLast() override {
+    iter_->SeekToLast();
+    return Entry();
+  }
+
+  const KeyValueEntry& Next() override {
+    iter_->Next();
+    return Entry();
+  }
+
+  const KeyValueEntry& Prev() override {
+    iter_->Prev();
+    return Entry();
+  }
+
+  const KeyValueEntry& Entry() const override {
+    const auto& res = iter_->Entry();
+    if (!res) {
+      return KeyValueEntry::Invalid();
+    }
     ParsedInternalKey parsed_key;
     if (!ParseInternalKey(iter_->key(), &parsed_key)) {
       status_ = STATUS(Corruption, "malformed internal key");
-      return Slice("corrupted key");
+      entry_.key = Slice("corrupted key");
+    } else {
+      entry_.key = parsed_key.user_key;
     }
-    return parsed_key.user_key;
+    entry_.value = res.value;
+    return entry_;
   }
 
-  Slice value() const override { return iter_->value(); }
   Status status() const override {
     return status_.ok() ? iter_->status() : status_;
   }
@@ -282,6 +305,7 @@ class KeyConvertingIterator : public InternalIterator {
   mutable Status status_;
   InternalIterator* iter_;
   bool arena_mode_;
+  mutable KeyValueEntry entry_;
 
   // No copying allowed
   KeyConvertingIterator(const KeyConvertingIterator&);
@@ -465,18 +489,43 @@ class MemTableConstructor: public Constructor {
 class InternalIteratorFromIterator : public InternalIterator {
  public:
   explicit InternalIteratorFromIterator(Iterator* it) : it_(it) {}
-  bool Valid() const override { return it_->Valid(); }
-  void Seek(const Slice& target) override { it_->Seek(target); }
-  void SeekToFirst() override { it_->SeekToFirst(); }
-  void SeekToLast() override { it_->SeekToLast(); }
-  void Next() override { it_->Next(); }
-  void Prev() override { it_->Prev(); }
-  Slice key() const override { return it_->key(); }
-  Slice value() const override { return it_->value(); }
+
+  const KeyValueEntry& Seek(Slice target) override {
+    it_->Seek(target);
+    return Entry();
+  }
+  const KeyValueEntry& SeekToFirst() override {
+    it_->SeekToFirst();
+    return Entry();
+  }
+  const KeyValueEntry& SeekToLast() override {
+    it_->SeekToLast();
+    return Entry();
+  }
+
+  const KeyValueEntry& Next() override {
+    it_->Next();
+    return Entry();
+  }
+
+  const KeyValueEntry& Prev() override {
+    it_->Prev();
+    return Entry();
+  }
+
+  const KeyValueEntry& Entry() const override {
+    const auto& entry = it_->Entry();
+    if (!entry) {
+      return KeyValueEntry::Invalid();
+    }
+    return entry_ = entry;
+  }
+
   Status status() const override { return it_->status(); }
 
  private:
   unique_ptr<Iterator> it_;
+  mutable KeyValueEntry entry_;
 };
 
 class DBConstructor: public Constructor {
@@ -778,6 +827,7 @@ class HarnessTest : public RocksDBTest {
       iter->Next();
     }
     ASSERT_TRUE(!iter->Valid());
+    ASSERT_OK(iter->status());
     if (constructor_->IsArenaMode() && !constructor_->AnywayDeleteIterator()) {
       iter->~InternalIterator();
     } else {
@@ -796,6 +846,7 @@ class HarnessTest : public RocksDBTest {
       iter->Prev();
     }
     ASSERT_TRUE(!iter->Valid());
+    ASSERT_OK(iter->status());
     if (constructor_->IsArenaMode() && !constructor_->AnywayDeleteIterator()) {
       iter->~InternalIterator();
     } else {
@@ -869,6 +920,7 @@ class HarnessTest : public RocksDBTest {
         }
       }
     }
+    ASSERT_OK(iter->status());
     if (constructor_->IsArenaMode() && !constructor_->AnywayDeleteIterator()) {
       iter->~InternalIterator();
     } else {
@@ -896,7 +948,7 @@ class HarnessTest : public RocksDBTest {
 
   std::string ToString(const InternalIterator* it) {
     if (!it->Valid()) {
-      return "END";
+      return it->status().ok() ? "END" : "Error: " + it->status().ToString();
     } else {
       return "'" + it->key().ToString() + "->" + it->value().ToString() + "'";
     }
@@ -1463,6 +1515,7 @@ void TableTest::TestIndex(BlockBasedTableOptions table_options, int expected_num
     if (i == prefixes.size() - 1) {
       // last key
       ASSERT_TRUE(!iter->Valid());
+      ASSERT_OK(iter->status());
     } else {
       ASSERT_TRUE(iter->Valid());
       // seek the first element in the block
@@ -1477,7 +1530,6 @@ void TableTest::TestIndex(BlockBasedTableOptions table_options, int expected_num
     iter->Seek(InternalKey(prefix, 0, kTypeValue).Encode());
     // regular_iter->Seek(prefix);
 
-    ASSERT_OK(iter->status());
     // Seek to non-existing prefixes should yield either invalid, or a
     // key with prefix greater than the target.
     if (iter->Valid()) {
@@ -1485,6 +1537,7 @@ void TableTest::TestIndex(BlockBasedTableOptions table_options, int expected_num
       Slice ukey_prefix = options.prefix_extractor->Transform(ukey);
       ASSERT_LT(BytewiseComparator()->Compare(prefix, ukey_prefix), 0);
     }
+    ASSERT_OK(iter->status());
   }
 }
 
@@ -2107,6 +2160,7 @@ void RunPerformanceTest(
         /*const auto k =*/ iter->key();
         /*const auto v =*/ iter->value();
       }
+      ASSERT_OK(iter->status());
       return;
     });
 
@@ -2116,6 +2170,7 @@ void RunPerformanceTest(
         /*const auto k =*/ iter->key();
         /*const auto v =*/ iter->value();
       }
+      ASSERT_OK(iter->status());
       return;
     });
   } else {
@@ -2124,6 +2179,7 @@ void RunPerformanceTest(
       for (size_t k = 0; k < keys.size(); k++) {
         iter->Seek(keys[k]);
       }
+      ASSERT_OK(iter->status());
       return;
     });
 
@@ -2481,6 +2537,7 @@ TEST_F(MemTableTest, Simple) {
             iter->value().ToString().c_str());
     iter->Next();
   }
+  ASSERT_OK(iter->status());
 
   delete memtable->Unref();
 }
@@ -2704,6 +2761,7 @@ TEST_P(IndexBlockRestartIntervalTest, IndexBlockRestartInterval) {
       ASSERT_EQ(db_iter->value(), kv_iter->second);
       kv_iter++;
     }
+    ASSERT_OK(db_iter->status());
     ASSERT_EQ(kv_iter, kvmap.end());
   }
 }
@@ -2833,6 +2891,7 @@ TEST_F(TableTest, MiddleOfMiddleKey) {
   const auto mkey_second = ASSERT_RESULT(db->GetMiddleKey());
   // Still the same as the midkey of the previous largest sst.
   ASSERT_EQ(mkey_second, mid_key_of_sst);
+  delete db;
 }
 
 }  // namespace rocksdb

@@ -1,5 +1,10 @@
 package com.yugabyte.yw.cloud;
 
+import static org.junit.Assert.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
+
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.elasticloadbalancingv2.AmazonElasticLoadBalancing;
 import com.amazonaws.services.elasticloadbalancingv2.model.DescribeLoadBalancersResult;
@@ -13,6 +18,9 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import java.io.IOException;
+import java.util.HashSet;
+import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.IOUtils;
 import org.junit.After;
@@ -23,15 +31,6 @@ import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 import play.api.Play;
 import play.libs.Json;
-
-import java.io.IOException;
-import java.util.HashSet;
-import java.util.Set;
-
-import static org.junit.Assert.assertEquals;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.when;
 
 @Slf4j
 public class CloudAPITest extends FakeDBApplication {
@@ -64,7 +63,7 @@ public class CloudAPITest extends FakeDBApplication {
     provider = ModelFactory.awsProvider(customer);
     region = Region.create(provider, "us-west-2", "US West 2", "yb-image-1");
 
-    awsCloudImpl = spy(new AWSCloudImpl());
+    awsCloudImpl = spy(new AWSCloudImpl(null));
     Mockito.doReturn(mockEC2Client).when(awsCloudImpl).getEC2Client(any(), any());
     Mockito.doReturn(mockELBClient).when(awsCloudImpl).getELBClient(any(), any());
     mockJsonString =
@@ -84,7 +83,7 @@ public class CloudAPITest extends FakeDBApplication {
     nodes.add("yb-spu1");
     nodes.add("yb-spu2");
     nodes.add("yb-spu3");
-    LoadBalancer lb = awsCloudImpl.getLoadBalancerByName(provider, region.code, "yb-spu-nlb");
+    LoadBalancer lb = awsCloudImpl.getLoadBalancerByName(provider, region.getCode(), "yb-spu-nlb");
     String lbArn =
         "arn:aws:elasticloadbalancing:"
             + "us-west-2:454529406029:loadbalancer/net/yb-spu-nlb/77d043677679338a";

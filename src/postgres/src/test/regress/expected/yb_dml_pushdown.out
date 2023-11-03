@@ -3,230 +3,270 @@
 --
 CREATE TABLE single_row (k int primary key, v1 int, v2 int);
 -- Below statements should all USE single-row.
-EXPLAIN (COSTS FALSE) DELETE FROM single_row WHERE k = 1;
-      QUERY PLAN
-----------------------
- Delete on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) DELETE FROM single_row WHERE k = 1;
+                   QUERY PLAN
+-------------------------------------------------
+ Delete on public.single_row
    ->  Result
-(2 rows)
+         Output: 1, NULL::integer, NULL::integer
+(3 rows)
 
-EXPLAIN (COSTS FALSE) DELETE FROM single_row WHERE k = 1 RETURNING k;
-      QUERY PLAN
-----------------------
- Delete on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) DELETE FROM single_row WHERE k = 1 RETURNING k;
+                   QUERY PLAN
+-------------------------------------------------
+ Delete on public.single_row
+   Output: k
    ->  Result
-(2 rows)
-
-EXPLAIN (COSTS FALSE) DELETE FROM single_row WHERE k = 1 RETURNING v1;
-      QUERY PLAN
-----------------------
- Delete on single_row
-   ->  Result
-(2 rows)
-
-EXPLAIN (COSTS FALSE) DELETE FROM single_row WHERE k IN (1);
-      QUERY PLAN
-----------------------
- Delete on single_row
-   ->  Result
-(2 rows)
-
--- Below statements should all NOT USE single-row.
-EXPLAIN (COSTS FALSE) DELETE FROM single_row;
-          QUERY PLAN
-------------------------------
- Delete on single_row
-   ->  Seq Scan on single_row
-(2 rows)
-
-EXPLAIN (COSTS FALSE) DELETE FROM single_row WHERE k = 1 and v1 = 1;
-                      QUERY PLAN
-------------------------------------------------------
- Delete on single_row
-   ->  Index Scan using single_row_pkey on single_row
-         Index Cond: (k = 1)
-         Remote Filter: (v1 = 1)
+         Output: 1, NULL::integer, NULL::integer
 (4 rows)
 
-EXPLAIN (COSTS FALSE) DELETE FROM single_row WHERE v1 = 1 and v2 = 1;
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) DELETE FROM single_row WHERE k = 1 RETURNING v1;
                    QUERY PLAN
-------------------------------------------------
- Delete on single_row
-   ->  Seq Scan on single_row
-         Remote Filter: ((v1 = 1) AND (v2 = 1))
+-------------------------------------------------
+ Delete on public.single_row
+   Output: v1
+   ->  Result
+         Output: 1, NULL::integer, NULL::integer
+(4 rows)
+
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) DELETE FROM single_row WHERE k IN (1);
+                   QUERY PLAN
+-------------------------------------------------
+ Delete on public.single_row
+   ->  Result
+         Output: 1, NULL::integer, NULL::integer
 (3 rows)
 
-EXPLAIN (COSTS FALSE) DELETE FROM single_row WHERE k > 1;
-           QUERY PLAN
---------------------------------
- Delete on single_row
-   ->  Seq Scan on single_row
-         Remote Filter: (k > 1)
+-- Below statements should all NOT USE single-row.
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) DELETE FROM single_row;
+             QUERY PLAN
+-------------------------------------
+ Delete on public.single_row
+   ->  Seq Scan on public.single_row
+         Output: ybctid
 (3 rows)
 
-EXPLAIN (COSTS FALSE) DELETE FROM single_row WHERE k != 1;
-           QUERY PLAN
----------------------------------
- Delete on single_row
-   ->  Seq Scan on single_row
-         Remote Filter: (k <> 1)
-(3 rows)
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) DELETE FROM single_row WHERE k = 1 and v1 = 1;
+                         QUERY PLAN
+-------------------------------------------------------------
+ Delete on public.single_row
+   ->  Index Scan using single_row_pkey on public.single_row
+         Output: ybctid
+         Index Cond: (single_row.k = 1)
+         Remote Filter: (single_row.v1 = 1)
+(5 rows)
 
-EXPLAIN (COSTS FALSE) DELETE FROM single_row WHERE k IN (1, 2);
-                      QUERY PLAN
-------------------------------------------------------
- Delete on single_row
-   ->  Index Scan using single_row_pkey on single_row
-         Index Cond: (k = ANY ('{1,2}'::integer[]))
-(3 rows)
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) DELETE FROM single_row WHERE v1 = 1 and v2 = 1;
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Delete on public.single_row
+   ->  Seq Scan on public.single_row
+         Output: ybctid
+         Remote Filter: ((single_row.v1 = 1) AND (single_row.v2 = 1))
+(4 rows)
+
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) DELETE FROM single_row WHERE k > 1;
+                QUERY PLAN
+-------------------------------------------
+ Delete on public.single_row
+   ->  Seq Scan on public.single_row
+         Output: ybctid
+         Remote Filter: (single_row.k > 1)
+(4 rows)
+
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) DELETE FROM single_row WHERE k != 1;
+                 QUERY PLAN
+--------------------------------------------
+ Delete on public.single_row
+   ->  Seq Scan on public.single_row
+         Output: ybctid
+         Remote Filter: (single_row.k <> 1)
+(4 rows)
+
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) DELETE FROM single_row WHERE k IN (1, 2);
+                          QUERY PLAN
+---------------------------------------------------------------
+ Delete on public.single_row
+   ->  Index Scan using single_row_pkey on public.single_row
+         Output: ybctid
+         Index Cond: (single_row.k = ANY ('{1,2}'::integer[]))
+(4 rows)
 
 -- Below statements should all USE single-row.
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1;
-      QUERY PLAN
-----------------------
- Update on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) UPDATE single_row SET v1 = 1 WHERE k = 1;
+             QUERY PLAN
+-------------------------------------
+ Update on public.single_row
    ->  Result
-(2 rows)
+         Output: 1, 1, NULL::integer
+(3 rows)
 
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING k, v1;
-      QUERY PLAN
-----------------------
- Update on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING k, v1;
+             QUERY PLAN
+-------------------------------------
+ Update on public.single_row
+   Output: k, v1
    ->  Result
-(2 rows)
+         Output: 1, 1, NULL::integer
+(4 rows)
 
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1, v2 = 1 + 2 WHERE k = 1;
-      QUERY PLAN
-----------------------
- Update on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) UPDATE single_row SET v1 = 1, v2 = 1 + 2 WHERE k = 1;
+         QUERY PLAN
+-----------------------------
+ Update on public.single_row
    ->  Result
-(2 rows)
+         Output: 1, 1, 3
+(3 rows)
 
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 + v2 WHERE k = 1;
-      QUERY PLAN
-----------------------
- Update on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) UPDATE single_row SET v1 = v1 + v2 WHERE k = 1;
+             QUERY PLAN
+-------------------------------------
+ Update on public.single_row
    ->  Result
-(2 rows)
+         Output: 1, 0, NULL::integer
+(3 rows)
 
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v2 + 1 WHERE k = 1;
-      QUERY PLAN
-----------------------
- Update on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) UPDATE single_row SET v1 = v2 + 1 WHERE k = 1;
+             QUERY PLAN
+-------------------------------------
+ Update on public.single_row
    ->  Result
-(2 rows)
+         Output: 1, 0, NULL::integer
+(3 rows)
 
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1, v2 = v1 + v2 WHERE k = 1;
-      QUERY PLAN
-----------------------
- Update on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) UPDATE single_row SET v1 = 1, v2 = v1 + v2 WHERE k = 1;
+         QUERY PLAN
+-----------------------------
+ Update on public.single_row
    ->  Result
-(2 rows)
+         Output: 1, 1, 0
+(3 rows)
 
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v2 + 1, v2 = 1 WHERE k = 1;
-      QUERY PLAN
-----------------------
- Update on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) UPDATE single_row SET v1 = v2 + 1, v2 = 1 WHERE k = 1;
+         QUERY PLAN
+-----------------------------
+ Update on public.single_row
    ->  Result
-(2 rows)
+         Output: 1, 0, 1
+(3 rows)
 
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1, v2 = 2 WHERE k = 1 RETURNING k, v1, v2;
-      QUERY PLAN
-----------------------
- Update on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) UPDATE single_row SET v1 = 1, v2 = 2 WHERE k = 1 RETURNING k, v1, v2;
+         QUERY PLAN
+-----------------------------
+ Update on public.single_row
+   Output: k, v1, v2
    ->  Result
-(2 rows)
+         Output: 1, 1, 2
+(4 rows)
 
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1, v2 = 2 WHERE k = 1 RETURNING *;
-      QUERY PLAN
-----------------------
- Update on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) UPDATE single_row SET v1 = 1, v2 = 2 WHERE k = 1 RETURNING *;
+         QUERY PLAN
+-----------------------------
+ Update on public.single_row
+   Output: k, v1, v2
    ->  Result
-(2 rows)
+         Output: 1, 1, 2
+(4 rows)
 
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 + 1, v2 = 2 WHERE k = 1 RETURNING v2;
-      QUERY PLAN
-----------------------
- Update on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) UPDATE single_row SET v1 = v1 + 1, v2 = 2 WHERE k = 1 RETURNING v2;
+         QUERY PLAN
+-----------------------------
+ Update on public.single_row
+   Output: v2
    ->  Result
-(2 rows)
+         Output: 1, 0, 2
+(4 rows)
 
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k IN (1);
-      QUERY PLAN
-----------------------
- Update on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) UPDATE single_row SET v1 = 1 WHERE k IN (1);
+             QUERY PLAN
+-------------------------------------
+ Update on public.single_row
    ->  Result
-(2 rows)
+         Output: 1, 1, NULL::integer
+(3 rows)
 
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 3 + 2 WHERE k = 1;
-      QUERY PLAN
-----------------------
- Update on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) UPDATE single_row SET v1 = 3 + 2 WHERE k = 1;
+             QUERY PLAN
+-------------------------------------
+ Update on public.single_row
    ->  Result
-(2 rows)
+         Output: 1, 5, NULL::integer
+(3 rows)
 
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = power(2, 3 - 1) WHERE k = 1;
-      QUERY PLAN
-----------------------
- Update on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) UPDATE single_row SET v1 = power(2, 3 - 1) WHERE k = 1;
+             QUERY PLAN
+-------------------------------------
+ Update on public.single_row
    ->  Result
-(2 rows)
+         Output: 1, 4, NULL::integer
+(3 rows)
 
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 + 3 WHERE k = 1;
-      QUERY PLAN
-----------------------
- Update on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) UPDATE single_row SET v1 = v1 + 3 WHERE k = 1;
+             QUERY PLAN
+-------------------------------------
+ Update on public.single_row
    ->  Result
-(2 rows)
+         Output: 1, 0, NULL::integer
+(3 rows)
 
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 * 2 WHERE k = 1;
-      QUERY PLAN
-----------------------
- Update on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) UPDATE single_row SET v1 = v1 * 2 WHERE k = 1;
+             QUERY PLAN
+-------------------------------------
+ Update on public.single_row
    ->  Result
-(2 rows)
+         Output: 1, 0, NULL::integer
+(3 rows)
 
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = power(2, 3 - k) WHERE k = 1;
-      QUERY PLAN
-----------------------
- Update on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) UPDATE single_row SET v1 = power(2, 3 - k) WHERE k = 1;
+             QUERY PLAN
+-------------------------------------
+ Update on public.single_row
    ->  Result
-(2 rows)
+         Output: 1, 0, NULL::integer
+(3 rows)
 
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING v2;
-      QUERY PLAN
-----------------------
- Update on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING v2;
+             QUERY PLAN
+-------------------------------------
+ Update on public.single_row
+   Output: v2
    ->  Result
-(2 rows)
+         Output: 1, 1, NULL::integer
+(4 rows)
 
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 + 1 WHERE k = 1 RETURNING v1;
-      QUERY PLAN
-----------------------
- Update on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) UPDATE single_row SET v1 = v1 + 1 WHERE k = 1 RETURNING v1;
+             QUERY PLAN
+-------------------------------------
+ Update on public.single_row
+   Output: v1
    ->  Result
-(2 rows)
+         Output: 1, 0, NULL::integer
+(4 rows)
 
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING *;
-      QUERY PLAN
-----------------------
- Update on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING *;
+             QUERY PLAN
+-------------------------------------
+ Update on public.single_row
+   Output: k, v1, v2
    ->  Result
-(2 rows)
+         Output: 1, 1, NULL::integer
+(4 rows)
 
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = CASE WHEN random() < 0.1 THEN 0 ELSE 1 END WHERE k = 1;
-      QUERY PLAN
-----------------------
- Update on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) UPDATE single_row SET v1 = CASE WHEN random() < 0.1 THEN 0 ELSE 1 END WHERE k = 1;
+                                             QUERY PLAN
+----------------------------------------------------------------------------------------------------
+ Update on public.single_row
    ->  Result
-(2 rows)
+         Output: 1, CASE WHEN (random() < '0.1'::double precision) THEN 0 ELSE 1 END, NULL::integer
+(3 rows)
 
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v2 = CASE WHEN v1 % 2 = 0 THEN v2 * 3 ELSE v2 *2 END WHERE k = 1;
-      QUERY PLAN
-----------------------
- Update on single_row
+EXPLAIN (COSTS FALSE, VERBOSE TRUE) UPDATE single_row SET v2 = CASE WHEN v1 % 2 = 0 THEN v2 * 3 ELSE v2 *2 END WHERE k = 1;
+             QUERY PLAN
+-------------------------------------
+ Update on public.single_row
    ->  Result
-(2 rows)
+         Output: 1, NULL::integer, 0
+(3 rows)
 
 -- Below statements should all NOT USE single-row.
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1;
@@ -486,17 +526,18 @@ SELECT * FROM single_row;
 
 EXPLAIN (COSTS FALSE) WITH temp AS (UPDATE single_row SET v1 = v1 + 1 WHERE k = 1 RETURNING k, v1)
   UPDATE single_row SET v2 = temp.v1 FROM temp WHERE single_row.k = temp.k;
-                         QUERY PLAN
-------------------------------------------------------------
+                               QUERY PLAN
+-------------------------------------------------------------------------
  Update on single_row
    CTE temp
      ->  Update on single_row single_row_1
            ->  Result
-   ->  Nested Loop
+   ->  YB Batched Nested Loop Join
+         Join Filter: (single_row.k = temp.k)
          ->  CTE Scan on temp
          ->  Index Scan using single_row_pkey on single_row
-               Index Cond: (k = temp.k)
-(8 rows)
+               Index Cond: (k = ANY (ARRAY[temp.k, $4, $5, ..., $1026]))
+(9 rows)
 
 WITH temp AS (UPDATE single_row SET v1 = v1 + 1 WHERE k = 1 RETURNING k, v1)
   UPDATE single_row SET v2 = temp.v1 FROM temp WHERE single_row.k = temp.k;
@@ -527,17 +568,18 @@ SELECT * FROM single_row;
 CREATE INDEX single_row_v2_idx ON single_row(v2);
 EXPLAIN (COSTS FALSE) WITH temp AS (UPDATE single_row SET v1 = v1 + 1 WHERE k = 1 RETURNING k, v1)
   UPDATE single_row SET v2 = temp.v1 FROM temp WHERE single_row.k = temp.k;
-                         QUERY PLAN
-------------------------------------------------------------
+                               QUERY PLAN
+-------------------------------------------------------------------------
  Update on single_row
    CTE temp
      ->  Update on single_row single_row_1
            ->  Result
-   ->  Nested Loop
+   ->  YB Batched Nested Loop Join
+         Join Filter: (single_row.k = temp.k)
          ->  CTE Scan on temp
          ->  Index Scan using single_row_pkey on single_row
-               Index Cond: (k = temp.k)
-(8 rows)
+               Index Cond: (k = ANY (ARRAY[temp.k, $4, $5, ..., $1026]))
+(9 rows)
 
 EXPLAIN (COSTS FALSE) WITH temp AS (UPDATE single_row SET v2 = v1 + 1 WHERE k = 1 RETURNING k, v1)
   UPDATE single_row SET v2 = temp.v1 FROM temp WHERE single_row.k = temp.k;
@@ -548,11 +590,12 @@ EXPLAIN (COSTS FALSE) WITH temp AS (UPDATE single_row SET v2 = v1 + 1 WHERE k = 
      ->  Update on single_row single_row_1
            ->  Index Scan using single_row_pkey on single_row single_row_1
                  Index Cond: (k = 1)
-   ->  Nested Loop
+   ->  YB Batched Nested Loop Join
+         Join Filter: (single_row.k = temp.k)
          ->  CTE Scan on temp
          ->  Index Scan using single_row_pkey on single_row
-               Index Cond: (k = temp.k)
-(9 rows)
+               Index Cond: (k = ANY (ARRAY[temp.k, $4, $5, ..., $1026]))
+(10 rows)
 
 DROP INDEX single_row_v2_idx;
 -- Updates on a table with a trigger
@@ -573,11 +616,12 @@ EXPLAIN (COSTS FALSE) WITH temp AS (UPDATE single_row SET v2 = v1 + 1 WHERE k = 
      ->  Update on single_row single_row_1
            ->  Index Scan using single_row_pkey on single_row single_row_1
                  Index Cond: (k = 1)
-   ->  Nested Loop
+   ->  YB Batched Nested Loop Join
+         Join Filter: (single_row.k = temp.k)
          ->  CTE Scan on temp
          ->  Index Scan using single_row_pkey on single_row
-               Index Cond: (k = temp.k)
-(9 rows)
+               Index Cond: (k = ANY (ARRAY[temp.k, $4, $5, ..., $1026]))
+(10 rows)
 
 DROP TRIGGER notify_single_row_v1_update ON single_row;
 DROP FUNCTION notify_single_row_v1_update_trigger;
@@ -885,8 +929,8 @@ EXPLAIN (COSTS OFF) UPDATE single_row_function_test SET created_at = '2022-01-01
 --------------------------------------------------
  Update on single_row_function_test
    ->  Seq Scan on single_row_function_test
-         Filter: (date_pk = now())
          Remote Filter: (k = (random())::integer)
+         Filter: (date_pk = now())
 (4 rows)
 
 DROP TABLE single_row_function_test;
@@ -2217,7 +2261,7 @@ EXPLAIN (COSTS FALSE) UPDATE single_row_index SET v2 = v2 + 1000 WHERE k = 2;
 (2 rows)
 
 UPDATE single_row_index SET v2 = v2 + 1000 WHERE k = 2;
-ERROR:  Query error: smallint out of range
+ERROR:  smallint out of range
 -- Test column ordering.
 CREATE TABLE single_row_col_order(a int, b int, c int, d int, e int, primary key(d, b));
 -- Below statements should all USE single-row.

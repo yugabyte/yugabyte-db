@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import io.netty.buffer.ByteBuf;
+import javax.annotation.Nullable;
 import org.yb.CommonNet;
 import org.yb.CommonNet.HostPortPB;
 import org.yb.master.MasterReplicationOuterClass;
@@ -31,16 +32,19 @@ public class SetupUniverseReplicationRequest extends YRpc<SetupUniverseReplicati
   private final Set<CommonNet.HostPortPB> sourceMasterAddresses;
   // A map of table ids to their bootstrap id if any.
   private final Map<String, String> sourceTableIdsBootstrapIdMap;
+  private final Boolean transactional;
 
   SetupUniverseReplicationRequest(
     YBTable table,
     String replicationGroupName,
     Map<String, String> sourceTableIdsBootstrapIdMap,
-    Set<HostPortPB> sourceMasterAddresses) {
+    Set<HostPortPB> sourceMasterAddresses,
+    @Nullable Boolean transactional) {
     super(table);
     this.replicationGroupName = replicationGroupName;
     this.sourceMasterAddresses = sourceMasterAddresses;
     this.sourceTableIdsBootstrapIdMap = sourceTableIdsBootstrapIdMap;
+    this.transactional = transactional;
   }
 
   @Override
@@ -64,6 +68,10 @@ public class SetupUniverseReplicationRequest extends YRpc<SetupUniverseReplicati
     // If all bootstrap IDs are null, it is not required.
     if (sourceBootstrapIds.stream().anyMatch(Objects::nonNull)){
       builder.addAllProducerBootstrapIds(sourceBootstrapIds);
+    }
+
+    if(this.transactional != null) {
+      builder.setTransactional(transactional);
     }
 
     return toChannelBuffer(header, builder.build());

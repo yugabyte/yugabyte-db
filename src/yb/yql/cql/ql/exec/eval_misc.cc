@@ -27,8 +27,6 @@
 namespace yb {
 namespace ql {
 
-using std::shared_ptr;
-
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::PTExprToPBValidated(const PTExprPtr& expr,

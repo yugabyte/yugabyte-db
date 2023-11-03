@@ -38,6 +38,8 @@
 
 #include "yb/common/schema.h"
 
+#include "yb/dockv/dockv_fwd.h"
+
 #include "yb/fs/fs_manager.h"
 
 #include "yb/server/clock.h"
@@ -58,7 +60,7 @@ namespace tablet {
 //
 // The partition schema will have no hash components, and a single range component over the primary
 // key columns. The partition will cover the entire partition-key space.
-std::pair<PartitionSchema, Partition> CreateDefaultPartition(const Schema& schema);
+std::pair<dockv::PartitionSchema, dockv::Partition> CreateDefaultPartition(const Schema& schema);
 
 class TabletHarness {
  public:

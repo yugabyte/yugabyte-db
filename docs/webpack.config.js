@@ -1,9 +1,11 @@
+const ESLintPlugin = require('eslint-webpack-plugin');
 const path = require('path');
 
-const config = {
+module.exports = {
   context: path.join(__dirname, 'src'),
   entry: {
-    site: ['./index.js'],
+    site: './index.js',
+    search: './algolia-search.js',
   },
   output: {
     path: path.join(__dirname, 'static/js'),
@@ -14,28 +16,17 @@ const config = {
       {
         test: /\.(js|jsx)$/,
         include: path.join(__dirname, 'src'),
-        enforce: 'pre',
-        use: [
-          {
-            loader: path.join(__dirname, 'node_modules/eslint-loader/index.js'),
-            options: { eslintPath: path.join(__dirname, 'node_modules/eslint/lib/api.js'),
-              ignore: false,
-              useEslintrc: true,
-            },
+        use: {
+          loader: 'babel-loader',
+          options: {
+            babelrc: true,
+            cacheDirectory: true,
           }
-        ],
-      },
-      {
-        test: /\.(js|jsx)$/,
-        include: path.join(__dirname, 'src'),
-        loader: path.join(__dirname, 'node_modules/babel-loader/lib/index.js'),
-        options: {
-          babelrc: true,
-          cacheDirectory: true,
         }
       },
     ],
   },
+  plugins: [
+    new ESLintPlugin()
+  ],
 };
-
-module.exports = config;

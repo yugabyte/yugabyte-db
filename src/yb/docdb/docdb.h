@@ -27,17 +27,18 @@
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/shared_lock_manager_fwd.h"
-#include "yb/docdb/doc_path.h"
+#include "yb/dockv/doc_path.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/lock_batch.h"
-#include "yb/docdb/subdocument.h"
-#include "yb/docdb/value.h"
+#include "yb/dockv/subdocument.h"
+#include "yb/dockv/value.h"
 
 #include "yb/rocksdb/rocksdb_fwd.h"
 
 #include "yb/util/memory/arena_list.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
 
@@ -76,11 +77,10 @@
 
 namespace yb {
 
-class Histogram;
+class EventStats;
+class Counter;
 
 namespace docdb {
-
-class DocOperation;
 
 // This function prepares the transaction by taking locks. The set of keys locked are returned to
 // the caller via the keys_locked argument (because they need to be saved and unlocked when the
@@ -109,14 +109,13 @@ struct PrepareDocWriteOperationResult {
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
-    const scoped_refptr<Histogram>& write_lock_latency,
-    const IsolationLevel isolation_level,
-    const OperationKind operation_kind,
-    const RowMarkType row_mark_type,
+    tablet::TabletMetrics* tablet_metrics,
+    IsolationLevel isolation_level,
+    RowMarkType row_mark_type,
     bool transactional_table,
     bool write_transaction_metadata,
     CoarseTimePoint deadline,
-    PartialRangeKeyIntents partial_range_key_intents,
+    dockv::PartialRangeKeyIntents partial_range_key_intents,
     SharedLockManager *lock_manager);
 
 // This constructs a DocWriteBatch using the given list of DocOperations, reading the previous
@@ -127,9 +126,10 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
 // Outputs: keys_locked, write_batch
 Status AssembleDocWriteBatch(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
+    const ReadOperationData& read_operation_data,
     const DocDB& doc_db,
+    SchemaPackingProvider* schema_packing_provider /* null okay */,
+    std::reference_wrapper<const ScopedRWOperation> pending_op,
     LWKeyValueWriteBatchPB* write_batch,
     InitMarkerBehavior init_marker_behavior,
     std::atomic<int64_t>* monotonic_counter,
@@ -138,79 +138,20 @@ Status AssembleDocWriteBatch(
 
 struct ExternalTxnApplyStateData {
   HybridTime commit_ht;
+  SubtxnSet aborted_subtransactions;
   IntraTxnWriteId write_id = 0;
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(commit_ht, write_id);
+    return YB_STRUCT_TO_STRING(commit_ht, aborted_subtransactions, write_id);
   }
 };
 
 using ExternalTxnApplyState = std::map<TransactionId, ExternalTxnApplyStateData>;
 
-class ExternalTxnIntentsState {
- public:
-  IntraTxnWriteId GetWriteIdAndIncrement(const TransactionId& txn_id);
-  void EraseEntry(const TransactionId& txn_id);
- private:
-  std::mutex mutex_;
-  std::unordered_map<TransactionId, IntraTxnWriteId, TransactionIdHash> map_;
-};
-// Adds external pair to write batch.
-// Returns true if add was skipped because pair is a regular (non external) record.
-bool AddExternalPairToWriteBatch(
-    const LWKeyValuePairPB& kv_pair,
-    HybridTime hybrid_time,
-    ExternalTxnApplyState* apply_external_transactions,
-    rocksdb::WriteBatch* regular_write_batch,
-    rocksdb::WriteBatch* intents_write_batch,
-    ExternalTxnIntentsState* external_txn_intents_state);
-
-// Prepares external part of non transaction write batch.
-// Batch could contain intents for external transactions, in this case those intents
-// will be added to intents_write_batch.
-//
-// Returns true if batch contains regular entries.
-bool PrepareExternalWriteBatch(
-    const LWKeyValueWriteBatchPB& put_batch,
-    HybridTime hybrid_time,
-    rocksdb::DB* intents_db,
-    rocksdb::WriteBatch* regular_write_batch,
-    rocksdb::WriteBatch* intents_write_batch,
-    ExternalTxnIntentsState* external_txn_intents_state);
-
-YB_STRONGLY_TYPED_BOOL(LastKey);
-
-// Enumerates intents corresponding to provided key value pairs.
-// For each key it generates a strong intent and for each parent of each it generates a weak one.
-// functor should accept 3 arguments:
-// intent_kind - kind of intent weak or strong
-// value_slice - value of intent
-// key - pointer to key in format of SubDocKey (no ht)
-// last_key - whether it is last strong key in enumeration
-
-// Indicates that the intent contains a full document key, i.e. it does not omit any final range
-// components of the document key. This flag is also true for intents that include subdocument keys.
-YB_STRONGLY_TYPED_BOOL(FullDocKey);
-
-// TODO(dtxn) don't expose this method outside of DocDB if TransactionConflictResolver is moved
-// inside DocDB.
-// Note: From https://stackoverflow.com/a/17278470/461529:
-// "As of GCC 4.8.1, the std::function in libstdc++ optimizes only for pointers to functions and
-// methods. So regardless the size of your functor (lambdas included), initializing a std::function
-// from it triggers heap allocation."
-// So, we use boost::function which doesn't have such issue:
-// http://www.boost.org/doc/libs/1_65_1/doc/html/function/misc.html
-typedef boost::function<
-    Status(IntentStrength, FullDocKey, Slice, KeyBytes*, LastKey)> EnumerateIntentsCallback;
-
 Status EnumerateIntents(
-    const ArenaList<docdb::LWKeyValuePairPB>& kv_pairs,
-    const EnumerateIntentsCallback& functor, PartialRangeKeyIntents partial_range_key_intents);
-
-Status EnumerateIntents(
-    Slice key, const Slice& intent_value, const EnumerateIntentsCallback& functor,
-    KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
-    LastKey last_key = LastKey::kFalse);
+    const ArenaList<LWKeyValuePairPB>& kv_pairs,
+    const dockv::EnumerateIntentsCallback& functor,
+    dockv::PartialRangeKeyIntents partial_range_key_intents);
 
 // replicated_batches_state format does not matter at this point, because it is just
 // appended to appropriate value.
@@ -220,7 +161,7 @@ void PrepareTransactionWriteBatch(
     rocksdb::WriteBatch* rocksdb_write_batch,
     const TransactionId& transaction_id,
     IsolationLevel isolation_level,
-    PartialRangeKeyIntents partial_range_key_intents,
+    dockv::PartialRangeKeyIntents partial_range_key_intents,
     const Slice& replicated_batches_state,
     IntraTxnWriteId* write_id);
 
@@ -259,7 +200,7 @@ struct IntentKeyValueForCDC {
 struct ApplyTransactionState {
   std::string key;
   IntraTxnWriteId write_id = 0;
-  AbortedSubTransactionSet aborted;
+  SubtxnSet aborted;
 
   bool active() const {
     return !key.empty();
@@ -279,7 +220,7 @@ struct ApplyTransactionState {
     return ApplyTransactionState {
       .key = pb.key(),
       .write_id = pb.write_id(),
-      .aborted = VERIFY_RESULT(AbortedSubTransactionSet::FromPB(pb.aborted().set())),
+      .aborted = VERIFY_RESULT(SubtxnSet::FromPB(pb.aborted().set())),
     };
   }
 };
@@ -291,7 +232,7 @@ Result<ApplyTransactionState> GetIntentsBatch(
     rocksdb::DB* intents_db,
     std::vector<IntentKeyValueForCDC>* keyValueIntents);
 
-void AppendTransactionKeyPrefix(const TransactionId& transaction_id, docdb::KeyBytes* out);
+void AppendTransactionKeyPrefix(const TransactionId& transaction_id, dockv::KeyBytes* out);
 
 // Class that is used while combining external intents into single key value pair.
 class ExternalIntentsProvider {
@@ -313,6 +254,7 @@ class ExternalIntentsProvider {
 // Combine external intents into single key value pair.
 void CombineExternalIntents(
     const TransactionId& txn_id,
+    SubTransactionId subtransaction_id,
     ExternalIntentsProvider* provider);
 
 }  // namespace docdb

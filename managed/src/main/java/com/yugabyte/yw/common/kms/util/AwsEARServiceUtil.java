@@ -27,6 +27,10 @@ import com.amazonaws.services.kms.model.CreateKeyRequest;
 import com.amazonaws.services.kms.model.CreateKeyResult;
 import com.amazonaws.services.kms.model.DecryptRequest;
 import com.amazonaws.services.kms.model.DeleteAliasRequest;
+import com.amazonaws.services.kms.model.DescribeKeyRequest;
+import com.amazonaws.services.kms.model.DescribeKeyResult;
+import com.amazonaws.services.kms.model.EncryptRequest;
+import com.amazonaws.services.kms.model.EncryptResult;
 import com.amazonaws.services.kms.model.GenerateDataKeyWithoutPlaintextRequest;
 import com.amazonaws.services.kms.model.KeyListEntry;
 import com.amazonaws.services.kms.model.ListAliasesRequest;
@@ -38,9 +42,11 @@ import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClientBuilder;
 import com.amazonaws.services.securitytoken.model.GetCallerIdentityRequest;
 import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
@@ -49,41 +55,47 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.Application;
-import play.api.Play;
+import play.Environment;
 
 public class AwsEARServiceUtil {
   private static final String CMK_POLICY = "default_cmk_policy.json";
 
-  // All fields in authConfig object sent from UI
+  // All fields in AWS KMS authConfig object sent from UI
   public enum AwsKmsAuthConfigField {
-    ACCESS_KEY_ID("AWS_ACCESS_KEY_ID", true),
-    SECRET_ACCESS_KEY("AWS_SECRET_ACCESS_KEY", true),
-    ENDPOINT("AWS_KMS_ENDPOINT", true),
-    CMK_POLICY("cmk_policy", true),
-    REGION("AWS_REGION", false),
-    CMK_ID("cmk_id", false);
+    ACCESS_KEY_ID("AWS_ACCESS_KEY_ID", true, false),
+    SECRET_ACCESS_KEY("AWS_SECRET_ACCESS_KEY", true, false),
+    ENDPOINT("AWS_KMS_ENDPOINT", true, false),
+    CMK_POLICY("cmk_policy", true, false),
+    REGION("AWS_REGION", false, true),
+    CMK_ID("cmk_id", false, true);
 
     public final String fieldName;
     public final boolean isEditable;
+    public final boolean isMetadata;
 
-    AwsKmsAuthConfigField(String fieldName, boolean isEditable) {
+    AwsKmsAuthConfigField(String fieldName, boolean isEditable, boolean isMetadata) {
       this.fieldName = fieldName;
       this.isEditable = isEditable;
+      this.isMetadata = isMetadata;
     }
 
     public static List<String> getEditableFields() {
-      return Arrays.asList(values())
-          .stream()
+      return Arrays.asList(values()).stream()
           .filter(configField -> configField.isEditable)
           .map(configField -> configField.fieldName)
           .collect(Collectors.toList());
     }
 
     public static List<String> getNonEditableFields() {
-      return Arrays.asList(values())
-          .stream()
+      return Arrays.asList(values()).stream()
           .filter(configField -> !configField.isEditable)
+          .map(configField -> configField.fieldName)
+          .collect(Collectors.toList());
+    }
+
+    public static List<String> getMetadataFields() {
+      return Arrays.asList(values()).stream()
+          .filter(configField -> configField.isMetadata)
           .map(configField -> configField.fieldName)
           .collect(Collectors.toList());
     }
@@ -176,8 +188,8 @@ public class AwsEARServiceUtil {
     ObjectNode policy = null;
     try {
       ObjectMapper mapper = new ObjectMapper();
-      Application application = Play.current().injector().instanceOf(Application.class);
-      policy = (ObjectNode) mapper.readTree(application.resourceAsStream(CMK_POLICY));
+      Environment environment = StaticInjectorHolder.injector().instanceOf(Environment.class);
+      policy = (ObjectNode) mapper.readTree(environment.resourceAsStream(CMK_POLICY));
     } catch (Exception e) {
       String errMsg = "Error occurred retrieving default cmk policy base";
       LOG.error(errMsg, e);
@@ -272,6 +284,13 @@ public class AwsEARServiceUtil {
     return result.getRole();
   }
 
+  public static DescribeKeyResult describeKey(ObjectNode authConfig, String cmkId) {
+    AWSKMS client = AwsEARServiceUtil.getKMSClient(null, authConfig);
+    DescribeKeyRequest request = new DescribeKeyRequest().withKeyId(cmkId);
+    DescribeKeyResult response = client.describeKey(request);
+    return response;
+  }
+
   public static KeyListEntry getCMK(UUID configUUID, String cmkId) {
     KeyListEntry cmk = null;
     ListKeysRequest req = new ListKeysRequest().withLimit(1000);
@@ -292,6 +311,52 @@ public class AwsEARServiceUtil {
     return cmk;
   }
 
+  public static String getCMKId(UUID configUUID) {
+    final ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
+    final JsonNode cmkNode = authConfig.get(AwsKmsAuthConfigField.CMK_ID.fieldName);
+    return cmkNode == null ? null : cmkNode.asText();
+  }
+
+  public static String getCMKId(ObjectNode authConfig) {
+    final JsonNode cmkNode = authConfig.get(AwsKmsAuthConfigField.CMK_ID.fieldName);
+    return cmkNode == null ? null : cmkNode.asText();
+  }
+
+  public static byte[] getByteArrayFromBuffer(ByteBuffer byteBuffer) {
+    byteBuffer.rewind();
+    byte[] byteArray = new byte[byteBuffer.remaining()];
+    byteBuffer.get(byteArray);
+    return byteArray;
+  }
+
+  /**
+   * This will only be used at the time of rotating the master key when we need to re-encrypt the
+   * universe keys. This is not used at the time of generating new universe keys like the other KMS
+   * services.
+   *
+   * @param configUUID the KMS config UUID.
+   * @param plainTextUniverseKey the plaintext universe key to be encrypted.
+   * @return the encrypted universe key.
+   */
+  public static byte[] encryptUniverseKey(UUID configUUID, byte[] plainTextUniverseKey) {
+    AWSKMS client = AwsEARServiceUtil.getKMSClient(configUUID);
+    String cmkId = AwsEARServiceUtil.getCMKId(configUUID);
+    EncryptRequest request =
+        new EncryptRequest().withKeyId(cmkId).withPlaintext(ByteBuffer.wrap(plainTextUniverseKey));
+    EncryptResult response = client.encrypt(request);
+    return getByteArrayFromBuffer(response.getCiphertextBlob());
+  }
+
+  public static byte[] encryptUniverseKey(
+      UUID configUUID, byte[] plainTextUniverseKey, ObjectNode authConfig) {
+    AWSKMS client = AwsEARServiceUtil.getKMSClient(configUUID, authConfig);
+    String cmkId = AwsEARServiceUtil.getCMKId(authConfig);
+    EncryptRequest request =
+        new EncryptRequest().withKeyId(cmkId).withPlaintext(ByteBuffer.wrap(plainTextUniverseKey));
+    EncryptResult response = client.encrypt(request);
+    return getByteArrayFromBuffer(response.getCiphertextBlob());
+  }
+
   public static byte[] decryptUniverseKey(
       UUID configUUID, byte[] encryptedUniverseKey, ObjectNode config) {
     if (encryptedUniverseKey == null) return null;
@@ -308,13 +373,18 @@ public class AwsEARServiceUtil {
 
   public static byte[] generateDataKey(
       UUID configUUID, String cmkId, String algorithm, int keySize) {
+    return generateDataKey(configUUID, null, cmkId, algorithm, keySize);
+  }
+
+  public static byte[] generateDataKey(
+      UUID configUUID, ObjectNode authConfig, String cmkId, String algorithm, int keySize) {
     final String keySpecBase = "%s_%s";
     final GenerateDataKeyWithoutPlaintextRequest dataKeyRequest =
         new GenerateDataKeyWithoutPlaintextRequest()
             .withKeyId(cmkId)
             .withKeySpec(String.format(keySpecBase, algorithm, Integer.toString(keySize)));
     ByteBuffer encryptedKeyBuffer =
-        AwsEARServiceUtil.getKMSClient(configUUID)
+        AwsEARServiceUtil.getKMSClient(configUUID, authConfig)
             .generateDataKeyWithoutPlaintext(dataKeyRequest)
             .getCiphertextBlob();
     encryptedKeyBuffer.rewind();

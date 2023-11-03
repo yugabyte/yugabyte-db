@@ -15,14 +15,13 @@
 
 #include <string>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/util/cast.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 
 namespace yb {
-namespace util {
 
 constexpr size_t kMaxVarIntBufferSize = 16;
 
@@ -92,9 +91,15 @@ inline void FastEncodeDescendingSignedVarInt(int64_t v, std::string *dest) {
 // Decode a "descending VarInt" encoded by FastEncodeDescendingVarInt.
 Status FastDecodeDescendingSignedVarIntUnsafe(Slice *slice, int64_t *dest);
 Result<int64_t> FastDecodeDescendingSignedVarIntUnsafe(Slice* slice);
+size_t FastDecodeDescendingSignedVarIntSize(Slice src);
 
 size_t UnsignedVarIntLength(uint64_t v);
 size_t FastEncodeUnsignedVarInt(uint64_t v, uint8_t *dest);
+
+inline size_t FastEncodeUnsignedVarInt(uint64_t v, char *dest) {
+  return FastEncodeUnsignedVarInt(v, pointer_cast<uint8_t*>(dest));
+}
+
 Status FastDecodeUnsignedVarInt(
     const uint8_t* src, size_t src_size, uint64_t* v, size_t* decoded_size);
 Result<uint64_t> FastDecodeUnsignedVarInt(Slice* slice);
@@ -108,5 +113,23 @@ inline void FastAppendUnsignedVarInt(uint64_t v, Out* dest) {
   dest->append(buf, len);
 }
 
-}  // namespace util
+inline size_t FastEncodeUnsignedVarInt(uint64_t v, std::byte* dest) {
+  return FastEncodeUnsignedVarInt(v, pointer_cast<uint8_t*>(dest));
+}
+
+constexpr size_t kMaxFieldLengthSize = 4;
+
+uint8_t* EncodeFieldLength(uint32_t len, uint8_t* out);
+
+inline char* EncodeFieldLength(uint32_t len, char* out) {
+  return pointer_cast<char*>(EncodeFieldLength(len, pointer_cast<uint8_t*>(out)));
+}
+
+std::pair<uint32_t, const uint8_t*> DecodeFieldLength(const uint8_t* inp);
+
+inline std::pair<uint32_t, const char*> DecodeFieldLength(const char* inp) {
+  auto [len, end] = DecodeFieldLength(pointer_cast<const uint8_t*>(inp));
+  return {len, pointer_cast<const char*>(end)};
+}
+
 }  // namespace yb

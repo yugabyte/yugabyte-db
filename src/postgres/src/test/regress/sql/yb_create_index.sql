@@ -1,11 +1,3 @@
-CREATE INDEX onek_two_idx ON onek USING lsm(two);
-
-DROP INDEX onek_two_idx;
-
-DROP INDEX onek_two_idx;
-
-DROP INDEX IF EXISTS onek_two_idx;
-
 --
 -- Create index on existing table with data
 --
@@ -375,6 +367,7 @@ CREATE INDEX ON test_method ((h2) HASH);
 \d test_method
 EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 258;
 SELECT * FROM test_method WHERE h2 = 258;
+DROP TABLE test_method;
 
 -- Test more HASH key cases in PRIMARY KEY
 CREATE TABLE test_hash (
@@ -472,6 +465,28 @@ INSERT INTO test_index_nonconcurrently VALUES (1, 'b');
 CREATE UNIQUE INDEX NONCONCURRENTLY ON test_index_nonconcurrently (i);
 
 DROP TABLE test_index_nonconcurrently;
+
+-- Verify that creating indexes on a YB table does not update table stats.
+CREATE TABLE test_stats (i INT);
+INSERT INTO test_stats VALUES (1), (2), (3);
+ANALYZE test_stats;
+SELECT reltuples FROM pg_class WHERE relname = 'test_stats';
+CREATE INDEX CONCURRENTLY ON test_stats(i);
+SELECT reltuples FROM pg_class WHERE relname = 'test_stats';
+CREATE INDEX NONCONCURRENTLY ON test_stats(i);
+SELECT reltuples FROM pg_class WHERE relname = 'test_stats';
+DROP TABLE test_stats;
+
+-- Split options on a partitioned table or its indexes should not be copied
+-- for a newly attached partition.
+CREATE TABLE test_part (a INT, PRIMARY KEY(a ASC)) PARTITION BY RANGE (a)
+    SPLIT AT VALUES ((5), (10)); -- split options are ignored.
+CREATE TABLE test_part_1 PARTITION OF test_part FOR VALUES FROM (1) TO (5);
+SELECT yb_get_range_split_clause('test_part_1'::regclass);
+CREATE INDEX test_part_idx ON test_part(a) SPLIT INTO 5 TABLETS;
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('test_part_1_a_idx'::regclass);
+CREATE TABLE test_part_2 PARTITION OF test_part DEFAULT;
+SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('test_part_2_a_idx'::regclass);
 
 -- Test creating temp index using lsm.
 CREATE TEMP TABLE test_temp_lsm (i int);

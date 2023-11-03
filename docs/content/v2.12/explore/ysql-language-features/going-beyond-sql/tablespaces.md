@@ -54,7 +54,7 @@ The differences between single-zone, multi-zone and multi-region configuration b
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
     <a href="#yugabyted" class="nav-link active" id="yugabyted-tab" data-toggle="tab" role="tab" aria-controls="yugabyted" aria-selected="true">
-      <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Yugabyted
     </a>
   </li>

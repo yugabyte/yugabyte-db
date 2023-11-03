@@ -87,7 +87,7 @@ TEST_F(TestQLKeyspace, TestQLCreateKeyspaceSimple) {
   // Try to delete unknown keyspace1.
   LOG(INFO) << "Exec SQL: " << DropKeyspaceStmt(keyspace1);
   EXEC_INVALID_STMT_WITH_ERROR(DropKeyspaceStmt(keyspace1),
-      "Keyspace Not Found. Keyspace name not found");
+      "Keyspace Not Found. YCQL keyspace name not found");
 
   // Delete unknown keyspace1 BUT with IF EXISTS.
   LOG(INFO) << "Exec SQL: " << DropKeyspaceIfExistsStmt(keyspace1);
@@ -109,7 +109,7 @@ TEST_F(TestQLKeyspace, TestQLCreateKeyspaceSimple) {
   // Try to delete already deleted keyspace1.
   LOG(INFO) << "Exec SQL: " << DropKeyspaceStmt(keyspace1);
   EXEC_INVALID_STMT_WITH_ERROR(DropKeyspaceStmt(keyspace1),
-      "Keyspace Not Found. Keyspace name not found");
+      "Keyspace Not Found. YCQL keyspace name not found");
 
   // Delete already deleted keyspace1 BUT with IF EXISTS.
   LOG(INFO) << "Exec SQL: " << DropKeyspaceIfExistsStmt(keyspace1);
@@ -178,7 +178,7 @@ TEST_F(TestQLKeyspace, TestQLCreateSchemaSimple) {
   // Try to delete unknown keyspace1.
   LOG(INFO) << "Exec SQL: " << DropSchemaStmt(keyspace1);
   EXEC_INVALID_STMT_WITH_ERROR(DropSchemaStmt(keyspace1),
-      "Keyspace Not Found. Keyspace name not found");
+      "Keyspace Not Found. YCQL keyspace name not found");
 
   // Delete unknown keyspace1 BUT with IF EXISTS.
   LOG(INFO) << "Exec SQL: " << DropSchemaIfExistsStmt(keyspace1);
@@ -200,7 +200,7 @@ TEST_F(TestQLKeyspace, TestQLCreateSchemaSimple) {
   // Try to delete already deleted keyspace1.
   LOG(INFO) << "Exec SQL: " << DropSchemaStmt(keyspace1);
   EXEC_INVALID_STMT_WITH_ERROR(DropSchemaStmt(keyspace1),
-      "Keyspace Not Found. Keyspace name not found");
+      "Keyspace Not Found. YCQL keyspace name not found");
 
   // Delete already deleted keyspace1 BUT with IF EXISTS.
   LOG(INFO) << "Exec SQL: " << DropSchemaIfExistsStmt(keyspace1);
@@ -322,7 +322,7 @@ TEST_F(TestQLKeyspace, TestQLUseKeyspaceWithTable) {
   LOG(INFO) << "Exec SQL: " << CreateTableStmt(test_table3);
   EXEC_INVALID_STMT_WITH_ERROR(CreateTableStmt(test_table3),
       "Keyspace Not Found. Error creating table test.table3 on the master: "
-      "Keyspace name not found: test");
+      "YCQL keyspace name not found: test");
 
   // Invalid name 'keyspace.SOMETHING.table'.
   LOG(INFO) << "Exec SQL: " << CreateTableStmt(test_any_table4);
@@ -376,9 +376,9 @@ TEST_F(TestQLKeyspace, TestCreateSystemTable) {
 
   // Select from system table.
   EXEC_VALID_STMT("select * from system.t where c = 1;");
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  auto row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
-  const QLRow& row = row_block->row(0);
+  const auto& row = row_block->row(0);
   CHECK_EQ(row.column(0).int32_value(), 1);
   CHECK_EQ(row.column(1).int32_value(), 2);
 }

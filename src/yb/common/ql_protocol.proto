@@ -252,6 +252,10 @@ message QLReadRequestPB {
   // Reading distinct columns?
   optional bool distinct = 12 [default = false];
 
+  // Current only used on SELECT DISTINCT scan. If the value is greater than 0, use the specified
+  // prefix length to scan the table.
+  optional uint64 prefix_length = 23 [default = 0];
+
   // Limit number of rows to return. For QL SELECT, this limit is the smaller of the page size (max
   // (max number of rows to return per fetch) & the LIMIT clause if present in the SELECT statement.
   optional uint64 limit = 8;

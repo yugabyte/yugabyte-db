@@ -1,7 +1,8 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../_style/colors.scss';
-@import '../../_style/mixins.scss';
+@use "sass:color";
+@use '../../_style/colors.scss';
+@use '../../_style/mixins.scss';
 
 .btn {
   display: inline-block;
@@ -49,31 +50,35 @@
   }
 }
 
+.btn-add-gflag {
+  margin-right: 8px;
+}
+
 .btn-orange {
   &,
   &:focus {
-    background: $YB_ORANGE;
+    background: colors.$YB_ORANGE;
     color: white;
     font-weight: 500;
-    @include transition(0.35s);
+    @include mixins.transition(0.35s);
   }
   i {
     color: #fff;
     margin-left: 0;
-    @include transition(0.35s);
+    @include mixins.transition(0.35s);
   }
   &:hover {
-    @include transition(0.125s);
-    background-color: $YB_ORANGE_HOVER;
+    @include mixins.transition(0.125s);
+    background-color: colors.$YB_ORANGE_HOVER;
     color: white;
     i {
-      @include transition(0.125s);
+      @include mixins.transition(0.125s);
       color: rgba(white, 0.5);
     }
   }
   &:active:focus,
   &:active {
-    background-color: darken($YB_ORANGE_HOVER, 2%);
+    background-color: color.adjust(colors.$YB_ORANGE_HOVER, $lightness: -2%);
     color: #fff;
     box-shadow: none;
     i {
@@ -87,7 +92,7 @@
   &[disabled],
   &[disabled]:focus,
   &[disabled]:active {
-    background-color: $YB_ORANGE;
+    background-color: colors.$YB_ORANGE;
     opacity: 0.65;
     cursor: not-allowed !important;
   }
@@ -100,32 +105,32 @@
 }
 
 .btn-default {
-  color: $YB_TEXT_COLOR;
+  color: colors.$YB_TEXT_COLOR;
   background-color: #fff;
   font-weight: 300;
-  border: 1px solid $YB_GRAY;
-  @include transition(0.35s);
+  border: 1px solid colors.$YB_GRAY;
+  @include mixins.transition(0.35s);
   .caret {
     border-top-color: #44518b;
   }
   i {
-    color: $YB_VIOLET_TEXT;
+    color: colors.$YB_VIOLET_TEXT;
     font-size: 16px;
     line-height: 1;
     padding-right: 3px;
   }
   &:hover {
-    @include transition(0.125s);
-    border-color: $YB_GRAY_HOVER;
-    background-color: $YB_GRAY_HOVER;
+    @include mixins.transition(0.125s);
+    border-color: colors.$YB_GRAY_HOVER;
+    background-color: colors.$YB_GRAY_HOVER;
   }
   &:active:focus,
   &:focus,
   &:active,
   &.active,
   &.active:focus {
-    border-color: darken($YB_GRAY, 2%);
-    background-color: darken($YB_GRAY, 2%);
+    border-color: color.adjust(colors.$YB_GRAY, $lightness: -2%);
+    background-color: color.adjust(colors.$YB_GRAY, $lightness: -2%);
     box-shadow: none;
   }
 }
@@ -146,25 +151,25 @@
 }
 
 .btn-grey {
-  color: $YB_TEXT_COLOR;
-  background-color: $YB_GRAY_HOVER;
+  color: colors.$YB_TEXT_COLOR;
+  background-color: colors.$YB_GRAY_HOVER;
   font-weight: 300;
-  @include transition(0.35s);
+  @include mixins.transition(0.35s);
   i {
-    color: $YB_ORANGE;
+    color: colors.$YB_ORANGE;
     font-size: 16px;
     line-height: 1;
   }
   &:hover {
-    @include transition(0.125s);
-    background-color: $YB_GRAY;
+    @include mixins.transition(0.125s);
+    background-color: colors.$YB_GRAY;
   }
   &:active:focus,
   &:focus,
   &:active,
   &.active {
-    border-color: darken($YB_GRAY_BORDER, 2%);
-    background-color: darken($YB_GRAY, 2%);
+    border-color: color.adjust(colors.$YB_GRAY_BORDER, $lightness: -2%);
+    background-color: color.adjust(colors.$YB_GRAY, $lightness: -2%);
     box-shadow: none;
   }
 }
@@ -212,14 +217,14 @@ button,
   font-weight: 500;
   top: -1px;
   margin-left: 5px;
-  box-shadow: 0 1px 2px rgba($YB_DARK_GRAY_2, 0.15);
+  box-shadow: 0 1px 2px rgba(colors.$YB_DARK_GRAY_2, 0.15);
 
   &,
   &:active,
   &:hover,
   &:focus {
-    background-color: $YB_SUCCESS_COLOR;
-    color: $YB_ORANGE;
+    background-color: colors.$YB_SUCCESS_COLOR;
+    color: colors.$YB_ORANGE;
   }
 
   &:after {
@@ -235,7 +240,7 @@ button,
     height: 18px;
     line-height: 16px;
     opacity: 1;
-    background-color: $YB_SUCCESS_COLOR;
+    background-color: colors.$YB_SUCCESS_COLOR;
   }
 }
 pre {
@@ -277,7 +282,7 @@ pre {
     height: 24px;
     line-height: 24px;
     opacity: 1;
-    background-color: $YB_SUCCESS_COLOR !important;
+    background-color: colors.$YB_SUCCESS_COLOR !important;
   }
 }
 
@@ -285,23 +290,23 @@ pre {
 .btn-paste-inactive {
   &,
   &:focus {
-    background-color: $YB_BACKGROUND;
-    color: $YB_ORANGE;
+    background-color: colors.$YB_BACKGROUND;
+    color: colors.$YB_ORANGE;
   }
   &:active,
   &:hover {
     &,
     &:focus {
-      @include transition-property(0s, background-color, 0s);
-      @include transition-property(0s, color, 0s);
-      background-color: $YB_ORANGE;
+      @include mixins.transition-property(0s, background-color, 0s);
+      @include mixins.transition-property(0s, color, 0s);
+      background-color: colors.$YB_ORANGE;
       color: #fff;
     }
   }
   &:after {
     content: '';
     opacity: 0;
-    @include transition-property(0.6s, opacity, 0s);
+    @include mixins.transition-property(0.6s, opacity, 0s);
   }
 }
 
@@ -312,7 +317,7 @@ pre {
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background-color: $YB_FAIL_COLOR;
+    background-color: colors.$YB_FAIL_COLOR;
     top: -4px;
     right: -4px;
     content: '';
@@ -327,9 +332,9 @@ pre {
     .btn-default,
     .btn-default:hover,
     .btn-default:focus {
-      color: $YB_TEXT_COLOR;
-      border-color: $YB_GRAY_HOVER;
-      background-color: $YB_GRAY_HOVER;
+      color: colors.$YB_TEXT_COLOR;
+      border-color: colors.$YB_GRAY_HOVER;
+      background-color: colors.$YB_GRAY_HOVER;
     }
   }
 }
@@ -338,8 +343,8 @@ pre {
   &,
   &:hover,
   &:focus {
-    border-color: $YB_GRAY;
-    background-color: $YB_GRAY;
+    border-color: colors.$YB_GRAY;
+    background-color: colors.$YB_GRAY;
     box-shadow: none;
   }
 }
@@ -348,9 +353,9 @@ pre {
   &,
   &:hover,
   &:focus {
-    color: rgba($YB_TEXT_COLOR, 0.5) !important;
+    color: rgba(colors.$YB_TEXT_COLOR, 0.5) !important;
     border-color: transparent;
-    background-color: $YB_GRAY_HOVER;
+    background-color: colors.$YB_GRAY_HOVER;
   }
 }
 
@@ -417,14 +422,14 @@ pre {
     div {
       display: block;
       clear: both;
-      color: $YB_TEXT_BLACK;
+      color: colors.$YB_TEXT_BLACK;
       white-space: nowrap;
       padding: 15px 20px;
       height: 52px;
       font-weight: 300;
     }
     i {
-      color: $YB_ORANGE;
+      color: colors.$YB_ORANGE;
       vertical-align: middle;
       margin-right: 10px;
       width: 20px;
@@ -435,14 +440,14 @@ pre {
     margin-top: 2px;
 
     &.badge-red {
-      background-color: $YB_FAIL_COLOR;
+      background-color: colors.$YB_FAIL_COLOR;
     }
     &.badge-gray {
-      background-color: $YB_GRAY_HOVER;
-      color: rgba($YB_TEXT_COLOR, 0.7);
+      background-color: colors.$YB_GRAY_HOVER;
+      color: rgba(colors.$YB_TEXT_COLOR, 0.7);
     }
     &.badge-blue {
-      background-color: $YB_BLUE_COLOR;
+      background-color: colors.$YB_BLUE_COLOR;
     }
   }
 }
@@ -451,7 +456,7 @@ pre {
   li {
     a,
     span {
-      color: $YB_VIOLET_TEXT;
+      color: colors.$YB_VIOLET_TEXT;
     }
     &.active {
       a,
@@ -459,8 +464,8 @@ pre {
         &,
         &:hover,
         &:focus {
-          background: $YB_VIOLET_TEXT;
-          border-color: $YB_VIOLET_TEXT;
+          background: colors.$YB_VIOLET_TEXT;
+          border-color: colors.$YB_VIOLET_TEXT;
           color: #fff;
         }
       }
@@ -512,7 +517,7 @@ pre {
     height: 16px;
     direction: ltr;
     background-color: #fff;
-    border: 1px solid $YB_GRAY_BORDER;
+    border: 1px solid colors.$YB_GRAY_BORDER;
     border-radius: 2px;
     border-collapse: separate;
     -webkit-transition: all 0.3s;
@@ -544,8 +549,8 @@ pre {
     border-color: #1890ff;
 
     &.disabled {
-      background-color: $YB_GRAY_BORDER;
-      border-color: $YB_GRAY_BORDER;
+      background-color: colors.$YB_GRAY_BORDER;
+      border-color: colors.$YB_GRAY_BORDER;
     }
 
     &:after {
@@ -558,7 +563,7 @@ pre {
 
 .yb-add-button {
   font-family: 'Inter';
-  color: $YB_ORANGE;
+  color: colors.$YB_ORANGE;
   font-weight: 400;
   display: inline-block;
   cursor: pointer;
@@ -570,7 +575,7 @@ pre {
     width: 24px;
     height: 24px;
     border-radius: 50%;
-    background-color: $YB_ORANGE;
+    background-color: colors.$YB_ORANGE;
     color: white;
     text-align: center;
     line-height: 24px;
@@ -592,9 +597,9 @@ pre {
   border-radius: 50%;
   line-height: 22px;
   text-align: center;
-  color: $YB_TEXT_COLOR;
+  color: colors.$YB_TEXT_COLOR;
   border: none;
-  @include transition(0.125s);
+  @include mixins.transition(0.125s);
   i {
     display: inline-block;
     text-align: center;
@@ -603,7 +608,7 @@ pre {
   }
   &:hover {
     opacity: 0.7;
-    @include transition(0.35s);
+    @include mixins.transition(0.35s);
   }
   &:hover,
   &:focus,

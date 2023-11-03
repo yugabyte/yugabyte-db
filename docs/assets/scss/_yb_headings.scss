@@ -1,37 +1,13 @@
 .td-content {
-  h1 {
-    .tag-beta {
-      text-decoration: none;
-      text-transform: uppercase;
-      margin: 0 10px;
-      background: #7879f1;
-      border: 1px solid #7879f1;
-      border-radius: 6px;
-      font-weight: 500;
-      font-size: 13px;
-      line-height: 16px;
-      color: #fff;
-      display: inline-flex;
-      justify-content: center;
-      align-items: center;
-      position: relative;
-      top: -2px;
-      vertical-align: middle;
-      padding: 3px 7px;
-
-      &:hover,
-      &:focus,
-      &:active {
-        background: rgba(120, 121, 241, 0.8);
-      }
-    }
-  }
-
   p {
     margin: 0 0 24px 0;
 
     + div:has(iframe) {
       margin: 20px 0;
+    }
+
+    + .admonition + p {
+      margin-top: 24px;
     }
   }
 
@@ -40,10 +16,15 @@
   h3[id],
   h4[id],
   h5[id] {
+    &::before {
+      height: 7.5rem;
+      margin-top: -7.5rem;
+    }
+
     > a[aria-hidden] {
       &::after {
         content: "";
-        background: url(/icons/Link.svg) center no-repeat;
+        background: url(/icons/heading-link.svg) center no-repeat;
         height: 15px;
         width: 15px;
         display: inline-block;
@@ -79,7 +60,8 @@
     }
 
     &:not(:first-child) {
-      margin: 4.5rem 0 1rem 0;
+      margin: 64px 0 24px 0;
+      margin: 72px 0 16px 0;
     }
   }
 
@@ -89,6 +71,7 @@
     font-weight: 700;
     line-height: 42px;
     margin-bottom: 16px;
+    word-break: break-word;
 
     & + p {
       font-size: 20px;

@@ -386,7 +386,8 @@ Status ReadBlock(
       const size_t expected_read_size;
     } validator(file, footer, options, handle, expected_read_size);
 
-    s = file->ReadAndValidate(handle.offset(), expected_read_size, contents, buf, validator);
+    s = file->ReadAndValidate(handle.offset(), expected_read_size, contents, buf, validator,
+                              options.statistics);
   }
 
   PERF_COUNTER_ADD(block_read_count, 1);

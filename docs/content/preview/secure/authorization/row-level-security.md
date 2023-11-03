@@ -19,7 +19,7 @@ type: docs
   </li>
 </ul>
 
-In addition to database access permissions available through ROLE and GRANT privilege system, YugabyteDB provides a more granular level security where tables can have **row security policies** that restrict rows users can access.
+In addition to database access permissions available through the ROLE and GRANT privilege system, YugabyteDB provides a more granular level of security where tables can have **row security policies** that restrict rows users can access.
 
 Row-level security (RLS) restricts rows that can be returned by normal queries or inserted, updated, or deleted by DML commands. RLS policies can be created specific to a DML command or with ALL commands. They can also be used to create policies on a particular role or multiple roles.
 
@@ -35,7 +35,7 @@ Open the YSQL shell (`ysqlsh`), specifying the `yugabyte` user and prompting for
 $ ./ysqlsh -U yugabyte -W
 ```
 
-When prompted for the password, enter the yugabyte password. You should be able to login and see a response like below.
+When prompted for the password, enter the yugabyte password. You should be able to log in and see a response similar to the following:
 
 ```output
 ysqlsh (11.2-YB-2.5.0.0-b0)
@@ -125,7 +125,7 @@ select * from employees;
 (3 rows)
 ```
 
-## Step 3. Setup RLS for a user
+## Step 3. Set up RLS for a user
 
 Now create a row-level security policy for user `joe`
 
@@ -251,7 +251,7 @@ As defined in the policy, the `current_user` can only access their own row.
 
 YugabyteDB has **BYPASSRLS** and **NOBYPASSRLS** permissions, which can be assigned to a role. By default, table owner and superuser have `BYPASSRLS` permissions assigned, so these users can skip the row-level security. The other roles in a database will have `NOBYPASSRLS` assigned to them by default.
 
-Assign `NOBYPASSRLS` to user `joe` so they can see all the rows in the employees table.
+Assign `BYPASSRLS` to user `joe` so they can see all the rows in the employees table.
 
 ```sql
 \c yugabyte yugabyte;

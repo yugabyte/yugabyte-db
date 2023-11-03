@@ -10,6 +10,12 @@ menu:
 type: docs
 ---
 
+{{< tip title="See the dedicated 'User-defined subprograms and anonymous blocks' section." >}}
+User-defined procedures are part of a larger area of functionality. See this major section:
+
+- [User-defined subprograms and anonymous blocks—"language SQL" and "language plpgsql"](../../../user-defined-subprograms-and-anon-blocks/) 
+{{< /tip >}}
+
 ## Synopsis
 
 Use the `CREATE PROCEDURE` statement to create a procedure in a database.
@@ -18,24 +24,24 @@ Use the `CREATE PROCEDURE` statement to create a procedure in a database.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
 </ul>
 
 <div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_procedure,arg_decl_with_dflt,arg_decl,subprogram_signature,unalterable_proc_attribute,lang_name,implementation_definition,sql_stmt_list,alterable_fn_and_proc_attribute.grammar.md" %}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_procedure,arg_decl_with_dflt,arg_decl,subprogram_signature,unalterable_proc_attribute,lang_name,implementation_definition,sql_stmt_list,alterable_fn_and_proc_attribute.diagram.md" %}}
   </div>
 </div>
@@ -60,6 +66,7 @@ When you write a `CREATE PROCEDURE` statement, you will already have decided wha
 - In contrast, if you drop and then recreate a procedure, the new procedure is not the same entity as the old one. So you will have to drop existing objects that depend upon the old procedure. (Dropping the procedure `CASCADE` achieves this.) Alternatively, `ALTER PROCEDURE` can be used to change most of the auxiliary attributes of an existing procedure.
 - The languages supported by default are `SQL`, `PLPGSQL` and `C`.
 
+<a name="create-procedure-grants-execute-to-public"></a>
 {{< tip title="'Create procedure' grants 'execute' to 'public'." >}}
 _Execute_ is granted automatically to _public_ when you create a new procedure. This is very unlikely to be want you want—and so this behavior presents a disguised security risk. Yugabyte recommends that your standard practice be to revoke this privilege immediately after creating a procedure.
 {{< /tip >}}
@@ -72,18 +79,19 @@ A procedure's _depends on extension_ attribute cannot be set using `CREATE [OR R
 
 - Set up an accounts table.
     ```plpgsql
-    CREATE TABLE accounts (
-      id integer PRIMARY KEY,
-      name text NOT NULL,
-      balance decimal(15,2) NOT NULL
-    );
-
-    INSERT INTO accounts VALUES (1, 'Jane', 100.00);
-    INSERT INTO accounts VALUES (2, 'John', 50.00);
-
-    SELECT * from accounts;
+    create schema s;
+    
+    create table s.accounts (
+      id integer primary key,
+      name text not null,
+      balance decimal(15,2) not null);
+    
+    insert into s.accounts values (1, 'Jane', 100.00);
+    insert into s.accounts values (2, 'John', 50.00);
+    
+    select * from s.accounts order by 1;
     ```
-
+    
     ```output
      id | name | balance
     ----+------+---------
@@ -94,24 +102,29 @@ A procedure's _depends on extension_ attribute cannot be set using `CREATE [OR R
 - Define a _transfer_ procedure to transfer money from one account to another.
 
   ```plpgsql
-  CREATE OR REPLACE PROCEDURE transfer(integer, integer, decimal)
-  LANGUAGE plpgsql
-  AS $$
-  BEGIN
-    IF $3 <= 0.00 then RAISE EXCEPTION 'Can only transfer positive amounts'; END IF;
-    IF $1 = $2 then RAISE EXCEPTION 'Sender and receiver cannot be the same'; END IF;
-    UPDATE accounts SET balance = balance - $3 WHERE id = $1;
-    UPDATE accounts SET balance = balance + $3 WHERE id = $2;
-    COMMIT;
-  END;
-  $$;
+  create or replace procedure s.transfer(from_id in int, to_id in int, amnt in decimal)
+    security definer
+    set search_path = pg_catalog, pg_temp
+    language plpgsql
+  as $body$
+  begin
+    if amnt <= 0.00 then
+      raise exception 'The transfer amount must be positive';
+    end if;
+    if from_id = to_id then
+      raise exception 'Sender and receiver cannot be the same';
+    end if;
+    update s.accounts set balance = balance - amnt where id = from_id;
+    update s.accounts set balance = balance + amnt where id = to_id;
+  end;
+  $body$;
   ```
 
 - Transfer $20.00 from Jane to John.
 
   ```plpgsql
-  CALL transfer(1, 2, 20.00);
-  SELECT * from accounts;
+  call s.transfer(1, 2, 20.00);
+  select * from s.accounts order by 1;
   ```
 
   ```output
@@ -125,22 +138,51 @@ A procedure's _depends on extension_ attribute cannot be set using `CREATE [OR R
 - Errors will be thrown for unsupported argument values.
 
   ```plpgsql
-  CALL transfer(2, 2, 20.00);
+  CALL s.transfer(2, 2, 20.00);
   ```
 
   ```output
   ERROR:  Sender and receiver cannot be the same
-  CONTEXT:  PL/pgSQL function transfer(integer,integer,numeric) line 4 at RAISE
   ```
-
+  
   ```plpgsql
-  yugabyte=# CALL transfer(1, 2, -20.00);
+  call s.transfer(1, 2, -20.00);
+  ```
+  
+  ```output
+  ERROR:  The transfer amount must be positive
   ```
 
-  ```output
-  ERROR:  Can only transfer positive amounts
-  CONTEXT:  PL/pgSQL function transfer(integer,integer,numeric) line 3 at RAISE
-  ```
+{{< tip title="Always name the formal arguments and write the procedure's body last." >}}
+YSQL inherits from PostgreSQL the ability to specify the arguments only by listing their data types and to reference them in the body using the positional notation `$1`, `$2`, and so on. The earliest versions of PostgreSQL didn't allow named parameters. But the version that YSQL is based on does allow this. Your code will be very much easier to understand if you use named arguments like the example does.
+
+
+The syntax rules allow you to write the alterable and unalterable attributes in any order, like this:
+
+```plpgsql
+
+
+create or replace procedure s.transfer(from_id in int, to_id in int, amnt in decimal)
+security definer
+as $body$
+begin
+  if amnt <= 0.00 then
+    raise exception 'The transfer amount must be positive';
+  end if;
+  if from_id = to_id then
+    raise exception 'Sender and receiver cannot be the same';
+  end if;
+  update s.accounts set balance = balance - amnt where id = from_id;
+  update s.accounts set balance = balance + amnt where id = to_id;
+end;
+$body$
+set search_path = pg_catalog, pg_temp
+language plpgsql;
+```
+
+Yugabyte recommends that you avoid exploiting this freedom and choose a standard order where, especially, you write the body last.  (Try the \\_sf_ meta-command for a procedure that you created. It always shows the source text last, no matter what order your _create [or replace]_ used.) For example, it helps readability to specify the language immediately before the body. Following this practice will allow you to review, and discuss, your code in a natural way by distinguishing, informally, between the procedure _header_ (i.e. everything that comes before the body) and the _implementation_ (i.e. the body).
+{{< /tip >}}
+
 
 ## See also
 

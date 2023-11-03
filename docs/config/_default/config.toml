@@ -1,7 +1,6 @@
 baseurl = 'https://docs.yugabyte.com'
 languageCode = 'en-us'
 title = 'YugabyteDB Docs'
-googleAnalytics = 'UA-104956980-3'
 # Highlighting config (Pygments)
 pygmentsCodefences = true
 pygmentsStyle = 'pygments'
@@ -12,6 +11,9 @@ enableGitInfo = true
 [frontmatter]
   date = [ "lastmod", ":default" ]
 # lastmod = [ ":git", ":default" ]
+
+[params]
+  regenerateDiagrams = false
 
 [module]
   [module.hugoVersion]
@@ -26,3 +28,6 @@ enableGitInfo = true
   [[module.imports]]
     path = "github.com/trunkcode/hugo-seo"
     disable = false
+
+[markup.goldmark.parser.attribute]
+    block = true

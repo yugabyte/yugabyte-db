@@ -7,8 +7,6 @@ menu:
   preview:
     identifier: ddl_create_sequence
     parent: statements
-aliases:
-  - /preview/api/ysql/commands/ddl_create_sequence/
 type: docs
 ---
 
@@ -18,35 +16,13 @@ Use the `CREATE SEQUENCE` statement to create a sequence in the current schema.
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_sequence,sequence_name,sequence_options.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_sequence,sequence_name,sequence_options.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  create_sequence,
+  sequence_name,
+  sequence_options
+{{%/ebnf%}}
 
 ## Semantics
-
-### *create_sequence*
-
-#### CREATE SEQUENCE *sequence_name* [ IF NOT EXISTS ]
 
 Specify the name of the sequence (*sequence_name*). An error is raised if a sequence with that name already exists in the current schema and `IF NOT EXISTS` is not specified.
 
@@ -54,25 +30,29 @@ The sequence name must be distinct from any other sequences, tables, indexes, vi
 
 ### *sequence_options*
 
-#### INCREMENT BY *increment*
+#### TEMPORARY or TEMP
+
+Using this qualifier will create a temporary sequence. Temporary sequences are visible only in the current client session in which they are created and are automatically dropped at the end of the session. See the section [Creating and using temporary schema-objects](../../creating-and-using-temporary-schema-objects/).
+
+#### INCREMENT BY *int_literal*
 
 Specify the *increment* value to add to the current sequence value to create a new value. The default value is `1`. A positive number
 
-#### MINVALUE *minvalue* | NO MINVALUE
+#### MINVALUE *int_literal* | NO MINVALUE
 
  Specify the minimum value allowed in the sequence. If this value is reached (in a sequence with a negative increment), `nextval()` will return an error. If `NO MINVALUE` is specified, the default value will be used. Default is 1.
 
-#### MAXVALUE *maxvalue* | NO MAXVALUE
+#### MAXVALUE *int_literal* | NO MAXVALUE
 
-Specify the maximum value allowed in the sequence. If this value is reached, `nextval()` will return an error. If `NO MAXVALUE` is specified, the default will be used. Default is `2<sup>63</sup> - 1`.
+Specify the maximum value allowed in the sequence. If this value is reached, `nextval()` will return an error. If `NO MAXVALUE` is specified, the default will be used. Default is `2⁶³-1`.
 
-#### START WITH *start*
+#### START WITH *int_literal*
 
 Specify the first value in the sequence. `start` cannot be less than `minvalue`. Default is `1`.
 
-#### CACHE *cache*
+#### CACHE *int_literal*
 
-Specify how many numbers from the sequence to cache in the client. Default is `1`.
+Specify how many numbers from the sequence to cache in the client. Default is `100`.
 
 When YB-TServer [ysql_sequence_cache_minval](../../../../../reference/configuration/yb-tserver/#ysql-sequence-cache-minval) configuration flag is not explicitly turned off (set to `0`), the maximum value of the flag and the cache clause will be used.
 
@@ -97,13 +77,13 @@ By default (when `INCREMENT` is 1), each call to `nextval()` updates `last_val` 
 `SERIAL` types create a sequence with a cache with default value of 1. So `SERIAL` types should be avoided, and their equivalent statement should be used.
 Instead of creating a table with a `SERIAL` type like this:
 
-```
+```sql
 CREATE TABLE t(k SERIAL)
 ```
 
 You should create a sequence with a large enough cache first, and then set the column that you want to have a serial type to `DEFAULT` to `nextval()` of the sequence.
 
-```
+```sql
 CREATE SEQUENCE t_k_seq CACHE 10000;
 CREATE TABLE t(k integer NOT NULL DEFAULT nextval('t_k_seq'));
 ```
@@ -112,21 +92,21 @@ CREATE TABLE t(k integer NOT NULL DEFAULT nextval('t_k_seq'));
 
 Create a simple sequence that increments by 1 every time `nextval()` is called.
 
-```plpgsql
+```sql
 yugabyte=# CREATE SEQUENCE s;
 ```
 
-```
+```sql
 CREATE SEQUENCE
 ```
 
 Call `nextval()`.
 
-```plpgsql
+```sql
 yugabyte=# SELECT nextval('s');
 ```
 
-```
+```output
  nextval
 ---------
        1
@@ -135,21 +115,21 @@ yugabyte=# SELECT nextval('s');
 
 Create a sequence with a cache of 10,000 values.
 
-```plpgsql
+```sql
 yugabyte=# CREATE SEQUENCE s2 CACHE 10000;
 ```
 
-```
+```sql
 CREATE SEQUENCE
 ```
 
 In the same session, select `nextval()`.
 
-```plpgsql
+```sql
 SELECT nextval('s2');
 ```
 
-```
+```output
  nextval
 ---------
        1
@@ -158,11 +138,11 @@ SELECT nextval('s2');
 
 In a different session, select `nextval()`.
 
-```plpgsql
+```sql
 SELECT nextval('s2');
 ```
 
-```
+```output
 nextval
 ---------
    10001
@@ -171,19 +151,19 @@ nextval
 
 Create a sequence that starts at 0. MINVALUE also has to be changed from its default 1 to something less than or equal to 0.
 
-```plpgsql
+```sql
 CREATE SEQUENCE s3 START 0 MINVALUE 0;
 ```
 
-```
+```output
 CREATE SEQUENCE
 ```
 
-```plpgsql
+```sql
 SELECT nextval('s3');
 ```
 
-```
+```output
 nextval
 ---------
        0

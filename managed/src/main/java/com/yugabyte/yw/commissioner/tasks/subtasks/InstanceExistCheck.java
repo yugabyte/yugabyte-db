@@ -3,8 +3,10 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.models.TaskInfo;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -12,8 +14,8 @@ import lombok.extern.slf4j.Slf4j;
 public class InstanceExistCheck extends NodeTaskBase {
 
   @Inject
-  protected InstanceExistCheck(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected InstanceExistCheck(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   @Override
@@ -24,10 +26,24 @@ public class InstanceExistCheck extends NodeTaskBase {
   @Override
   public void run() {
     if (instanceExists(taskParams())) {
-      log.info("Waiting for SSH to succeed on existing instance {}", taskParams().nodeName);
+      log.info("Waiting for connection to succeed on existing instance {}", taskParams().nodeName);
       getNodeManager()
-          .nodeCommand(NodeManager.NodeCommandType.Wait_For_SSH, taskParams())
+          .nodeCommand(NodeManager.NodeCommandType.Wait_For_Connection, taskParams())
           .processErrors();
     }
+  }
+
+  @Override
+  public boolean onFailure(TaskInfo taskInfo, Throwable cause) {
+    if (taskParams().getPrimaryCluster().userIntent.providerType == Common.CloudType.onprem) {
+      return false;
+    }
+
+    return super.onFailure(taskInfo, cause);
+  }
+
+  @Override
+  public int getRetryLimit() {
+    return 2;
   }
 }

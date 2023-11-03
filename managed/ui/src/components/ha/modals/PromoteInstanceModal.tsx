@@ -1,4 +1,4 @@
-import React, { FC, useRef } from 'react';
+import { FC, useRef } from 'react';
 import { Field, FormikProps } from 'formik';
 import moment from 'moment';
 import * as Yup from 'yup';
@@ -66,7 +66,7 @@ export const PromoteInstanceModal: FC<PromoteInstanceModalProps> = ({
     api.promoteHAInstance(configId, instanceId, backupFile)
   );
 
-  const backupsList = (data || []).map(mapFileName);
+  const backupsList = (data ?? []).map(mapFileName);
 
   const closeModal = () => {
     if (!formik.current.isSubmitting) onClose();
@@ -105,11 +105,14 @@ export const PromoteInstanceModal: FC<PromoteInstanceModalProps> = ({
 
           return (
             <div data-testid="ha-make-active-modal">
-              {isLoading ? <YBLoading /> : (
+              {isLoading ? (
+                <YBLoading />
+              ) : (
                 <div className="ha-promote-instance-modal">
                   <Alert bsStyle="warning">
-                    Note: promotion will replace all existing data on this platform instance with the data from the selected backup.
-                    After promotion succeeds you will need to re-sign in with the credentials of the previously active platform instance.
+                    Note: promotion will replace all existing data on this platform instance with
+                    the data from the selected backup. After promotion succeeds you will need to
+                    re-sign in with the credentials of the previously active platform instance.
                   </Alert>
                   <Field
                     name="backupFile"

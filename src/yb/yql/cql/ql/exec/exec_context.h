@@ -82,6 +82,8 @@ class QueryPagingState {
   // Compose paging state to send to users.
   Status ComposePagingStateForUser();
   Status ComposePagingStateForUser(const QLPagingStatePB& child_state);
+  Status ComposePagingStateForUser(const QLPagingStatePB& child_state,
+                                   uint32_t overridden_schema_version);
 
   // Load the paging state in DocDB responses.
   Status LoadPagingStateFromDocdb(const RowsResult::SharedPtr& rows_result,
@@ -152,7 +154,7 @@ class QueryPagingState {
   }
 
   // row-read counters.
-  void set_read_count(size_t val) {
+  void set_read_count(int64_t val) {
     counter_pb_.set_read_count(val);
   }
 
@@ -161,7 +163,7 @@ class QueryPagingState {
   }
 
   // row-skip counter.
-  void set_skip_count(size_t val) {
+  void set_skip_count(int64_t val) {
     counter_pb_.set_skip_count(val);
   }
 
@@ -170,7 +172,7 @@ class QueryPagingState {
   }
 
   // row limit counter processing.
-  void set_select_limit(size_t val) {
+  void set_select_limit(int64_t val) {
     counter_pb_.set_select_limit(val);
   }
 
@@ -183,7 +185,7 @@ class QueryPagingState {
   }
 
   // row offset counter processing.
-  void set_select_offset(size_t val) {
+  void set_select_offset(int64_t val) {
     counter_pb_.set_select_offset(val);
   }
 
@@ -210,7 +212,7 @@ class QueryPagingState {
     return counter_pb_;
   }
 
-  uint64_t max_fetch_size() const {
+  int64_t max_fetch_size() const {
     return max_fetch_size_;
   }
 
@@ -367,7 +369,8 @@ class TnodeContext {
   const client::YBqlReadOpPtr& uncovered_select_op() const {
     return uncovered_select_op_;
   }
-  QLRowBlock* keys() {
+
+  qlexpr::QLRowBlock* keys() {
     return keys_.get();
   }
 
@@ -450,7 +453,7 @@ class TnodeContext {
 
   // Select op template and primary keys for fetching from indexed table in an uncovered query.
   client::YBqlReadOpPtr uncovered_select_op_;
-  std::unique_ptr<QLRowBlock> keys_;
+  std::unique_ptr<qlexpr::QLRowBlock> keys_;
 
   boost::optional<uint32_t> hash_code_from_partition_key_ops_;
   boost::optional<uint32_t> max_hash_code_from_partition_key_ops_;

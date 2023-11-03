@@ -67,6 +67,7 @@ Result<uint32_t> GetPgsqlTableOid(const TableId& table_id);
 Result<uint32_t> GetPgsqlTablegroupOid(const TablegroupId& tablegroup_id);
 Result<uint32_t> GetPgsqlTablegroupOidByTableId(const TableId& table_id);
 Result<uint32_t> GetPgsqlDatabaseOidByTableId(const TableId& table_id);
+Result<uint32_t> GetPgsqlDatabaseOidByTablegroupId(const TablegroupId& tablegroup_id);
 Result<uint32_t> GetPgsqlTablespaceOid(const TablespaceId& tablespace_id);
 
 }  // namespace yb

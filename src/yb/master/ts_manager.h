@@ -60,6 +60,8 @@ class NodeInstancePB;
 
 namespace master {
 
+class TSInformationPB;
+
 typedef std::string TabletServerId;
 
 // A callback that is called when the number of tablet servers reaches a certain number.
@@ -146,6 +148,13 @@ class TSManager {
   void GetAllDescriptorsUnlocked(TSDescriptorVector* descs) const REQUIRES_SHARED(lock_);
   void GetDescriptorsUnlocked(std::function<bool(const TSDescriptorPtr&)> condition,
                       TSDescriptorVector* descs) const REQUIRES_SHARED(lock_);
+
+  // Returns the registered ts descriptors whose hostport matches the hostport in the
+  // registration argument.
+  std::vector<std::pair<TSDescriptor*, std::shared_ptr<TSInformationPB>>> FindHostPortMatches(
+      const NodeInstancePB& instance,
+      const TSRegistrationPB& registration,
+      const CloudInfoPB& local_cloud_info) const REQUIRES_SHARED(lock_);
 
   size_t GetCountUnlocked() const REQUIRES_SHARED(lock_);
 

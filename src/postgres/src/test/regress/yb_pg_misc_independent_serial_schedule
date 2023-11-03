@@ -17,10 +17,6 @@ test: yb_pg_alter_generic
 test: yb_pg_alter_operator
 test: yb_pg_dbsize
 test: yb_pg_prepare
-test: yb_sequence
 test: yb_pg_truncate
-test: yb_truncate
+test: yb_pg_sequence
 test: yb_pg_identity
-
-# Features that are explicitly disabled and therefore should not work
-test: yb_disabled

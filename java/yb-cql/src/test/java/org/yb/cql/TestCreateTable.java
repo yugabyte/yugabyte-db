@@ -12,6 +12,8 @@
 //
 package org.yb.cql;
 
+import java.util.HashMap;
+
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 
@@ -207,6 +209,8 @@ public class TestCreateTable extends BaseCQLTest {
 
   @Test
   public void testCreateTableNumTablets() throws Exception {
+    restartClusterWithTSFlags(new HashMap<String, String>());
+    
     // Test default number of tablets.
     session.execute("CREATE TABLE test_num_tablets_1 (id int PRIMARY KEY);");
     Set<String> ids =

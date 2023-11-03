@@ -1,4 +1,4 @@
-import React, { FC, useEffect, useState } from 'react';
+import { FC, useEffect, useState } from 'react';
 import _ from 'lodash';
 import { Col, Grid, Row } from 'react-bootstrap';
 
@@ -17,6 +17,7 @@ import {
   PEER_CERT_SUFFIX
 } from '../modals/ManagePeerCertsModal';
 import { getPromiseState } from '../../../utils/PromiseUtils';
+import { isCertCAEnabledInRuntimeConfig } from '../../customCACerts';
 
 import './HAReplicationView.scss';
 
@@ -130,6 +131,7 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
       )
       : EMPTY_YB_HA_WEBSERVICE;
 
+  const isCACertStoreEnabled = isCertCAEnabledInRuntimeConfig(runtimeConfigs?.data);
   // sort by is_leader to show active instance on the very top, then sort other items by address
   const sortedInstances = _.sortBy(config.instances, [(item) => !item.is_leader, 'address']);
   const currentInstance = sortedInstances.find((item) => item.is_local);
@@ -148,31 +150,37 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
           visible={isPromoteModalVisible}
           onClose={hidePromoteModal}
         />
-        <ManagePeerCertsModal
-          visible={isAddPeerCertsModalVisible}
-          peerCerts={getPeerCerts(ybHAWebService)}
-          setYBHAWebserviceRuntimeConfig={setYBHAWebserviceRuntimeConfig}
-          onClose={hideAddPeerCertModal}
-        />
+        {currentInstance.is_leader && (
+          <ManagePeerCertsModal
+            visible={isAddPeerCertsModalVisible}
+            peerCerts={getPeerCerts(ybHAWebService)}
+            setYBHAWebserviceRuntimeConfig={setYBHAWebserviceRuntimeConfig}
+            onClose={hideAddPeerCertModal}
+          />
+        )}
 
         <Row>
           <Col xs={6}>
             <h4>Overview</h4>
           </Col>
           <Col xs={6} className="ha-replication-view__header-buttons">
-            <YBButton
-              btnText={`${
-                getPeerCerts(ybHAWebService).length > 0 ? 'Manage' : 'Add'
-              } Peer Certificates`}
-              onClick={(e: any) => {
-                showAddPeerCertModal();
-                e.currentTarget.blur();
-              }}
-            />
-            {currentInstance.is_leader && (
-              <YBButton btnText="Edit Configuration" onClick={editConfig} />
-            )}
-            {!currentInstance.is_leader && (
+            {currentInstance.is_leader ? (
+              <>
+                <YBButton btnText="Edit Configuration" onClick={editConfig} />
+                {
+                  !isCACertStoreEnabled && (
+                    <YBButton
+                      btnText={`${getPeerCerts(ybHAWebService).length > 0 ? 'Manage' : 'Add'
+                        } Peer Certificates`}
+                      onClick={(e: any) => {
+                        showAddPeerCertModal();
+                        e.currentTarget.blur();
+                      }}
+                    />
+                  )
+                }
+              </>
+            ) : (
               <>
                 <YBInfoTip
                   placement="left"
@@ -257,36 +265,38 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
             ))}
           </Col>
         </Row>
-        <Row className="ha-replication-view__row">
-          <Col xs={2} className="ha-replication-view__label">
-            Peer Certificates
-          </Col>
-          <Col xs={10}>
-            {getPeerCerts(ybHAWebService).length === 0 ? (
-              <button
-                className="ha-replication-view__no-cert--add-button"
-                onClick={showAddPeerCertModal}
-              >
-                Add a peer certificate
-              </button>
-            ) : (
-              getPeerCerts(ybHAWebService).map((peerCert) => {
-                return (
-                  <>
-                    <div className="ha-replication-view__cert-container">
-                      <span className="ha-replication-view__cert-container--identifier">
-                        {getPeerCertIdentifier(peerCert)}
-                      </span>
-                      <span className="ha-replication-view__cert-container--ellipse">
-                        ( . . . )
-                      </span>
-                    </div>
-                  </>
-                );
-              })
-            )}
-          </Col>
-        </Row>
+        {!isCACertStoreEnabled && currentInstance.is_leader && (
+          <Row className="ha-replication-view__row">
+            <Col xs={2} className="ha-replication-view__label">
+              Peer Certificates
+            </Col>
+            <Col xs={10}>
+              {getPeerCerts(ybHAWebService).length === 0 ? (
+                <button
+                  className="ha-replication-view__no-cert--add-button"
+                  onClick={showAddPeerCertModal}
+                >
+                  Add a peer certificate
+                </button>
+              ) : (
+                getPeerCerts(ybHAWebService).map((peerCert) => {
+                  return (
+                    <>
+                      <div className="ha-replication-view__cert-container">
+                        <span className="ha-replication-view__cert-container--identifier">
+                          {getPeerCertIdentifier(peerCert)}
+                        </span>
+                        <span className="ha-replication-view__cert-container--ellipse">
+                          ( . . . )
+                        </span>
+                      </div>
+                    </>
+                  );
+                })
+              )}
+            </Col>
+          </Row>
+        )}
       </Grid>
     );
   } else {

@@ -2172,4 +2172,24 @@ select count(*) from tenk1 x where
 (1 row)
 
 rollback;
--- yb_pg_join ends here. See: https://github.com/yugabyte/yugabyte-db/pull/5190#issuecomment-672361626
+--
+-- Test hints given on incorrect column references are useful
+--
+select t1.uunique1 from
+  tenk1 t1 join tenk2 t2 on t1.two = t2.two; -- error, prefer "t1" suggestion
+ERROR:  column t1.uunique1 does not exist
+LINE 1: select t1.uunique1 from
+               ^
+HINT:  Perhaps you meant to reference the column "t1.unique1".
+select t2.uunique1 from
+  tenk1 t1 join tenk2 t2 on t1.two = t2.two; -- error, prefer "t2" suggestion
+ERROR:  column t2.uunique1 does not exist
+LINE 1: select t2.uunique1 from
+               ^
+HINT:  Perhaps you meant to reference the column "t2.unique1".
+select uunique1 from
+  tenk1 t1 join tenk2 t2 on t1.two = t2.two; -- error, suggest both at once
+ERROR:  column "uunique1" does not exist
+LINE 1: select uunique1 from
+               ^
+HINT:  Perhaps you meant to reference the column "t1.unique1" or the column "t2.unique1".

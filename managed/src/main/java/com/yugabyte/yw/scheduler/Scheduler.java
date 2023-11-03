@@ -11,6 +11,8 @@
 
 package com.yugabyte.yw.scheduler;
 
+import static play.mvc.Http.Status.SERVICE_UNAVAILABLE;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
@@ -24,9 +26,9 @@ import com.yugabyte.yw.commissioner.tasks.params.ScheduledAccessKeyRotateParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -41,6 +43,7 @@ import java.time.Duration;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
@@ -50,6 +53,7 @@ import play.libs.Json;
 public class Scheduler {
 
   private static final int YB_SCHEDULER_INTERVAL = Util.YB_SCHEDULER_INTERVAL;
+  private static final long RETRY_INTERVAL_SECONDS = 30;
 
   private final PlatformScheduler platformScheduler;
 
@@ -67,6 +71,7 @@ public class Scheduler {
     resetRunningStatus();
     // Update next expected task for active schedule which got expired due to platform downtime.
     updateExpiredNextScheduledTaskTime();
+    updateExpiredNextIncrementScheduledTaskTime();
     // start scheduler
     start();
   }
@@ -85,9 +90,11 @@ public class Scheduler {
     Schedule.getAll()
         .forEach(
             (schedule) -> {
-              if (schedule.getRunningState()) {
+              if (schedule.isRunningState()) {
                 schedule.setRunningState(false);
-                log.debug("Updated scheduler {} running state to false", schedule.scheduleUUID);
+                schedule.save();
+                log.debug(
+                    "Updated scheduler {} running state to false", schedule.getScheduleUUID());
               }
             });
   }
@@ -98,8 +105,31 @@ public class Scheduler {
         .forEach(
             (schedule) -> {
               if (schedule.getStatus().equals(Schedule.State.Active)
-                  && Util.isTimeExpired(schedule.getNextScheduleTaskTime())) {
+                  && (schedule.getNextScheduleTaskTime() == null
+                      || Util.isTimeExpired(schedule.getNextScheduleTaskTime()))) {
                 schedule.updateNextScheduleTaskTime(Schedule.nextExpectedTaskTime(null, schedule));
+                if (ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID())) {
+                  schedule.updateNextIncrementScheduleTaskTime(
+                      ScheduleUtil.nextExpectedIncrementTaskTime(schedule));
+                }
+              }
+            });
+  }
+
+  /**
+   * Updates expired next expected task time of active increment schedules in case of platform
+   * restarts.
+   */
+  public void updateExpiredNextIncrementScheduledTaskTime() {
+    Schedule.getAll()
+        .forEach(
+            (schedule) -> {
+              if (schedule.getStatus().equals(Schedule.State.Active)
+                  && (ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID()))
+                  && (schedule.getNextIncrementScheduleTaskTime() == null
+                      || Util.isTimeExpired(schedule.getNextIncrementScheduleTaskTime()))) {
+                schedule.updateNextIncrementScheduleTaskTime(
+                    ScheduleUtil.nextExpectedIncrementTaskTime(schedule));
               }
             });
   }
@@ -115,10 +145,14 @@ public class Scheduler {
 
       log.info("Running scheduler");
       for (Schedule schedule : Schedule.getAllActive()) {
+        boolean isIncrementalBackupSchedule =
+            ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID());
         long frequency = schedule.getFrequency();
         String cronExpression = schedule.getCronExpression();
         Date expectedScheduleTaskTime = schedule.getNextScheduleTaskTime();
-        boolean backlogStatus = schedule.getBacklogStatus();
+        Date expectedIncrementScheduleTaskTime = schedule.getNextIncrementScheduleTaskTime();
+        boolean backlogStatus = schedule.isBacklogStatus();
+        boolean incrementBacklogStatus = schedule.isIncrementBacklogStatus();
         if (cronExpression == null && frequency == 0) {
           log.error(
               "Scheduled task does not have a recurrence specified {}", schedule.getScheduleUUID());
@@ -126,6 +160,7 @@ public class Scheduler {
         }
         try {
           schedule.setRunningState(true);
+          schedule.save();
           TaskType taskType = schedule.getTaskType();
           ScheduleTask lastTask = ScheduleTask.getLastTask(schedule.getScheduleUUID());
           Date lastScheduledTime = null;
@@ -141,25 +176,82 @@ public class Scheduler {
             alreadyRunning = true;
           }
 
-          // Update expected scheduled time if it is expired or null.
-          if (expectedScheduleTaskTime == null || Util.isTimeExpired(expectedScheduleTaskTime)) {
+          boolean isExpectedScheduleTaskTimeExpired = false;
+          if (expectedScheduleTaskTime != null) {
+            isExpectedScheduleTaskTimeExpired = Util.isTimeExpired(expectedScheduleTaskTime);
+          }
+          boolean isExpectedIncrementScheduleTaskTime = false;
+          if (expectedIncrementScheduleTaskTime != null) {
+            isExpectedIncrementScheduleTaskTime =
+                Util.isTimeExpired(expectedIncrementScheduleTaskTime);
+          }
+
+          // Update next scheduled task time if it is expired or null.
+          if (expectedScheduleTaskTime == null || isExpectedScheduleTaskTimeExpired) {
             Date nextScheduleTaskTime =
                 Schedule.nextExpectedTaskTime(expectedScheduleTaskTime, schedule);
             expectedScheduleTaskTime =
                 expectedScheduleTaskTime == null ? nextScheduleTaskTime : expectedScheduleTaskTime;
             schedule.updateNextScheduleTaskTime(nextScheduleTaskTime);
+            log.debug(
+                "Updating expired next schedule task time for {} to {} for schedule {}",
+                expectedScheduleTaskTime,
+                nextScheduleTaskTime,
+                schedule.getScheduleUUID());
           }
 
-          boolean shouldRunTask = Util.isTimeExpired(expectedScheduleTaskTime);
+          // Update next increment scheduled task time if it is expired or null.
+          if (isIncrementalBackupSchedule
+              && (expectedIncrementScheduleTaskTime == null
+                  || isExpectedIncrementScheduleTaskTime)) {
+            Date nextIncrementScheduleTaskTime =
+                ScheduleUtil.nextExpectedIncrementTaskTime(schedule);
+            expectedIncrementScheduleTaskTime =
+                expectedIncrementScheduleTaskTime == null
+                    ? nextIncrementScheduleTaskTime
+                    : expectedIncrementScheduleTaskTime;
+            schedule.updateNextIncrementScheduleTaskTime(nextIncrementScheduleTaskTime);
+            log.debug(
+                "Updating expired next incremental schedule task time for {} to {} for schedule {}",
+                expectedIncrementScheduleTaskTime,
+                nextIncrementScheduleTaskTime,
+                schedule.getScheduleUUID());
+          }
+
+          if (backlogStatus || incrementBacklogStatus) {
+            log.debug(
+                "Scheduling a backup for schedule {} due to backlog status: {}, incremental backlog"
+                    + " status",
+                schedule.getScheduleUUID(),
+                backlogStatus,
+                incrementBacklogStatus);
+          }
+
+          boolean shouldRunTask = isExpectedScheduleTaskTimeExpired || backlogStatus;
           UUID baseBackupUUID = null;
-          if (!shouldRunTask && ScheduleUtil.isIncrementalBackupSchedule(schedule.scheduleUUID)) {
-            baseBackupUUID = fetchBaseBackupUUIDIfIncrementalBackupRequired(schedule);
-            if (baseBackupUUID != null) {
+          if (isIncrementalBackupSchedule) {
+            baseBackupUUID = fetchBaseBackupUUIDfromLatestSuccessfulBackup(schedule);
+            if (shouldRunTask || baseBackupUUID == null) {
+              // Update incremental backup task cycle while for full backups.
+              long incrementalBackupFrequency =
+                  ScheduleUtil.getIncrementalBackupFrequency(schedule);
+              if (incrementalBackupFrequency != 0L) {
+                schedule.updateNextIncrementScheduleTaskTime(
+                    new Date(new Date().getTime() + incrementalBackupFrequency));
+              }
+              // We won't do incremental backups if a full backup is due since
+              // full backups take priority but make sure to take an incremental backup
+              // either when it's scheduled or to catch up on any backlog.
+              baseBackupUUID = null;
+              log.debug("Scheduling a full backup for schedule {}", schedule.getScheduleUUID());
+            } else if (isExpectedIncrementScheduleTaskTime || incrementBacklogStatus) {
               shouldRunTask = true;
+              log.debug(
+                  "Scheduling a incremental backup for schedule {}", schedule.getScheduleUUID());
             }
           }
 
-          if (shouldRunTask || backlogStatus) {
+          if (shouldRunTask) {
             switch (taskType) {
               case BackupUniverse:
                 this.runBackupTask(schedule, alreadyRunning);
@@ -183,10 +275,23 @@ public class Scheduler {
                 break;
             }
           }
+        } catch (PlatformServiceException pe) {
+          log.error("Error running schedule {} ", schedule.getScheduleUUID(), pe);
+          if (pe.getHttpStatus() == SERVICE_UNAVAILABLE) {
+            Date retryDate =
+                new Date(
+                    System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(RETRY_INTERVAL_SECONDS));
+            Date nextScheduleTime = schedule.getNextScheduleTaskTime();
+            if (nextScheduleTime.after(retryDate)) {
+              log.debug("Received 503, will retry at {}", retryDate);
+              schedule.updateNextScheduleTaskTime(retryDate);
+            }
+          }
         } catch (Exception e) {
-          log.error("Error running schedule {} ", schedule.scheduleUUID, e);
+          log.error("Error running schedule {} ", schedule.getScheduleUUID(), e);
         } finally {
           schedule.setRunningState(false);
+          schedule.save();
         }
       }
     } catch (Exception e) {
@@ -194,22 +299,11 @@ public class Scheduler {
     }
   }
 
-  private UUID fetchBaseBackupUUIDIfIncrementalBackupRequired(Schedule schedule) {
+  private UUID fetchBaseBackupUUIDfromLatestSuccessfulBackup(Schedule schedule) {
     Backup backup =
         ScheduleUtil.fetchLatestSuccessfulBackupForSchedule(
             schedule.getCustomerUUID(), schedule.getScheduleUUID());
-    if (backup == null) {
-      return null;
-    }
-    BackupRequestParams params = Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
-    long incrementalBackupFrequency = params.incrementalBackupFrequency;
-    Date todaysDate = new Date();
-    Date expectedTaskExecutionTime =
-        new Date(backup.getCreateTime().getTime() + incrementalBackupFrequency);
-    if (todaysDate.after(expectedTaskExecutionTime)) {
-      return backup.baseBackupUUID;
-    }
-    return null;
+    return backup == null ? null : backup.getBaseBackupUUID();
   }
 
   private void runBackupTask(Schedule schedule, boolean alreadyRunning) {
@@ -254,22 +348,22 @@ public class Scheduler {
           stateLogMsg);
       return;
     }
-    if (schedule.getBacklogStatus()) {
+    if (schedule.isBacklogStatus()) {
       schedule.updateBacklogStatus(false);
     }
     UUID taskUUID = commissioner.submit(TaskType.ExternalScript, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
     CustomerTask.create(
         customer,
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.ExternalScript,
-        universe.name);
+        universe.getName());
     log.info(
         "Submitted external script task with task uuid = {} for universe {}.",
         taskUUID,
-        universe.universeUUID);
+        universe.getUniverseUUID());
   }
 
   private void runAccessKeyRotation(Schedule schedule, boolean alreadyRunning) {
@@ -284,10 +378,8 @@ public class Scheduler {
 
     List<UUID> universeUUIDs =
         rotateAllUniverses
-            ? customer
-                .getUniversesForProvider(providerUUID)
-                .stream()
-                .map(universe -> universe.universeUUID)
+            ? customer.getUniversesForProvider(providerUUID).stream()
+                .map(universe -> universe.getUniverseUUID())
                 .collect(Collectors.toList())
             : taskParams.getUniverseUUIDs();
 
@@ -310,7 +402,7 @@ public class Scheduler {
       return;
     }
 
-    if (schedule.getBacklogStatus()) {
+    if (schedule.isBacklogStatus()) {
       schedule.updateBacklogStatus(false);
     }
 
@@ -323,7 +415,7 @@ public class Scheduler {
         taskUUID,
         CustomerTask.TargetType.Provider,
         CustomerTask.TaskType.CreateAndRotateAccessKey,
-        provider.name);
+        provider.getName());
     log.info(
         "Submitted create and rotate access key task with task uuid = {} "
             + "for provider uuid = {}.",

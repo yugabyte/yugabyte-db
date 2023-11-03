@@ -1,6 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../_style/colors.scss';
+@use '../../_style/colors.scss';
 
 /* TODO: Do we still use the .h1, .h2, .h3 classes? */
 h1,
@@ -14,7 +14,7 @@ h3,
   font-family: 'Rubik', 'Helvetica Neue', sans-serif;
   font-weight: 500;
   letter-spacing: -0.01em;
-  color: $YB_TEXT_COLOR;
+  color: colors.$YB_TEXT_COLOR;
 }
 
 h1 {

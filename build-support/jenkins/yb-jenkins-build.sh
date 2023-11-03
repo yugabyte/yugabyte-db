@@ -34,8 +34,6 @@ Environment variables:
   BUILD_TYPE
     Passed directly to build-and-test.sh. The default value is determined based on the job name
     if this environment variable is not specified or if the value is "auto".
-  YB_NUM_TESTS_TO_RUN
-    Maximum number of tests ctest should run before exiting. Used for testing Jenkins scripts.
 EOT
 }
 
@@ -77,15 +75,6 @@ for branch_name in $( git for-each-ref --format="%(refname)" refs/heads/ ); do
   fi
 done
 
-if [ -n "${YB_NUM_TESTS_TO_RUN:-}" ]; then
-
-  if [[ ! "$YB_NUM_TESTS_TO_RUN" =~ ^[0-9]+$ ]]; then
-    echo "Invalid number of tests to run: $YB_NUM_TESTS_TO_RUN" >&2
-    exit 1
-  fi
-  export EXTRA_TEST_FLAGS="-I1,$YB_NUM_TESTS_TO_RUN"
-fi
-
 export YB_MINIMIZE_VERSION_DEFINES_CHANGES=1
 export YB_MINIMIZE_RECOMPILATION=1
 
@@ -114,11 +103,11 @@ echo
 show_disk_usage
 
 if is_mac; then
-  "$YB_BUILD_SUPPORT_DIR"/kill_long_running_minicluster_daemons.py
+  "$YB_SCRIPT_PATH_KILL_LONG_RUNNING_MINICLUSTER_DAEMONS"
 fi
 
 set +e
-"$YB_BUILD_SUPPORT_DIR"/jenkins/build-and-test.sh
+"$YB_BUILD_SUPPORT_DIR"/jenkins/build.sh
 exit_code=$?
 set -e
 

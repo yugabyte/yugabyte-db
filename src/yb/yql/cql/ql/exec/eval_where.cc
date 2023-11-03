@@ -13,7 +13,8 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/common/ql_rowblock.h"
+#include "yb/common/value.pb.h"
+#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/common/schema.h"
@@ -51,7 +52,7 @@ Status Executor::WhereClauseToPB(QLWriteRequestPB *req,
       LOG(FATAL) << "Unexpected non primary key column in this context";
     }
     RETURN_NOT_OK(PTExprToPB(op.expr(), col_expr_pb));
-    RETURN_NOT_OK(EvalExpr(col_expr_pb, QLTableRow::empty_row()));
+    RETURN_NOT_OK(EvalExpr(col_expr_pb, qlexpr::QLTableRow::empty_row()));
   }
 
   // Setup the rest of the columns.
@@ -88,8 +89,8 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB* req,
   for (const auto& op : partition_key_ops) {
     QLExpressionPB expr_pb;
     RETURN_NOT_OK(PTExprToPB(op.expr(), &expr_pb));
-    QLExprResult result;
-    RETURN_NOT_OK(EvalExpr(expr_pb, QLTableRow::empty_row(), result.Writer()));
+    qlexpr::QLExprResult result;
+    RETURN_NOT_OK(EvalExpr(expr_pb, qlexpr::QLTableRow::empty_row(), result.Writer()));
     const auto& value = result.Value();
     DCHECK(value.has_int64_value() || value.has_int32_value())
         << "Partition key operations are expected to return 64/16 bit integer";
@@ -168,12 +169,12 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB* req,
           QLExpressionPB *col_pb = req->add_hashed_column_values();
           col_pb->set_column_id(col_desc->id());
           RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb));
-          RETURN_NOT_OK(EvalExpr(col_pb, QLTableRow::empty_row()));
+          RETURN_NOT_OK(EvalExpr(col_pb, qlexpr::QLTableRow::empty_row()));
         } else {
           QLExpressionPB col_pb;
           col_pb.set_column_id(col_desc->id());
           RETURN_NOT_OK(PTExprToPB(op.expr(), &col_pb));
-          RETURN_NOT_OK(EvalExpr(&col_pb, QLTableRow::empty_row()));
+          RETURN_NOT_OK(EvalExpr(&col_pb, qlexpr::QLTableRow::empty_row()));
           tnode_context->hash_values_options().push_back({col_pb});
         }
         break;
@@ -331,7 +332,17 @@ Status Executor::WhereColumnOpToPB(QLConditionPB* condition, const ColumnOp& col
     return Status::OK();
   }
 
-  return PTExprToPB(col_op.expr(), expr_pb);
+  auto status = PTExprToPB(col_op.expr(), expr_pb);
+
+  // When evaluating CONTAINS or CONTAINS KEY expression with a bind variable, rhs may potentially
+  // be NULL. Detect this case and fail.
+  if (status.ok() && (col_op.yb_op() == QL_OP_CONTAINS || col_op.yb_op() == QL_OP_CONTAINS_KEY) &&
+      IsNull(expr_pb->value())) {
+    status = STATUS_FORMAT(
+        InvalidArgument, "CONTAINS$0 does not support NULL",
+        col_op.yb_op() == QL_OP_CONTAINS_KEY ? " KEY" : "");
+  }
+  return status;
 }
 
 Status Executor::WhereMultiColumnOpToPB(QLConditionPB* condition, const MultiColumnOp& col_op) {
@@ -372,7 +383,7 @@ Status Executor::WhereMultiColumnOpToPB(QLConditionPB* condition, const MultiCol
 
 Status Executor::WhereKeyToPB(QLReadRequestPB *req,
                               const Schema& schema,
-                              const QLRow& key) {
+                              const qlexpr::QLRow& key) {
   // Add the hash column values
   DCHECK(req->hashed_column_values().empty());
   for (size_t idx = 0; idx < schema.num_hash_key_columns(); idx++) {

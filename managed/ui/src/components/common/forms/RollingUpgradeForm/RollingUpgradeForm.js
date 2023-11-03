@@ -1,12 +1,19 @@
 // Copyright (c) YugaByte, Inc.
 
 import _ from 'lodash';
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { toast } from 'react-toastify';
 import { Field, FieldArray } from 'redux-form';
 import { Col, Alert } from 'react-bootstrap';
+import clsx from 'clsx';
+
 import { YBModal, YBInputField, YBSelectWithLabel, YBToggle, YBCheckBox } from '../fields';
-import { createErrorMessage, isNonEmptyArray } from '../../../../utils/ObjectUtils';
+import {
+  createErrorMessage,
+  isNonEmptyArray,
+  isDefinedNotNull,
+  isNonEmptyObject
+} from '../../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import {
   isKubernetesUniverse,
@@ -14,16 +21,16 @@ import {
   getReadOnlyCluster,
   getUniverseRegions
 } from '../../../../utils/UniverseUtils';
-import { isDefinedNotNull, isNonEmptyObject } from '../../../../utils/ObjectUtils';
-import './RollingUpgradeForm.scss';
 import { EncryptionInTransit } from './EncryptionInTransit';
 import GFlagComponent from '../../../universes/UniverseForm/GFlagComponent';
 import { FlexShrink, FlexContainer } from '../../flexbox/YBFlexBox';
-import clsx from 'clsx';
 import { TASK_LONG_TIMEOUT } from '../../../tasks/constants';
-import WarningIcon from './images/warning.svg';
 import { sortVersion } from '../../../releases';
 import { HelmOverridesModal } from '../../../universes/UniverseForm/HelmOverrides';
+import { YBBanner, YBBannerVariant } from '../../descriptors';
+import { hasLinkedXClusterConfig } from '../../../xcluster/ReplicationUtils';
+
+import './RollingUpgradeForm.scss';
 
 export default class RollingUpgradeForm extends Component {
   constructor(props) {
@@ -72,6 +79,8 @@ export default class RollingUpgradeForm extends Component {
     let systemdBoolean = false;
 
     const payload = {};
+    payload.clusters = [];
+    const asyncCluster = _.cloneDeep(getReadOnlyCluster(clusters));
     switch (visibleModal) {
       case 'softwareUpgradesModal': {
         payload.taskType = 'Software';
@@ -90,6 +99,9 @@ export default class RollingUpgradeForm extends Component {
         payload.taskType = 'VMImage';
         payload.upgradeOption = 'Rolling';
         payload.machineImages = regionAMIs;
+        if (isNonEmptyObject(asyncCluster)) {
+          payload.clusters.push(asyncCluster);
+        }
         break;
       }
       case 'systemdUpgrade': {
@@ -121,6 +133,12 @@ export default class RollingUpgradeForm extends Component {
       case 'rollingRestart': {
         payload.taskType = 'Restart';
         payload.upgradeOption = 'Rolling';
+        //send read replica clsuter details in payload only for k8s universe
+        if (
+          isKubernetesUniverse(this.props.universe.currentUniverse.data) &&
+          isNonEmptyObject(asyncCluster)
+        )
+          payload.clusters.push(asyncCluster);
         break;
       }
       case 'resizeNodesModal': {
@@ -155,10 +173,12 @@ export default class RollingUpgradeForm extends Component {
     const tserverGFlagList = [];
     if (isNonEmptyArray(values?.gFlags)) {
       values.gFlags.forEach((flag) => {
-        if (flag?.hasOwnProperty('MASTER'))
+        if (Object.prototype.hasOwnProperty.call(flag, 'MASTER')) {
           masterGFlagList.push({ name: flag?.Name, value: flag['MASTER'] });
-        if (flag?.hasOwnProperty('TSERVER'))
+        }
+        if (Object.prototype.hasOwnProperty.call(flag, 'TSERVER')) {
           tserverGFlagList.push({ name: flag?.Name, value: flag['TSERVER'] });
+        }
       });
     }
     primaryCluster.userIntent.ybSoftwareVersion = values.ybSoftwareVersion;
@@ -171,7 +191,7 @@ export default class RollingUpgradeForm extends Component {
       primaryCluster.userIntent.azOverrides = values.azOverrides;
     }
 
-    payload.clusters = [primaryCluster];
+    payload.clusters = [primaryCluster, ...payload.clusters];
     payload.sleepAfterMasterRestartMillis = values.timeDelay * 1000;
     payload.sleepAfterTServerRestartMillis = values.timeDelay * 1000;
     if (overrideIntentParams) {
@@ -229,6 +249,7 @@ export default class RollingUpgradeForm extends Component {
       softwareVersionOptions = (supportedReleases?.data || [])
         ?.sort(sortVersion)
         .map((item, idx) => (
+          // eslint-disable-next-line react/no-array-index-key
           <option key={idx} disabled={item === currentVersion} value={item}>
             {item}
           </option>
@@ -326,6 +347,7 @@ export default class RollingUpgradeForm extends Component {
             <div className="form-right-aligned-labels rolling-upgrade-form">
               {regionList.map((region) => (
                 <Field
+                  key={region.uuid}
                   name={region.uuid}
                   type="text"
                   component={YBInputField}
@@ -337,7 +359,7 @@ export default class RollingUpgradeForm extends Component {
           </YBModal>
         );
       }
-      case 'helmOverridesModal':
+      case 'helmOverridesModal': {
         const editValues = {};
         const { universeDetails } = this.props.universe.currentUniverse.data;
         const primaryCluster = getPrimaryCluster(universeDetails.clusters);
@@ -372,23 +394,38 @@ export default class RollingUpgradeForm extends Component {
             forceUpdate={true}
           />
         );
+      }
       case 'gFlagsModal': {
+        //checks if tags are not runtime , runtime flags changes apply without restart
+        const isNotRuntime = formValues?.gFlags.some((f) => !f?.tags?.includes('runtime'));
+        const GFLAG_UPDATE_OPTIONS = [
+          {
+            value: 'Rolling',
+            label: 'Apply all changes using a rolling restart (slower, zero downtime)'
+          },
+          {
+            value: 'Non-Rolling',
+            label:
+              'Apply all changes immediately, using a concurrent restart (faster, some downtime)'
+          },
+          {
+            value: 'Non-Restart',
+            label:
+              'Apply all changes which do not require a restart immediately;' +
+              `${
+                isNotRuntime
+                  ? 'apply remaining changes the next time the database is restarted'
+                  : ''
+              }`
+          }
+        ];
+
         return (
           <YBModal
             className={getPromiseState(universe.rollingUpgrade).isError() ? 'modal-shake' : ''}
             visible={modalVisible}
             formName="RollingUpgradeForm"
             onHide={this.resetAndClose}
-            footerAccessory={
-              formValues.upgradeOption === 'Non-Restart' ? (
-                <span className="non-rolling-msg">
-                  <img alt="Note" src={WarningIcon} />
-                  &nbsp; <b>Note!</b> &nbsp; Flags that require rolling restart won't be applied
-                </span>
-              ) : (
-                <></>
-              )
-            }
             title="G-Flags"
             size="large"
             onFormSubmit={submitAction}
@@ -408,19 +445,19 @@ export default class RollingUpgradeForm extends Component {
               />
               <FlexContainer className="gflag-upgrade-container">
                 <FlexShrink className="gflag-upgrade--label">
-                  <span>G-Flag Upgrade Options</span>
+                  <span>G-Flag Update Options</span>
                 </FlexShrink>
                 <div className="gflag-upgrade-options">
-                  {['Rolling', 'Non-Rolling', 'Non-Restart'].map((target, i) => (
-                    <div key={target} className="row-flex">
-                      <div className={clsx('upgrade-radio-option', i === 1 && 'mb-8')} key={target}>
+                  {GFLAG_UPDATE_OPTIONS.map((option, i) => (
+                    <div key={option.value} className="row-flex">
+                      <div className={clsx('upgrade-radio-option', i === 1 && 'mb-8')}>
                         <Field
                           name={'upgradeOption'}
                           type="radio"
                           component="input"
-                          value={`${target}`}
+                          value={option.value}
                         />
-                        <span className="upgrade-radio-label">{`${target}`}</span>
+                        <span className="upgrade-radio-label">{option.label}</span>
                       </div>
                       {i === 0 && (
                         <div className="gflag-delay">
@@ -458,6 +495,7 @@ export default class RollingUpgradeForm extends Component {
             />
           );
         }
+        const universeHasXClusterConfig = hasLinkedXClusterConfig([universe.currentUniverse.data]);
         return (
           <YBModal
             className={getPromiseState(universe.rollingUpgrade).isError() ? 'modal-shake' : ''}
@@ -471,24 +509,44 @@ export default class RollingUpgradeForm extends Component {
             error={error}
             footerAccessory={
               formValues.tlsCertificate !==
-              universe.currentUniverse?.data?.universeDetails?.rootCA ?
-                (
-                  <YBCheckBox
-                    label="Confirm TLS Changes"
-                    input={{
-                      checked: this.state.formConfirmed,
-                      onChange: this.toggleConfirmValidation
-                    }}
-                  />
-                ) : (
-                  <span>Select new CA signed cert from the list</span>
-                )
+              universe.currentUniverse?.data?.universeDetails?.rootCA ? (
+                <YBCheckBox
+                  label="Confirm TLS Changes"
+                  input={{
+                    checked: this.state.formConfirmed,
+                    onChange: this.toggleConfirmValidation
+                  }}
+                />
+              ) : (
+                <span>Select new CA signed cert from the list</span>
+              )
             }
             asyncValidating={
               !this.state.formConfirmed ||
               formValues.tlsCertificate === universe.currentUniverse?.data?.universeDetails?.rootCA
             }
           >
+            {universeHasXClusterConfig && isKubernetesUniverse(universe.currentUniverse.data) && (
+              <YBBanner variant={YBBannerVariant.WARNING} showBannerIcon={false}>
+                <b>{`Warning! `}</b>
+                <p>
+                  This Kubernetes universe is involved in one or more xCluster configurations.
+                  Changing TLS certificates on this universe will break the xCluster replication as
+                  mismatched certificates is not supported.
+                </p>
+                <p>
+                  To enable replication again after rotating the TLS certificate on this universe,
+                  you must:
+                  <ol>
+                    <li>
+                      Configure the TLS certificates on all other participating universes to match
+                      this universe.
+                    </li>
+                    <li>Restart all affected xCluster configurations.</li>
+                  </ol>
+                </p>
+              </YBBanner>
+            )}
             <div className="form-right-aligned-labels rolling-upgrade-form">
               <Field
                 name="tlsCertificate"

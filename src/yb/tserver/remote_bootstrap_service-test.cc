@@ -69,9 +69,6 @@ DECLARE_uint64(remote_bootstrap_timeout_poll_period_ms);
 namespace yb {
 namespace tserver {
 
-using consensus::MaximumOpId;
-using consensus::MinimumOpId;
-using consensus::OpIdEquals;
 using env_util::ReadFully;
 using log::ReadableLogSegment;
 using rpc::ErrorStatusPB;
@@ -81,7 +78,7 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
  public:
   RemoteBootstrapServiceTest() {
     // Poll for session expiration every 10 ms for the session timeout test.
-    FLAGS_remote_bootstrap_timeout_poll_period_ms = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_remote_bootstrap_timeout_poll_period_ms) = 10;
   }
 
  protected:
@@ -383,7 +380,8 @@ TEST_F(RemoteBootstrapServiceTest, TestFetchLog) {
 TEST_F(RemoteBootstrapServiceTest, TestSessionTimeout) {
   // This flag should be seen by the service due to TSO.
   // We have also reduced the timeout polling frequency in SetUp().
-  FLAGS_remote_bootstrap_idle_timeout_ms = 1; // Expire the session almost immediately.
+  // Expire the session almost immediately.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_remote_bootstrap_idle_timeout_ms) = 1;
 
   // Start session.
   string session_id;

@@ -13,6 +13,7 @@ import org.yb.master.MasterBackupOuterClass;
 import org.yb.master.MasterBackupOuterClass.ListSnapshotsResponsePB;
 import org.yb.master.MasterBackupOuterClass.SnapshotInfoPB;
 import org.yb.master.MasterTypes;
+import org.yb.util.CommonUtil;
 import org.yb.util.Pair;
 import org.yb.util.SnapshotUtil;
 
@@ -43,7 +44,7 @@ public class ListSnapshotsRequest extends YRpc<ListSnapshotsResponse> {
                     .build();
 
         if (snapshotUUID != null) {
-            builder.setSnapshotId(SnapshotUtil.convertToByteString(snapshotUUID));
+            builder.setSnapshotId(CommonUtil.convertToByteString(snapshotUUID));
         }
         builder.setListDeletedSnapshots(this.listDeletedSnapshots);
         builder.setDetailOptions(snapshotsDetailOption);
@@ -64,14 +65,16 @@ public class ListSnapshotsRequest extends YRpc<ListSnapshotsResponse> {
 
         final ListSnapshotsResponsePB.Builder respBuilder = ListSnapshotsResponsePB.newBuilder();
         readProtobuf(callResponse.getPBMessage(), respBuilder);
+        boolean hasErr = respBuilder.hasError();
         MasterTypes.MasterErrorPB serverError =
-                respBuilder.hasError() ? respBuilder.getError() : null;
+                hasErr ? respBuilder.getError() : null;
 
         List<SnapshotInfo> snapshotInfoList = new LinkedList<>();
-        for (SnapshotInfoPB snapshot: respBuilder.getSnapshotsList()) {
-            snapshotInfoList.add(SnapshotUtil.parseSnapshotInfoPB(snapshot));
+        if (!hasErr) {
+            for (SnapshotInfoPB snapshot: respBuilder.getSnapshotsList()) {
+                snapshotInfoList.add(SnapshotUtil.parseSnapshotInfoPB(snapshot));
+            }
         }
-
         ListSnapshotsResponse response =
                 new ListSnapshotsResponse(deadlineTracker.getElapsedMillis(),
                         masterUUID, serverError, snapshotInfoList);

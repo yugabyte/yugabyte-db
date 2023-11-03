@@ -25,4 +25,4 @@ if [[ -n ${BUILD_ROOT:-} ]]; then
 fi
 find_or_download_thirdparty
 
-python3 "$YB_SRC_ROOT"/python/yb/fossa_analysis.py "$@"
+python3 "$YB_SCRIPT_PATH_FOSSA_ANALYSIS" "$@"

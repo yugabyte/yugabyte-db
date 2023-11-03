@@ -13,7 +13,7 @@
 
 #include "yb/tablet/operations/truncate_operation.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus.messages.h"
@@ -43,7 +43,7 @@ Status TruncateOperation::DoAborted(const Status& status) {
 Status TruncateOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   TRACE("APPLY TRUNCATE: started");
 
-  RETURN_NOT_OK(tablet()->Truncate(this));
+  RETURN_NOT_OK(VERIFY_RESULT(tablet_safe())->Truncate(this));
 
   TRACE("APPLY TRUNCATE: finished");
 

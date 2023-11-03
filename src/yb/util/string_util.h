@@ -20,8 +20,10 @@
 
 #pragma once
 
+#include <algorithm>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <boost/range/iterator_range.hpp>
@@ -192,6 +194,18 @@ inline void EnlargeBufferIfNeeded(std::string* buffer, const size_t new_capacity
 std::vector<std::string> SplitAndFlatten(
     const std::vector<std::string>& input,
     const char* separators = ",");
+
+template<class Iterator>
+Iterator FindSubstring(std::string_view str, const Iterator& begin, const Iterator& end) {
+  return std::find_if(
+      begin, end, [str](const auto& substr) { return str.find(substr) != std::string::npos; });
+}
+
+template<class Container>
+bool HasSubstring(std::string_view str, const Container& container) {
+  auto end = std::end(container);
+  return FindSubstring(str, std::begin(container), end) != end;
+}
 
 }  // namespace yb
 

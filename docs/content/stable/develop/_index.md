@@ -10,10 +10,33 @@ type: indexpage
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="build-apps/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/quick_start/sample_apps.png" aria-hidden="true" />
+        <div class="title">Build an application</div>
+      </div>
+      <div class="body">
+        Use your favorite programming language to build applications for YugabyteDB.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="common-patterns/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
+        <div class="title">Common patterns</div>
+      </div>
+      <div class="body">
+        Learn how to use multiple data models with YugabyteDB.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="learn/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
-        <div class="articles">9 articles</div>
         <div class="title">Learn app development</div>
       </div>
       <div class="body">
@@ -23,40 +46,25 @@ type: indexpage
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="../drivers-orms/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/administer.png" aria-hidden="true" />
+        <div class="title">Drivers and ORMs</div>
+      </div>
+      <div class="body">
+        Build applications using supported drivers and ORMs.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="realworld-apps/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/real-world-apps.png" aria-hidden="true" />
-        <div class="articles">3 articles</div>
         <div class="title">Real world examples</div>
       </div>
       <div class="body">
-        Try out e-commerce and IoT fleet management in these real world, end-to-end YugabyteDB applications.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="gitdev/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/real-world-apps.png" aria-hidden="true" />
-        <div class="articles">2 articles</div>
-        <div class="title">Cloud-native development</div>
-      </div>
-      <div class="body">
-        Ready-to-code, fully-integrated, automated code workflows in the cloud.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="explore-sample-apps/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/real-world-apps.png" aria-hidden="true" />
-        <div class="articles">3 articles</div>
-        <div class="title">Explore sample apps</div>
-      </div>
-      <div class="body">
-        A walk-through of real world, end-to-end applications build on top of YugabyteDB.
+        Try out the Yugastore e-commerce and IoT Fleet Management end-to-end sample applications.
       </div>
     </a>
   </div>
@@ -65,7 +73,6 @@ type: indexpage
     <a class="section-link icon-offset" href="best-practices-ycql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/real-world-apps.png" aria-hidden="true" />
-        <div class="articles">3 articles</div>
         <div class="title">Best practices</div>
       </div>
       <div class="body">
@@ -82,6 +89,18 @@ type: indexpage
       </div>
       <div class="body">
         Handle scenarios with heavy load, and implement rate-limiting when running multi-tenant services.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="gitdev/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
+        <div class="title">Cloud-native development</div>
+      </div>
+      <div class="body">
+        Ready-to-code, fully-integrated, automated code workflows in the cloud.
       </div>
     </a>
   </div>

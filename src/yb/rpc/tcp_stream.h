@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <deque>
+
 #include <ev++.h>
 
 #include "yb/rpc/stream.h"

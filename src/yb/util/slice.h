@@ -79,6 +79,9 @@ class Slice {
   Slice(const std::basic_string<char, CharTraits, Allocator>& s) // NOLINT(runtime/explicit)
       : Slice(to_uchar_ptr(s.data()), s.size()) {}
 
+  Slice(const std::string_view& view) // NOLINT(runtime/explicit)
+      : begin_(to_uchar_ptr(view.begin())), end_(to_uchar_ptr(view.end())) {}
+
   // Create a slice that refers to s[0,strlen(s)-1]
   Slice(const char* s) // NOLINT(runtime/explicit)
       : Slice(to_uchar_ptr(s), strlen(s)) {}
@@ -138,6 +141,9 @@ class Slice {
 
   Slice Prefix(size_t n) const;
 
+  // N could be larger than current size than the current slice is returned.
+  Slice PrefixNoLongerThan(size_t n) const;
+
   Slice WithoutPrefix(size_t n) const;
 
   // Drop the last "n" bytes from this slice.
@@ -154,13 +160,23 @@ class Slice {
   void AppendTo(std::string* out) const;
   void AssignTo(std::string* out) const;
 
-  // Truncate the slice to "n" bytes
+  void AppendTo(faststring* out) const;
+
+  // Truncate the slice to "n" bytes, "n" should be less or equal to the current size.
   void truncate(size_t n);
+
+  // Make the slice no longer than "n" bytes. N could be larger than current size than nothing is
+  // done.
+  void MakeNoLongerThan(size_t n);
 
   char consume_byte();
 
+  bool FirstByteIs(char c) const {
+    return !empty() && *begin_ == c;
+  }
+
   bool TryConsumeByte(char c) {
-    if (empty() || *begin_ != c) {
+    if (!FirstByteIs(c)) {
       return false;
     }
     ++begin_;
@@ -182,7 +198,11 @@ class Slice {
 
   void CopyToBuffer(std::string* buffer) const;
 
-  explicit operator std::string_view() const { return std::string_view(cdata(), size()); }
+  operator std::string_view() const { return AsStringView(); }
+
+  std::string_view AsStringView() const {
+    return std::string_view(cdata(), size());
+  }
 
   // Return a string that contains the copy of the referenced data.
   std::string ToBuffer() const;
@@ -254,6 +274,8 @@ class Slice {
 
   size_t DynamicMemoryUsage() const { return 0; }
 
+  bool Contains(const Slice& rhs) const;
+
   // Return a Slice representing bytes for any type which is laid out contiguously in memory.
   template<class T, class = typename std::enable_if<std::is_pod<T>::value, void>::type>
   static Slice FromPod(const T* data) {
@@ -296,34 +318,6 @@ class Slice {
   // Intentionally copyable
 };
 
-struct SliceParts {
-  SliceParts(const Slice* _parts, int _num_parts) :
-      parts(_parts), num_parts(_num_parts) { }
-  SliceParts() : parts(nullptr), num_parts(0) {}
-
-  template<size_t N>
-  SliceParts(const std::array<Slice, N>& input) // NOLINT
-      : parts(input.data()), num_parts(N) {
-  }
-
-  std::string ToDebugHexString() const;
-
-  // Sum of sizes of all slices.
-  size_t SumSizes() const;
-
-  // Copy content of all slice to specified buffer.
-  void* CopyAllTo(void* out) const {
-    return CopyAllTo(static_cast<char*>(out));
-  }
-
-  char* CopyAllTo(char* out) const;
-
-  Slice TheOnlyPart() const;
-
-  const Slice* parts;
-  int num_parts;
-};
-
 inline bool operator==(const Slice& x, const Slice& y) {
   return ((x.size() == y.size()) &&
           (Slice::MemEqual(x.data(), y.data(), x.size())));
@@ -334,7 +328,7 @@ inline bool operator!=(const Slice& x, const Slice& y) {
 }
 
 inline std::ostream& operator<<(std::ostream& o, const Slice& s) {
-  return o << s.ToDebugString(16); // should be enough for anyone...
+  return o << s.ToDebugString(32); // should be enough for anyone...
 }
 
 inline int Slice::compare(const Slice& b) const {

@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { YBLabel } from '../../../../components/common/descriptors';
 import { FormControl } from 'react-bootstrap';
 import { isDefinedNotNull, trimString } from '../../../../utils/ObjectUtils';
@@ -20,14 +20,14 @@ export default class YBFormInput extends Component {
       field.onBlur(event);
     }
     if (isDefinedNotNull(onBlur)) onBlur(event);
-  }
+  };
 
   render() {
     const { field, infoContent, ...rest } = this.props;
 
     return (
       <YBLabel {...this.props} infoContent={infoContent}>
-        <FormControl {...this.props.field} {...rest} onChange={this.handleChange} onBlur={this.handleBlur}/>
+        <FormControl {...field} {...rest} onChange={this.handleChange} onBlur={this.handleBlur} />
       </YBLabel>
     );
   }

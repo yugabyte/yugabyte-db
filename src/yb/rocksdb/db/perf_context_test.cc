@@ -126,6 +126,7 @@ TEST_F(PerfContextTest, SeekIntoDeletion) {
     iter->SeekToFirst();
     hist_seek_to_first.Add(perf_context.user_key_comparison_count);
     auto elapsed_nanos = timer.ElapsedNanos();
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
 
     if (FLAGS_verbose) {
       std::cout << "SeekToFirst uesr key comparison: \n"
@@ -147,6 +148,7 @@ TEST_F(PerfContextTest, SeekIntoDeletion) {
     StopWatchNano timer(Env::Default(), true);
     iter->Seek(key);
     auto elapsed_nanos = timer.ElapsedNanos();
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     hist_seek.Add(perf_context.user_key_comparison_count);
     if (FLAGS_verbose) {
       std::cout << "seek cmp: " << perf_context.user_key_comparison_count
@@ -157,10 +159,10 @@ TEST_F(PerfContextTest, SeekIntoDeletion) {
     }
 
     perf_context.Reset();
-    ASSERT_TRUE(iter->Valid());
     StopWatchNano timer2(Env::Default(), true);
     iter->Next();
     auto elapsed_nanos2 = timer2.ElapsedNanos();
+    ASSERT_OK(ResultToStatus(iter->CheckedValid()));
     if (FLAGS_verbose) {
       std::cout << "next cmp: " << perf_context.user_key_comparison_count
                 << "elapsed: " << elapsed_nanos2 << "ns\n";
@@ -168,7 +170,7 @@ TEST_F(PerfContextTest, SeekIntoDeletion) {
   }
 
   if (FLAGS_verbose) {
-    std::cout << "Seek uesr key comparison: \n" << hist_seek.ToString();
+    std::cout << "Seek user key comparison: \n" << hist_seek.ToString();
   }
 }
 
@@ -534,13 +536,13 @@ TEST_F(PerfContextTest, SeekKeyComparison) {
     std::unique_ptr<Iterator> iter(db->NewIterator(read_options));
     perf_context.Reset();
     iter->Seek(key);
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->value().ToString(), value);
     hist_seek.Add(perf_context.user_key_comparison_count);
   }
 
   std::unique_ptr<Iterator> iter(db->NewIterator(read_options));
-  for (iter->SeekToFirst(); iter->Valid();) {
+  for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid());) {
     perf_context.Reset();
     iter->Next();
     hist_next.Add(perf_context.user_key_comparison_count);

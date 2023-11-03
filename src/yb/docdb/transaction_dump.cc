@@ -18,7 +18,7 @@
 #include <condition_variable>
 #include <mutex>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/casts.h"
 
@@ -28,6 +28,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
+#include "yb/util/thread.h"
 
 using namespace yb::size_literals;
 
@@ -35,6 +36,7 @@ DEFINE_RUNTIME_bool(dump_transactions, false, "Dump transactions data in debug b
 // The output dir is tried in the following order (first existing and non empty is taken):
 // Symlink $HOME/logs/latest_test
 // Flag log_dir
+// Flag tmp_dir
 // /tmp
 
 DEFINE_RUNTIME_uint64(dump_transactions_chunk_size, 10_GB,
@@ -42,6 +44,8 @@ DEFINE_RUNTIME_uint64(dump_transactions_chunk_size, 10_GB,
 
 DEFINE_RUNTIME_uint64(dump_transactions_gzip, true,
                       "Whether transaction dump should be compressed in GZip format.");
+
+DECLARE_string(tmp_dir);
 
 namespace yb {
 namespace docdb {
@@ -110,9 +114,8 @@ DumpEntry* GetNext(DumpEntry* entry) {
 class Dumper {
  public:
   Dumper() {
-    writer_thread_ = std::thread([this] {
-      this->Execute();
-    });
+    CHECK_OK(Thread::Create(
+        "transaction_Dump", "writer_thread", &Dumper::Execute, this, &writer_thread_));
   }
 
   ~Dumper() {
@@ -121,7 +124,9 @@ class Dumper {
       stop_.store(true, std::memory_order_release);
     }
     cond_.notify_one();
-    writer_thread_.join();
+    if (writer_thread_) {
+      writer_thread_->Join();
+    }
     while (auto* entry = queue_.Pop()) {
       free(entry);
     }
@@ -200,14 +205,14 @@ class Dumper {
       result = FLAGS_log_dir;
     }
     if (result.empty()) {
-      result = "/tmp";
+      result = FLAGS_tmp_dir;
     }
     return result;
   }
 
   std::unique_ptr<DumpWriter> writer_;
   size_t current_file_size_ = 0;
-  std::thread writer_thread_;
+  scoped_refptr<Thread> writer_thread_;
   std::atomic<bool> stop_{false};
   MPSCQueue<DumpEntry> queue_;
   std::mutex mutex_;

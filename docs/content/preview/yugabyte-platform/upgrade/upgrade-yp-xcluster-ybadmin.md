@@ -26,6 +26,7 @@ To check the names, execute the following command:
 ```sh
 yb-admin get_universe_config | python -m json.tool
 ```
+
 An output might be similar to the following:
 
 ```output

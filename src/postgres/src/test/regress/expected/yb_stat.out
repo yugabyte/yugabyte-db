@@ -19,18 +19,8 @@ SELECT pg_sleep(1);
 
 (1 row)
 
-CREATE view yb_terminated_queries AS
-    SELECT
-            D.datname AS databasename,
-            S.backend_pid AS backend_pid,
-            S.query_text AS query_text,
-            S.termination_reason AS termination_reason,
-            S.query_start AS query_start_time,
-            S.query_end AS query_end_time
-    FROM yb_pg_stat_get_queries(null) AS S
-    LEFT JOIN pg_database AS D ON (S.db_oid = D.oid);
 \d yb_terminated_queries
-                      View "public.yb_terminated_queries"
+                    View "pg_catalog.yb_terminated_queries"
        Column       |           Type           | Collation | Nullable | Default
 --------------------+--------------------------+-----------+----------+---------
  databasename       | name                     |           |          |
@@ -56,16 +46,6 @@ SELECT databasename, termination_reason, query_text FROM yb_terminated_queries W
 
 CREATE DATABASE db2;
 \c db2
-CREATE view yb_terminated_queries AS
-    SELECT
-            D.datname AS databasename,
-            S.backend_pid AS backend_pid,
-            S.query_text AS query_text,
-            S.termination_reason AS termination_reason,
-            S.query_start AS query_start_time,
-            S.query_end AS query_end_time
-    FROM yb_pg_stat_get_queries(null) AS S
-    LEFT JOIN pg_database AS D ON (S.db_oid = D.oid);
 SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
  databasename |                termination_reason                 |                   query_text
 --------------+---------------------------------------------------+------------------------------------------------
@@ -167,7 +147,7 @@ SELECT
     D.datname AS databasename,
     S.query_text AS query_text
 FROM yb_pg_stat_get_queries(null) AS S
-LEFT JOIN pg_database AS D ON (S.db_oid = D.oid);
+LEFT JOIN pg_database AS D ON (S.db_oid = D.oid) ORDER BY S.db_oid;
  databasename |                  query_text
 --------------+----------------------------------------------
  yugabyte     | SELECT * FROM generate_series(0, 100000002);
@@ -180,16 +160,16 @@ SELECT
     D.datname AS databasename,
     S.query_text AS query_text
 FROM yb_pg_stat_get_queries(null) AS S
-LEFT JOIN pg_database AS D ON (S.db_oid = D.oid);
+LEFT JOIN pg_database AS D ON (S.db_oid = D.oid) ORDER BY S.db_oid;
  databasename |                                                         query_text
 --------------+----------------------------------------------------------------------------------------------------------------------------
  yugabyte     | SELECT * FROM generate_series(0, 1000000);
  yugabyte     | SELECT 'bob' FROM generate_series(0, 1000000);
+ yugabyte     | SELECT * FROM generate_series(0, 100000002);
  db2          | SELECT * FROM generate_series(0, 1000001);
  db2          | SELECT 'We were taught in this modern age that science and mathematics is the pinnacle of human achievement.'             +
               | 'Yet, in our complacency, we began to neglect the very thing which our ancestors had once done: to challenge the process.'+
               | 'We need to stand back
- yugabyte     | SELECT * FROM generate_series(0, 100000002);
 (5 rows)
 
 \c yugabyte yugabyte
@@ -200,16 +180,16 @@ SELECT
     D.datname AS databasename,
     S.query_text AS query_text
 FROM yb_pg_stat_get_queries(null) AS S
-LEFT JOIN pg_database AS D ON (S.db_oid = D.oid);
+LEFT JOIN pg_database AS D ON (S.db_oid = D.oid) ORDER BY S.db_oid;
  databasename |                                                         query_text
 --------------+----------------------------------------------------------------------------------------------------------------------------
  yugabyte     | SELECT * FROM generate_series(0, 1000000);
  yugabyte     | SELECT 'bob' FROM generate_series(0, 1000000);
+ yugabyte     | SELECT * FROM generate_series(0, 100000002);
  db2          | SELECT * FROM generate_series(0, 1000001);
  db2          | SELECT 'We were taught in this modern age that science and mathematics is the pinnacle of human achievement.'             +
               | 'Yet, in our complacency, we began to neglect the very thing which our ancestors had once done: to challenge the process.'+
               | 'We need to stand back
- yugabyte     | SELECT * FROM generate_series(0, 100000002);
 (5 rows)
 
 \c yugabyte yugabyte
@@ -219,16 +199,6 @@ ALTER ROLE test_user WITH createdb;
 \c yugabyte test_user
 CREATE DATABASE test_user_database;
 \c test_user_database test_user
-CREATE view yb_terminated_queries AS
-    SELECT
-            D.datname AS databasename,
-            S.backend_pid AS backend_pid,
-            S.query_text AS query_text,
-            S.termination_reason AS termination_reason,
-            S.query_start AS query_start_time,
-            S.query_end AS query_end_time
-    FROM yb_pg_stat_get_queries(null) AS S
-    LEFT JOIN pg_database AS D ON (S.db_oid = D.oid);
 SET work_mem TO 128;
 -- Some shenanigans with temp_file_limit means you need to be superuser
 -- to change the value of this config.
@@ -246,11 +216,11 @@ SELECT databasename, termination_reason, query_text FROM yb_terminated_queries;
 --------------------+---------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------
  yugabyte           | temporary file size exceeds temp_file_limit (0kB)       | SELECT * FROM generate_series(0, 1000000);
  yugabyte           | temporary file size exceeds temp_file_limit (0kB)       | SELECT 'bob' FROM generate_series(0, 1000000);
+ yugabyte           | temporary file size exceeds temp_file_limit (1048576kB) | SELECT * FROM generate_series(0, 100000002);
  db2                | temporary file size exceeds temp_file_limit (0kB)       | SELECT * FROM generate_series(0, 1000001);
  db2                | temporary file size exceeds temp_file_limit (0kB)       | SELECT 'We were taught in this modern age that science and mathematics is the pinnacle of human achievement.'             +
                     |                                                         | 'Yet, in our complacency, we began to neglect the very thing which our ancestors had once done: to challenge the process.'+
                     |                                                         | 'We need to stand back
- yugabyte           | temporary file size exceeds temp_file_limit (1048576kB) | SELECT * FROM generate_series(0, 100000002);
  test_user_database | temporary file size exceeds temp_file_limit (0kB)       | SELECT * FROM generate_series(0, 1234567);
 (6 rows)
 

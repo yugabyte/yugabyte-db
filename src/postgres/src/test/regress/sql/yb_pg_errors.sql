@@ -374,81 +374,13 @@ UNIQUE
 NOT
 NULL);
 
+-- YB: With default max_stack_depth, ASAN build detects stack-overflow first.
+-- Prevent that by lowering max_stack_depth temporarily.
+set max_stack_depth = '950kB';
+
 -- Check that stack depth detection mechanism works and
 -- max_stack_depth is not set too high
 create function infinite_recurse() returns int as
 'select infinite_recurse()' language sql;
 \set VERBOSITY terse
 select infinite_recurse();
-
--- YB note: check for unsupported system columns.
-CREATE TABLE test_tab1(id INT);
-INSERT INTO test_tab1 VALUES (1) RETURNING ctid;
-INSERT INTO test_tab1 VALUES (2) RETURNING cmin;
-INSERT INTO test_tab1 VALUES (3) RETURNING cmax;
-INSERT INTO test_tab1 VALUES (4) RETURNING xmin;
-INSERT INTO test_tab1 VALUES (5) RETURNING xmax;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT ctid FROM test_tab1;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT cmin FROM test_tab1;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT cmax FROM test_tab1;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT xmin FROM test_tab1;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT xmax FROM test_tab1;
-SELECT ctid FROM test_tab1;
-SELECT cmin FROM test_tab1;
-SELECT cmax FROM test_tab1;
-SELECT xmin FROM test_tab1;
-SELECT xmax FROM test_tab1;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT ctid FROM test_tab1 WHERE id = 1;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT cmin FROM test_tab1 WHERE id = 2;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT cmax FROM test_tab1 WHERE id = 3;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT xmin FROM test_tab1 WHERE id = 4;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT xmax FROM test_tab1 WHERE id = 5;
-SELECT ctid FROM test_tab1 WHERE id = 1;
-SELECT cmin FROM test_tab1 WHERE id = 2;
-SELECT cmax FROM test_tab1 WHERE id = 3;
-SELECT xmin FROM test_tab1 WHERE id = 4;
-SELECT xmax FROM test_tab1 WHERE id = 5;
--- With primary key.
-CREATE TABLE test_tab2(id INT, PRIMARY KEY(id));
-INSERT INTO test_tab2 VALUES (1) RETURNING ctid;
-INSERT INTO test_tab2 VALUES (2) RETURNING cmin;
-INSERT INTO test_tab2 VALUES (3) RETURNING cmax;
-INSERT INTO test_tab2 VALUES (4) RETURNING xmin;
-INSERT INTO test_tab2 VALUES (5) RETURNING xmax;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT ctid FROM test_tab2 WHERE id = 1;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT cmin FROM test_tab2 WHERE id = 2;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT cmax FROM test_tab2 WHERE id = 3;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT xmin FROM test_tab2 WHERE id = 4;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT xmax FROM test_tab2 WHERE id = 5;
-SELECT ctid FROM test_tab2 WHERE id = 1;
-SELECT cmin FROM test_tab2 WHERE id = 2;
-SELECT cmax FROM test_tab2 WHERE id = 3;
-SELECT xmin FROM test_tab2 WHERE id = 4;
-SELECT xmax FROM test_tab2 WHERE id = 5;
--- All system columns should work for temp TABLE.
-CREATE temp TABLE test_temp_tab(id INT, PRIMARY KEY(id));
-INSERT INTO test_temp_tab VALUES (1) RETURNING ctid;
-INSERT INTO test_temp_tab VALUES (2) RETURNING cmin;
-INSERT INTO test_temp_tab VALUES (3) RETURNING cmax;
-INSERT INTO test_temp_tab VALUES (4) RETURNING xmin;
-INSERT INTO test_temp_tab VALUES (5) RETURNING xmax;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT ctid FROM test_temp_tab;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT cmin FROM test_temp_tab;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT cmax FROM test_temp_tab;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT xmin FROM test_temp_tab;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT xmax FROM test_temp_tab;
-SELECT ctid FROM test_temp_tab;
-SELECT cmin FROM test_temp_tab;
-SELECT cmax FROM test_temp_tab;
-SELECT xmin FROM test_temp_tab;
-SELECT xmax FROM test_temp_tab;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT ctid FROM test_temp_tab WHERE id = 1;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT cmin FROM test_temp_tab WHERE id = 2;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT cmax FROM test_temp_tab WHERE id = 3;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT xmin FROM test_temp_tab WHERE id = 4;
-EXPLAIN (VERBOSE, COSTS OFF) SELECT xmax FROM test_temp_tab WHERE id = 5;
-SELECT ctid FROM test_temp_tab WHERE id = 1;
-SELECT cmin FROM test_temp_tab WHERE id = 2;
-SELECT cmax FROM test_temp_tab WHERE id = 3;
-SELECT xmin FROM test_temp_tab WHERE id = 4;
-SELECT xmax FROM test_temp_tab WHERE id = 5;

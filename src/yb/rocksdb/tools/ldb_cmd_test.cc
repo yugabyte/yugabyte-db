@@ -103,7 +103,7 @@ TEST_P(LdbCmdTest, HexToStringBadInputs) {
 }
 
 TEST_P(LdbCmdTest, Scan) {
-  FLAGS_TEST_exit_on_finish = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_exit_on_finish) = false;
   ASSERT_OK(WriteRecordsAndFlush());
   auto args = CreateArgs("scan");
   args.push_back("--only_verify_checksums");
@@ -111,7 +111,7 @@ TEST_P(LdbCmdTest, Scan) {
 }
 
 TEST_P(LdbCmdTest, CheckConsistency) {
-  FLAGS_TEST_exit_on_finish = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_exit_on_finish) = false;
   ASSERT_OK(WriteRecordsAndFlush());
   auto args = CreateArgs("checkconsistency");
   ASSERT_NO_FATALS(RunLdb(args));

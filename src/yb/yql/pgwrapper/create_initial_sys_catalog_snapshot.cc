@@ -55,7 +55,7 @@ class CreateInitialSysCatalogSnapshotTest : public PgWrapperTestBase {
 };
 
 TEST_F(CreateInitialSysCatalogSnapshotTest,
-       YB_DISABLE_TEST_IN_TSAN(CreateInitialSysCatalogSnapshot)) {
+       CreateInitialSysCatalogSnapshot) {
   // All the work is done by the master on cluster startup.
 }
 

@@ -3,19 +3,18 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertTrue;
 
-import java.io.File;
-import java.io.IOException;
-import java.security.NoSuchAlgorithmException;
-
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import java.io.File;
+import java.io.IOException;
+import java.security.NoSuchAlgorithmException;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -45,15 +44,14 @@ public class DeleteCertificateTest extends FakeDBApplication {
     usedCertificateInfo =
         ModelFactory.createCertificateInfo(
             defaultCustomer.getUuid(), certificate, CertConfigType.SelfSigned);
-    universe =
-        ModelFactory.createUniverse(defaultCustomer.getCustomerId(), usedCertificateInfo.uuid);
+    universe = ModelFactory.createUniverse(defaultCustomer.getId(), usedCertificateInfo.getUuid());
 
     unusedCertificateInfo =
         ModelFactory.createCertificateInfo(
             defaultCustomer.getUuid(), certificate, CertConfigType.SelfSigned);
 
     params = new DeleteCertificate.Params();
-    params.customerUUID = defaultCustomer.uuid;
+    params.customerUUID = defaultCustomer.getUuid();
     task = AbstractTaskBase.createTask(DeleteCertificate.class);
   }
 
@@ -67,7 +65,7 @@ public class DeleteCertificateTest extends FakeDBApplication {
 
   @Test
   public void testDeleteCertificateInUse() {
-    params.certUUID = usedCertificateInfo.uuid;
+    params.certUUID = usedCertificateInfo.getUuid();
     task.initialize(params);
     task.run();
     assertTrue(certFolder.exists());
@@ -75,7 +73,7 @@ public class DeleteCertificateTest extends FakeDBApplication {
 
   @Test
   public void testDeleteCertificateNotInUse() {
-    params.certUUID = unusedCertificateInfo.uuid;
+    params.certUUID = unusedCertificateInfo.getUuid();
     task.initialize(params);
     task.run();
     assertTrue(!certFolder.exists());

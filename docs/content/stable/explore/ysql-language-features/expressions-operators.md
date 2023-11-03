@@ -1,7 +1,7 @@
 ---
-title: Expressions and Operators
-linkTitle: Expressions and Operators
-description: Expressions and Operators in YSQL
+title: Expressions and operators
+linkTitle: Expressions and operators
+description: Expressions and operators in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
@@ -13,22 +13,24 @@ type: docs
 
 This document describes how to use boolean, numeric, and date expressions, as well as basic operators. In addition, it provides information on conditional expression and operators.
 
-## Basic Operators
+{{% explore-setup-single %}}
+
+## Basic operators
 
 A large number of YSQL types have corresponding mathematical operators that are typically used for performing comparisons and mathematical operations. Operators allow you to specify conditions in YSQL statements and create links between conditions.
 
-### Mathematical Operators
+### Mathematical operators
 
 The following table lists some of the mathematical operators that you can use in YSQL.
 
 | Operator | Description                                | Example                 |
 | -------- | ------------------------------------------ | ----------------------- |
 | +        | Addition                                   | 1 + 2 results in 3      |
-| -        | Substractioin                              | 1 - 2 results in -1     |
+| -        | Subtraction                                | 1 - 2 results in -1     |
 | *        | Multiplication                             | 2 * 2 results in 4      |
 | /        | Division                                   | 6 / 2 results in 3      |
 | %        | Remainder                                  | 5 % 4 results in 1      |
-| ^        | Exponent (associatiation of left to right) | 2.0 ^ 3.0 results in 8  |
+| ^        | Exponent (association of left to right)    | 2.0 ^ 3.0 results in 8  |
 | \|/      | Square root                                | \|/ 16.0 results in 4   |
 | \|\|/    | Cube root                                  | \|\|/ 27.0 results in 3 |
 | !        | Factorial (suffix)                         | 5 ! results in 120      |
@@ -47,7 +49,7 @@ SELECT 6/2;
 SELECT ||/ 27.0;
 ```
 
-### Comparison Operators
+### Comparison operators
 
 Comparison operators are binary. They return a `boolean` value `true` or `false`, depending on whether or not the comparison was asserted.
 
@@ -89,14 +91,14 @@ SELECT * FROM employees WHERE employee_no > 1222;
 
 The following is the output produced by the preceding example:
 
-```
+```output
 employee_no | name             | department   | salary
 ------------+------------------+--------------+--------------
 1223        | Lucille Ball     | Operations   | 70000
 1224        | John Zimmerman   | Sales        | 60000
 ```
 
-### String Operators
+### String operators
 
 The following table describes a string operator that you can use in YSQL.
 
@@ -104,7 +106,7 @@ The following table describes a string operator that you can use in YSQL.
 | -------- | --------------------------------------------------- | ------------------------------ |
 | \|\|     | Concatenates two strings or a string and non-string <br> | 'wo' \|\| 'rd' results in word <br>'number' \|\| 55 results in number 55 <br>2021 \|\| 'is here' results in 2021 is here |
 
-### Logical Operators
+### Logical operators
 
 The following table lists logical operators that you can use in YSQL.
 
@@ -114,7 +116,7 @@ The following table lists logical operators that you can use in YSQL.
 | NOT      | Negates the meaning of another operator. For example, `NOT IN`, `NOT BETWEEN`. |
 | OR       | Combines multiple conditions in a `WHERE` clause.            |
 
-The following example uses the sample table from [Comparison Operators](#comparison-operators) and shows a `SELECT` statement that returns employees whose employee numbers are greater than or equal to 1222 and salary is greater than or equal to 70000:
+The following example uses the sample table from [Comparison operators](#comparison-operators) and shows a `SELECT` statement that returns employees whose employee numbers are greater than or equal to 1222 and salary is greater than or equal to 70000:
 
 ```sql
 SELECT * FROM employees WHERE employee_no >= 1222 AND SALARY >= 70000;
@@ -122,13 +124,13 @@ SELECT * FROM employees WHERE employee_no >= 1222 AND SALARY >= 70000;
 
 The following is the output produced by the preceding example:
 
-```
+```output
 employee_no | name             | department   | salary
 ------------+------------------+--------------+--------------
 1223        | Lucille Ball     | Operations   | 70000
 ```
 
-### Bitwise Operators
+### Bitwise operators
 
 The following table lists bitwise operators that you can use in YSQL.
 
@@ -143,17 +145,17 @@ The following table lists bitwise operators that you can use in YSQL.
 
 Bitwise operators can be applied to bit data types and data types related to it.
 
-## Basic Expressions
+## Basic expressions
 
 An expression combines values, operators, and YSQL functions that evaluate to a value.
 
 Typical YSQL expressions are similar to formulas. The following types of expressions are supported:
 
-### Boolean Expressions
+### Boolean expressions
 
 Boolean expressions retrieve data by matching a single value. The expression is included in the `WHERE` clause.
 
-The following example uses the sample table from [Comparison Operators](#comparison-operators) and shows a `SELECT` statement that returns employees whose salary is 60000:
+The following example uses the sample table from [Comparison operators](#comparison-operators) and shows a `SELECT` statement that returns employees whose salary is 60000:
 
 ```sql
 SELECT * FROM employees WHERE salary = 60000;
@@ -161,17 +163,17 @@ SELECT * FROM employees WHERE salary = 60000;
 
 The following is the output produced by the preceding example:
 
-```
+```output
 employee_no | name             | department   | salary
 ------------+------------------+--------------+--------------
 1224        | John Zimmerman   | Sales        | 60000
 ```
 
-### Numeric Expressions
+### Numeric expressions
 
 The purpose of numeric expressions is to perform a mathematical operation on a query.
 
-The following example shows how to use a simple numerical expression in a `SELECT` statement:
+The following example shows how to use a basic numerical expression in a `SELECT` statement:
 
 ```sql
 SELECT (10 + 5) AS ADDITION;
@@ -179,7 +181,7 @@ SELECT (10 + 5) AS ADDITION;
 
 The following is the output produced by the preceding example:
 
-```
+```output
 addition
 --------------
 15
@@ -187,7 +189,7 @@ addition
 
 You can also use predefined functions such as `avg()`, `sum()`, or `count()` to perform aggregate data calculations on a table or a column.
 
-The following example uses the sample table from [Comparison Operators](#comparison-operators) and shows a `SELECT` statement that returns the number of employee rows:
+The following example uses the sample table from [Comparison operators](#comparison-operators) and shows a `SELECT` statement that returns the number of employee rows:
 
 ```sql
 SELECT count(*) AS "rows" FROM employees;
@@ -195,13 +197,13 @@ SELECT count(*) AS "rows" FROM employees;
 
 The following is the output produced by the preceding example:
 
-```
+```output
 rows
 -----------
 4
 ```
 
-### Date Expressions
+### Date expressions
 
 Date expressions retrieve the current system date and time, as shown in the following  `SELECT` statement example:
 
@@ -211,7 +213,7 @@ SELECT CURRENT_TIMESTAMP;
 
 The following is the output produced by the preceding example:
 
-```
+```output
 now
 --------------
 2021-03-15 14:38:28.078+05:30
@@ -219,7 +221,7 @@ now
 
  You can use these expressions during data manipulation.
 
-## Conditional Expressions and Operators
+## Conditional expressions and operators
 
 Conditional expressions and operators assist you with forming conditional queries. YSQL supports `CASE` and `CAST`, among others.
 
@@ -229,7 +231,7 @@ The `CASE` expression enables you to add if-else logic to your queries (for exam
 
 The following is the syntax of the general form of the `CASE` expression:
 
-```
+```output
 CASE
   WHEN condition_a  THEN result_a
   WHEN condition_b  THEN result_b
@@ -277,7 +279,7 @@ ORDER BY name;
 
 The preceding example produces the following output, with a column alias `seniority` placed after the `CASE` expression:
 
-```
+```output
  employee_no  | name           | seniority
 --------------+----------------+--------------
 1222          | Bette Davis    | Senior
@@ -316,7 +318,7 @@ SELECT
 
 The preceding example produces the following output:
 
-```
+```output
  date       | date
 ------------+----------------
  2021-02-02 | 2020-12-02

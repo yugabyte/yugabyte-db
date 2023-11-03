@@ -6,7 +6,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import java.util.UUID;
 import play.mvc.Http.Status;
@@ -16,8 +16,8 @@ import play.mvc.Http.Status;
 public class SystemdUpgradeParams extends UpgradeTaskParams {
 
   @Override
-  public void verifyParams(Universe universe) {
-    super.verifyParams(universe);
+  public void verifyParams(Universe universe, boolean isFirstTry) {
+    super.verifyParams(universe, isFirstTry);
 
     if (upgradeOption != UpgradeOption.ROLLING_UPGRADE) {
       throw new PlatformServiceException(
@@ -26,9 +26,8 @@ public class SystemdUpgradeParams extends UpgradeTaskParams {
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     if (userIntent.providerType == Common.CloudType.onprem) {
-      AccessKey accessKey =
-          AccessKey.getOrBadRequest(UUID.fromString(userIntent.provider), userIntent.accessKeyCode);
-      if (accessKey.getKeyInfo().skipProvisioning) {
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+      if (provider.getDetails().skipProvisioning) {
         throw new PlatformServiceException(
             Status.BAD_REQUEST, "Cannot upgrade systemd for manually provisioned universes");
       }

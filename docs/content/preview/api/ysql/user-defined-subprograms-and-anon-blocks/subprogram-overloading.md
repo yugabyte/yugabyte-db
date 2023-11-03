@@ -7,8 +7,7 @@ menu:
   preview:
     identifier: subprogram-overloading
     parent: user-defined-subprograms-and-anon-blocks
-    weight: 30
-aliases:
+    weight: 40
 type: docs
 ---
 
@@ -20,64 +19,28 @@ The risk occurs because PostgreSQL, and therefore YSQL, support implicit data ty
 
 Subprograms with different _subprogram_call_signatures_ can share the same _[subprogram_name](../../syntax_resources/grammar_diagrams/#subprogram-name)_. If two or more subprograms share the same _subprogram_name_, then the _subprogram_name_ is said to be _overloaded_. Notice the relationship between the _subprogram_signature_ rule:
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li>
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../syntax_resources/user-defined-subprograms-and-anon-blocks/subprogram_signature,arg_decl,arg_name,arg_mode,arg_type.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../syntax_resources/user-defined-subprograms-and-anon-blocks/subprogram_signature,arg_decl,arg_name,arg_mode,arg_type.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  subprogram_signature,
+  arg_decl,
+  formal_arg,arg_mode,arg_type
+{{%/ebnf%}}
 
 and the _subprogram_call_signature_ rule:
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li>
-    <a href="#grammar-2" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram-2" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>
-      Diagram
-    </a>
-  </li>
-</ul>
+{{%ebnf%}}
+  subprogram_call_signature
+{{%/ebnf%}}
 
-<div class="tab-content">
-  <div id="grammar-2" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../syntax_resources/user-defined-subprograms-and-anon-blocks/subprogram_call_signature.grammar.md" %}}
-  </div>
-  <div id="diagram-2" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../syntax_resources/user-defined-subprograms-and-anon-blocks/subprogram_call_signature.diagram.md" %}}
-  </div>
-</div>
-
-The _subprogram_signature_ is a list of _arg_decls_; and an _arg_decl_ has two optional components (_arg_type_ and _arg_mode_) and one mandatory component (_arg_type_). But the only significant part of the _subprogram_signature_ for distinguishing between overloads is the mandatory _arg_type_ component.<a name="subprogram-call-signature"></a>
+The _subprogram_signature_ is a list of _arg_decls_; and an _arg_decl_ has two optional components (_formal_arg_ and _arg_mode_) and one mandatory component (_arg_type_). But the only significant part of the _subprogram_signature_ for distinguishing between overloads is the mandatory _arg_type_ component.<a name="subprogram-call-signature"></a>
 
 {{< tip title="'OUT' arguments are not included in the 'subprogram_call_signature'." >}}
 This rule is stated in the PostgreSQL documentation in the account of the  _[pg_proc](https://www.postgresql.org/docs/11/catalog-pg-proc.html)_ catalog table. See the description of the _proargtypes_ column.
 
-Yugabyte recommends that you never create a function with an `out` or `inout` argument but, rather, that you return all values of interest by specifying an appropriate composite data type for the `returns` clause. See [this tip](../../the-sql-language/statements/ddl_create_function/#make-function-returns-mandatory) in the account of the `create function` statement.
+Yugabyte recommends that you never create a function with an _out_ or _inout_ argument but, rather, that you return all values of interest by specifying an appropriate composite data type for the _returns_ clause. This implies preferring _returns table(...)_ over _returns setof_. The latter requires a list of _out_ arguments that correspond to the columns that you list, when you use the former, within the parenthesis of _table(...)_.
 
-As it happens, YSQL does not yet allow a procedure to have an `out` argument—so you must use an `inout` argument instead. See [GitHub Issue #12348](https://github.com/yugabyte/yugabyte-db/issues/12348). When this issue is fixed, and if you decide to give a procedure a bare `out` argument, then you should remember that it will not be included in the procedure's call signature.
+See, too, [this tip](../../the-sql-language/statements/ddl_create_function/#make-function-returns-mandatory) in the account of the _create function_ statement.
+
+As it happens, PostgreSQL Version 11.2 (on which YSQL is based) does not yet allow a procedure to have an _out_ argument—so you must use an _inout_ argument instead. See [GitHub Issue #12348](https://github.com/yugabyte/yugabyte-db/issues/12348). YSQL, in some future version of YugabyteDB, will use a version of PostgreSQL where this limitation is removed. If you then decide to give a procedure a bare _out_ argument, then you should remember that it will not be included in the procedure's call signature.
 {{< /tip >}}
 
 ## Negative examples
@@ -109,7 +72,7 @@ as $body$
 $body$;
 ```
 
-The second `create function` attempt causes the _42723_ error, _function "f" already exists with same argument types_. The names of the arguments, and their modes, are insignificant for distinguishing between overload candidates.
+The second _create function_ attempt causes the _42723_ error, _function "f" already exists with same argument types_. The names of the arguments, and their modes, are insignificant for distinguishing between overload candidates.
 
 With the function _s1.f(i in int)_ still in place, now try this:
 
@@ -185,6 +148,7 @@ Now leave out the explicit typecast:
 ```plpgsql
 select s1.f('dog');
 ```
+
 This is the result:
 
 ```output
@@ -199,6 +163,7 @@ Now drop the _text_ overload and repeat the identical query:
 drop function s1.f(text);
 select s1.f('dog');
 ```
+
 This is the new result:
 
 ```output
@@ -292,7 +257,7 @@ select
   (select s1.f(17))    as "s1.f(17)";
 ```
 
-The `drop` leaves behind the _int_ and the _boolean_ overloads. But, because the string _'true'_ can be typecast to _boolean_, the `select` causes this error:
+The _drop_ leaves behind the _int_ and the _boolean_ overloads. But, because the string _'true'_ can be typecast to _boolean_, the _select_ causes this error:
 
 ```output
 42725: function s1.f(unknown) is not unique
@@ -318,7 +283,7 @@ Now the error goes away and you get this result:
 
 Now remove the _int_ overload and put back the _boolean_ overload and try a different query:
 
-```postgresql
+```plpgsql
 drop function s1.f(int);
 create function s1.f(i in boolean)
   returns text

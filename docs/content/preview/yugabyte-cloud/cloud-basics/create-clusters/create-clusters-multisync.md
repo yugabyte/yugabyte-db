@@ -3,7 +3,6 @@ title: Replicate across regions
 linkTitle: Replicate across regions
 description: Deploy multi-region synchronous clusters in YugabyteDB Managed.
 headcontent: Deploy region-level fault tolerant clusters
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-cloud:
     identifier: create-clusters-multisync
@@ -14,6 +13,22 @@ type: docs
 
 Clusters [replicated across regions](../../create-clusters-topology/#replicate-across-regions) include a minimum of 3 nodes spread across 3 regions with a replication factor (RF) of 3. You can add or remove nodes in increments of 3 (each region has the same number of nodes).
 
+{{< youtube id="fCjTB8IuTuA" title="Create a multi-region cluster in YugabyteDB Managed" >}}
+
+## Preferred region
+
+You can optionally designate one region in the cluster as preferred. The preferred region handles all read and write requests from clients.
+
+Designating one region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred. If your application uses a smart driver, set the [topology keys](../../../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing) to target the preferred region.
+
+When no region is preferred, YugabyteDB Managed distributes requests equally across regions. You can set or change the preferred region after cluster creation.
+
+Regardless of the preferred region setting, data is replicated across all the regions in the cluster to ensure region-level fault tolerance.
+
+You can enable [follower reads](../../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/) to serve reads from non-preferred regions.
+
+In cases where the cluster has read replicas and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region.
+
 ## Features
 
 Multi-region replicated clusters include the following features:
@@ -23,22 +38,14 @@ Multi-region replicated clusters include the following features:
 - Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
 - VPC networking required.
 - Automated and on-demand backups.
-- Available in all [regions](../../../release-notes#cloud-provider-regions).
+- Available in all [regions](../../create-clusters-overview/#cloud-provider-regions).
 - Enterprise support.
-
-## Preferred region
-
-You can optionally designate one region in the cluster as preferred. The preferred region handles all read and write requests from clients. In cases where the cluster has read replicas and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region.
-
-Designating one region as preferred can reduce the number of network hops needed to process requests. For lower latencies and best performance, set the region closest to your application as preferred.
-
-When no region is preferred, YugabyteDB Managed distributes requests equally across regions. You can set or change the preferred region after cluster creation.
 
 ## Prerequisites
 
-- Multi-region clusters must be deployed in VPCs. Create a VPC for each region where you want to deploy the nodes in the cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [Create a VPC in AWS](../../cloud-vpcs/cloud-add-vpc-aws/#create-a-vpc) or [Create a VPC in GCP](../../cloud-vpcs/cloud-add-vpc-gcp/#create-a-vpc).
-- Multi-region clusters do not expose any publicly-accessible IP addresses. As a result, you can only connect to multi-region clusters from applications that reside on a peered network, and the peering connection must be Active. Refer to [Peering connections](../../cloud-vpcs/cloud-add-peering).
-- Create a billing profile and add a payment method before you can create a Dedicated cluster. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
+- Multi-region clusters must be deployed in VPCs. Create a VPC for each region where you want to deploy the nodes in the cluster. Refer to [VPC network overview](../../cloud-vpcs/cloud-vpc-intro/).
+- By default, clusters deployed in VPCs do not expose any publicly-accessible IP addresses. Unless you enable [Public Access](../../../cloud-secure-clusters/add-connections/), you can only connect from resources inside the VPC network. Refer to [VPC network overview](../../cloud-vpcs/).
+- A billing profile and payment method. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
 
 ## Create a multi-region replicated cluster
 
@@ -48,6 +55,8 @@ The **Create Cluster** wizard has the following pages:
 
 1. [General Settings](#general-settings)
 1. [Cluster Setup](#cluster-setup)
+1. [Network Access](#network-access)
+1. [Security](#security)
 1. [DB Credentials](#database-credentials)
 
 {{% includeMarkdown "include-general-settings.md" %}}
@@ -68,17 +77,23 @@ Set **Data Distribution** to **Replicate across regions**.
 
 **Regions**: For each region, choose the following:
 
-- the [region](../../../release-notes#cloud-provider-regions) where the nodes will be located.
+- the [region](../../create-clusters-overview/#cloud-provider-regions) where the nodes will be located.
 - the VPC in which to deploy the nodes. Only VPCs using the selected cloud provider and available in the selected region are listed. For AWS clusters, choose a separate VPC for each region. For GCP clusters, the same VPC is used for all regions. VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
 - The number of nodes to deploy in the regions. Each region has the same number of nodes.
 
 **Preferred region**: Optionally, assign one region as [preferred](#preferred-region) to handle all reads and writes.
 
-**Node size**: Enter the number of virtual CPUs per node and the disk size per node (in GB). You must choose the regions before you can set the node size.
+**Node size**: Enter the number of virtual CPUs per node, disk size per node (in GB), and disk input output (I/O) operations per second (IOPS) per node (AWS only). You must choose the regions before you can set the node size.
 
-Clusters replicated across regions support both horizontal and vertical scaling; you can change the cluster configuration and preferred region after the cluster is created using the **Edit Configuration** settings. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
+The node throughput will be scaled according to the IOPS value. For large datasets or clusters with high concurrent transactions, higher IOPS is recommended. As disk IOPS is capped by vCPU, your vCPU and IOPS should be scaled together. Reference your current read and write IOPS performance for an estimation.
+
+Clusters replicated across regions support both horizontal and vertical scaling; you can change the cluster configuration and preferred region after the cluster is created. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
 
 Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
+
+{{% includeMarkdown "network-access.md" %}}
+
+{{% includeMarkdown "include-security-settings.md" %}}
 
 ### Database Credentials
 
@@ -86,7 +101,7 @@ The database admin credentials are required to connect to the YugabyteDB databas
 
 You can use the default credentials generated by YugabyteDB Managed, or add your own.
 
-For security reasons, the admin user does not have YSQL superuser privileges, but does have sufficient privileges for most tasks. For more information on database roles and privileges in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../../../cloud-secure-clusters/cloud-users/).
+For security reasons, the database admin user does not have YSQL superuser privileges, but does have sufficient privileges for most tasks. For more information on database roles and privileges in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../../../cloud-secure-clusters/cloud-users/).
 
 After the cluster is provisioned, you can [add more users and change your password](../../../cloud-secure-clusters/add-users/).
 

@@ -96,7 +96,7 @@ Status ConvertQLValuePBToRapidJson(const QLValuePB& ql_value_pb,
       break;
 
     case QLValuePB::ValueCase::kVarintValue: { // VARINT -> INT64
-        util::VarInt varint;
+        VarInt varint;
         size_t num_decoded_bytes = 0;
         RETURN_NOT_OK(varint.DecodeFromComparable(ql_value_pb.varint_value(), &num_decoded_bytes));
         rapidjson_value->SetInt64(VERIFY_RESULT(varint.ToInt64()));
@@ -122,10 +122,9 @@ Status ConvertQLValuePBToRapidJson(const QLValuePB& ql_value_pb,
     case QLValuePB::ValueCase::kBinaryValue: FALLTHROUGH_INTENDED;
     case QLValuePB::ValueCase::kInetaddressValue: {
         // Any simple type -> String.
-        QLValue::SharedPtr source(new QLValue(ql_value_pb));
-        QLValue::SharedPtr target(new QLValue);
-        RETURN_NOT_OK(bfql::ConvertToString(source, target));
-        rapidjson_value->SetString(target->string_value().c_str(), *alloc);
+        auto target = VERIFY_RESULT(bfql::ConvertToString(
+            ql_value_pb, bfql::BFFactory()));
+        rapidjson_value->SetString(target.string_value().c_str(), *alloc);
       }
       break;
 

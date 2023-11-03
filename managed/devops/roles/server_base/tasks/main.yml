@@ -16,4 +16,7 @@
   when: server_type is defined and server_type == "cluster-server"
 
 - include: server_base_linux.yml
-  when: ansible_os_family == "Debian" or ansible_os_family == "RedHat"
+  when: >
+    ansible_os_family == "Debian" or
+    ansible_os_family == "RedHat" or
+    ansible_os_family == "Suse"

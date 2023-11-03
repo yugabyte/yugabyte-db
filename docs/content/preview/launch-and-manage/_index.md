@@ -1,9 +1,9 @@
 ---
-title: Launch and Manage
+title: Launch and manage YugabyteDB
 headerTitle: Launch and Manage
 linkTitle: Launch and Manage
-description:
-headcontent:
+description: Learn how to deploy, manage, and troubleshoot the YugabyteDB database.
+headcontent: Deploy, manage, and troubleshoot YugabyteDB
 image: /images/section_icons/index/quick_start.png
 type: indexpage
 ---
@@ -28,6 +28,17 @@ type: indexpage
       </div>
       <div class="body">
         Manage YugabyteDB clusters.
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="./monitor-and-alert/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
+        <div class="title">Monitor</div>
+      </div>
+      <div class="body">
+        Make the best use of YugabyteDB metrics and alerts.
       </div>
     </a>
   </div>

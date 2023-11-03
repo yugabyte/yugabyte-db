@@ -1,23 +1,24 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../../_style/colors.scss';
+@use '../../../../_style/colors.scss';
+@use '../../../../_style/mixins.scss';
+@use '../../../../_style/variables.scss';
 
 /* From gentelella.css need to cleanup */
 
 .yb-nav-bar {
   .left_col {
     min-height: 100%;
-    width: $YB_SIDEBAR_WIDTH;
+    width: variables.$YB_SIDEBAR_WIDTH;
     padding: 0;
     z-index: 999;
     left: 0;
     position: absolute;
-    background: $YB_VIOLET;
+    background: colors.$YB_VIOLET;
     .logo {
-      height: 46px;
-      margin: 8px auto;
+      margin: 22px auto;
       pointer-events: none;
-      @include transition(0.3s);
+      @include mixins.transition(0.3s);
 
       @media screen and (max-height: 610px) {
         transform: scale(0.88, 0.88);

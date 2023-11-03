@@ -158,6 +158,22 @@ SELECT * FROM tab_range_nonkey2 WHERE a = 1;
  1 | 1
 (1 row)
 
+/*+IndexScan(tab_range_nonkey2 idx_range)*/EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey2 WHERE a <= 3;
+                   QUERY PLAN
+-------------------------------------------------
+ Index Scan using idx_range on tab_range_nonkey2
+   Index Cond: (a <= 3)
+(2 rows)
+
+/*+IndexScan(tab_range_nonkey2 idx_range)*/SELECT * FROM tab_range_nonkey2 WHERE a <= 3;
+ a | b
+---+---
+ 0 | 0
+ 1 | 1
+ 2 | 2
+ 3 | 3
+(4 rows)
+
 UPDATE tab_range_nonkey2 SET b = b + 1 WHERE a > 3;
 SELECT * FROM tab_range_nonkey2;
  a | b
@@ -204,6 +220,22 @@ SELECT * FROM tab_range_nonkey_noco WHERE a = 1;
 ---+---
  1 | 1
 (1 row)
+
+EXPLAIN (COSTS OFF) SELECT * FROM tab_range_nonkey_noco WHERE a <= 3;
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Index Scan using tab_range_nonkey_noco_pkey on tab_range_nonkey_noco
+   Index Cond: (a <= 3)
+(2 rows)
+
+SELECT * FROM tab_range_nonkey_noco WHERE a <= 3;
+ a | b
+---+---
+ 0 | 0
+ 1 | 1
+ 2 | 2
+ 3 | 3
+(4 rows)
 
 UPDATE tab_range_nonkey_noco SET b = b + 1 WHERE a > 3;
 SELECT * FROM tab_range_nonkey_noco;
@@ -513,6 +545,55 @@ SELECT * FROM tab_range_nonkey2;
 ERROR:  relation "tab_range_nonkey2" does not exist
 LINE 1: SELECT * FROM tab_range_nonkey2;
                       ^
+-- Alter colocated table ADD PRIMARY KEY
+CREATE TABLE tbl_no_pk (k INT, v INT) WITH (colocation = true);
+\d tbl_no_pk
+             Table "public.tbl_no_pk"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ k      | integer |           |          |
+ v      | integer |           |          |
+Colocation: true
+
+INSERT INTO tbl_no_pk (k, v) VALUES (1, 1), (2, 2), (3, 3);
+ALTER TABLE tbl_no_pk ADD PRIMARY KEY (k ASC);
+\d tbl_no_pk
+             Table "public.tbl_no_pk"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ k      | integer |           | not null |
+ v      | integer |           |          |
+Indexes:
+    "tbl_no_pk_pkey" PRIMARY KEY, lsm (k ASC), colocation: true
+Colocation: true
+
+SELECT * FROM tbl_no_pk ORDER BY k;
+ k | v
+---+---
+ 1 | 1
+ 2 | 2
+ 3 | 3
+(3 rows)
+
+-- Alter colocated table "DROP PRIMARY KEY"
+ALTER TABLE tbl_no_pk DROP CONSTRAINT tbl_no_pk_pkey;
+\d tbl_no_pk
+             Table "public.tbl_no_pk"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ k      | integer |           | not null |
+ v      | integer |           |          |
+Colocation: true
+
+SELECT * FROM tbl_no_pk ORDER BY k;
+ k | v
+---+---
+ 1 | 1
+ 2 | 2
+ 3 | 3
+(3 rows)
+
+DROP TABLE tbl_no_pk;
 -- DROP TABLE
 -- drop colocated table with default index
 DROP TABLE tab_range;
@@ -591,13 +672,47 @@ EXPLAIN SELECT * FROM tab_range_nonkey5 WHERE a = 1;
  public | tab_range_range_pkey        | index | yugabyte | tab_range_range
 (11 rows)
 
+-- Test colocated tables/indexes with SPLIT INTO/SPLIT AT
+CREATE TABLE invalid_tbl_split_into (k INT) SPLIT INTO 10 TABLETS;
+ERROR:  cannot create colocated table with split option
+CREATE TABLE invalid_tbl_split_at (k INT) SPLIT AT VALUES ((100));
+ERROR:  cannot create colocated table with split option
+CREATE TABLE test_tbl (k INT);
+CREATE INDEX invalid_idx_split_into ON test_tbl (k) SPLIT INTO 10 TABLETS;
+ERROR:  cannot create colocated index with split option
+CREATE INDEX invalid_idx_split_at ON test_tbl (k) SPLIT AT VALUES ((100));
+ERROR:  cannot create colocated index with split option
+DROP TABLE test_tbl;
+-- Test colocated partitioned table and partition tables
+CREATE TABLE partitioned_table (
+    k1 INT,
+    v1 INT,
+    v2 TEXT
+)
+PARTITION BY HASH (k1)
+WITH (colocation_id='123456');
+SELECT * FROM yb_table_properties('partitioned_table'::regclass::oid);
+ num_tablets | num_hash_key_columns | is_colocated | tablegroup_oid | colocation_id
+-------------+----------------------+--------------+----------------+---------------
+           1 |                    0 | t            |          16391 |        123456
+(1 row)
+
+CREATE TABLE table_partition PARTITION OF partitioned_table
+FOR VALUES WITH (modulus 2, remainder 0)
+WITH (colocation_id='234567');
+SELECT * FROM yb_table_properties('table_partition'::regclass::oid);
+ num_tablets | num_hash_key_columns | is_colocated | tablegroup_oid | colocation_id
+-------------+----------------------+--------------+----------------+---------------
+           1 |                    0 | t            |          16391 |        234567
+(1 row)
+
 -- drop database
 \c yugabyte
 DROP DATABASE colocation_test;
 -- Test syntax change as a result of Colocation GA change
 -- Fail: only one of 'colocation' and 'colocated' options can be specified in CREATE DATABASE
 CREATE DATABASE colocation_test colocated = true colocation = true;
-WARNING:  'colocated' syntax will be deprecated in a future release
+WARNING:  'colocated' syntax is deprecated and will be removed in a future release
 LINE 1: CREATE DATABASE colocation_test colocated = true colocation ...
                                         ^
 HINT:  Use 'colocation' instead of 'colocated'.
@@ -606,7 +721,7 @@ LINE 1: CREATE DATABASE colocation_test colocated = true colocation ...
                                                          ^
 -- Succeed with deprecated warning: create a colocated database using old syntax
 CREATE DATABASE colocation_test colocated = true;
-WARNING:  'colocated' syntax will be deprecated in a future release
+WARNING:  'colocated' syntax is deprecated and will be removed in a future release
 LINE 1: CREATE DATABASE colocation_test colocated = true;
                                         ^
 HINT:  Use 'colocation' instead of 'colocated'.
@@ -621,7 +736,7 @@ ERROR:  cannot specify both of 'colocation' and 'colocated' options
 HINT:  Use 'colocation' instead of 'colocated'.
 -- Succeed with deprecated warning: create a colocated table using old syntax
 CREATE TABLE tbl_colocated (k INT, v INT) WITH (colocated = true);
-WARNING:  'colocated' syntax will be deprecated in a future release
+WARNING:  'colocated' syntax is deprecated and will be removed in a future release
 HINT:  Use 'colocation' instead of 'colocated'.
 -- Succeed: create a colocated table using new syntax
 CREATE TABLE tbl_colocation (k INT, v INT) WITH (colocation = true);
@@ -668,7 +783,7 @@ AND objid = 'tbl'::regclass AND refclassid = 'pg_yb_tablegroup'::regclass
 AND refobjid = pg_yb_tablegroup.oid AND grpname = 'default';
  classid | objid | objsubid | refclassid | refobjid | refobjsubid | deptype | grpname | grpowner | grptablespace | grpacl | grpoptions
 ---------+-------+----------+------------+----------+-------------+---------+---------+----------+---------------+--------+------------
-    1259 | 16502 |        0 |       8036 |    16505 |           0 | n       | default |       10 |             0 |        |
+    1259 | 16384 |        0 |       8036 |    16387 |           0 | n       | default |       10 |             0 |        |
 (1 row)
 
 DROP TABLEGROUP "default";
@@ -706,6 +821,124 @@ ON pg_roles.oid = pg_class.relowner WHERE pg_class.relname = 'unique_idx';
 (1 row)
 
 RESET SESSION AUTHORIZATION;
+-- The default tablegroup cannot be used explicitly
+CREATE TABLE invalid_tbl (k int) TABLEGROUP "default";
+ERROR:  cannot use tablegroups in a colocated database
+-- Test distinct pushdown for colocated table
+CREATE TABLE tbl_colo(r1 INT, r2 INT, r3 INT, r4 INT, r5 INT) WITH (colocation = TRUE);
+CREATE INDEX ON tbl_colo(r1 asc, r3 asc, r5 asc);
+INSERT INTO tbl_colo (SELECT 1, i, i, i, i FROM generate_series(1, 100) AS i);
+INSERT INTO tbl_colo (SELECT 2, i, i, i, i FROM generate_series(1, 100) AS i);
+INSERT INTO tbl_colo (SELECT 3, i, i, i, i FROM generate_series(1, 100) AS i);
+EXPLAIN (COSTS OFF) SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
+                               QUERY PLAN
+------------------------------------------------------------------------
+ Unique
+   ->  Distinct Index Only Scan using tbl_colo_r1_r3_r5_idx on tbl_colo
+         Index Cond: (r3 <= 1)
+         Distinct Prefix: 1
+(4 rows)
+
+SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
+ r1
+----
+  1
+  2
+  3
+(3 rows)
+
+/*+Set(enable_hashagg false)*/ EXPLAIN (COSTS OFF) SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
+                               QUERY PLAN
+------------------------------------------------------------------------
+ Unique
+   ->  Distinct Index Only Scan using tbl_colo_r1_r3_r5_idx on tbl_colo
+         Index Cond: (r3 <= 1)
+         Distinct Prefix: 1
+(4 rows)
+
+/*+Set(enable_hashagg false)*/ SELECT DISTINCT r1 FROM tbl_colo WHERE r3 <= 1;
+ r1
+----
+  1
+  2
+  3
+(3 rows)
+
 -- Drop database
 \c yugabyte
 DROP DATABASE colocation_test;
+-- Test Colocated Materialized View describe
+CREATE DATABASE colocation_test WITH colocation = true;
+\c colocation_test
+CREATE TABLE t1 (a INT PRIMARY KEY);
+CREATE MATERIALIZED VIEW m1 AS SELECT * FROM t1;
+CREATE MATERIALIZED VIEW m2 with (colocation = true) AS SELECT * FROM t1;
+CREATE MATERIALIZED VIEW m3 with (colocation = false) AS SELECT * FROM t1;
+\d m1
+           Materialized view "public.m1"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           |          |
+Colocation: true
+
+\d m2
+           Materialized view "public.m2"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           |          |
+Colocation: true
+
+\d m3
+           Materialized view "public.m3"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           |          |
+
+\c yugabyte
+DROP DATABASE colocation_test;
+-- Test Colocated Materialized View
+CREATE DATABASE colocation_test WITH colocation = true;
+\c colocation_test
+CREATE TABLE t1 (a INT PRIMARY KEY) WITH (colocation = true);
+CREATE TABLE t2 (b INT PRIMARY KEY) WITH (colocation = false);
+CREATE MATERIALIZED VIEW m0 WITH (colocation = true) as SELECT * FROM t1;
+CREATE MATERIALIZED VIEW m1 WITH (colocation = false) as SELECT * FROM t1;
+CREATE MATERIALIZED VIEW m2 WITH (colocation = true) as SELECT * FROM t2;
+CREATE MATERIALIZED VIEW m3 WITH (colocation = false) as SELECT * FROM t2;
+CREATE MATERIALIZED VIEW m4 WITH (colocation = true) as SELECT * FROM t1, t2;
+CREATE MATERIALIZED VIEW m5 WITH (colocation = false) as SELECT * FROM t1, t2;
+select is_colocated from yb_table_properties('m0'::regclass);
+ is_colocated
+--------------
+ t
+(1 row)
+
+select is_colocated from yb_table_properties('m1'::regclass);
+ is_colocated
+--------------
+ f
+(1 row)
+
+select is_colocated from yb_table_properties('m2'::regclass);
+ is_colocated
+--------------
+ t
+(1 row)
+
+select is_colocated from yb_table_properties('m3'::regclass);
+ is_colocated
+--------------
+ f
+(1 row)
+
+select is_colocated from yb_table_properties('m4'::regclass);
+ is_colocated
+--------------
+ t
+(1 row)
+
+select is_colocated from yb_table_properties('m5'::regclass);
+ is_colocated
+--------------
+ f
+(1 row)

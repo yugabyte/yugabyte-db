@@ -121,13 +121,13 @@ class CqlGeoTransactionsTest: public CqlTestBase<MiniCluster> {
     for (int i = 1; i <= num_tablet_servers(); ++i) {
       YBTableName table_name{YQL_DATABASE_CQL, kNamespace,
                              strings::Substitute("$0$1", kTablePrefix, i)};
-      auto* placement_info = new master::PlacementInfoPB;
-      MakePlacementInfo(placement_info, i);
+      master::PlacementInfoPB placement_info;
+      MakePlacementInfo(&placement_info, i);
 
       ASSERT_OK(session.ExecuteQuery(strings::Substitute(
           "CREATE TABLE $0(value int, PRIMARY KEY (value)) WITH transactions = { 'enabled': true }",
           table_name.table_name())));
-      ASSERT_OK(client_->ModifyTablePlacementInfo(table_name, placement_info));
+      ASSERT_OK(client_->ModifyTablePlacementInfo(table_name, std::move(placement_info)));
       WaitForLoadBalanceCompletion();
     }
 
@@ -227,6 +227,17 @@ TEST_F(CqlGeoTransactionsTest, TestTransactionTabletSelection) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = true;
   CheckInsert(kLocalRegion, ExpectedResult::kLocal);
+  CheckInsert(kOtherRegion, ExpectedResult::kGlobal);
+}
+
+TEST_F(CqlGeoTransactionsTest, TestInitialGlobalOp) {
+  SetupTables();
+  CreateTransactionTable(kLocalRegion);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = true;
+  // Not using the transaction pool.
+  CheckInsert(kOtherRegion, ExpectedResult::kGlobal);
+  // Using the transaction pool.
   CheckInsert(kOtherRegion, ExpectedResult::kGlobal);
 }
 

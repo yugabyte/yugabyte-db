@@ -49,7 +49,7 @@ public class WaitForLeaderBlacklistCompletion extends AbstractTaskBase {
     int numIters = 0;
     double epsilon = 0.00001d;
     // Get the master addresses and certificate info.
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String masterAddresses = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     log.info("Running {} on masterAddress = {}.", getName(), masterAddresses);

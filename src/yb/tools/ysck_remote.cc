@@ -32,6 +32,7 @@
 
 #include "yb/tools/ysck_remote.h"
 
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
@@ -77,7 +78,6 @@ using rpc::RpcController;
 using std::shared_ptr;
 using std::string;
 using std::vector;
-using strings::Substitute;
 using client::YBTableName;
 
 MonoDelta GetDefaultTimeout() {

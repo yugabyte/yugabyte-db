@@ -3,9 +3,9 @@ title: Liquibase
 linkTitle: Liquibase
 description: Using Liquibase with YugabyteDB
 menu:
-  preview:
+  preview_integrations:
     identifier: liquibase
-    parent: integrations
+    parent: schema-migration
     weight: 571
 type: docs
 ---

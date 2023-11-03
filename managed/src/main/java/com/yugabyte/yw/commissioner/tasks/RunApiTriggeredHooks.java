@@ -8,10 +8,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +24,7 @@ public class RunApiTriggeredHooks extends UniverseTaskBase {
   public static class Params extends UniverseTaskParams {
     public boolean isRolling;
     public UUID clusterUUID;
+    public List<UUID> hookUUIDs;
   }
 
   public Params taskParams() {
@@ -44,8 +42,7 @@ public class RunApiTriggeredHooks extends UniverseTaskBase {
       int countBefore = nodes.size();
       if (taskParams().clusterUUID != null) {
         nodes =
-            nodes
-                .stream()
+            nodes.stream()
                 .filter(x -> x.placementUuid.equals(taskParams().clusterUUID))
                 .collect(Collectors.toList());
       }
@@ -58,11 +55,16 @@ public class RunApiTriggeredHooks extends UniverseTaskBase {
 
       if (taskParams().isRolling) {
         for (NodeDetails node : nodes) {
-          Set<NodeDetails> singletonSet = Collections.singleton(node);
-          HookInserter.addHookTrigger(TriggerType.ApiTriggered, this, taskParams(), singletonSet);
+          HookInserter.addHookTrigger(
+              TriggerType.ApiTriggered,
+              taskParams().hookUUIDs,
+              this,
+              taskParams(),
+              Collections.singleton(node));
         }
       } else {
-        HookInserter.addHookTrigger(TriggerType.ApiTriggered, this, taskParams(), nodes);
+        HookInserter.addHookTrigger(
+            TriggerType.ApiTriggered, taskParams().hookUUIDs, this, taskParams(), nodes);
       }
 
       getRunnableTask().runSubTasks();

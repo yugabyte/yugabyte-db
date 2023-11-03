@@ -77,22 +77,29 @@ Status PgDml::AppendTarget(PgExpr *target) {
 
 Status PgDml::AppendTargetPB(PgExpr *target) {
   // Append to targets_.
-  targets_.push_back(target);
+  bool is_aggregate = target->is_aggregate();
+  if (targets_.empty()) {
+    has_aggregate_targets_ = is_aggregate;
+  } else {
+    RSTATUS_DCHECK_EQ(has_aggregate_targets_, is_aggregate,
+                      IllegalState, "Combining aggregate and non aggregate targets");
+  }
 
-  // Allocate associated protobuf.
-  auto* expr_pb = AllocTargetPB();
+  if (target->is_system()) {
+    has_system_targets_ = true;
+  }
+
+  if (is_aggregate) {
+    auto aggregate = down_cast<PgAggregateOperator*>(target);
+    aggregate->set_index(narrow_cast<int>(targets_.size()));
+    targets_.push_back(aggregate);
+  } else {
+    targets_.push_back(down_cast<PgColumnRef*>(target));
+  }
 
   // Prepare expression. Except for constants and place_holders, all other expressions can be
-  // evaluate just one time during prepare.
-  RETURN_NOT_OK(target->PrepareForRead(this, expr_pb));
-
-  // Link the given expression "attr_value" with the allocated protobuf. Note that except for
-  // constants and place_holders, all other expressions can be setup just one time during prepare.
-  // Example:
-  // - Bind values for a target of SELECT
-  //   SELECT AVG(col + ?) FROM a_table;
-  expr_binds_[expr_pb] = target;
-  return Status::OK();
+  // evaluated just one time during prepare.
+  return target->PrepareForRead(this, AllocTargetPB());
 }
 
 Status PgDml::AppendQual(PgExpr *qual, bool is_primary) {
@@ -100,9 +107,6 @@ Status PgDml::AppendQual(PgExpr *qual, bool is_primary) {
     DCHECK(secondary_index_query_) << "The secondary index query is expected";
     return secondary_index_query_->AppendQual(qual, true);
   }
-
-  // Append to quals_.
-  quals_.push_back(qual);
 
   // Allocate associated protobuf.
   auto* expr_pb = AllocQualPB();
@@ -115,15 +119,14 @@ Status PgDml::AppendQual(PgExpr *qual, bool is_primary) {
   return qual->PrepareForRead(this, expr_pb);
 }
 
-Status PgDml::AppendColumnRef(PgExpr *colref, bool is_primary) {
+Status PgDml::AppendColumnRef(PgColumnRef* colref, bool is_primary) {
   if (!is_primary) {
     DCHECK(secondary_index_query_) << "The secondary index query is expected";
     return secondary_index_query_->AppendColumnRef(colref, true);
   }
 
-  DCHECK(colref->is_colref()) << "Colref is expected";
   // Postgres attribute number, this is column id to refer the column from Postgres code
-  int attr_num = static_cast<PgColumnRef *>(colref)->attr_num();
+  int attr_num = colref->attr_num();
   // Retrieve column metadata from the target relation metadata
   PgColumn& col = VERIFY_RESULT(target_.ColumnForAttr(attr_num));
   if (!col.is_virtual_column()) {
@@ -147,6 +150,23 @@ Status PgDml::AppendColumnRef(PgExpr *colref, bool is_primary) {
 }
 
 Result<const PgColumn&> PgDml::PrepareColumnForRead(int attr_num, LWPgsqlExpressionPB *target_pb) {
+  // Find column from targeted table.
+  PgColumn& col = VERIFY_RESULT(target_.ColumnForAttr(attr_num));
+
+  // Prepare protobuf to send to DocDB.
+  if (target_pb) {
+    target_pb->set_column_id(col.id());
+  }
+
+  // Mark non-virtual column reference for DocDB.
+  if (!col.is_virtual_column()) {
+    col.set_read_requested(true);
+  }
+
+  return const_cast<const PgColumn&>(col);
+}
+
+Result<const PgColumn&> PgDml::PrepareColumnForRead(int attr_num, LWQLExpressionPB *target_pb) {
   // Find column from targeted table.
   PgColumn& col = VERIFY_RESULT(target_.ColumnForAttr(attr_num));
 
@@ -218,43 +238,18 @@ Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
   PgColumn& column = VERIFY_RESULT(bind_.ColumnForAttr(attr_num));
 
   // Check datatype.
-  if (attr_value->internal_type() != InternalType::kGinNullValue) {
-    SCHECK_EQ(column.internal_type(), attr_value->internal_type(), Corruption,
+  const auto attr_internal_type = attr_value->internal_type();
+  if (attr_internal_type != InternalType::kGinNullValue) {
+    SCHECK_EQ(column.internal_type(), attr_internal_type, Corruption,
               "Attribute value type does not match column type");
   }
 
-  // Alloc the protobuf.
-  auto* bind_pb = column.bind_pb();
-  if (bind_pb == nullptr) {
-    bind_pb = AllocColumnBindPB(&column);
-  } else {
-    if (expr_binds_.count(bind_pb)) {
-      LOG(WARNING) << strings::Substitute("Column $0 is already bound to another value.", attr_num);
-    }
-  }
+  RETURN_NOT_OK(AllocColumnBindPB(&column, attr_value));
 
-  // Link the given expression "attr_value" with the allocated protobuf. Note that except for
-  // constants and place_holders, all other expressions can be setup just one time during prepare.
-  // Examples:
-  // - Bind values for primary columns in where clause.
-  //     WHERE hash = ?
-  // - Bind values for a column in INSERT statement.
-  //     INSERT INTO a_table(hash, key, col) VALUES(?, ?, ?)
-  expr_binds_[bind_pb] = attr_value;
   if (attr_num == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
     CHECK(attr_value->is_constant()) << "Column ybctid must be bound to constant";
     ybctid_bind_ = true;
   }
-  return Status::OK();
-}
-
-Status PgDml::UpdateBindPBs() {
-  for (const auto &entry : expr_binds_) {
-    auto* expr_pb = entry.first;
-    PgExpr *attr_value = entry.second;
-    RETURN_NOT_OK(attr_value->EvalTo(expr_pb));
-  }
-
   return Status::OK();
 }
 
@@ -461,18 +456,12 @@ Result<bool> PgDml::GetNextRow(PgTuple *pg_tuple) {
   return false;
 }
 
-bool PgDml::has_aggregate_targets() {
-  size_t num_aggregate_targets = 0;
-  for (const auto& target : targets_) {
-    if (target->is_aggregate()) {
-      num_aggregate_targets++;
-    }
-  }
+bool PgDml::has_aggregate_targets() const {
+  return has_aggregate_targets_;
+}
 
-  CHECK(num_aggregate_targets == 0 || num_aggregate_targets == targets_.size())
-    << "Some, but not all, targets are aggregate expressions.";
-
-  return num_aggregate_targets > 0;
+bool PgDml::has_system_targets() const {
+  return has_system_targets_;
 }
 
 Result<YBCPgColumnInfo> PgDml::GetColumnInfo(int attr_num) const {
@@ -480,24 +469,6 @@ Result<YBCPgColumnInfo> PgDml::GetColumnInfo(int attr_num) const {
     return secondary_index_query_->GetColumnInfo(attr_num);
   }
   return bind_->GetColumnInfo(attr_num);
-}
-
-void PgDml::GetAndResetReadRpcStats(uint64_t* reads, uint64_t* read_wait) {
-  if (doc_op_) {
-    doc_op_->GetAndResetReadRpcStats(reads, read_wait);
-  }
-}
-
-void PgDml::GetAndResetReadRpcStats(uint64_t* reads, uint64_t* read_wait,
-                                    uint64_t* tbl_reads, uint64_t* tbl_read_wait) {
-  if (secondary_index_query_) {
-    secondary_index_query_->GetAndResetReadRpcStats(reads, read_wait);
-    if (doc_op_) {
-      doc_op_->GetAndResetReadRpcStats(tbl_reads, tbl_read_wait);
-    }
-  } else if (doc_op_) {
-    doc_op_->GetAndResetReadRpcStats(reads, read_wait);
-  }
 }
 
 }  // namespace pggate

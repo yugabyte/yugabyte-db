@@ -15,18 +15,21 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.ShellResponse;
+import com.typesafe.config.ConfigException;
+import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager.PlatformBackupParams;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.metrics.MetricUrlProvider;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.net.URI;
 import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -50,23 +53,20 @@ public class PlatformReplicationHelper {
 
   public static final String BACKUP_DIR = "platformBackups";
   public static final String REPLICATION_DIR = "platformReplication";
-  private static final String PROMETHEUS_CONFIG_FILENAME = "prometheus.yml";
   static final String BACKUP_FILE_PATTERN = "backup_*.tgz";
 
   // Config keys:
-  public static final String STORAGE_PATH_KEY = "yb.storage.path";
-  private static final String LOG_SHELL_CMD_OUTPUT_KEY = "yb.ha.logScriptOutput";
   private static final String REPLICATION_SCHEDULE_ENABLED_KEY =
       "yb.ha.replication_schedule_enabled";
-  private static final String PROMETHEUS_FEDERATED_CONFIG_DIR_KEY = "yb.ha.prometheus_config_dir";
   private static final String NUM_BACKUP_RETENTION_KEY = "yb.ha.num_backup_retention";
-  static final String PROMETHEUS_HOST_CONFIG_KEY = "yb.metrics.host";
-  static final String PROMETHEUS_PORT_CONFIG_KEY = "yb.metrics.port";
   static final String REPLICATION_FREQUENCY_KEY = "yb.ha.replication_frequency";
   static final String DB_USERNAME_CONFIG_KEY = "db.default.username";
   static final String DB_PASSWORD_CONFIG_KEY = "db.default.password";
   static final String DB_HOST_CONFIG_KEY = "db.default.host";
   static final String DB_PORT_CONFIG_KEY = "db.default.port";
+  static final String YBA_INSTALLATION_KEY = "yb.installation";
+
+  private final RuntimeConfGetter confGetter;
 
   private final SettableRuntimeConfigFactory runtimeConfigFactory;
 
@@ -74,48 +74,89 @@ public class PlatformReplicationHelper {
 
   private final PlatformInstanceClientFactory remoteClientFactory;
 
+  private final MetricUrlProvider metricUrlProvider;
+
+  private final PrometheusConfigHelper prometheusConfigHelper;
+
+  private final PrometheusConfigManager prometheusConfigManager;
+
   @VisibleForTesting ShellProcessHandler shellProcessHandler;
 
   @Inject
   public PlatformReplicationHelper(
+      RuntimeConfGetter confGetter,
       SettableRuntimeConfigFactory runtimeConfigFactory,
       ApiHelper apiHelper,
       PlatformInstanceClientFactory remoteClientFactory,
-      ShellProcessHandler shellProcessHandler) {
+      ShellProcessHandler shellProcessHandler,
+      MetricUrlProvider metricUrlProvider,
+      PrometheusConfigHelper prometheusConfigHelper,
+      PrometheusConfigManager prometheusConfigManager) {
+    this.confGetter = confGetter;
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.apiHelper = apiHelper;
     this.remoteClientFactory = remoteClientFactory;
     this.shellProcessHandler = shellProcessHandler;
+    this.metricUrlProvider = metricUrlProvider;
+    this.prometheusConfigHelper = prometheusConfigHelper;
+    this.prometheusConfigManager = prometheusConfigManager;
   }
 
   Path getBackupDir() {
     return Paths.get(
-            runtimeConfigFactory.globalRuntimeConf().getString(STORAGE_PATH_KEY), BACKUP_DIR)
+            confGetter.getStaticConf().getString(AppConfigHelper.YB_STORAGE_PATH), BACKUP_DIR)
         .toAbsolutePath();
   }
 
-  String getPrometheusHost() {
-    return runtimeConfigFactory.globalRuntimeConf().getString(PROMETHEUS_HOST_CONFIG_KEY);
-  }
-
   int getNumBackupsRetention() {
-    return Math.max(0, runtimeConfigFactory.globalRuntimeConf().getInt(NUM_BACKUP_RETENTION_KEY));
+    return Math.max(0, confGetter.getStaticConf().getInt(NUM_BACKUP_RETENTION_KEY));
   }
 
   String getDBUser() {
-    return runtimeConfigFactory.globalRuntimeConf().getString(DB_USERNAME_CONFIG_KEY);
+    return confGetter.getStaticConf().getString(DB_USERNAME_CONFIG_KEY);
   }
 
   String getDBPassword() {
-    return runtimeConfigFactory.globalRuntimeConf().getString(DB_PASSWORD_CONFIG_KEY);
+    return confGetter.getStaticConf().getString(DB_PASSWORD_CONFIG_KEY);
   }
 
   String getDBHost() {
-    return runtimeConfigFactory.globalRuntimeConf().getString(DB_HOST_CONFIG_KEY);
+    return confGetter.getStaticConf().getString(DB_HOST_CONFIG_KEY);
   }
 
   int getDBPort() {
-    return runtimeConfigFactory.globalRuntimeConf().getInt(DB_PORT_CONFIG_KEY);
+    return confGetter.getStaticConf().getInt(DB_PORT_CONFIG_KEY);
+  }
+
+  String getPGDumpPath() {
+    try {
+      return confGetter.getGlobalConf(GlobalConfKeys.pgDumpPath);
+    } catch (ConfigException e) {
+      throw new RuntimeException("Could not find pg_dump path.");
+    }
+  }
+
+  String getPGRestorePath() {
+    try {
+      return confGetter.getGlobalConf(GlobalConfKeys.pgRestorePath);
+    } catch (ConfigException e) {
+      throw new RuntimeException("Could not find pg_restore path.");
+    }
+  }
+
+  String getInstallationType() {
+    try {
+      return confGetter.getStaticConf().getString(YBA_INSTALLATION_KEY);
+    } catch (ConfigException e) {
+      return "";
+    }
+  }
+
+  String getBaseInstall() {
+    return Paths.get(confGetter.getStaticConf().getString(AppConfigHelper.YB_STORAGE_PATH))
+        .getParent()
+        .getParent()
+        .toString();
   }
 
   boolean isBackupScheduleEnabled() {
@@ -132,21 +173,8 @@ public class PlatformReplicationHelper {
     return schedule != null && !schedule.isCancelled();
   }
 
-  private File getPrometheusConfigDir() {
-    String outputDirString =
-        runtimeConfigFactory.globalRuntimeConf().getString(PROMETHEUS_FEDERATED_CONFIG_DIR_KEY);
-
-    return new File(outputDirString);
-  }
-
-  private File getPrometheusConfigFile() {
-    File configDir = getPrometheusConfigDir();
-
-    return new File(configDir, PROMETHEUS_CONFIG_FILENAME);
-  }
-
   boolean isBackupScriptOutputEnabled() {
-    return runtimeConfigFactory.globalRuntimeConf().getBoolean(LOG_SHELL_CMD_OUTPUT_KEY);
+    return confGetter.getGlobalConf(GlobalConfKeys.logScriptOutput);
   }
 
   Duration getBackupFrequency() {
@@ -164,11 +192,11 @@ public class PlatformReplicationHelper {
   }
 
   Path getReplicationDirFor(String leader) {
-    String storagePath = runtimeConfigFactory.globalRuntimeConf().getString(STORAGE_PATH_KEY);
+    String storagePath = confGetter.getStaticConf().getString(AppConfigHelper.YB_STORAGE_PATH);
     return Paths.get(storagePath, REPLICATION_DIR, leader);
   }
 
-  private void writeFederatedPrometheusConfig(String remoteAddr, File file) {
+  private void writeFederatedPrometheusConfig(String remoteAddr, File file, boolean https) {
     try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
       VelocityEngine velocityEngine = new VelocityEngine();
       velocityEngine.setProperty(RuntimeConstants.RESOURCE_LOADER, "classpath");
@@ -181,27 +209,17 @@ public class PlatformReplicationHelper {
 
       // Fill in the context.
       VelocityContext context = new VelocityContext();
+      context.put("interval", SwamperHelper.getScrapeIntervalSeconds(confGetter.getStaticConf()));
       context.put("address", remoteAddr);
+      context.put("https", https);
+      context.put("auth", confGetter.getGlobalConf(GlobalConfKeys.metricsAuth));
+      context.put("username", confGetter.getGlobalConf(GlobalConfKeys.metricsAuthUsername));
+      context.put("password", confGetter.getGlobalConf(GlobalConfKeys.metricsAuthPassword));
 
       // Merge the template with the context.
       template.merge(context, writer);
     } catch (Exception e) {
       LOG.error("Error creating federated prometheus config file");
-    }
-  }
-
-  private void reloadPrometheusConfig() {
-    try {
-      String localPromHost =
-          runtimeConfigFactory.globalRuntimeConf().getString(PROMETHEUS_HOST_CONFIG_KEY);
-      int localPromPort =
-          runtimeConfigFactory.globalRuntimeConf().getInt(PROMETHEUS_PORT_CONFIG_KEY);
-      URL reloadEndpoint = new URL("http", localPromHost, localPromPort, "/-/reload");
-
-      // Send the reload request.
-      this.apiHelper.postRequest(reloadEndpoint.toString(), Json.newObject());
-    } catch (Exception e) {
-      LOG.error("Error reloading prometheus config", e);
     }
   }
 
@@ -256,7 +274,7 @@ public class PlatformReplicationHelper {
 
   void switchPrometheusToFederated(URL remoteAddr) {
     try {
-      File configFile = this.getPrometheusConfigFile();
+      File configFile = prometheusConfigHelper.getPrometheusConfigFile();
       File configDir = configFile.getParentFile();
       File previousConfigFile = new File(configDir, "previous_prometheus.yml");
 
@@ -272,13 +290,16 @@ public class PlatformReplicationHelper {
 
       // Write the filled in template to disk.
       // TBD: Need to fetch the Prometheus port from the remote PlatformInstance and use that here.
-      // For now we assume that the remote instance also uses the same port as the local one.
-      int remotePort = runtimeConfigFactory.globalRuntimeConf().getInt(PROMETHEUS_PORT_CONFIG_KEY);
-      String federatedAddr = remoteAddr.getHost() + ":" + remotePort;
-      this.writeFederatedPrometheusConfig(federatedAddr, configFile);
+      // For now, we assume that the remote instance also uses the same port as the local one.
+      String federatedAddr = metricUrlProvider.getMetricsExternalUrl();
+
+      URI federatedURL = new URI(federatedAddr);
+      String federatedPoint = remoteAddr.getHost() + ":" + federatedURL.getPort();
+      boolean https = federatedURL.getScheme().equalsIgnoreCase("https");
+      this.writeFederatedPrometheusConfig(federatedPoint, configFile, https);
 
       // Reload the config.
-      this.reloadPrometheusConfig();
+      prometheusConfigHelper.reloadPrometheusConfig();
     } catch (Exception e) {
       LOG.error("Error switching prometheus config to read from {}", remoteAddr.getHost(), e);
     }
@@ -286,7 +307,7 @@ public class PlatformReplicationHelper {
 
   void switchPrometheusToStandalone() {
     try {
-      File configFile = this.getPrometheusConfigFile();
+      File configFile = prometheusConfigHelper.getPrometheusConfigFile();
       File configDir = configFile.getParentFile();
       File previousConfigFile = new File(configDir, "previous_prometheus.yml");
 
@@ -295,7 +316,8 @@ public class PlatformReplicationHelper {
       }
 
       FileUtils.moveFile(previousConfigFile.toPath(), configFile.toPath());
-      this.reloadPrometheusConfig();
+      prometheusConfigHelper.reloadPrometheusConfig();
+      prometheusConfigManager.updateK8sScrapeConfigs();
     } catch (Exception e) {
       LOG.error("Error switching prometheus config to standalone", e);
     }

@@ -6,8 +6,12 @@ import {
   QUERY_METRICS,
   QUERY_METRICS_SUCCESS,
   QUERY_METRICS_FAILURE,
+  QUERY_MASTER_METRICS_SUCCESS,
+  QUERY_MASTER_METRICS_FAILURE,
   SELECTED_METRIC_TYPE_TAB,
   RESET_METRICS,
+  SET_GRAPH_FILTER,
+  RESET_GRAPH_FILTER,
   TOGGLE_PROMETHEUS_QUERY
 } from '../actions/graph';
 import { DEFAULT_GRAPH_FILTER } from '../components/metrics/index';
@@ -15,6 +19,7 @@ import { DEFAULT_GRAPH_FILTER } from '../components/metrics/index';
 const INITIAL_STATE = {
   graphFilter: DEFAULT_GRAPH_FILTER,
   metrics: {},
+  masterMetrics: {},
   loading: false,
   error: null,
   universeMetricList: [],
@@ -24,9 +29,10 @@ const INITIAL_STATE = {
 
 export default function (state = INITIAL_STATE, action) {
   switch (action.type) {
-    case CHANGE_GRAPH_QUERY_PERIOD:
+    case CHANGE_GRAPH_QUERY_PERIOD: {
       const filters = { ...action.payload };
       return { ...state, graphFilter: filters };
+    }
     case RESET_GRAPH_QUERY_PERIOD:
       return { ...state, graphFilter: null };
     case QUERY_METRICS:
@@ -37,27 +43,74 @@ export default function (state = INITIAL_STATE, action) {
         ...metricData[action.panelType],
         ...action.payload.data
       };
-      return { ...state, metrics: metricData, loading: false };
+      const responseData = {
+        ...state,
+        loading: false,
+        error: false
+      };
+      responseData.metrics = metricData;
+      return responseData;
     }
-    case SELECTED_METRIC_TYPE_TAB: {
+    case QUERY_MASTER_METRICS_SUCCESS: {
+      const metricData = state?.masterMetrics;
+      metricData[action.panelType] = {
+        ...metricData[action.panelType],
+        ...action.payload.data
+      };
+      const responseData = {
+        ...state,
+        loading: false
+      };
+      responseData.masterMetrics = metricData;
+      return responseData;
+    }
+    case SELECTED_METRIC_TYPE_TAB:
       return { ...state, tabName: action.tabName };
-    }
     case QUERY_METRICS_FAILURE: {
       const metricData = state.metrics;
       metricData[action.panelType] = { error: true };
-      return { ...state, metrics: metricData, error: action.payload.response, loading: false };
+      const responseData = {
+        ...state,
+        error: action.payload.response,
+        loading: false
+      };
+      responseData.metrics = metricData;
+      return responseData;
+    }
+    case SET_GRAPH_FILTER: {
+      const filters = { ...action.payload };
+      return { ...state, graphFilter: filters };
+    }
+
+    case QUERY_MASTER_METRICS_FAILURE: {
+      const metricData = state.metrics;
+      metricData[action.panelType] = { error: true };
+      const responseData = {
+        ...state,
+        error: action.payload.response,
+        loading: false
+      };
+      responseData.masterMetrics = metricData;
+      return responseData;
     }
     case RESET_METRICS:
-      // Graph Filter needs to be reset when user jumps to metrics view in different places
       return {
         ...state,
         metrics: {},
+        masterMetrics: {},
         loading: false,
         panelType: null,
+        error: null
+      };
+    case RESET_GRAPH_FILTER:
+      // Graph Filter needs to be reset when user jumps to metrics view in different places
+      return {
+        ...state,
         graphFilter: DEFAULT_GRAPH_FILTER
       };
-    case TOGGLE_PROMETHEUS_QUERY:
+    case TOGGLE_PROMETHEUS_QUERY: {
       return { ...state, prometheusQueryEnabled: !state.prometheusQueryEnabled };
+    }
     default:
       return state;
   }

@@ -30,8 +30,8 @@
 
 namespace yb {
 class MetricEntity;
-class Histogram;
-class HistogramPrototype;
+class EventStats;
+class EventStatsPrototype;
 
 template <class T>
 class AtomicGauge;
@@ -54,17 +54,42 @@ class StatisticsMetricImpl : public Statistics {
 
   uint64_t getTickerCount(uint32_t ticker_type) const override;
   void histogramData(uint32_t histogram_type, HistogramData* const data) const override;
+  const yb::AggregateStats& getAggregateStats(uint32_t histogramType) const override;
 
   void setTickerCount(uint32_t ticker_type, uint64_t count) override;
   void recordTick(uint32_t ticker_type, uint64_t count) override;
   void measureTime(uint32_t histogram_type, uint64_t value) override;
+  void addHistogram(uint32_t histogramType, const yb::AggregateStats& stats) override;
   void resetTickersForTest() override;
 
   const char* GetTickerName(uint32_t ticker_type) const override;
 
  private:
-  std::vector<scoped_refptr<yb::Histogram>> histograms_;
+  std::vector<scoped_refptr<yb::EventStats>> histograms_;
   std::vector<scoped_refptr<yb::AtomicGauge<uint64_t>>> tickers_;
+};
+
+class ScopedStatistics : public Statistics {
+ public:
+  ScopedStatistics();
+
+  uint64_t getTickerCount(uint32_t ticker_type) const override;
+  void histogramData(uint32_t histogram_type, HistogramData* const data) const override;
+  const yb::AggregateStats& getAggregateStats(uint32_t histogramType) const override;
+
+  void setTickerCount(uint32_t ticker_type, uint64_t count) override;
+  void recordTick(uint32_t ticker_type, uint64_t count) override;
+  void measureTime(uint32_t histogram_type, uint64_t value) override;
+  void addHistogram(uint32_t histogramType, const yb::AggregateStats& stats) override;
+  void resetTickersForTest() override;
+
+  const char* GetTickerName(uint32_t ticker_type) const override;
+
+  void MergeAndClear(Statistics* target);
+
+ private:
+  std::vector<uint64_t> tickers_;
+  std::vector<yb::AggregateStats> histograms_;
 };
 
 // Utility functions

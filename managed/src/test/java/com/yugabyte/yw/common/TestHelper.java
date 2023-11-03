@@ -5,11 +5,16 @@ package com.yugabyte.yw.common;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
-import io.ebean.Ebean;
-import io.ebean.EbeanServer;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Universe;
+import io.ebean.DB;
+import io.ebean.Database;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileWriter;
@@ -76,10 +81,10 @@ public class TestHelper {
   }
 
   public static void shutdownDatabase() {
-    EbeanServer server = Ebean.getServer("default");
-    if (server != null) {
-      server.shutdown(false, false);
-    }
+    Database server = DB.byName("default");
+    server.shutdown(false, false);
+    Database perfAdvisorServer = DB.byName("perf_advisor");
+    perfAdvisorServer.shutdown(false, false);
   }
 
   public static void createTarGzipFiles(List<Path> paths, Path output) throws IOException {
@@ -108,5 +113,72 @@ public class TestHelper {
 
       tOut.finish();
     }
+  }
+
+  public static ObjectNode getFakeKmsAuthConfig(KeyProvider keyProvider) {
+    ObjectNode fakeAuthConfig = new ObjectMapper().createObjectNode();
+    switch (keyProvider) {
+      case AWS:
+        fakeAuthConfig.put("name", "fake-aws-kms-config");
+        fakeAuthConfig.put("AWS_ACCESS_KEY_ID", "fake-access-key");
+        fakeAuthConfig.put("AWS_SECRET_ACCESS_KEY", "fake-secret-access");
+        fakeAuthConfig.put("AWS_KMS_ENDPOINT", "fake-kms-endpoint");
+        fakeAuthConfig.put("cmk_policy", "fake-cmk-policy");
+        fakeAuthConfig.put("AWS_REGION", "us-west-1");
+        fakeAuthConfig.put("cmk_id", "fake-cmk-id");
+        break;
+      case GCP:
+        fakeAuthConfig.put("name", "fake-gcp-kms-config");
+        fakeAuthConfig.put("LOCATION_ID", "global");
+        fakeAuthConfig.put("PROTECTION_LEVEL", "HSM");
+        fakeAuthConfig.put("GCP_KMS_ENDPOINT", "fake-kms-endpoint");
+        fakeAuthConfig.put("KEY_RING_ID", "yb-kr");
+        fakeAuthConfig.put("CRYPTO_KEY_ID", "yb-ck");
+
+        // Populate GCP config
+        ObjectNode fakeGcpConfig = fakeAuthConfig.putObject("GCP_CONFIG");
+        fakeGcpConfig.put("type", "service_account");
+        fakeGcpConfig.put("project_id", "yugabyte");
+        break;
+      case AZU:
+        fakeAuthConfig.put("name", "fake-azu-kms-config");
+        fakeAuthConfig.put("CLIENT_ID", "fake-client-id");
+        fakeAuthConfig.put("CLIENT_SECRET", "fake-client-secret");
+        fakeAuthConfig.put("TENANT_ID", "fake-tenant-id");
+        fakeAuthConfig.put("AZU_VAULT_URL", "fake-vault-url");
+        fakeAuthConfig.put("AZU_KEY_NAME", "fake-key-name");
+        fakeAuthConfig.put("AZU_KEY_ALGORITHM", "RSA");
+        fakeAuthConfig.put("AZU_KEY_SIZE", 2048);
+        break;
+      case HASHICORP:
+        fakeAuthConfig.put("name", "fake-hc-kms-config");
+        fakeAuthConfig.put("HC_VAULT_ADDRESS", "fake-vault-address");
+        fakeAuthConfig.put("HC_VAULT_TOKEN", "fake-vault-token");
+        fakeAuthConfig.put("HC_VAULT_MOUNT_PATH", "fake-mount-path");
+        fakeAuthConfig.put("HC_VAULT_ENGINE", "fake-vault-engine");
+        break;
+      case SMARTKEY:
+        break;
+    }
+
+    return fakeAuthConfig;
+  }
+
+  public static void updateUniverseVersion(Universe universe, String version) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
+    userIntent.ybSoftwareVersion = version;
+    details.upsertPrimaryCluster(userIntent, null);
+    universe.setUniverseDetails(details);
+    universe.save();
+  }
+
+  public static void updateUniverseSystemdDetails(Universe universe) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
+    userIntent.useSystemd = true;
+    details.upsertPrimaryCluster(userIntent, null);
+    universe.setUniverseDetails(details);
+    universe.save();
   }
 }

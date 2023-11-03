@@ -21,7 +21,7 @@
 #include "yb/common/ql_value.h"
 
 #include "yb/common/transaction.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.h"
@@ -36,30 +36,34 @@
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/env.h"
+#include "yb/util/flags.h"
 #include "yb/util/path_util.h"
+#include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tostring.h"
 
-using std::endl;
-using std::make_shared;
 using std::string;
 using std::unique_ptr;
 using std::vector;
 using std::stringstream;
 
-using strings::Substitute;
-
 using yb::util::ApplyEagerLineContinuation;
-using yb::FormatBytesAsStr;
 using yb::util::TrimStr;
 using yb::util::LeftShiftTextBlock;
 using yb::util::TrimCppComments;
 
+DECLARE_bool(ycql_enable_packed_row);
+
 namespace yb {
 namespace docdb {
+
+using dockv::DocKey;
+using dockv::KeyEntryValue;
+using dockv::SubDocKey;
+using dockv::ValueEntryType;
 
 namespace {
 
@@ -97,20 +101,18 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     Fail();
   }
 
-  void Cleanup(TransactionIdSet&& set) override {
+  Status Cleanup(TransactionIdSet&& set) override {
     Fail();
+    return STATUS(NotSupported, "Cleanup not implemented");
   }
 
-  void FillPriorities(
+  Status FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override {
     Fail();
+    return STATUS(NotSupported, "FillPriorities not implemented");
   }
 
-  void FillStatusTablets(std::vector<BlockingTransactionData>* inout) override {
-    Fail();
-  }
-
-  boost::optional<TabletId> FindStatusTablet(const TransactionId& id) override {
+  Result<boost::optional<TabletId>> FindStatusTablet(const TransactionId& id) override {
     return boost::none;
   }
 
@@ -127,6 +129,10 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     return result;
   }
 
+  void RecordConflictResolutionKeysScanned(int64_t num_keys) override {}
+
+  void RecordConflictResolutionScanLatency(MonoDelta latency) override {}
+
  private:
   static void Fail() {
     LOG(FATAL) << "Internal error: trying to get transaction status for non transactional table";
@@ -141,222 +147,50 @@ const TransactionOperationContext kNonTransactionalOperationContext = {
     TransactionId::Nil(), &kNonTransactionalStatusProvider
 };
 
-ValueRef GenRandomPrimitiveValue(RandomNumberGenerator* rng, QLValuePB* holder) {
-  static vector<string> kFruit = {
-      "Apple",
-      "Apricot",
-      "Avocado",
-      "Banana",
-      "Bilberry",
-      "Blackberry",
-      "Blackcurrant",
-      "Blood orange",
-      "Blueberry",
-      "Boysenberry",
-      "Cantaloupe",
-      "Cherimoya",
-      "Cherry",
-      "Clementine",
-      "Cloudberry",
-      "Coconut",
-      "Cranberry",
-      "Cucumber",
-      "Currant",
-      "Custard apple",
-      "Damson",
-      "Date",
-      "Decaisnea Fargesii",
-      "Dragonfruit",
-      "Durian",
-      "Elderberry",
-      "Feijoa",
-      "Fig",
-      "Goji berry",
-      "Gooseberry",
-      "Grape",
-      "Grapefruit",
-      "Guava",
-      "Honeyberry",
-      "Honeydew",
-      "Huckleberry",
-      "Jabuticaba",
-      "Jackfruit",
-      "Jambul",
-      "Jujube",
-      "Juniper berry",
-      "Kiwifruit",
-      "Kumquat",
-      "Lemon",
-      "Lime",
-      "Longan",
-      "Loquat",
-      "Lychee",
-      "Mandarine",
-      "Mango",
-      "Marionberry",
-      "Melon",
-      "Miracle fruit",
-      "Mulberry",
-      "Nance",
-      "Nectarine",
-      "Olive",
-      "Orange",
-      "Papaya",
-      "Passionfruit",
-      "Peach",
-      "Pear",
-      "Persimmon",
-      "Physalis",
-      "Pineapple",
-      "Plantain",
-      "Plum",
-      "Plumcot (or Pluot)",
-      "Pomegranate",
-      "Pomelo",
-      "Prune (dried plum)",
-      "Purple mangosteen",
-      "Quince",
-      "Raisin",
-      "Rambutan",
-      "Raspberry",
-      "Redcurrant",
-      "Salak",
-      "Salal berry",
-      "Salmonberry",
-      "Satsuma",
-      "Star fruit",
-      "Strawberry",
-      "Tamarillo",
-      "Tamarind",
-      "Tangerine",
-      "Tomato",
-      "Ugli fruit",
-      "Watermelon",
-      "Yuzu"
-  };
-  switch ((*rng)() % 6) {
-    case 0:
-      *holder = QLValue::Primitive(static_cast<int64_t>((*rng)()));
-      return ValueRef(*holder);
-    case 1: {
-      string s;
-      for (size_t j = 0; j < (*rng)() % 50; ++j) {
-        s.push_back((*rng)() & 0xff);
-      }
-      *holder = QLValue::Primitive(s);
-      return ValueRef(*holder);
-    }
-    case 2: return ValueRef(ValueEntryType::kNullLow);
-    case 3: return ValueRef(ValueEntryType::kTrue);
-    case 4: return ValueRef(ValueEntryType::kFalse);
-    case 5: {
-      *holder = QLValue::Primitive(kFruit[(*rng)() % kFruit.size()]);
-      return ValueRef(*holder);
-    }
+ValueRef GenRandomPrimitiveValue(dockv::RandomNumberGenerator* rng, QLValuePB* holder) {
+  auto custom_value_type = dockv::GenRandomPrimitiveValue(rng, holder);
+  if (custom_value_type != dockv::ValueEntryType::kInvalid) {
+    return ValueRef(custom_value_type);
   }
-  LOG(FATAL) << "Should never get here";
-  return ValueRef(ValueEntryType::kNullLow);  // to make the compiler happy
+  return ValueRef(*holder);
 }
 
-PrimitiveValue GenRandomPrimitiveValue(RandomNumberGenerator* rng) {
-  QLValuePB value_holder;
-  auto value_ref = GenRandomPrimitiveValue(rng, &value_holder);
-  if (value_ref.custom_value_type() != ValueEntryType::kInvalid) {
-    return PrimitiveValue(value_ref.custom_value_type());
-  }
-  return PrimitiveValue::FromQLValuePB(value_holder);
-}
-
-KeyEntryValue GenRandomKeyEntryValue(RandomNumberGenerator* rng) {
-  QLValuePB value_holder;
-  auto value_ref = GenRandomPrimitiveValue(rng, &value_holder);
-  if (value_ref.custom_value_type() != ValueEntryType::kInvalid) {
-    return KeyEntryValue(static_cast<KeyEntryType>(value_ref.custom_value_type()));
-  }
-  return KeyEntryValue::FromQLValuePB(value_holder, SortingType::kNotSpecified);
-}
-
-// Generate a vector of random primitive values.
-vector<KeyEntryValue> GenRandomKeyEntryValues(
-    RandomNumberGenerator* rng, int max_num = kMaxNumRandomDocKeyParts) {
-  vector<KeyEntryValue> result;
-  for (size_t i = 0; i < (*rng)() % (max_num + 1); ++i) {
-    result.push_back(GenRandomKeyEntryValue(rng));
-  }
-  return result;
-}
-
-DocKey CreateMinimalDocKey(RandomNumberGenerator* rng, UseHash use_hash) {
-  return use_hash
-      ? DocKey(static_cast<DocKeyHash>((*rng)()), std::vector<KeyEntryValue>(),
-               std::vector<KeyEntryValue>())
-      : DocKey();
-}
-
-DocKey GenRandomDocKey(RandomNumberGenerator* rng, UseHash use_hash) {
-  if (use_hash) {
-    return DocKey(
-        static_cast<uint32_t>((*rng)()),  // this is just a random value, not a hash function result
-        GenRandomKeyEntryValues(rng),
-        GenRandomKeyEntryValues(rng));
-  } else {
-    return DocKey(GenRandomKeyEntryValues(rng));
-  }
-}
-
-vector<DocKey> GenRandomDocKeys(RandomNumberGenerator* rng, UseHash use_hash, int num_keys) {
-  vector<DocKey> result;
-  result.push_back(CreateMinimalDocKey(rng, use_hash));
-  for (int iteration = 0; iteration < num_keys; ++iteration) {
-    result.push_back(GenRandomDocKey(rng, use_hash));
-  }
-  return result;
-}
-
-vector<SubDocKey> GenRandomSubDocKeys(RandomNumberGenerator* rng, UseHash use_hash, int num_keys) {
-  vector<SubDocKey> result;
-  result.push_back(SubDocKey(CreateMinimalDocKey(rng, use_hash), HybridTime((*rng)())));
-  for (int iteration = 0; iteration < num_keys; ++iteration) {
-    result.push_back(SubDocKey(GenRandomDocKey(rng, use_hash)));
-    for (size_t i = 0; i < (*rng)() % (kMaxNumRandomSubKeys + 1); ++i) {
-      result.back().AppendSubKeysAndMaybeHybridTime(GenRandomKeyEntryValue(rng));
-    }
-    const IntraTxnWriteId write_id = static_cast<IntraTxnWriteId>(
-        (*rng)() % 2 == 0 ? 0 : (*rng)() % 1000000);
-    result.back().set_hybrid_time(DocHybridTime(HybridTime((*rng)()), write_id));
-  }
-  return result;
-}
 // ------------------------------------------------------------------------------------------------
 
-void LogicalRocksDBDebugSnapshot::Capture(rocksdb::DB* rocksdb) {
+Status LogicalRocksDBDebugSnapshot::Capture(rocksdb::DB* rocksdb) {
   kvs.clear();
   rocksdb::ReadOptions read_options;
   auto iter = unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_options));
   iter->SeekToFirst();
-  while (iter->Valid()) {
+  while (VERIFY_RESULT(iter->CheckedValid())) {
     kvs.emplace_back(iter->key().ToBuffer(), iter->value().ToBuffer());
     iter->Next();
   }
   // Save the DocDB debug dump as a string so we can check that we've properly restored the snapshot
-  // in RestoreTo.
-  docdb_debug_dump_str = DocDBDebugDumpToStr(rocksdb, SchemaPackingStorage());
+  // in RestoreTo.  It's okay that we have no packing information here because even without packing
+  // information, the debugging dump has all the information: when we are missing packing
+  // information, we still dump out the value in raw form.
+  docdb_debug_dump_str = DocDBDebugDumpToStr(rocksdb, nullptr /*schema_packing_provider*/);
+  return Status::OK();
 }
 
-void LogicalRocksDBDebugSnapshot::RestoreTo(rocksdb::DB *rocksdb) const {
+Status LogicalRocksDBDebugSnapshot::RestoreTo(rocksdb::DB* rocksdb) const {
   rocksdb::ReadOptions read_options;
   rocksdb::WriteOptions write_options;
   auto iter = unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_options));
   iter->SeekToFirst();
-  while (iter->Valid()) {
-    ASSERT_OK(rocksdb->Delete(write_options, iter->key()));
+  while (VERIFY_RESULT(iter->CheckedValid())) {
+    RETURN_NOT_OK(rocksdb->Delete(write_options, iter->key()));
     iter->Next();
   }
   for (const auto& kv : kvs) {
-    ASSERT_OK(rocksdb->Put(write_options, kv.first, kv.second));
+    RETURN_NOT_OK(rocksdb->Put(write_options, kv.first, kv.second));
   }
-  ASSERT_OK(FullyCompactDB(rocksdb));
-  ASSERT_EQ(docdb_debug_dump_str, DocDBDebugDumpToStr(rocksdb, SchemaPackingStorage()));
+  RETURN_NOT_OK(FullyCompactDB(rocksdb));
+  SCHECK_EQ(
+      docdb_debug_dump_str, DocDBDebugDumpToStr(rocksdb, nullptr /*schema_packing_provider*/),
+      InternalError, "DocDB dump mismatch");
+  return Status::OK();
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -364,7 +198,7 @@ void LogicalRocksDBDebugSnapshot::RestoreTo(rocksdb::DB *rocksdb) const {
 DocDBLoadGenerator::DocDBLoadGenerator(DocDBRocksDBFixture* fixture,
                                        const int num_doc_keys,
                                        const int num_unique_subkeys,
-                                       const UseHash use_hash,
+                                       const dockv::UseHash use_hash,
                                        const ResolveIntentsDuringRead resolve_intents,
                                        const int deletion_chance,
                                        const int max_nesting_level,
@@ -373,7 +207,7 @@ DocDBLoadGenerator::DocDBLoadGenerator(DocDBRocksDBFixture* fixture,
     : fixture_(fixture),
       doc_keys_(GenRandomDocKeys(&random_, use_hash, num_doc_keys)),
       resolve_intents_(resolve_intents),
-      possible_subkeys_(GenRandomKeyEntryValues(&random_, num_unique_subkeys)),
+      possible_subkeys_(dockv::GenRandomKeyEntryValues(&random_, num_unique_subkeys)),
       iteration_(1),
       deletion_chance_(deletion_chance),
       max_nesting_level_(max_nesting_level),
@@ -389,6 +223,11 @@ DocDBLoadGenerator::DocDBLoadGenerator(DocDBRocksDBFixture* fixture,
 
 DocDBLoadGenerator::~DocDBLoadGenerator() = default;
 
+template<typename T>
+const T& RandomElementOf(const std::vector<T>& v, dockv::RandomNumberGenerator* rng) {
+  return v[(*rng)() % v.size()];
+}
+
 void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   // Increment the iteration right away so we can return from the function at any time.
   const int current_iteration = iteration_;
@@ -397,9 +236,9 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   DOCDB_DEBUG_LOG("Starting iteration i=$0", current_iteration);
   auto dwb = fixture_->MakeDocWriteBatch();
   const auto& doc_key = RandomElementOf(doc_keys_, &random_);
-  const KeyBytes encoded_doc_key(doc_key.Encode());
+  const auto encoded_doc_key = doc_key.Encode();
 
-  const SubDocument* current_doc = in_mem_docdb_.GetDocument(doc_key);
+  const auto* current_doc = in_mem_docdb_.GetDocument(doc_key);
 
   bool is_deletion = false;
   if (current_doc != nullptr &&
@@ -424,7 +263,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
     }
   }
 
-  const DocPath doc_path(encoded_doc_key, subkeys);
+  const dockv::DocPath doc_path(encoded_doc_key, subkeys);
   QLValuePB value_holder;
   const auto value = GenRandomPrimitiveValue(&random_, &value_holder);
   const HybridTime hybrid_time(current_iteration);
@@ -439,18 +278,20 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
 
   if (is_deletion) {
     DOCDB_DEBUG_LOG("Iteration $0: deleting doc path $1", current_iteration, doc_path.ToString());
-    ASSERT_OK(dwb.DeleteSubDoc(doc_path, ReadHybridTime::Max()));
+    ASSERT_OK(dwb.DeleteSubDoc(doc_path, ReadOperationData()));
     ASSERT_OK(in_mem_docdb_.DeleteSubDoc(doc_path));
   } else {
-    DOCDB_DEBUG_LOG("Iteration $0: setting value at doc path $1 to $2",
-                    current_iteration, doc_path.ToString(), value.ToString());
+    DOCDB_DEBUG_LOG(
+        "Iteration $0: setting value at doc path $1 to $2", current_iteration, doc_path.ToString(),
+        value.ToString());
     auto pv = value.custom_value_type() != ValueEntryType::kInvalid
-        ? PrimitiveValue(value.custom_value_type())
-        : PrimitiveValue::FromQLValuePB(value_holder);
+                  ? dockv::PrimitiveValue(value.custom_value_type())
+                  : dockv::PrimitiveValue::FromQLValuePB(value_holder);
     ASSERT_OK(in_mem_docdb_.SetPrimitive(doc_path, pv));
     const auto set_primitive_status = dwb.SetPrimitive(doc_path, value);
     if (!set_primitive_status.ok()) {
-      DocDBDebugDump(rocksdb(), std::cerr, SchemaPackingStorage(), StorageDbType::kRegular);
+      DocDBDebugDump(
+          rocksdb(), std::cerr, fixture_ /*schema_packing_provider*/, StorageDbType::kRegular);
       LOG(INFO) << "doc_path=" << doc_path.ToString();
     }
     ASSERT_OK(set_primitive_status);
@@ -460,7 +301,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   // sitting on top of RocksDB, and on the in-memory single-threaded debug version used for
   // validation.
   ASSERT_OK(fixture_->WriteToRocksDB(dwb, hybrid_time));
-  const SubDocument* const subdoc_from_mem = in_mem_docdb_.GetDocument(doc_key);
+  const auto* const subdoc_from_mem = in_mem_docdb_.GetDocument(doc_key);
 
   TransactionOperationContext txn_op_context = GetReadOperationTransactionContext();
 
@@ -476,7 +317,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
     auto encoded_sub_doc_key = sub_doc_key.EncodeWithoutHt();
     auto doc_from_rocksdb_opt = ASSERT_RESULT(TEST_GetSubDocument(
       encoded_sub_doc_key, doc_db(), rocksdb::kDefaultQueryId, txn_op_context,
-      CoarseTimePoint::max() /* deadline */));
+      ReadOperationData()));
     if (is_deletion && (
             doc_path.num_subkeys() == 0 ||  // Deleted the entire sub-document,
             !doc_already_exists_in_mem)) {  // or the document did not exist in the first place.
@@ -634,7 +475,10 @@ TransactionOperationContext DocDBLoadGenerator::GetReadOperationTransactionConte
 
 // ------------------------------------------------------------------------------------------------
 
-void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEq(const string &expected) {
+void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEq(
+    const std::string &pre_expected, const std::string& packed_row_expected) {
+  const auto& expected = !packed_row_expected.empty() && YcqlPackedRowEnabled()
+      ? packed_row_expected : pre_expected;
   const string debug_dump_str = TrimDocDbDebugDumpStr(DocDBDebugDumpToStr());
   const string expected_str = TrimDocDbDebugDumpStr(expected);
   if (expected_str != debug_dump_str) {
@@ -661,6 +505,18 @@ void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEq(const string &expected) {
 void DocDBRocksDBFixture::FullyCompactHistoryBefore(HybridTime history_cutoff) {
   LOG(INFO) << "Major-compacting history before hybrid_time " << history_cutoff;
   SetHistoryCutoffHybridTime(history_cutoff);
+  auto se = ScopeExit([this] {
+    SetHistoryCutoffHybridTime(HybridTime::kMin);
+  });
+
+  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_OK(FullyCompactDB(regular_db_.get()));
+}
+
+void DocDBRocksDBFixture::FullyCompactHistoryBefore(
+    HistoryCutoff history_cutoff) {
+  LOG(INFO) << "Major-compacting history before hybrid_time " << history_cutoff;
+  retention_policy_->SetHistoryCutoff(history_cutoff);
   auto se = ScopeExit([this] {
     SetHistoryCutoffHybridTime(HybridTime::kMin);
   });
@@ -807,6 +663,14 @@ Status DocDBRocksDBFixture::InitRocksDBOptions() {
 
 string TrimDocDbDebugDumpStr(const string& debug_dump_str) {
   return TrimStr(ApplyEagerLineContinuation(LeftShiftTextBlock(TrimCppComments(debug_dump_str))));
+}
+
+void DisableYcqlPackedRow() {
+  ASSERT_OK(SET_FLAG(ycql_enable_packed_row, false));
+}
+
+bool YcqlPackedRowEnabled() {
+  return FLAGS_ycql_enable_packed_row;
 }
 
 }  // namespace docdb

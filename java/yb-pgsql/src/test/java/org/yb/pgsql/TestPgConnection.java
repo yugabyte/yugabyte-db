@@ -13,28 +13,37 @@
 
 package org.yb.pgsql;
 
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertNotEquals;
+import static org.yb.AssertionWrappers.fail;
+
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.util.concurrent.TimeUnit;
+import org.yb.util.ProcessUtil;
+import org.yb.YBTestRunner;
 
 import com.yugabyte.util.PSQLException;
 
-import java.sql.*;
-import java.util.*;
-
-import static org.yb.AssertionWrappers.*;
-import org.yb.YBTestRunner;
-
-@RunWith(value=YBTestRunner.class)
+@RunWith(value = YBTestRunner.class)
 public class TestPgConnection extends BasePgSQLTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(TestPgSequences.class);
+  private static final int MAX_CONNECTIONS = 15;
 
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_max_connections", String.valueOf(MAX_CONNECTIONS));
     return flagMap;
   }
 
@@ -53,45 +62,70 @@ public class TestPgConnection extends BasePgSQLTest {
     return 1;
   }
 
+  private void assertAlreadyAtMaxConnections() throws Exception {
+    try {
+      createConnection();
+      fail("Expected connection to fail because we have exceeded the maximum");
+    } catch (PSQLException e) {
+      assertEquals( "FATAL: sorry, too many clients already", e.getMessage());
+    }
+  }
+
+  private int getRemainingAvailableConnections() throws Exception {
+    try (Statement stmt = createConnection().createStatement()) {
+      ResultSet result = stmt.executeQuery("SELECT COUNT(*) FROM pg_stat_activity");
+      result.next();
+      return MAX_CONNECTIONS - result.getInt("count") + 1;
+    }
+  }
+
+  private Connection createConnection() throws Exception {
+    ConnectionBuilder b = getConnectionBuilder();
+    b.withTServer(0);
+    return b.connect();
+  }
+
   private Connection[] createConnections(int numConnections) throws Exception {
     final Connection[] connections = new Connection[numConnections];
-    // Create numConnections postgres connections
     for (int i = 0; i < numConnections; ++i) {
-      ConnectionBuilder b = getConnectionBuilder();
-      b.withTServer(0);
-      connections[i] = b.connect();
+      connections[i] = createConnection();
     }
     return connections;
   }
 
-  @Test
-  public void testConnectionKills() throws Exception {
-    final int NUM_CONNECTIONS = 8;
-    final Connection[] connections = createConnections(NUM_CONNECTIONS);
+  private List<Integer> getConnectionPids(Connection[] connections) throws Exception {
     List<Integer> backendPids = new ArrayList<>();
-
-    // Create postgres connections and store their pids in a list
-    for (int i = 0; i < NUM_CONNECTIONS; ++i) {
-      try (Statement stmt = connections[i].createStatement()) {
-        ResultSet result = stmt.executeQuery(String.format("SELECT pg_backend_pid()"));
+    for (Connection connection : connections) {
+      try (Statement stmt = connection.createStatement()) {
+        ResultSet result = stmt.executeQuery("SELECT pg_backend_pid()");
         while (result.next()) {
           backendPids.add(Integer.parseInt(result.getString("pg_backend_pid")));
         }
       }
     }
+    return backendPids;
+  }
 
-    // pick a random postgres connection and issue a SIGKILL to it
-    Random random = new Random(System.currentTimeMillis());
-    int killedPidIdx = random.nextInt(NUM_CONNECTIONS);
-    Integer killedPid = backendPids.get(killedPidIdx);
-    Runtime rt = Runtime.getRuntime();
-    rt.exec("kill -9 " + killedPid);
+  @Test
+  public void testConnectionKills() throws Exception {
+    final int NUM_CONNECTIONS = getRemainingAvailableConnections();
+
+    final Connection[] connections = createConnections(NUM_CONNECTIONS);
+    final List<Integer> backendPids = getConnectionPids(connections);
+
+    assertAlreadyAtMaxConnections();
+
+    // Pick a random postgres connection and issue a SIGKILL to it
+    final Random random = new Random(System.currentTimeMillis());
+    final int killedPidIdx = random.nextInt(NUM_CONNECTIONS);
+    final Integer killedPid = backendPids.get(killedPidIdx);
+    ProcessUtil.signalProcess(killedPid, "KILL");
 
     // Check for liveness of all the postgres connections except the one
     // that is killed.
     for (int i = 0; i < NUM_CONNECTIONS; ++i) {
       try (Statement stmt = connections[i].createStatement()) {
-        stmt.execute(String.format("SELECT " + i + " AS text"));
+        stmt.execute(String.format("SELECT %d AS text", i));
         assertNotEquals(backendPids.get(i), killedPid);
       } catch (PSQLException e) {
         assertEquals(backendPids.get(i), killedPid);
@@ -99,14 +133,40 @@ public class TestPgConnection extends BasePgSQLTest {
     }
 
     // Addding new connections also work
-    ConnectionBuilder b = getConnectionBuilder();
-    b.withTServer(0);
-    final Connection newConnection = b.connect();
+    final Connection newConnection = createConnection();
     try (Statement stmt = newConnection.createStatement()) {
-      ResultSet result = stmt.executeQuery(String.format("SELECT pg_backend_pid()"));
+      ResultSet result = stmt.executeQuery("SELECT pg_backend_pid()");
       while (result.next()) {
         LOG.info("add new connection pg_backend_pid: " +
-          Integer.parseInt(result.getString("pg_backend_pid")));
+            Integer.parseInt(result.getString("pg_backend_pid")));
+      }
+    }
+  }
+
+  @Test
+  public void testConnectionKillsAndRestarts() throws Exception {
+    final int NUM_CONNECTIONS = getRemainingAvailableConnections();
+
+    // Create N connections, kill them all. Repeat this process a few times
+    // to verify that we don't eventually run out
+    for (int repetition = 0; repetition < 3; ++repetition) {
+      final Connection[] connections = createConnections(NUM_CONNECTIONS);
+      final List<Integer> backendPids = getConnectionPids(connections);
+
+      assertAlreadyAtMaxConnections();
+
+      // Force kill all processes
+      for (int pid : backendPids) {
+        ProcessUtil.signalProcess(pid, "KILL");
+      }
+
+      // Verify that all the connections are invalid
+      for (int i = 0; i < NUM_CONNECTIONS; ++i) {
+        try (Statement stmt = connections[i].createStatement()) {
+          stmt.execute(String.format("SELECT %d AS text", i));
+          fail("Expected statement to fail because the connection is invalid");
+        } catch (PSQLException e) {
+        }
       }
     }
   }

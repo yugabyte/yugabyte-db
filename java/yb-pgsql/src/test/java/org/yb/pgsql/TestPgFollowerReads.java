@@ -18,31 +18,21 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.yb.minicluster.RocksDBMetrics;
-
 import org.yb.util.BuildTypeUtil;
-import org.yb.util.YBTestRunnerNonTsanOnly;
-import org.yb.util.RegexMatcher;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
-import java.math.BigDecimal;
 import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import static org.yb.AssertionWrappers.*;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgFollowerReads extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgFollowerReads.class);
   private static int kMaxClockSkewMs = 100;
@@ -154,7 +144,7 @@ public class TestPgFollowerReads extends BasePgSQLTest {
       statement.execute(
           "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL REPEATABLE READ");
 
-      // yb_read_from_followers enabled with SERIALIZABL
+      // yb_read_from_followers enabled with SERIALIZABLE
       statement.execute(
           "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE");
 
@@ -457,5 +447,27 @@ public class TestPgFollowerReads extends BasePgSQLTest {
   @Test
   public void testSelectConsistentPrefix() throws Exception {
     testConsistentPrefix(7000, /* use_ordered_by */ false, /* get_count */ false);
+  }
+
+  // The test checks that follower reads are not used if sys catalog reads are to be performed.
+  @Test
+  public void testPgSysCatalogNoFollowerReads() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("SET yb_follower_read_staleness_ms = " + (2 * kMaxClockSkewMs + 1));
+      stmt.execute("SET yb_read_from_followers = true");
+      stmt.execute("BEGIN TRANSACTION READ ONLY");
+      long startReadRPCCount = getMasterReadRPCCount();
+      stmt.execute("SELECT EXTRACT(month FROM NOW())");
+      long endReadRPCCount = getMasterReadRPCCount();
+      stmt.execute("COMMIT");
+      assertGreaterThan(endReadRPCCount, startReadRPCCount);
+      long sysCatalogFolowerReads = getMetricCountForTable(
+          getMasterMetricSources(), "consistent_prefix_read_requests", "sys.catalog");
+      assertEquals(0L, sysCatalogFolowerReads);
+    }
+  }
+
+  private long getMasterReadRPCCount() throws Exception {
+    return getReadRPCMetric(getMasterMetricSources()).count;
   }
 }

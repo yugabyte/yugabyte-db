@@ -42,6 +42,7 @@
 
 #include <boost/function.hpp>
 #include <boost/functional/hash/hash.hpp>
+#include <boost/range/any_range.hpp>
 
 #include <gtest/gtest_prod.h>
 
@@ -52,8 +53,15 @@
 #include "yb/common/clock.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/pg_types.h"
 #include "yb/common/retryable_request.h"
+#include "yb/common/schema.h"
+#include "yb/common/snapshot.h"
 #include "yb/common/transaction.h"
+
+#include "yb/encryption/encryption.pb.h"
+
+#include "yb/dockv/dockv_fwd.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
@@ -64,6 +72,8 @@
 #include "yb/master/master_replication.fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
+
+#include "yb/server/clock.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/mem_tracker.h"
@@ -82,9 +92,6 @@ class CloudInfoPB;
 class MemTracker;
 class MetricEntity;
 
-namespace cdc {
-struct StreamMetaData;
-}
 namespace master {
 class ReplicationInfoPB;
 class TabletLocationsPB;
@@ -98,13 +105,55 @@ class TabletServerServiceProxy;
 
 namespace client {
 
+struct NamespaceInfo {
+    master::NamespaceIdentifierPB id;
+    master::SysNamespaceEntryPB_State state;
+    bool colocated;
+};
+
+struct CDCSDKStreamInfo {
+    std::string stream_id;
+    uint32_t database_oid;
+    ReplicationSlotName cdcsdk_ysql_replication_slot_name;
+    std::unordered_map<std::string, std::string> options;
+
+    template <class PB>
+    void ToPB(PB* pb) const {
+      pb->set_stream_id(stream_id);
+      pb->set_database_oid(database_oid);
+      if (!cdcsdk_ysql_replication_slot_name.empty()) {
+        pb->set_slot_name(cdcsdk_ysql_replication_slot_name.ToString());
+      }
+    }
+
+    template <class PB>
+    static Result<CDCSDKStreamInfo> FromPB(const PB& pb) {
+      std::unordered_map<std::string, std::string> options;
+      options.reserve(pb.options_size());
+      for (const auto& option : pb.options()) {
+        options.emplace(option.key(), option.value());
+      }
+
+      auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(pb.namespace_id()));
+      auto stream_info = CDCSDKStreamInfo{
+          .stream_id = pb.stream_id(),
+          .database_oid = database_oid,
+          .cdcsdk_ysql_replication_slot_name =
+              ReplicationSlotName(pb.cdcsdk_ysql_replication_slot_name()),
+          .options = std::move(options)};
+
+      return stream_info;
+    }
+};
+
 namespace internal {
 class ClientMasterRpcBase;
 }
 
 using GetTableLocationsCallback =
     std::function<void(const Result<master::GetTableLocationsResponsePB*>&)>;
-
+using OpenTableAsyncCallback = std::function<void(const Result<YBTablePtr>&)>;
+using CreateSnapshotCallback = std::function<void(Result<TxnSnapshotId>)>;
 using MasterAddressSource = std::function<std::vector<std::string>()>;
 
 struct TransactionStatusTablets {
@@ -112,6 +161,28 @@ struct TransactionStatusTablets {
   std::vector<TabletId> placement_local_tablets;
 };
 
+struct TabletReplicaFullCompactionStatus {
+  TabletServerId ts_id;
+  TabletId tablet_id;
+  tablet::FullCompactionState full_compaction_state;
+  // Not valid if full_compaction_state == UNKNOWN.
+  // No full compaction ever been completed is represented as 0 time.
+  HybridTime last_full_compaction_time;
+};
+
+struct TableCompactionStatus {
+  tablet::FullCompactionState full_compaction_state;
+
+  // Not valid if full_compaction_state == UNKNOWN.
+  // No full compaction ever been completed is represented as 0 time.
+  HybridTime last_full_compaction_time;
+  // No admin compaction ever been requested is represented as 0 time.
+  HybridTime last_request_time;
+  std::vector<TabletReplicaFullCompactionStatus> replica_statuses;
+};
+
+using RetryableRequestIdRange =
+    boost::any_range<RetryableRequestId, boost::forward_traversal_tag, RetryableRequestId>;
 
 // Creates a new YBClient with the desired options.
 //
@@ -184,15 +255,19 @@ class YBClientBuilder {
   // The return value may indicate an error in the create operation, or a
   // misuse of the builder; in the latter case, only the last error is
   // returned.
-  Result<std::unique_ptr<YBClient>> Build(rpc::Messenger* messenger = nullptr);
+  Result<std::unique_ptr<YBClient>> Build(
+      rpc::Messenger* messenger = nullptr, const server::ClockPtr& clock = nullptr);
 
   // Creates the client which gets the messenger ownership and shuts it down on client shutdown.
-  Result<std::unique_ptr<YBClient>> Build(std::unique_ptr<rpc::Messenger>&& messenger);
+  Result<std::unique_ptr<YBClient>> Build(std::unique_ptr<rpc::Messenger>&& messenger,
+                                          const server::ClockPtr& clock);
 
  private:
   class Data;
 
-  Status DoBuild(rpc::Messenger* messenger, std::unique_ptr<client::YBClient>* client);
+  Status DoBuild(rpc::Messenger* messenger,
+                 server::ClockPtr clock,
+                 std::unique_ptr<client::YBClient>* client);
 
   std::unique_ptr<Data> data_;
 
@@ -256,6 +331,10 @@ class YBClient {
   Status BackfillIndex(const TableId& table_id, bool wait = true,
                        CoarseTimePoint deadline = CoarseTimePoint());
 
+  Status GetIndexBackfillProgress(
+      const std::vector<TableId>& index_ids,
+      google::protobuf::RepeatedField<google::protobuf::uint64>* rows_processed_entries);
+
   // Delete the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
   Status DeleteTable(const YBTableName& table_name, bool wait = true);
@@ -271,11 +350,13 @@ class YBClient {
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
   Status DeleteIndexTable(const YBTableName& table_name,
                           YBTableName* indexed_table_name = nullptr,
-                          bool wait = true);
+                          bool wait = true,
+                          const TransactionMetadata *txn = nullptr);
 
   Status DeleteIndexTable(const std::string& table_id,
                           YBTableName* indexed_table_name = nullptr,
                           bool wait = true,
+                          const TransactionMetadata *txn = nullptr,
                           CoarseTimePoint deadline = CoarseTimePoint());
 
   // Flush or compact the specified tables.
@@ -288,6 +369,9 @@ class YBClient {
                      int timeout_secs,
                      bool is_compaction);
 
+  Result<TableCompactionStatus> GetCompactionStatus(
+      const YBTableName& table_name, bool show_tablets);
+
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const YBTableName& table_name);
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const std::string id);
 
@@ -298,7 +382,7 @@ class YBClient {
 
   Status GetTableSchema(const YBTableName& table_name,
                         YBSchema* schema,
-                        PartitionSchema* partition_schema);
+                        dockv::PartitionSchema* partition_schema);
   Status GetYBTableInfo(const YBTableName& table_name, std::shared_ptr<YBTableInfo> info,
                         StatusCallback callback);
   Result<YBTableInfo> GetYBTableInfo(const YBTableName& table_name);
@@ -391,8 +475,8 @@ class YBClient {
                                      const std::string& namespace_id,
                                      bool *delete_in_progress);
 
-  YBNamespaceAlterer* NewNamespaceAlterer(const std::string& namespace_name,
-                                          const std::string& namespace_id);
+  [[nodiscard]] std::unique_ptr<YBNamespaceAlterer> NewNamespaceAlterer(
+      const std::string& namespace_name, const std::string& namespace_id);
 
   // For Postgres: reserve oids for a Postgres database.
   Status ReservePgsqlOids(const std::string& namespace_id,
@@ -411,8 +495,8 @@ class YBClient {
                                const std::string& role_name);
 
   // List all namespace identifiers.
-  Result<std::vector<master::NamespaceIdentifierPB>> ListNamespaces();
-  Result<std::vector<master::NamespaceIdentifierPB>> ListNamespaces(
+  Result<std::vector<NamespaceInfo>> ListNamespaces();
+  Result<std::vector<NamespaceInfo>> ListNamespaces(
       const boost::optional<YQLDatabase>& database_type);
 
   // Get namespace information.
@@ -431,9 +515,10 @@ class YBClient {
   Status CreateTablegroup(const std::string& namespace_name,
                           const std::string& namespace_id,
                           const std::string& tablegroup_id,
-                          const std::string& tablespace_id);
+                          const std::string& tablespace_id,
+                          const TransactionMetadata* txn);
 
-  Status DeleteTablegroup(const std::string& tablegroup_id);
+  Status DeleteTablegroup(const std::string& tablegroup_id, const TransactionMetadata* txn);
 
   // Check if the tablegroup given by 'tablegroup_id' exists.
   // Result value is set only on success.
@@ -488,35 +573,44 @@ class YBClient {
   Status DeleteUDType(const std::string &namespace_name, const std::string &type_name);
 
   // Retrieve a (user-defined) type by name.
-  Status GetUDType(const std::string &namespace_name,
-                   const std::string &type_name,
-                   std::shared_ptr<QLType> *ql_type);
+  Result<std::shared_ptr<QLType>> GetUDType(
+        const std::string &namespace_name, const std::string &type_name);
 
   // CDC Stream related methods.
 
   // Create a new CDC stream.
-  Result<CDCStreamId> CreateCDCStream(
+  Result<xrepl::StreamId> CreateCDCStream(
       const TableId& table_id,
       const std::unordered_map<std::string, std::string>& options,
       bool active = true,
-      const NamespaceId& namespace_id = "");
+      const xrepl::StreamId& db_stream_id = xrepl::StreamId::Nil());
 
-  void CreateCDCStream(const TableId& table_id,
-                       const std::unordered_map<std::string, std::string>& options,
-                       CreateCDCStreamCallback callback);
+  void CreateCDCStream(
+      const TableId& table_id,
+      const std::unordered_map<std::string, std::string>& options,
+      cdc::StreamModeTransactional transactional,
+      CreateCDCStreamCallback callback);
+
+  Result<xrepl::StreamId> CreateCDCSDKStreamForNamespace(
+      const NamespaceId& namespace_id, const std::unordered_map<std::string, std::string>& options,
+      const ReplicationSlotName& replication_slot_name = ReplicationSlotName(""));
 
   // Delete multiple CDC streams.
-  Status DeleteCDCStream(const std::vector<CDCStreamId>& streams,
-                         bool force_delete = false,
-                         bool ignore_errors = false,
-                         master::DeleteCDCStreamResponsePB* resp = nullptr);
+  Status DeleteCDCStream(
+      const std::vector<xrepl::StreamId>& streams,
+      bool force_delete = false,
+      bool ignore_errors = false,
+      master::DeleteCDCStreamResponsePB* resp = nullptr);
 
   // Delete a CDC stream.
-  Status DeleteCDCStream(const CDCStreamId& stream_id,
-                         bool force_delete = false,
-                         bool ignore_errors = false);
+  Status DeleteCDCStream(
+      const xrepl::StreamId& stream_id, bool force_delete = false, bool ignore_errors = false);
 
-  void DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback callback);
+  Status DeleteCDCStream(
+      const ReplicationSlotName& replication_slot_name, bool force_delete = false,
+      bool ignore_errors = false);
+
+  void DeleteCDCStream(const xrepl::StreamId& stream_id, StatusCallback callback);
 
   // Create a new CDC stream.
   Status GetCDCDBStreamInfo(
@@ -529,46 +623,69 @@ class YBClient {
       const StdStatusCallback& callback);
 
   // Retrieve a CDC stream.
-  Status GetCDCStream(const CDCStreamId &stream_id,
-                      NamespaceId* ns_id,
-                      std::vector<TableId>* table_ids,
-                      std::unordered_map<std::string, std::string>* options);
+  Status GetCDCStream(
+      const xrepl::StreamId& stream_id,
+      NamespaceId* ns_id,
+      std::vector<TableId>* table_ids,
+      std::unordered_map<std::string, std::string>* options,
+      cdc::StreamModeTransactional* transactional);
 
-  void GetCDCStream(const CDCStreamId& stream_id,
-                    std::shared_ptr<TableId> table_id,
-                    std::shared_ptr<std::unordered_map<std::string, std::string>> options,
-                    StdStatusCallback callback);
+  void GetCDCStream(
+      const xrepl::StreamId& stream_id,
+      std::shared_ptr<TableId> table_id,
+      std::shared_ptr<std::unordered_map<std::string, std::string>> options,
+      StdStatusCallback callback);
+
+  // List all the CDCSDK streams skipping the ones which do not have a replication slot name.
+  Result<std::vector<CDCSDKStreamInfo>> ListCDCSDKStreams();
 
   void DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback);
 
   // Update a CDC stream's options.
-  Status UpdateCDCStream(const std::vector<CDCStreamId>& stream_ids,
-                         const std::vector<master::SysCDCStreamEntryPB>& new_entries);
+  Status UpdateCDCStream(
+      const std::vector<xrepl::StreamId>& stream_ids,
+      const std::vector<master::SysCDCStreamEntryPB>& new_entries);
 
-  Result<bool> IsBootstrapRequired(const std::vector<TableId>& table_ids,
-                                   const boost::optional<CDCStreamId>& stream_id = boost::none);
+  Result<bool> IsObjectPartOfXRepl(const TableId& table_id);
+
+  Result<bool> IsBootstrapRequired(
+      const std::vector<TableId>& table_ids,
+      const boost::optional<xrepl::StreamId>& stream_id = boost::none);
+
+  Status BootstrapProducer(
+      const YQLDatabase& db_type,
+      const NamespaceName& namespace_name,
+      const std::vector<PgSchemaName>& pg_schema_names,
+      const std::vector<TableName>& table_names,
+      BootstrapProducerCallback callback);
 
   // Update consumer pollers after a producer side tablet split.
-  Status UpdateConsumerOnProducerSplit(const std::string& producer_id,
-                                       const TableId& table_id,
-                                       const master::ProducerSplitTabletInfoPB& split_info);
+  Status UpdateConsumerOnProducerSplit(
+      const cdc::ReplicationGroupId& replication_group_id,
+      const xrepl::StreamId& stream_id,
+      const master::ProducerSplitTabletInfoPB& split_info);
 
   // Update after a producer DDL change. Returns if caller should wait for a similar Consumer DDL.
-  Status UpdateConsumerOnProducerMetadata(const std::string& producer_id,
-                                          const TableId& table_id,
-                                          const tablet::ChangeMetadataRequestPB& meta_info,
-                                          master::UpdateConsumerOnProducerMetadataResponsePB *resp);
+  Status UpdateConsumerOnProducerMetadata(
+      const cdc::ReplicationGroupId& replication_group_id,
+      const xrepl::StreamId& stream_id,
+      const tablet::ChangeMetadataRequestPB& meta_info,
+      uint32_t colocation_id,
+      uint32_t producer_schema_version,
+      uint32_t consumer_schema_version,
+      master::UpdateConsumerOnProducerMetadataResponsePB* resp);
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
-      GetTableLocationsCallback callback);
+      PartitionsOnly partitions_only, GetTableLocationsCallback callback);
 
   // Find the number of tservers. This function should not be called frequently for reading or
   // writing actual data. Currently, it is called only for SQL DDL statements.
   // If primary_only is set to true, we expect the primary/sync cluster tserver count only.
   // If use_cache is set to true, we return old value.
   Status TabletServerCount(int *tserver_count, bool primary_only = false,
-      bool use_cache = false);
+      bool use_cache = false, const std::string* tablespace_id = nullptr,
+      const master::ReplicationInfoPB* replication_info = nullptr);
 
   Result<std::vector<YBTabletServer>> ListTabletServers();
 
@@ -578,6 +695,8 @@ class YBClient {
   void SetLocalTabletServer(const std::string& ts_uuid,
                             const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
                             const tserver::LocalTabletServer* local_tserver);
+
+  const internal::RemoteTabletServer* GetLocalTabletServer() const;
 
   // List only those tables whose names pass a substring match on 'filter'.
   //
@@ -631,12 +750,33 @@ class YBClient {
       RequireTabletsRunning require_tablets_running = RequireTabletsRunning::kFalse,
       master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
 
-  Status GetTabletLocation(const TabletId& tablet_id,
-                           master::TabletLocationsPB* tablet_location);
+  Result<yb::master::GetTabletLocationsResponsePB> GetTabletLocations(
+      const std::vector<TabletId>& tablet_ids);
 
   // Get a list of global transaction status tablets, and local transaction status tablets
   // that are local to 'placement'.
   Result<TransactionStatusTablets> GetTransactionStatusTablets(const CloudInfoPB& placement);
+
+  // Wait for YSQL backends on specified DB to reach specified catalog version.
+  //
+  // There is a slight risk of database name changes happening at the same time.  Therefore, prefer
+  // specifying database oid unless it is certain that the database names won't change (like tests).
+  Result<int> WaitForYsqlBackendsCatalogVersion(
+      const std::string& database_name,
+      uint64_t version,
+      const MonoDelta& timeout = MonoDelta());
+  Result<int> WaitForYsqlBackendsCatalogVersion(
+      const std::string& database_name,
+      uint64_t version,
+      const CoarseTimePoint& deadline);
+  Result<int> WaitForYsqlBackendsCatalogVersion(
+      PgOid database_oid,
+      uint64_t version,
+      const MonoDelta& timeout = MonoDelta());
+  Result<int> WaitForYsqlBackendsCatalogVersion(
+      PgOid database_oid,
+      uint64_t version,
+      const CoarseTimePoint& deadline);
 
   // Get the list of master uuids. Can be enhanced later to also return port/host info.
   Status ListMasters(
@@ -651,8 +791,7 @@ class YBClient {
   Result<bool> IsLoadBalancerIdle();
 
   Status ModifyTablePlacementInfo(
-      const YBTableName& table_name,
-      master::PlacementInfoPB* replicas);
+      const YBTableName& table_name, master::PlacementInfoPB&& live_replicas);
 
   // Creates a transaction status table. 'table_name' is required to start with
   // kTransactionTablePrefix.
@@ -665,12 +804,14 @@ class YBClient {
 
   // Open the table with the given name or id. This will do an RPC to ensure that
   // the table exists and look up its schema.
-  // Version with table_id is preferable due to parallel run of RPCs.
-  // TODO: should we offer an async version of this as well?
   // TODO: probably should have a configurable timeout in YBClientBuilder?
   Status OpenTable(const YBTableName& table_name, YBTablePtr* table);
   Status OpenTable(const TableId& table_id, YBTablePtr* table,
                    master::GetTableSchemaResponsePB* resp = nullptr);
+
+  void OpenTableAsync(const YBTableName& table_name, const OpenTableAsyncCallback& callback);
+  void OpenTableAsync(const TableId& table_id, const OpenTableAsyncCallback& callback,
+                      master::GetTableSchemaResponsePB* resp = nullptr);
 
   Result<YBTablePtr> OpenTable(const TableId& table_id);
   Result<YBTablePtr> OpenTable(const YBTableName& name);
@@ -678,7 +819,8 @@ class YBClient {
   // Create a new session for interacting with the cluster.
   // User is responsible for destroying the session object.
   // This is a fully local operation (no RPCs or blocking).
-  std::shared_ptr<YBSession> NewSession();
+  std::shared_ptr<YBSession> NewSession(MonoDelta delta);
+  std::shared_ptr<YBSession> NewSession(CoarseTimePoint deadline);
 
   // Return the socket address of the master leader for this client.
   HostPort GetMasterLeaderAddress();
@@ -714,7 +856,9 @@ class YBClient {
   // Get the number of tablets to be created for a new user table.
   // This will be based on --num_shards_per_tserver or --ysql_num_shards_per_tserver
   // and number of tservers.
-  Result<int> NumTabletsForUserTable(TableType table_type);
+  Result<int> NumTabletsForUserTable(
+      TableType table_type, const std::string* tablespace_id = nullptr,
+      const master::ReplicationInfoPB* replication_info = nullptr);
 
   void TEST_set_admin_operation_timeout(const MonoDelta& timeout);
 
@@ -750,6 +894,9 @@ class YBClient {
   // Get the disk size of a table (calculated as SST file size + WAL file size)
   Result<TableSizeInfo> GetTableDiskSize(const TableId& table_id);
 
+  // Provide the completion status of 'txn' to the YB-Master.
+  Status ReportYsqlDdlTxnStatus(const TransactionMetadata& txn, bool is_committed);
+
   Result<bool> CheckIfPitrActive();
 
   void LookupTabletByKey(const std::shared_ptr<YBTable>& table,
@@ -769,9 +916,14 @@ class YBClient {
                         CoarseTimePoint deadline,
                         LookupTabletRangeCallback callback);
 
+  Result<encryption::UniverseKeyRegistryPB> GetFullUniverseKeyRegistry();
+
   // Get the AutoFlagConfig from master. Returns std::nullopt if master is runnning on an older
   // version that does not support AutoFlags.
   Result<std::optional<AutoFlagsConfigPB>> GetAutoFlagConfig();
+
+  Result<master::StatefulServiceInfoPB> GetStatefulServiceLocation(
+      StatefulServiceKind service_kind);
 
   std::future<Result<internal::RemoteTabletPtr>> LookupTabletByKeyFuture(
       const std::shared_ptr<YBTable>& table,
@@ -781,6 +933,14 @@ class YBClient {
   std::future<Result<std::vector<internal::RemoteTabletPtr>>> LookupAllTabletsFuture(
       const std::shared_ptr<YBTable>& table,
       CoarseTimePoint deadline);
+
+  Status CreateSnapshot(
+      const std::vector<YBTableName>& tables, CreateSnapshotCallback callback);
+
+  Status DeleteSnapshot(const TxnSnapshotId& snapshot_id, master::DeleteSnapshotResponsePB* resp);
+
+  Result<google::protobuf::RepeatedPtrField<master::SnapshotInfoPB>> ListSnapshots(
+      const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil(), bool prepare_for_backup = false);
 
   rpc::Messenger* messenger() const;
 
@@ -797,11 +957,18 @@ class YBClient {
 
   std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId();
 
-  void RequestsFinished(const std::set<RetryableRequestId>& request_ids);
+  // Get a RemoteTabletServer pointer from this client's meta_cache, if there is one present. Return
+  // null if none is found.
+  Result<std::shared_ptr<internal::RemoteTabletServer>> GetRemoteTabletServer(
+      const std::string& permanent_uuid);
+
+  void RequestsFinished(const RetryableRequestIdRange& request_id_range);
 
   void Shutdown();
 
   const std::string& LogPrefix() const;
+
+  server::Clock* Clock() const;
 
  private:
   class Data;
@@ -838,6 +1005,17 @@ class YBClient {
 
   friend std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(
       YBClient* client, const YBTablePtr& table);
+
+  template <class Id>
+  Status DoOpenTable(const Id& id, YBTablePtr* table,
+                   master::GetTableSchemaResponsePB* resp = nullptr);
+
+  template <class Id>
+  void DoOpenTableAsync(const Id& id, const OpenTableAsyncCallback& callback,
+                        master::GetTableSchemaResponsePB* resp = nullptr);
+
+  void GetTableSchemaCallback(
+      std::shared_ptr<YBTableInfo> info, const OpenTableAsyncCallback& callback, const Status& s);
 
   CoarseTimePoint PatchAdminDeadline(CoarseTimePoint deadline) const;
 

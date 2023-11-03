@@ -593,13 +593,47 @@ EXPLAIN SELECT * FROM tab_range_nonkey5 WHERE a = 1;
  public | tab_range_range_pkey        | index | yugabyte | tab_range_range
 (11 rows)
 
+-- Test colocated tables/indexes with SPLIT INTO/SPLIT AT
+CREATE TABLE invalid_tbl_split_into (k INT) SPLIT INTO 10 TABLETS;
+ERROR:  cannot create colocated table with split option
+CREATE TABLE invalid_tbl_split_at (k INT) SPLIT AT VALUES ((100));
+ERROR:  cannot create colocated table with split option
+CREATE TABLE test_tbl (k INT);
+CREATE INDEX invalid_idx_split_into ON test_tbl (k) SPLIT INTO 10 TABLETS;
+ERROR:  cannot create colocated index with split option
+CREATE INDEX invalid_idx_split_at ON test_tbl (k) SPLIT AT VALUES ((100));
+ERROR:  cannot create colocated index with split option
+DROP TABLE test_tbl;
+-- Test colocated partitioned table and partition tables
+CREATE TABLE partitioned_table (
+    k1 INT,
+    v1 INT,
+    v2 TEXT
+)
+PARTITION BY HASH (k1)
+WITH (colocation_id='123456');
+SELECT * FROM yb_table_properties('partitioned_table'::regclass::oid);
+ num_tablets | num_hash_key_columns | is_colocated | tablegroup_oid | colocation_id
+-------------+----------------------+--------------+----------------+---------------
+           1 |                    0 | t            |                |        123456
+(1 row)
+
+CREATE TABLE table_partition PARTITION OF partitioned_table
+FOR VALUES WITH (modulus 2, remainder 0)
+WITH (colocation_id='234567');
+SELECT * FROM yb_table_properties('table_partition'::regclass::oid);
+ num_tablets | num_hash_key_columns | is_colocated | tablegroup_oid | colocation_id
+-------------+----------------------+--------------+----------------+---------------
+           1 |                    0 | t            |                |        234567
+(1 row)
+
 -- drop database
 \c yugabyte
 DROP DATABASE colocation_test;
 -- Test syntax change as a result of Colocation GA change
 -- Fail: only one of 'colocation' and 'colocated' options can be specified in CREATE DATABASE
 CREATE DATABASE colocation_test colocated = true colocation = true;
-WARNING:  'colocated' syntax will be deprecated in a future release
+WARNING:  'colocated' syntax is deprecated and will be removed in a future release
 LINE 1: CREATE DATABASE colocation_test colocated = true colocation ...
                                         ^
 HINT:  Use 'colocation' instead of 'colocated'.
@@ -608,7 +642,7 @@ LINE 1: CREATE DATABASE colocation_test colocated = true colocation ...
                                                          ^
 -- Succeed with deprecated warning: create a colocated database using old syntax
 CREATE DATABASE colocation_test colocated = true;
-WARNING:  'colocated' syntax will be deprecated in a future release
+WARNING:  'colocated' syntax is deprecated and will be removed in a future release
 LINE 1: CREATE DATABASE colocation_test colocated = true;
                                         ^
 HINT:  Use 'colocation' instead of 'colocated'.
@@ -623,7 +657,7 @@ ERROR:  cannot specify both of 'colocation' and 'colocated' options
 HINT:  Use 'colocation' instead of 'colocated'.
 -- Succeed with deprecated warning: create a colocated table using old syntax
 CREATE TABLE tbl_colocated (k INT, v INT) WITH (colocated = true);
-WARNING:  'colocated' syntax will be deprecated in a future release
+WARNING:  'colocated' syntax is deprecated and will be removed in a future release
 HINT:  Use 'colocation' instead of 'colocated'.
 -- Succeed: create a colocated table using new syntax
 CREATE TABLE tbl_colocation (k INT, v INT) WITH (colocation = true);

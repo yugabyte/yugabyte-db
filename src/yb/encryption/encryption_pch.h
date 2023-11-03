@@ -48,6 +48,7 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/atomic.hpp>
+#include <boost/container/small_vector.hpp>
 #include <boost/core/demangle.hpp>
 #include <boost/functional/hash.hpp>
 #include <boost/mpl/and.hpp>
@@ -136,6 +137,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/std_util.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"

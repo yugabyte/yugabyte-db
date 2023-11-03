@@ -58,6 +58,7 @@
 #include "yb/rocksdb/util/statistics.h"
 
 #include "yb/util/stats/perf_step_timer.h"
+#include "yb/util/faststring.h"
 
 namespace rocksdb {
 
@@ -104,15 +105,24 @@ struct BatchContentClassifier : public WriteBatch::Handler {
 
 class DirectWriteHandlerImpl : public DirectWriteHandler {
  public:
-  explicit DirectWriteHandlerImpl(MemTable* mem_table, SequenceNumber seq)
-      : mem_table_(mem_table), seq_(seq) {}
+  explicit DirectWriteHandlerImpl(
+      MemTable* mem_table, SequenceNumber seq, WriteBatch::Handler* handler_for_logging)
+      : mem_table_(mem_table), seq_(seq), handler_for_logging_(handler_for_logging) {}
 
   std::pair<Slice, Slice> Put(const SliceParts& key, const SliceParts& value) override {
+    if (handler_for_logging_) {
+      WARN_NOT_OK(handler_for_logging_->PutCF(0 /* column_family_id */, key, value),
+                  "Logging handler failed on PutCF");
+    }
     Add(ValueType::kTypeValue, key, value);
     return std::pair(prepared_add_.last_key, prepared_add_.last_value);
   }
 
   void SingleDelete(const Slice& key) override {
+    if (handler_for_logging_) {
+      WARN_NOT_OK(handler_for_logging_->SingleDeleteCF(0 /* column_family_id */, key),
+                  "Logging handler failed on SingleDeleteCF");
+    }
     if (mem_table_->Erase(key)) {
       return;
     }
@@ -142,6 +152,7 @@ class DirectWriteHandlerImpl : public DirectWriteHandler {
 
   MemTable* mem_table_;
   SequenceNumber seq_;
+  WriteBatch::Handler* handler_for_logging_;
   PreparedAdd prepared_add_;
   boost::container::small_vector<KeyHandle, 128> keys_;
 };
@@ -322,7 +333,8 @@ Status ReadRecordFromWriteBatch(Slice* input, char* tag,
   return Status::OK();
 }
 
-Result<size_t> DirectInsert(WriteBatch::Handler* handler, DirectWriter* writer);
+Result<size_t> DirectInsert(
+    WriteBatch::Handler* handler, DirectWriter* writer, WriteBatch::Handler* handler_for_logging);
 
 Status WriteBatch::Iterate(Handler* handler) const {
   Slice input(rep_);
@@ -335,16 +347,16 @@ Status WriteBatch::Iterate(Handler* handler) const {
   size_t found = 0;
   Status s;
 
-  if (frontiers_) {
-    s = handler->Frontiers(*frontiers_);
-  }
   if (s.ok() && direct_writer_) {
-    auto result = DirectInsert(handler, direct_writer_);
+    auto result = DirectInsert(handler, direct_writer_, handler_for_logging_);
     if (result.ok()) {
       direct_entries_ = *result;
     } else {
       s = result.status();
     }
+  }
+  if (frontiers_) {
+    s = handler->Frontiers(*frontiers_);
   }
   while (s.ok() && !input.empty() && handler->Continue()) {
     char tag = 0;
@@ -971,7 +983,8 @@ size_t WriteBatchInternal::AppendedByteSize(size_t leftByteSize,
   }
 }
 
-Result<size_t> DirectInsert(WriteBatch::Handler* handler, DirectWriter* writer) {
+Result<size_t> DirectInsert(
+    WriteBatch::Handler* handler, DirectWriter* writer, WriteBatch::Handler* handler_for_logging) {
   auto mem_table_inserter = down_cast<MemTableInserter*>(handler);
   auto* mems = mem_table_inserter->cf_mems_;
   auto current = mems->current();
@@ -980,7 +993,7 @@ Result<size_t> DirectInsert(WriteBatch::Handler* handler, DirectWriter* writer) 
     current = mems->current();
   }
   DirectWriteHandlerImpl direct_write_handler(
-      current->mem(), mem_table_inserter->sequence_);
+      current->mem(), mem_table_inserter->sequence_, handler_for_logging);
   RETURN_NOT_OK(writer->Apply(&direct_write_handler));
   auto result = direct_write_handler.Complete();
   mem_table_inserter->CheckMemtableFull();

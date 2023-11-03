@@ -13,3 +13,4 @@ ybc_conf_file: "{{ yb_home_dir }}/controller/conf/server.conf"
 ybc_logs_dir: "{{ yb_home_dir }}/controller/logs"
 configure_ybc: false
 systemd_option: false
+systemd_unit_dir: "/lib/systemd/system"

@@ -8,7 +8,6 @@ aliases:
   - /quick-start/test-cassandra/
   - /preview/quick-start/test-cassandra/
   - /preview/quick-start/test-ycql/
-  - /preview/api/ycql/quick-start/
 menu:
   preview:
     parent: quick-start
@@ -63,7 +62,7 @@ After [creating a local cluster](../../../quick-start/), follow the instructions
   </li>
   <li >
     <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab" role="tab" aria-controls="kubernetes" aria-selected="false">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>

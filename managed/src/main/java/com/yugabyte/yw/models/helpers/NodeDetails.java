@@ -9,9 +9,11 @@ import static com.yugabyte.yw.common.NodeActionType.QUERY;
 import static com.yugabyte.yw.common.NodeActionType.REBOOT;
 import static com.yugabyte.yw.common.NodeActionType.RELEASE;
 import static com.yugabyte.yw.common.NodeActionType.REMOVE;
+import static com.yugabyte.yw.common.NodeActionType.REPROVISION;
 import static com.yugabyte.yw.common.NodeActionType.START;
 import static com.yugabyte.yw.common.NodeActionType.STOP;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.collect.ImmutableSet;
@@ -20,6 +22,8 @@ import com.yugabyte.yw.common.NodeActionType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Arrays;
+import java.util.Date;
+import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -64,7 +68,13 @@ public class NodeDetails {
   @ApiModelProperty(value = "Machine image name")
   public String machineImage;
 
-  // Indicates that disks in fstab are mounted using using uuid (not as by path).
+  @ApiModelProperty(value = "SSH user override for the AMI")
+  public String sshUserOverride;
+
+  @ApiModelProperty(value = "SSH port override for the AMI")
+  public Integer sshPortOverride;
+
+  // Indicates that disks in fstab are mounted using uuid (not as by path).
   @ApiModelProperty(value = "Disks are mounted by uuid")
   public boolean disksAreMountedByUUID;
 
@@ -74,26 +84,31 @@ public class NodeDetails {
   // Possible states in which this node can exist.
   public enum NodeState {
     // Set when a new node needs to be added into a Universe and has not yet been created.
-    ToBeAdded(DELETE),
+    ToBeAdded(DELETE, ADD),
     // Set when a new node is created in the cloud provider.
-    InstanceCreated(DELETE),
+    InstanceCreated(DELETE, ADD),
     // Set when a node has gone through the Ansible set-up task.
-    ServerSetup(DELETE),
-    // Set when a new node is provisioned and configured but before it is added into
+    ServerSetup(DELETE, ADD),
+    // Set when a new node is provisioned and configured, but before it is added into
     // the existing cluster.
-    ToJoinCluster(REMOVE),
-    // Set when reprovision node.
+    ToJoinCluster(REMOVE, ADD),
+    // Set when re-provisioning node. Used for third-party software upgrades.
     Reprovisioning(),
     // Set after the node (without any configuration) is created using the IaaS provider at the
     // end of the provision step before it is set up and configured.
-    Provisioned(DELETE),
+    Provisioned(DELETE, ADD),
     // Set after the YB software installed and some basic configuration done on a provisioned node.
-    SoftwareInstalled(START, DELETE),
+    SoftwareInstalled(START, DELETE, ADD),
     // Set after the YB software is upgraded via Rolling Restart.
     UpgradeSoftware(),
+    // set when software version is rollback.
+    RollbackUpgrade(),
+    // set when software version is finalized after upgrade.
+    FinalizeUpgrade(),
     // Set after the YB specific GFlags are updated via Rolling Restart.
     UpdateGFlags(),
     // Set after all the services (master, tserver, etc) on a node are successfully running.
+    // Setting state to Live must be towards the end as ADD cannot be an option here.
     Live(STOP, REMOVE, QUERY, REBOOT, HARD_REBOOT),
     // Set when node is about to enter the stopped state.
     // The actions in Live state should apply because of the transition from Live to Stopping.
@@ -102,7 +117,7 @@ public class NodeDetails {
     // The actions in Stopped state should apply because of the transition from Stopped to Starting.
     Starting(START, REMOVE),
     // Set when node has been stopped and no longer has a master or a tserver running.
-    Stopped(START, REMOVE, QUERY),
+    Stopped(START, REMOVE, QUERY, REPROVISION),
     // Nodes are never set to Unreachable, this is just one of the possible return values in a
     // status query.
     Unreachable(),
@@ -116,17 +131,21 @@ public class NodeDetails {
     // Set after the node has been removed (unjoined) from the cluster.
     Removed(ADD, RELEASE),
     // Set when node is about to enter the Live state from Removed/Decommissioned state.
-    Adding(DELETE, RELEASE),
+    // RELEASE is an option for convenience-
+    // If stuck in Adding stuck, we can just RELEASE instead of REMOVE and then RELEASE.
+    Adding(DELETE, RELEASE, ADD, REMOVE),
     // Set when a stopped/removed node is about to enter the Decommissioned state.
     // The actions in Removed state should apply because of the transition from Removed to
     // BeingDecommissioned.
-    BeingDecommissioned(ADD, RELEASE),
+    BeingDecommissioned(RELEASE),
     // After a stopped/removed node is returned back to the IaaS.
     Decommissioned(ADD, DELETE),
     // Set when the cert is being updated.
     UpdateCert(),
     // Set when TLS params (node-to-node and client-to-node) is being toggled
     ToggleTls(),
+    // Set when configuring DB Apis
+    ConfigureDBApis(),
     // Set when the node is being resized to a new intended type
     Resizing(),
     // Set when the node is being upgraded to systemd from cron
@@ -165,7 +184,7 @@ public class NodeDetails {
     None,
     ToStart,
     Configured,
-    ToStop,
+    ToStop
   }
 
   // The current state of the node.
@@ -243,6 +262,13 @@ public class NodeDetails {
   @ApiModelProperty(value = "Used for configurations where each node can have only one process")
   public UniverseTaskBase.ServerType dedicatedTo = null;
 
+  @ApiModelProperty(
+      value = "Store last volume update time",
+      example = "2022-12-12T13:07:18Z",
+      accessMode = ApiModelProperty.AccessMode.READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  public Date lastVolumeUpdateTime;
+
   // List of states which are considered in-transit and ops such as upgrade should not be allowed.
   public static final Set<NodeState> IN_TRANSIT_STATES =
       ImmutableSet.of(
@@ -305,7 +331,7 @@ public class NodeDetails {
     return state != null && state.allowedActions().contains(actionType);
   }
 
-  /** Validates if the action is allowed on the state for the node. */
+  /* Validates if the action is allowed on the state for the node. */
   @JsonIgnore
   public void validateActionOnState(NodeActionType actionType) {
     if (!isActionAllowedOnState(actionType)) {
@@ -321,27 +347,46 @@ public class NodeDetails {
   }
 
   @JsonIgnore
-  public boolean isActive() {
+  public boolean isNodeRunning() {
     return !(state == NodeState.Unreachable
         || state == NodeState.MetricsUnavailable
-        || state == NodeState.ToBeRemoved
-        || state == NodeState.Removing
-        || state == NodeState.Removed
-        || state == NodeState.Starting
-        || state == NodeState.Stopped
+        || state == NodeState.ToBeAdded
         || state == NodeState.Adding
         || state == NodeState.BeingDecommissioned
         || state == NodeState.Decommissioned
-        || state == NodeState.SystemdUpgrade
         || state == NodeState.Terminating
-        || state == NodeState.Terminated
-        || state == NodeState.Rebooting
-        || state == NodeState.HardRebooting);
+        || state == NodeState.Terminated);
+  }
+
+  @JsonIgnore
+  public boolean isSoftwareDeleted() {
+    return state == NodeState.Decommissioned
+        || state == NodeState.Terminating // Software can be partially removed during this state.
+        || state == NodeState.Terminated;
+  }
+
+  @JsonIgnore
+  public boolean isActive() {
+    // TODO For some reason ToBeAdded node is treated as 'Active', which it's not the case.
+    // Need to better figure out the meaning of 'Active' - and it's usage - as currently it's used
+    // for master selection, for example.
+    return (isNodeRunning() || state == NodeState.ToBeAdded)
+        && !(state == NodeState.ToBeRemoved
+            || state == NodeState.Removing
+            || state == NodeState.Removed
+            || state == NodeState.Starting
+            || state == NodeState.Stopping
+            || state == NodeState.Stopped
+            || state == NodeState.SystemdUpgrade
+            || state == NodeState.Rebooting
+            || state == NodeState.HardRebooting);
   }
 
   @JsonIgnore
   public boolean isQueryable() {
     return (state == NodeState.UpgradeSoftware
+        || state == NodeState.FinalizeUpgrade
+        || state == NodeState.RollbackUpgrade
         || state == NodeState.UpdateGFlags
         || state == NodeState.Live
         || state == NodeState.ToBeRemoved
@@ -352,8 +397,33 @@ public class NodeDetails {
   }
 
   @JsonIgnore
+  public boolean isConsideredRunning() {
+    return (state == NodeState.Live || state == NodeState.ToBeRemoved);
+  }
+
+  @JsonIgnore
+  public Set<UniverseTaskBase.ServerType> getAllProcesses() {
+    Set<UniverseTaskBase.ServerType> result = new LinkedHashSet<>();
+    if (isMaster) {
+      result.add(UniverseTaskBase.ServerType.MASTER);
+    }
+    if (isTserver) {
+      result.add(UniverseTaskBase.ServerType.TSERVER);
+    }
+    return result;
+  }
+
+  @JsonIgnore
   public boolean isInTransit() {
     return IN_TRANSIT_STATES.contains(state);
+  }
+
+  @JsonIgnore
+  public boolean isInTransit(NodeState omittedState) {
+    if (omittedState != state) {
+      return isInTransit();
+    }
+    return false;
   }
 
   // This is invoked to see if the node can be deleted from the universe JSON.
@@ -426,5 +496,14 @@ public class NodeDetails {
       namespace = this.cloudInfo.private_ip.split("\\.")[2];
     }
     return namespace;
+  }
+
+  // Returns the provisioned instance type.
+  @JsonIgnore
+  public String getInstanceType() {
+    if (cloudInfo != null && StringUtils.isNotBlank(cloudInfo.instance_type)) {
+      return cloudInfo.instance_type;
+    }
+    throw new IllegalStateException("Cloud info or instance type is not set");
   }
 }

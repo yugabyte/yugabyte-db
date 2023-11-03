@@ -24,7 +24,7 @@
 
 using std::string;
 
-DEFINE_UNKNOWN_bool(verbose_yb_backup, false, "Add --verbose flag to yb_backup.py.");
+DEFINE_NON_RUNTIME_bool(verbose_yb_backup, false, "Add --verbose flag to yb_backup.py.");
 
 namespace yb {
 namespace tools {
@@ -118,8 +118,10 @@ std::string TmpDirProvider::operator*() {
   if (dir_.empty()) {
     std::string temp;
     CHECK_OK(Env::Default()->GetTestDirectory(&temp));
+    auto test_name = std::string(CURRENT_TEST_CASE_NAME());
+    std::replace(test_name.begin(), test_name.end(), '/', '_');
     dir_ = JoinPathSegments(
-        temp, std::string(CURRENT_TEST_CASE_NAME()) + '_' + RandomHumanReadableString(8));
+        temp, test_name + '_' + RandomHumanReadableString(8));
   }
   // Create the directory if it doesn't exist.
   if (!Env::Default()->DirExists(dir_)) {

@@ -69,7 +69,7 @@ Status TestAdminClient::SplitTabletAndWait(
   RETURN_NOT_OK(SplitTablet(table, tablet_id));
   return (WaitFor(
       [&]() -> Result<bool> { return IsTabletSplittingComplete(wait_for_parent_deletion); },
-      30s * kTimeMultiplier, "Wait for ongoing splits to finish."));
+      60s * kTimeMultiplier, "Wait for ongoing splits to finish."));
 }
 
 Status TestAdminClient::SplitTabletAndWait(
@@ -117,7 +117,8 @@ Result<std::vector<master::TabletLocationsPB>> TestAdminClient::GetTabletLocatio
   return GetTabletLocations(tname);
 }
 
-Status TestAdminClient::WaitForTabletFullyCompacted(size_t tserver_idx, const TabletId& tablet_id) {
+Status TestAdminClient::WaitForTabletPostSplitCompacted(
+    size_t tserver_idx, const TabletId& tablet_id) {
   const auto ts = cluster_->tablet_server(tserver_idx);
   return WaitFor(
       [&]() -> Result<bool> {
@@ -127,10 +128,10 @@ Status TestAdminClient::WaitForTabletFullyCompacted(size_t tserver_idx, const Ta
                      << " error: " << resp.error().status().ShortDebugString();
           return false;
         }
-        return resp.tablet_status().has_been_fully_compacted();
+        return resp.tablet_status().parent_data_compacted();
       },
       30s * kTimeMultiplier,
-      Format("Waiting for tablet $0 fully compacted on tserver $1", tablet_id, ts->id()));
+      Format("Waiting for tablet $0 post split compacted on tserver $1", tablet_id, ts->id()));
 }
 
 Status TestAdminClient::FlushTable(const std::string& ns, const std::string& table) {
@@ -138,21 +139,45 @@ Status TestAdminClient::FlushTable(const std::string& ns, const std::string& tab
   return ybclient_->FlushTables({tname}, false, 30, false);
 }
 
+Status TestAdminClient::DeleteSnapshotAndWait(const TxnSnapshotId& snapshot_id) {
+  master::DeleteSnapshotRequestPB req;
+  req.mutable_snapshot_id()->assign(snapshot_id.AsSlice().cdata(), snapshot_id.size());
+  master::DeleteSnapshotResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(30s * kTimeMultiplier);
+  auto proxy = cluster_->GetLeaderMasterProxy<master::MasterBackupProxy>();
+  RETURN_NOT_OK(proxy.DeleteSnapshot(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  // Wait for snapshot to get deleted.
+  return WaitForSnapshotComplete(snapshot_id, true /* check_deleted */);
+}
+
 Result<TxnSnapshotId> TestAdminClient::CreateSnapshotAndWait(
-    const std::optional<SnapshotScheduleId>& schedule_id) {
-  TxnSnapshotId snapshot_id = VERIFY_RESULT(CreateSnapshot(schedule_id));
+    const SnapshotScheduleId& schedule_id, const master::TableIdentifierPB& tables,
+    const std::optional<int32_t> retention_duration_hours) {
+  TxnSnapshotId snapshot_id = VERIFY_RESULT(CreateSnapshot(
+      schedule_id, tables, retention_duration_hours));
   RETURN_NOT_OK(WaitForSnapshotComplete(snapshot_id));
   return snapshot_id;
 }
 
 Result<TxnSnapshotId> TestAdminClient::CreateSnapshot(
-    const std::optional<SnapshotScheduleId>& schedule_id) {
+    const SnapshotScheduleId& schedule_id, const master::TableIdentifierPB& tables,
+    const std::optional<int32_t> retention_duration_hours) {
   master::CreateSnapshotRequestPB req;
   master::CreateSnapshotResponsePB resp;
   rpc::RpcController rpc;
   rpc.set_timeout(30s * kTimeMultiplier);
   if (schedule_id) {
-    req.set_schedule_id(schedule_id->data(), schedule_id->size());
+    req.set_schedule_id(schedule_id.data(), schedule_id.size());
+  } else {
+    req.add_tables()->CopyFrom(tables);
+    req.set_transaction_aware(true);
+    if (retention_duration_hours) {
+      req.set_retention_duration_hours(*retention_duration_hours);
+    }
   }
   auto proxy = cluster_->GetLeaderMasterProxy<master::MasterBackupProxy>();
   RETURN_NOT_OK(proxy.CreateSnapshot(req, &resp, &rpc));
@@ -162,7 +187,8 @@ Result<TxnSnapshotId> TestAdminClient::CreateSnapshot(
   return FullyDecodeTxnSnapshotId(resp.snapshot_id());
 }
 
-Status TestAdminClient::WaitForSnapshotComplete(const TxnSnapshotId& snapshot_id) {
+Status TestAdminClient::WaitForSnapshotComplete(
+    const TxnSnapshotId& snapshot_id, bool check_deleted) {
   return WaitFor(
       [&]() -> Result<bool> {
         master::ListSnapshotsRequestPB req;
@@ -171,9 +197,25 @@ Status TestAdminClient::WaitForSnapshotComplete(const TxnSnapshotId& snapshot_id
         rpc.set_timeout(30s * kTimeMultiplier);
         req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
         auto proxy = cluster_->GetLeaderMasterProxy<master::MasterBackupProxy>();
-        RETURN_NOT_OK(proxy.ListSnapshots(req, &resp, &rpc));
+        Status s = proxy.ListSnapshots(req, &resp, &rpc);
+        // If snapshot is cleaned up and we are waiting for a delete
+        // then succeed this call.
+        if (check_deleted && !s.ok() && s.IsNotFound()) {
+          return true;
+        }
         if (resp.has_error()) {
-          return StatusFromPB(resp.error().status());
+          Status s = StatusFromPB(resp.error().status());
+          if (check_deleted && s.IsNotFound()) {
+            return true;
+          }
+          return s;
+        }
+        if (resp.snapshots_size() != 1) {
+          return STATUS(
+              IllegalState, Format("There should be exactly one snapshot of id $0", snapshot_id));
+        }
+        if (check_deleted) {
+          return resp.snapshots(0).entry().state() == master::SysSnapshotEntryPB::DELETED;
         }
         return resp.snapshots(0).entry().state() == master::SysSnapshotEntryPB::COMPLETE;
       },

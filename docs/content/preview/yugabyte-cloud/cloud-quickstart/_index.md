@@ -6,7 +6,6 @@ headcontent: Sign up for YugabyteDB Managed and create a free Sandbox cluster
 description: Get started using YugabyteDB Managed in less than five minutes.
 layout: single
 type: docs
-body_class: yb-page-style
 menu:
   preview_yugabyte-cloud:
     parent: yugabytedb-managed
@@ -31,6 +30,8 @@ The first time you log in, YugabyteDB Managed provides a welcome experience with
 
 If you aren't using the **Get Started** tutorial, use the following instructions to create a cluster, connect to your database, explore distributed SQL, and build an application.
 
+If you've run the tutorial and want to try more advanced deployments, [request a free trial](../managed-freetrial/).
+
 ## Create your Sandbox cluster
 
 The Sandbox cluster provides a fully functioning single node YugabyteDB cluster deployed to the region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing applications with YugabyteDB. No credit card information is required.
@@ -39,7 +40,7 @@ The Sandbox cluster provides a fully functioning single node YugabyteDB cluster 
 >
 >YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The Sandbox cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](/preview/develop/build-apps/). See [Differences between Sandbox and Dedicated clusters](/preview/faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters) for more information.
 >
->To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for trial credits.
+>To try more advanced deployments, [request a free trial](../managed-freetrial/).
 
 To create your Sandbox cluster:
 

@@ -58,6 +58,7 @@
       list-style-type: none;
       text-overflow: ellipsis;
       overflow: auto;
+      max-width: 90%;
       white-space: nowrap;
     }
   }
@@ -77,6 +78,10 @@
     .config-non-inherited-row {
       color: colors.$YB_ORANGE;
     }
+  }
+
+  .yb-table-cell-align {
+    vertical-align: middle;
   }
 }
 

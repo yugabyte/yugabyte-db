@@ -3,6 +3,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -10,15 +11,16 @@ import lombok.extern.slf4j.Slf4j;
 public class SyncXClusterConfig extends XClusterConfigTaskBase {
 
   @Inject
-  protected SyncXClusterConfig(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
+  protected SyncXClusterConfig(
+      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+    super(baseTaskDependencies, xClusterUniverseService);
   }
 
   @Override
   public void run() {
     log.info("Running {}", getName());
 
-    lockUniverseForUpdate(getUniverse().version);
+    lockUniverseForUpdate(getUniverse().getVersion());
     try {
       createXClusterConfigSyncTask()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);

@@ -1,0 +1,232 @@
+--
+-- Yugabyte-owned test on ybgin index with expression pushdown
+--
+CREATE TABLE gin_pushdown(
+    id varchar(64) not null,
+    guid varchar(64) not null unique,
+    status varchar(64),
+    json_content jsonb not null,
+    primary key (id)
+);
+-- gin index
+CREATE INDEX gin_pushdown_json_content_idx ON gin_pushdown USING ybgin (json_content jsonb_path_ops);
+INSERT INTO gin_pushdown
+  SELECT x::text, x::text, x::text, ('{"refs": [{"val":"'||x||'"}, {"val":"'||x+1||'"}]}')::jsonb
+  FROM generate_series (1, 10) x;
+-- Find rows using gin index
+EXPLAIN (costs off)
+SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}';
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Index Scan using gin_pushdown_json_content_idx on gin_pushdown
+   Index Cond: (json_content @> '{"refs": [{"val": "9"}]}'::jsonb)
+(2 rows)
+
+SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}';
+ id | guid | status |              json_content
+----+------+--------+-----------------------------------------
+ 9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
+ 8  | 8    | 8      | {"refs": [{"val": "8"}, {"val": "9"}]}
+(2 rows)
+
+-- Use pushdown filter
+EXPLAIN (costs off)
+SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status <> '9';
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Index Scan using gin_pushdown_json_content_idx on gin_pushdown
+   Index Cond: (json_content @> '{"refs": [{"val": "9"}]}'::jsonb)
+   Remote Filter: ((status)::text <> '9'::text)
+(3 rows)
+
+SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status <> '9';
+ id | guid | status |              json_content
+----+------+--------+----------------------------------------
+ 8  | 8    | 8      | {"refs": [{"val": "8"}, {"val": "9"}]}
+(1 row)
+
+EXPLAIN (costs off)
+SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status = '9';
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Index Scan using gin_pushdown_json_content_idx on gin_pushdown
+   Index Cond: (json_content @> '{"refs": [{"val": "9"}]}'::jsonb)
+   Remote Filter: ((status)::text = '9'::text)
+(3 rows)
+
+SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status = '9';
+ id | guid | status |              json_content
+----+------+--------+-----------------------------------------
+ 9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
+(1 row)
+
+-- Pushdown filter that may seem to be pushed with the index scan, however ybgin index
+-- does not store the indexed value, hence filter goes to the main relation
+EXPLAIN (costs off)
+SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' <> '"9"';
+                                        QUERY PLAN
+-------------------------------------------------------------------------------------------
+ Index Scan using gin_pushdown_json_content_idx on gin_pushdown
+   Index Cond: (json_content @> '{"refs": [{"val": "9"}]}'::jsonb)
+   Remote Filter: ((((json_content -> 'refs'::text) -> 0) -> 'val'::text) <> '"9"'::jsonb)
+(3 rows)
+
+SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' <> '"9"';
+ id | guid | status |              json_content
+----+------+--------+----------------------------------------
+ 8  | 8    | 8      | {"refs": [{"val": "8"}, {"val": "9"}]}
+(1 row)
+
+EXPLAIN (costs off)
+SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' = '"9"';
+                                        QUERY PLAN
+------------------------------------------------------------------------------------------
+ Index Scan using gin_pushdown_json_content_idx on gin_pushdown
+   Index Cond: (json_content @> '{"refs": [{"val": "9"}]}'::jsonb)
+   Remote Filter: ((((json_content -> 'refs'::text) -> 0) -> 'val'::text) = '"9"'::jsonb)
+(3 rows)
+
+SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' = '"9"';
+ id | guid | status |              json_content
+----+------+--------+-----------------------------------------
+ 9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
+(1 row)
+
+-- Expression that does not refer any columns can go to the index.
+EXPLAIN (costs off)
+SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() > 2.0;
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Index Scan using gin_pushdown_json_content_idx on gin_pushdown
+   Index Cond: (json_content @> '{"refs": [{"val": "9"}]}'::jsonb)
+   Remote Index Filter: (random() > '2'::double precision)
+(3 rows)
+
+SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() > 2.0;
+ id | guid | status | json_content
+----+------+--------+--------------
+(0 rows)
+
+EXPLAIN (costs off)
+SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() < 2.0;
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Index Scan using gin_pushdown_json_content_idx on gin_pushdown
+   Index Cond: (json_content @> '{"refs": [{"val": "9"}]}'::jsonb)
+   Remote Index Filter: (random() < '2'::double precision)
+(3 rows)
+
+SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() < 2.0;
+ id | guid | status |              json_content
+----+------+--------+-----------------------------------------
+ 9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
+ 8  | 8    | 8      | {"refs": [{"val": "8"}, {"val": "9"}]}
+(2 rows)
+
+-- Find row using regular index
+EXPLAIN (costs off)
+SELECT * FROM gin_pushdown WHERE guid = '9';
+                       QUERY PLAN
+--------------------------------------------------------
+ Index Scan using gin_pushdown_guid_key on gin_pushdown
+   Index Cond: ((guid)::text = '9'::text)
+(2 rows)
+
+SELECT * FROM gin_pushdown WHERE guid = '9';
+ id | guid | status |              json_content
+----+------+--------+-----------------------------------------
+ 9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
+(1 row)
+
+-- Use pushdown filter
+EXPLAIN (costs off)
+SELECT * FROM gin_pushdown WHERE guid = '9' AND status <> '9';
+                       QUERY PLAN
+--------------------------------------------------------
+ Index Scan using gin_pushdown_guid_key on gin_pushdown
+   Index Cond: ((guid)::text = '9'::text)
+   Remote Filter: ((status)::text <> '9'::text)
+(3 rows)
+
+SELECT * FROM gin_pushdown WHERE guid = '9' AND status <> '9';
+ id | guid | status | json_content
+----+------+--------+--------------
+(0 rows)
+
+EXPLAIN (costs off)
+SELECT * FROM gin_pushdown WHERE guid = '9' AND status = '9';
+                       QUERY PLAN
+--------------------------------------------------------
+ Index Scan using gin_pushdown_guid_key on gin_pushdown
+   Index Cond: ((guid)::text = '9'::text)
+   Remote Filter: ((status)::text = '9'::text)
+(3 rows)
+
+SELECT * FROM gin_pushdown WHERE guid = '9' AND status = '9';
+ id | guid | status |              json_content
+----+------+--------+-----------------------------------------
+ 9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
+(1 row)
+
+-- Pushdown filter that goes with the index scan, since json_content is included
+EXPLAIN (costs off)
+SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' <> '"9"';
+                                        QUERY PLAN
+-------------------------------------------------------------------------------------------
+ Index Scan using gin_pushdown_guid_key on gin_pushdown
+   Index Cond: ((guid)::text = '9'::text)
+   Remote Filter: ((((json_content -> 'refs'::text) -> 0) -> 'val'::text) <> '"9"'::jsonb)
+(3 rows)
+
+SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' <> '"9"';
+ id | guid | status | json_content
+----+------+--------+--------------
+(0 rows)
+
+EXPLAIN (costs off)
+SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' = '"9"';
+                                        QUERY PLAN
+------------------------------------------------------------------------------------------
+ Index Scan using gin_pushdown_guid_key on gin_pushdown
+   Index Cond: ((guid)::text = '9'::text)
+   Remote Filter: ((((json_content -> 'refs'::text) -> 0) -> 'val'::text) = '"9"'::jsonb)
+(3 rows)
+
+SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' = '"9"';
+ id | guid | status |              json_content
+----+------+--------+-----------------------------------------
+ 9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
+(1 row)
+
+-- Expression that does not refer any columns can go to the index.
+EXPLAIN (costs off)
+SELECT * FROM gin_pushdown WHERE guid = '9' AND random() > 2.0;
+                        QUERY PLAN
+-----------------------------------------------------------
+ Index Scan using gin_pushdown_guid_key on gin_pushdown
+   Index Cond: ((guid)::text = '9'::text)
+   Remote Index Filter: (random() > '2'::double precision)
+(3 rows)
+
+SELECT * FROM gin_pushdown WHERE guid = '9' AND random() > 2.0;
+ id | guid | status | json_content
+----+------+--------+--------------
+(0 rows)
+
+EXPLAIN (costs off)
+SELECT * FROM gin_pushdown WHERE guid = '9' AND random() < 2.0;
+                        QUERY PLAN
+-----------------------------------------------------------
+ Index Scan using gin_pushdown_guid_key on gin_pushdown
+   Index Cond: ((guid)::text = '9'::text)
+   Remote Index Filter: (random() < '2'::double precision)
+(3 rows)
+
+SELECT * FROM gin_pushdown WHERE guid = '9' AND random() < 2.0;
+ id | guid | status |              json_content
+----+------+--------+-----------------------------------------
+ 9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
+(1 row)
+
+-- Cleanup
+DROP TABLE gin_pushdown;

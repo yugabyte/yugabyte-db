@@ -38,7 +38,7 @@
 
 namespace yb {
 
-class Histogram;
+class EventStats;
 template<class T>
 class AtomicGauge;
 
@@ -58,14 +58,14 @@ class LogGCOp : public MaintenanceOp {
 
   virtual void Perform() override;
 
-  virtual scoped_refptr<Histogram> DurationHistogram() const override;
+  virtual scoped_refptr<EventStats> DurationHistogram() const override;
 
   virtual scoped_refptr<AtomicGauge<uint32_t> > RunningGauge() const override;
 
  private:
   TabletPtr tablet_;
   TabletPeer *const tablet_peer_;
-  scoped_refptr<Histogram> log_gc_duration_;
+  scoped_refptr<EventStats> log_gc_duration_;
   scoped_refptr<AtomicGauge<uint32_t> > log_gc_running_;
   mutable Semaphore sem_;
 };

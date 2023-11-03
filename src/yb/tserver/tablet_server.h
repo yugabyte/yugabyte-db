@@ -36,10 +36,15 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <atomic>
 
+#include "yb/common/common_util.h"
+#include "yb/common/pg_catversions.h"
 #include "yb/consensus/metadata.pb.h"
+#include "yb/cdc/cdc_fwd.h"
 #include "yb/cdc/cdc_consumer.fwd.h"
 #include "yb/client/client_fwd.h"
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/encryption/encryption_fwd.h"
 
@@ -48,10 +53,12 @@
 #include "yb/master/master_fwd.h"
 #include "yb/server/webserver_options.h"
 #include "yb/tserver/db_server_base.h"
+#include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
+#include "yb/tserver/xcluster_context.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
@@ -70,9 +77,7 @@ class AutoFlagsManager;
 
 namespace tserver {
 
-namespace enterprise {
-class CDCConsumer;
-}
+class XClusterConsumer;
 class PgClientServiceImpl;
 
 class TabletServer : public DbServerBase, public TabletServerIf {
@@ -190,7 +195,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void get_ysql_catalog_version(uint64_t* current_version,
                                 uint64_t* last_breaking_version) const override {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     if (current_version) {
       *current_version = ysql_catalog_version_;
     }
@@ -202,7 +207,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void get_ysql_db_catalog_version(uint32_t db_oid,
                                    uint64_t* current_version,
                                    uint64_t* last_breaking_version) const override {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     auto it = ysql_db_catalog_version_map_.find(db_oid);
     bool not_found = it == ysql_db_catalog_version_map_.end();
     // If db_oid represents a newly created database, it may not yet exist in
@@ -219,7 +224,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   Status get_ysql_db_oid_to_cat_version_info_map(
-      bool size_only, tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
+      const tserver::GetTserverCatalogVersionInfoRequestPB& req,
+      tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
 
   void UpdateTransactionTablesVersion(uint64_t new_version);
 
@@ -227,19 +233,22 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   virtual rocksdb::Env* GetRocksDBEnv();
 
-  void SetUniverseKeys(const encryption::UniverseKeysPB& universe_keys);
-
   virtual Status SetUniverseKeyRegistry(
       const encryption::UniverseKeyRegistryPB& universe_key_registry);
 
-  void GetUniverseKeyRegistrySync();
-
   uint64_t GetSharedMemoryPostgresAuthKey();
 
+  SchemaVersion GetMinXClusterSchemaVersion(const TableId& table_id,
+      const ColocationId& colocation_id) const;
+
   // Currently only used by cdc.
-  virtual int32_t cluster_config_version() const {
-    return std::numeric_limits<int32_t>::max();
-  }
+  virtual int32_t cluster_config_version() const;
+
+  Result<uint32_t> XClusterConfigVersion() const;
+
+  Status SetPausedXClusterProducerStreams(
+      const ::google::protobuf::Map<::std::string, bool>& paused_producer_stream_ids,
+      uint32_t xcluster_config_version);
 
   client::TransactionPool& TransactionPool() override;
 
@@ -253,17 +262,48 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   client::LocalTabletFilter CreateLocalTabletFilter() override;
 
-  void RegisterCertificateReloader(CertificateReloader reloader) override {}
+  void RegisterCertificateReloader(CertificateReloader reloader) override;
 
   const XClusterSafeTimeMap& GetXClusterSafeTimeMap() const;
 
+  PgMutationCounter& GetPgNodeLevelMutationCounter();
+
   void UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
 
-  Result<bool> XClusterSafeTimeCaughtUpToCommitHt(
-      const NamespaceId& namespace_id, HybridTime commit_ht) const;
+  Result<cdc::XClusterRole> TEST_GetXClusterRole() const;
 
   Status ListMasterServers(const ListMasterServersRequestPB* req,
                            ListMasterServersResponsePB* resp) const;
+
+  encryption::UniverseKeyManager* GetUniverseKeyManager();
+
+  Status SetConfigVersionAndConsumerRegistry(
+      int32_t cluster_config_version, const cdc::ConsumerRegistryPB* consumer_registry);
+
+  Status ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid);
+
+  XClusterConsumer* GetXClusterConsumer() const;
+
+  // Mark the CDC service as enabled via heartbeat.
+  Status SetCDCServiceEnabled();
+
+  Status ReloadKeysAndCertificates() override;
+  std::string GetCertificateDetails() override;
+
+  PgClientServiceImpl* TEST_GetPgClientService() {
+    return pg_client_service_.lock().get();
+  }
+
+  void SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode);
+
+  std::optional<uint64_t> GetCatalogVersionsFingerprint() const {
+    return catalog_versions_fingerprint_.load(std::memory_order_acquire);
+  }
+
+  std::shared_ptr<cdc::CDCServiceImpl> GetCDCService() const { return cdc_service_; }
+
+  key_t GetYsqlConnMgrStatsShmemKey() { return ysql_conn_mgr_stats_shmem_key_; }
+  void SetYsqlConnMgrStatsShmemKey(key_t shmem_key) { ysql_conn_mgr_stats_shmem_key_ = shmem_key; }
 
  protected:
   virtual Status RegisterServices();
@@ -276,6 +316,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   MonoDelta default_client_timeout() override;
   void SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) override;
+
+  Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
+
+  Result<std::unordered_set<std::string>> GetAvailableAutoFlagsForServer() const override;
 
   std::atomic<bool> initted_{false};
 
@@ -293,8 +337,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Used to forward redis pub/sub messages to the redis pub/sub handler
   yb::AtomicUniquePtr<rpc::Publisher> publish_service_ptr_;
 
-  std::thread fetch_universe_key_thread_;
-
   // Thread responsible for heartbeating to the master.
   std::unique_ptr<Heartbeater> heartbeater_;
 
@@ -302,6 +344,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   // Thread responsible for collecting metrics snapshots for native storage.
   std::unique_ptr<MetricsSnapshotter> metrics_snapshotter_;
+
+  // Thread responsible for sending aggregated table mutations to the auto analyzer service
+  std::unique_ptr<TableMutationCountSender> pg_table_mutation_count_sender_;
 
   // Webserver path handlers
   std::unique_ptr<TabletServerPathHandlers> path_handlers_;
@@ -329,6 +374,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   uint64_t ysql_last_breaking_catalog_version_ = 0;
   tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_;
 
+  // Fingerprint of the catalog versions map.
+  std::atomic<std::optional<uint64_t>> catalog_versions_fingerprint_;
+
   // If shared memory array db_catalog_versions_ slot is used by a database OID, the
   // corresponding slot in this boolean array is set to true.
   std::unique_ptr<std::array<bool, TServerSharedData::kMaxNumDbCatalogVersions>>
@@ -346,9 +394,18 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // is shut down.
   std::weak_ptr<PgClientServiceImpl> pg_client_service_;
 
+  // Key to shared memory for ysql connection manager stats
+  key_t ysql_conn_mgr_stats_shmem_key_ = 0;
+
  private:
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();
+
+  void InvalidatePgTableCache();
+
+  Result<std::unordered_set<uint32_t>> GetPgDatabaseOids();
+
+  void ScheduleCheckObjectIdAllocators();
 
   std::string log_prefix_;
 
@@ -357,7 +414,26 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   XClusterSafeTimeMap xcluster_safe_time_map_;
 
+  std::atomic<bool> xcluster_read_only_mode_{false};
+
+  PgMutationCounter pg_node_level_mutation_counter_;
+
   PgConfigReloader pg_config_reloader_;
+
+  Status CreateXClusterConsumer() REQUIRES(xcluster_consumer_mutex_);
+
+  std::unique_ptr<rpc::SecureContext> secure_context_;
+  std::vector<CertificateReloader> certificate_reloaders_;
+
+  // xCluster consumer.
+  mutable std::mutex xcluster_consumer_mutex_;
+  std::unique_ptr<XClusterConsumer> xcluster_consumer_ GUARDED_BY(xcluster_consumer_mutex_);
+
+  // CDC service.
+  std::shared_ptr<cdc::CDCServiceImpl> cdc_service_;
+
+  std::unique_ptr<rocksdb::Env> rocksdb_env_;
+  std::unique_ptr<encryption::UniverseKeyManager> universe_key_manager_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

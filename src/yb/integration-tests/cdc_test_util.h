@@ -24,10 +24,10 @@ namespace cdc {
 void AssertIntKey(const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& key,
                   int32_t value);
 
-void CreateCDCStream(const std::unique_ptr<CDCServiceProxy>& cdc_proxy,
-                     const TableId& table_id,
-                     CDCStreamId* stream_id,
-                     cdc::CDCRequestSource source_type = XCLUSTER);
+Result<xrepl::StreamId> CreateCDCStream(
+    const std::unique_ptr<CDCServiceProxy>& cdc_proxy,
+    const TableId& table_id,
+    cdc::CDCRequestSource source_type = XCLUSTER);
 
 // For any tablet that belongs to a table whose name starts with 'table_name_start', this method
 // will verify that its WAL retention time matches the provided time.

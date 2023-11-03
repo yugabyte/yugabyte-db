@@ -1,13 +1,11 @@
-import React from 'react';
 import { toast } from 'react-toastify';
 import userEvent from '@testing-library/user-event';
-import { screen } from '@testing-library/react';
 
 import { render, fireEvent, waitFor } from '../../../test-utils';
 import { FREQUENCY_MULTIPLIER, HAInstanceTypes, HAReplicationForm } from './HAReplicationForm';
 import { HAConfig, HAReplicationSchedule } from '../../../redesign/helpers/dtos';
 import { api } from '../../../redesign/helpers/api';
-import { mockRuntimeConfigs } from './mockUtils';
+import { MOCK_HA_WS_RUNTIME_CONFIG, MOCK_HA_WS_RUNTIME_CONFIG_WITH_PEER_CERTS } from './mockUtils';
 
 jest.mock('../../../redesign/helpers/api');
 
@@ -29,23 +27,11 @@ const mockSchedule: HAReplicationSchedule = {
 
 const setup = (hasPeerCerts: boolean, config?: HAConfig, schedule?: HAReplicationSchedule) => {
   const backToView = jest.fn();
-  const fetchRunTimeConfigs = jest.fn();
-  const setRunTimeConfig = jest.fn();
-  const mockRuntimeConfigWithPeerCerts = {
-    type: 'GLOBAL',
-    uuid: '00000000-0000-0000-0000-000000000000',
-    mutableScope: true,
-    configEntries: [
-      {
-        inherited: false,
-        key: 'yb.ha.ws',
-        value:
-          '{"ahc":{"disableUrlEncoding":false,"idleConnectionInPoolTimeout":"1 minute","keepAlive":true,"maxConnectionLifetime":null,"maxConnectionsPerHost":-1,"maxConnectionsTotal":-1,"maxNumberOfRedirects":5,"maxRequestRetry":5},"cache":{"cacheManagerResource":null,"cacheManagerURI":null,"cachingProviderName":"","enabled":false,"heuristics":{"enabled":false},"name":"play-ws-cache"},"compressionEnabled":false,"followRedirects":true,"ssl":{"checkRevocation":null,"debug":{"all":false,"certpath":false,"data":false,"defaultctx":false,"handshake":false,"keygen":false,"keymanager":false,"ocsp":false,"packet":false,"plaintext":false,"pluggability":false,"record":false,"session":false,"sessioncache":false,"ssl":false,"sslctx":false,"trustmanager":false,"verbose":false},"default":false,"disabledKeyAlgorithms":["RSA keySize < 2048","DSA keySize < 2048","EC keySize < 224"],"disabledSignatureAlgorithms":["MD2","MD4","MD5"],"enabledCipherSuites":[],"enabledProtocols":["TLSv1.2","TLSv1.1","TLSv1"],"hostnameVerifierClass":null,"keyManager":{"algorithm":null,"prototype":{"stores":{"data":null,"password":null,"path":null,"type":null}},"stores":[]},"loose":{"acceptAnyCertificate":false,"allowLegacyHelloMessages":null,"allowUnsafeRenegotiation":null,"allowWeakCiphers":false,"allowWeakProtocols":false,"disableHostnameVerification":false,"disableSNI":false},"protocol":"TLSv1.2","revocationLists":[],"sslParameters":{"clientAuth":"default","protocols":[]},"trustManager":{"algorithm":null,"prototype":{"stores":{"data":null,"path":null,"type":null}},"stores":[{"data":"-----BEGIN CERTIFICATE-----\\nMIIOHDCCDQSgAwIBAgIRAO5kLPg5l5zJEkJWJqfEbQowDQYJKoZIhvcNAQELBQAw\\nRjELMAkGA1UEBhMCVVMxIjAgBgNVBAoTGUdvb2dsZSBUcnVzdCBTZXJ2aWNlcyBM\\nTEMxEzARBgNVBAMTCkdUUyBDQSAxQzMwHhcNMjIxMTAyMTM0MzA5WhcNMjMwMTI1\\nMTM0MzA4WjAXMRUwEwYDVQQDDAwqLmdvb2dsZS5jb20wWTATBgcqhkjOPQIBBggq\\nhkjOPQMBBwNCAATnpaH4wd+cGIQdMkL+05urIhqgiFWxpXuisENOgKFc/tdEponF\\n9PgXdr8WWQlIjRxlJ5Z7QxbPQlikvUeQFkVKo4IL/TCCC/kwDgYDVR0PAQH/BAQD\\nAgeAMBMGA1UdJQQMMAoGCCsGAQUFBwMBMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYE\\nFE4XeU6urCodRXAa/1YYmlrAAkbWMB8GA1UdIwQYMBaAFIp0f6+Fze6VzT2c0OJG\\nFPNxNR0nMGoGCCsGAQUFBwEBBF4wXDAnBggrBgEFBQcwAYYbaHR0cDovL29jc3Au\\ncGtpLmdvb2cvZ3RzMWMzMDEGCCsGAQUFBzAChiVodHRwOi8vcGtpLmdvb2cvcmVw\\nby9jZXJ0cy9ndHMxYzMuZGVyMIIJrQYDVR0RBIIJpDCCCaCCDCouZ29vZ2xlLmNv\\nbYIWKi5hcHBlbmdpbmUuZ29vZ2xlLmNvbYIJKi5iZG4uZGV2ghUqLm9yaWdpbi10\\nZXN0LmJkbi5kZXaCEiouY2xvdWQuZ29vZ2xlLmNvbYIYKi5jcm93ZHNvdXJjZS5n\\nb29nbGUuY29tghgqLmRhdGFjb21wdXRlLmdvb2dsZS5jb22CCyouZ29vZ2xlLmNh\\nggsqLmdvb2dsZS5jbIIOKi5nb29nbGUuY28uaW6CDiouZ29vZ2xlLmNvLmpwgg4q\\nLmdvb2dsZS5jby51a4IPKi5nb29nbGUuY29tLmFygg8qLmdvb2dsZS5jb20uYXWC\\nDyouZ29vZ2xlLmNvbS5icoIPKi5nb29nbGUuY29tLmNvgg8qLmdvb2dsZS5jb20u\\nbXiCDyouZ29vZ2xlLmNvbS50coIPKi5nb29nbGUuY29tLnZuggsqLmdvb2dsZS5k\\nZYILKi5nb29nbGUuZXOCCyouZ29vZ2xlLmZyggsqLmdvb2dsZS5odYILKi5nb29n\\nbGUuaXSCCyouZ29vZ2xlLm5sggsqLmdvb2dsZS5wbIILKi5nb29nbGUucHSCEiou\\nZ29vZ2xlYWRhcGlzLmNvbYIPKi5nb29nbGVhcGlzLmNughEqLmdvb2dsZXZpZGVv\\nLmNvbYIMKi5nc3RhdGljLmNughAqLmdzdGF0aWMtY24uY29tgg9nb29nbGVjbmFw\\ncHMuY26CESouZ29vZ2xlY25hcHBzLmNughFnb29nbGVhcHBzLWNuLmNvbYITKi5n\\nb29nbGVhcHBzLWNuLmNvbYIMZ2tlY25hcHBzLmNugg4qLmdrZWNuYXBwcy5jboIS\\nZ29vZ2xlZG93bmxvYWRzLmNughQqLmdvb2dsZWRvd25sb2Fkcy5jboIQcmVjYXB0\\nY2hhLm5ldC5jboISKi5yZWNhcHRjaGEubmV0LmNughByZWNhcHRjaGEtY24ubmV0\\nghIqLnJlY2FwdGNoYS1jbi5uZXSCC3dpZGV2aW5lLmNugg0qLndpZGV2aW5lLmNu\\nghFhbXBwcm9qZWN0Lm9yZy5jboITKi5hbXBwcm9qZWN0Lm9yZy5jboIRYW1wcHJv\\namVjdC5uZXQuY26CEyouYW1wcHJvamVjdC5uZXQuY26CF2dvb2dsZS1hbmFseXRp\\nY3MtY24uY29tghkqLmdvb2dsZS1hbmFseXRpY3MtY24uY29tghdnb29nbGVhZHNl\\ncnZpY2VzLWNuLmNvbYIZKi5nb29nbGVhZHNlcnZpY2VzLWNuLmNvbYIRZ29vZ2xl\\ndmFkcy1jbi5jb22CEyouZ29vZ2xldmFkcy1jbi5jb22CEWdvb2dsZWFwaXMtY24u\\nY29tghMqLmdvb2dsZWFwaXMtY24uY29tghVnb29nbGVvcHRpbWl6ZS1jbi5jb22C\\nFyouZ29vZ2xlb3B0aW1pemUtY24uY29tghJkb3VibGVjbGljay1jbi5uZXSCFCou\\nZG91YmxlY2xpY2stY24ubmV0ghgqLmZscy5kb3VibGVjbGljay1jbi5uZXSCFiou\\nZy5kb3VibGVjbGljay1jbi5uZXSCDmRvdWJsZWNsaWNrLmNughAqLmRvdWJsZWNs\\naWNrLmNughQqLmZscy5kb3VibGVjbGljay5jboISKi5nLmRvdWJsZWNsaWNrLmNu\\nghFkYXJ0c2VhcmNoLWNuLm5ldIITKi5kYXJ0c2VhcmNoLWNuLm5ldIIdZ29vZ2xl\\ndHJhdmVsYWRzZXJ2aWNlcy1jbi5jb22CHyouZ29vZ2xldHJhdmVsYWRzZXJ2aWNl\\ncy1jbi5jb22CGGdvb2dsZXRhZ3NlcnZpY2VzLWNuLmNvbYIaKi5nb29nbGV0YWdz\\nZXJ2aWNlcy1jbi5jb22CF2dvb2dsZXRhZ21hbmFnZXItY24uY29tghkqLmdvb2ds\\nZXRhZ21hbmFnZXItY24uY29tghhnb29nbGVzeW5kaWNhdGlvbi1jbi5jb22CGiou\\nZ29vZ2xlc3luZGljYXRpb24tY24uY29tgiQqLnNhZmVmcmFtZS5nb29nbGVzeW5k\\naWNhdGlvbi1jbi5jb22CFmFwcC1tZWFzdXJlbWVudC1jbi5jb22CGCouYXBwLW1l\\nYXN1cmVtZW50LWNuLmNvbYILZ3Z0MS1jbi5jb22CDSouZ3Z0MS1jbi5jb22CC2d2\\ndDItY24uY29tgg0qLmd2dDItY24uY29tggsybWRuLWNuLm5ldIINKi4ybWRuLWNu\\nLm5ldIIUZ29vZ2xlZmxpZ2h0cy1jbi5uZXSCFiouZ29vZ2xlZmxpZ2h0cy1jbi5u\\nZXSCDGFkbW9iLWNuLmNvbYIOKi5hZG1vYi1jbi5jb22CFGdvb2dsZXNhbmRib3gt\\nY24uY29tghYqLmdvb2dsZXNhbmRib3gtY24uY29tgg0qLmdzdGF0aWMuY29tghQq\\nLm1ldHJpYy5nc3RhdGljLmNvbYIKKi5ndnQxLmNvbYIRKi5nY3BjZG4uZ3Z0MS5j\\nb22CCiouZ3Z0Mi5jb22CDiouZ2NwLmd2dDIuY29tghAqLnVybC5nb29nbGUuY29t\\nghYqLnlvdXR1YmUtbm9jb29raWUuY29tggsqLnl0aW1nLmNvbYILYW5kcm9pZC5j\\nb22CDSouYW5kcm9pZC5jb22CEyouZmxhc2guYW5kcm9pZC5jb22CBGcuY26CBiou\\nZy5jboIEZy5jb4IGKi5nLmNvggZnb28uZ2yCCnd3dy5nb28uZ2yCFGdvb2dsZS1h\\nbmFseXRpY3MuY29tghYqLmdvb2dsZS1hbmFseXRpY3MuY29tggpnb29nbGUuY29t\\nghJnb29nbGVjb21tZXJjZS5jb22CFCouZ29vZ2xlY29tbWVyY2UuY29tgghnZ3Bo\\ndC5jboIKKi5nZ3BodC5jboIKdXJjaGluLmNvbYIMKi51cmNoaW4uY29tggh5b3V0\\ndS5iZYILeW91dHViZS5jb22CDSoueW91dHViZS5jb22CFHlvdXR1YmVlZHVjYXRp\\nb24uY29tghYqLnlvdXR1YmVlZHVjYXRpb24uY29tgg95b3V0dWJla2lkcy5jb22C\\nESoueW91dHViZWtpZHMuY29tggV5dC5iZYIHKi55dC5iZYIaYW5kcm9pZC5jbGll\\nbnRzLmdvb2dsZS5jb22CG2RldmVsb3Blci5hbmRyb2lkLmdvb2dsZS5jboIcZGV2\\nZWxvcGVycy5hbmRyb2lkLmdvb2dsZS5jboIYc291cmNlLmFuZHJvaWQuZ29vZ2xl\\nLmNuMCEGA1UdIAQaMBgwCAYGZ4EMAQIBMAwGCisGAQQB1nkCBQMwPAYDVR0fBDUw\\nMzAxoC+gLYYraHR0cDovL2NybHMucGtpLmdvb2cvZ3RzMWMzL1FxRnhiaTlNNDhj\\nLmNybDCCAQQGCisGAQQB1nkCBAIEgfUEgfIA8AB2AOg+0No+9QY1MudXKLyJa8kD\\n08vREWvs62nhd31tBr1uAAABhDjL2IwAAAQDAEcwRQIgQQ1PvUC5phcRASIsCKB8\\nZHkxPAAx7FtQIWpAVUpIN9ECIQC128MH0F8IWJttknlqARlThgqYuyo2JRwBAVQu\\nhLzFLwB2AHoyjFTYty22IOo44FIe6YQWcDIThU070ivBOlejUutSAAABhDjL2NgA\\nAAQDAEcwRQIhAJwJMHFE6fP1mqw9fxpJkgKOXgzmcStNhLxwax5AUTSPAiBP5yxG\\nQar6D/k8RFHezOJjOtTfQQX3zxvRAP5nDWZHSjANBgkqhkiG9w0BAQsFAAOCAQEA\\n4S8KgjhxeMVDJY+lXTAb3oIICSjcJN/3KSjUIy24cdd+mVz1c0h9BSSA+dDy//kp\\nVrAILEgJddKsnF0sjco5rjlrL8cyn5VWGO4stENfK4cQW6mb+6pYYNTfpWglIu6g\\nqeH+BvPjhgqC3qhFJ/ZuHc6gl+lsA4HCSJKw8ecKfM2Re2MJPF/xeJTdON++39DM\\nksdidhWcB67A1ynzZ9zXYj51Q9ISXO6VlHSnugxCMpS9zmdkaasHFWvvFsNuFxYY\\n833e/p+f5bHRXkmdogOldIChmLjvlvcIVEhKtkSv7Rduc3PnO9HJj7Q4t0gZ1oMn\\nBuBl4CVkECWt6k0Xq5yorw==\\n-----END CERTIFICATE-----","type":"PEM"}]}},"timeout":{"connection":"2 minutes","idle":"2 minutes","request":"2 minutes"},"useProxyProperties":true,"useragent":null}'
-      }
-    ]
-  };
+  const fetchRuntimeConfigs = jest.fn();
+  const setRuntimeConfig = jest.fn();
+
   const mockRuntimeConfigPromise = {
-    data: hasPeerCerts ? mockRuntimeConfigWithPeerCerts : mockRuntimeConfigs,
+    data: hasPeerCerts ? MOCK_HA_WS_RUNTIME_CONFIG_WITH_PEER_CERTS : MOCK_HA_WS_RUNTIME_CONFIG,
     error: null,
     promiseState: 'SUCCESS'
   };
@@ -56,19 +42,24 @@ const setup = (hasPeerCerts: boolean, config?: HAConfig, schedule?: HAReplicatio
       schedule={schedule}
       backToViewMode={backToView}
       runtimeConfigs={mockRuntimeConfigPromise}
-      fetchRuntimeConfigs={fetchRunTimeConfigs}
-      setRuntimeConfig={setRunTimeConfig}
+      fetchRuntimeConfigs={fetchRuntimeConfigs}
+      setRuntimeConfig={setRuntimeConfig}
     />
   );
 
   const form = component.getByRole('form');
   const formFields = {
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     instanceType: form.querySelector<HTMLInputElement>('input[name="instanceType"]:checked')!,
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     instanceAddress: form.querySelector<HTMLInputElement>('input[name="instanceAddress"]')!,
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     clusterKey: form.querySelector<HTMLInputElement>('input[name="clusterKey"]')!,
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     replicationFrequency: form.querySelector<HTMLInputElement>(
       'input[name="replicationFrequency"]'
     )!,
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     replicationEnabled: form.querySelector<HTMLInputElement>('input[name="replicationEnabled"]')!
   };
   const formValues = {
@@ -308,7 +299,34 @@ describe('HA replication configuration form', () => {
 
     expect(backToView).toBeCalled();
   });
-  it('should disable the submit button for active config if peer certs do not exist', async () => {
+  it('should disable the submit button for active config if peer certs do not exist and using https', async () => {
+    const fakeValues = {
+      configId: 'fake-config-id',
+      instanceAddress: 'https://fake-address',
+      clusterKey: 'fake-key',
+      replicationFrequency: '30'
+    };
+    (api.generateHAKey as jest.Mock).mockResolvedValue({ cluster_key: fakeValues.clusterKey });
+
+    const { component, formFields } = setup(false);
+
+    // enter address
+    userEvent.clear(formFields.instanceAddress);
+    userEvent.type(formFields.instanceAddress, fakeValues.instanceAddress);
+
+    // generate cluster key and check form value
+    userEvent.click(component.queryByRole('button', { name: /generate key/i })!);
+    await waitFor(() => expect(api.generateHAKey).toBeCalled());
+    expect(formFields.clusterKey).toHaveValue(fakeValues.clusterKey);
+
+    // set replication frequency
+    userEvent.clear(formFields.replicationFrequency);
+    userEvent.type(formFields.replicationFrequency, fakeValues.replicationFrequency);
+
+    // Verify the submit button is disabled (since no peer certs were added).
+    expect(component.getByRole('button', { name: /create/i })).toBeDisabled();
+  });
+  it('should not disable the submit button for active config if peer certs do not exist and not using https', async () => {
     const fakeValues = {
       configId: 'fake-config-id',
       instanceAddress: 'http://fake-address',
@@ -333,12 +351,12 @@ describe('HA replication configuration form', () => {
     userEvent.type(formFields.replicationFrequency, fakeValues.replicationFrequency);
 
     // Verify the submit button is disabled (since no peer certs were added).
-    expect(component.getByRole('button', { name: /create/i })).toBeDisabled();
+    expect(component.getByRole('button', { name: /create/i })).toBeEnabled();
   });
-  it('should disable the submit button for standby config if peer certs do not exist', async () => {
+  it('should not disable the submit button for standby config if peer certs do not exist and https instance', async () => {
     const fakeValues = {
       configId: 'fake-config-id',
-      instanceAddress: 'http://fake-address',
+      instanceAddress: 'https://fake-address',
       clusterKey: 'fake-key'
     };
     const { component, formFields } = setup(false);
@@ -354,23 +372,7 @@ describe('HA replication configuration form', () => {
     userEvent.type(formFields.clusterKey, fakeValues.clusterKey);
 
     // Verify the submit button is disabled (since no peer certs were added).
-    expect(component.getByRole('button', { name: /create/i })).toBeDisabled();
-  });
-  it('should check enabling replication happy flow', async () => {
-    (api.startHABackupSchedule as jest.Mock).mockResolvedValue({});
-
-    const { component, formFields, backToView } = setup(true, mockConfig, mockSchedule);
-
-    userEvent.click(formFields.replicationEnabled);
-    expect(component.getByRole('button', { name: /save/i })).toBeEnabled();
-    userEvent.click(component.getByRole('button', { name: /save/i }));
-    await waitFor(() => {
-      expect(api.startHABackupSchedule).toBeCalledWith(
-        undefined,
-        mockSchedule.frequency_milliseconds
-      );
-    });
-    expect(backToView).toBeCalled();
+    expect(component.getByRole('button', { name: /create/i })).toBeEnabled();
   });
 
   it('should check disabling replication happy flow', async () => {

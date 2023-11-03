@@ -28,14 +28,19 @@ namespace yb {
 namespace tablet {
 
 struct TransactionStatusInfo {
+  TabletId status_tablet;
   TransactionId transaction_id = TransactionId::Nil();
   TransactionStatus status;
-  AbortedSubTransactionSet aborted_subtxn_set;
+  SubtxnSet aborted_subtxn_set;
   HybridTime status_ht;
   HybridTime coordinator_safe_time;
+  // Status containing the deadlock info if the transaction was aborted due to a deadlock.
+  // Defaults to Status::OK() in all other cases.
+  Status expected_deadlock_status = Status::OK();
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(transaction_id, status, status_ht, coordinator_safe_time);
+    return YB_STRUCT_TO_STRING(
+        status_tablet, transaction_id, status, status_ht, coordinator_safe_time);
   }
 };
 

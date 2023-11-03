@@ -3,196 +3,456 @@
 package task
 
 import (
-	"bytes"
+	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"node-agent/model"
 	"node-agent/util"
 	"os"
 	"os/exec"
+	"regexp"
 	"sort"
 	"strconv"
+	"strings"
+	"sync/atomic"
+	"syscall"
 
+	"github.com/creack/pty"
 	"github.com/olekukonko/tablewriter"
 	funk "github.com/thoas/go-funk"
 )
 
-type shellTask struct {
-	name string //Name of the task
-	cmd  string
-	args []string
-	done bool
+const (
+	// MaxBufferCapacity is the max number of bytes allowed in the buffer
+	// before truncating the first bytes.
+	MaxBufferCapacity = 1000000
+)
+
+const (
+	mountPointsVolume    = "mount_points_volume"
+	mountPointsWritable  = "mount_points_writable"
+	masterHTTPPort       = "master_http_port"
+	masterRPCPort        = "master_rpc_port"
+	tserverHTTPPort      = "tserver_http_port"
+	tserverRPCPort       = "tserver_rpc_port"
+	ybControllerHTTPPort = "yb_controller_http_port"
+	ybControllerRPCPort  = "yb_controller_rpc_port"
+	redisServerHTTPPort  = "redis_server_http_port"
+	redisServerRPCPort   = "redis_server_rpc_port"
+	ycqlServerHTTPPort   = "ycql_server_http_port"
+	ycqlServerRPCPort    = "ycql_server_rpc_port"
+	ysqlServerHTTPPort   = "ysql_server_http_port"
+	ysqlServerRPCPort    = "ysql_server_rpc_port"
+	sshPort              = "ssh_port"
+	nodeExporterPort     = "node_exporter_port"
+)
+
+var (
+	envRegex     = regexp.MustCompile("[A-Za-z_0-9]+=.*")
+	redactParams = map[string]bool{
+		"jwt":       true,
+		"api_token": true,
+		"password":  true,
+	}
+	userVariables = []string{"LOGNAME", "USER", "LNAME", "USERNAME"}
+)
+
+// ShellTask handles command execution.
+type ShellTask struct {
+	// Name of the task.
+	name     string
+	cmd      string
+	user     string
+	args     []string
+	stdout   util.Buffer
+	stderr   util.Buffer
+	exitCode *atomic.Value
 }
 
-func NewShellTask(name string, cmd string, args []string) *shellTask {
-	return &shellTask{name: name, cmd: cmd, args: args}
+// NewShellTask returns a shell task executor.
+func NewShellTask(name string, cmd string, args []string) *ShellTask {
+	return NewShellTaskWithUser(name, "", cmd, args)
 }
-func (s shellTask) TaskName() string {
+
+// NewShellTaskWithUser returns a shell task executor.
+func NewShellTaskWithUser(name string, user string, cmd string, args []string) *ShellTask {
+	return &ShellTask{
+		name:     name,
+		user:     user,
+		cmd:      cmd,
+		args:     args,
+		exitCode: &atomic.Value{},
+		stdout:   util.NewBuffer(MaxBufferCapacity),
+		stderr:   util.NewBuffer(MaxBufferCapacity),
+	}
+}
+
+// TaskName returns the name of the shell task.
+func (s *ShellTask) TaskName() string {
 	return s.name
 }
 
-// Runs the Shell Task.
-func (s *shellTask) Process(ctx context.Context) (string, error) {
-	util.FileLogger().Debugf("Starting the shell request - %s", s.name)
-	shellCmd := exec.Command(s.cmd, s.args...)
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	var output string
-	shellCmd.Stdout = &out
-	shellCmd.Stderr = &errOut
-	util.FileLogger().Infof("Running command %s with args %v", s.cmd, s.args)
-	err := shellCmd.Run()
-	if err != nil {
-		output = fmt.Sprintf("%s: %s", err.Error(), errOut.String())
-		util.FileLogger().Errorf("Shell Run - %s task failed - %s", s.name, err.Error())
-		util.FileLogger().Errorf("Shell command output %s", output)
-	} else {
-		output = out.String()
-		util.FileLogger().Debugf("Shell Run - %s task successful", s.name)
-		util.FileLogger().Debugf("Shell command output %s", output)
+func (s *ShellTask) redactCommandArgs(args ...string) []string {
+	redacted := []string{}
+	redactValue := false
+	for _, param := range args {
+		if strings.HasPrefix(param, "-") {
+			if _, ok := redactParams[strings.TrimLeft(param, "-")]; ok {
+				redactValue = true
+			} else {
+				redactValue = false
+			}
+			redacted = append(redacted, param)
+		} else if redactValue {
+			redacted = append(redacted, "REDACTED")
+		} else {
+			redacted = append(redacted, param)
+		}
 	}
-	s.done = true
-	return output, err
+	return redacted
 }
 
-func (s shellTask) Done() bool {
-	return s.done
+func (s *ShellTask) command(
+	ctx context.Context,
+	userDetail *util.UserDetail,
+	name string,
+	arg ...string,
+) (*exec.Cmd, error) {
+	cmd := exec.CommandContext(ctx, name, arg...)
+	if !userDetail.IsCurrent {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+		cmd.SysProcAttr.Credential = &syscall.Credential{
+			Uid: userDetail.UserID,
+			Gid: userDetail.GroupID,
+		}
+	}
+	pwd := userDetail.User.HomeDir
+	if pwd == "" {
+		pwd = "/tmp"
+	}
+	os.Setenv("PWD", pwd)
+	os.Setenv("HOME", pwd)
+	for _, userVar := range userVariables {
+		os.Setenv(userVar, userDetail.User.Username)
+	}
+	cmd.Dir = pwd
+	return cmd, nil
+}
+
+func (s *ShellTask) userEnv(ctx context.Context, userDetail *util.UserDetail) []string {
+	env := []string{}
+	// Interactive shell to source ~/.bashrc.
+	cmd, err := s.command(ctx, userDetail, "bash")
+	env = append(env, os.Environ()...)
+	// Create a pseudo tty (non stdin) to act like SSH login.
+	// Otherwise, the child process is stopped because it is a background process.
+	ptty, err := pty.Start(cmd)
+	if err != nil {
+		util.FileLogger().Warnf(
+			ctx, "Failed to run command to get env variables. Error: %s", err.Error())
+		return env
+	}
+	defer ptty.Close()
+	ptty.Write([]byte("env 2>/dev/null\n"))
+	ptty.Write([]byte("exit 0\n"))
+	// End of transmission.
+	ptty.Write([]byte{4})
+	scanner := bufio.NewScanner(ptty)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if envRegex.MatchString(line) {
+			env = append(env, line)
+		}
+	}
+	err = cmd.Wait()
+	if err != nil {
+		util.FileLogger().Warnf(
+			ctx, "Failed to get env variables. Error: %s", err.Error())
+		return env
+	}
+	return env
+}
+
+// Command returns a command with the environment set.
+func (s *ShellTask) Command(ctx context.Context, name string, arg ...string) (*exec.Cmd, error) {
+	userDetail, err := util.UserInfo(s.user)
+	if err != nil {
+		return nil, err
+	}
+	util.FileLogger().Debugf(ctx, "Using user: %s, uid: %d, gid: %d",
+		userDetail.User.Username, userDetail.UserID, userDetail.GroupID)
+	env := s.userEnv(ctx, userDetail)
+	cmd, err := s.command(ctx, userDetail, name, arg...)
+	if err != nil {
+		util.FileLogger().Warnf(ctx, "Failed to create command %s. Error: %s", name, err.Error())
+		return nil, err
+	}
+	cmd.Env = append(cmd.Env, env...)
+	return cmd, nil
+}
+
+// Process runs the the command Task.
+func (s *ShellTask) Process(ctx context.Context) (*TaskStatus, error) {
+	util.FileLogger().Debugf(ctx, "Starting the command - %s", s.name)
+	taskStatus := &TaskStatus{Info: s.stdout, ExitStatus: &ExitStatus{Code: 1, Error: s.stderr}}
+	cmd, err := s.Command(ctx, s.cmd, s.args...)
+	if err != nil {
+		util.FileLogger().Errorf(ctx, "Command creation for %s failed - %s", s.name, err.Error())
+		return taskStatus, err
+	}
+	cmd.Stdout = s.stdout
+	cmd.Stderr = s.stderr
+	if util.FileLogger().IsDebugEnabled() {
+		redactedArgs := s.redactCommandArgs(s.args...)
+		util.FileLogger().Debugf(ctx, "Running command %s with args %v", s.cmd, redactedArgs)
+	}
+	err = cmd.Run()
+	if err == nil {
+		taskStatus.Info = s.stdout
+		taskStatus.ExitStatus.Code = 0
+		if util.FileLogger().IsDebugEnabled() {
+			util.FileLogger().
+				Debugf(ctx, "Command %s executed successfully - %s", s.name, s.stdout.String())
+		}
+	} else {
+		taskStatus.ExitStatus.Error = s.stderr
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			taskStatus.ExitStatus.Code = exitErr.ExitCode()
+		}
+		errMsg := fmt.Sprintf("%s: %s", err.Error(), s.stderr.String())
+		util.FileLogger().Errorf(ctx, "Command %s execution failed - %s", s.name, errMsg)
+	}
+	s.exitCode.Store(taskStatus.ExitStatus.Code)
+	return taskStatus, err
+}
+
+// Handler implements the AsyncTask method.
+func (s *ShellTask) Handler() util.Handler {
+	return util.Handler(func(ctx context.Context) (any, error) {
+		return s.Process(ctx)
+	})
+}
+
+// CurrentTaskStatus implements the AsyncTask method.
+func (s *ShellTask) CurrentTaskStatus() *TaskStatus {
+	v := s.exitCode.Load()
+	if v == nil {
+		return &TaskStatus{
+			Info: s.stdout,
+		}
+	}
+	return &TaskStatus{
+		Info: s.stdout,
+		ExitStatus: &ExitStatus{
+			Code:  v.(int),
+			Error: s.stderr,
+		},
+	}
+}
+
+// String implements the AsyncTask method.
+func (s *ShellTask) String() string {
+	return s.cmd
+}
+
+// Result returns the result.
+func (s *ShellTask) Result() any {
+	return nil
+}
+
+// CreatePreflightCheckParam returns PreflightCheckParam from the given parameters.
+func CreatePreflightCheckParam(
+	provider *model.Provider,
+	instanceType *model.NodeInstanceType,
+	accessKey *model.AccessKey) *model.PreflightCheckParam {
+	param := &model.PreflightCheckParam{}
+	param.AirGapInstall = provider.AirGapInstall
+	param.SkipProvisioning = accessKey.KeyInfo.SkipProvisioning
+	param.InstallNodeExporter = accessKey.KeyInfo.InstallNodeExporter
+	param.YbHomeDir = util.NodeHomeDirectory
+	if homeDir, ok := provider.Config["YB_HOME_DIR"]; ok {
+		param.YbHomeDir = homeDir
+	}
+	param.SshPort = provider.SshPort
+	if data := instanceType.Details.VolumeDetailsList; len(data) > 0 {
+		param.MountPaths = make([]string, len(data))
+		for i, volumeDetail := range data {
+			param.MountPaths[i] = volumeDetail.MountPath
+		}
+	}
+	param.AirGapInstall = param.AirGapInstall || accessKey.KeyInfo.AirGapInstall
+	return param
 }
 
 type PreflightCheckHandler struct {
-	provider     *model.Provider
-	instanceType *model.NodeInstanceType
-	accessKey    *model.AccessKey
-	result       *map[string]model.PreflightCheckVal
+	shellTask *ShellTask
+	param     *model.PreflightCheckParam
+	result    *[]model.NodeConfig
 }
 
-func NewPreflightCheckHandler(
-	provider *model.Provider,
-	instanceType *model.NodeInstanceType,
-	accessKey *model.AccessKey,
-) *PreflightCheckHandler {
-	return &PreflightCheckHandler{
-		provider:     provider,
-		instanceType: instanceType,
-		accessKey:    accessKey,
+func NewPreflightCheckHandler(param *model.PreflightCheckParam) *PreflightCheckHandler {
+	handler := &PreflightCheckHandler{
+		param: param,
 	}
+	handler.shellTask = NewShellTask(
+		"runPreflightCheckScript",
+		util.DefaultShell,
+		handler.getOptions(util.PreflightCheckPath()),
+	)
+	return handler
+}
+
+// Handler implements the AsyncTask method.
+func (handler *PreflightCheckHandler) Handler() util.Handler {
+	return handler.Handle
+}
+
+// CurrentTaskStatus implements the AsyncTask method.
+func (handler *PreflightCheckHandler) CurrentTaskStatus() *TaskStatus {
+	taskStatus := handler.shellTask.CurrentTaskStatus()
+	taskStatus.Info = util.NewBuffer(1)
+	return taskStatus
+}
+
+// String implements the AsyncTask method.
+func (handler *PreflightCheckHandler) String() string {
+	return handler.shellTask.String()
 }
 
 func (handler *PreflightCheckHandler) Handle(ctx context.Context) (any, error) {
-	util.FileLogger().Debug("Starting Preflight checks handler.")
-	var err error
-	preflightScriptPath := util.PreflightCheckPath()
-	shellCmdTask := NewShellTask(
-		"runPreflightCheckScript",
-		util.DefaultShell,
-		handler.getOptions(preflightScriptPath),
-	)
-	output, err := shellCmdTask.Process(ctx)
+	util.FileLogger().Debug(ctx, "Starting Preflight checks handler.")
+	output, err := handler.shellTask.Process(ctx)
 	if err != nil {
-		util.FileLogger().Errorf("Pre-flight checks processing failed - %s", err.Error())
+		util.FileLogger().Errorf(ctx, "Pre-flight checks processing failed - %s", err.Error())
 		return nil, err
 	}
-	handler.result = &map[string]model.PreflightCheckVal{}
-	err = json.Unmarshal([]byte(output), handler.result)
+	data := output.Info.String()
+	util.FileLogger().Debugf(ctx, "Preflight check output data: %s", data)
+	outputMap := map[string]model.PreflightCheckVal{}
+	err = json.Unmarshal([]byte(data), &outputMap)
 	if err != nil {
-		util.FileLogger().Errorf("Pre-flight checks unmarshaling error - %s", err.Error())
+		util.FileLogger().Errorf(ctx, "Pre-flight checks unmarshaling error - %s", err.Error())
 		return nil, err
 	}
+	handler.result = getNodeConfig(outputMap)
 	return handler.result, nil
 }
 
-func (handler *PreflightCheckHandler) Result() *map[string]model.PreflightCheckVal {
+func (handler *PreflightCheckHandler) Result() *[]model.NodeConfig {
 	return handler.result
 }
 
 // Returns options for the preflight checks.
 func (handler *PreflightCheckHandler) getOptions(preflightScriptPath string) []string {
-	provider := handler.provider
-	instanceType := handler.instanceType
-	accessKey := handler.accessKey
-	options := make([]string, 3)
-	options[0] = preflightScriptPath
-	options[1] = "-t"
-
-	if accessKey.KeyInfo.SkipProvisioning {
-		options[2] = "configure"
+	options := []string{preflightScriptPath, "-t"}
+	if handler.param.SkipProvisioning {
+		options = append(options, "configure")
 	} else {
-		options[2] = "provision"
+		options = append(options, "provision")
 	}
-
-	if provider.AirGapInstall {
-		options = append(options, "--airgap")
+	options = append(options, "--node_agent_mode")
+	options = append(options, "--yb_home_dir", "'"+handler.param.YbHomeDir+"'")
+	if handler.param.SshPort != 0 {
+		options = append(
+			options,
+			"--ssh_port",
+			fmt.Sprint(handler.param.SshPort))
 	}
-
-	if homeDir, ok := provider.Config["YB_HOME_DIR"]; ok {
-		options = append(options, "--yb_home_dir", "'"+homeDir+"'")
-	} else {
-		options = append(options, "--yb_home_dir", util.NodeHomeDirectory)
+	if handler.param.MasterHttpPort != 0 {
+		options = append(
+			options, "--master_http_port", fmt.Sprint(handler.param.MasterHttpPort))
 	}
-
-	if data := provider.SshPort; data != 0 {
-		options = append(options, "--ssh_port", fmt.Sprint(data))
+	if handler.param.MasterRpcPort != 0 {
+		options = append(
+			options, "--master_rpc_port", fmt.Sprint(handler.param.MasterRpcPort))
 	}
-
-	if data := instanceType.Details.VolumeDetailsList; len(data) > 0 {
+	if handler.param.TserverHttpPort != 0 {
+		options = append(
+			options, "--tserver_http_port", fmt.Sprint(handler.param.TserverHttpPort))
+	}
+	if handler.param.TserverRpcPort != 0 {
+		options = append(
+			options, "--tserver_rpc_port", fmt.Sprint(handler.param.TserverRpcPort))
+	}
+	if handler.param.RedisServerHttpPort != 0 {
+		options = append(
+			options, "--redis_server_http_port", fmt.Sprint(handler.param.RedisServerHttpPort),
+		)
+	}
+	if handler.param.RedisServerRpcPort != 0 {
+		options = append(
+			options, "--redis_server_rpc_port", fmt.Sprint(handler.param.RedisServerRpcPort),
+		)
+	}
+	if handler.param.NodeExporterPort != 0 {
+		options = append(
+			options, "--node_exporter_port", fmt.Sprint(handler.param.NodeExporterPort),
+		)
+	}
+	if handler.param.YcqlServerHttpPort != 0 {
+		options = append(
+			options, "--ycql_server_http_port", fmt.Sprint(handler.param.YcqlServerHttpPort),
+		)
+	}
+	if handler.param.YcqlServerRpcPort != 0 {
+		options = append(
+			options, "--ycql_server_rpc_port", fmt.Sprint(handler.param.YcqlServerRpcPort),
+		)
+	}
+	if handler.param.YsqlServerHttpPort != 0 {
+		options = append(
+			options, "--ysql_server_http_port", fmt.Sprint(handler.param.YsqlServerHttpPort),
+		)
+	}
+	if handler.param.YsqlServerRpcPort != 0 {
+		options = append(
+			options, "--ysql_server_rpc_port", fmt.Sprint(handler.param.YsqlServerRpcPort),
+		)
+	}
+	if handler.param.YbControllerHttpPort != 0 {
+		options = append(
+			options, "--yb_controller_http_port", fmt.Sprint(handler.param.YbControllerHttpPort),
+		)
+	}
+	if handler.param.YbControllerRpcPort != 0 {
+		options = append(
+			options, "--yb_controller_rpc_port", fmt.Sprint(handler.param.YbControllerRpcPort),
+		)
+	}
+	if handler.param.MountPaths != nil && len(handler.param.MountPaths) > 0 {
 		options = append(options, "--mount_points")
-		mp := ""
-		for i, volumeDetail := range data {
-			mp += volumeDetail.MountPath
-			if i < len(data)-1 {
-				mp += ","
-			}
-		}
-		options = append(options, mp)
+		options = append(options, strings.Join(handler.param.MountPaths, ","))
 	}
-	if accessKey.KeyInfo.InstallNodeExporter {
+	if handler.param.InstallNodeExporter {
 		options = append(options, "--install_node_exporter")
 	}
-	if accessKey.KeyInfo.AirGapInstall {
+	if handler.param.AirGapInstall {
 		options = append(options, "--airgap")
 	}
-
 	return options
 }
 
-func HandleUpgradeScript(config *util.Config, ctx context.Context, version string) error {
-	util.FileLogger().Debug("Initializing the upgrade script")
+func HandleUpgradeScript(ctx context.Context, config *util.Config) error {
+	util.FileLogger().Debug(ctx, "Initializing the upgrade script")
 	upgradeScriptTask := NewShellTask(
 		"upgradeScript",
 		util.DefaultShell,
-		[]string{util.UpgradeScriptPath(), "upgrade", version},
-	)
-	errStr, err := upgradeScriptTask.Process(ctx)
-	if err != nil {
-		return errors.New(errStr)
-	}
-	return nil
-}
-
-// Shell task process for downloading the node-agent build package.
-func HandleDownloadPackageScript(config *util.Config, ctx context.Context) (string, error) {
-	util.FileLogger().Debug("Initializing the download package script")
-	jwtToken, err := util.GenerateJWT(config)
-	if err != nil {
-		util.FileLogger().Errorf("Failed to generate JWT during upgrade - %s", err.Error())
-		return "", err
-	}
-	downloadPackageScript := NewShellTask(
-		"downloadPackageScript",
-		util.DefaultShell,
 		[]string{
-			util.InstallScriptPath(),
-			"--type",
+			util.UpgradeScriptPath(),
+			"--command",
 			"upgrade",
-			"--url",
-			config.String(util.PlatformUrlKey),
-			"--jwt",
-			jwtToken,
 		},
 	)
-	return downloadPackageScript.Process(ctx)
+	_, err := upgradeScriptTask.Process(ctx)
+	if err != nil {
+		return err
+	}
+	version, err := util.Version()
+	if err != nil {
+		return err
+	}
+	return config.Update(util.PlatformVersionUpdateKey, version)
 }
 
 func OutputPreflightCheck(responses map[string]model.NodeInstanceValidationResponse) bool {
@@ -241,4 +501,64 @@ func OutputPreflightCheck(responses map[string]model.NodeInstanceValidationRespo
 	}
 	table.Render()
 	return allValid
+}
+
+func getNodeConfig(data map[string]model.PreflightCheckVal) *[]model.NodeConfig {
+	mountPointsWritableMap := make(map[string]string)
+	mountPointsVolumeMap := make(map[string]string)
+	result := make([]model.NodeConfig, 0)
+	for k, v := range data {
+		kSplit := strings.Split(k, ":")
+		switch kSplit[0] {
+		case mountPointsWritable:
+			mountPointsWritableMap[kSplit[1]] = v.Value
+		case mountPointsVolume:
+			mountPointsVolumeMap[kSplit[1]] = v.Value
+		case masterHTTPPort, masterRPCPort, tserverHTTPPort, tserverRPCPort,
+			ybControllerHTTPPort, ybControllerRPCPort, redisServerHTTPPort,
+			redisServerRPCPort, ycqlServerHTTPPort, ycqlServerRPCPort,
+			ysqlServerHTTPPort, ysqlServerRPCPort, sshPort, nodeExporterPort:
+			portMap := make(map[string]string)
+			portMap[kSplit[1]] = v.Value
+			result = appendMap(kSplit[0], portMap, result)
+		default:
+			// Try Getting Python Version.
+			vSplit := strings.Split(v.Value, " ")
+			if len(vSplit) > 0 && strings.EqualFold(vSplit[0], "Python") {
+				result = append(
+					result,
+					model.NodeConfig{Type: strings.ToUpper(kSplit[0]), Value: vSplit[1]},
+				)
+			} else {
+				result = append(result, model.NodeConfig{Type: strings.ToUpper(kSplit[0]), Value: v.Value})
+			}
+		}
+	}
+
+	// Marshal the existence of mount points in the request.
+	result = appendMap(mountPointsWritable, mountPointsWritableMap, result)
+
+	// Marshal the mount points volume in the request.
+	result = appendMap(mountPointsVolume, mountPointsVolumeMap, result)
+
+	return &result
+}
+
+// Marshal helper function for maps.
+func appendMap(key string, valMap map[string]string, result []model.NodeConfig) []model.NodeConfig {
+	if len(valMap) > 0 {
+		valJSON, err := json.Marshal(valMap)
+		if err != nil {
+			panic("Error while marshaling map")
+		}
+		return append(
+			result,
+			model.NodeConfig{
+				Type:  strings.ToUpper(key),
+				Value: string(valJSON),
+			},
+		)
+	}
+
+	return result
 }

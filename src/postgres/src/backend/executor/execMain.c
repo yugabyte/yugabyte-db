@@ -512,6 +512,7 @@ standard_ExecutorEnd(QueryDesc *queryDesc)
 	queryDesc->estate = NULL;
 	queryDesc->planstate = NULL;
 	queryDesc->totaltime = NULL;
+	queryDesc->yb_query_stats = NULL;
 }
 
 /* ----------------------------------------------------------------
@@ -1037,6 +1038,8 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 
 		i++;
 	}
+
+	queryDesc->yb_query_stats = InstrAlloc(1, queryDesc->instrument_options);
 
 	/*
 	 * Initialize the private state information for all the nodes in the query
@@ -2011,14 +2014,18 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 										 ExecGetUpdatedCols(resultRelInfo, estate));
 			}
 
-			if (mtstate && !mtstate->yb_fetch_target_tuple &&
-			    !bms_is_member(att->attnum - YBGetFirstLowInvalidAttributeNumber(rel), modifiedCols))
+			bool att_in_modified_cols = bms_is_member(
+				att->attnum - YBGetFirstLowInvalidAttributeNumber(rel),
+				modifiedCols);
+
+			if (mtstate && !mtstate->yb_fetch_target_tuple && !att_in_modified_cols)
 			{
 				/*
 				 * Without a target tuple, we only know the values of the
 				 * modified columns. But in this case it is safe to skip the
 				 * unmodified columns anyway.
 				 */
+				bms_free(modifiedCols);
 				continue;
 			}
 
@@ -2069,6 +2076,7 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 						 val_desc ? errdetail("Failing row contains %s.", val_desc) : 0,
 						 errtablecol(orig_rel, attrChk)));
 			}
+			bms_free(modifiedCols);
 		}
 	}
 
@@ -2212,7 +2220,7 @@ ExecWithCheckOptions(WCOKind kind, ResultRelInfo *resultRelInfo,
 														 MakeTupleTableSlot(tupdesc));
 						modifiedCols = bms_union(ExecGetInsertedCols(rootrel, estate),
 												 ExecGetUpdatedCols(rootrel, estate));
-						rel = rootrel->ri_RelationDesc;	 
+						rel = rootrel->ri_RelationDesc;
 					}
 					else
 						modifiedCols = bms_union(ExecGetInsertedCols(resultRelInfo, estate),

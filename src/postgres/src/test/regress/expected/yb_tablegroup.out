@@ -113,7 +113,7 @@ ERROR:  cannot use 'colocation=true/false' with tablegroup
 CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocation=false) TABLEGROUP bad_tgroupname;
 ERROR:  tablegroup "bad_tgroupname" does not exist
 CREATE TEMP TABLE tgroup_temp (col1 int, col2 int) TABLEGROUP tgroup1;
-ERROR:  Cannot use TABLEGROUP with TEMP table.
+ERROR:  cannot use TABLEGROUP with TEMP table
 CREATE INDEX ON tgroup_test3(col1) TABLEGROUP tgroup1; -- fail
 ERROR:  syntax error at or near "TABLEGROUP"
 LINE 1: CREATE INDEX ON tgroup_test3(col1) TABLEGROUP tgroup1;
@@ -181,11 +181,11 @@ ERROR:  unrecognized parameter "tablegroup_oid"
 -- Usage of SPLIT clause with TABLEGROUP should fail
 --
 CREATE TABLE tgroup_split (col1 int PRIMARY KEY) SPLIT INTO 3 TABLETS TABLEGROUP tgroup1;
-ERROR:  Cannot use TABLEGROUP with SPLIT.
+ERROR:  cannot use TABLEGROUP with SPLIT
 CREATE TABLE tgroup_split (col1 int, col2 text) SPLIT INTO 3 TABLETS TABLEGROUP tgroup1;
-ERROR:  Cannot use TABLEGROUP with SPLIT.
+ERROR:  cannot use TABLEGROUP with SPLIT
 CREATE INDEX ON tgroup_test1(col1) SPLIT AT VALUES((10), (20), (30));
-ERROR:  Cannot use TABLEGROUP with SPLIT.
+ERROR:  cannot use TABLEGROUP with SPLIT
 --
 -- Test CREATE INDEX with hash columns
 --
@@ -409,13 +409,13 @@ CREATE TABLE tgroup_test6 (col1 int, col2 int) TABLEGROUP grp3;
     Group Name    | Group Owner | Access privileges | Group Description | Group Tablespace | Group Options |           Name           | Type  |  Owner   | Rel Description | Size
 ------------------+-------------+-------------------+-------------------+------------------+---------------+--------------------------+-------+----------+-----------------+------
  grp3             | yugabyte    |                   |                   | tblspc           |               | tgroup_test6             | table | yugabyte |                 |
+ tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test3             | table | yugabyte |                 |
  tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test3_col1_idx    | index | yugabyte |                 |
  tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4             | table | yugabyte |                 |
  tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4_col1_idx    | index | yugabyte |                 |
- tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test3             | table | yugabyte |                 |
  tgroup2          | yugabyte    |                   |                   |                  |               | tgroup_test4_col2_idx    | index | yugabyte |                 |
- tgroup_describe1 | yugabyte    |                   |                   |                  |               | tgroup_describe_col1_idx | index | yugabyte |                 |
  tgroup_describe1 | yugabyte    |                   |                   |                  |               | tgroup_describe          | table | yugabyte |                 |
+ tgroup_describe1 | yugabyte    |                   |                   |                  |               | tgroup_describe_col1_idx | index | yugabyte |                 |
 (8 rows)
 
 --

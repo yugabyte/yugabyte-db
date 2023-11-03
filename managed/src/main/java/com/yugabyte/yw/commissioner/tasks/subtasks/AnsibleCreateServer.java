@@ -18,16 +18,16 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.RecoverableException;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
-import java.util.List;
 import javax.inject.Inject;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
@@ -35,9 +35,8 @@ import play.libs.Json;
 public class AnsibleCreateServer extends NodeTaskBase {
 
   @Inject
-  protected AnsibleCreateServer(
-      BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected AnsibleCreateServer(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   // Additional parameters for this task.
@@ -50,14 +49,13 @@ public class AnsibleCreateServer extends NodeTaskBase {
     public boolean assignPublicIP = true;
     public boolean assignStaticPublicIP = false;
 
-    // If this is set to the universe's AWS KMS CMK arn, AWS EBS volume
-    // encryption will be enabled
-    public String cmkArn;
+    public boolean useSpotInstance = false;
+    public Double spotPrice = 0.0;
 
     // If set, we will use this Amazon Resource Name of the user's
     // instance profile instead of an access key id and secret
     public String ipArnString;
-    public String machineImage;
+    @Getter @Setter private String machineImage;
   }
 
   @Override
@@ -68,12 +66,10 @@ public class AnsibleCreateServer extends NodeTaskBase {
   @Override
   public void run() {
     Provider p = taskParams().getProvider();
-    List<AccessKey> accessKeys = AccessKey.getAll(p.uuid);
     boolean skipProvision = false;
 
-    // For now we will skipProvision if it's set in accessKeys.
-    if (p.code.equals(Common.CloudType.onprem.name()) && accessKeys.size() > 0) {
-      skipProvision = accessKeys.get(0).getKeyInfo().skipProvisioning;
+    if (p.getCode().equals(Common.CloudType.onprem.name())) {
+      skipProvision = p.getDetails().skipProvisioning;
     }
 
     if (skipProvision) {
@@ -81,7 +77,7 @@ public class AnsibleCreateServer extends NodeTaskBase {
     } else if (instanceExists(taskParams())) {
       log.info("Waiting for SSH to succeed on existing instance {}", taskParams().nodeName);
       getNodeManager()
-          .nodeCommand(NodeManager.NodeCommandType.Wait_For_SSH, taskParams())
+          .nodeCommand(NodeManager.NodeCommandType.Wait_For_Connection, taskParams())
           .processErrors();
       setNodeStatus(NodeStatus.builder().nodeState(NodeState.InstanceCreated).build());
     } else {
@@ -92,7 +88,7 @@ public class AnsibleCreateServer extends NodeTaskBase {
               .nodeCommand(NodeManager.NodeCommandType.Create, taskParams())
               .processErrors();
       setNodeStatus(NodeStatus.builder().nodeState(NodeState.InstanceCreated).build());
-      if (p.code.equals(CloudType.azu.name())) {
+      if (p.getCode().equals(CloudType.azu.name())) {
         // Parse into a json object.
         JsonNode jsonNodeTmp = Json.parse(response.message);
         if (jsonNodeTmp.isArray()) {
@@ -129,31 +125,34 @@ public class AnsibleCreateServer extends NodeTaskBase {
   }
 
   @Override
-  public void onFailure(TaskInfo taskInfo, Throwable cause) {
+  public boolean onFailure(TaskInfo taskInfo, Throwable cause) {
     Params params = taskParams();
 
     if (instanceExists(taskParams())) {
       if (cause instanceof RecoverableException) {
-        super.onFailure(taskInfo, cause);
+        return super.onFailure(taskInfo, cause);
       } else {
         // TODO: retry in a different AZ?
-        log.warn("Instance creation in {} failed", params.getAZ().name);
+        log.warn("Instance creation in {} failed", params.getAZ().getName());
 
         AnsibleDestroyServer.Params destroyParams = new AnsibleDestroyServer.Params();
         destroyParams.deviceInfo = params.deviceInfo;
         destroyParams.azUuid = params.azUuid;
         destroyParams.nodeName = params.nodeName;
         destroyParams.nodeUuid = params.nodeUuid;
-        destroyParams.universeUUID = params.universeUUID;
+        destroyParams.setUniverseUUID(params.getUniverseUUID());
         destroyParams.isForceDelete = true;
         destroyParams.deleteNode = false;
         destroyParams.deleteRootVolumes = true;
         destroyParams.instanceType = params.instanceType;
         AnsibleDestroyServer task = createTask(AnsibleDestroyServer.class);
         task.initialize(destroyParams);
-        task.setUserTaskUUID(userTaskUUID);
+        task.setUserTaskUUID(getUserTaskUUID());
         task.run();
+        return true;
       }
     }
+
+    return false;
   }
 }

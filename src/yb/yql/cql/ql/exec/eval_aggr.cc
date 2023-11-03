@@ -14,8 +14,8 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/common/ql_protocol_util.h"
-#include "yb/common/ql_rowblock.h"
-#include "yb/common/ql_serialization.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/qlexpr/ql_serialization.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/util/decimal.h"
@@ -42,7 +42,7 @@ Status Executor::AggregateResultSets(const PTSelectStmt* pt_select, TnodeContext
 
   shared_ptr<RowsResult> rows_result = tnode_context->rows_result();
   DCHECK(rows_result->client() == QLClient::YQL_CLIENT_CQL);
-  shared_ptr<QLRowBlock> row_block = rows_result->GetRowBlock();
+  shared_ptr<qlexpr::QLRowBlock> row_block = rows_result->GetRowBlock();
   int column_index = 0;
   WriteBuffer buffer(1024);
 
@@ -76,16 +76,16 @@ Status Executor::AggregateResultSets(const PTSelectStmt* pt_select, TnodeContext
     }
 
     // Serialize the return value.
-    SerializeValue(expr_node->ql_type(), rows_result->client(), ql_value.value(), &buffer);
+    qlexpr::SerializeValue(expr_node->ql_type(), rows_result->client(), ql_value.value(), &buffer);
     column_index++;
   }
 
   // Change the result set to the aggregate result.
-  buffer.AssignTo(&rows_result->rows_data());
+  rows_result->set_rows_data(buffer.ToContinuousBlock());
   return Status::OK();
 }
 
-Status Executor::EvalCount(const shared_ptr<QLRowBlock>& row_block,
+Status Executor::EvalCount(const shared_ptr<qlexpr::QLRowBlock>& row_block,
                            int column_index,
                            QLValue *ql_value) {
   int64_t total_count = 0;
@@ -100,7 +100,7 @@ Status Executor::EvalCount(const shared_ptr<QLRowBlock>& row_block,
   return Status::OK();
 }
 
-Status Executor::EvalMax(const shared_ptr<QLRowBlock>& row_block,
+Status Executor::EvalMax(const shared_ptr<qlexpr::QLRowBlock>& row_block,
                          int column_index,
                          QLValue *ql_value) {
   for (auto row : row_block->rows()) {
@@ -112,7 +112,7 @@ Status Executor::EvalMax(const shared_ptr<QLRowBlock>& row_block,
   return Status::OK();
 }
 
-Status Executor::EvalMin(const shared_ptr<QLRowBlock>& row_block,
+Status Executor::EvalMin(const shared_ptr<qlexpr::QLRowBlock>& row_block,
                          int column_index,
                          QLValue *ql_value) {
   for (auto row : row_block->rows()) {
@@ -124,7 +124,7 @@ Status Executor::EvalMin(const shared_ptr<QLRowBlock>& row_block,
   return Status::OK();
 }
 
-Status Executor::EvalSum(const shared_ptr<QLRowBlock>& row_block,
+Status Executor::EvalSum(const shared_ptr<qlexpr::QLRowBlock>& row_block,
                          int column_index,
                          DataType data_type,
                          QLValue *ql_value) {
@@ -190,7 +190,7 @@ Status Executor::EvalSum(const shared_ptr<QLRowBlock>& row_block,
       case DataType::VARINT: {
         int64_t tsum;
         tsum = 0;
-        util::VarInt varint(tsum);
+        VarInt varint(tsum);
         ql_value->set_varint_value(varint);
       }
         break;
@@ -212,7 +212,7 @@ Status Executor::EvalSum(const shared_ptr<QLRowBlock>& row_block,
   return Status::OK();
 }
 
-Status Executor::EvalAvg(const shared_ptr<QLRowBlock>& row_block,
+Status Executor::EvalAvg(const shared_ptr<qlexpr::QLRowBlock>& row_block,
                          int column_index,
                          DataType data_type,
                          QLValue *ql_value) {
@@ -272,12 +272,12 @@ Status Executor::EvalAvg(const shared_ptr<QLRowBlock>& row_block,
       break;
     case DataType::VARINT:
       if (sum.IsNull()) {
-        util::VarInt varint(0);
+        VarInt varint(0);
         ql_value->set_varint_value(varint);
       } else {
         int64_t tsum = VERIFY_RESULT(sum.varint_value().ToInt64());
         int64_t tcount = VERIFY_RESULT(count.varint_value().ToInt64());
-        util::VarInt average(tsum / tcount);
+        VarInt average(tsum / tcount);
         ql_value->set_varint_value(average);
       }
       break;

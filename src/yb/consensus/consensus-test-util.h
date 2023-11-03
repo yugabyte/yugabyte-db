@@ -178,7 +178,7 @@ class TestPeerProxy : public PeerProxy {
   // Register the RPC callback in order to call later.
   // We currently only support one request of each method being in flight at a time.
   virtual void RegisterCallback(Method method, const rpc::ResponseCallback& callback) {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     CHECK(callbacks_.emplace(method, callback).second) << "Method: " << to_underlying(method);
   }
 
@@ -186,7 +186,7 @@ class TestPeerProxy : public PeerProxy {
   virtual void Respond(Method method) {
     rpc::ResponseCallback callback;
     {
-      std::lock_guard<simple_spinlock> lock(lock_);
+      std::lock_guard lock(lock_);
       auto it = callbacks_.find(method);
       CHECK(it != callbacks_.end()) << "Method: " << to_underlying(method);
       callback = std::move(it->second);
@@ -222,14 +222,14 @@ class DelayablePeerProxy : public TestPeerProxy {
   // Delay the answer to the next response to this remote
   // peer. The response callback will only be called on Respond().
   virtual void DelayResponse() {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     delay_response_ = true;
     latch_.Reset(1); // Reset for the next time.
   }
 
   virtual void RespondUnlessDelayed(Method method) {
     {
-      std::lock_guard<simple_spinlock> l(lock_);
+      std::lock_guard l(lock_);
       if (delay_response_) {
         latch_.CountDown();
         delay_response_ = false;
@@ -286,14 +286,14 @@ class MockedPeerProxy : public TestPeerProxy {
   virtual void set_update_response(const ConsensusResponsePB& update_response) {
     CHECK(update_response.IsInitialized()) << update_response.ShortDebugString();
     {
-      std::lock_guard<simple_spinlock> l(lock_);
+      std::lock_guard l(lock_);
       update_response_ = update_response;
     }
   }
 
   virtual void set_vote_response(const VoteResponsePB& vote_response) {
     {
-      std::lock_guard<simple_spinlock> l(lock_);
+      std::lock_guard l(lock_);
       vote_response_ = vote_response;
     }
   }
@@ -304,7 +304,7 @@ class MockedPeerProxy : public TestPeerProxy {
                    rpc::RpcController* controller,
                    const rpc::ResponseCallback& callback) override {
     {
-      std::lock_guard<simple_spinlock> l(lock_);
+      std::lock_guard l(lock_);
       switch (trigger_mode) {
         case RequestTriggerMode::kNonEmptyOnly: non_empty_only_update_count_++; break;
         case RequestTriggerMode::kAlwaysSend: forced_update_count_++; break;
@@ -325,21 +325,21 @@ class MockedPeerProxy : public TestPeerProxy {
 
   // Return the number of times that UpdateAsync() has been called.
   int update_count() const {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     return update_count_;
   }
 
   // Return the number of times that UpdateAsync() has been for requestes triggered with
   // RequestTriggerMode::kNonEmptyOnly.
   int non_empty_only_update_count() const {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     return non_empty_only_update_count_;
   }
 
   // Return the number of times that UpdateAsync() has been for requestes triggered with
   // RequestTriggerMode::kAlwaysSend.
   int forced_update_count() const {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     return forced_update_count_;
   }
 
@@ -369,7 +369,7 @@ class NoOpTestPeerProxy : public TestPeerProxy {
 
     response->Clear();
     {
-      std::lock_guard<simple_spinlock> lock(lock_);
+      std::lock_guard lock(lock_);
       if (last_received_ < OpId::FromPB(request->preceding_id())) {
         auto* error = response->mutable_status()->mutable_error();
         error->set_code(ConsensusErrorPB::PRECEDING_ENTRY_DIDNT_MATCH);
@@ -395,7 +395,7 @@ class NoOpTestPeerProxy : public TestPeerProxy {
                                          rpc::RpcController* controller,
                                          const rpc::ResponseCallback& callback) override {
     {
-      std::lock_guard<simple_spinlock> lock(lock_);
+      std::lock_guard lock(lock_);
       response->set_responder_uuid(peer_pb_.permanent_uuid());
       response->set_responder_term(request->candidate_term());
       response->set_vote_granted(true);
@@ -404,7 +404,7 @@ class NoOpTestPeerProxy : public TestPeerProxy {
   }
 
   OpId last_received() const {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     return last_received_;
   }
 
@@ -441,7 +441,7 @@ class TestPeerMapManager {
   explicit TestPeerMapManager(const RaftConfigPB& config) : config_(config) {}
 
   void AddPeer(const std::string& peer_uuid, const std::shared_ptr<RaftConsensus>& peer) {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     InsertOrDie(&peers_, peer_uuid, peer);
   }
 
@@ -452,7 +452,7 @@ class TestPeerMapManager {
 
   Status GetPeerByUuid(const std::string& peer_uuid,
                        std::shared_ptr<RaftConsensus>* peer_out) const {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     if (!FindCopy(peers_, peer_uuid, peer_out)) {
       return STATUS(NotFound, "Other consensus instance was destroyed");
     }
@@ -460,12 +460,12 @@ class TestPeerMapManager {
   }
 
   void RemovePeer(const std::string& peer_uuid) {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     peers_.erase(peer_uuid);
   }
 
   TestPeerMap GetPeerMapCopy() const {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     return peers_;
   }
 
@@ -476,7 +476,7 @@ class TestPeerMapManager {
     // destroys the test proxies which in turn reach into this class.
     TestPeerMap copy = peers_;
     {
-      std::lock_guard<simple_spinlock> lock(lock_);
+      std::lock_guard lock(lock_);
       peers_.clear();
     }
 
@@ -546,7 +546,7 @@ class LocalTestPeerProxy : public TestPeerProxy {
                              Method method) {
     bool miss_comm_copy;
     {
-      std::lock_guard<simple_spinlock> lock(lock_);
+      std::lock_guard lock(lock_);
       miss_comm_copy = miss_comm_;
       miss_comm_ = false;
     }
@@ -611,7 +611,7 @@ class LocalTestPeerProxy : public TestPeerProxy {
 
   void InjectCommFaultLeaderSide() {
     VLOG(2) << this << ": injecting fault next time";
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     miss_comm_ = true;
   }
 
@@ -682,7 +682,9 @@ class TestDriver : public ConsensusRoundCallback {
     CHECK_OK(pool_->SubmitFunc(std::bind(&TestDriver::Apply, this)));
   }
 
-  void AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override {}
+  Status AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override {
+    return Status::OK();
+  }
 
   // Called in all modes to delete the transaction and, transitively, the consensus
   // round.
@@ -779,121 +781,121 @@ class CounterHooks : public Consensus::ConsensusFaultHooks {
 
   virtual Status PreStart() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreStart());
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     pre_start_calls_++;
     return Status::OK();
   }
 
   virtual Status PostStart() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostStart());
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     post_start_calls_++;
     return Status::OK();
   }
 
   virtual Status PreConfigChange() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreConfigChange());
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     pre_config_change_calls_++;
     return Status::OK();
   }
 
   virtual Status PostConfigChange() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostConfigChange());
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     post_config_change_calls_++;
     return Status::OK();
   }
 
   virtual Status PreReplicate() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreReplicate());
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     pre_replicate_calls_++;
     return Status::OK();
   }
 
   virtual Status PostReplicate() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostReplicate());
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     post_replicate_calls_++;
     return Status::OK();
   }
 
   virtual Status PreUpdate() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreUpdate());
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     pre_update_calls_++;
     return Status::OK();
   }
 
   virtual Status PostUpdate() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostUpdate());
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     post_update_calls_++;
     return Status::OK();
   }
 
   virtual Status PreShutdown() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreShutdown());
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     pre_shutdown_calls_++;
     return Status::OK();
   }
 
   virtual Status PostShutdown() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostShutdown());
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     post_shutdown_calls_++;
     return Status::OK();
   }
 
   int num_pre_start_calls() {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     return pre_start_calls_;
   }
 
   int num_post_start_calls() {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     return post_start_calls_;
   }
 
   int num_pre_config_change_calls() {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     return pre_config_change_calls_;
   }
 
   int num_post_config_change_calls() {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     return post_config_change_calls_;
   }
 
   int num_pre_replicate_calls() {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     return pre_replicate_calls_;
   }
 
   int num_post_replicate_calls() {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     return post_replicate_calls_;
   }
 
   int num_pre_update_calls() {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     return pre_update_calls_;
   }
 
   int num_post_update_calls() {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     return post_update_calls_;
   }
 
   int num_pre_shutdown_calls() {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     return pre_shutdown_calls_;
   }
 
   int num_post_shutdown_calls() {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     return post_shutdown_calls_;
   }
 
@@ -917,12 +919,12 @@ class CounterHooks : public Consensus::ConsensusFaultHooks {
 class TestRaftConsensusQueueIface : public PeerMessageQueueObserver {
  public:
   bool IsMajorityReplicated(int64_t index) {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     return majority_replicated_op_id_.index >= index;
   }
 
   OpId majority_replicated_op_id() {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     return majority_replicated_op_id_;
   }
 
@@ -936,7 +938,7 @@ class TestRaftConsensusQueueIface : public PeerMessageQueueObserver {
   void UpdateMajorityReplicated(
       const MajorityReplicatedData& data, OpId* committed_index,
       OpId* last_applied_op_id) override {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     majority_replicated_op_id_ = data.op_id;
     *committed_index = data.op_id;
     *last_applied_op_id = data.op_id;

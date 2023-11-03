@@ -31,19 +31,23 @@ namespace rpc {
 using std::shared_ptr;
 
 LocalOutboundCall::LocalOutboundCall(
-    const RemoteMethod* remote_method,
+    const RemoteMethod& remote_method,
     const shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
     AnyMessagePtr response_storage, RpcController* controller,
-    std::shared_ptr<RpcMetrics> rpc_metrics, ResponseCallback callback)
+    std::shared_ptr<RpcMetrics> rpc_metrics, ResponseCallback callback,
+    ThreadPool* callback_thread_pool)
     : OutboundCall(remote_method, outbound_call_metrics, /* method_metrics= */ nullptr,
                    response_storage, controller, std::move(rpc_metrics), std::move(callback),
-                   /* callback_thread_pool= */ nullptr) {
+                   callback_thread_pool) {
   TRACE_TO(trace_, "LocalOutboundCall");
 }
 
 Status LocalOutboundCall::SetRequestParam(
-    AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker) {
+    AnyMessageConstPtr req, std::unique_ptr<Sidecars> sidecars, const MemTrackerPtr& mem_tracker) {
   req_ = req;
+  if (sidecars) {
+    return STATUS_FORMAT(NotSupported, "Sidecars not supported for local calls");
+  }
   return Status::OK();
 }
 
@@ -62,8 +66,8 @@ const std::shared_ptr<LocalYBInboundCall>& LocalOutboundCall::CreateLocalInbound
   return inbound_call_;
 }
 
-Status LocalOutboundCall::AssignSidecarTo(size_t idx, std::string* out) const {
-  return inbound_call_->sidecars().AssignTo(narrow_cast<int>(idx), out);
+Result<RefCntSlice> LocalOutboundCall::ExtractSidecar(size_t idx) const {
+  return inbound_call_->sidecars().Extract(narrow_cast<int>(idx));
 }
 
 size_t LocalOutboundCall::TransferSidecars(Sidecars* dest) {

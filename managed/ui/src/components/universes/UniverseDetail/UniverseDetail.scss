@@ -1,17 +1,18 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
+@use '../../../_style/variables.scss';
 
 $padding: 30px;
 
 .detail-label-small {
   margin: 0 0 12px 0px;
-  color: $YB_DARK_GRAY;
+  color: colors.$YB_DARK_GRAY;
   padding-left: 0px;
   display: none;
   a {
     i {
-      color: $YB_DARK_GRAY;
+      color: colors.$YB_DARK_GRAY;
     }
   }
 }
@@ -60,7 +61,7 @@ $padding: 30px;
   flex-wrap: wrap;
   width: 100%;
   padding-bottom: 6px;
-  border-bottom: 1px solid $YB_GRAY_BORDER;
+  border-bottom: 1px solid colors.$YB_GRAY_BORDER;
   & > * {
     flex: 1 100%;
   }
@@ -98,6 +99,13 @@ $padding: 30px;
   padding-top: 2px;
 }
 
+#rbac-tab-panel .tab-content {
+  padding: 0 !important;
+}
+#rbac-tab-panel .user-auth-container {
+  padding-top: 30px;
+  margin-top: 0 !important;
+}
 .delete-universe-check-container {
   float: left;
   margin-top: 10px;
@@ -107,7 +115,7 @@ $padding: 30px;
   position: fixed;
   z-index: 1031;
   top: 8px;
-  left: $YB_SIDEBAR_WIDTH + $padding;
+  left: variables.$YB_SIDEBAR_WIDTH + $padding;
 
   em {
     font-style: normal;
@@ -140,7 +148,7 @@ $padding: 30px;
     &:focus,
     &:active {
       border: none;
-      color: $YB_ORANGE;
+      color: colors.$YB_ORANGE;
       font-weight: 500;
       padding: 5px 8px 7px;
       margin-left: 5px;
@@ -149,7 +157,7 @@ $padding: 30px;
       float: left;
 
       i {
-        color: $YB_ORANGE;
+        color: colors.$YB_ORANGE;
         margin-right: 2px;
       }
     }
@@ -174,7 +182,8 @@ $padding: 30px;
       height: fit-content;
       padding-top: 57px;
     }
-    box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 7px rgba($YB_DARK_GRAY_2, 0.02);
+    box-shadow: 0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05),
+      0 0.5em 7px rgba(colors.$YB_DARK_GRAY_2, 0.02);
     border: none;
     li > a {
       padding: 0 2px;
@@ -192,18 +201,18 @@ $padding: 30px;
       opacity: 1;
       font-size: 14px;
       &:hover {
-        color: $YB_ORANGE;
+        color: colors.$YB_ORANGE;
       }
     }
     li.active {
       > a {
         opacity: 1;
-        border-bottom: 4px solid $YB_ORANGE;
+        border-bottom: 4px solid colors.$YB_ORANGE;
         &:focus,
         &:hover {
           color: inherit;
           border: none;
-          border-bottom: 4px solid $YB_ORANGE;
+          border-bottom: 4px solid colors.$YB_ORANGE;
           margin-top: 0;
           z-index: 2;
         }
@@ -238,7 +247,7 @@ $padding: 30px;
 .page-action-buttons {
   position: absolute;
   z-index: 1021;
-  top: $YB_HEADER_HEIGHT;
+  top: variables.$YB_HEADER_HEIGHT;
   right: $padding;
   padding: 0;
   padding-top: 9px;
@@ -266,7 +275,7 @@ $padding: 30px;
   z-index: 1031;
   white-space: nowrap;
   top: 8px;
-  left: $YB_SIDEBAR_WIDTH + $padding;
+  left: variables.$YB_SIDEBAR_WIDTH + $padding;
   margin-bottom: 0;
 
   @media (max-width: 991px) {
@@ -283,23 +292,23 @@ $padding: 30px;
 
 h2 {
   a {
-    color: $YB_TEXT_COLOR;
+    color: colors.$YB_TEXT_COLOR;
 
     &:hover,
     &:active {
-      color: $YB_ORANGE;
+      color: colors.$YB_ORANGE;
     }
   }
   span {
     font-size: 21px;
-    color: $YB_DARK_GRAY;
+    color: colors.$YB_DARK_GRAY;
 
     a {
-      color: $YB_DARK_GRAY;
+      color: colors.$YB_DARK_GRAY;
 
       &:hover,
       &:active {
-        color: $YB_ORANGE;
+        color: colors.$YB_ORANGE;
       }
     }
   }
@@ -489,7 +498,7 @@ h2 {
   &:before {
     content: 'Costs';
     transform: rotate(-90deg);
-    color: $YB_DARK_GRAY;
+    color: colors.$YB_DARK_GRAY;
     font-family: 'Rubik', 'Helvetica Neue', sans-serif;
     font-weight: 500;
     font-size: 16px;
@@ -507,7 +516,8 @@ h2 {
 }
 
 .widget-panel {
-  .overview-widget-database {
+  .overview-database-version {
+    margin-top: 30px;
     .dl-stack {
       margin-top: 10px;
 
@@ -536,8 +546,36 @@ h2 {
   }
 
   &.overview-widget-cost {
+    height: 48px;
     .body .flex-cnt {
-      height: 93px;
+      height: 48px;
+      align-items: center;
+    }
+    .cost-widget {
+      font-size: 13px;
+      font-family: 'Inter';
+
+      &__image {
+        width: 20px;
+        height: 12px;
+        margin-right: 5px;
+      }
+      &__day {
+        color: colors.$YB_VIOLET_TEXT_NEW;
+        font-size: 18px;
+        font-weight: 700;
+      }
+      &__label {
+        font-weight: 700;
+        line-height: 2.25;
+      }
+      &__month {
+        line-height: 2.25;
+      }
+      &__day-label {
+        color: colors.$YB_VIOLET_TEXT_NEW;
+        margin-right: 30px;
+      }
     }
   }
 
@@ -553,7 +591,7 @@ h2 {
       width: 18px;
       height: 18px;
       border-radius: 50%;
-      background-color: $YB_SUBTITLE_COLOR;
+      background-color: colors.$YB_SUBTITLE_COLOR;
       text-align: center;
       top: 0 !important;
     }
@@ -569,6 +607,56 @@ h2 {
           margin-left: 10px;
         }
       }
+    }
+
+    .cluster-metadata-container {
+      &__divider {
+        border: 1px solid #e5e5e9;
+        height: 119px;
+        width: 0px;
+        margin-right: 16px;
+        margin-left: 16px;
+      }
+    }
+
+    .cluster-metadata-master,
+    .cluster-metadata-tserver {
+      margin-top: 5px;
+      font-family: 'Inter';
+
+      &__header {
+        font-weight: 600;
+      }
+
+      .cluster-metadata {
+        margin-top: 12px;
+        &__count {
+          font-weight: 600;
+          font-size: 24px;
+          line-height: 0.8;
+        }
+
+        &__label {
+          font-weight: 400;
+          font-size: 12px;
+          color: #8d8f9a;
+        }
+        &__align {
+          display: flex;
+          justify-content: flex-end;
+          text-overflow: ellipsis;
+          overflow: hidden;
+          white-space: nowrap;
+          color: colors.$YB_VIOLET_TEXT_NEW;
+        }
+      }
+    }
+    .cluster-metadat-divider {
+      border: 1px solid #e5e5e9;
+      height: 119px;
+      width: 0px;
+      margin-right: 24px;
+      margin-left: 24px;
     }
   }
 
@@ -608,7 +696,7 @@ h2 {
 
   .fa-heart {
     font-size: 48px;
-    color: $YB_GRAY_HOVER;
+    color: colors.$YB_GRAY_HOVER;
   }
   #health-heartbeat {
     position: absolute;
@@ -624,7 +712,7 @@ h2 {
     }
 
     polyline {
-      stroke: $YB_SUCCESS_COLOR;
+      stroke: colors.$YB_SUCCESS_COLOR;
       stroke-width: 3px;
       stroke-linecap: round;
       stroke-linejoin: round;
@@ -652,11 +740,11 @@ h2 {
     }
 
     path {
-      stroke: $YB_FAIL_COLOR;
+      stroke: colors.$YB_FAIL_COLOR;
       stroke-width: 3px;
       stroke-linecap: round;
       stroke-linejoin: round;
-      fill: $YB_FAIL_COLOR;
+      fill: colors.$YB_FAIL_COLOR;
       stroke-dasharray: 150, 200;
       stroke-dashoffset: 0;
     }

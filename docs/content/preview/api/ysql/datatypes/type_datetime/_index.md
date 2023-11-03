@@ -3,7 +3,7 @@ title: Date and time data types and functionality [YSQL]
 headerTitle: Date and time data types and functionality
 linkTitle: Date and time
 description: Learn about YSQL support for the date, time, timestamp, and interval data types and their functions and operators.
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   preview:
     identifier: api-ysql-datatypes-datetime

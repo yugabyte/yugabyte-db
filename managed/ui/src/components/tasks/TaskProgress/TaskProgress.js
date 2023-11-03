@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import PropTypes from 'prop-types';
 import { TaskProgressBar, TaskProgressStepBar } from '..';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
@@ -34,6 +34,7 @@ export default class TaskProgress extends Component {
   }
 
   componentWillUnmount() {
+    clearTimeout(this.timeout);
     this.props.resetTaskProgress();
   }
 
@@ -51,8 +52,13 @@ export default class TaskProgress extends Component {
         this.props.onTaskSuccess();
       }
       // Check to make sure if the current state is in not the final state.
-      if (isDefinedNotNull(data) && (data.status === 'Created' || data.status === 'Abort'
-            || data.status === 'Running' || data.status === 'Initializing')) {
+      if (
+        isDefinedNotNull(data) &&
+        (data.status === 'Created' ||
+          data.status === 'Abort' ||
+          data.status === 'Running' ||
+          data.status === 'Initializing')
+      ) {
         this.scheduleFetch();
       }
     }

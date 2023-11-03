@@ -5,20 +5,11 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.models.Users.Role;
-import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.CoreMatchers.equalTo;
-import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.FORBIDDEN;
-import static play.mvc.Http.Status.OK;
+import static org.hamcrest.CoreMatchers.*;
+import static org.junit.Assert.*;
+import static play.mvc.Http.Status.*;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
-import static play.test.Helpers.route;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -56,12 +47,34 @@ public class UsersControllerTest extends FakeDBApplication {
     authToken1 = user1.createAuthToken();
   }
 
+  @Test
+  public void testGetSingleUserNoApiTokenAndVersion() throws IOException {
+    user1.upsertApiToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken1).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "GET",
+                    String.format(baseRoute, customer1.getUuid())
+                        + "/"
+                        + user1.getUuid().toString())
+                .cookie(validCookie));
+    JsonNode json = Json.parse(contentAsString(result));
+    UserWithFeatures userWithFeatures = Json.fromJson(json, UserWithFeatures.class);
+    assertThat(
+        userWithFeatures.getUser().getUuid(), allOf(notNullValue(), equalTo(user1.getUuid())));
+    assertEquals(userWithFeatures.getUser().getEmail(), user1.getEmail());
+    assertThat(userWithFeatures.getUser().getApiTokenVersion(), equalTo(0L));
+    assertThat(userWithFeatures.getUser().getApiToken(), nullValue());
+    assertAuditEntry(0, customer1.getUuid());
+  }
+
   public List<UserWithFeatures> getListOfUsers(String authToken, Customer customer)
       throws IOException {
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken1).build();
     Result result =
-        route(fakeRequest("GET", String.format(baseRoute, customer.uuid)).cookie(validCookie));
-    if (result.status() == FORBIDDEN) {
+        route(fakeRequest("GET", String.format(baseRoute, customer.getUuid())).cookie(validCookie));
+    if (result.status() == UNAUTHORIZED) {
       return null;
     }
     JsonNode json = Json.parse(contentAsString(result));
@@ -76,16 +89,17 @@ public class UsersControllerTest extends FakeDBApplication {
     List<UserWithFeatures> userList = getListOfUsers(authToken1, customer1);
     assertNotNull(userList);
     assertEquals(userList.size(), 1);
-    assertThat(userList.get(0).getUser().uuid, allOf(notNullValue(), equalTo(user1.uuid)));
-    assertEquals(userList.get(0).getUser().email, user1.email);
-    assertAuditEntry(0, customer1.uuid);
+    assertThat(
+        userList.get(0).getUser().getUuid(), allOf(notNullValue(), equalTo(user1.getUuid())));
+    assertEquals(userList.get(0).getUser().getEmail(), user1.getEmail());
+    assertAuditEntry(0, customer1.getUuid());
   }
 
   @Test
   public void testGetUsersWithInvalidToken() throws IOException {
     List<UserWithFeatures> userList = getListOfUsers(authToken1, customer2);
     assertNull(userList);
-    assertAuditEntry(0, customer1.uuid);
+    assertAuditEntry(0, customer1.getUuid());
   }
 
   @Test
@@ -98,7 +112,7 @@ public class UsersControllerTest extends FakeDBApplication {
     params.put("role", "ReadOnly");
     Result result =
         route(
-            fakeRequest("POST", String.format(baseRoute, customer1.uuid))
+            fakeRequest("POST", String.format(baseRoute, customer1.getUuid()))
                 .cookie(validCookie)
                 .bodyJson(params));
     assertEquals(OK, result.status());
@@ -106,10 +120,10 @@ public class UsersControllerTest extends FakeDBApplication {
     ObjectMapper mapper = new ObjectMapper();
     ObjectReader reader = mapper.readerFor(new TypeReference<UserWithFeatures>() {});
     UserWithFeatures user = reader.readValue(json);
-    assertEquals(user.getUser().email, "foo@bar.com");
+    assertEquals(user.getUser().getEmail(), "foo@bar.com");
     List<UserWithFeatures> userList = getListOfUsers(authToken1, customer1);
     assertEquals(userList.size(), 2);
-    assertAuditEntry(1, customer1.uuid);
+    assertAuditEntry(1, customer1.getUuid());
   }
 
   @Test
@@ -119,11 +133,12 @@ public class UsersControllerTest extends FakeDBApplication {
         route(
             fakeRequest(
                     "DELETE",
-                    String.format("%s/%s", String.format(baseRoute, customer1.uuid), user1.uuid))
+                    String.format(
+                        "%s/%s", String.format(baseRoute, customer1.getUuid()), user1.getUuid()))
                 .cookie(validCookie));
     List<UserWithFeatures> userList = getListOfUsers(authToken1, customer1);
     assertNull(userList);
-    assertAuditEntry(1, customer1.uuid);
+    assertAuditEntry(1, customer1.getUuid());
   }
 
   @Test
@@ -137,11 +152,11 @@ public class UsersControllerTest extends FakeDBApplication {
                     "PUT",
                     String.format(
                         "%s/%s?role=ReadOnly",
-                        String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                        String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
                 .cookie(validCookie));
-    testUser1 = Users.get(testUser1.uuid);
+    testUser1 = Users.get(testUser1.getUuid());
     assertEquals(testUser1.getRole(), Role.ReadOnly);
-    assertAuditEntry(1, customer1.uuid);
+    assertAuditEntry(1, customer1.getUuid());
   }
 
   @Test
@@ -157,7 +172,7 @@ public class UsersControllerTest extends FakeDBApplication {
                             "PUT",
                             String.format(
                                 "%s/%s?role=ReadOnly",
-                                String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                                String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
                         .cookie(validCookie)));
     assertEquals(result.status(), BAD_REQUEST);
   }
@@ -178,10 +193,10 @@ public class UsersControllerTest extends FakeDBApplication {
                     "PUT",
                     String.format(
                         "%s/%s/change_password",
-                        String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                        String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
                 .cookie(validCookie)
                 .bodyJson(params));
-    testUser1 = Users.get(testUser1.uuid);
+    testUser1 = Users.get(testUser1.getUuid());
     assertEquals(result.status(), FORBIDDEN);
   }
 
@@ -202,13 +217,13 @@ public class UsersControllerTest extends FakeDBApplication {
                     "PUT",
                     String.format(
                         "%s/%s/change_password",
-                        String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                        String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
                 .cookie(validCookie)
                 .bodyJson(params));
-    testUser1 = Users.get(testUser1.uuid);
+    testUser1 = Users.get(testUser1.getUuid());
     assertEquals(testUser1.getRole(), Role.Admin);
-    assertTrue(hashBuilder.isValid("new-Password1", testUser1.passwordHash));
-    assertAuditEntry(1, customer1.uuid);
+    assertTrue(hashBuilder.isValid("new-Password1", testUser1.getPasswordHash()));
+    assertAuditEntry(1, customer1.getUuid());
   }
 
   @Test
@@ -230,7 +245,7 @@ public class UsersControllerTest extends FakeDBApplication {
                             "PUT",
                             String.format(
                                 "%s/%s/change_password",
-                                String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                                String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
                         .cookie(validCookie)
                         .bodyJson(params)));
     assertEquals(result.status(), BAD_REQUEST);
@@ -248,7 +263,7 @@ public class UsersControllerTest extends FakeDBApplication {
         assertPlatformException(
             () ->
                 route(
-                    fakeRequest("POST", String.format(baseRoute, customer1.uuid))
+                    fakeRequest("POST", String.format(baseRoute, customer1.getUuid()))
                         .cookie(validCookie)
                         .bodyJson(params)));
     assertEquals(result.status(), BAD_REQUEST);
@@ -275,14 +290,14 @@ public class UsersControllerTest extends FakeDBApplication {
                     "PUT",
                     String.format(
                         "%s/%s/update_profile",
-                        String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                        String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
                 .cookie(validCookie)
                 .bodyJson(params));
-    testUser1 = Users.get(testUser1.uuid);
+    testUser1 = Users.get(testUser1.getUuid());
     assertEquals(testUser1.getTimezone(), testTimezone2);
-    assertTrue(hashBuilder.isValid("new-Password1!", testUser1.passwordHash));
+    assertTrue(hashBuilder.isValid("new-Password1!", testUser1.getPasswordHash()));
     assertEquals(testUser1.getRole(), Role.ReadOnly);
-    assertAuditEntry(1, customer1.uuid);
+    assertAuditEntry(1, customer1.getUuid());
   }
 
   @Test
@@ -303,10 +318,10 @@ public class UsersControllerTest extends FakeDBApplication {
                     "PUT",
                     String.format(
                         "%s/%s/update_profile",
-                        String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                        String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
                 .cookie(validCookie)
                 .bodyJson(params));
-    testUser1 = Users.get(testUser1.uuid);
+    testUser1 = Users.get(testUser1.getUuid());
     assertEquals(testUser1.getTimezone(), testTimezone2);
   }
 
@@ -330,14 +345,14 @@ public class UsersControllerTest extends FakeDBApplication {
                     "PUT",
                     String.format(
                         "%s/%s/update_profile",
-                        String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                        String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
                 .cookie(validCookie)
                 .bodyJson(params));
-    testUser1 = Users.get(testUser1.uuid);
-    assertEquals(testUser1.getTimezone(), "America/Toronto");
-    assertTrue(hashBuilder.isValid("new-Password1!", testUser1.passwordHash));
+    testUser1 = Users.get(testUser1.getUuid());
+    assertEquals(testUser1.getTimezone(), "");
+    assertTrue(hashBuilder.isValid("new-Password1!", testUser1.getPasswordHash()));
     assertEquals(testUser1.getRole(), Role.ReadOnly);
-    assertAuditEntry(1, customer1.uuid);
+    assertAuditEntry(1, customer1.getUuid());
   }
 
   @Test
@@ -363,10 +378,10 @@ public class UsersControllerTest extends FakeDBApplication {
                             "PUT",
                             String.format(
                                 "%s/%s/update_profile",
-                                String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                                String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
                         .cookie(validCookie)
                         .bodyJson(params)));
-    Users resultTestUser1 = Users.get(testUser1.uuid);
+    Users resultTestUser1 = Users.get(testUser1.getUuid());
     assertEquals(resultTestUser1.getTimezone(), testTimezone1);
     assertEquals(resultTestUser1.getRole(), Role.Admin);
     assertEquals(result.status(), BAD_REQUEST);
@@ -383,6 +398,7 @@ public class UsersControllerTest extends FakeDBApplication {
     params.put("password", "new-Password1!");
     params.put("confirmPassword", "new-Password1!");
     params.put("role", "Admin");
+    params.put("timezone", testTimezone1);
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
     Result result =
         route(
@@ -390,11 +406,11 @@ public class UsersControllerTest extends FakeDBApplication {
                     "PUT",
                     String.format(
                         "%s/%s/update_profile",
-                        String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                        String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
                 .cookie(validCookie)
                 .bodyJson(params));
-    testUser1 = Users.get(testUser1.uuid);
-    assertTrue(hashBuilder.isValid("new-Password1!", testUser1.passwordHash));
+    testUser1 = Users.get(testUser1.getUuid());
+    assertTrue(hashBuilder.isValid("new-Password1!", testUser1.getPasswordHash()));
   }
 
   @Test
@@ -419,7 +435,7 @@ public class UsersControllerTest extends FakeDBApplication {
                             "PUT",
                             String.format(
                                 "%s/%s/update_profile",
-                                String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                                String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
                         .cookie(validCookie)
                         .bodyJson(params)));
     assertEquals(result.status(), BAD_REQUEST);
@@ -444,9 +460,205 @@ public class UsersControllerTest extends FakeDBApplication {
                             "PUT",
                             String.format(
                                 "%s/%s/update_profile",
-                                String.format(baseRoute, customer1.uuid), testUser1.uuid))
+                                String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
                         .cookie(validCookie)
                         .bodyJson(params)));
     assertEquals(result.status(), BAD_REQUEST);
+  }
+
+  @Test
+  public void testUpdateUserProfileReadOnlyUserPasswordChange() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "readonly@test.com", Role.ReadOnly);
+    String testTimezone1 = "America/Toronto";
+    String testTimezone2 = "America/Los_Angeles";
+    testUser1.setTimezone(testTimezone1);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.ReadOnly);
+    ObjectNode params = Json.newObject();
+    params.put("email", "readonly@test.com");
+    params.put("password", "new-Password1!");
+    params.put("confirmPassword", "new-Password1!");
+    params.put("role", "ReadOnly");
+    params.put("timezone", testTimezone1);
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
+                .cookie(validCookie)
+                .bodyJson(params));
+    testUser1 = Users.get(testUser1.getUuid());
+    assertTrue(hashBuilder.isValid("new-Password1!", testUser1.getPasswordHash()));
+    assertAuditEntry(1, customer1.getUuid());
+  }
+
+  public void testUpdateUserProfileReadOnlyUserTZChange() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "readonly@test.com", Role.ReadOnly);
+    String testTimezone1 = "America/Toronto";
+    String testTimezone2 = "America/Los_Angeles";
+    testUser1.setTimezone(testTimezone1);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.ReadOnly);
+    ObjectNode params = Json.newObject();
+    params.put("email", "readonly@test.com");
+    params.put("password", "");
+    params.put("confirmPassword", "");
+    params.put("role", "ReadOnly");
+    params.put("timezone", testTimezone2);
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
+                .cookie(validCookie)
+                .bodyJson(params));
+    assertEquals(result.status(), BAD_REQUEST);
+  }
+
+  public void testUpdateUserProfileReadOnlyUserRoleChange() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "readonly@test.com", Role.ReadOnly);
+    String testTimezone1 = "America/Toronto";
+    String testTimezone2 = "America/Los_Angeles";
+    testUser1.setTimezone(testTimezone1);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.ReadOnly);
+    ObjectNode params = Json.newObject();
+    params.put("email", "readonly@test.com");
+    params.put("password", "");
+    params.put("confirmPassword", "");
+    params.put("role", "Admin");
+    params.put("timezone", testTimezone1);
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
+                .cookie(validCookie)
+                .bodyJson(params));
+    assertEquals(result.status(), BAD_REQUEST);
+  }
+
+  public void testUpdateUserProfileSuperAdminUserPWChangeOfReadOnly() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "superadmin@test.com", Role.SuperAdmin);
+    String testTimezone1 = "America/Toronto";
+    String testTimezone2 = "America/Los_Angeles";
+    testUser1.setTimezone(testTimezone1);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.SuperAdmin);
+    Users testUser2 = ModelFactory.testUser(customer1, "readonly@test.com", Role.ReadOnly);
+    testUser2.setTimezone(testTimezone2);
+    ObjectNode params = Json.newObject();
+    params.put("email", "readonly@test.com");
+    params.put("password", "newpassword#123");
+    params.put("confirmPassword", "newpassword#123");
+    params.put("role", "ReadOnly");
+    params.put("timezone", testTimezone2);
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.getUuid()), testUser2.getUuid()))
+                .cookie(validCookie)
+                .bodyJson(params));
+    assertEquals(result.status(), BAD_REQUEST);
+  }
+
+  public void testUpdateUserProfileSuperAdminUserRoleChangeOfReadOnly() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "superadmin@test.com", Role.SuperAdmin);
+    String testTimezone1 = "America/Toronto";
+    String testTimezone2 = "America/Los_Angeles";
+    testUser1.setTimezone(testTimezone1);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.SuperAdmin);
+    Users testUser2 = ModelFactory.testUser(customer1, "readonly@test.com", Role.ReadOnly);
+    testUser2.setTimezone(testTimezone2);
+    ObjectNode params = Json.newObject();
+    params.put("email", "readonly@test.com");
+    params.put("password", "");
+    params.put("confirmPassword", "");
+    params.put("role", "Admin");
+    params.put("timezone", testTimezone2);
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.getUuid()), testUser2.getUuid()))
+                .cookie(validCookie)
+                .bodyJson(params));
+    assertEquals(OK, result.status());
+    assertEquals(testUser2.getRole(), Role.Admin);
+  }
+
+  public void testUpdateUserProfileSuperAdminUserTZChangeOfReadOnly() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "superadmin@test.com", Role.SuperAdmin);
+    String testTimezone1 = "America/Toronto";
+    String testTimezone2 = "America/Los_Angeles";
+    testUser1.setTimezone(testTimezone1);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.SuperAdmin);
+    Users testUser2 = ModelFactory.testUser(customer1, "readonly@test.com", Role.ReadOnly);
+    testUser2.setTimezone(testTimezone2);
+    ObjectNode params = Json.newObject();
+    params.put("email", "readonly@test.com");
+    params.put("password", "");
+    params.put("confirmPassword", "");
+    params.put("role", "ReadOnly");
+    params.put("timezone", testTimezone1);
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.getUuid()), testUser2.getUuid()))
+                .cookie(validCookie)
+                .bodyJson(params));
+    assertEquals(OK, result.status());
+    assertEquals(testUser2.getTimezone(), testTimezone1);
+  }
+
+  public void testUpdateUserProfileSuperAdminUserRoleChangeOfReadOnlyToSuperAdmin()
+      throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "superadmin@test.com", Role.SuperAdmin);
+    String testTimezone1 = "America/Toronto";
+    String testTimezone2 = "America/Los_Angeles";
+    testUser1.setTimezone(testTimezone1);
+    String authTokenTest = testUser1.createAuthToken();
+    assertEquals(testUser1.getRole(), Role.SuperAdmin);
+    Users testUser2 = ModelFactory.testUser(customer1, "readonly@test.com", Role.ReadOnly);
+    testUser2.setTimezone(testTimezone2);
+    ObjectNode params = Json.newObject();
+    params.put("email", "readonly@test.com");
+    params.put("password", "");
+    params.put("confirmPassword", "");
+    params.put("role", "SuperAdmin");
+    params.put("timezone", testTimezone2);
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.getUuid()), testUser2.getUuid()))
+                .cookie(validCookie)
+                .bodyJson(params));
+    assertEquals(BAD_REQUEST, result.status());
   }
 }

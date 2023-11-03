@@ -1,6 +1,14 @@
 --
 -- Regression tests for schemas (namespaces)
 --
+-- set the whitespace-only search_path to test that the
+-- GUC list syntax is preserved during a schema creation
+SELECT pg_catalog.set_config('search_path', ' ', false);
+ set_config
+------------
+
+(1 row)
+
 CREATE SCHEMA test_ns_schema_1
        CREATE UNIQUE INDEX abc_a_idx ON abc (a)
        CREATE VIEW abc_view AS
@@ -19,6 +27,67 @@ CREATE SCHEMA test_ns_schema_1;
 CREATE TABLE test_ns_schema_1.abc (a serial, b int UNIQUE);
 CREATE UNIQUE INDEX abc_a_idx ON test_ns_schema_1.abc (a);
 CREATE VIEW test_ns_schema_1.abc_view AS SELECT a+1 AS a, b+1 AS b FROM test_ns_schema_1.abc;
+-- verify that the correct search_path restored on abort
+SET search_path to public;
+BEGIN;
+SET search_path to public, test_ns_schema_1;
+CREATE SCHEMA test_ns_schema_2
+       CREATE VIEW abc_view AS SELECT c FROM abc;
+ERROR:  CREATE SCHEMA with elements not supported yet
+LINE 2:        CREATE VIEW abc_view AS SELECT c FROM abc;
+               ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+COMMIT;
+BEGIN;
+SET search_path to public, test_ns_schema_1;
+-- TODO(dmitry): Remove separate statements for creation each element in schema after
+--               `schema creation with elements` command will be supported.
+CREATE SCHEMA test_ns_schema_2;
+CREATE VIEW test_ns_schema_2.abc_view AS SELECT c FROM abc;
+ERROR:  column "c" does not exist
+LINE 1: CREATE VIEW test_ns_schema_2.abc_view AS SELECT c FROM abc;
+                                                        ^
+COMMIT;
+SHOW search_path;
+ search_path
+-------------
+ public
+(1 row)
+
+-- verify that the correct search_path preserved
+-- after creating the schema and on commit
+-- Note that CREATE SCHEMA is not transactional, hence we need to drop `test_ns_schema_2`.
+DROP SCHEMA test_ns_schema_2 CASCADE;
+BEGIN;
+SET search_path to public, test_ns_schema_1;
+CREATE SCHEMA test_ns_schema_2
+       CREATE VIEW abc_view AS SELECT a FROM abc;
+ERROR:  CREATE SCHEMA with elements not supported yet
+LINE 2:        CREATE VIEW abc_view AS SELECT a FROM abc;
+               ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+COMMIT;
+BEGIN;
+SET search_path to public, test_ns_schema_1;
+-- TODO(dmitry): Remove separate statements for creation each element in schema after
+--               `schema creation with elements` command will be supported.
+CREATE SCHEMA test_ns_schema_2;
+CREATE VIEW test_ns_schema_2.abc_view AS SELECT a FROM abc;
+SHOW search_path;
+       search_path
+--------------------------
+ public, test_ns_schema_1
+(1 row)
+
+COMMIT;
+SHOW search_path;
+       search_path
+--------------------------
+ public, test_ns_schema_1
+(1 row)
+
+DROP SCHEMA test_ns_schema_2 CASCADE;
+NOTICE:  drop cascades to view test_ns_schema_2.abc_view
 -- verify that the objects were created
 SELECT COUNT(*) FROM pg_class WHERE relnamespace =
     (SELECT oid FROM pg_namespace WHERE nspname = 'test_ns_schema_1');

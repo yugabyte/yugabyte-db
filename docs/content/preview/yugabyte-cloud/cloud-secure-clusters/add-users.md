@@ -2,7 +2,7 @@
 title: Add database users
 linkTitle: Add database users
 description: Add users to YugabyteDB Managed clusters
-headcontent: Provide team members and applications access to the cluster's YugabyteDB database
+headcontent: Grant team members and applications access to your database
 image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
@@ -12,13 +12,13 @@ menu:
 type: docs
 ---
 
-When you create a cluster in YugabyteDB Managed, you set up the database admin credentials, which you use to access the YugabyteDB database. Use this account to:
+When you create a cluster in YugabyteDB Managed, you set up the database admin credentials, which you use to access the YugabyteDB database installed on your cluster. Use this account to:
 
 - add more database users
 - assign privileges to users
 - change your password, or the passwords of other users
 
-YugabyteDB uses [role-based access control](../../../secure/authorization/) (RBAC) to [manage authorization](../cloud-users/). A database user's access is determined by the roles they are assigned. You should grant users only the privileges that they require.
+YugabyteDB uses [role-based access control](../../../secure/authorization/) (RBAC) to [manage database authorization](../cloud-users/). A database user's access is determined by the roles they are assigned. You should grant database users only the privileges that they require.
 
 ## Create and manage users and roles
 
@@ -100,9 +100,9 @@ cassandra@ycqlsh> ALTER ROLE <username> WITH PASSWORD = 'new-password';
 ## Learn more
 
 - [Manage users and roles in YugabyteDB](../../../secure/authorization/create-roles/)
-
 - [Database authorization in YugabyteDB Managed clusters](../cloud-users/)
 
 ## Next steps
 
+- [Connect using a shell](../../cloud-connect/connect-client-shell/)
 - [Connect an application](../../cloud-connect/connect-applications/)

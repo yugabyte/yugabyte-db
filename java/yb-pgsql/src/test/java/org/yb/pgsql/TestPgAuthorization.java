@@ -20,7 +20,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -38,7 +38,7 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * Tests for PostgreSQL RBAC.
  */
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestPgAuthorization extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgAuthorization.class);
 
@@ -3195,4 +3195,129 @@ public class TestPgAuthorization extends BasePgSQLTest {
       });
     }
   }
+
+  @Test
+  public void testLongPasswords() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE ROLE unprivileged");
+
+      StringBuilder builder = new StringBuilder(5000);
+      for (int i = 0; i < 5000; i++) {
+          builder.append("a");
+      }
+      String passwordWithLen5000 = builder.toString();
+      // "md5" + md5_hash("aaa..5000 times" + "pass_role").
+      // The role name "pass_role" is used as the salt.
+      String md5HashOfPassword = "md57a389663c1d96e12c7e25948d9325894";
+
+      /*
+       * PASSWORD
+       */
+
+      // Create role with password.
+      statement.execute("DROP ROLE IF EXISTS pass_role");
+      statement.execute(
+          String.format("CREATE ROLE pass_role LOGIN PASSWORD '%s'", passwordWithLen5000));
+
+      // Password is encrypted, despite not being specified.
+      ResultSet password_result = statement.executeQuery(
+          "SELECT rolpassword FROM pg_authid WHERE rolname='pass_role'");
+      password_result.next();
+      String password_hash = password_result.getString(1);
+      // We need an exact equals check here because it is not enough to just check that the long
+      // passwords work for login. It could happen that we have the same truncation during role
+      // creation as well as login. In that case, a long password will still work since we will
+      // truncate to the same length and calculate the hash in both the cases.
+      // Example: If password is "abcd" and the stored password gets truncated to "ab", the login
+      // will still work if we have the same truncation during login.
+      assertEquals(password_hash, md5HashOfPassword);
+
+      ConnectionBuilder passRoleUserConnBldr = getConnectionBuilder().withUser("pass_role");
+
+      // Can login with password.
+      try (Connection ignored = passRoleUserConnBldr.withPassword(passwordWithLen5000).connect()) {
+        // No-op.
+      }
+
+      // Cannot login without password.
+      try (Connection ignored = passRoleUserConnBldr.connect()) {
+        fail("Expected login attempt to fail");
+      } catch (SQLException sqle) {
+        assertThat(
+            sqle.getMessage(),
+            CoreMatchers.containsString("no password was provided")
+        );
+      }
+
+      // Cannot login with incorrect password.
+      try (Connection ignored = passRoleUserConnBldr.withPassword("wrong").connect()) {
+        fail("Expected login attempt to fail");
+      } catch (SQLException sqle) {
+        assertThat(
+            sqle.getMessage(),
+            CoreMatchers.containsString("password authentication failed for user \"pass_role\"")
+        );
+      }
+
+      // Password does not imply login.
+      statement.execute("DROP ROLE IF EXISTS pass_role");
+      statement.execute("CREATE ROLE pass_role PASSWORD 'pass1'");
+      try (Connection ignored = passRoleUserConnBldr.withPassword("pass1").connect()) {
+        fail("Expected login attempt to fail");
+      } catch (SQLException sqle) {
+        assertThat(
+            sqle.getMessage(),
+            CoreMatchers.containsString("role \"pass_role\" is not permitted to log in")
+        );
+      }
+
+      /*
+       * ENCRYPTED PASSWORD
+       */
+
+      // Create role with encrypted password.
+      statement.execute("DROP ROLE IF EXISTS pass_role");
+      statement.execute(String.format(
+          "CREATE ROLE pass_role LOGIN ENCRYPTED PASSWORD '%s'", passwordWithLen5000));
+
+      // Password is encrypted.
+      password_result = statement.executeQuery(
+          "SELECT rolpassword FROM pg_authid WHERE rolname='pass_role'");
+      password_result.next();
+      password_hash = password_result.getString(1);
+      // We need an exact equals check here because it is not enough to just check that the long
+      // passwords work for login. It could happen that we have the same truncation during role
+      // creation as well as login. In that case, a long password will still work since we will
+      // truncate to the same length and calculate the hash in both the cases.
+      // Example: If password is "abcd" and the stored password gets truncated to "ab", the login
+      // will still work if we have the same truncation during login.
+      assertEquals(password_hash, md5HashOfPassword);
+
+      // Can login with password.
+      try (Connection ignored = passRoleUserConnBldr.withPassword(passwordWithLen5000).connect()) {
+        // No-op.
+      }
+
+      // Cannot login without password.
+      try (Connection ignored = passRoleUserConnBldr.connect()) {
+        fail("Expected login attempt to fail");
+      } catch (SQLException sqle) {
+        assertThat(
+            sqle.getMessage(),
+            CoreMatchers.containsString("no password was provided")
+        );
+      }
+
+      // Cannot login with incorrect password.
+      try (Connection ignored = passRoleUserConnBldr.withPassword("wrong").connect()) {
+        fail("Expected login attempt to fail");
+      } catch (SQLException sqle) {
+        assertThat(
+            sqle.getMessage(),
+            CoreMatchers.containsString("password authentication failed for user \"pass_role\"")
+        );
+      }
+    }
+  }
+
 }

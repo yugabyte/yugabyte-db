@@ -34,15 +34,21 @@ const std::string kMetricsSnapshotsTableName = "metrics";
 const std::string kTransactionTablePrefix = "transactions_";
 
 TransactionStatusResult::TransactionStatusResult(TransactionStatus status_, HybridTime status_time_)
-    : TransactionStatusResult(status_, status_time_, AbortedSubTransactionSet()) {}
+    : TransactionStatusResult(status_, status_time_, SubtxnSet()) {}
 
 TransactionStatusResult::TransactionStatusResult(
-    TransactionStatus status_, HybridTime status_time_,
-    AbortedSubTransactionSet aborted_subtxn_set_)
-    : status(status_), status_time(status_time_), aborted_subtxn_set(aborted_subtxn_set_) {
+    TransactionStatus status_, HybridTime status_time_, SubtxnSet aborted_subtxn_set_,
+    Status expected_deadlock_status_) : status(status_), status_time(status_time_),
+        aborted_subtxn_set(aborted_subtxn_set_),
+        expected_deadlock_status(expected_deadlock_status_) {
   DCHECK(status == TransactionStatus::ABORTED || status_time.is_valid())
       << "Status: " << status << ", status_time: " << status_time;
 }
+
+TransactionStatusResult::TransactionStatusResult(
+    TransactionStatus status_, HybridTime status_time_, SubtxnSet aborted_subtxn_set_,
+    TabletId status_tablet_) : status(status_), status_time(status_time_),
+      aborted_subtxn_set(aborted_subtxn_set_), status_tablet(status_tablet_) {}
 
 namespace {
 
@@ -145,7 +151,7 @@ Result<SubTransactionMetadata> SubTransactionMetadata::FromPB(
     .subtransaction_id = source.has_subtransaction_id()
         ? source.subtransaction_id()
         : kMinSubTransactionId,
-    .aborted = VERIFY_RESULT(AbortedSubTransactionSet::FromPB(source.aborted().set())),
+    .aborted = VERIFY_RESULT(SubtxnSet::FromPB(source.aborted().set())),
   };
 }
 
@@ -185,6 +191,25 @@ TransactionOperationContext::TransactionOperationContext(
 
 bool TransactionOperationContext::transactional() const {
   return !transaction_id.IsNil();
+}
+
+TransactionLockInfoManager::TransactionLockInfoManager(
+    TabletLockInfoPB* tablet_lock_info): tablet_lock_info_(tablet_lock_info) {}
+
+TabletLockInfoPB::TransactionLockInfoPB* TransactionLockInfoManager::GetOrAddTransactionLockInfo(
+    const TransactionId& id) {
+  auto it = transaction_lock_infos_.find(id);
+  if (it != transaction_lock_infos_.end()) {
+    return it->second;
+  }
+  auto* transaction_lock_info = tablet_lock_info_->add_transaction_locks();
+  transaction_lock_info->set_id(id.data(), id.size());
+  transaction_lock_infos_.emplace(id, transaction_lock_info);
+  return transaction_lock_info;
+}
+
+TabletLockInfoPB::WaiterInfoPB* TransactionLockInfoManager::GetSingleShardLockInfo() {
+  return tablet_lock_info_->add_single_shard_waiters();
 }
 
 } // namespace yb

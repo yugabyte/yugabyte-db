@@ -30,9 +30,9 @@ import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 import org.yb.minicluster.BaseMiniClusterTest;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestCassandraSpark3WordCount extends BaseMiniClusterTest {
 
     private CassandraSparkWordCount app = new CassandraSparkWordCount();

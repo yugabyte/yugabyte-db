@@ -41,7 +41,6 @@ using std::string;
 namespace yb {
 namespace ql {
 
-using strings::Substitute;
 
 Status Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
                              QLValuePB *const_pb,
@@ -115,9 +114,9 @@ Status Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
     }
 
     default:
-      return STATUS_SUBSTITUTE(RuntimeError,
-                               "Unknown datatype ($0) for QL constant value",
-                               const_pt->ql_type_id());
+      return STATUS_FORMAT(RuntimeError,
+                           "Unknown datatype ($0) for QL constant value",
+                           const_pt->ql_type_id());
   }
   return Status::OK();
 }
@@ -431,7 +430,7 @@ Status Executor::PTExprToPB(const PTConstUuid *const_pt, QLValuePB *const_pb) {
 
 Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_pb) {
   switch (const_pt->ql_type()->main()) {
-    case MAP: {
+    case DataType::MAP: {
       QLMapValuePB *map_value = const_pb->mutable_map_value();
       for (auto &key : const_pt->keys()) {
         // Expect key to be constant because CQL only allows collection of constants.
@@ -447,7 +446,7 @@ Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_p
       break;
     }
 
-    case SET: {
+    case DataType::SET: {
       QLSeqValuePB *set_value = const_pb->mutable_set_value();
       for (auto &elem : const_pt->values()) {
         // Expected elem to be constant because CQL only allows collection of constants.
@@ -457,7 +456,7 @@ Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_p
       break;
     }
 
-    case LIST: {
+    case DataType::LIST: {
       QLSeqValuePB *list_value = const_pb->mutable_list_value();
       for (auto &elem : const_pt->values()) {
         // Expected elem to be constant because CQL only allows collection of constants.
@@ -467,7 +466,7 @@ Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_p
       break;
     }
 
-    case TUPLE: {
+    case DataType::TUPLE: {
       QLSeqValuePB *tuple_value = const_pb->mutable_tuple_value();
       for (auto &elem : const_pt->values()) {
         // Expected elem to be constant because CQL only allows collection of constants.
@@ -477,7 +476,7 @@ Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_p
       break;
     }
 
-    case USER_DEFINED_TYPE: {
+    case DataType::USER_DEFINED_TYPE: {
       // Internally UDTs are maps with field names as keys
       QLMapValuePB *map_value = const_pb->mutable_map_value();
       auto field_values = const_pt->udtype_field_values();
@@ -494,13 +493,13 @@ Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_p
       break;
     }
 
-    case FROZEN: {
+    case DataType::FROZEN: {
       // For frozen types we need to do the de-duplication and ordering at the QL level since we
       // serialize it here already.
       QLSeqValuePB *frozen_value = const_pb->mutable_frozen_value();
 
       switch (const_pt->ql_type()->param_type(0)->main()) {
-        case MAP: {
+        case DataType::MAP: {
           std::map<QLValuePB, QLValuePB> map_values;
           auto keys_it = const_pt->keys().begin();
           auto values_it = const_pt->values().begin();
@@ -519,7 +518,7 @@ Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_p
           break;
         }
 
-        case SET: {
+        case DataType::SET: {
           std::set<QLValuePB> set_values;
           for (const auto &elem : const_pt->values()) {
             QLValuePB elem_pb;
@@ -533,7 +532,7 @@ Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_p
           break;
         }
 
-        case LIST: {
+        case DataType::LIST: {
           for (auto &elem : const_pt->values()) {
             // Expected elem to be constant because CQL only allows collection of constants.
             QLValuePB *elem_pb = frozen_value->add_elems();
@@ -542,7 +541,7 @@ Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_p
           break;
         }
 
-        case USER_DEFINED_TYPE: {
+        case DataType::USER_DEFINED_TYPE: {
           // Internally UDTs are maps with field names as keys
           auto field_values = const_pt->udtype_field_values();
           for (size_t i = 0; i < field_values.size(); i++) {
@@ -556,14 +555,14 @@ Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_p
         }
 
         default:
-          return STATUS_SUBSTITUTE(InternalError, "unsupported type $0",
-                                   const_pt->ql_type()->param_type(0)->main());
+          return STATUS_FORMAT(InternalError, "unsupported type $0",
+                               const_pt->ql_type()->param_type(0)->main());
       }
       break;
     }
 
     default:
-      return STATUS_SUBSTITUTE(InternalError, "unsupported type $0", const_pt->ql_type()->main());
+      return STATUS_FORMAT(InternalError, "unsupported type $0", const_pt->ql_type()->main());
   }
 
   return Status::OK();

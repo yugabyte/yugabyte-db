@@ -1,16 +1,16 @@
-@import '../../_style/colors.scss';
+@use '../../_style/colors.scss';
 
 .replicationParticipant {
   min-width: 120px;
   height: 100%;
   padding: 12px;
 
-  background: $YB_BG_WHITE_3;
+  background: colors.$YB_BG_WHITE_3;
   border: 1px solid #d7dde1;
   border-radius: 8px;
 
   &.isCurrentUniverse {
-    background: $YB_LIGHT_GRAY;
+    background: colors.$YB_LIGHT_GRAY;
   }
 
   .label {
@@ -30,5 +30,10 @@
 
     font-weight: 500;
     font-size: 14px;
+  }
+
+  .pillContainer {
+    display: flex;
+    gap: 4px;
   }
 }

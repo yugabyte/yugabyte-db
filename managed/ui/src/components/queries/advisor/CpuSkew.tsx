@@ -1,16 +1,17 @@
-import React, { FC, useEffect } from 'react';
+import { FC, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePrevious } from 'react-use';
 import _ from 'lodash';
 
 import lightBulbIcon from '../images/lightbulb.svg';
-import { EXTERNAL_LINKS, CONST_VAR } from '../helpers/const';
-import { CpuMeasureRecommendation } from '../../../redesign/helpers/dtos';
+import { EXTERNAL_LINKS, CONST_VAR } from '../helpers/constants';
+import { PerfRecommendationProps } from '../../../redesign/utils/dtos';
 import './styles.scss';
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const Plotly = require('plotly.js/lib/index-basic.js');
 
-export const CpuSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) => {
+export const CpuSkew: FC<PerfRecommendationProps> = ({ data, summary }) => {
   const { t } = useTranslation();
   const previousData = usePrevious(data);
   const maxNodeConnections = {
@@ -35,9 +36,7 @@ export const CpuSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) => {
   };
 
   useEffect(() => {
-    if (
-      !_.isEqual(previousData, data)
-    ) {
+    if (!_.isEqual(previousData, data)) {
       const chartData = [avgNodeConnections, maxNodeConnections];
       const layout = {
         showlegend: false,
@@ -48,6 +47,10 @@ export const CpuSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) => {
           l: 165,
           b: 30,
           t: 10,
+          r: 50
+        },
+        yaxis: {
+          automargin: true
         },
         hovermode: 'closest'
       };
@@ -64,20 +67,23 @@ export const CpuSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) => {
           <span className="learnPerfAdvisorText">
             {t('clusterDetail.performance.advisor.Recommendation')}
             {t('clusterDetail.performance.advisor.Separator')}
-            {t('clusterDetail.performance.advisor.RebalanceAndTroubleshoot')}
+            {data.suggestion}
             <a
               target="_blank"
               rel="noopener noreferrer"
-              className="learnSchemaSuggestion"
-              href={EXTERNAL_LINKS.PERF_ADVISOR_DOCS_LINK}
+              className="learnRecommendationSuggestions"
+              href={EXTERNAL_LINKS.CPU_SKEW_AND_USAGE}
             >
               {t('clusterDetail.performance.advisor.LearnHow')}
             </a>
           </span>
         </div>
       </div>
-      <span className="queryText"> {t('clusterDetail.performance.chartTitle.CpuUsagePercentage')}</span>
-      <div id="cpuSkewGraph" >
+      <div className="chartBox">
+        <span className="queryText">
+          {t('clusterDetail.performance.chartTitle.CpuUsagePercentage')}
+        </span>
+        <div id="cpuSkewGraph"></div>
       </div>
     </div>
   );

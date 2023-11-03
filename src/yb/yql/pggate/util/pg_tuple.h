@@ -31,13 +31,10 @@ class PgTuple {
   PgTuple(uint64_t *datums, bool *isnulls, PgSysColumns *syscols);
 
   // Write null value.
-  void WriteNull(int index, const PgWireDataHeader& header);
+  void WriteNull(int index);
 
   // Write datum to tuple slot.
   void WriteDatum(int index, uint64_t datum);
-
-  // Write data in Postgres format.
-  void Write(uint8_t **pgbuf, const PgWireDataHeader& header, const uint8_t *value, int64_t bytes);
 
   // Get returning-space for system columns. Tuple writer will save values in this struct.
   PgSysColumns *syscols() {

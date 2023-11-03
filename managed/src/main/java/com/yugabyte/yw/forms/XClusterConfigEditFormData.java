@@ -4,8 +4,7 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Set;
 import javax.validation.Valid;
-import lombok.ToString;
-import play.data.validation.Constraints;
+import org.yb.cdc.CdcConsumer.XClusterRole;
 import play.data.validation.Constraints.MaxLength;
 import play.data.validation.Constraints.Pattern;
 
@@ -38,4 +37,10 @@ public class XClusterConfigEditFormData {
 
   @ApiModelProperty("Run the pre-checks without actually running the subtasks")
   public boolean dryRun = false;
+
+  @ApiModelProperty("The role that the source universe should have in the xCluster config")
+  public XClusterRole sourceRole;
+
+  @ApiModelProperty("The role that the target universe should have in the xCluster config")
+  public XClusterRole targetRole;
 }

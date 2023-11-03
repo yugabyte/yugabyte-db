@@ -98,6 +98,8 @@ public class NodeConfig {
 
     AZCOPY("Azcopy binary is installed"),
 
+    CHRONYC("Chronyc binary is installed"),
+
     GSUTIL("Gsutil binary is installed"),
 
     S3CMD("S3cmd binary is installed"),
@@ -118,6 +120,8 @@ public class NodeConfig {
 
     SSH_ACCESS("Ability to ssh into node as yugabyte user with key supplied in provider"),
 
+    NODE_AGENT_ACCESS("Reachability of node agent server"),
+
     MASTER_HTTP_PORT("Master http port is open"),
 
     MASTER_RPC_PORT("Master rpc port is open"),
@@ -134,13 +138,15 @@ public class NodeConfig {
 
     REDIS_SERVER_RPC_PORT("Redis server rpc port is open"),
 
-    YQL_SERVER_HTTP_PORT("YCQL server http port is open"),
+    YCQL_SERVER_HTTP_PORT("YCQL server http port is open"),
 
-    YQL_SERVER_RPC_PORT("YCQL server rpc port is open"),
+    YCQL_SERVER_RPC_PORT("YCQL server rpc port is open"),
 
     YSQL_SERVER_HTTP_PORT("YSQL server http port is open"),
 
-    YSQL_SERVER_RPC_PORT("YSQL server rpc port is open");
+    YSQL_SERVER_RPC_PORT("YSQL server rpc port is open"),
+
+    VM_MAX_MAP_COUNT("VM max memory map count");
 
     private final String description;
 

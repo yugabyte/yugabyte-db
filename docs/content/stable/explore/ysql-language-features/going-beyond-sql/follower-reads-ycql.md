@@ -1,8 +1,8 @@
 ---
-title: Explore follower reads in YCQL
+title: Explore follower reads - YCQL
 headerTitle: Follower reads
 linkTitle: Follower reads
-description: Learn how you can use follower reads to lower read latencies in local YugabyteDB clusters.
+description: Learn how to use follower reads to lower read latencies in local YugabyteDB clusters in YCQL.
 menu:
   stable:
     identifier: follower-reads-ycql
@@ -45,15 +45,15 @@ You can specify the maximum staleness of data when reading from tablet followers
 
 In this tutorial, you update a single key-value over and over, and read it from the tablet leader. While that workload is running, you start another workload to read from a follower and verify that you are able to read from a tablet follower.
 
-### Create universe
+### Create a cluster
 
-If you have a previously running local universe, destroy it by executing the following command:
+If you have a previously running cluster, destroy it by executing the following command:
 
 ```sh
 $ ./bin/yb-ctl destroy
 ```
 
-Start a new local universe with three nodes and a replication factor (RF) of `3`, as follows:
+Start a new local cluster with three nodes and a replication factor (RF) of `3`, as follows:
 
 ```sh
 $ ./bin/yb-ctl --rf 3 create
@@ -69,13 +69,11 @@ $ ./bin/yb-ctl add_node
 
 Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) JAR file (`yb-sample-apps.jar`) by running the following command:
 
-```sh
-$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
-```
+{{% yb-sample-apps-path %}}
 
-By default, the YugabyteDB workload generator runs with strong read consistency, where all data is read from the tablet leader. Note that the `yb-sample-apps.jar` sets the [consistency](../../../../admin/ycqlsh/#consistency) level to ONE by default. You can populate exactly one key with a `10KB` value into the system. Because the replication factor is `3`, this key will get replicated to only three of the four nodes in the universe.
+By default, the YugabyteDB workload generator runs with strong read consistency, where all data is read from the tablet leader. Note that the `yb-sample-apps.jar` sets the [consistency](../../../../admin/ycqlsh/#consistency) level to ONE by default. You can populate exactly one key with a `10KB` value into the system. Because the replication factor is `3`, this key is replicated to only three of the four nodes in the cluster.
 
-Run the `CassandraKeyValue` workload application to constantly update this key-value, as well as perform reads with strong consistency against the local universe, as follows:
+Run the `CassandraKeyValue` workload application to constantly update this key-value, as well as perform reads with strong consistency against the local cluster, as follows:
 
 ```sh
 $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
@@ -115,13 +113,13 @@ ycqlsh> SELECT k FROM ybdemo_keyspace.cassandrakeyvalue;
 
 ### Strongly consistent reads from tablet leaders
 
-When performing strongly consistent reads as a part of the above command, all reads will be served by the tablet leader of the tablet that contains the key `key:0`. If you browse to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page, you will see that all the requests are indeed being served by one YB-TServer, as shown in the following illustration:
+When performing strongly consistent reads as a part of the above command, all reads are served by the tablet leader of the tablet that contains the key `key:0`. Browse to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page, where you can see that all the requests are indeed being served by one YB-TServer, as shown in the following illustration:
 
 ![Reads from the tablet leader](/images/ce/tunable-reads-leader.png)
 
 ### Follower reads from tablet replicas
 
-Stop the workload application above, and then run the following variant of that workload application. This command will perform updates to the same key `key:0` which will go through the tablet leader, but it will read from the replicas, as follows:
+Stop the workload application above, and then run the following variant of that workload application. This command performs updates to the same key `key:0` via the tablet leader, but it reads from the replicas, as follows:
 
 ```sh
 $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
@@ -134,7 +132,7 @@ $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \
                                     --local_reads
 ```
 
-This can be seen by refreshing the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page, where you can see that the writes are served by a single YB-TServer that is the leader of the tablet for the key `key:0` while multiple YB-TServers which are replicas serve the reads.
+You can see this by refreshing the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page. The writes are served by a single YB-TServer that is the leader of the tablet for the key `key:0`, while multiple YB-TServer replicas serve the reads.
 
 ![Reads from the tablet follower](/images/ce/tunable-reads-followers.png)
 
@@ -148,6 +146,5 @@ $ ./bin/yb-ctl destroy
 
 ## Read more
 
-- [Read replica deployment](../../../../deploy/multi-dc/read-replica-clusters/).
-
-- [Read replicas](../../../multi-region-deployments/read-replicas-ycql/) in YCQL.
+- [Read replica deployment](../../../../deploy/multi-dc/read-replica-clusters/)
+- [Read replicas](../../../multi-region-deployments/read-replicas-ycql/)

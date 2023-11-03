@@ -66,24 +66,20 @@ using namespace std::literals;
 
 DECLARE_int32(log_segment_size_mb);
 DECLARE_int32(maintenance_manager_polling_interval_ms);
-DEFINE_UNKNOWN_int32(mbs_for_flushes_and_rolls, 1, "How many MBs are needed to flush and roll");
-DEFINE_UNKNOWN_int32(row_count, 2000, "How many rows will be used in this test for the base data");
-DEFINE_UNKNOWN_int32(seconds_to_run, 4,
+DEFINE_NON_RUNTIME_int32(mbs_for_flushes_and_rolls, 1,
+             "How many MBs are needed to flush and roll");
+DEFINE_NON_RUNTIME_int32(row_count, 2000,
+             "How many rows will be used in this test for the base data");
+DEFINE_NON_RUNTIME_int32(seconds_to_run, 4,
              "How long this test runs for, after inserting the base data, in seconds");
 
 namespace yb {
 namespace tablet {
 
 using client::YBClient;
-using client::YBClientBuilder;
-using client::YBColumnSchema;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSession;
-using client::YBStatusCallback;
-using client::YBStatusMemberCallback;
-using client::YBTable;
-using client::YBTableCreator;
 using client::YBTableName;
 using std::shared_ptr;
 using std::vector;
@@ -98,9 +94,9 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
  protected:
   UpdateScanDeltaCompactionTest() {
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT64)->NotNull()->HashPrimaryKey();
-    b.AddColumn("string")->Type(STRING)->NotNull();
-    b.AddColumn("int64")->Type(INT64)->NotNull();
+    b.AddColumn("key")->Type(DataType::INT64)->NotNull()->HashPrimaryKey();
+    b.AddColumn("string")->Type(DataType::STRING)->NotNull();
+    b.AddColumn("int64")->Type(DataType::INT64)->NotNull();
     CHECK_OK(b.Build(&schema_));
   }
 
@@ -140,10 +136,8 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
   }
 
   shared_ptr<YBSession> CreateSession() {
-    shared_ptr<YBSession> session = client_->NewSession();
     // Bumped this up from 5 sec to 30 sec in hope to fix the flakiness in this test.
-    session->SetTimeout(30s);
-    return session;
+    return client_->NewSession(30s);
   }
 
   // Continuously updates the existing data until 'stop_latch' drops to 0.
@@ -180,10 +174,10 @@ TEST_F(UpdateScanDeltaCompactionTest, TestAll) {
   OverrideFlagForSlowTests("mbs_for_flushes_and_rolls", "8");
   // Setting this high enough that we see the effects of flushes and compactions.
   OverrideFlagForSlowTests("maintenance_manager_polling_interval_ms", "2000");
-  FLAGS_log_segment_size_mb = FLAGS_mbs_for_flushes_and_rolls;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_mb) = FLAGS_mbs_for_flushes_and_rolls;
   if (!AllowSlowTests()) {
     // Make it run more often since it's not a long test.
-    FLAGS_maintenance_manager_polling_interval_ms = 50;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_maintenance_manager_polling_interval_ms) = 50;
   }
 
   ASSERT_NO_FATALS(CreateTable());

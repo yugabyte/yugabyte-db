@@ -84,7 +84,7 @@ std::set<TrackedSharedPtr<T>*> TrackedSharedPtr<T>::instances_;
 
 template <class T>
 void TrackedSharedPtr<T>::Dump() {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   LOG(INFO) << "num_references: " << num_references_;
   LOG(INFO) << "num_instances: " << num_instances_;
 
@@ -132,7 +132,7 @@ void TrackedSharedPtr<T>::UnrefIfInitialized() {
 
 template <class T>
 void TrackedSharedPtr<T>::RegisterInstance() {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   ++num_instances_;
   instances_.insert(this);
   // We skip 3 frames: StackTrace::Collect, TrackedSharedPtr::RegisterInstance and
@@ -142,7 +142,7 @@ void TrackedSharedPtr<T>::RegisterInstance() {
 
 template <class T>
 void TrackedSharedPtr<T>::UnregisterInstance() {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   --num_instances_;
   instances_.erase(this);
 }

@@ -99,4 +99,26 @@ struct AuxilaryMessageTag : StringBackedErrorTag {
 
 typedef StatusErrorCodeImpl<AuxilaryMessageTag> AuxilaryMessage;
 
+struct PgsqlMessageArgsTag : StringVectorBackedErrorTag {
+  // It is part of the wire protocol and should not be changed once released.
+  static constexpr uint8_t kCategory = 22;
+
+  static std::string ToMessage(const Value& value) {
+    return Format("Pgsql Message Arguments: $0", value);
+  }
+};
+
+typedef yb::StatusErrorCodeImpl<PgsqlMessageArgsTag> PgsqlMessageArgs;
+
+struct FuncNameTag : StringBackedErrorTag {
+  // It is part of the wire protocol and should not be changed once released.
+  static constexpr uint8_t kCategory = 23;
+
+  static std::string ToMessage(const Value& value) {
+    return Format("Function: $0", value);
+  }
+};
+
+typedef yb::StatusErrorCodeImpl<FuncNameTag> FuncName;
+
 } // namespace yb

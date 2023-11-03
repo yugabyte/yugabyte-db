@@ -19,8 +19,11 @@
 #include "yb/common/transaction.pb.h"
 
 #include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_statistics.h"
 
 #include "yb/tablet/tablet_fwd.h"
+
+#include "yb/util/operation_counter.h"
 #include "yb/util/result.h"
 
 namespace yb {
@@ -35,9 +38,8 @@ class AbstractTablet {
  public:
   virtual ~AbstractTablet() {}
 
-  virtual docdb::DocReadContextPtr GetDocReadContext(const std::string& table_id = "") const = 0;
-
-  virtual const docdb::YQLStorageIf& QLStorage() const = 0;
+  virtual docdb::DocReadContextPtr GetDocReadContext() const = 0;
+  virtual Result<docdb::DocReadContextPtr> GetDocReadContext(const std::string& table_id) const = 0;
 
   virtual TableType table_type() const = 0;
 
@@ -48,20 +50,27 @@ class AbstractTablet {
   //------------------------------------------------------------------------------------------------
   // Redis support.
   virtual Status HandleRedisReadRequest(
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
+      const docdb::ReadOperationData& read_operation_data,
       const RedisReadRequestPB& redis_read_request,
       RedisResponsePB* response) = 0;
 
   //------------------------------------------------------------------------------------------------
   // CQL support.
   virtual Status HandleQLReadRequest(
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
+      const docdb::ReadOperationData& read_operation_data,
       const QLReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
       QLReadRequestResult* result,
       WriteBuffer* rows_data) = 0;
+
+  Status HandleQLReadRequest(
+      const docdb::ReadOperationData& read_operation_data,
+      const QLReadRequestPB& ql_read_request,
+      const TransactionOperationContext& txn_op_context,
+      const docdb::YQLStorageIf& ql_storage,
+      std::reference_wrapper<const ScopedRWOperation> pending_op,
+      QLReadRequestResult* result,
+      WriteBuffer* rows_data);
 
   virtual Status CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
                                                   const size_t row_count,
@@ -90,8 +99,7 @@ class AbstractTablet {
   }
 
   virtual Status HandlePgsqlReadRequest(
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
+      const docdb::ReadOperationData& read_operation_data,
       bool is_explicit_request_read_time,
       const PgsqlReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
@@ -105,24 +113,18 @@ class AbstractTablet {
   // PGSQL support.
   //-----------------------------------------------------------------------------------------------
 
-  Status HandleQLReadRequest(
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
-      const QLReadRequestPB& ql_read_request,
-      const TransactionOperationContext& txn_op_context,
-      QLReadRequestResult* result,
-      WriteBuffer* rows_data);
-
   virtual Status CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
                                                   const size_t row_count,
                                                   PgsqlResponsePB* response) const = 0;
 
-  Status ProcessPgsqlReadRequest(CoarseTimePoint deadline,
-                                 const ReadHybridTime& read_time,
+  Status ProcessPgsqlReadRequest(const docdb::ReadOperationData& read_operation_data,
                                  bool is_explicit_request_read_time,
                                  const PgsqlReadRequestPB& pgsql_read_request,
                                  const std::shared_ptr<TableInfo>& table_info,
                                  const TransactionOperationContext& txn_op_context,
+                                 const docdb::YQLStorageIf& ql_storage,
+                                 const docdb::DocDBStatistics* statistics,
+                                 std::reference_wrapper<const ScopedRWOperation> pending_op,
                                  PgsqlReadRequestResult* result);
 
   virtual bool IsTransactionalRequest(bool is_ysql_request) const = 0;

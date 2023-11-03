@@ -12,7 +12,7 @@ import re
 import os
 from jinja2.runtime import Undefined
 from jinja2.filters import do_default
-from ybops.utils import ReleasePackage
+from ybops.common.release import ReleasePackage
 from ybops.common.exceptions import YBOpsRuntimeError
 
 

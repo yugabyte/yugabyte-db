@@ -450,6 +450,11 @@ const MCSharedPtr<MCString>& SemContext::bindvar_name() const {
   return sem_state_->bindvar_name();
 }
 
+const MCSharedPtr<MCVector<MCSharedPtr<MCString>>>& SemContext::alternative_bindvar_names() const {
+  DCHECK(sem_state_) << "State variable is not set for the expression";
+  return sem_state_->alternative_bindvar_names();
+}
+
 const ColumnDesc *SemContext::hash_col() const {
   DCHECK(sem_state_) << "State variable is not set for the expression";
   return sem_state_->hash_col();

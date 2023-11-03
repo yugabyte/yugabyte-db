@@ -57,4 +57,7 @@ public class GetChangesResponse extends YRpcResponse {
     return getResp().getCdcSdkCheckpoint().getSnapshotTime();
   }
 
+  public int getWalSegmentIndex() {
+    return getResp().getWalSegmentIndex();
+  }
 }

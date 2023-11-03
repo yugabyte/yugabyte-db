@@ -45,7 +45,7 @@ public class UpdateSoftwareVersion extends UniverseTaskBase {
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().universeUUID + ")";
+    return super.getName() + "(" + taskParams().getUniverseUUID() + ")";
   }
 
   @Override
@@ -62,7 +62,7 @@ public class UpdateSoftwareVersion extends UniverseTaskBase {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
               if (!universeDetails.updateInProgress) {
                 String errMsg =
-                    "UserUniverse " + taskParams().universeUUID + " is not being edited.";
+                    "UserUniverse " + taskParams().getUniverseUUID() + " is not being edited.";
                 log.error(errMsg);
                 throw new RuntimeException(errMsg);
               }

@@ -11,6 +11,7 @@
 package com.yugabyte.yw.common.config;
 
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
+import java.util.List;
 import lombok.Data;
 
 @Data
@@ -25,5 +26,21 @@ public class ConfKeyInfo<T> {
 
   final ConfDataType<T> dataType;
 
-  // TODO: anything else we need to add?
+  final List<ConfKeyTags> tags;
+
+  public enum ConfKeyTags {
+    // Keys Visible on the UI
+    PUBLIC,
+    // Keys hidden from the UI
+    INTERNAL,
+    // YBM Keys
+    YBM,
+    // Keys for which we do not have metadata yet
+    BETA,
+    // Keys with dedicated UI
+    UIDriven,
+    // Feature flag keys. Only allowed data type: boolean.
+    // These can be viewed without authorising. Should only be set at global scope.
+    FEATURE_FLAG
+  }
 }

@@ -15,7 +15,7 @@ menu:
 type: docs
 ---
 
-Use your free Sandbox cluster to get started with YugabyteDB. Although not suitable for production workloads or performance testing, a Sandbox cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB.
+Use your free Sandbox cluster to get started with YugabyteDB. Although not suitable for production workloads or performance testing, a Sandbox cluster includes enough resources to [start exploring](../../../../explore/) the core features available for developing applications with YugabyteDB.
 
 ## Features
 
@@ -24,7 +24,7 @@ Your Sandbox cluster includes the following:
 - Single node.
 - Up to 2 vCPUs, 4 GB memory, and 10 GB of storage, depending on the cloud provider.
 - A [preview release](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB, which provides early access to new features.
-- Available in all [regions](../../../release-notes#cloud-provider-regions).
+- Available in all [regions](../../create-clusters-overview/#cloud-provider-regions).
 
 Share your feedback, questions, and suggestions with other users on the [YugabyteDB Community Slack]({{<slack-invite>}}).
 
@@ -68,7 +68,7 @@ You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Man
 
 The admin credentials are required to connect to the YugabyteDB database that is installed on the cluster.
 
-For security reasons, the admin user does not have YSQL superuser privileges, but does have sufficient privileges for most tasks. For more information on database roles and privileges in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../../../cloud-secure-clusters/cloud-users/).
+For security reasons, the database admin user does not have YSQL superuser privileges, but does have sufficient privileges for most tasks. For more information on database roles and privileges in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../../../cloud-secure-clusters/cloud-users/).
 
 After the cluster is provisioned, you can [add more users and change your password](../../../cloud-secure-clusters/add-users/).
 
@@ -95,10 +95,10 @@ To keep your cluster from being paused, you (or, where applicable, an applicatio
 - You can't change the maintenance window schedule, set exclusion periods, or delay cluster maintenance for Sandbox clusters.
 - You can't pause Sandbox clusters.
 - Sandbox clusters have the following resource limitations:
-  - Up to 10 simultaneous connections; more than that will result in increased latencies and dropped connections.
-  - Maximum 500 tables or 12.5 million rows; more than that may result in out-of-memory errors.
+  - Up to 15 simultaneous connections; more than that will result in increased latencies and dropped connections.
+  - Maximum 500 tables or 12.5 million rows; more than that may result in out-of-memory errors. [Large copy operations](../../../cloud-troubleshoot/#connection-dropped-during-copy-operation) (for example, copying many rows of tables with many columns) may also result in out-of-memory errors.
 
-YugabyteDB is a distributed database optimized for deployment across multiple nodes. Because Sandbox clusters are single node, they are not suitable for proof-of-concept (POC) or performance testing. To evaluate YugabyteDB Managed for production use or conduct a POC, contact {{% support-cloud %}}.
+YugabyteDB is a distributed database optimized for deployment across multiple nodes. Because Sandbox clusters are single-node, they are not suitable for proof-of-concept (POC), staging, or performance testing. [Request a free trial](../../../managed-freetrial/) to try out bigger clusters with more resources.
 
 ## Next steps
 

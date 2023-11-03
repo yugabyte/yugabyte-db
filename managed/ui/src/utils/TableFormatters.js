@@ -1,27 +1,22 @@
 // Copyright (c) YugaByte, Inc.
-import React from 'react';
-import moment from 'moment';
 import { isValidObject } from './ObjectUtils';
 import { YBFormattedNumber } from '../components/common/descriptors';
 import { YBLoadingCircleIcon } from '../components/common/indicators';
-import { TimestampWithTimezone } from '../components/common/timestampWithTimezone/TimestampWithTimezone';
+import { formatDatetime, ybFormatDate, YBTimeFormats } from '../redesign/helpers/DateUtils';
 
 export function timeFormatter(cell) {
   if (!isValidObject(cell)) {
     return <span>-</span>;
   } else {
-    return <TimestampWithTimezone timeFormat={'YYYY/MM/DD H:mm [UTC]ZZ'} timestamp={cell} />;
+    return ybFormatDate(cell);
   }
 }
 
-export function timeFormatterISO8601(cell, _, timezone) {
+export function timeFormatterISO8601(cell) {
   if (!isValidObject(cell)) {
     return '<span>-</span>';
   } else {
-    if (timezone) {
-      return moment(cell).tz(timezone).format('YYYY-MM-DD[T]H:mm:ssZZ');
-    }
-    return moment(cell).format('YYYY-MM-DD[T]H:mm:ssZZ');
+    return formatDatetime(cell, YBTimeFormats.YB_ISO8601_TIMESTAMP);
   }
 }
 
@@ -33,7 +28,7 @@ export function backupConfigFormatter(row, configList) {
   return 'Config UUID (Missing)';
 }
 
-export function percentFormatter(cell, row) {
+export function percentFormatter(cell) {
   return <YBFormattedNumber value={cell / 100} formattedNumberStyle={'percent'} />;
 }
 
@@ -62,7 +57,7 @@ export function successStringFormatter(cell, row) {
       return (
         <span className="yb-pending-color">
           <YBLoadingCircleIcon size="inline" />
-          Pending ({percentFormatter(row.percentComplete, row)})
+          Pending ({percentFormatter(row.percentComplete)})
         </span>
       );
     case 'Failure':

@@ -145,7 +145,7 @@ export const mainTheme = createTheme({
 
         '&.MuiPaper-root': {
           border: 'none',
-          backgroundColor: 'transparent'
+          backgroundColor: 'white'
         }
       }
     },
@@ -672,7 +672,8 @@ export const mainTheme = createTheme({
     MuiTableContainer: {
       root: {
         boxShadow: 'none',
-        padding: '3px 10px 10px 10px',
+        // padding: '3px 10px 10px 10px',
+        padding: '3px 16px 10px 16px',
         border: `1px solid ${colors.grey[300]}`,
         '& .MuiPaper-root': {
           border: 0
@@ -735,8 +736,9 @@ export const mainTheme = createTheme({
         }
       },
       sizeSmall: {
-        padding: 0,
-        lineHeight: '32px'
+        padding: '6px 0px',
+        // padding: '0px 16px',
+        // lineHeight: '32px'
       },
       head: {
         fontSize: 11.5,

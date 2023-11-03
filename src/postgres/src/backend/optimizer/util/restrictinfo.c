@@ -14,6 +14,9 @@
  */
 #include "postgres.h"
 
+#include "catalog/pg_operator.h"
+#include "catalog/pg_type.h"
+
 #include "optimizer/clauses.h"
 #include "optimizer/restrictinfo.h"
 #include "optimizer/var.h"
@@ -212,13 +215,14 @@ make_restrictinfo_internal(Expr *clause,
  *	an inner variable from inner_relids and its outer batched variables from
  *	outer_batched_relids.
  */
-bool can_batch_rinfo(RestrictInfo *rinfo,
-					 Relids outer_batched_relids,
-					 Relids inner_relids)
+bool yb_can_batch_rinfo(RestrictInfo *rinfo,
+							Relids outer_batched_relids,
+							Relids inner_relids)
 {
-	RestrictInfo *batched_rinfo = get_batched_restrictinfo(rinfo,
-														   outer_batched_relids,
-														   inner_relids);
+	RestrictInfo *batched_rinfo =
+		yb_get_batched_restrictinfo(rinfo,
+											 outer_batched_relids,
+											 inner_relids);
 	return batched_rinfo != NULL;
 }
 
@@ -228,9 +232,9 @@ bool can_batch_rinfo(RestrictInfo *rinfo,
  * similarly for the right/outer side and outer_batched_relids.
  */
 RestrictInfo *
-get_batched_restrictinfo(RestrictInfo *rinfo,
-						 Relids outer_batched_relids,
-						 Relids inner_relids)
+yb_get_batched_restrictinfo(RestrictInfo *rinfo,
+									 Relids outer_batched_relids,
+									 Relids inner_relids)
 {
 	if (list_length(rinfo->yb_batched_rinfo) == 0)
 		return NULL;
@@ -250,11 +254,11 @@ get_batched_restrictinfo(RestrictInfo *rinfo,
 	}
 
 	/*
-  	 * Make sure this clause involves both outer_batched_relids and
-   	 * inner_relids.
-   	 */
-  	if (!bms_overlap(ret->right_relids, outer_batched_relids) ||
-    	!bms_overlap(ret->left_relids, inner_relids))
+	 * Make sure this clause involves both outer_batched_relids and
+	 * inner_relids.
+	 */
+	if (!bms_overlap(ret->right_relids, outer_batched_relids) ||
+		!bms_overlap(ret->left_relids, inner_relids))
 		return NULL;
 
 	return ret;
@@ -376,32 +380,21 @@ restriction_is_securely_promotable(RestrictInfo *restrictinfo,
 		return false;
 }
 
-List *
-get_actual_batched_clauses(Relids batchedrelids,
-						   List *restrictinfo_list,
-						   IndexPath *inner_index)
+/* 
+ * Add a given batched RestrictInfo to rinfo if it hasn't already been added.
+ */
+void add_batched_rinfo(RestrictInfo *rinfo, RestrictInfo *batched)
 {
-	List	   *result = NIL;
-	ListCell   *l;
-
-	foreach(l, restrictinfo_list)
+	ListCell *lc;
+	foreach(lc, rinfo->yb_batched_rinfo)
 	{
-		RestrictInfo *rinfo = lfirst_node(RestrictInfo, l);
-		RestrictInfo *tmp_batched =
-			get_batched_restrictinfo(rinfo,
-									 batchedrelids,
-									 inner_index->indexinfo->rel->relids);
-
-		if (tmp_batched)
-		{
-			rinfo = tmp_batched;
-		}
-
-		Assert(!rinfo->pseudoconstant);
-
-		result = lappend(result, rinfo->clause);
+		RestrictInfo *current = lfirst(lc);
+		/* If we already have a batched clause with this LHS we don't bother.*/
+		if (equal(get_leftop(current->clause), get_leftop(batched->clause)))
+			return;	
 	}
-	return result;
+
+	rinfo->yb_batched_rinfo = lappend(rinfo->yb_batched_rinfo, batched);
 }
 
 /*

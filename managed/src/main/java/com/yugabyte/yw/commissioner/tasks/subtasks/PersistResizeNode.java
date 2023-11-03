@@ -11,10 +11,12 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import java.util.List;
+import java.util.Date;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,11 +29,8 @@ public class PersistResizeNode extends UniverseTaskBase {
   }
 
   public static class Params extends UniverseTaskParams {
-    public String instanceType;
-    public Integer volumeSize;
-    public List<UUID> clusters;
-    public String masterInstanceType;
-    public Integer masterVolumeSize;
+    public UserIntent newUserIntent;
+    public UUID clusterUUID;
   }
 
   protected Params taskParams() {
@@ -40,16 +39,26 @@ public class PersistResizeNode extends UniverseTaskBase {
 
   @Override
   public String getName() {
-    String ret =
-        super.getName()
-            + "("
-            + taskParams().universeUUID
-            + ", instanceType: "
-            + taskParams().instanceType;
-    if (taskParams().volumeSize != null) {
-      ret += ", volumeSize: " + taskParams().volumeSize;
+    StringBuilder sb = new StringBuilder(super.getName());
+    sb.append('(');
+    sb.append(taskParams().getUniverseUUID());
+    UserIntent intent = taskParams().newUserIntent;
+    sb.append(", instanceType: ");
+    sb.append(intent.instanceType);
+    if (intent.deviceInfo != null) {
+      sb.append(", volumeSize: ");
+      sb.append(intent.deviceInfo.volumeSize);
+      if (intent.deviceInfo.diskIops != null) {
+        sb.append(", volumeIops: ");
+        sb.append(intent.deviceInfo.diskIops);
+      }
+      if (intent.deviceInfo.throughput != null) {
+        sb.append(", volumeThroughput: ");
+        sb.append(intent.deviceInfo.throughput);
+      }
     }
-    return ret + ")";
+    sb.append(')');
+    return sb.toString();
   }
 
   @Override
@@ -64,22 +73,45 @@ public class PersistResizeNode extends UniverseTaskBase {
             public void run(Universe universe) {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
-              for (Cluster cluster : getClustersToUpdate(universeDetails)) {
-                UserIntent userIntent = cluster.userIntent;
-                userIntent.instanceType = taskParams().instanceType;
-                if (taskParams().masterInstanceType != null) {
-                  userIntent.masterInstanceType = taskParams().masterInstanceType;
-                }
-                if (taskParams().volumeSize != null) {
-                  userIntent.deviceInfo.volumeSize = taskParams().volumeSize;
-                }
-                if (taskParams().masterVolumeSize != null) {
-                  userIntent.masterDeviceInfo.volumeSize = taskParams().masterVolumeSize;
-                }
-                for (NodeDetails nodeDetails :
-                    universe.getUniverseDetails().getNodesInCluster(cluster.uuid)) {
-                  nodeDetails.disksAreMountedByUUID = true;
-                }
+              Cluster cluster = universeDetails.getClusterByUuid(taskParams().clusterUUID);
+              Set<NodeDetails> nodesInCluster =
+                  universe.getUniverseDetails().getNodesInCluster(cluster.uuid);
+
+              UserIntent userIntent = cluster.userIntent;
+              UserIntent newUserIntent = taskParams().newUserIntent;
+              userIntent.instanceType = newUserIntent.instanceType;
+              userIntent.setUserIntentOverrides(newUserIntent.getUserIntentOverrides());
+              userIntent.setCgroupSize(newUserIntent.getCgroupSize());
+              userIntent.masterInstanceType = newUserIntent.masterInstanceType;
+              Date now = new Date();
+              DeviceInfo oldDeviceInfo = userIntent.deviceInfo.clone();
+              userIntent.deviceInfo.volumeSize = newUserIntent.deviceInfo.volumeSize;
+              userIntent.deviceInfo.diskIops = newUserIntent.deviceInfo.diskIops;
+              userIntent.deviceInfo.throughput = newUserIntent.deviceInfo.throughput;
+              if (!Objects.equals(userIntent.deviceInfo, oldDeviceInfo)) {
+                nodesInCluster.stream()
+                    .filter(n -> n.isTserver)
+                    .forEach(node -> node.lastVolumeUpdateTime = now);
+              }
+              DeviceInfo oldMasterDeviceInfo = null;
+              if (userIntent.masterDeviceInfo != null) {
+                oldMasterDeviceInfo = userIntent.masterDeviceInfo.clone();
+              }
+              if (newUserIntent.masterDeviceInfo != null || userIntent.masterDeviceInfo != null) {
+                userIntent.masterDeviceInfo.volumeSize = newUserIntent.masterDeviceInfo.volumeSize;
+                userIntent.masterDeviceInfo.diskIops = newUserIntent.masterDeviceInfo.diskIops;
+                userIntent.masterDeviceInfo.throughput = newUserIntent.masterDeviceInfo.throughput;
+              } else {
+                userIntent.masterDeviceInfo = newUserIntent.masterDeviceInfo;
+              }
+              if (!Objects.equals(oldMasterDeviceInfo, userIntent.masterDeviceInfo)) {
+                nodesInCluster.stream()
+                    .filter(n -> n.isMaster)
+                    .forEach(node -> node.lastVolumeUpdateTime = now);
+              }
+
+              for (NodeDetails nodeDetails : nodesInCluster) {
+                nodeDetails.disksAreMountedByUUID = true;
               }
 
               universe.setUniverseDetails(universeDetails);
@@ -94,17 +126,5 @@ public class PersistResizeNode extends UniverseTaskBase {
       LOG.warn(msg, e.getMessage());
       throw new RuntimeException(msg, e);
     }
-  }
-
-  private List<Cluster> getClustersToUpdate(UniverseDefinitionTaskParams universeDetails) {
-    List<UUID> paramsClusters = taskParams().clusters;
-    if (paramsClusters == null || paramsClusters.isEmpty()) {
-      return universeDetails.clusters;
-    }
-    return universeDetails
-        .clusters
-        .stream()
-        .filter(c -> paramsClusters.contains(c.uuid))
-        .collect(Collectors.toList());
   }
 }

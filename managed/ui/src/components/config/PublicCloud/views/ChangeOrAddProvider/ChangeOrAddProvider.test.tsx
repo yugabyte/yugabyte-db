@@ -1,4 +1,3 @@
-import React from 'react';
 import userEvent from '@testing-library/user-event';
 import { ChangeOrAddProvider } from './ChangeOrAddProvider';
 import { render } from '../../../../../test-utils';
@@ -70,7 +69,7 @@ describe('ChangeOrAddComponent tests', () => {
     expect(component.getByTestId('change-or-add-provider')).toBeInTheDocument();
   });
 
-  it('should validate that combobox is rendered and selected with appropriate value',  () => {
+  it('should validate that combobox is rendered and selected with appropriate value', () => {
     const { component, selectProvider } = setup();
     userEvent.selectOptions(
       component.getByRole('combobox', { name: '' }),

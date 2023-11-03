@@ -112,8 +112,7 @@ public class PlatformMetricsProcessor {
   private void cleanOrphanedSwamperTargets() {
     Set<UUID> existingUniverseUuids = Universe.getAllUUIDs();
     List<UUID> targetFileUuids = swamperHelper.getTargetUniverseUuids();
-    targetFileUuids
-        .stream()
+    targetFileUuids.stream()
         .filter(uuid -> !existingUniverseUuids.contains(uuid))
         .forEach(swamperHelper::removeUniverseTargetJson);
   }

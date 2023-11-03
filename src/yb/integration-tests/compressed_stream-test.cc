@@ -37,8 +37,8 @@ namespace yb {
 class CompressedStreamTest : public client::KeyValueTableTest<MiniCluster> {
  public:
   void SetUp() override {
-    FLAGS_enable_stream_compression = true;
-    FLAGS_stream_compression_algo = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_stream_compression) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_stream_compression_algo) = 1;
     KeyValueTableTest::SetUp();
   }
 
@@ -69,8 +69,8 @@ TEST_F(CompressedStreamTest, Simple) {
 
 TEST_F(CompressedStreamTest, BigWrite) {
   client::YBSchemaBuilder builder;
-  builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
-  builder.AddColumn(kValueColumn)->Type(STRING);
+  builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+  builder.AddColumn(kValueColumn)->Type(DataType::STRING);
 
   ASSERT_OK(table_.Create(client::kTableName, 1, client_.get(), &builder));
 

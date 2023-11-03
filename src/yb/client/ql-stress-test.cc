@@ -34,7 +34,7 @@
 #include "yb/consensus/retryable_requests.h"
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 
 #include "yb/rocksdb/metadata.h"
@@ -72,6 +72,7 @@ DECLARE_bool(TEST_combine_batcher_errors);
 DECLARE_bool(allow_preempting_compactions);
 DECLARE_bool(detect_duplicates_for_retryable_requests);
 DECLARE_bool(enable_ondisk_compression);
+DECLARE_bool(ycql_enable_packed_row);
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_int32(TEST_max_write_waiters);
@@ -139,8 +140,8 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
   }
 
   virtual void InitSchemaBuilder(YBSchemaBuilder* builder) {
-    builder->AddColumn("h")->Type(INT32)->HashPrimaryKey()->NotNull();
-    builder->AddColumn(kValueColumn)->Type(STRING);
+    builder->AddColumn("h")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+    builder->AddColumn(kValueColumn)->Type(DataType::STRING);
   }
 
   Status WaitForTabletLeaders() {
@@ -280,8 +281,8 @@ bool QLStressTest::CheckRetryableRequestsCountsAndLeaders(
     if (!peer->tablet() || peer->tablet()->metadata()->table_id() != table_.table()->id()) {
       continue;
     }
-    size_t tablet_entries = peer->tablet()->TEST_CountRegularDBRecords();
-    auto raft_consensus = down_cast<consensus::RaftConsensus*>(peer->consensus());
+    const auto tablet_entries = EXPECT_RESULT(peer->tablet()->TEST_CountRegularDBRecords());
+    auto raft_consensus = EXPECT_RESULT(peer->GetRaftConsensus());
     auto request_counts = raft_consensus->TEST_CountRetryableRequests();
     LOG(INFO) << "T " << peer->tablet()->tablet_id() << " P " << peer->permanent_uuid()
               << ", entries: " << tablet_entries
@@ -315,20 +316,20 @@ bool QLStressTest::CheckRetryableRequestsCountsAndLeaders(
       if (peer->tablet()->metadata()->table_id() != table_.table()->id()) {
         continue;
       }
-      auto db = peer->tablet()->TEST_db();
+      auto db = peer->tablet()->regular_db();
       rocksdb::ReadOptions read_opts;
       read_opts.query_id = rocksdb::kDefaultQueryId;
       std::unique_ptr<rocksdb::Iterator> iter(db->NewIterator(read_opts));
       std::unordered_map<std::string, std::string> keys;
 
-      for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      for (iter->SeekToFirst(); EXPECT_RESULT(iter->CheckedValid()); iter->Next()) {
         Slice key = iter->key();
         EXPECT_OK(DocHybridTime::DecodeFromEnd(&key));
         auto emplace_result = keys.emplace(key.ToBuffer(), iter->key().ToBuffer());
         if (!emplace_result.second) {
           LOG(ERROR)
-              << "Duplicate key: " << docdb::SubDocKey::DebugSliceToString(iter->key())
-              << " vs " << docdb::SubDocKey::DebugSliceToString(emplace_result.first->second);
+              << "Duplicate key: " << dockv::SubDocKey::DebugSliceToString(iter->key())
+              << " vs " << dockv::SubDocKey::DebugSliceToString(emplace_result.first->second);
         }
       }
     }
@@ -418,25 +419,25 @@ void QLStressTest::TestRetryWrites(bool restarts) {
                 expected_leaders, &total_entries),
       15s, "Retryable requests cleanup and leader wait"));
 
-  // We have 2 entries per row.
+  size_t entries_per_row = FLAGS_ycql_enable_packed_row ? 1 : 2;
   if (FLAGS_detect_duplicates_for_retryable_requests) {
-    ASSERT_EQ(total_entries, written_keys * 2);
+    ASSERT_EQ(total_entries, written_keys * entries_per_row);
   } else {
     // If duplicate request tracking is disabled, then total_entries should be greater than
     // written keys, otherwise test does not work.
-    ASSERT_GT(total_entries, written_keys * 2);
+    ASSERT_GT(total_entries, written_keys * entries_per_row);
   }
 
   ASSERT_GE(written_keys, RegularBuildVsSanitizers(100, 40));
 }
 
 TEST_F(QLStressTest, RetryWrites) {
-  FLAGS_detect_duplicates_for_retryable_requests = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_detect_duplicates_for_retryable_requests) = true;
   TestRetryWrites(false /* restarts */);
 }
 
 TEST_F(QLStressTest, RetryWritesWithRestarts) {
-  FLAGS_detect_duplicates_for_retryable_requests = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_detect_duplicates_for_retryable_requests) = true;
   TestRetryWrites(true /* restarts */);
 }
 
@@ -451,8 +452,8 @@ class QLTransactionalStressTest : public QLStressTest {
   void SetUp() override {
     FLAGS_transaction_rpc_timeout_ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(1min).count();
-    FLAGS_transaction_max_missed_heartbeat_periods = 1000000;
-    FLAGS_retryable_request_range_time_limit_secs = 600;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_max_missed_heartbeat_periods) = 1000000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_range_time_limit_secs) = 600;
     ASSERT_NO_FATALS(QLStressTest::SetUp());
   }
 
@@ -462,25 +463,25 @@ class QLTransactionalStressTest : public QLStressTest {
 };
 
 TEST_F_EX(QLStressTest, RetryTransactionalWrites, QLTransactionalStressTest) {
-  FLAGS_detect_duplicates_for_retryable_requests = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_detect_duplicates_for_retryable_requests) = true;
   TestRetryWrites(false /* restarts */);
 }
 
 TEST_F_EX(QLStressTest, RetryTransactionalWritesWithRestarts, QLTransactionalStressTest) {
-  FLAGS_detect_duplicates_for_retryable_requests = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_detect_duplicates_for_retryable_requests) = true;
   TestRetryWrites(true /* restarts */);
 }
 
 TEST_F(QLStressTest, RetryWritesDisabled) {
-  FLAGS_detect_duplicates_for_retryable_requests = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_detect_duplicates_for_retryable_requests) = false;
   TestRetryWrites(false /* restarts */);
 }
 
 class QLStressTestIntValue : public QLStressTest {
  private:
   void InitSchemaBuilder(YBSchemaBuilder* builder) override {
-    builder->AddColumn("h")->Type(INT32)->HashPrimaryKey()->NotNull();
-    builder->AddColumn(kValueColumn)->Type(INT64);
+    builder->AddColumn("h")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+    builder->AddColumn(kValueColumn)->Type(DataType::INT64);
   }
 };
 
@@ -558,15 +559,16 @@ TEST_F_EX(QLStressTest, ShortTimeLeaderDoesNotReplicateNoOp, QLStressTestSingleT
   tablet::TabletPeerPtr temp_leader = followers[0];
   tablet::TabletPeerPtr always_follower = followers[1];
 
-  ASSERT_OK(WaitFor([old_leader, always_follower]() -> Result<bool> {
-    auto leader_op_id = old_leader->consensus()->GetLastReceivedOpId();
-    auto follower_op_id = always_follower->consensus()->GetLastReceivedOpId();
-    return follower_op_id == leader_op_id;
-  }, 5s, "Follower catch up"));
+  ASSERT_OK(WaitFor(
+      [old_leader, always_follower]() -> Result<bool> {
+        auto leader_op_id = VERIFY_RESULT(old_leader->GetConsensus())->GetLastReceivedOpId();
+        auto follower_op_id = VERIFY_RESULT(always_follower->GetConsensus())->GetLastReceivedOpId();
+        return follower_op_id == leader_op_id;
+      },
+      5s, "Follower catch up"));
 
   for (const auto& follower : followers) {
-    down_cast<consensus::RaftConsensus*>(follower->consensus())->TEST_RejectMode(
-        consensus::RejectMode::kAll);
+    ASSERT_RESULT(follower->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kAll);
   }
 
   InsertRow(session, 1, "value1");
@@ -584,12 +586,10 @@ TEST_F_EX(QLStressTest, ShortTimeLeaderDoesNotReplicateNoOp, QLStressTestSingleT
 
   ASSERT_OK(StepDown(old_leader, temp_leader->permanent_uuid(), ForceStepDown::kFalse));
 
-  down_cast<consensus::RaftConsensus*>(old_leader->consensus())->TEST_RejectMode(
-      consensus::RejectMode::kAll);
-  down_cast<consensus::RaftConsensus*>(temp_leader->consensus())->TEST_RejectMode(
-      consensus::RejectMode::kNone);
-  down_cast<consensus::RaftConsensus*>(always_follower->consensus())->TEST_RejectMode(
-      consensus::RejectMode::kNonEmpty);
+  ASSERT_RESULT(old_leader->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kAll);
+  ASSERT_RESULT(temp_leader->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kNone);
+  ASSERT_RESULT(always_follower->GetRaftConsensus())
+      ->TEST_RejectMode(consensus::RejectMode::kNonEmpty);
 
   ASSERT_OK(WaitForLeaderOfSingleTablet(
       cluster_.get(), temp_leader, 20s, "Waiting for new leader"));
@@ -608,8 +608,7 @@ TEST_F_EX(QLStressTest, ShortTimeLeaderDoesNotReplicateNoOp, QLStressTestSingleT
   ASSERT_OK(WaitForLeaderOfSingleTablet(
       cluster_.get(), old_leader, 20s, "Waiting old leader to restore leadership"));
 
-  down_cast<consensus::RaftConsensus*>(always_follower->consensus())->TEST_RejectMode(
-      consensus::RejectMode::kNone);
+  ASSERT_RESULT(always_follower->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kNone);
 
   ASSERT_OK(WriteRow(session, 3, "value3"));
 
@@ -633,7 +632,7 @@ void QLStressTest::VerifyFlushedFrontiers() {
   for (const auto& mini_tserver : cluster_->mini_tablet_servers()) {
     auto peers = mini_tserver->server()->tablet_manager()->GetTabletPeers();
     for (const auto& peer : peers) {
-      rocksdb::DB* db = peer->tablet()->TEST_db();
+      rocksdb::DB* db = peer->tablet()->regular_db();
       OpId op_id;
       ASSERT_NO_FATALS(VerifyFlushedFrontier(db->GetFlushedFrontier(), &op_id));
 
@@ -695,7 +694,7 @@ TEST_F_EX(QLStressTest, FlushCompact, QLStressTestSingleTablet) {
 // Restore connectivity.
 // Check that old leader was able to catch up after the partition is healed.
 TEST_F_EX(QLStressTest, OldLeaderCatchUpAfterNetworkPartition, QLStressTestSingleTablet) {
-  FLAGS_TEST_combine_batcher_errors = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_combine_batcher_errors) = true;
 
   tablet::TabletPeer* leader_peer = nullptr;
   std::atomic<int> key(0);
@@ -753,14 +752,14 @@ TEST_F_EX(QLStressTest, SlowUpdateConsensus, QLStressTestSingleTablet) {
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kNonLeaders);
   ASSERT_EQ(peers.size(), 2);
 
-  down_cast<consensus::RaftConsensus*>(peers[0]->consensus())->TEST_DelayUpdate(20s);
+  ASSERT_RESULT(peers[0]->GetRaftConsensus())->TEST_DelayUpdate(20s);
 
   TestThreadHolder thread_holder;
   AddWriter(std::string(100_KB, 'X'), &key, &thread_holder, 100ms);
 
   thread_holder.WaitAndStop(30s);
 
-  down_cast<consensus::RaftConsensus*>(peers[0]->consensus())->TEST_DelayUpdate(0s);
+  ASSERT_RESULT(peers[0]->GetRaftConsensus())->TEST_DelayUpdate(0s);
 
   int64_t max_peak_consumption = 0;
   for (size_t i = 1; i <= cluster_->num_tablet_servers(); ++i) {
@@ -777,12 +776,12 @@ template <int kSoftLimit, int kHardLimit>
 class QLStressTestDelayWrite : public QLStressTestSingleTablet {
  public:
   void SetUp() override {
-    FLAGS_db_write_buffer_size = 1_KB;
-    FLAGS_sst_files_soft_limit = kSoftLimit;
-    FLAGS_sst_files_hard_limit = kHardLimit;
-    FLAGS_rocksdb_level0_file_num_compaction_trigger = 6;
-    FLAGS_rocksdb_universal_compaction_min_merge_width = 2;
-    FLAGS_rocksdb_universal_compaction_size_ratio = 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 1_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_sst_files_soft_limit) = kSoftLimit;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_sst_files_hard_limit) = kHardLimit;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 6;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_universal_compaction_min_merge_width) = 2;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_universal_compaction_size_ratio) = 1000;
     QLStressTestSingleTablet::SetUp();
   }
 
@@ -915,10 +914,11 @@ void QLStressTest::TestWriteRejection() {
     auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
     OpId first_op_id;
     for (const auto& peer : peers) {
-      if (!peer->consensus()) {
+      auto consensus_result = peer->GetConsensus();
+      if (!consensus_result) {
         return false;
       }
-      auto current = peer->consensus()->GetLastCommittedOpId();
+      auto current = consensus_result.get()->GetLastCommittedOpId();
       if (!first_op_id) {
         first_op_id = current;
       } else if (current != first_op_id) {
@@ -945,15 +945,15 @@ TEST_F_EX(QLStressTest, WriteStop, QLStressTestDelayWrite_6_6) {
 class QLStressTestLongRemoteBootstrap : public QLStressTestSingleTablet {
  public:
   void SetUp() override {
-    FLAGS_log_cache_size_limit_mb = 1;
-    FLAGS_log_segment_size_bytes = 96_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_cache_size_limit_mb) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 96_KB;
     QLStressTestSingleTablet::SetUp();
   }
 };
 
 TEST_F_EX(QLStressTest, LongRemoteBootstrap, QLStressTestLongRemoteBootstrap) {
-  FLAGS_log_min_seconds_to_retain = 1;
-  FLAGS_remote_bootstrap_rate_limit_bytes_per_sec = 1_MB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_remote_bootstrap_rate_limit_bytes_per_sec) = 1_MB;
 
   cluster_->mini_tablet_server(0)->Shutdown();
 
@@ -987,14 +987,12 @@ TEST_F_EX(QLStressTest, LongRemoteBootstrap, QLStressTestLongRemoteBootstrap) {
     // Check that first log was garbage collected, so remote bootstrap will be required.
     consensus::ReplicateMsgs replicates;
     int64_t starting_op_segment_seq_num;
-    yb::SchemaPB schema;
-    uint32_t schema_version;
     return !leaders.front()->log()->GetLogReader()->ReadReplicatesInRange(
-        100, 101, 0, &replicates, &starting_op_segment_seq_num, &schema, &schema_version).ok();
+        100, 101, 0, &replicates, &starting_op_segment_seq_num).ok();
   }, 30s, "Logs cleaned"));
 
   LOG(INFO) << "Bring replica back, keys written: " << key.load(std::memory_order_acquire);
-  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
 
   thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
     while (!stop.load(std::memory_order_acquire)) {
@@ -1007,12 +1005,12 @@ TEST_F_EX(QLStressTest, LongRemoteBootstrap, QLStressTestLongRemoteBootstrap) {
   ASSERT_OK(WaitAllReplicasHaveIndex(cluster_.get(), key.load(std::memory_order_acquire), 40s));
   LOG(INFO) << "All replicas ready";
 
-  ASSERT_OK(WaitFor([this] {
+  ASSERT_OK(WaitFor([this]()->Result<bool> {
     bool result = true;
     auto followers = ListTabletPeers(cluster_.get(), ListPeersFilter::kNonLeaders);
     LOG(INFO) << "Num followers: " << followers.size();
     for (const auto& peer : followers) {
-      auto log_cache_size = peer->raft_consensus()->LogCacheSize();
+      auto log_cache_size = VERIFY_RESULT(peer->GetRaftConsensus())->LogCacheSize();
       LOG(INFO) << "T " << peer->tablet_id() << " P " << peer->permanent_uuid()
                 << ", log cache size: " << log_cache_size;
       if (log_cache_size != 0) {
@@ -1030,11 +1028,11 @@ TEST_F_EX(QLStressTest, LongRemoteBootstrap, QLStressTestLongRemoteBootstrap) {
 class QLStressDynamicCompactionPriorityTest : public QLStressTest {
  public:
   void SetUp() override {
-    FLAGS_allow_preempting_compactions = true;
-    FLAGS_db_write_buffer_size = 16_KB;
-    FLAGS_enable_ondisk_compression = false;
-    FLAGS_rocksdb_max_background_compactions = 1;
-    FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec = 160_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_preempting_compactions) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 16_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ondisk_compression) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = 160_KB;
     QLStressTest::SetUp();
   }
 
@@ -1043,8 +1041,8 @@ class QLStressDynamicCompactionPriorityTest : public QLStressTest {
   }
 
   void InitSchemaBuilder(YBSchemaBuilder* builder) override {
-    builder->AddColumn("h")->Type(INT32)->HashPrimaryKey()->NotNull();
-    builder->AddColumn(kValueColumn)->Type(STRING);
+    builder->AddColumn("h")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+    builder->AddColumn(kValueColumn)->Type(DataType::STRING);
   }
 };
 
@@ -1103,7 +1101,7 @@ class QLStressTestTransactionalSingleTablet : public QLStressTestSingleTablet {
 // Verify that we don't have too many write waiters.
 // Uses FLAGS_TEST_max_write_waiters to fail debug check when there are too many waiters.
 TEST_F_EX(QLStressTest, RemoveIntentsDuringWrite, QLStressTestTransactionalSingleTablet) {
-  FLAGS_TEST_max_write_waiters = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_max_write_waiters) = 5;
 
   constexpr int kWriters = 10;
   constexpr int kKeyBase = 10000;
@@ -1122,7 +1120,7 @@ TEST_F_EX(QLStressTest, RemoveIntentsDuringWrite, QLStressTestTransactionalSingl
 }
 
 TEST_F_EX(QLStressTest, SyncOldLeader, QLStressTestSingleTablet) {
-  FLAGS_raft_heartbeat_interval_ms = 100 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_heartbeat_interval_ms) = 100 * kTimeMultiplier;
   constexpr int kOldLeaderWriteKeys = 100;
   // Should be less than amount of pending operations at the old leader.
   // So it is much smaller than keys written to the old leader.
@@ -1169,7 +1167,7 @@ TEST_F_EX(QLStressTest, SyncOldLeader, QLStressTestSingleTablet) {
   // Reject all non empty update consensuses, to activate consensus exponential backoff,
   // and get into situation where leader sends empty request.
   for (const auto& peer : peers) {
-    peer->raft_consensus()->TEST_RejectMode(consensus::RejectMode::kNonEmpty);
+    ASSERT_RESULT(peer->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kNonEmpty);
   }
 
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
@@ -1182,7 +1180,7 @@ TEST_F_EX(QLStressTest, SyncOldLeader, QLStressTestSingleTablet) {
   std::this_thread::sleep_for(5s * kTimeMultiplier);
 
   for (const auto& peer : peers) {
-    peer->raft_consensus()->TEST_RejectMode(consensus::RejectMode::kNone);
+    ASSERT_RESULT(peer->GetRaftConsensus())->TEST_RejectMode(consensus::RejectMode::kNone);
   }
 
   // Wait all writes to complete.

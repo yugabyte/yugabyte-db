@@ -14,6 +14,7 @@
 #include "yb/tserver/tserver_metrics_heartbeat_data_provider.h"
 
 #include "yb/consensus/log.h"
+#include "yb/consensus/raft_consensus.h"
 
 #include "yb/docdb/docdb_rocksdb_util.h"
 
@@ -23,7 +24,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
-#include "yb/tserver/cdc_consumer.h"
+#include "yb/tserver/xcluster_consumer.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.service.h"
@@ -42,6 +43,9 @@ DEFINE_UNKNOWN_bool(tserver_heartbeat_metrics_add_drive_data, true,
 
 DEFINE_UNKNOWN_bool(tserver_heartbeat_metrics_add_replication_status, true,
             "Add replication status to metrics tserver sends to master");
+
+DEFINE_UNKNOWN_bool(tserver_heartbeat_metrics_add_leader_info, true,
+            "Add leader info to metrics tserver sends to master");
 
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 
@@ -84,21 +88,47 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
         if (should_add_tablet_data && tablet_peer->log_available() &&
             tablet_peer->tablet_metadata()->tablet_data_state() ==
               tablet::TabletDataState::TABLET_DATA_READY) {
-          auto tablet_metadata = req->add_storage_metadata();
-          tablet_metadata->set_tablet_id(tablet_peer->tablet_id());
-          tablet_metadata->set_sst_file_size(sizes.first);
-          tablet_metadata->set_wal_file_size(tablet_peer->log()->OnDiskSize());
-          tablet_metadata->set_uncompressed_sst_file_size(sizes.second);
-          tablet_metadata->set_may_have_orphaned_post_split_data(
+          auto storage_metadata = req->add_storage_metadata();
+          storage_metadata->set_tablet_id(tablet_peer->tablet_id());
+          storage_metadata->set_sst_file_size(sizes.first);
+          storage_metadata->set_wal_file_size(tablet_peer->log()->OnDiskSize());
+          storage_metadata->set_uncompressed_sst_file_size(sizes.second);
+          storage_metadata->set_may_have_orphaned_post_split_data(
                 tablet->MayHaveOrphanedPostSplitData());
+          if (FLAGS_tserver_heartbeat_metrics_add_leader_info) {
+            auto consensus_result = tablet_peer->GetRaftConsensus();
+            if (consensus_result) {
+              MicrosTime ht_lease_exp;
+              consensus::LeaderLeaseStatus leader_lease_status =
+                  consensus_result.get()->GetLeaderLeaseStatusIfLeader(&ht_lease_exp);
+              auto leader_info = req->add_leader_info();
+              leader_info->set_tablet_id(tablet_peer->tablet_id());
+              leader_info->set_leader_lease_status(leader_lease_status);
+              if (leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE) {
+                leader_info->set_ht_lease_expiration(ht_lease_exp);
+              }
+            }
+          }
+        }
+
+        if (no_full_tablet_report) {
+          auto full_compaction_status = req->add_full_compaction_statuses();
+          full_compaction_status->set_tablet_id(tablet->tablet_id());
+          if (tablet->HasActiveFullCompaction()) {
+            full_compaction_status->set_full_compaction_state(tablet::COMPACTING);
+          } else {
+            full_compaction_status->set_full_compaction_state(tablet::IDLE);
+          }
+          full_compaction_status->set_last_full_compaction_time(
+              tablet->metadata()->last_full_compaction_time());
         }
       }
     }
 
-    // Report replication errors from the CDC consumer.
-    auto consumer = down_cast<enterprise::TabletServer&>(server()).GetCDCConsumer();
-    if (consumer != nullptr && should_add_replication_status) {
-      const auto tablet_replication_error_map = consumer->GetReplicationErrors();
+    // Report replication errors from the xCluster consumer.
+    auto xcluster_consumer = server().GetXClusterConsumer();
+    if (xcluster_consumer != nullptr && should_add_replication_status) {
+      const auto tablet_replication_error_map = xcluster_consumer->GetReplicationErrors();
       for (const auto& tablet_kv : tablet_replication_error_map) {
         const TabletId& tablet_id = tablet_kv.first;
 
@@ -107,11 +137,9 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
 
         auto& stream_to_status = *replication_state->mutable_stream_replication_statuses();
         const auto& stream_replication_error_map = tablet_kv.second;
-        for (const auto& stream_kv : stream_replication_error_map) {
-          const CDCStreamId& stream_id = stream_kv.first;
-          const auto& replication_error_map = stream_kv.second;
-
-          auto& error_to_detail = *stream_to_status[stream_id].mutable_replication_errors();
+        for (const auto& [stream_id, replication_error_map] : stream_replication_error_map) {
+          auto& error_to_detail =
+              *stream_to_status[stream_id.ToString()].mutable_replication_errors();
           for (const auto& error_kv : replication_error_map) {
             const ReplicationErrorPb error = error_kv.first;
             const std::string& detail = error_kv.second;

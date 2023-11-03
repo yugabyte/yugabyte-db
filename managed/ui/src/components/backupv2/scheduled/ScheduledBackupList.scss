@@ -1,4 +1,4 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .schedule-list-panel {
   .schedule-action {
@@ -19,8 +19,8 @@
 }
 
 .schedule-item {
-  background: $YB_BG_WHITE_3;
-  border: 1px solid $YB_GRAY_HOVER;
+  background: colors.$YB_BG_WHITE_3;
+  border: 1px solid colors.$YB_GRAY_HOVER;
   box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.05);
   border-radius: 8px;
   min-height: 225px;
@@ -88,7 +88,7 @@
     .tables-more {
       font-weight: 400;
       font-size: 13px;
-      color: $YB_DARKER_GRAY;
+      color: colors.$YB_DARKER_GRAY;
       margin-right: 10px;
       cursor: pointer;
     }
@@ -113,9 +113,9 @@
 }
 
 #more-tables-popover {
-  background: $YB_BG_WHITE_3;
-  color: $YB_TEXT_COLOR;
+  background: colors.$YB_BG_WHITE_3;
+  color: colors.$YB_TEXT_COLOR;
   .popover-title {
-    background-color: $YB_BACKGROUND;
+    background-color: colors.$YB_BACKGROUND;
   }
 }

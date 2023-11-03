@@ -1,8 +1,9 @@
 ---
 title: Prepare the Google Cloud Platform (GCP) environment
-headerTitle: Prepare the Google Cloud Platform (GCP) environment
-linkTitle: Prepare the environment
+headerTitle: Cloud prerequisites
+linkTitle: Cloud prerequisites
 description: Prepare the Google Cloud Platform (GCP) environment
+headContent: Prepare GCP for YugabyteDB Anywhere
 menu:
   stable_yugabyte-platform:
     parent: install-yugabyte-platform
@@ -36,14 +37,14 @@ type: docs
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
 <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-brands fa-redhat" aria-hidden="true"></i>
       OpenShift
     </a>
  </li>
@@ -59,7 +60,7 @@ type: docs
 
 ## Create a project (optional)
 
-A project forms the basis for creating, enabling and using all GCP services, managing APIs, enabling billing, adding and removing collaborators, and managing permissions.
+A project forms the basis for creating, enabling, and using all GCP services, managing APIs, enabling billing, adding and removing collaborators, and managing permissions.
 
 For instructions on how to create a project using [GCP cloud resource manager](https://console.cloud.google.com/cloud-resource-manager), see [Create and managing projects](https://cloud.google.com/resource-manager/docs/creating-managing-projects) in the GCP documentation.
 
@@ -95,13 +96,13 @@ For more information, see [Creating and managing service accounts](https://cloud
 
 ## Create a firewall rule
 
-In order to access YugabyteDB Anywhere from outside the GCP environment, you have to enable firewall rules. At a minimum, you need to be able to do the following:
+To access YugabyteDB Anywhere from outside the GCP environment, you have to enable firewall rules. At a minimum, you need to be able to do the following:
 
 - Access the YugabyteDB Anywhere instance over SSH (port `tcp:22`).
 - Check, manage, and upgrade YugabyteDB Anywhere (port `tcp:8800`).
 - View the YugabyteDB Anywhere UI (port `tcp:80`).
 
-If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 13000, 9300, 9042, 5433, 6379, 54422. For more information, see [Default ports](../../../../reference/configuration/default-ports).
+If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 18018, 11000, 12000, 13000, 9300, 9042, 5433, 6379, 54422. For more information, see [Default ports](../../../../reference/configuration/default-ports).
 
 Next, you need to create a firewall entry, as follows:
 
@@ -109,7 +110,7 @@ Next, you need to create a firewall entry, as follows:
 - Create firewall rules by following instructions provided in [Using firewall rules](https://cloud.google.com/vpc/docs/using-firewalls) in the GCP documentation. When creating the rules:
   - Add a tag `yugabyte-server` to the **Target tags** field.
   - Add the appropriate IP addresses to the **Source IP ranges** field.
-  - Enter a comma-delimited list of TCP ports 22, 8800, 80 to the **Protocol and ports** field. If required, also add TCP ports for a self-managed configuration.
+  - Enter a comma-delimited list of TCP ports 22, 8800, and 80 to the **Protocol and ports** field. If required, also add TCP ports for a self-managed configuration.
 
 ## Provision instance for YugabyteDB Anywhere
 
@@ -123,25 +124,25 @@ You need to create an instance to run YugabyteDB Anywhere. To do this, from your
 - Specify whether to use the default or your own VPC.
 - Use the **Networking** tab to add `yugabyte-server` as the network tag (or the custom name you chose when setting up the firewall rules).
 
-Once the instance has been created, use the **SSH Keys** tab to add a custom public key and a login user to this instance. To do so, you start by creating a key-pair, as follows:
+After the instance has been created, use the **SSH Keys** tab to add a custom public key and a login user to this instance. To do so, you start by creating a key-pair, as follows:
 
 ```sh
-$ ssh-keygen -t rsa -f ~/.ssh/yugabyte-1-gcp -C centos
+ssh-keygen -t rsa -f ~/.ssh/yugabyte-1-gcp -C centos
 ```
 
-<br>You can set the appropriate credentials for the SSH key as follows:
+You can set the appropriate credentials for the SSH key as follows:
 
 ```sh
-$ chmod 400 ~/.ssh/yugabyte-1-gcp
+chmod 400 ~/.ssh/yugabyte-1-gcp
 ```
 
-<br>Enter the contents of `yugabyte-1-gcp.pub` as the value for this field.
+Enter the contents of `yugabyte-1-gcp.pub` as the value for this field.
 
 For more information, see the following GCP documentation:
 
--  [Cloud Key Management Service](https://cloud.google.com/blog/products/gcp/protect-your-compute-engine-resources-with-keys-managed-in-cloud-key-management-service)
+- [Cloud Key Management Service](https://cloud.google.com/blog/products/gcp/protect-your-compute-engine-resources-with-keys-managed-in-cloud-key-management-service)
 
--  [Choosing an access method](https://cloud.google.com/compute/docs/instances/access-overview#metadatavalues) provides details on how to create a new SSH key pair, as well as the expected format for this field: `ssh-rsa [KEY_VALUE] [USERNAME]`.
+- [Choosing an access method](https://cloud.google.com/compute/docs/instances/access-overview#metadatavalues) provides details on how to create a new SSH key pair, as well as the expected format for this field: `ssh-rsa [KEY_VALUE] [USERNAME]`.
 
 ## Connect to the YugabyteDB Anywhere server
 
@@ -150,7 +151,7 @@ Use the GCP Cloud Console to find the public IP address of the instance you laun
 To connect to this server, execute the following command:
 
 ```sh
-$ ssh -i ~/.ssh/yugabyte-1-gcp centos@NN.NN.NN.NN
+ssh -i ~/.ssh/yugabyte-1-gcp centos@NN.NN.NN.NN
 ```
 
 Replace `NN.NN.NN.NN` with the IP address and `yugabyte-1-gcp` with the appropriate SSH key.

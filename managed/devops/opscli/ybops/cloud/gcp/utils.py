@@ -171,6 +171,7 @@ class Waiter():
     def wait(self, operation, region=None, zone=None):
         # This allows easier chaining of waits on functions that are NOOPs if items already exist.
         if operation is None:
+            logging.warning("Returning waiting for a None Operation")
             return
         retry_count = 0
         name = operation["name"]
@@ -203,7 +204,8 @@ class Waiter():
 
 
 class NetworkManager():
-    def __init__(self, project, compute, metadata, dest_vpc_id, host_vpc_id, per_region_meta):
+    def __init__(self, project, compute, metadata, dest_vpc_id, host_vpc_id,
+                 per_region_meta, create_new_vpc=False):
         self.project = project
         self.compute = compute
         self.metadata = metadata
@@ -218,6 +220,7 @@ class NetworkManager():
         if self.host_vpc_id is not None:
             self.host_vpc_id = self.host_vpc_id.split("/")[-1]
         self.per_region_meta = per_region_meta
+        self.create_new_vpc = create_new_vpc
 
         self.waiter = Waiter(self.project, self.compute)
 
@@ -252,13 +255,23 @@ class NetworkManager():
         return self.network_info_as_json(network_name, output_region_to_subnet_map)
 
     def bootstrap(self):
-        # If given a target VPC, then don't create anything.
-        if self.dest_vpc_id:
+        # If create_new_vpc is not specified than use the specified the VPC.
+        if self.dest_vpc_id and not self.create_new_vpc:
+            # Try to fetch the specified network & fail in case it does not exist.
+            networks = self.get_networks(self.dest_vpc_id)
+            if len(networks) == 0:
+                raise YBOpsRuntimeError("Invalid target VPC: {}".format(self.dest_vpc_id))
             return self.get_network_data(self.dest_vpc_id)
-        # If we were not given a target VPC, then we'll try to provision our custom network.
+        # If create_new_vpc is specified we will be creating a new VPC with specified
+        # name if not present, else we will fail.
+        if self.dest_vpc_id:
+            global YB_NETWORK_NAME
+            YB_NETWORK_NAME = self.dest_vpc_id
         networks = self.get_networks(YB_NETWORK_NAME)
         if len(networks) > 0:
-            network_url = networks[0].get("selfLink")
+            raise YBOpsRuntimeError(
+                "Failed to create VPC as vpc with same name already exists: {}"
+                .format(YB_NETWORK_NAME))
         else:
             # Create the network if it didn't already exist.
             op = self.waiter.wait(self.create_network())
@@ -551,11 +564,13 @@ class GoogleCloudAdmin():
         self.metadata = metadata
         self.waiter = Waiter(self.project, self.compute)
 
-    def network(self, dest_vpc_id=None, host_vpc_id=None, per_region_meta=None):
+    def network(self, dest_vpc_id=None, host_vpc_id=None, per_region_meta=None,
+                create_new_vpc=False):
         if per_region_meta is None:
             per_region_meta = {}
         return NetworkManager(
-            self.project, self.compute, self.metadata, dest_vpc_id, host_vpc_id, per_region_meta)
+            self.project, self.compute, self.metadata, dest_vpc_id,
+            host_vpc_id, per_region_meta, create_new_vpc)
 
     @staticmethod
     def get_current_host_info():
@@ -582,6 +597,7 @@ class GoogleCloudAdmin():
     def create_disk(self, zone, instance_tags, body):
         if instance_tags is not None:
             body.update({"labels": json.loads(instance_tags)})
+        # Create a persistent disk with wait
         operation = self.compute.disks().insert(project=self.project,
                                                 zone=zone,
                                                 body=body).execute()
@@ -642,13 +658,33 @@ class GoogleCloudAdmin():
             self.compute.disks().delete(project=self.project, zone=zone, disk=disk_name).execute()
 
     def mount_disk(self, zone, instance, body):
+        logging.info("Attaching disk on instance {} in zone {}".format(instance, zone))
         operation = self.compute.instances().attachDisk(project=self.project,
                                                         zone=zone,
                                                         instance=instance,
                                                         body=body).execute()
-        return self.waiter.wait(operation, zone=zone)
+        output = self.waiter.wait(operation, zone=zone)
+        response = self.compute.instances().get(project=self.project,
+                                                zone=zone,
+                                                instance=instance).execute()
+        for disk in response.get("disks"):
+            if disk.get("source") != body.get("source"):
+                continue
+            device_name = disk.get("deviceName")
+            logging.info("Setting disk auto delete for {} attached to {}"
+                         .format(device_name, instance))
+            # Even if this fails, volumes are already tagged for cleanup.
+            operation = self.compute.instances().setDiskAutoDelete(project=self.project,
+                                                                   zone=zone,
+                                                                   instance=instance,
+                                                                   deviceName=device_name,
+                                                                   autoDelete=True).execute()
+            self.waiter.wait(operation, zone=zone)
+            break
+        return output
 
     def unmount_disk(self, zone, instance, name):
+        logging.info("Detaching disk {} from instance {}".format(name, instance))
         operation = self.compute.instances().detachDisk(project=self.project,
                                                         zone=zone,
                                                         instance=instance,
@@ -662,23 +698,30 @@ class GoogleCloudAdmin():
         body = {
             "sizeGb": args.volume_size
         }
-        print("Got instance info: " + str(instance_info))
         for disk in instance_info['disks']:
+            # The source is the complete URL of the disk, with the last
+            # component being the name.
+            disk_name = self.get_disk_name(disk)
             # Bootdisk should be ignored.
-            if disk['index'] != 0:
-                # The source is the complete URL of the disk, with the last
-                # component being the name.
-                disk_name = self.get_disk_name(disk)
-                print("Updating disk " + disk_name)
+            # GCP does not allow disk resize to same volume size.
+            if disk['index'] != 0 and int(disk["diskSizeGb"]) != args.volume_size:
+                logging.info(
+                    "Instance %s's volume %s changed to %s",
+                    instance, disk_name, args.volume_size)
                 operation = self.compute.disks().resize(project=self.project,
                                                         zone=zone,
                                                         disk=disk_name,
                                                         body=body).execute()
                 self.waiter.wait(operation, zone=zone)
+            elif disk['index'] != 0:
+                logging.info(
+                    "Instance %s's volume %s has not changed from %s",
+                    instance, disk["deviceName"], disk["diskSizeGb"])
 
-    def change_instance_type(self, zone, instance_name, newInstanceType):
+    def change_instance_type(self, zone, instance_name, instance_type):
+        new_machine_type = f"zones/{zone}/machineTypes/{instance_type}"
         body = {
-            "machineType": "zones/" + zone + "/machineTypes/" + newInstanceType
+            "machineType": new_machine_type
         }
         operation = self.compute.instances().setMachineType(project=self.project,
                                                             zone=zone,
@@ -850,18 +893,29 @@ class GoogleCloudAdmin():
                 root_volume=root_vol.get("source") if root_vol else None,
                 root_volume_device_name=root_vol.get("deviceName") if root_vol else None,
                 instance_state=instance_state,
-                is_running=True if instance_state == "RUNNING" else False
+                is_running=True if instance_state == "RUNNING" else False,
+                metadata=data.get("metadata")
             )
             if not get_all:
                 return result
             results.append(result)
         return results
 
+    def get_image_disk_size(self, machine_image):
+        tokens = machine_image.split("/")
+        image_project = self.project
+        image_project_idx = tokens.index("projects")
+        if image_project_idx >= 0:
+            image_project = tokens[image_project_idx + 1]
+        image = self.get_image(tokens[-1], image_project)
+        return image["diskSizeGb"]
+
     def create_instance(self, region, zone, cloud_subnet, instance_name, instance_type, server_type,
-                        use_preemptible, can_ip_forward, machine_image, num_volumes, volume_type,
+                        use_spot_instance, can_ip_forward, machine_image, num_volumes, volume_type,
                         volume_size, boot_disk_size_gb=None, assign_public_ip=True,
                         assign_static_public_ip=False, ssh_keys=None, boot_script=None,
-                        auto_delete_boot_disk=True, tags=None, cloud_subnet_secondary=None):
+                        auto_delete_boot_disk=True, tags=None, cloud_subnet_secondary=None,
+                        gcp_instance_template=None):
         # Name of the project that target VPC network belongs to.
         host_project = self.get_host_project()
 
@@ -874,7 +928,11 @@ class GoogleCloudAdmin():
         boot_disk_init_params["sourceImage"] = machine_image
         if boot_disk_size_gb is not None:
             # Default: 10GB
-            boot_disk_init_params["diskSizeGb"] = boot_disk_size_gb
+            min_disk_size = self.get_image_disk_size(machine_image)
+            disk_size = min_disk_size if min_disk_size \
+                and int(min_disk_size) > int(boot_disk_size_gb) \
+                else boot_disk_size_gb
+            boot_disk_init_params["diskSizeGb"] = disk_size
         # Create boot disk backed by a zonal persistent SSD
         boot_disk_init_params["diskType"] = "zones/{}/diskTypes/pd-ssd".format(zone)
         boot_disk_json["initializeParams"] = boot_disk_init_params
@@ -889,10 +947,16 @@ class GoogleCloudAdmin():
                 static_ip_name, instance_name, region)
             static_ip_body = {"name": static_ip_name, "description": static_ip_description}
             logging.info("[app] Creating " + static_ip_description)
-            self.waiter.wait(self.compute.addresses().insert(
-                project=self.project,
-                region=region,
-                body=static_ip_body).execute(), region=region)
+
+            try:
+                self.waiter.wait(self.compute.addresses().insert(
+                    project=self.project,
+                    region=region,
+                    body=static_ip_body).execute(), region=region)
+            except HttpError as e:
+                if e.resp.status == 409 and 'already exists' in str(e):
+                    logging.warning(f"{static_ip_name} already exists")
+
             static_ip = self.compute.addresses().get(
                 project=self.project,
                 region=region,
@@ -930,11 +994,13 @@ class GoogleCloudAdmin():
             }],
             "tags": {
                 "items": get_firewall_tags()
-            },
-            "scheduling": {
-                "preemptible": use_preemptible
             }
         }
+        if use_spot_instance:
+            logging.info(f'[app] Using GCP spot instances')
+            body["scheduling"] = {
+                "provisioningModel": "SPOT"
+            }
         # Attach a secondary network interface if present.
         if cloud_subnet_secondary:
             body["networkInterfaces"].append({
@@ -980,12 +1046,20 @@ class GoogleCloudAdmin():
         for _ in range(num_volumes):
             body["disks"].append(disk_config)
 
+        args = {
+            "project": self.project,
+            "zone": zone,
+            "body": body
+        }
         logging.info("[app] About to create GCP VM {} in region {}.".format(
             instance_name, region))
-        self.waiter.wait(self.compute.instances().insert(
-            project=self.project,
-            zone=zone,
-            body=body).execute(), zone=zone)
+        if gcp_instance_template:
+            template_url_format = "projects/{}/global/instanceTemplates/{}"
+            template_url = template_url_format.format(self.project, gcp_instance_template)
+            logging.info("[app] Creating VM {} using instance template {}"
+                         .format(instance_name, gcp_instance_template))
+            args["sourceInstanceTemplate"] = template_url
+        self.waiter.wait(self.compute.instances().insert(**args).execute(), zone=zone)
         logging.info("[app] Created GCP VM {}".format(instance_name))
 
     def get_console_output(self, zone, instance_name):
@@ -997,6 +1071,30 @@ class GoogleCloudAdmin():
         except HttpError:
             logging.exception('Failed to get console output from {}'.format(instance_name))
             return ''
+
+    def update_boot_script(self, args, instance, boot_script):
+        metadata = instance['metadata']
+        # Get the current metadata 'items' list or initialize it if not present
+        current_items = metadata.get('items', [])
+
+        # Find the index of the 'startup-script' metadata item, or -1 if not found
+        startup_script_index = next((index for index, item in enumerate(current_items)
+                                     if item['key'] == 'startup-script'), -1)
+
+        # If the 'startup-script' metadata item exists, update the value;
+        # otherwise, append a new item
+        if startup_script_index != -1:
+            current_items[startup_script_index]['value'] = boot_script
+        else:
+            current_items.append({'key': 'startup-script', 'value': boot_script})
+
+        # Update the instance metadata with the new items list
+        self.waiter.wait(self.compute.instances().setMetadata(
+            project=self.project,
+            zone=args.zone,
+            instance=instance['name'],
+            body={'fingerprint': metadata.get('fingerprint'), 'items': current_items}
+        ).execute(), zone=args.zone)
 
     def modify_tags(self, args, instance, tags_to_set_str, tags_to_remove_str):
         tags_to_set = json.loads(tags_to_set_str) if tags_to_set_str is not None else {}

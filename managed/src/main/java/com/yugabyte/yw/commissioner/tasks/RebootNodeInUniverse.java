@@ -2,17 +2,21 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -23,6 +27,7 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
   @JsonDeserialize(converter = RebootNodeInUniverse.Converter.class)
   public static class Params extends NodeTaskParams {
     public boolean isHardReboot = false;
+    public boolean skipWaitingForMasterLeader = false;
   }
 
   public static class Converter
@@ -42,6 +47,7 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
   public void run() {
     NodeDetails currentNode;
     boolean isHardReboot = taskParams().isHardReboot;
+    boolean skipWaitingForMasterLeader = taskParams().skipWaitingForMasterLeader;
 
     try {
       checkUniverseVersion();
@@ -51,13 +57,22 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
       currentNode = universe.getNode(taskParams().nodeName);
 
       if (currentNode == null) {
-        String msg = "No node " + taskParams().nodeName + " found in universe " + universe.name;
+        String msg =
+            "No node " + taskParams().nodeName + " found in universe " + universe.getName();
         log.error(msg);
         throw new RuntimeException(msg);
       }
 
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
+
+      UUID providerUuid =
+          UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+      Provider provider = Provider.getOrBadRequest(providerUuid);
+      ProviderDetails providerDetails = provider.getDetails();
+      if (provider.getCloudCode() == CloudType.onprem && providerDetails.skipProvisioning == true) {
+        throw new RuntimeException("Cannot reboot manually provisioned nodes through YBA");
+      }
 
       if (!instanceExists(taskParams())) {
         String msg = "No instance exists for " + taskParams().nodeName;
@@ -95,8 +110,10 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
         if (masterAlive) {
           createStopMasterTasks(Collections.singleton(currentNode))
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          createWaitForMasterLeaderTask()
-              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          if (!skipWaitingForMasterLeader) {
+            createWaitForMasterLeaderTask()
+                .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          }
         }
       }
 
@@ -107,12 +124,7 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
 
       if (currentNode.isMaster) {
         // Start the master.
-        createStartMasterTasks(Collections.singleton(currentNode))
-            .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
-
-        // Wait for the master to be responsive.
-        createWaitForServersTasks(Collections.singleton(currentNode), ServerType.MASTER)
-            .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+        createStartMasterProcessTasks(Collections.singleton(currentNode));
 
         createWaitForServerReady(
                 currentNode, ServerType.MASTER, getSleepTimeForProcess(ServerType.MASTER))
@@ -120,16 +132,18 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
       }
 
       // Start the tserver.
-      createTServerTaskForNode(currentNode, "start")
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+      if (currentNode.isTserver) {
+        createTServerTaskForNode(currentNode, "start")
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-      // Wait for the tablet server to be responsive.
-      createWaitForServersTasks(Collections.singleton(currentNode), ServerType.TSERVER)
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        // Wait for the tablet server to be responsive.
+        createWaitForServersTasks(Collections.singleton(currentNode), ServerType.TSERVER)
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-      createWaitForServerReady(
-              currentNode, ServerType.TSERVER, getSleepTimeForProcess(ServerType.TSERVER))
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        createWaitForServerReady(
+                currentNode, ServerType.TSERVER, getSleepTimeForProcess(ServerType.TSERVER))
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+      }
 
       if (universe.isYbcEnabled()) {
         createStartYbcTasks(Arrays.asList(currentNode))

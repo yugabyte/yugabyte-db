@@ -24,5 +24,11 @@ add_subdirectory(redis/redisserver)
 # API for Postgres to call.
 add_subdirectory(pggate)
 
+# Process wrapper, used by pgwrapper and ysql_conn_mgr_wrapper.
+add_subdirectory(process_wrapper)
+
 # Support for running a PostgreSQL server as a subprocess of the tserver process.
 add_subdirectory(pgwrapper)
+
+# Support for running a Ysql Connection Manager as a subprocess of the tserver process.
+add_subdirectory(ysql_conn_mgr_wrapper)

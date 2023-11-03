@@ -35,9 +35,12 @@ enum TransactionStatus {
 
   PROMOTED = 9;
 
+  // The APPLYING status is used in Raft in transaction participant tablets but not in status
+  // tablets.
+  APPLYING = 20;
+
   // All following entries are not used in RAFT, but as events between status tablet and involved
   // tablets:
-  APPLYING = 20;
   APPLIED_IN_ONE_OF_INVOLVED_TABLETS = 21;
   IMMEDIATE_CLEANUP = 22;
   GRACEFUL_CLEANUP = 23;
@@ -74,12 +77,83 @@ enum RowMarkType {
   ROW_MARK_ABSENT = 15;
 }
 
-message AbortedSubTransactionSetPB {
+message SubtxnSetPB {
+  // This is not a simple set representation, but rather the encoded output of a
+  // yb::UnsignedIntSet<uint32_t>.
+  //
+  // An ascending nonoverlapping series of integer ranges [a,b) [c,d) ... (a<=b<c<=d...) are encoded
+  // as taking a,b, c,d, ...  then compressing it by storing the set of deltas starting from 0.
+  // This gives: a-0, b-a, c-b,c-d, ...
   repeated uint32 set = 1;
 }
 
 message SubTransactionMetadataPB {
   optional uint32 subtransaction_id = 1;
 
-  optional AbortedSubTransactionSetPB aborted = 2;
+  optional SubtxnSetPB aborted = 2;
+}
+
+enum LockMode {
+  WEAK_READ = 0;
+  WEAK_WRITE = 1;
+  STRONG_READ = 2;
+  STRONG_WRITE = 3;
+}
+
+message LockInfoPB {
+  // TODO(pglocks): Omit prefix locks, which are implied to exist if their fully-qualified forms
+  // are present.
+  repeated bytes hash_cols = 1;
+
+  repeated bytes range_cols = 2;
+
+  optional int32 attnum = 3;
+
+  optional uint32 column_id = 4;
+
+  optional bool multiple_rows_locked = 5;
+
+  // If this is set, then the lock has been granted.
+  optional fixed64 wait_end_ht = 6;
+
+  optional uint32 subtransaction_id = 7;
+
+  optional bool is_explicit = 8;
+
+  repeated LockMode modes = 9;
+
+  // Populated only when the lock belongs to a colocated table. When set, TabletLockInfoPB::table_id
+  // should be ignored.
+  optional bytes table_id = 10;
+}
+
+message TabletLockInfoPB {
+  optional bytes table_id = 1;
+
+  optional bytes tablet_id = 2;
+
+  message WaiterInfoPB {
+    repeated LockInfoPB locks = 1;
+
+    optional fixed64 wait_start_ht = 2;
+
+    repeated bytes blocking_txn_ids = 3;
+  }
+
+  // Lock info for a given transaction at this tablet.
+  message TransactionLockInfoPB {
+    optional bytes id = 1;
+
+    repeated LockInfoPB granted_locks = 2;
+
+    optional WaiterInfoPB waiting_locks = 3;
+  }
+  repeated TransactionLockInfoPB transaction_locks = 3;
+
+  // Awaiting lock info of single shard waiters.
+  repeated WaiterInfoPB single_shard_waiters = 4;
+
+  // Leader term of the peer populating the response. Used to filter out duplicate responses for
+  // the same tablet and ensure we pick the most recent results.
+  optional uint64 term = 5;
 }

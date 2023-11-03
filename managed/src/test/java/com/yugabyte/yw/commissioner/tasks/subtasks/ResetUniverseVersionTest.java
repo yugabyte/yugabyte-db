@@ -32,14 +32,14 @@ public class ResetUniverseVersionTest extends FakeDBApplication {
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
-    universe = ModelFactory.createUniverse("universe", defaultCustomer.getCustomerId());
+    universe = ModelFactory.createUniverse("universe", defaultCustomer.getId());
 
     when(baseTaskDependencies.getRuntimeConfigFactory()).thenReturn(runtimeConfigFactory);
     when(baseTaskDependencies.getExecutorFactory())
         .thenReturn(app.injector().instanceOf(PlatformExecutorFactory.class));
 
     params = new UniverseDefinitionTaskParams();
-    params.universeUUID = universe.universeUUID;
+    params.setUniverseUUID(universe.getUniverseUUID());
 
     task = new ResetUniverseVersion(baseTaskDependencies);
     task.initialize(params);
@@ -56,6 +56,6 @@ public class ResetUniverseVersionTest extends FakeDBApplication {
     task.run();
     universe.refresh();
 
-    assertEquals(-1, universe.version);
+    assertEquals(-1, universe.getVersion());
   }
 }

@@ -28,7 +28,8 @@ namespace pggate {
 
 class PgsqlOp {
  public:
-  PgsqlOp(Arena* arena, bool is_region_local) : arena_(arena), is_region_local_(is_region_local) {}
+  PgsqlOp(ThreadSafeArena* arena, bool is_region_local)
+      : arena_(arena), is_region_local_(is_region_local) {}
   virtual ~PgsqlOp() = default;
 
   PgsqlOp(const PgsqlOp&) = delete;
@@ -42,7 +43,7 @@ class PgsqlOp {
     return !is_read();
   }
 
-  Arena& arena() const {
+  ThreadSafeArena& arena() const {
     return *arena_;
   }
 
@@ -87,7 +88,7 @@ class PgsqlOp {
 
   // dtor for this class is not invoked, so only fields that could be destroyed with arena are
   // allowed.
-  Arena* arena_;
+  ThreadSafeArena* arena_;
   bool active_ = false;
   const bool is_region_local_;
   LWPgsqlResponsePB* response_ = nullptr;
@@ -96,8 +97,9 @@ class PgsqlOp {
 
 class PgsqlReadOp : public PgsqlOp {
  public:
-  PgsqlReadOp(Arena* arena, bool is_region_local);
-  PgsqlReadOp(Arena* arena, const PgTableDesc& desc, bool is_region_local);
+  PgsqlReadOp(ThreadSafeArena* arena, bool is_region_local);
+  PgsqlReadOp(ThreadSafeArena* arena, const PgTableDesc& desc, bool is_region_local,
+              PgsqlMetricsCaptureType metrics_capture);
 
   LWPgsqlReadRequestPB& read_request() {
     return read_request_;
@@ -115,14 +117,6 @@ class PgsqlReadOp : public PgsqlOp {
     return true;
   }
 
-  void set_read_from_followers() {
-    read_from_followers_ = true;
-  }
-
-  bool read_from_followers() const {
-    return read_from_followers_;
-  }
-
   PgsqlOpPtr DeepCopy(const std::shared_ptr<void>& shared_ptr) const;
 
   std::string RequestToString() const override;
@@ -131,7 +125,6 @@ class PgsqlReadOp : public PgsqlOp {
   Status InitPartitionKey(const PgTableDesc& table) override;
 
   LWPgsqlReadRequestPB read_request_;
-  bool read_from_followers_ = false;
 };
 
 std::shared_ptr<PgsqlReadRequestPB> InitSelect(
@@ -139,7 +132,7 @@ std::shared_ptr<PgsqlReadRequestPB> InitSelect(
 
 class PgsqlWriteOp : public PgsqlOp {
  public:
-  PgsqlWriteOp(Arena* arena, bool need_transaction, bool is_region_local);
+  PgsqlWriteOp(ThreadSafeArena* arena, bool need_transaction, bool is_region_local);
 
   LWPgsqlWriteRequestPB& write_request() {
     return write_request_;
@@ -177,9 +170,8 @@ class PgsqlWriteOp : public PgsqlOp {
   HybridTime write_time_;
 };
 
-Status ReviewResponsePagingState(const PgTableDesc& table, PgsqlReadOp* op);
 
-bool PrepareNextRequest(PgsqlReadOp* read_op);
+Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op);
 
 }  // namespace pggate
 }  // namespace yb

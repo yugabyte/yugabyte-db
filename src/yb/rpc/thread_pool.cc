@@ -72,12 +72,12 @@ class Worker {
 
   void Stop() {
     stop_requested_ = true;
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     cond_.notify_one();
   }
 
   bool Notify() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     added_to_waiting_workers_ = false;
     // There could be cases when we popped task after adding ourselves to worker queue (see below).
     // So we are already processing task, but reside in worker queue.
@@ -195,7 +195,7 @@ class ThreadPool::Impl {
     // So we could be lock free here.
     auto index = created_workers_++;
     if (index < share_.options.max_workers) {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       if (!closing_) {
         auto new_worker = std::make_unique<Worker>(&share_);
         auto status = new_worker->Start(workers_.size());
@@ -217,7 +217,7 @@ class ThreadPool::Impl {
     // Block creating new workers.
     created_workers_ += share_.options.max_workers;
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       if (closing_) {
         CHECK(share_.task_queue.empty());
         CHECK(workers_.empty());

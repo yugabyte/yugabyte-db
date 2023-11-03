@@ -16,6 +16,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/env_util.h"
+#include "yb/util/os-util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/string_trim.h"
@@ -30,6 +31,10 @@ using std::vector;
 using yb::util::TrimStr;
 using yb::util::TrimTrailingWhitespaceFromEveryLine;
 using yb::util::LeftShiftTextBlock;
+
+using namespace std::literals;
+
+DECLARE_int32(replication_factor);
 
 namespace yb {
 namespace pgwrapper {
@@ -55,6 +60,7 @@ void PgWrapperTestBase::SetUp() {
 
   opts.extra_master_flags.emplace_back("--client_read_write_timeout_ms=120000");
   opts.extra_master_flags.emplace_back(Format("--memory_limit_hard_bytes=$0", 2_GB));
+  opts.extra_master_flags.emplace_back(Format("--replication_factor=$0", FLAGS_replication_factor));
 
   UpdateMiniClusterOptions(&opts);
 
@@ -81,6 +87,19 @@ Result<TabletId> PgWrapperTestBase::GetSingleTabletId(const TableName& table_nam
     }
   }
   return STATUS(NotFound, Format("No tablet found for table $0.", table_name));
+}
+
+Result<string> PgWrapperTestBase::RunYbAdminCommand(const string& cmd) {
+  const auto yb_admin = "yb-admin"s;
+  auto command = GetToolPath(yb_admin) +
+    " --master_addresses " + cluster_->GetMasterAddresses() +
+    " " + cmd;
+  LOG(INFO) << "Running " << command;
+  string output;
+  if (RunShellProcess(command, &output)) {
+    return output;
+  }
+  return STATUS_FORMAT(RuntimeError, "Failed to execute $0 command", yb_admin);
 }
 
 namespace {

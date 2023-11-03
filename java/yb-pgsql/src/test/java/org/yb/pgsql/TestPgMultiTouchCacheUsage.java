@@ -17,7 +17,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 import org.yb.client.YBClient;
 import org.yb.minicluster.MiniYBDaemon;
 import com.yugabyte.util.PSQLException;
@@ -40,9 +40,16 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgMultiTouchCacheUsage extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgSelect.class);
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_enable_packed_row", "false");
+    return flagMap;
+  }
 
   private int getMultiTouchHitCount() throws Exception {
     // Sum the multi touch hit count from all the 3 tservers.
@@ -66,7 +73,7 @@ public class TestPgMultiTouchCacheUsage extends BasePgSQLTest {
       }
       String line = null;
       while ((line = br.readLine()) != null) {
-        if (line.contains("rocksdb_block_cache_multi_touch_hit")) {
+        if (line.contains("rocksdb_block_cache_multi_touch_hit{")) {
           String inp[] = line.split(" ");
           String x = inp[inp.length - 2].trim();
           int val = Integer.parseInt(x);
@@ -113,6 +120,6 @@ public class TestPgMultiTouchCacheUsage extends BasePgSQLTest {
       throw ex;
     }
     int count2 = getMultiTouchHitCount();
-    assertTrue(count2 > count1);
+    assertGreaterThan(count2, count1);
   }
 }

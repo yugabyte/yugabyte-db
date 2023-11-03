@@ -70,19 +70,21 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
   static std::string Name() { return "CQL"; }
 
  private:
-  void Connected(const rpc::ConnectionPtr& connection) override {}
+  Status Connected(const rpc::ConnectionPtr& connection) override { return Status::OK(); }
 
   rpc::RpcConnectionPB::StateType State() override {
     return rpc::RpcConnectionPB::OPEN;
   }
 
   uint64_t ExtractCallId(rpc::InboundCall* call) override;
-  Result<rpc::ProcessCallsResult> ProcessCalls(const rpc::ConnectionPtr& connection,
-                                               const IoVecs& bytes_to_process,
-                                               rpc::ReadBufferFull read_buffer_full) override;
+  Result<rpc::ProcessCallsResult> ProcessCalls(
+      const rpc::ConnectionPtr& connection,
+      const IoVecs& bytes_to_process,
+      rpc::ReadBufferFull read_buffer_full) ON_REACTOR_THREAD override;
+
   // Takes ownership of call_data content.
   Status HandleCall(
-      const rpc::ConnectionPtr& connection, rpc::CallData* call_data) override;
+      const rpc::ConnectionPtr& connection, rpc::CallData* call_data) ON_REACTOR_THREAD override;
 
   rpc::StreamReadBuffer& ReadBuffer() override {
     return read_buffer_;

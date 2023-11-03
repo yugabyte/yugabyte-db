@@ -179,6 +179,16 @@ Tablet UUID                       Range                         Leader
 9991368c4b85456988303cd65a3c6503  key_start: "" key_end: ""     127.0.0.1:9100
 ```
 
+### Manually flush the tablet
+
+The tablet should have some data persisted on the disk. If you insert small amount of data, it can still exist in memory buffers only. To make sure SST data files exist on the disk, the tablet of this table can be manually flushed by running the following [`yb-ts-cli`](../../../admin/yb-ts-cli/#flush-tablet) command:
+
+```sh
+bin/yb-ts-cli \
+    --server_address=127.0.0.1:9100,127.0.0.2:9100,127.0.0.3:9100 \
+    flush_tablet 9991368c4b85456988303cd65a3c6503
+```
+
 ### Manually split the tablet
 
 The tablet of this table can be manually split into two tablets by running the following [`yb-admin split_tablet`](../../../admin/yb-admin/#split-tablet) command.

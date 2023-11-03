@@ -62,17 +62,21 @@ class TestAdminClient {
   Result<std::vector<master::TabletLocationsPB>> GetTabletLocations(
       const std::string& ns, const std::string& table);
 
-  Status WaitForTabletFullyCompacted(size_t tserver_idx, const TabletId& tablet_id);
+  Status WaitForTabletPostSplitCompacted(size_t tserver_idx, const TabletId& tablet_id);
 
   Status FlushTable(const std::string& ns, const std::string& table);
 
   Result<TxnSnapshotId> CreateSnapshotAndWait(
-      const std::optional<SnapshotScheduleId>& schedule_id = std::nullopt);
+      const SnapshotScheduleId& schedule_id = SnapshotScheduleId(Uuid::Nil()),
+      const master::TableIdentifierPB& tables = {},
+      const std::optional<int32_t> retention_duration_hours = std::nullopt);
+
+  Status DeleteSnapshotAndWait(const TxnSnapshotId& snapshot_id);
 
   Result<TxnSnapshotId> CreateSnapshot(
-      const std::optional<SnapshotScheduleId>& schedule_id = std::nullopt);
-
-  Status WaitForSnapshotComplete(const TxnSnapshotId& snapshot_id);
+      const SnapshotScheduleId& schedule_id, const master::TableIdentifierPB& tables,
+      const std::optional<int32_t> retention_duration_hours);
+  Status WaitForSnapshotComplete(const TxnSnapshotId& snapshot_id, bool check_deleted = false);
 
  private:
   ExternalMiniCluster* cluster_;

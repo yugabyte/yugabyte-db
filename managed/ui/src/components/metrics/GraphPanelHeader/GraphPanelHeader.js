@@ -1,11 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, Fragment } from 'react';
-import { Link } from 'react-router';
-import { Dropdown, MenuItem, FormControl } from 'react-bootstrap';
+import { Link, withRouter, browserHistory } from 'react-router';
+import { Dropdown, MenuItem } from 'react-bootstrap';
 import momentLocalizer from 'react-widgets-moment';
-import { withRouter, browserHistory } from 'react-router';
-import moment from 'moment';
+
+import moment from 'moment-timezone';
 import { toast } from 'react-toastify';
 import _ from 'lodash';
 
@@ -13,6 +13,7 @@ import {
   MetricConsts,
   MetricMeasure,
   MetricOrigin,
+  NodeType,
   DEFAULT_OUTLIER_NUM_NODES,
   MIN_OUTLIER_NUM_NODES,
   MAX_OUTLIER_NUM_NODES,
@@ -22,15 +23,19 @@ import {
 import { YBButton, YBButtonLink } from '../../common/forms/fields';
 import { YBPanelItem } from '../../panels';
 import { FlexContainer, FlexGrow } from '../../common/flexbox/YBFlexBox';
+
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { isDedicatedNodePlacement, isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { MetricsComparisonModal } from '../MetricsComparisonModal/MetricsComparisonModal';
 import { NodeSelector } from '../MetricsComparisonModal/NodeSelector';
 import { RegionSelector } from '../MetricsComparisonModal/RegionSelector';
+import { NodeTypeSelector } from '../NodeTypeSelector/NodeTypeSelector';
 import { CustomDatePicker } from '../CustomDatePicker/CustomDatePicker';
 import { MetricsMeasureSelector } from '../MetricsMeasureSelector/MetricsMeasureSelector';
 import { OutlierSelector } from '../OutlierSelector/OutlierSelector';
 
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import './GraphPanelHeader.scss';
 
 require('react-widgets/dist/css/react-widgets.css');
@@ -57,13 +62,13 @@ const intervalTypes = [
 
 const outlierTypes = [
   { value: 'TOP', label: 'Top' },
-  { value: 'BOTTOM', label: 'Bottom' },
+  { value: 'BOTTOM', label: 'Bottom' }
 ];
 
 const metricMeasureTypes = [
   { value: MetricMeasure.OVERALL, label: 'Overall' },
-  { value: MetricMeasure.OUTLIER, label: 'Outlier Nodes' },
-  { value: MetricMeasure.OUTLIER_TABLES, label: 'Outlier Tables' },
+  { value: MetricMeasure.OUTLIER, label: 'Outlier Nodes', k8label: 'Outlier Pods' },
+  { value: MetricMeasure.OUTLIER_TABLES, label: 'Outlier Tables' }
 ];
 
 const DEFAULT_FILTER_KEY = 0;
@@ -79,6 +84,7 @@ export const DEFAULT_GRAPH_FILTER = {
   nodePrefix: MetricConsts.ALL,
   nodeName: MetricConsts.ALL,
   currentSelectedRegion: MetricConsts.ALL,
+  currentSelectedNodeType: NodeType.ALL,
   selectedRegionClusterUUID: null,
   selectedRegionCode: null,
   selectedZoneName: null,
@@ -87,7 +93,7 @@ export const DEFAULT_GRAPH_FILTER = {
   outlierNumNodes: DEFAULT_OUTLIER_NUM_NODES,
   filterLabel: filterTypes[DEFAULT_FILTER_KEY].label,
   filterType: filterTypes[DEFAULT_FILTER_KEY].type,
-  filterValue: filterTypes[DEFAULT_FILTER_KEY].value,
+  filterValue: filterTypes[DEFAULT_FILTER_KEY].value
 };
 
 class GraphPanelHeader extends Component {
@@ -95,11 +101,13 @@ class GraphPanelHeader extends Component {
     super(props);
     // Reset graph filters when user switches from Metrics view to individual Universe Metrics view
     this.props.resetMetrics();
+    this.props.resetGraphFilter();
     momentLocalizer(moment);
     const defaultFilter = filterTypes[DEFAULT_FILTER_KEY];
     let currentUniverse = MetricConsts.ALL;
     let currentUniversePrefix = MetricConsts.ALL;
     const currentRegion = MetricConsts.ALL;
+    const currentNodeType = NodeType.ALL;
 
     if (this.props.origin === MetricOrigin.UNIVERSE) {
       currentUniverse = this.props.universe.currentUniverse.data;
@@ -118,6 +126,7 @@ class GraphPanelHeader extends Component {
       filterValue: defaultFilter.value,
       currentSelectedUniverse: currentUniverse,
       currentSelectedRegion: currentRegion,
+      currentSelectedNodeType: currentNodeType,
       selectedRegionCode: null,
       selectedZoneName: null,
       selectedRegionClusterUUID: null,
@@ -132,6 +141,7 @@ class GraphPanelHeader extends Component {
       outlierNumNodes: DEFAULT_OUTLIER_NUM_NODES,
       isSingleNodeSelected: false
     };
+    this.props.setGraphFilter(defaultFilters);
 
     if (isValidObject(currentQuery) && Object.keys(currentQuery).length > 1) {
       const filterParams = {
@@ -140,12 +150,14 @@ class GraphPanelHeader extends Component {
         filterType: currentQuery.filterType,
         filterValue: currentQuery.filterValue,
         currentSelectedRegion: currentQuery.currentSelectedRegion,
+        currentSelectedNodeType: currentQuery.currentSelectedNodeType,
         selectedRegionCode: currentQuery.selectedRegionCode,
         selectedZoneName: currentQuery.selectedZoneName,
         selectedRegionClusterUUID: currentQuery.selectedRegionClusterUUID,
         metricMeasure: currentQuery.metricMeasure,
         outlierType: currentQuery.outlierType,
-        outlierNumNodes: currentQuery.outlierNumNodes
+        outlierNumNodes: currentQuery.outlierNumNodes,
+        refreshIntervalLabel: currentQuery.refreshIntervalLabel
       };
       if (currentQuery.filterType === 'custom') {
         filterParams.startMoment = moment.unix(currentQuery.startDate);
@@ -237,6 +249,7 @@ class GraphPanelHeader extends Component {
 
   componentWillUnmount() {
     clearInterval(this.refreshInterval);
+    this.props.resetGraphFilter();
   }
 
   submitGraphFilters = (type, val) => {
@@ -288,6 +301,7 @@ class GraphPanelHeader extends Component {
 
   // Turns off auto-refresh if the interval type is 'off', otherwise resets the interval
   handleIntervalChange = (eventKey) => {
+    const newParams = _.cloneDeep(this.state);
     const intervalInfo = intervalTypes[eventKey] || intervalTypes[DEFAULT_FILTER_KEY];
     clearInterval(this.refreshInterval);
     if (intervalInfo.value !== 'off') {
@@ -297,6 +311,9 @@ class GraphPanelHeader extends Component {
       refreshInterval: intervalInfo.value,
       refreshIntervalLabel: intervalInfo.selectedLabel
     });
+
+    newParams.refreshIntervalLabel = intervalInfo.selectedLabel;
+    this.updateUrlQueryParams(newParams);
   };
 
   universeItemChanged = (universeUUID) => {
@@ -306,13 +323,16 @@ class GraphPanelHeader extends Component {
     const selectedUniverseUUID = universeUUID;
     const self = this;
     const newParams = this.state;
-    const matchedUniverse = universeList?.data?.find((u) => u.universeUUID === selectedUniverseUUID);
+    const matchedUniverse = universeList?.data?.find(
+      (u) => u.universeUUID === selectedUniverseUUID
+    );
     if (matchedUniverse) {
       self.setState({
         currentSelectedUniverse: matchedUniverse,
         nodePrefix: matchedUniverse.universeDetails.nodePrefix,
         nodeName: MetricConsts.ALL,
         currentSelectedRegion: MetricConsts.ALL,
+        currentSelectedNodeType: NodeType.ALL,
         selectedRegionCode: null,
         selectedZoneName: null,
         selectedRegionClusterUUID: null,
@@ -325,6 +345,7 @@ class GraphPanelHeader extends Component {
         nodeName: MetricConsts.ALL,
         nodePrefix: MetricConsts.ALL,
         currentSelectedRegion: MetricConsts.ALL,
+        currentSelectedNodeType: NodeType.ALL,
         selectedRegionCode: null,
         selectedZoneName: null,
         selectedRegionClusterUUID: null,
@@ -338,6 +359,7 @@ class GraphPanelHeader extends Component {
     newParams.selectedRegionCode = null;
     newParams.selectedZoneName = null;
     newParams.currentSelectedRegion = MetricConsts.ALL;
+    newParams.currentSelectedNodeType = NodeType.ALL;
 
     newParams.nodeName = MetricConsts.ALL;
     this.updateUrlQueryParams(newParams);
@@ -368,10 +390,14 @@ class GraphPanelHeader extends Component {
   };
 
   // TODO: Needs to be removed once Top K metrics is tested and integrated fully
-  nodeItemChangedOld = (event) => {
+  nodeItemChangedOld = (nodeName) => {
     const newParams = this.state;
-    newParams.nodeName = event.target.value;
-    this.setState({ nodeName: event.target.value, currentSelectedNode: event.target.value });
+    newParams.nodeName = nodeName;
+
+    this.setState({
+      nodeName: nodeName,
+      currentSelectedNode: nodeName
+    });
     this.updateUrlQueryParams(newParams);
   };
 
@@ -385,7 +411,7 @@ class GraphPanelHeader extends Component {
       isSingleNodeSelected: nodeName && nodeName !== MetricConsts.ALL
     });
 
-    // When a single node is selected, button focus should move to Overall 
+    // When a single node is selected, button focus should move to Overall
     // and Outlier Node should be disabled
     if (this.state.metricMeasure === MetricMeasure.OUTLIER) {
       this.setState({
@@ -407,27 +433,38 @@ class GraphPanelHeader extends Component {
       isSingleNodeSelected: false,
       // Make sure zone and node dropdown resets everytime we change region and cluster dropdown
       selectedZoneName: null,
+      currentSelectedNodeType: NodeType.ALL
     });
 
     newParams.selectedZoneName = null;
     newParams.nodeName = MetricConsts.ALL;
+    newParams.currentSelectedNodeType = NodeType.ALL;
     newParams.selectedRegionCode = regionCode;
     newParams.currentSelectedRegion = region;
     newParams.selectedRegionClusterUUID = clusterId;
     this.updateUrlQueryParams(newParams);
-  }
+  };
 
-  // Go to Outlier, select YCQL OPs, last 6 hrs, select single region which has one node and then select TOP K TABLES 
+  onNodeTypeChanged = (nodeType) => {
+    const newParams = _.cloneDeep(this.state);
+    this.setState({
+      currentSelectedNodeType: nodeType
+    });
+    newParams.currentSelectedNodeType = nodeType;
+    this.updateUrlQueryParams(newParams);
+  };
+
+  // Go to Outlier, select YCQL OPs, last 6 hrs, select single region which has one node and then select TOP K TABLES
   onMetricMeasureChanged = (selectedMetricMeasureValue) => {
     const newParams = _.cloneDeep(this.state);
     this.setState({
       metricMeasure: selectedMetricMeasureValue,
-      // Always have default number for outlier value when metric measure changes 
+      // Always have default number for outlier value when metric measure changes
       outlierNumNodes: DEFAULT_OUTLIER_NUM_NODES
     });
     newParams.metricMeasure = selectedMetricMeasureValue;
     this.updateUrlQueryParams(newParams);
-  }
+  };
 
   onOutlierTypeChanged = (selectedOutlierType) => {
     const newParams = _.cloneDeep(this.state);
@@ -436,15 +473,18 @@ class GraphPanelHeader extends Component {
     });
     newParams.outlierType = selectedOutlierType;
     this.updateUrlQueryParams(newParams);
-  }
+  };
 
   setNumNodeValue = (outlierNumNodes) => {
     const newParams = _.cloneDeep(this.state);
-    const maxOutlierValue = this.state.metricMeasure === MetricMeasure.OUTLIER
-      ? MAX_OUTLIER_NUM_NODES
-      : MAX_OUTLIER_NUM_TABLES;
-    if (typeof outlierNumNodes === 'number'
-      && outlierNumNodes >= MIN_OUTLIER_NUM_NODES && outlierNumNodes <= maxOutlierValue
+    const maxOutlierValue =
+      this.state.metricMeasure === MetricMeasure.OUTLIER
+        ? MAX_OUTLIER_NUM_NODES
+        : MAX_OUTLIER_NUM_TABLES;
+    if (
+      typeof outlierNumNodes === 'number' &&
+      outlierNumNodes >= MIN_OUTLIER_NUM_NODES &&
+      outlierNumNodes <= maxOutlierValue
     ) {
       this.setState({
         outlierNumNodes
@@ -457,7 +497,7 @@ class GraphPanelHeader extends Component {
       newParams.outlierNumNodes = DEFAULT_OUTLIER_NUM_NODES;
     }
     this.updateUrlQueryParams(newParams);
-  }
+  };
 
   handleStartDateChange = (dateStr) => {
     this.setState({ startMoment: moment(dateStr) });
@@ -485,18 +525,17 @@ class GraphPanelHeader extends Component {
   updateUrlQueryParams = (filterParams) => {
     const location = Object.assign({}, browserHistory.getCurrentLocation());
     const queryParams = location.query;
-    const isEnabledTopKMetrics = this.props.isTopKMetricsEnabled;
 
-    // TODO: Needs to be removed once Top K metrics is tested and integrated fully
-    if (isEnabledTopKMetrics) {
-      queryParams.currentSelectedRegion = filterParams.currentSelectedRegion;
-      queryParams.selectedZoneName = filterParams.selectedZoneName;
-      queryParams.selectedRegionClusterUUID = filterParams.selectedRegionClusterUUID;
-      queryParams.metricMeasure = filterParams.metricMeasure;
-      queryParams.outlierType = filterParams.outlierType;
-      queryParams.outlierNumNodes = filterParams.outlierNumNodes;
-    }
+    queryParams.currentSelectedRegion = filterParams.currentSelectedRegion;
+    queryParams.currentSelectedNodeType = filterParams.currentSelectedNodeType;
+    queryParams.selectedZoneName = filterParams.selectedZoneName;
+    queryParams.selectedRegionClusterUUID = filterParams.selectedRegionClusterUUID;
+    queryParams.metricMeasure = filterParams.metricMeasure;
+    queryParams.outlierType = filterParams.outlierType;
+    queryParams.outlierNumNodes = filterParams.outlierNumNodes;
 
+    queryParams.refreshInterval = filterParams.refreshInterval;
+    queryParams.refreshIntervalLabel = filterParams.refreshIntervalLabel;
     queryParams.nodePrefix = filterParams.nodePrefix;
     queryParams.nodeName = filterParams.nodeName;
     queryParams.filterType = filterParams.filterType;
@@ -519,8 +558,7 @@ class GraphPanelHeader extends Component {
       showModal,
       closeModal,
       visibleModal,
-      enableNodeComparisonModal,
-      isTopKMetricsEnabled
+      enableNodeComparisonModal
     } = this.props;
     const {
       filterType,
@@ -529,8 +567,10 @@ class GraphPanelHeader extends Component {
       endMoment,
       currentSelectedUniverse,
       currentSelectedRegion,
-      selectedRegionClusterUUID,
+      currentSelectedNodeType,
+      selectedRegionClusterUUID
     } = this.state;
+
     const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
     let datePicker = null;
     if (this.state.filterLabel === 'Custom') {
@@ -581,31 +621,26 @@ class GraphPanelHeader extends Component {
 
     let universePicker = <span />;
     if (origin === MetricOrigin.CUSTOMER) {
-      if (isTopKMetricsEnabled) {
-        universePicker = <UniversePicker
+      universePicker = (
+        <UniversePicker
           {...this.props}
           universeItemChanged={this.universeItemChanged}
           selectedUniverse={self.state.currentSelectedUniverse}
         />
-      } else {
-        // TODO: Needs to be removed once Top K metrics is tested and integrated fully
-        universePicker = (
-          <UniversePickerOld
-            {...this.props}
-            universeItemChanged={this.universeItemChangedOld}
-            selectedUniverse={self.state.currentSelectedUniverse}
-          />
-        );
-      }
+      );
     }
 
-    const splitType = this.state.metricMeasure === MetricMeasure.OUTLIER_TABLES ?
-      SplitType.TABLE : SplitType.NODE;
+    const splitType =
+      this.state.metricMeasure === MetricMeasure.OUTLIER_TABLES ? SplitType.TABLE : SplitType.NODE;
     // TODO: Need to fix handling of query params on Metrics tab
     const liveQueriesLink =
       this.state.currentSelectedUniverse &&
-      this.state.nodeName !== MetricConsts.ALL && this.state.nodeName !== MetricConsts.TOP &&
+      this.state.nodeName !== MetricConsts.ALL &&
+      this.state.nodeName !== MetricConsts.TOP &&
       `/universes/${this.state.currentSelectedUniverse.universeUUID}/queries?nodeName=${this.state.nodeName}`;
+    const isDedicatedNodes = isDedicatedNodePlacement(this.state.currentSelectedUniverse);
+    const isK8Universe = isKubernetesUniverse(this.state.currentSelectedUniverse);
+
     return (
       <div className="graph-panel-header">
         <YBPanelItem
@@ -621,31 +656,38 @@ class GraphPanelHeader extends Component {
                 <FlexGrow power={1}>
                   <div className="filter-container">
                     {universePicker}
-                    {isTopKMetricsEnabled && this.props.origin !== MetricOrigin.TABLE &&
+                    {this.props.origin !== MetricOrigin.TABLE && (
                       <RegionSelector
-                        selectedUniverse={this.state.currentSelectedUniverse}
+                        selectedUniverse={currentSelectedUniverse}
                         onRegionChanged={this.onRegionChanged}
                         currentSelectedRegion={currentSelectedRegion}
                         selectedRegionClusterUUID={selectedRegionClusterUUID}
-                      />}
-                    {this.props.origin !== MetricOrigin.TABLE &&
+                      />
+                    )}
+                    {this.props.origin !== MetricOrigin.TABLE && isDedicatedNodes && (
+                      <NodeTypeSelector
+                        selectedUniverse={currentSelectedUniverse}
+                        currentSelectedNodeType={currentSelectedNodeType}
+                        selectedRegionClusterUUID={selectedRegionClusterUUID}
+                        selectedRegionCode={this.state.selectedRegionCode}
+                        onNodeTypeChanged={this.onNodeTypeChanged}
+                      />
+                    )}
+                    {this.props.origin !== MetricOrigin.TABLE && (
                       <NodeSelector
                         {...this.props}
                         nodeItemChanged={this.nodeItemChanged}
                         nodeItemChangedOld={this.nodeItemChangedOld}
-                        selectedUniverse={this.state.currentSelectedUniverse}
+                        selectedUniverse={currentSelectedUniverse}
                         selectedNode={this.state.nodeName}
                         selectedRegionClusterUUID={selectedRegionClusterUUID}
                         selectedZoneName={this.state.selectedZoneName}
-                        isTopKMetricsEnabled={isTopKMetricsEnabled}
                         selectedRegionCode={this.state.selectedRegionCode}
-                      />}
-                    {liveQueriesLink && !universePaused && !isTopKMetricsEnabled && (
-                      <Link to={liveQueriesLink} style={{ marginLeft: '15px' }}>
-                        <i className="fa fa-search" /> See Queries
-                      </Link>
+                        currentSelectedNodeType={currentSelectedNodeType}
+                        isDedicatedNodes={isDedicatedNodes}
+                      />
                     )}
-                    {liveQueriesLink && !universePaused && isTopKMetricsEnabled && (
+                    {liveQueriesLink && !universePaused && (
                       <span className="live-queries">
                         <Link to={liveQueriesLink}>
                           <span className="live-queries-label">See Queries</span>
@@ -657,7 +699,9 @@ class GraphPanelHeader extends Component {
                         btnIcon={'fa fa-refresh'}
                         btnClass="btn btn-default"
                         btnText="Compare"
-                        disabled={filterType === 'custom' || currentSelectedUniverse === MetricConsts.ALL}
+                        disabled={
+                          filterType === 'custom' || currentSelectedUniverse === MetricConsts.ALL
+                        }
                         onClick={() => showModal('metricsComparisonModal')}
                       />
                     )}
@@ -667,10 +711,7 @@ class GraphPanelHeader extends Component {
                   <form name="GraphPanelFilterForm">
                     <div id="reportrange" className="pull-right">
                       <div className="timezone">
-                        Timezone:{' '}
-                        {currentUser.data.timezone
-                          ? moment.tz(currentUser.data.timezone).format('[UTC]ZZ')
-                          : moment().format('[UTC]ZZ')}
+                        Current Timestamp:&nbsp;{ybFormatDate(new Date())}
                       </div>
                       <div className="graph-interval-container">
                         <Dropdown
@@ -711,31 +752,37 @@ class GraphPanelHeader extends Component {
                               ? 'Disable Prometheus query'
                               : 'Enable Prometheus query'}
                           </MenuItem>
-                          <MenuItem onClick={() => {
-                            self.props.getGrafanaJson()
-                              .then((response) => {
-                                return new Blob([JSON.stringify(response.data, null, 2)], {
-                                  type: 'application/json'
+                          <MenuItem
+                            onClick={() => {
+                              self.props
+                                .getGrafanaJson()
+                                .then((response) => {
+                                  return new Blob([JSON.stringify(response.data, null, 2)], {
+                                    type: 'application/json'
+                                  });
+                                })
+                                .catch((error) => {
+                                  toast.error(
+                                    'Error in downloading Grafana JSON: ' + error.message
+                                  );
+                                  return null;
+                                })
+                                .then((blob) => {
+                                  // eslint-disable-next-line eqeqeq
+                                  if (blob != null) {
+                                    const url = window.URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.style.display = 'none';
+                                    a.href = url;
+                                    a.download = 'Grafana_Dashboard.json';
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    window.URL.revokeObjectURL(url);
+                                    a.remove();
+                                  }
                                 });
-                              })
-                              .catch((error) => {
-                                toast.error("Error in downloading Grafana JSON: " + error.message);
-                                return null;
-                              })
-                              .then((blob) => {
-                                if (blob != null) {
-                                  const url = window.URL.createObjectURL(blob);
-                                  const a = document.createElement('a');
-                                  a.style.display = 'none';
-                                  a.href = url;
-                                  a.download = 'Grafana_Dashboard.json';
-                                  document.body.appendChild(a);
-                                  a.click();
-                                  window.URL.revokeObjectURL(url);
-                                  a.remove();
-                                }
-                              });
-                          }}>
+                            }}
+                          >
                             {'Download Grafana JSON'}
                           </MenuItem>
                         </Dropdown.Menu>
@@ -746,15 +793,16 @@ class GraphPanelHeader extends Component {
               </FlexContainer>
               <FlexContainer>
                 <FlexGrow power={1}>
-                  {isTopKMetricsEnabled && this.state.currentSelectedUniverse !== MetricConsts.ALL &&
-                    this.props.origin !== MetricOrigin.TABLE &&
-                    <MetricsMeasureSelector
-                      metricMeasureTypes={metricMeasureTypes}
-                      selectedMetricMeasureValue={this.state.metricMeasure}
-                      onMetricMeasureChanged={this.onMetricMeasureChanged}
-                      isSingleNodeSelected={this.state.isSingleNodeSelected}
-                    />
-                  }
+                  {this.state.currentSelectedUniverse !== MetricConsts.ALL &&
+                    this.props.origin !== MetricOrigin.TABLE && (
+                      <MetricsMeasureSelector
+                        metricMeasureTypes={metricMeasureTypes}
+                        selectedMetricMeasureValue={this.state.metricMeasure}
+                        onMetricMeasureChanged={this.onMetricMeasureChanged}
+                        isSingleNodeSelected={this.state.isSingleNodeSelected}
+                        isK8Universe={isK8Universe}
+                      />
+                    )}
                 </FlexGrow>
                 <FlexGrow>
                   <div className=" date-picker pull-right">
@@ -773,9 +821,9 @@ class GraphPanelHeader extends Component {
                 <FlexGrow power={1}>
                   {/* Show Outlier Selector component if user has selected Outlier section
                   or if user has selected TopTables tab in Overall section  */}
-                  {isTopKMetricsEnabled && currentSelectedUniverse !== MetricConsts.ALL &&
-                    ((this.state.metricMeasure === MetricMeasure.OUTLIER) ||
-                      this.state.metricMeasure === MetricMeasure.OUTLIER_TABLES) &&
+                  {currentSelectedUniverse !== MetricConsts.ALL &&
+                    (this.state.metricMeasure === MetricMeasure.OUTLIER ||
+                      this.state.metricMeasure === MetricMeasure.OUTLIER_TABLES) && (
                       <OutlierSelector
                         outlierTypes={outlierTypes}
                         selectedOutlierType={this.state.outlierType}
@@ -783,12 +831,13 @@ class GraphPanelHeader extends Component {
                         setNumNodeValue={this.setNumNodeValue}
                         defaultOutlierNumNodes={this.state.outlierNumNodes}
                         splitType={splitType}
-                      />}
+                        isK8Universe={isK8Universe}
+                      />
+                    )}
                 </FlexGrow>
               </FlexContainer>
               {enableNodeComparisonModal ? (
                 <MetricsComparisonModal
-                  isTopKMetricsEnabled={isTopKMetricsEnabled}
                   visible={showModal && visibleModal === 'metricsComparisonModal'}
                   onHide={closeModal}
                   selectedUniverse={this.state.currentSelectedUniverse}
@@ -807,7 +856,6 @@ class GraphPanelHeader extends Component {
           noBackground
         />
       </div>
-
     );
   }
 }
@@ -822,7 +870,8 @@ class UniversePicker extends Component {
       selectedUniverse
     } = this.props;
 
-    let universeItems = universeList?.data?.sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
+    let universeItems = universeList?.data
+      ?.sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
       .map(function (item, idx) {
         return (
           <MenuItem
@@ -830,7 +879,9 @@ class UniversePicker extends Component {
             key={idx}
             // Added this line due to the issue that dropdown does not close
             // when a menu item is selected
-            onClick={() => { document.body.click(); }}
+            onClick={() => {
+              document.body.click();
+            }}
             eventKey={item.universeUUID}
             active={item.universeUUID === selectedUniverse.universeUUID}
           >
@@ -847,10 +898,12 @@ class UniversePicker extends Component {
           // Added this line due to the issue that dropdown does not close
           // when a menu item is selected
           active={selectedUniverse === MetricConsts.ALL}
-          onClick={() => { document.body.click(); }}
+          onClick={() => {
+            document.body.click();
+          }}
           eventKey={MetricConsts.ALL}
         >
-          {"All universes"}
+          {'All universes'}
         </MenuItem>
       </Fragment>
     );
@@ -867,63 +920,16 @@ class UniversePicker extends Component {
     universeItems.splice(0, 0, defaultMenuItem);
     return (
       <div className="universe-picker-container">
-        <Dropdown
-          id="universeFilterDropdown"
-          className="universe-filter-dropdown"
-        >
+        <Dropdown id="universeFilterDropdown" className="universe-filter-dropdown">
           <Dropdown.Toggle className="dropdown-toggle-button">
             <span className="default-universe-value">
               {currentUniverseValue === MetricConsts.ALL ? universeItems[0] : currentUniverseValue}
             </span>
           </Dropdown.Toggle>
           <Dropdown.Menu>
-            <span className={"universe-name"}>{universeItems}</span>
+            <span className={'universe-name'}>{universeItems}</span>
           </Dropdown.Menu>
         </Dropdown>
-      </div>
-    );
-  }
-}
-
-// TODO: Needs to be removed once Top K metrics is tested and integrated fully
-class UniversePickerOld extends Component {
-  render() {
-    const {
-      universeItemChanged,
-      universe: { universeList },
-      selectedUniverse
-    } = this.props;
-
-    const universeItems = universeList.data?.sort((a, b) => a.name.toLowerCase() > b.name.toLowerCase())
-      .map(function (item, idx) {
-        return (
-          <option key={idx} value={item.universeUUID} name={item.name}>
-            {item.name}
-          </option>
-        );
-      });
-
-    const universeOptionArray = [
-      <option key={-1} value="all">
-        All
-      </option>
-    ].concat(universeItems);
-    let currentUniverseValue = 'all';
-
-    if (!_.isString(selectedUniverse)) {
-      currentUniverseValue = selectedUniverse.universeUUID;
-    }
-    return (
-      <div className="universe-picker">
-        Universe:
-        <FormControl
-          componentClass="select"
-          placeholder="select"
-          onChange={universeItemChanged}
-          value={currentUniverseValue}
-        >
-          {universeOptionArray}
-        </FormControl>
       </div>
     );
   }

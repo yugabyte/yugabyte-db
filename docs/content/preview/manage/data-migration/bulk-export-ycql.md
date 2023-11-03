@@ -1,6 +1,7 @@
 ---
-title: Bulk export
+title: Bulk export YCQL
 headerTitle: Bulk export for YCQL
+linkTitle: Bulk export
 description: Bulk export for YCQL using cassandra-loader and cassandra-unloader.
 aliases:
   - /preview/manage/data-migration/ycql/bulk-export/

@@ -26,7 +26,7 @@
 
 #include <boost/optional.hpp>
 
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/gutil/bind.h"
 
@@ -193,7 +193,7 @@ boost::optional<RowsResult::SharedPtr> SystemQueryCache::Lookup(const std::strin
       GetStaleness() > MonoDelta::FromMilliseconds(FLAGS_cql_system_query_cache_stale_msecs)) {
     return boost::none;
   }
-  const std::lock_guard<std::mutex> l(cache_mutex_);
+  const std::lock_guard l(cache_mutex_);
 
   const auto it = cache_->find(query);
   if (it == cache_->end()) {
@@ -204,7 +204,7 @@ boost::optional<RowsResult::SharedPtr> SystemQueryCache::Lookup(const std::strin
 }
 
 MonoDelta SystemQueryCache::GetStaleness() {
-  const std::lock_guard<std::mutex> l(cache_mutex_);
+  const std::lock_guard l(cache_mutex_);
   return MonoTime::Now() - last_updated_;
 }
 
@@ -234,7 +234,7 @@ void SystemQueryCache::RefreshCache() {
   }
 
   {
-    const std::lock_guard<std::mutex> l(cache_mutex_);
+    const std::lock_guard l(cache_mutex_);
     cache_ = std::move(new_cache);
     last_updated_ = MonoTime::Now();
   }

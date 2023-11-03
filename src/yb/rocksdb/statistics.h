@@ -30,6 +30,7 @@
 
 namespace yb {
 class MetricEntity;
+class AggregateStats;
 }
 
 namespace rocksdb {
@@ -38,6 +39,8 @@ namespace rocksdb {
  * Keep adding ticker's here.
  *  1. Any ticker should be added before TICKER_ENUM_MAX.
  *  2. Add a readable string in TickersNameMap below for the newly added ticker.
+ *  3. Make sure to add the ticker to the list in src/yb/yql/pggate/pg_metrics_list.h and
+ *     src/yb/docdb/docdb_statistics.cc as well.
  */
 enum Tickers : uint32_t {
   // total block cache misses
@@ -368,11 +371,7 @@ struct HistogramData {
   double min;
   double max;
   double sum;
-  double median;
-  double percentile95;
-  double percentile99;
   double average;
-  double standard_deviation;
 };
 
 enum StatsLevel {
@@ -393,10 +392,11 @@ class Statistics {
   virtual uint64_t getTickerCount(uint32_t tickerType) const = 0;
   virtual void histogramData(uint32_t type,
                              HistogramData* const data) const = 0;
-  virtual std::string getHistogramString(uint32_t type) const { return ""; }
+  virtual const yb::AggregateStats& getAggregateStats(uint32_t histogramType) const = 0;
   virtual void recordTick(uint32_t tickerType, uint64_t count = 0) = 0;
   virtual void setTickerCount(uint32_t tickerType, uint64_t count) = 0;
   virtual void measureTime(uint32_t histogramType, uint64_t time) = 0;
+  virtual void addHistogram(uint32_t histogramType, const yb::AggregateStats& stats) = 0;
   virtual void resetTickersForTest() = 0;
 
   virtual const char* GetTickerName(uint32_t ticker_type) const {

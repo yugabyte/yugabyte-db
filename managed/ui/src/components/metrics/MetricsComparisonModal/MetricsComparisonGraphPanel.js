@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import { useState, useContext } from 'react';
 import './MetricsComparisonModal.scss';
 import { Dropdown, Panel } from 'react-bootstrap';
 import { FilterContext } from './ComparisonFilterContextProvider';
@@ -28,7 +28,7 @@ export const MetricsComparisonGraphPanel = ({ metricsKey }) => {
   return (
     <Panel key={metricsKey} className="metrics-container" expanded={isOpen} onToggle={() => {}}>
       <Panel.Title className="metrics-comparison-panel-header">
-        <i className="fa fa-caret-down open-icon" onClick={() => setIsOpen(!isOpen)}/>
+        <i className="fa fa-caret-down open-icon" onClick={() => setIsOpen(!isOpen)} />
         {firstMetricsData[metricsKey]?.layout?.title}
         <Dropdown id="MetricsPanelDropdown" className="metrics-comparison-panel-dropdown" pullRight>
           <Dropdown.Toggle noCaret>

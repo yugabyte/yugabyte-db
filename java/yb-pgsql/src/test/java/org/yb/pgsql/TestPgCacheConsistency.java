@@ -24,10 +24,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.util.ThrowingRunnable;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -37,7 +38,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestPgCacheConsistency extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgCacheConsistency.class);
 
@@ -600,6 +601,66 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
         stmt2.execute("END");
       }
 
+      // Test that dropping a partition in one connection is reflected in the other.
+      stmt1.executeUpdate("DROP TABLE prt_p1");
+      waitForTServerHeartbeat();
+      final String error_msg = "no partition of relation \"prt\" found for row";
+      runInvalidQuery(stmt2, "INSERT INTO prt VALUES (1)", error_msg);
+
+      // Test that attaching a partition in one connection is reflected in the other.
+      stmt1.executeUpdate("CREATE TABLE prt_p1 (a int, b varchar)");
+      stmt1.executeUpdate("ALTER TABLE prt ATTACH PARTITION prt_p1 FOR VALUES FROM (0) TO (10)");
+      waitForTServerHeartbeat();
+      stmt2.executeUpdate("INSERT INTO prt VALUES (1)");
+
+      // Test whether detaching a partition in one connection is reflected in the other.
+      stmt1.executeUpdate("ALTER TABLE prt DETACH PARTITION prt_p1");
+      waitForTServerHeartbeat();
+      runInvalidQuery(stmt2, "INSERT INTO prt VALUES (1)", error_msg);
+
+      // Test that adding a default partition in one connection is reflected in the other.
+      stmt1.executeUpdate("CREATE TABLE prt_default (a int, b varchar)");
+      stmt1.executeUpdate("ALTER TABLE prt ATTACH PARTITION prt_default DEFAULT");
+      waitForTServerHeartbeat();
+      stmt2.executeUpdate("INSERT INTO prt VALUES (1)");
+
+      // Test that dropping a default partition in one connection is reflected in the other.
+      stmt1.executeUpdate("DROP TABLE prt_default");
+      waitForTServerHeartbeat();
+      runInvalidQuery(stmt2, "INSERT INTO prt VALUES (1)", error_msg);
+
+      // Test adding a new partitioned table as a partition.
+      stmt1.executeUpdate("CREATE TABLE prt2 (a int, b varchar) PARTITION BY RANGE(a)");
+      stmt1.executeUpdate("CREATE TABLE prt2_p1 PARTITION OF prt2 FOR VALUES FROM (2) TO (8)");
+      stmt1.executeUpdate("ALTER TABLE prt ATTACH PARTITION prt2 FOR VALUES FROM (0) TO (10)");
+      waitForTServerHeartbeat();
+      stmt2.executeUpdate("INSERT INTO prt VALUES (3)");
+
+      // Test adding a subpartition.
+      stmt1.executeUpdate("CREATE TABLE prt2_p2 PARTITION OF prt2 FOR VALUES FROM (8) TO (10)");
+      waitForTServerHeartbeat();
+      stmt2.executeUpdate("INSERT INTO prt VALUES (9)");
+
+      // Test dropping a subpartition.
+      stmt1.executeUpdate("DROP TABLE prt2_p2");
+      waitForTServerHeartbeat();
+      final String error_msg2 = "no partition of relation \"prt2\" found for row";
+      runInvalidQuery(stmt2, "INSERT INTO prt VALUES (9)", error_msg2);
+
+      // Test adding a default subpartition
+      stmt1.executeUpdate("CREATE TABLE prt2_default PARTITION OF prt2 DEFAULT");
+      waitForTServerHeartbeat();
+      stmt2.executeUpdate("INSERT INTO prt VALUES (9)");
+
+      // Test dropping a default subpartition
+      stmt1.executeUpdate("ALTER TABLE prt2 DETACH PARTITION prt2_default");
+      waitForTServerHeartbeat();
+      runInvalidQuery(stmt2, "INSERT INTO prt VALUES (9)", error_msg2);
+
+      // Test dropping child partitioned table.
+      stmt1.executeUpdate("DROP TABLE prt2");
+      waitForTServerHeartbeat();
+      runInvalidQuery(stmt2, "INSERT INTO prt VALUES (3)", error_msg);
     }
   }
 
@@ -609,6 +670,48 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       return Optional.empty();
     } catch (Throwable t) {
       return Optional.of(t);
+    }
+  }
+
+  // Check that an error message contains all the relevant error information with the Catalog
+  // Version Mismatch message appended.
+  @Test
+  public void testCatalogVersionLogging() throws Exception {
+    try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
+         Connection connection2 = getConnectionBuilder().withTServer(1).connect();
+         Statement statement1 = connection1.createStatement();
+         Statement statement2 = connection2.createStatement()) {
+
+      statement1.execute("CREATE TABLE test_table(id int, x0 int)");
+
+      waitForTServerHeartbeat();
+
+      // Force a cache refresh on connection 2.
+      statement2.execute("SELECT * FROM test_table");
+
+      statement1.execute("ALTER TABLE test_table ADD COLUMN x1 int");
+
+      try {
+        // Immediately try selecting row from connection 2.
+        String query = "SELECT x1 FROM test_table";
+        statement2.execute(query);
+        fail(String.format("Statement did not fail: %s", query));
+      } catch (SQLException error) {
+        LOG.info(error.getMessage());
+        assertThat(
+          error.getMessage(),
+          CoreMatchers.containsString("Catalog Version Mismatch")
+        );
+        assertThat(
+          error.getMessage(),
+          CoreMatchers.containsString("Hint: Perhaps you meant to reference the column " +
+            "\"test_table.x0\"")
+        );
+        assertThat(
+          error.getMessage(),
+          CoreMatchers.not(CoreMatchers.containsString("(null)"))
+        );
+      }
     }
   }
 }

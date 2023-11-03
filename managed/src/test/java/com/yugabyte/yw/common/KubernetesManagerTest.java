@@ -5,19 +5,22 @@ package com.yugabyte.yw.common;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Matchers.anyList;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Universe;
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
@@ -25,26 +28,30 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
+import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 public class KubernetesManagerTest extends FakeDBApplication {
 
   @Mock ShellProcessHandler shellProcessHandler;
 
-  @Mock play.Configuration mockAppConfig;
+  @Mock RuntimeConfGetter mockConfGetter;
 
-  @InjectMocks ShellKubernetesManager kubernetesManager;
+  ShellKubernetesManager kubernetesManager;
+
+  @Mock Config mockAppConfig;
 
   Provider defaultProvider;
   Customer defaultCustomer;
+  Universe universe;
+  ReleaseManager releaseManager;
 
-  ArgumentCaptor<ArrayList> command;
-  // ArgumentCaptor<HashMap> config;
-  ArgumentCaptor<ShellProcessContext> context;
+  @Captor ArgumentCaptor<List<String>> command;
+
+  @Captor ArgumentCaptor<ShellProcessContext> context;
   Map<String, String> configProvider = new HashMap<String, String>();
 
   static String TMP_CHART_PATH = "/tmp/yugaware_tests/KubernetesManagerTest/charts";
@@ -53,13 +60,13 @@ public class KubernetesManagerTest extends FakeDBApplication {
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.newProvider(defaultCustomer, Common.CloudType.kubernetes);
-    configProvider.put("KUBECONFIG_SERVICE_ACCOUNT", "demo-account");
+    universe = ModelFactory.createUniverse("testUniverse", defaultCustomer.getId());
     configProvider.put("KUBECONFIG", "test");
-    defaultProvider.setConfig(configProvider);
+    defaultProvider.setConfigMap(configProvider);
     defaultProvider.save();
-    command = ArgumentCaptor.forClass(ArrayList.class);
-    context = ArgumentCaptor.forClass(ShellProcessContext.class);
     new File(TMP_CHART_PATH).mkdirs();
+    releaseManager = app.injector().instanceOf(ReleaseManager.class);
+    kubernetesManager = new ShellKubernetesManager(shellProcessHandler);
   }
 
   @After
@@ -80,15 +87,17 @@ public class KubernetesManagerTest extends FakeDBApplication {
     switch (commandType) {
       case HELM_INSTALL:
         kubernetesManager.helmInstall(
+            universe.getUniverseUUID(),
             ybSoftwareVersion,
             configProvider,
-            defaultProvider.uuid,
+            defaultProvider.getUuid(),
             "demo-universe",
             "demo-namespace",
             "/tmp/override.yml");
         break;
       case HELM_UPGRADE:
         kubernetesManager.helmUpgrade(
+            universe.getUniverseUUID(),
             ybSoftwareVersion,
             configProvider,
             "demo-universe",

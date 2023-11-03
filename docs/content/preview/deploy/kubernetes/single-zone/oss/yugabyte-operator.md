@@ -12,32 +12,32 @@ menu:
 aliases:
   - /preview/deploy/kubernetes/yugabyte-operator/
   - /preview/deploy/kubernetes/oss/yugabyte-operator/
+  - /preview/deploy/kubernetes/operator-hub/
+  - /preview/deploy/kubernetes/oss/operator-hub/
+  - /preview/deploy/kubernetes/single-zone/oss/operator-hub/
 type: docs
 ---
 
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="{{< relref "./helm-chart.md" >}}" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+    <a href="../helm-chart/" class="nav-link">
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
   <li >
-    <a href="{{< relref "./yugabyte-operator.md" >}}" class="nav-link active">
+    <a href="../yugabyte-operator/" class="nav-link active">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>
-      YugabyteDB operator
-    </a>
-  </li>
-  <li >
-    <a href="{{< relref "./operator-hub.md" >}}" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
-      Operator Hub
+      Kubernetes Operator (legacy)
     </a>
   </li>
 </ul>
 
+The Kubernetes Operator for YugabyteDB is no longer maintained. It is recommended that you use the actively maintained [Helm charts](../helm-chart/) for YugabyteDB to install YugabyteDB on Kubernetes. For documentation on using the Kubernetes Operator for YugabyteDB, refer to the [GitHub repository](https://github.com/yugabyte/yugabyte-operator).
 
+A newer version of the Kubernetes Operator for YugabyteDB is in development.
+
+<!--
 Create and manage a YugabyteDB cluster with a Kubernetes native custom resource `ybcluster.yugabyte.com`.
 
 The custom resource definition and other necessary specifications are available in [YugabyteDB operator repository](https://github.com/yugabyte/yugabyte-operator/). In addition, you may consult the full list of [configuration flags](#configuration-flags).
@@ -161,3 +161,4 @@ If you have enabled TLS encryption, then you can set the following flags:
 - `use_node_to_node_encryption` flag to enable node-to-node encryption.
 - `allow_insecure_connections` flag to specify if insecure connections are allowed when TLS is enabled.
 - `use_client_to_server_encryption` flag to enable client-to-node encryption.
+-->

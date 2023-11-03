@@ -14,7 +14,9 @@ type: docs
 
 To manage database access and authorization, YugabyteDB uses [role-based access control](../../../secure/authorization/) (RBAC), consisting of a collection of privileges on resources given to roles.
 
-Clusters in YugabyteDB Managed include a set of default users and roles in YSQL and YCQL.
+(For information on managing your YugabyteDB Managed account users, refer to [Manage account users](../../managed-security/manage-access/).)
+
+The YugabyteDB database on your YugabyteDB Managed cluster includes a set of default users and roles in YSQL and YCQL.
 
 ## YSQL default roles and users
 
@@ -53,7 +55,7 @@ The following table describes the default YSQL roles and users in YugabyteDB Man
 
 ### Admin and yb_superuser
 
-When creating a YugabyteDB cluster in YugabyteDB Managed, you set up the credentials for your admin user. For security reasons, this user does not have YugabyteDB superuser privileges; it is instead a member of `yb_superuser`, a role specific to YugabyteDB Managed clusters.
+When creating a YugabyteDB cluster in YugabyteDB Managed, you set up the credentials for your database admin user. For security reasons, this user does not have YugabyteDB superuser privileges; it is instead a member of `yb_superuser`, a role specific to YugabyteDB Managed clusters.
 
 Although not a superuser, `yb_superuser` includes sufficient privileges to perform all the required operations on a database, including creating other yb_superuser users, as follows:
 
@@ -67,11 +69,11 @@ Although not a superuser, `yb_superuser` includes sufficient privileges to perfo
 
 The `yb_db_admin` role is specific to YugabyteDB Managed clusters and allows non-superuser roles to perform a number of privileged operations in a manner similar to a superuser, such as performing operations on objects it does not own.
 
-`yb_superuser` and, by extension, the default admin user, is a member of `yb_db_admin`.
+`yb_superuser` and, by extension, the default database admin user, is a member of `yb_db_admin`.
 
 ### yb_extension
 
-The `yb_extension` role allows non-superuser roles to [create extensions](../../cloud-clusters/add-extensions/). A user granted this role can create all the extensions that are bundled in YugabyteDB. `yb_superuser` and, by extension, the default admin user, is a member of `yb_extension`.
+The `yb_extension` role allows non-superuser roles to [create extensions](../../cloud-clusters/add-extensions/). A user granted this role can create all the extensions that are bundled in YugabyteDB. `yb_superuser` and, by extension, the default database admin user, is a member of `yb_extension`.
 
 ## YCQL default roles and users
 
@@ -79,8 +81,11 @@ In YCQL, there is a single superuser called `cassandra` used during database cre
 
 ## Learn more
 
-- [Add database users](../add-users/)
 - [Manage Users and Roles in YugabyteDB](../../../secure/authorization/create-roles/)
 - [Role-based access control](../../../secure/authorization/)
 - [PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/)
 - [Create YSQL extensions in YugabyteDB Managed](../../cloud-clusters/add-extensions/)
+
+## Next step
+
+- [Add database users](../add-users/)

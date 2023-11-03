@@ -27,7 +27,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
-import play.mvc.Http.Context;
+import play.mvc.Http.Request;
 import play.mvc.Http.RequestBuilder;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -53,15 +53,14 @@ public class JWTVerifierTest {
             .setSubject(ClientType.NODE_AGENT.name())
             .setIssuedAt(Date.from(Instant.now()))
             .setExpiration(Date.from(Instant.now().plusSeconds(600)))
-            .claim(JWTVerifier.CLIENT_ID_CLAIM, nodeAgentUuid.toString())
-            .claim(JWTVerifier.USER_ID_CLAIM, userUuid.toString())
+            .claim(JWTVerifier.CLIENT_ID_CLAIM.toString(), nodeAgentUuid.toString())
+            .claim(JWTVerifier.USER_ID_CLAIM.toString(), userUuid.toString())
             .signWith(SignatureAlgorithm.RS256, keyPair.getPrivate())
             .compact();
-    Context ctx =
-        new Context(new RequestBuilder().header(TokenAuthenticator.API_JWT_HEADER, jwt), null);
+    Request request = new RequestBuilder().header(TokenAuthenticator.API_JWT_HEADER, jwt).build();
     when(keyProvider.getKey(any(), eq(ClientType.NODE_AGENT), eq(nodeAgentUuid), any()))
         .thenReturn(keyPair.getPublic());
-    verfier.verify(ctx, TokenAuthenticator.API_JWT_HEADER);
+    verfier.verify(request, TokenAuthenticator.API_JWT_HEADER);
     verify(keyProvider, times(1))
         .getKey(any(), eq(ClientType.NODE_AGENT), eq(nodeAgentUuid), any());
   }
@@ -76,12 +75,11 @@ public class JWTVerifierTest {
             .setExpiration(Date.from(Instant.now().plusSeconds(600)))
             .signWith(SignatureAlgorithm.RS256, keyPair.getPrivate())
             .compact();
-    Context ctx =
-        new Context(new RequestBuilder().header(TokenAuthenticator.API_JWT_HEADER, jwt), null);
+    Request request = new RequestBuilder().header(TokenAuthenticator.API_JWT_HEADER, jwt).build();
     Exception exception =
         assertThrows(
             PlatformServiceException.class,
-            () -> verfier.verify(ctx, TokenAuthenticator.API_JWT_HEADER));
+            () -> verfier.verify(request, TokenAuthenticator.API_JWT_HEADER));
     assertThat(exception.getMessage(), containsString("Invalid token"));
     verify(keyProvider, never()).getKey(any(), any(), any(), any());
   }
@@ -98,18 +96,17 @@ public class JWTVerifierTest {
             .setSubject(ClientType.NODE_AGENT.name())
             .setIssuedAt(Date.from(Instant.now()))
             .setExpiration(Date.from(Instant.now().plusSeconds(600)))
-            .claim(JWTVerifier.CLIENT_ID_CLAIM, nodeAgentUuid.toString())
-            .claim(JWTVerifier.USER_ID_CLAIM, userUuid.toString())
+            .claim(JWTVerifier.CLIENT_ID_CLAIM.toString(), nodeAgentUuid.toString())
+            .claim(JWTVerifier.USER_ID_CLAIM.toString(), userUuid.toString())
             .signWith(SignatureAlgorithm.RS256, newKeyPair.getPrivate())
             .compact();
-    Context ctx =
-        new Context(new RequestBuilder().header(TokenAuthenticator.API_JWT_HEADER, jwt), null);
+    Request request = new RequestBuilder().header(TokenAuthenticator.API_JWT_HEADER, jwt).build();
     when(keyProvider.getKey(any(), eq(ClientType.NODE_AGENT), eq(nodeAgentUuid), any()))
         .thenReturn(keyPair.getPublic());
     Exception exception =
         assertThrows(
             PlatformServiceException.class,
-            () -> verfier.verify(ctx, TokenAuthenticator.API_JWT_HEADER));
+            () -> verfier.verify(request, TokenAuthenticator.API_JWT_HEADER));
     assertThat(exception.getMessage(), containsString("Invalid token"));
     verify(keyProvider, times(1))
         .getKey(any(), eq(ClientType.NODE_AGENT), eq(nodeAgentUuid), any());

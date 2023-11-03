@@ -31,6 +31,7 @@
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 
 DECLARE_bool(use_cassandra_authentication);
+DECLARE_bool(ycql_allow_non_authenticated_password_reset);
 
 constexpr const char* const kDefaultCassandraUsername = "cassandra";
 
@@ -113,6 +114,10 @@ class QLTestAuthentication : public QLTestBase {
     return "DROP ROLE IF EXISTS " + params;
   }
 
+  inline const string AlterStmt(const string& role, string password) {
+    return Substitute("ALTER ROLE $0 WITH PASSWORD = '$1'", role, password);
+  }
+
   static const string GrantStmt(const string& role, const string& recipient) {
     return Substitute("GRANT $0 TO $1", role, recipient);
   }
@@ -121,11 +126,11 @@ class QLTestAuthentication : public QLTestBase {
     return Substitute("REVOKE $0 FROM $1", role, recipient);
   }
 
-  void CreateRole(TestQLProcessor* processor, const string& role_name) {
-
-    // SUPERUSER = false because otherwise we can't really revoke permissions.
+  // Use superuser = false if there is a need to revoke permissions.
+  void CreateRole(TestQLProcessor* processor, const string& role_name, bool superuser = false) {
     const string create_stmt = Substitute(
-        "CREATE ROLE $0 WITH LOGIN = TRUE AND SUPERUSER = FALSE AND PASSWORD = 'TEST';", role_name);
+        "CREATE ROLE $0 WITH LOGIN = TRUE AND SUPERUSER = $1 AND PASSWORD = 'TEST';", role_name,
+            superuser ? "TRUE" : "FALSE");
     ExecuteValidModificationStmt(processor, create_stmt);
   }
 
@@ -159,7 +164,7 @@ class QLTestAuthentication : public QLTestBase {
 class TestQLPermission : public QLTestAuthentication {
  public:
   TestQLPermission() : QLTestAuthentication() {
-    FLAGS_use_cassandra_authentication = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = true;
   }
 
   // Helper Functions
@@ -235,7 +240,7 @@ class TestQLPermission : public QLTestAuthentication {
         role_name, resource);
   }
 
-  void CheckRowContents(const QLRow& row, const string& canonical_resource,
+  void CheckRowContents(const qlexpr::QLRow& row, const string& canonical_resource,
                         const std::vector<string> &permissions, const string& role_name) {
     EXPECT_EQ(role_name, row.column(0).string_value());
     EXPECT_EQ(canonical_resource, row.column(1).string_value());
@@ -276,7 +281,7 @@ class TestQLPermission : public QLTestAuthentication {
 
     EXPECT_EQ(1, row_block->row_count());
 
-    QLRow &row = row_block->row(0);
+    auto& row = row_block->row(0);
     CheckRowContents(row, canonical_resource, permissions, role_name);
 
     std::unordered_map<std::string, uint64_t>  permission_map = {
@@ -380,8 +385,8 @@ TEST_F(TestQLPermission, TestGrantRevokeAll) {
   auto row_block = processor->row_block();
   EXPECT_EQ(2, row_block->row_count());  // 2 Resources found.
 
-  QLRow& keyspaces_row = row_block->row(0);
-  QLRow& roles_row = row_block->row(1);
+  auto& keyspaces_row = row_block->row(0);
+  auto& roles_row = row_block->row(1);
   CheckRowContents(roles_row, canonical_resource_roles, permissions_roles, role_name);
   CheckRowContents(keyspaces_row, canonical_resource_keyspaces, permissions_keyspaces, role_name);
 
@@ -409,7 +414,7 @@ TEST_F(TestQLPermission, TestGrantRevokeAll) {
   GrantRevokePermissionAndVerify(processor, revoke_describe_all_roles,
                                  canonical_resource_roles, permissions_keyspaces, role_name);
 
-  FLAGS_use_cassandra_authentication = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = false;
   EXEC_INVALID_STMT_WITH_ERROR(grant_stmt, "Unauthorized");
 }
 
@@ -474,7 +479,7 @@ TEST_F(TestQLPermission, TestGrantRevokeKeyspace) {
   const auto revoke_all_stmt = RevokeKeyspace("ALL", keyspace1, role_name_2);
   GrantRevokePermissionAndVerify(processor, revoke_all_stmt, canonical_resource, {}, role_name_2);
 
-  FLAGS_use_cassandra_authentication = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = false;
   EXEC_INVALID_STMT_WITH_ERROR(grant_stmt, "Unauthorized");
   EXEC_INVALID_STMT_WITH_ERROR(grant_stmt4, "Unauthorized");
 }
@@ -511,7 +516,7 @@ TEST_F(TestQLPermission, TestGrantToRole) {
   // statements that didn't modify anything in the master.
   CreateRole(processor, "some_role");
 
-  FLAGS_use_cassandra_authentication = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = false;
   EXEC_INVALID_STMT_WITH_ERROR(grant_stmt, "Unauthorized");
 }
 
@@ -577,7 +582,7 @@ TEST_F(TestQLPermission, TestGrantRevokeTable) {
   // statements that didn't modify anything in the master.
   CreateRole(processor, "some_role");
 
-  FLAGS_use_cassandra_authentication = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = false;
   EXEC_INVALID_STMT_WITH_ERROR(grant_stmt, "Unauthorized");
   EXEC_INVALID_STMT_WITH_ERROR(grant_stmt3, "Unauthorized");
 }
@@ -661,7 +666,8 @@ TEST_F(TestQLPermission, TestGrantDescribe) {
 class TestQLRole : public QLTestAuthentication {
  public:
   TestQLRole() : QLTestAuthentication() {
-    FLAGS_use_cassandra_authentication = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = true;
+    DCHECK(!FLAGS_ycql_allow_non_authenticated_password_reset);
   }
 
   // Check the granted roles for a role
@@ -673,7 +679,7 @@ class TestQLRole : public QLTestAuthentication {
     auto row_block = processor->row_block();
     EXPECT_EQ(1, row_block->row_count());
 
-    QLRow &row = row_block->row(0);
+    auto& row = row_block->row(0);
 
     EXPECT_EQ(InternalType::kListValue, row.column(3).type());
     QLSeqValuePB list_value = row.column(3).list_value();
@@ -704,7 +710,7 @@ class TestQLRole : public QLTestAuthentication {
     CHECK(s.ok());
     auto row_block = processor->row_block();
     EXPECT_EQ(2, row_block->row_count());
-    QLRow &row = row_block->row(0);
+    auto& row = row_block->row(0);
 
     EXPECT_EQ(role_name, row.column(0).string_value());
     EXPECT_EQ(can_login, row.column(1).bool_value());
@@ -734,6 +740,30 @@ class TestQLRole : public QLTestAuthentication {
     EXPECT_EQ(1, row_block_after_drop->row_count());
     row = row_block_after_drop->row(0);
     EXPECT_EQ("cassandra", row.column(0).string_value());
+  }
+
+  void CheckRole(TestQLProcessor* processor, const string& role_name, const char* password,
+                 const bool can_login, const bool is_superuser) {
+    auto select = Substitute("SELECT * FROM system_auth.roles WHERE role = '$0';", role_name);
+
+    CHECK_OK(processor->Run(select));
+    auto row_block = processor->row_block();
+    EXPECT_EQ(1, row_block->row_count());
+    auto& row = row_block->row(0);
+
+    EXPECT_EQ(role_name, row.column(0).string_value());
+    EXPECT_EQ(can_login, row.column(1).bool_value());
+    EXPECT_EQ(is_superuser, row.column(2).bool_value());
+
+    if (password == nullptr) {
+      EXPECT_TRUE(row.column(4).IsNull());
+    } else {
+      char hash[kBcryptHashSize];
+      bcrypt_hashpw(password, hash);
+      const auto& saved_hash = row.column(4).string_value();
+      const bool password_match = (0 == bcrypt_checkpw(password, saved_hash.c_str()));
+      EXPECT_TRUE(password_match);
+    }
   }
 };
 
@@ -976,9 +1006,13 @@ TEST_F(TestQLRole, TestQLCreateRoleSimple) {
   CreateRole(processor, "another_role");
 
   // Flag Test:
-  FLAGS_use_cassandra_authentication = false;;
-  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(role4), "Unauthorized");  // Valid, but unauthorized
-  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(role9), "Unauthorized");  // Invalid and unauthorized
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = false;
+  for (bool non_authenticated_password_reset : {false, true}) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_allow_non_authenticated_password_reset) =
+        non_authenticated_password_reset;
+    EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(role4), "Unauthorized");  // Valid, but unauthorized
+    EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(role9), "Unauthorized");  // Invalid and unauthorized
+  }
 }
 
 TEST_F(TestQLRole, TestQLDropRoleSimple) {
@@ -1016,8 +1050,46 @@ TEST_F(TestQLRole, TestQLDropRoleSimple) {
   // statements that didn't modify anything in the master.
   CreateRole(processor, "some_role");
 
-  FLAGS_use_cassandra_authentication = false;
-  EXEC_INVALID_STMT_WITH_ERROR(DropStmt(role1), "Unauthorized");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = false;
+  for (bool non_authenticated_password_reset : {false, true}) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_allow_non_authenticated_password_reset) =
+        non_authenticated_password_reset;
+    EXEC_INVALID_STMT_WITH_ERROR(DropStmt(role1), "Unauthorized");
+  }
+}
+
+TEST_F(TestQLRole, TestQLAlterRoleSimple) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get an available processor.
+  TestQLProcessor* processor = GetQLProcessor(kDefaultCassandraUsername);
+
+  // Valid Create Role Statements.
+  const string role1 = "normal_user";
+  const string role2 = "super_user";
+
+  CreateRole(processor, role1);
+  CreateRole(processor, role2, /*superuser=*/ true);
+
+  // Check all variants of role_name.
+  ExecuteValidModificationStmt(processor, AlterStmt(role1, "UPDATED_PWD"));
+  CheckRole(processor, role1, "UPDATED_PWD", /*can_login*/ true, /*is_superuser*/ false);
+  ExecuteValidModificationStmt(processor, AlterStmt(role2, "UPDATED_PWD"));
+  CheckRole(processor, role2, "UPDATED_PWD", /*can_login*/ true, /*is_superuser*/ true);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = false;
+  for (bool non_authenticated_password_reset : {false, true}) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_allow_non_authenticated_password_reset) =
+        non_authenticated_password_reset;
+    if (non_authenticated_password_reset) {
+      ExecuteValidModificationStmt(processor, AlterStmt(role1, "UPDATED_WITH_DISABLED_AUTH"));
+      ExecuteValidModificationStmt(processor, AlterStmt(role2, "UPDATED_WITH_DISABLED_AUTH"));
+    } else {
+      EXEC_INVALID_STMT_WITH_ERROR(AlterStmt(role1, "UPDATED_WITH_DISABLED_AUTH"), "Unauthorized");
+      EXEC_INVALID_STMT_WITH_ERROR(AlterStmt(role2, "UPDATED_WITH_DISABLED_AUTH"), "Unauthorized");
+    }
+  }
 }
 
 // Test that whenever we remove a role, this role is removed from the member_of field of all the

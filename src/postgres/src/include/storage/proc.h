@@ -308,6 +308,9 @@ extern int	RetryMaxBackoffMsecs;
 extern int	RetryMinBackoffMsecs;
 extern double RetryBackoffMultiplier;
 
+/* Metrics */
+extern int *yb_too_many_conn;
+
 /*
  * Function Prototypes
  */
@@ -341,5 +344,8 @@ extern PGPROC *AuxiliaryPidGetProc(int pid);
 
 extern void BecomeLockGroupLeader(void);
 extern bool BecomeLockGroupMember(PGPROC *leader, int pid);
+
+extern void RemoveLockGroupLeader(PGPROC *proc);
+extern void ReleaseProcToFreeList(PGPROC *proc);
 
 #endif							/* PROC_H */

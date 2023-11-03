@@ -39,8 +39,12 @@
 
 #include <gtest/gtest.h> // For SUCCEED/FAIL
 
-#include "yb/util/tostring.h"
 #include "yb/gutil/stl_util.h"  // For VectorToSet
+
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/string_trim.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 namespace util {
@@ -127,7 +131,7 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
     } \
   } while (0)
 
-#define EXPECT_NOT_OK(s) EXPECT_FALSE((s).ok())
+#define EXPECT_NOK(s) EXPECT_FALSE((s).ok())
 
 // Like the above, but doesn't record successful
 // tests.
@@ -157,6 +161,18 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
       ADD_FAILURE() << "Unexpected error: " << ec.message(); \
     } \
   } while (false)
+
+// Asserts that result is ok, extracts result value is case of success.
+#define ASSERT_RESULT(expr) \
+  RESULT_CHECKER_HELPER(expr, ASSERT_OK(__result))
+
+// Expects that result is ok, extracts result value is case of success.
+#define EXPECT_RESULT(expr) \
+  RESULT_CHECKER_HELPER(expr, EXPECT_OK(__result))
+
+// Asserts that result is ok, extracts result value is case of success.
+#define ASSERT_RESULT_FAST(expr) \
+  RESULT_CHECKER_HELPER(expr, ASSERT_OK_FAST(__result))
 
 #ifdef THREAD_SANITIZER
 #define ASSERT_PERF_LE(lhs, rhs) do { (void)(lhs); (void)(rhs); } while(false)
@@ -320,6 +336,24 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
   }) \
   /**/
 
+// Similar to ASSERT_NOTNULL but does not return anything.
+#define ASSERT_ONLY_NOTNULL(expr) \
+  do { \
+    auto&& result = (expr); \
+    if (result == nullptr) { \
+      FAIL() << "Unexpected nullptr"; \
+    } \
+  } while (false)
+  /**/
+
+#define ASSERT_QUERY_FAIL(query_exec, expected_failure_substr) \
+  do { \
+    auto&& status = (query_exec); \
+    ASSERT_NOK(status); \
+    ASSERT_STR_CONTAINS(status.ToString(), expected_failure_substr); \
+  } while (false) \
+  /**/
+
 #define CURRENT_TEST_NAME() \
   ::testing::UnitTest::GetInstance()->current_test_info()->name()
 
@@ -353,10 +387,22 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 #define YB_DISABLE_TEST_IN_SANITIZERS(test_name) test_name
 #endif
 
+#ifdef FASTDEBUG
+#define YB_DISABLE_TEST_IN_FASTDEBUG(test_name) YB_DISABLE_TEST(test_name)
+#else
+#define YB_DISABLE_TEST_IN_FASTDEBUG(test_name) test_name
+#endif
+
 #if defined(__APPLE__) || defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
 #define YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(test_name) YB_DISABLE_TEST(test_name)
 #else
 #define YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(test_name) test_name
+#endif
+
+#if !defined(NDEBUG) || defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
+#define YB_DISABLE_TEST_EXCEPT_RELEASE(test_name) YB_DISABLE_TEST(test_name)
+#else
+#define YB_DISABLE_TEST_EXCEPT_RELEASE(test_name) test_name
 #endif
 
 // Can be used in individual test cases or in the SetUp() method to skip all tests for a fixture.
@@ -364,5 +410,6 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
   do { \
     if (::yb::IsTsan()) { \
       GTEST_SKIP() << "Skipping test in TSAN"; \
+      return; \
     } \
   } while (false)

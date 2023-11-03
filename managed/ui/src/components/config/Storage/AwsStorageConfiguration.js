@@ -1,13 +1,33 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
-import { YBToggle, YBTextInputWithLabel } from '../../common/forms/fields';
+import { YBToggle, YBTextInputWithLabel, YBPassword } from '../../common/forms/fields';
 import { Field } from 'redux-form';
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
+import './StorageConfiguration.scss';
 
-const required = (value) => (value ? undefined : 'This field is required.');
+const required = (value) => {
+  return value ? undefined : 'This field is required.';
+};
+
+const proxyFieldsRequired = (value, data) => {
+  if (
+    !value &&
+    (data?.PROXY_SETTINGS?.PROXY_HOST ||
+      data?.PROXY_SETTINGS?.PROXY_PORT ||
+      data?.PROXY_SETTINGS?.PROXY_USERNAME ||
+      data?.PROXY_SETTINGS?.PROXY_PASSWORD)
+  )
+    return 'This field is required.';
+  return undefined;
+};
+
+const proxyPasswordRequired = (value, data) => {
+  if (!value && data?.PROXY_SETTINGS?.PROXY_USERNAME) return 'This field is required.';
+  return undefined;
+};
 
 class AwsStorageConfiguration extends Component {
   /**
@@ -42,7 +62,13 @@ class AwsStorageConfiguration extends Component {
   };
 
   render() {
-    const { isEdited, iamInstanceToggle, iamRoleEnabled, enablePathStyleAccess } = this.props;
+    const {
+      isEdited,
+      iamInstanceToggle,
+      iamRoleEnabled,
+      enablePathStyleAccess,
+      enableS3BackupProxy
+    } = this.props;
     return (
       <Row className="config-section-header">
         <Col lg={9}>
@@ -197,6 +223,88 @@ class AwsStorageConfiguration extends Component {
                   </span>
                 ))}
               </Col>
+            </Row>
+          )}
+
+          {enableS3BackupProxy && (
+            <Row className="backup-proxy-config">
+              <Row className="config-provider-row">
+                <h4>Proxy Configuration</h4>
+              </Row>
+              <div className="divider"></div>
+
+              <Row className="config-provider-row">
+                <Col lg={2}>
+                  <div className="form-item-custom-label">Host</div>
+                </Col>
+                <Col lg={9}>
+                  <Field
+                    validate={proxyFieldsRequired}
+                    name="PROXY_SETTINGS.PROXY_HOST"
+                    placeHolder="Proxy Host"
+                    component={YBTextInputWithLabel}
+                  />
+                </Col>
+                <Col lg={1} className="config-zone-tooltip">
+                  <YBInfoTip title="Host" content="Host address of the proxy server" />
+                </Col>
+              </Row>
+
+              <Row className="config-provider-row">
+                <Col lg={2}>
+                  <div className="form-item-custom-label">Port</div>
+                </Col>
+                <Col lg={9}>
+                  <Field
+                    validate={proxyFieldsRequired}
+                    name="PROXY_SETTINGS.PROXY_PORT"
+                    placeHolder="Proxy Port"
+                    type="number"
+                    component={YBTextInputWithLabel}
+                  />
+                </Col>
+                <Col lg={1} className="config-zone-tooltip">
+                  <YBInfoTip
+                    title="Port"
+                    content="Port number at which the proxy server is running"
+                  />
+                </Col>
+              </Row>
+
+              <Row className="config-provider-row">
+                <Col lg={2}>
+                  <div className="form-item-custom-label">Username (Optional)</div>
+                </Col>
+                <Col lg={9}>
+                  <Field
+                    name="PROXY_SETTINGS.PROXY_USERNAME"
+                    placeHolder="Proxy Username"
+                    component={YBTextInputWithLabel}
+                  />
+                </Col>
+                <Col lg={1} className="config-zone-tooltip">
+                  <YBInfoTip title="Username" content="Username for authentication" />
+                </Col>
+              </Row>
+
+              <Row className="config-provider-row">
+                <Col lg={2}>
+                  <div className="form-item-custom-label">Password (Optional)</div>
+                </Col>
+                <Col lg={9}>
+                  <Field
+                    validate={proxyPasswordRequired}
+                    name="PROXY_SETTINGS.PROXY_PASSWORD"
+                    placeHolder="Proxy Password"
+                    component={YBPassword}
+                    type="password"
+                    autocomplete="new-password"
+                  />
+                </Col>
+                <Col lg={1} className="config-zone-tooltip">
+                  <YBInfoTip title="Password" content="Password for authentication" />
+                </Col>
+              </Row>
             </Row>
           )}
         </Col>

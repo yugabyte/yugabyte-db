@@ -35,10 +35,12 @@
 #include <unordered_set>
 
 #include "yb/common/entity_ids_types.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/mutex.h"
-#include "yb/util/condition_variable.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/util/condition_variable.h"
+#include "yb/util/metrics.h"
+#include "yb/util/mutex.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -47,10 +49,6 @@ class Thread;
 namespace master {
 
 class CatalogManager;
-
-namespace enterprise {
-class CatalogManager;
-}
 
 class CatalogManagerBgTasks final {
  public:
@@ -66,7 +64,7 @@ class CatalogManagerBgTasks final {
   void WakeIfHasPendingUpdates();
 
  private:
-  void TryResumeBackfillForTables(std::unordered_set<TableId>* tables);
+  void TryResumeBackfillForTables(const LeaderEpoch& epoch, std::unordered_set<TableId>* tables);
   void Run();
 
  private:
@@ -75,8 +73,9 @@ class CatalogManagerBgTasks final {
   mutable Mutex lock_;
   ConditionVariable cond_;
   scoped_refptr<yb::Thread> thread_;
-  enterprise::CatalogManager *catalog_manager_;
+  CatalogManager *catalog_manager_;
   bool was_leader_ = false;
+  scoped_refptr<EventStats> load_balancer_duration_;
 };
 
 }  // namespace master

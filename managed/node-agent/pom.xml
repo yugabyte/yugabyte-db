@@ -66,22 +66,23 @@
 						</goals>
 						<configuration>
 							<executable>${basedir}/build.sh</executable>
+							<skip>${skipPrepare}</skip>
 							<arguments>
 								<argument>prepare</argument>
 							</arguments>
 						</configuration>
 					</execution>
 					<execution>
-						<id>Build Node Agent</id>
+						<id>Release Node Agent Locally</id>
 						<phase>compile</phase>
 						<goals>
 							<goal>exec</goal>
 						</goals>
 						<configuration>
-							<executable>${basedir}/build.sh</executable>
-							<skip>${platformDependenciesOnly}</skip>
+							<executable>${basedir}/yb_release</executable>
+							<skip>${skipLocalRelease}</skip>
 							<arguments>
-								<argument>build</argument>
+								<argument>--local</argument>
 							</arguments>
 						</configuration>
 					</execution>
@@ -106,6 +107,7 @@
 				<artifactId>protobuf-maven-plugin</artifactId>
 				<configuration>
 					<pluginId>grpc-java</pluginId>
+					<checkStaleness>true</checkStaleness>
 					<pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${os.detected.classifier}</pluginArtifact>
 					<protocExecutable>${project.basedir}/third-party/bin/protoc</protocExecutable>
 					<protoSourceRoot>${project.basedir}/proto</protoSourceRoot>

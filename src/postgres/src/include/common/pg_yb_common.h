@@ -114,6 +114,12 @@ extern const char *YBGetCurrentUUID();
 extern const char *YBGetCurrentMetricNodeName();
 
 /**
+ * Returns a null-terminated string representing the custom tmp path
+ * Postgres process will use to keep some of its temporary files.
+ */
+extern const char *YbGetTmpDir();
+
+/**
  * Returns whether COLLATION support is enabled.
  */
 extern bool YBIsCollationEnabled();

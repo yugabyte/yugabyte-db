@@ -32,8 +32,6 @@ namespace master {
 
 using std::string;
 using std::shared_ptr;
-using std::unique_ptr;
-using std::map;
 using std::vector;
 
 namespace {
@@ -56,7 +54,7 @@ PeersVTable::PeersVTable(const TableName& table_name,
     : YQLVirtualTable(table_name, namespace_name, master, CreateSchema()) {
 }
 
-Result<std::shared_ptr<QLRowBlock>> PeersVTable::RetrieveData(
+Result<VTableDataPtr> PeersVTable::RetrieveData(
     const QLReadRequestPB& request) const {
   // Retrieve all lives nodes known by the master.
   // TODO: Ideally we would like to populate this table with all valid nodes of the cluster, but
@@ -75,7 +73,7 @@ Result<std::shared_ptr<QLRowBlock>> PeersVTable::RetrieveData(
   const auto& proxy_uuid = request.proxy_uuid();
 
   // Populate the YQL rows.
-  auto vtable = std::make_shared<QLRowBlock>(schema());
+  auto vtable = std::make_shared<qlexpr::QLRowBlock>(schema());
 
   struct Entry {
     size_t index;
@@ -130,7 +128,7 @@ Result<std::shared_ptr<QLRowBlock>> PeersVTable::RetrieveData(
 
     // Need to use only 1 rpc address per node since system.peers has only 1 entry for each host,
     // so pick the first one.
-    QLRow &row = vtable->Extend();
+    auto &row = vtable->Extend();
     RETURN_NOT_OK(SetColumnValue(kPeer, InetAddress(*public_ip), &row));
     RETURN_NOT_OK(SetColumnValue(kRPCAddress, InetAddress(*public_ip), &row));
     RETURN_NOT_OK(SetColumnValue(kPreferredIp, InetAddress(*private_ip), &row));

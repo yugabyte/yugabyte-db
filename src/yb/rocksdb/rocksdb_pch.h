@@ -3,14 +3,17 @@
 #pragma once
 
 #include <assert.h>
+#include <cxxabi.h>
 #include <dirent.h>
 #include <errno.h>
+#include <execinfo.h>
 #include <fcntl.h>
 #include <float.h>
 #include <inttypes.h>
 #include <math.h>
 #include <openssl/ossl_typ.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -21,6 +24,7 @@
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <array>
@@ -38,7 +42,6 @@
 #include <cstdlib>
 #include <ctime>
 #include <deque>
-#include <exception>
 #include <forward_list>
 #include <fstream>
 #include <functional>
@@ -50,6 +53,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <queue>
 #include <random>
 #include <set>
@@ -71,6 +75,7 @@
 #include <boost/atomic.hpp>
 #include <boost/container/small_vector.hpp>
 #include <boost/core/demangle.hpp>
+#include <boost/function.hpp>
 #include <boost/functional/hash.hpp>
 #include <boost/mpl/and.hpp>
 #include <boost/optional.hpp>
@@ -179,6 +184,7 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
+#include "yb/util/slice_parts.h"
 #include "yb/util/stack_trace.h"
 #include "yb/util/stats/iostats_context.h"
 #include "yb/util/stats/iostats_context_imp.h"
@@ -192,9 +198,11 @@
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/striped64.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_kill.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"

@@ -1,8 +1,8 @@
 ---
-title: Node.js ORM example application that uses Sequelize ORM and YSQL
+title: Node.js Sequelize ORM example application
 headerTitle: Node.js ORM example application
 linkTitle: Node.js
-description: Node.js ORM example application that uses Sequelize ORM and YSQL.
+description: Node.js ORM example application that uses Sequelize and YSQL.
 menu:
   preview:
     identifier: nodejs-sequelize
@@ -13,13 +13,13 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="{{< relref "./ysql-sequelize.md" >}}" class="nav-link active">
+    <a href="../ysql-sequelize/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       Sequelize ORM
     </a>
   </li>
   <li>
-    <a href="{{< relref "./ysql-prisma.md" >}}" class="nav-link ">
+    <a href="../ysql-prisma/" class="nav-link ">
       <i class="icon-postgres" aria-hidden="true"></i>
       Prisma ORM
     </a>

@@ -62,6 +62,24 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     try {
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
+      when(mockNodeUniverseManager.runCommand(any(), any(), any()))
+          .thenReturn(
+              ShellResponse.create(
+                  ShellResponse.ERROR_CODE_SUCCESS,
+                  ShellResponse.RUN_COMMAND_OUTPUT_PREFIX
+                      + "Reference ID    : A9FEA9FE (metadata.google.internal)\n"
+                      + "    Stratum         : 3\n"
+                      + "    Ref time (UTC)  : Mon Jun 12 16:18:24 2023\n"
+                      + "    System time     : 0.000000003 seconds slow of NTP time\n"
+                      + "    Last offset     : +0.000019514 seconds\n"
+                      + "    RMS offset      : 0.000011283 seconds\n"
+                      + "    Frequency       : 99.154 ppm slow\n"
+                      + "    Residual freq   : +0.009 ppm\n"
+                      + "    Skew            : 0.106 ppm\n"
+                      + "    Root delay      : 0.000162946 seconds\n"
+                      + "    Root dispersion : 0.000101734 seconds\n"
+                      + "    Update interval : 32.3 seconds\n"
+                      + "    Leap status     : Normal"));
     } catch (Exception e) {
       fail();
     }
@@ -70,7 +88,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
     testKMSConfig =
         KmsConfig.createKMSConfig(
-            defaultCustomer.uuid,
+            defaultCustomer.getUuid(),
             KeyProvider.AWS,
             Json.newObject().put("test_key", "test_val"),
             "some config name");
@@ -81,7 +99,11 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     InstanceType i =
         InstanceType.upsert(
-            defaultProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+            defaultProvider.getUuid(),
+            "c3.xlarge",
+            10,
+            5.5,
+            new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent userIntent =
         getTestUserIntent(r, defaultProvider, i, numOfNodes);
     userIntent.replicationFactor = numOfNodes;
@@ -89,10 +111,10 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     userIntent.tserverGFlags = new HashMap<>();
     userIntent.universeName = "demo-universe";
 
-    defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
+    defaultUniverse = createUniverse(defaultCustomer.getId());
     String nodePrefix = "demo-universe";
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         ApiUtils.mockUniverseUpdater(
             userIntent, nodePrefix, true /* setMasters */, updateInProgress));
   }
@@ -100,8 +122,10 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   private static final List<TaskType> RESUME_UNIVERSE_TASKS =
       ImmutableList.of(
           TaskType.ResumeServer,
+          TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
+          TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.SetNodeState,
@@ -112,9 +136,11 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   private static final List<TaskType> RESUME_ENCRYPTION_AT_REST_UNIVERSE_TASKS =
       ImmutableList.of(
           TaskType.ResumeServer,
+          TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.SetActiveUniverseKeys,
+          TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.SetNodeState,
@@ -125,7 +151,9 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   private static final List<JsonNode> RESUME_UNIVERSE_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of()),
@@ -137,7 +165,9 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   private static final List<JsonNode> RESUME_ENCRYPTION_AT_REST_UNIVERSE_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
@@ -157,14 +187,14 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
       assertEquals(taskType, tasks.get(0).getTaskType());
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }
   }
 
   private TaskInfo submitTask(ResumeUniverse.Params taskParams) {
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = expectedUniverseVersion;
     try {
       UUID taskUUID = commissioner.submit(TaskType.ResumeUniverse, taskParams);
@@ -179,15 +209,15 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   public void testResumeUniverseSuccess() {
     setupUniverse(false, 1);
     ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
-    taskParams.customerUUID = defaultCustomer.uuid;
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     TaskInfo taskInfo = submitTask(taskParams);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(subTasksByPosition, RESUME_UNIVERSE_TASKS, RESUME_UNIVERSE_EXPECTED_RESULTS);
     assertEquals(Success, taskInfo.getTaskState());
-    assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.universeUUID));
+    assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
   }
 
   @Test
@@ -196,7 +226,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
 
     AtomicReference<String> nodeWithStoppedProcesses = new AtomicReference<>();
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         universe -> {
           for (NodeDetails node : universe.getNodes()) {
             if (nodeWithStoppedProcesses.get() == null) {
@@ -209,11 +239,11 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
         });
     expectedUniverseVersion++;
     ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
-    taskParams.customerUUID = defaultCustomer.uuid;
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
-    Universe universe = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     Map<NodeDetails.NodeState, List<NodeDetails>> byStates =
         universe.getNodes().stream().collect(Collectors.groupingBy(node -> node.state));
     assertEquals(1, byStates.get(NodeDetails.NodeState.Stopped).size());
@@ -227,8 +257,8 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   public void testResumeUniverseWithUpdateInProgress() {
     setupUniverse(true, 1);
     ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
-    taskParams.customerUUID = defaultCustomer.uuid;
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Failure, taskInfo.getTaskState());
   }
@@ -237,13 +267,14 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   public void testResumeUniverseWithEncyptionAtRestEnabled() {
     setupUniverse(false, 1);
     encryptionUtil.addKeyRef(
-        defaultUniverse.universeUUID, testKMSConfig.configUUID, "some_key_ref".getBytes());
-    int numRotations =
-        encryptionUtil.getNumKeyRotations(defaultUniverse.universeUUID, testKMSConfig.configUUID);
+        defaultUniverse.getUniverseUUID(),
+        testKMSConfig.getConfigUUID(),
+        "some_key_ref".getBytes());
+    int numRotations = encryptionUtil.getNumUniverseKeys(defaultUniverse.getUniverseUUID());
     assertEquals(1, numRotations);
     ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
-    taskParams.customerUUID = defaultCustomer.uuid;
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     TaskInfo taskInfo = submitTask(taskParams);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -253,6 +284,6 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
         RESUME_ENCRYPTION_AT_REST_UNIVERSE_TASKS,
         RESUME_ENCRYPTION_AT_REST_UNIVERSE_EXPECTED_RESULTS);
     assertEquals(Success, taskInfo.getTaskState());
-    assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.universeUUID));
+    assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
   }
 }

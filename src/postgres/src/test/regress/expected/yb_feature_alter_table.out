@@ -247,6 +247,8 @@ ERROR:  new row for relation "atacc1" violates check constraint "checkb3"
 DETAIL:  Failing row contains (5, 5, 5).
 alter table atacc1 drop constraint checkb;
 alter table atacc1 drop constraint if exists checkb2;
+NOTICE:  constraint "checkb2" of relation "atacc1" does not exist, skipping
+alter table atacc1 drop constraint checkb2;
 ERROR:  constraint "checkb2" for table "atacc1" does not exist
 alter table atacc1 drop constraint if exists checkb3;
 delete from atacc1 where b = 5;
@@ -729,74 +731,67 @@ select * from test_alter_column_type;
 
 alter table test_alter_column_type alter column a type varchar(1);
 alter table test_alter_column_type alter column a type varchar(5);
-alter table test_alter_column_type alter column a type varchar(1); --fails
-ERROR:  This ALTER TABLE command is not yet supported.
-alter table test_alter_column_type alter column a type char(10); --fails
-ERROR:  This ALTER TABLE command is not yet supported.
+alter table test_alter_column_type alter column a type varchar(1);
+alter table test_alter_column_type alter column a type char(10);
 alter table test_alter_column_type alter column b type name;
-alter table test_alter_column_type alter column b type varchar(100); --fails
-ERROR:  This ALTER TABLE command is not yet supported.
+alter table test_alter_column_type alter column b type varchar(100);
 alter table test_alter_column_type alter column c type text;
-alter table test_alter_column_type alter column c type varchar(100); --fails
-ERROR:  This ALTER TABLE command is not yet supported.
+alter table test_alter_column_type alter column c type varchar(100);
 alter table test_alter_column_type alter column d type char(1);
-alter table test_alter_column_type alter column d type varchar(100); --fails
-ERROR:  This ALTER TABLE command is not yet supported.
-alter table test_alter_column_type alter column d type char(100); --fails
-ERROR:  This ALTER TABLE command is not yet supported.
+alter table test_alter_column_type alter column d type varchar(100);
+alter table test_alter_column_type alter column d type char(100);
 alter table test_alter_column_type alter column e type varbit(1);
 alter table test_alter_column_type alter column e type varbit(5);
-alter table test_alter_column_type alter column e type varbit(1); --fails
-ERROR:  This ALTER TABLE command is not yet supported.
-alter table test_alter_column_type alter column f type varchar(100); --fails
-ERROR:  This ALTER TABLE command is not yet supported.
+alter table test_alter_column_type alter column e type varbit(1);
+alter table test_alter_column_type alter column f type varchar(100);
 alter table test_alter_column_type alter column f type varbit(100); --fails
 ERROR:  column "f" cannot be cast automatically to type bit varying
 HINT:  You might need to specify "USING f::bit varying(100)".
-alter table test_alter_column_type alter column f type int;
+alter table test_alter_column_type alter column f type int; --fails
+ERROR:  column "f" cannot be cast automatically to type integer
+HINT:  You might need to specify "USING f::integer".
 alter table test_alter_column_type alter column g type varchar;
-alter table test_alter_column_type alter column g type varchar(5); --fails
-ERROR:  This ALTER TABLE command is not yet supported.
-alter table test_alter_column_type alter column g type text; --fails
-ERROR:  This ALTER TABLE command is not yet supported.
+alter table test_alter_column_type alter column g type varchar(5);
+alter table test_alter_column_type alter column g type text;
 alter table test_alter_column_type alter column h type varbit;
-alter table test_alter_column_type alter column h type varbit(5); --fails
-ERROR:  This ALTER TABLE command is not yet supported.
-insert into test_alter_column_type values ('abcde', '-', '-', '-', B'10101', 0, '-', B'0');
+alter table test_alter_column_type alter column h type varbit(5);
+insert into test_alter_column_type values ('abcde', '-', '-', '-', B'10101', 0, '-', B'0'); --fails
+ERROR:  bit string too long for type bit varying(1)
+insert into test_alter_column_type values ('abcde', '-', '-', '-', B'1', 0, '-', B'0');
 select * from test_alter_column_type order by a;
-   a   | b | c | d |   e   | f | g | h
--------+---+---+---+-------+---+---+---
- a     | b | c | d | 1     | 1 | g | 1
- abcde | - | - | - | 10101 | 0 | - | 0
+     a      | b | c |                                                  d                                                   | e | f | g | h
+------------+---+---+------------------------------------------------------------------------------------------------------+---+---+---+---
+ a          | b | c | d                                                                                                    | 1 | 1 | g | 1
+ abcde      | - | - | -                                                                                                    | 1 | 0 | - | 0
 (2 rows)
 
 \d test_alter_column_type
-             Table "public.test_alter_column_type"
- Column |         Type         | Collation | Nullable | Default
---------+----------------------+-----------+----------+---------
- a      | character varying(5) |           |          |
- b      | name                 |           |          |
- c      | text                 |           |          |
- d      | character(1)         |           |          |
- e      | bit varying(5)       |           |          |
- f      | integer              |           |          |
- g      | character varying    |           |          |
- h      | bit varying          |           |          |
+              Table "public.test_alter_column_type"
+ Column |          Type          | Collation | Nullable | Default
+--------+------------------------+-----------+----------+---------
+ a      | character(10)          |           |          |
+ b      | character varying(100) |           |          |
+ c      | character varying(100) |           |          |
+ d      | character(100)         |           |          |
+ e      | bit varying(1)         |           |          |
+ f      | character varying(100) |           |          |
+ g      | text                   |           |          |
+ h      | bit varying(5)         |           |          |
 
 alter table test_alter_column_type alter column a type varchar;
 alter table test_alter_column_type alter column e type varbit;
 \d test_alter_column_type
-            Table "public.test_alter_column_type"
- Column |       Type        | Collation | Nullable | Default
---------+-------------------+-----------+----------+---------
- a      | character varying |           |          |
- b      | name              |           |          |
- c      | text              |           |          |
- d      | character(1)      |           |          |
- e      | bit varying       |           |          |
- f      | integer           |           |          |
- g      | character varying |           |          |
- h      | bit varying       |           |          |
+              Table "public.test_alter_column_type"
+ Column |          Type          | Collation | Nullable | Default
+--------+------------------------+-----------+----------+---------
+ a      | character varying      |           |          |
+ b      | character varying(100) |           |          |
+ c      | character varying(100) |           |          |
+ d      | character(100)         |           |          |
+ e      | bit varying            |           |          |
+ f      | character varying(100) |           |          |
+ g      | text                   |           |          |
+ h      | bit varying(5)         |           |          |
 
 DROP TABLE test_alter_column_type;
 -- Test ALTER TABLE _ ALTER COLUMN _ TYPE _ with an index (Issue #6113)

@@ -3,11 +3,8 @@
 ####################################################################################################
 # This includes tests related to PL/pgSQL.
 ####################################################################################################
-# Chain of dependencies for `yb_pg_plpgsql`
-test: yb_pg_create_function_1
-test: yb_pg_create_type
-test: yb_pg_create_table
-test: yb_pg_copy
+# Dependency.
+test: yb_dep_tenk1
 
 test: yb_pg_plpgsql
 test: yb_plpgsql

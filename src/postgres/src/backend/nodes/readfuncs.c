@@ -1754,8 +1754,8 @@ _readYbSeqScan(void)
 
 	ReadCommonScan(&local_node->scan);
 
-	READ_NODE_FIELD(remote.qual);
-	READ_NODE_FIELD(remote.colrefs);
+	READ_NODE_FIELD(yb_pushdown.quals);
+	READ_NODE_FIELD(yb_pushdown.colrefs);
 
 	READ_DONE();
 }
@@ -1793,10 +1793,12 @@ _readIndexScan(void)
 	READ_NODE_FIELD(indexorderbyops);
 	READ_NODE_FIELD(indextlist);
 	READ_ENUM_FIELD(indexorderdir, ScanDirection);
-	READ_NODE_FIELD(index_remote.qual);
-	READ_NODE_FIELD(index_remote.colrefs);
-	READ_NODE_FIELD(rel_remote.qual);
-	READ_NODE_FIELD(rel_remote.colrefs);
+	READ_NODE_FIELD(yb_idx_pushdown.quals);
+	READ_NODE_FIELD(yb_idx_pushdown.colrefs);
+	READ_NODE_FIELD(yb_rel_pushdown.quals);
+	READ_NODE_FIELD(yb_rel_pushdown.colrefs);
+	READ_INT_FIELD(yb_distinct_prefixlen);
+	READ_ENUM_FIELD(yb_lock_mechanism, YbLockMechanism);
 
 	READ_DONE();
 }
@@ -1816,8 +1818,9 @@ _readIndexOnlyScan(void)
 	READ_NODE_FIELD(indexorderby);
 	READ_NODE_FIELD(indextlist);
 	READ_ENUM_FIELD(indexorderdir, ScanDirection);
-	READ_NODE_FIELD(remote.qual);
-	READ_NODE_FIELD(remote.colrefs);
+	READ_NODE_FIELD(yb_pushdown.quals);
+	READ_NODE_FIELD(yb_pushdown.colrefs);
+	READ_INT_FIELD(yb_distinct_prefixlen);
 
 	READ_DONE();
 }
@@ -2058,27 +2061,16 @@ _readJoin(void)
 }
 
 /*
- * ReadCommonNestLoop
- */
-static void
-ReadCommonNestLoop(NestLoop *local_node)
-{
-	READ_TEMP_LOCALS();
-
-	ReadCommonJoin(&local_node->join);
-
-	READ_NODE_FIELD(nestParams);
-}
-
-/*
  * _readNestLoop
  */
 static NestLoop *
 _readNestLoop(void)
 {
-	READ_LOCALS_NO_FIELDS(NestLoop);
+	READ_LOCALS(NestLoop);
 
-	ReadCommonNestLoop(local_node);
+	ReadCommonJoin(&local_node->join);
+
+	READ_NODE_FIELD(nestParams);
 
 	READ_DONE();
 }
@@ -2091,11 +2083,33 @@ _readYbBatchedNestLoop(void)
 {
 	READ_LOCALS(YbBatchedNestLoop);
 
-	ReadCommonNestLoop(&local_node->nl);
+	ReadCommonJoin(&local_node->nl.join);
 
-	READ_NODE_FIELD(hashOps);
-	READ_NODE_FIELD(innerHashAttNos);
-	READ_NODE_FIELD(outerParamExprs);
+	READ_NODE_FIELD(nl.nestParams);
+	READ_INT_FIELD(num_hashClauseInfos);
+	local_node->hashClauseInfos =
+		palloc0(local_node->num_hashClauseInfos * sizeof(YbBNLHashClauseInfo));
+
+	/* Ignore :hashOps */
+	pg_strtok(&length);
+	for (int i = 0; i < local_node->num_hashClauseInfos; i++)
+	{
+		token = pg_strtok(&length);
+		local_node->hashClauseInfos[i].hashOp = atoi(token);
+	}
+
+	/* Ignore :innerHashAttNos */
+	pg_strtok(&length);
+	for (int i = 0; i < local_node->num_hashClauseInfos; i++)
+	{
+		token = pg_strtok(&length);
+		local_node->hashClauseInfos[i].innerHashAttNo = atoi(token);
+	}
+
+	/* Ignore :outerParamExprs */
+	pg_strtok(&length);
+	for (int i = 0; i < local_node->num_hashClauseInfos; i++)
+		local_node->hashClauseInfos[i].outerParamExpr = nodeRead(NULL, 0);
 
 	READ_DONE();
 }
@@ -2381,6 +2395,7 @@ _readNestLoopParam(void)
 
 	READ_INT_FIELD(paramno);
 	READ_NODE_FIELD(paramval);
+	READ_INT_FIELD(yb_batch_size);
 
 	READ_DONE();
 }
@@ -2802,7 +2817,7 @@ parseNodeString(void)
 		return_value = _readJoin();
 	else if (MATCH("NESTLOOP", 8))
 		return_value = _readNestLoop();
-	else if (MATCH("YbBatchedNestLoop", 15))
+	else if (MATCH("YBBATCHEDNESTLOOP", 17))
 		return_value = _readYbBatchedNestLoop();
 	else if (MATCH("MERGEJOIN", 9))
 		return_value = _readMergeJoin();

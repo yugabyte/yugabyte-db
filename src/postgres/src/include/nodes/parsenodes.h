@@ -1692,7 +1692,8 @@ typedef enum ObjectType
 	OBJECT_TSTEMPLATE,
 	OBJECT_TYPE,
 	OBJECT_USER_MAPPING,
-	OBJECT_VIEW
+	OBJECT_VIEW,
+	OBJECT_YBPROFILE
 } ObjectType;
 
 /* ----------------------
@@ -2184,6 +2185,25 @@ typedef struct OptSplit
 	int num_tablets;
 	List *split_points;
 } OptSplit;
+
+/* ----------------------
+ *		Create/Drop Profile Statements
+ * ----------------------
+ */
+
+typedef struct YbCreateProfileStmt
+{
+	NodeTag		type;
+	char	   *prfname;
+	Value	   *prffailedloginattempts;
+} YbCreateProfileStmt;
+
+typedef struct YbDropProfileStmt
+{
+	NodeTag		type;
+	char	   *prfname;
+	bool		missing_ok;		/* skip error if missing? */
+} YbDropProfileStmt;
 
 /* ----------------------
  *		Create/Drop Tablegroup Statements

@@ -66,17 +66,12 @@
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/mock_env.h"
 #include "yb/rocksdb/util/mutexlock.h"
-
-#include "yb/util/string_util.h"
-// SyncPoint is not supported in Released Windows Mode.
-#if !(defined NDEBUG) || !defined(OS_WIN)
-#include "yb/rocksdb/util/sync_point.h"
-#endif  // !(defined NDEBUG) || !defined(OS_WIN)
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-#include "yb/rocksdb/util/xfunc.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 
+#include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_util.h" // For ASSERT_OK
 
 namespace rocksdb {
@@ -183,9 +178,6 @@ class AtomicCounter {
 
 struct OptionsOverride {
   std::shared_ptr<const FilterPolicy> filter_policy = nullptr;
-
-  // Used as a bit mask of individual enums in which to skip an XF test point
-  int skip_policy = 0;
 };
 
 }  // namespace anon
@@ -323,6 +315,7 @@ class SpecialEnv : public EnvWrapper {
       yb::IOPriority GetIOPriority() override {
         return base_->GetIOPriority();
       }
+      const std::string& filename() const override { return base_->filename(); }
     };
     class ManifestFile : public WritableFile {
      public:
@@ -347,6 +340,7 @@ class SpecialEnv : public EnvWrapper {
         }
       }
       uint64_t GetFileSize() override { return base_->GetFileSize(); }
+      const std::string& filename() const override { return base_->filename(); }
 
      private:
       SpecialEnv* env_;
@@ -386,6 +380,7 @@ class SpecialEnv : public EnvWrapper {
       bool IsSyncThreadSafe() const override {
         return env_->is_wal_sync_thread_safe_.load();
       }
+      const std::string& filename() const override { return base_->filename(); }
 
      private:
       SpecialEnv* env_;

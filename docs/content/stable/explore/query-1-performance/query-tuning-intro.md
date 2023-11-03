@@ -119,7 +119,7 @@ Use the `pg_stat_activity` view to get information on currently running tasks. U
 
 To get the output of `pg_stat_activity` in JSON format, visit `https://<yb-tserver-ip>:13000/rpcz` in your web browser, where `<yb-tserver-ip>` is the IP address of any YB-TServer node in your cluster.
 
-For more information, refer to [Viewing live queries with `pg_stat_activity`](../pg-stat-activity).
+For more information, refer to [View live queries with `pg_stat_activity`](../pg-stat-activity).
 
 ### View COPY operation status
 

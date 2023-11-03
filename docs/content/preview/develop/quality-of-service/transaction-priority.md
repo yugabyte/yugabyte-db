@@ -14,39 +14,49 @@ menu:
 type: docs
 ---
 
-YugabyteDB allows external applications to set the priority of individual transactions. When using optimistic concurrency control, it is possible to ensure that a *higher priority* transaction gets priority over a lower priority transaction. In this scenario, if these transactions conflict, the *lower priority* transaction is aborted. This behavior can be achieved by setting the pair of session variables `yb_transaction_priority_lower_bound`, and `yb_transaction_priority_upper_bound`. A random number between the lower and upper bound is computed and assigned as the transaction priority for the transactions in that session. If this transaction conflicts with another, the value of transaction priority is compared with that of the conflicting transaction. The transaction with a higher priority value wins. To view the transaction priority of the active transaction in current session, run `SHOW yb_transaction_priority` inside the transaction block. If `SHOW yb_transaction_priority` is run outside a transaction block, it will output 0.
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="../transaction-priority/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+
+</ul>
+
+When using YugabyteDB with the [Fail-on-Conflict](../../../architecture/transactions/concurrency-control/#fail-on-conflict) concurrency control policy, higher priority transactions can abort lower priority transactions when conflicts occur. External applications may control the priority of individual transactions using the YSQL parameters `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`.
+
+A random number between the lower and upper bound is picked and used to compute a transaction priority for the transactions in that session as explained in [Transaction Priorities](../../../architecture/transactions/transaction-priorities/).
 
 | Flag | Valid Range | Description |
-| --- | --- | --- |
+| :--- | :---------- | :---------- |
 | `yb_transaction_priority_lower_bound` | Any value between 0 and 1, lower than the upper bound | Minimum transaction priority for transactions run in this session |
 | `yb_transaction_priority_upper_bound` | Any value between 0 and 1, higher than the lower bound | Maximum transaction priority for transactions run in this session |
-| `yb_transaction_priority` (read-only) | Displays the priority type: Normal, High or Highest. For Normal and High priority transaction, a numerical value is also shown for the transaction's priority. |
+
+To view the transaction priority of the active transaction in current session, use the `yb_get_current_transaction_priority` function.
 
 {{< note title="Note" >}}
 Currently, transaction priorities work in the following scenarios:
 
 * Works with YSQL only, not supported for YCQL.
-* Can be used only with optimistic concurrency control, not yet implemented for pessimistic concurrency control.
+* Only applies for transactions using [Fail-on-Conflict](../../../architecture/transactions/concurrency-control/#fail-on-conflict) concurrency control policy.
 * Only conflict resolution is prioritized, not resource consumption as a part.
-
-Some of the improvements are planned.
 
 {{< /note >}}
 
-It is possible to set the priority of a transaction using the two session variables `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`, each of which can be set to a value between 0.0 and 1.0, as shown in the following example. When a transaction is executed, a random priority between the lower and upper bound is assigned to it.
-
 ## Examples
 
-Let's create a [YugabyteDB cluster](../../../quick-start/), and open two separate [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) connections to it.
+Create a [YugabyteDB universe](../../../quick-start/) and open two separate [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) connections to it.
 
 {{< tip title="Tip - Use YugabyteDB Managed" >}}
-You can create a cluster in the free tier of [YugabyteDB Managed](../../../quick-start-yugabytedb-managed/), and open two *cloud shell* connections to it. These cloud shell connections open up in two different browser tabs, which can be used to do the steps below.
+You can create a free cluster with [YugabyteDB Managed](../../../quick-start-yugabytedb-managed/), and open two *cloud shell* connections to it. These cloud shell connections open in two different browser tabs, which you can use to do the steps that follow.
 
 {{< /tip >}}
 
 ### Transaction priority between concurrent operations
 
-Let's create an example scenario of an accounts table, and insert a row into as follows:
+Consider an example scenario of an maintaining a bank account. Create the accounts table and insert rows into it, as follows:
 
 ```sql
 create table account
@@ -61,7 +71,7 @@ insert into account values
   ('kevin','checking', 500);
 ```
 
-Now, we're going to perform a deposit and a withdrawal at the same time. Also, assume we want to give higher priority to deposit transactions (when compared to withdrawals). To simulate this, we're going to perform two operations concurrently - a withdrawal in one session, and a deposit from a separate session. The deposit transaction starts after the withdrawal is initiated, but occurs before the withdrawal is completed from a separate session. This is shown below.
+To set a transaction priority for concurrent transactions, perform a deposit and a withdrawal at the same time, and set a higher priority to deposit transactions. To simulate this, perform the two operations concurrently - a withdrawal in one session and a deposit in another session. The deposit transaction starts after the withdrawal has been initiated, but occurs before the withdrawal is completed from a separate session, as demonstrated in the following table:
 
 <table style="margin:0 5px;">
   <tr>
@@ -165,7 +175,7 @@ yugabyte=> select * from account;
 
 ### Show transaction priority types
 
-The following example demonstrates the usage of `yb_transaction_priority` based on the priority types.
+The `yb_get_current_transaction_priority` function shows the transaction priority of the current transaction and the priority bucket the given priority belongs in. Transaction priority buckets are explained in detail in [Transaction Priorities](../../../architecture/transactions/transaction-priorities/). The following example demonstrates the usage of `yb_get_current_transaction_priority`.
 
 1. From an active [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) shell, create a table as follows:
 
@@ -183,14 +193,14 @@ The following example demonstrates the usage of `yb_transaction_priority` based 
 1. In a transaction block, perform an insert and view the transaction priority as follows:
 
     ```sql
-    BEGIN TRANSACTION;
+    BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
     INSERT INTO test_scan (i, j) values (1, 1), (2, 2), (3, 3);
-    show yb_transaction_priority;
+    SELECT yb_get_current_transaction_priority();
     COMMIT;
     ```
 
     ```output
-              yb_transaction_priority
+        yb_get_current_transaction_priority
     -------------------------------------------
       0.537144608 (Normal priority transaction)
     (1 row)
@@ -201,48 +211,37 @@ The following example demonstrates the usage of `yb_transaction_priority` based 
     ```sql
     set yb_transaction_priority_lower_bound = 0.1;
     set yb_transaction_priority_lower_bound = 0.4;
-    BEGIN TRANSACTION;
+    BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
     SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
-    show yb_transaction_priority;
+    SELECT yb_get_current_transaction_priority();
     COMMIT;
     ```
 
     ```output
-        yb_transaction_priority
+        yb_get_current_transaction_priority
     -------------------------------------------
      0.212004009 (High priority transaction)
     (1 row)
     ```
 
-   As seen from the resulting _High priority transaction_ value above, it is randomly chosen between the lower and upper bound.
+   The transaction priority is randomly chosen between the lower and upper bound.
 
 1. In the final transaction block, set `yb_transaction_priority_upper_bound` and `yb_transaction_priority_lower_bound` to be 1, and perform the same `SELECT ... FOR UPDATE` query as the previous one. This transaction type is of the highest priority.
 
     ```sql
     set yb_transaction_priority_upper_bound = 1;
     set yb_transaction_priority_lower_bound = 1;
-    BEGIN TRANSACTION;
+    BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
     SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
-    show yb_transaction_priority;
+    SELECT yb_get_current_transaction_priority();
     COMMIT;
     ```
 
     ```output
-        yb_transaction_priority
-    -------------------------------------------
+    yb_get_current_transaction_priority
+    -------------------------------------
     Highest priority transaction
     (1 row)
     ```
 
-1. View the transaction priority outside a transaction block as follows:
-
-    ```sql
-    show yb_transaction_priority;
-    ```
-
-    ```output
-                 yb_transaction_priority
-    -------------------------------------------
-     0.000000000 (Normal priority transaction)
-    (1 row)
-    ```
+For more information, see [Transaction priorities](../../../architecture/transactions/transaction-priorities/).

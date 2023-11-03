@@ -17,32 +17,79 @@
 
 #pragma once
 
+#include <boost/iterator/transform_iterator.hpp>
+
 #include "yb/common/common_fwd.h"
 #include "yb/common/ql_datatype.h"
 
-namespace yb {
-namespace pggate {
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_entry_value.h"
+
+#include "yb/yql/pggate/pg_gate_fwd.h"
+
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/status.h"
+
+namespace yb::pggate {
+namespace pg_column::internal {
+
+class ExtractKeyColumnValue {
+ public:
+  using type = dockv::KeyEntryValue;
+
+  explicit ExtractKeyColumnValue(SortingType sorting) : sorting_(sorting) {}
+
+  [[nodiscard]] type operator()(const LWPgsqlExpressionPB& pb) const;
+
+ private:
+  SortingType sorting_;
+};
+
+class SubExprKeyColumnValueProvider {
+ public:
+  using SourceList = ArenaList<LWPgsqlExpressionPB>;
+  using SourceIterator = SourceList::const_iterator;
+  using const_iterator = boost::transform_iterator<ExtractKeyColumnValue, SourceIterator>;
+
+  SubExprKeyColumnValueProvider(std::reference_wrapper<const SourceList> list,
+                                SortingType sorting)
+      : list_(list.get()), extractor_(sorting) {}
+
+  [[nodiscard]] size_t size() const { return list_.size(); }
+  [[nodiscard]] const_iterator cbegin() const { return MakeIterator(list_.cbegin()); }
+  [[nodiscard]] const_iterator cend() const { return MakeIterator(list_.cend()); }
+
+ private:
+  const_iterator MakeIterator(const SourceIterator& it) const {
+    return boost::make_transform_iterator(it, extractor_);
+  }
+
+  const SourceList& list_;
+  ExtractKeyColumnValue extractor_;
+};
+
+} // namespace pg_column::internal
 
 class PgColumn {
  public:
-  // Constructor & Destructor.
+  using SubExprKeyColumnValueProvider = pg_column::internal::SubExprKeyColumnValueProvider;
+
   PgColumn(std::reference_wrapper<const Schema> schema, size_t index);
 
   // Bindings for write requests.
   LWPgsqlExpressionPB *AllocPrimaryBindPB(LWPgsqlWriteRequestPB *write_req);
-  LWPgsqlExpressionPB *AllocBindPB(LWPgsqlWriteRequestPB *write_req);
+  Result<LWPgsqlExpressionPB*> AllocBindPB(LWPgsqlWriteRequestPB* write_req, PgExpr* expr);
 
   // Bindings for read requests.
   LWPgsqlExpressionPB *AllocPrimaryBindPB(LWPgsqlReadRequestPB *write_req);
-  LWPgsqlExpressionPB *AllocBindPB(LWPgsqlReadRequestPB *read_req);
+  Result<LWPgsqlExpressionPB*> AllocBindPB(LWPgsqlReadRequestPB* read_req, PgExpr* expr);
 
   // Bindings for read requests.
   LWPgsqlExpressionPB *AllocBindConditionExprPB(LWPgsqlReadRequestPB *read_req);
 
   // Assign values for write requests.
   LWPgsqlExpressionPB *AllocAssignPB(LWPgsqlWriteRequestPB *write_req);
-
-  void ResetBindPB();
 
   // Access functions.
   const ColumnSchema& desc() const;
@@ -54,6 +101,18 @@ class PgColumn {
   LWPgsqlExpressionPB *bind_pb() {
     return bind_pb_;
   }
+
+  bool ValueBound() const;
+
+  void MoveBoundValueTo(LWPgsqlExpressionPB* out);
+  void UnbindValue();
+
+  Result<dockv::KeyEntryValue> BuildKeyColumnValue(LWQLValuePB** dest) const;
+  Result<dockv::KeyEntryValue> BuildKeyColumnValue() const;
+  [[nodiscard]] SubExprKeyColumnValueProvider BuildSubExprKeyColumnValueProvider() const;
+  Status MoveBoundKeyInOperator(LWPgsqlReadRequestPB *read_req);
+
+  Status SetSubExprs(PgDml* stmt, PgExpr **value, size_t count);
 
   LWPgsqlExpressionPB *assign_pb() {
     return assign_pb_;
@@ -110,6 +169,11 @@ class PgColumn {
   }
 
  private:
+  template <class Req>
+  Result<LWPgsqlExpressionPB*> DoAllocBindPB(Req* req, PgExpr* expr);
+  template <class Req>
+  LWPgsqlExpressionPB *DoAllocPrimaryBindPB(Req *req);
+
   const Schema& schema_;
   const size_t index_;
 
@@ -140,5 +204,4 @@ class PgColumn {
   int pg_collid_ = 0;
 };
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

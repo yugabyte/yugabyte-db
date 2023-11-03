@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import _ from 'lodash';
-import React, { Component } from 'react';
+import { Component } from 'react';
 import PropTypes from 'prop-types';
 import { browserHistory } from 'react-router';
 import { YBFormSelect, YBFormInput } from '../../common/forms/fields';
@@ -106,15 +106,16 @@ export default class RestoreBackup extends Component {
           return { value: universe.universeUUID, label: universe.name };
         });
       }
-    } else {
-      if (getPromiseState(currentUniverse).isSuccess() && isNonEmptyObject(currentUniverse.data)) {
-        universeOptions = [
-          {
-            value: currentUniverse.data.universeUUID,
-            label: currentUniverse.data.name
-          }
-        ];
-      }
+    } else if (
+      getPromiseState(currentUniverse).isSuccess() &&
+      isNonEmptyObject(currentUniverse.data)
+    ) {
+      universeOptions = [
+        {
+          value: currentUniverse.data.universeUUID,
+          label: currentUniverse.data.name
+        }
+      ];
     }
 
     const kmsConfigList = cloud.authConfig.data.map((config) => {
@@ -197,11 +198,9 @@ export default class RestoreBackup extends Component {
             label={'Table'}
           />
           {(featureFlags.test?.addRestoreTimeStamp ||
-              featureFlags.released?.addRestoreTimeStamp) &&
-              (
-                <Field name="restoreTimeStamp" component={YBFormInput} label={'TimeStamp'} />
-              )
-          }
+            featureFlags.released?.addRestoreTimeStamp) && (
+            <Field name="restoreTimeStamp" component={YBFormInput} label={'TimeStamp'} />
+          )}
           <Field name="parallelism" component={YBFormInput} label={'Parallel Threads'} />
           <Field
             name="kmsConfigUUID"

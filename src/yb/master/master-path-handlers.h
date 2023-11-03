@@ -41,7 +41,9 @@
 #include "yb/master/master_fwd.h"
 
 #include "yb/server/webserver.h"
+#include "yb/server/monitored_task.h"
 #include "yb/util/enums.h"
+#include "yb/util/jsonwriter.h"
 
 namespace yb {
 
@@ -111,7 +113,14 @@ class MasterPathHandlers {
     kNumColumns
   };
 
-  const std::string kSystemPlatformNamespace = "system_platform";
+  enum NamespaceColumns {
+    kNamespaceName,
+    kNamespaceId,
+    kNamespaceLanguage,
+    kNamespaceState,
+    kNamespaceColocated,
+    kNumNamespaceColumns
+  };
 
   struct TabletCounts {
     uint32_t user_tablet_leaders = 0;
@@ -200,8 +209,16 @@ class MasterPathHandlers {
   void HandleCatalogManager(const Webserver::WebRequest& req,
                             Webserver::WebResponse* resp,
                             bool only_user_tables = false);
+  void HandleCatalogManagerJSON(const Webserver::WebRequest& req,
+                                Webserver::WebResponse* resp);
+  void HandleNamespacesHTML(const Webserver::WebRequest& req,
+                            Webserver::WebResponse* resp,
+                            bool only_user_namespaces = false);
+  void HandleNamespacesJSON(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleTablePage(const Webserver::WebRequest& req,
                        Webserver::WebResponse* resp);
+  void HandleTablePageJSON(const Webserver::WebRequest& req,
+                           Webserver::WebResponse* resp);
   void HandleTasksPage(const Webserver::WebRequest& req,
                        Webserver::WebResponse* resp);
   void HandleTabletReplicasPage(const Webserver::WebRequest &req, Webserver::WebResponse *resp);
@@ -213,6 +230,8 @@ class MasterPathHandlers {
                           Webserver::WebResponse* resp);
   void HandleGetClusterConfig(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleGetClusterConfigJSON(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleGetXClusterConfig(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleGetXClusterConfigJSON(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleHealthCheck(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleCheckIfLeader(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleGetMastersStatus(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
@@ -235,9 +254,10 @@ class MasterPathHandlers {
   TableType GetTableType(const TableInfo& table);
   std::vector<TabletInfoPtr> GetNonSystemTablets();
 
-  std::vector<TabletInfoPtr> GetLeaderlessTablets();
+  std::vector<std::pair<TabletInfoPtr, std::string>> GetLeaderlessTablets();
 
-  Result<std::vector<TabletInfoPtr>> GetUnderReplicatedTablets();
+  Result<std::vector<std::pair<TabletInfoPtr, std::vector<std::string>>>>
+      GetUnderReplicatedTablets();
 
   // Calculates the YSQL OID of a tablegroup / colocated database parent table
   std::string GetParentTableOid(scoped_refptr<TableInfo> parent_table);
@@ -261,6 +281,9 @@ class MasterPathHandlers {
 
   std::string GetHttpHostPortFromServerRegistration(const ServerRegistrationPB& reg) const;
 
+  Status GetClusterAndXClusterConfigStatus(
+      SysXClusterConfigEntryPB* xcluster_config, SysClusterConfigEntryPB* cluster_config);
+
   Master* master_;
 
   const int output_precision_;
@@ -269,5 +292,5 @@ class MasterPathHandlers {
 
 void HandleTabletServersPage(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
 
-} // namespace master
-} // namespace yb
+}  //  namespace master
+}  //  namespace yb

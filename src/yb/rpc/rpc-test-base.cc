@@ -72,7 +72,7 @@ constexpr size_t kQueueLength = 1000;
 
 void GetSidecar(
     const RpcController& controller, int idx, size_t expected_size, std::string* buffer) {
-  CHECK_OK(controller.AssignSidecarTo(idx, buffer));
+  CHECK_RESULT(controller.ExtractSidecar(idx)).AsSlice().AssignTo(buffer);
   CHECK_EQ(expected_size, buffer->size());
 }
 
@@ -391,6 +391,18 @@ class CalculatorService: public CalculatorServiceIf {
     rpc_test::TrivialResponsePB resp;
     resp.set_value(req.value());
     return resp;
+  }
+
+  void Sidecar(
+      const rpc_test::SidecarRequestPB* req, rpc_test::SidecarResponsePB* resp,
+      RpcContext context) override {
+    auto num_sidecars = req->num_sidecars();
+    for (size_t i = 0; i != num_sidecars; ++i) {
+      auto& buffer = context.sidecars().Start();
+      buffer.Append(CHECK_RESULT(context.ExtractSidecar(num_sidecars - i - 1)).AsSlice());
+    }
+    resp->set_num_sidecars(num_sidecars);
+    context.RespondSuccess();
   }
 
  private:

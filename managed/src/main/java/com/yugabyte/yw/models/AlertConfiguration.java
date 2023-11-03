@@ -40,7 +40,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
-import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
@@ -121,41 +120,37 @@ public class AlertConfiguration extends Model {
   }
 
   @Id
-  @Column(nullable = false, unique = true)
   @ApiModelProperty(value = "Configuration UUID", accessMode = READ_ONLY)
   private UUID uuid;
 
   @NotNull
-  @Column(nullable = false)
   @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   private UUID customerUUID;
 
   @NotNull
   @Size(min = 1, max = 1000)
-  @Column(columnDefinition = "Text", nullable = false)
   @ApiModelProperty(value = "Name", accessMode = READ_WRITE)
   private String name;
 
   @NotNull
-  @Column(columnDefinition = "Text")
   @ApiModelProperty(value = "Description", accessMode = READ_WRITE)
   private String description;
 
   @NotNull
-  @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  @ApiModelProperty(value = "Creation time", accessMode = READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(
+      value = "Creation time",
+      accessMode = READ_ONLY,
+      example = "2022-12-12T13:07:18Z")
   private Date createTime;
 
   @NotNull
   @Enumerated(EnumType.STRING)
-  @Column(nullable = false)
   @ApiModelProperty(value = "Target type", accessMode = READ_WRITE)
   private TargetType targetType;
 
   @NotNull
   @DbJson
-  @Column(columnDefinition = "Text", nullable = false)
   @ApiModelProperty(value = "Target", accessMode = READ_WRITE)
   private AlertConfigurationTarget target;
 
@@ -163,26 +158,22 @@ public class AlertConfiguration extends Model {
   @Valid
   @Size(min = 1)
   @DbJson
-  @Column(columnDefinition = "Text", nullable = false)
   @ApiModelProperty(value = "Thresholds", accessMode = READ_WRITE)
   @EqualsAndHashCode.Exclude
   private Map<Severity, AlertConfigurationThreshold> thresholds;
 
   @NotNull
   @Enumerated(EnumType.STRING)
-  @Column(nullable = false)
   @ApiModelProperty(value = "Threshold unit", accessMode = READ_WRITE)
   private Unit thresholdUnit;
 
   @NotNull
-  @Column(columnDefinition = "Text", nullable = false)
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Template name", accessMode = READ_WRITE)
   private AlertTemplate template;
 
   @NotNull
   @Min(0)
-  @Column(nullable = false)
   @ApiModelProperty(
       value = "Duration in seconds, while condition is met to raise an alert",
       accessMode = READ_WRITE)
@@ -200,11 +191,15 @@ public class AlertConfiguration extends Model {
   private boolean defaultDestination;
 
   @DbJson
-  @Column(nullable = false)
   @ApiModelProperty(
       value = "Maintenance window UUIDs, applied to this alert config",
       accessMode = READ_ONLY)
   private Set<UUID> maintenanceWindowUuids;
+
+  @DbJson
+  @ApiModelProperty(value = "Labels", accessMode = READ_WRITE)
+  @EqualsAndHashCode.Exclude
+  private Map<String, String> labels;
 
   private static final String ALERT_COUNT_JOIN =
       "left join "
@@ -322,17 +317,15 @@ public class AlertConfiguration extends Model {
     if (filter.getTarget() != null) {
       AlertConfigurationTarget filterTarget = filter.getTarget();
       Junction<AlertConfiguration> orExpr = expression.or();
-      if (CollectionUtils.isNotEmpty(filterTarget.getUuids())) {
-        // All target always match particular UUID target
+      // All targets only when all is true
+      if (filterTarget.isAll()) {
         orExpr.like("target", "%\"all\":true%");
+      } else {
+        orExpr.not().like("target", "%\"all\":true%");
+      }
+      if (CollectionUtils.isNotEmpty(filterTarget.getUuids())) {
         for (UUID target : filterTarget.getUuids()) {
           orExpr.like("target", "%\"uuids\":%\"" + target + "\"%");
-        }
-      } else {
-        if (filterTarget.isAll()) {
-          orExpr.like("target", "%\"all\":true%");
-        } else {
-          orExpr.not().like("target", "%\"all\":true%");
         }
       }
       expression.endOr();
@@ -378,7 +371,6 @@ public class AlertConfiguration extends Model {
     return uuid == null;
   }
 
-  @Transient
   @JsonIgnore
   public Set<UUID> getMaintenanceWindowUuidsSet() {
     if (maintenanceWindowUuids == null) {
@@ -407,18 +399,26 @@ public class AlertConfiguration extends Model {
     return this;
   }
 
-  @Transient
   @JsonIgnore
   @EqualsAndHashCode.Include
   /*
-    This is required, because Ebean creates ModifyAwareMap instead of regular HashMap while
-    reads object from DB. And equals with regular HashMap in just created config fails.
-  */
+   * This is required, because Ebean creates ModifyAwareMap instead of regular
+   * HashMap while
+   * reads object from DB. And equals with regular HashMap in just created config
+   * fails.
+   */
   public Map<Severity, AlertConfigurationThreshold> thresholdsHashMap() {
     if (thresholds == null) {
       return null;
     }
     return new HashMap<>(thresholds);
+  }
+
+  public Map<String, String> labelsHashMap() {
+    if (labels == null) {
+      return null;
+    }
+    return new HashMap<>(labels);
   }
 
   public boolean configEquals(AlertConfiguration other) {

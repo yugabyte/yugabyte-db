@@ -93,7 +93,7 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
             maintenanceService);
 
     customer = ModelFactory.testCustomer();
-    universe = ModelFactory.createUniverse(customer.getCustomerId());
+    universe = ModelFactory.createUniverse(customer.getId());
 
     configuration = ModelFactory.createAlertConfiguration(customer, universe);
     definition = ModelFactory.createAlertDefinition(customer, universe, configuration);

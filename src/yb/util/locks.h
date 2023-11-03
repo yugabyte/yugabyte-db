@@ -34,7 +34,7 @@
 #include <algorithm>
 #include <mutex>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/dynamic_annotations.h"
@@ -146,34 +146,34 @@ class CAPABILITY("mutex") rw_spinlock  {
   rw_semaphore sem_;
 };
 
-// A reader-writer lock implementation which is biased for use cases where
+// A reader-writer mutex implementation which is biased for use cases where
 // the write lock is taken infrequently, but the read lock is used often.
 //
 // Internally, this creates N underlying mutexes, one per CPU. When a thread
-// wants to lock in read (shared) mode, it locks only its own CPU's mutex. When it
-// wants to lock in write (exclusive) mode, it locks all CPU's mutexes.
+// wants to lock in read (shared) mode, it locks only its own CPU's mutex for read. When it
+// wants to lock in write (exclusive) mode, it locks all CPU's mutexes execlusively.
 //
 // This means that in the read-mostly case, different readers will not cause any
 // cacheline contention.
 //
 // Usage:
-//   percpu_rwlock mylock;
+//   PerCpuRwMutex mylock;
 //
 //   // Lock shared:
 //   {
-//     SharedLock<rw_spinlock> lock(mylock.get_lock());
+//     PerCpuRwSharedLock lock(mylock);
 //     ...
 //   }
 //
 //   // Lock exclusive:
 //
 //   {
-//     boost::lock_guard<percpu_rwlock> lock(mylock);
+//     boost::lock_guard<PerCpuRwMutex> lock(mylock);
 //     ...
 //   }
-class percpu_rwlock {
+class CAPABILITY("mutex") PerCpuRwMutex {
  public:
-  percpu_rwlock() {
+  PerCpuRwMutex() {
     errno = 0;
     n_cpus_ = base::MaxCPUIndex() + 1;
     CHECK_EQ(errno, 0) << ErrnoToString(errno);
@@ -181,25 +181,11 @@ class percpu_rwlock {
     locks_ = new padded_lock[n_cpus_];
   }
 
-  ~percpu_rwlock() {
+  ~PerCpuRwMutex() {
     delete [] locks_;
   }
 
-  rw_spinlock &get_lock() {
-#if defined(__APPLE__)
-    // OSX doesn't have a way to get the CPU, so we'll pick a random one.
-    int cpu = reinterpret_cast<uintptr_t>(this) % n_cpus_;
-#else
-    int cpu = sched_getcpu();
-    if (cpu < 0) {
-      LOG(FATAL) << ErrnoToString(errno);
-    }
-    CHECK_LT(cpu, n_cpus_);
-#endif  // defined(__APPLE__)
-    return locks_[cpu].lock;
-  }
-
-  bool try_lock() {
+  bool try_lock() TRY_ACQUIRE(true) {
     for (int i = 0; i < n_cpus_; i++) {
       if (!locks_[i].lock.try_lock()) {
         while (i--) {
@@ -220,13 +206,13 @@ class percpu_rwlock {
     return false;
   }
 
-  void lock() {
+  void lock() ACQUIRE() {
     for (int i = 0; i < n_cpus_; i++) {
       locks_[i].lock.lock();
     }
   }
 
-  void unlock() {
+  void unlock() RELEASE() {
     for (int i = 0; i < n_cpus_; i++) {
       locks_[i].lock.unlock();
     }
@@ -241,6 +227,22 @@ class percpu_rwlock {
   size_t memory_footprint_including_this() const;
 
  private:
+  friend class PerCpuRwSharedLock;
+
+  rw_spinlock &get_lock() {
+#if defined(__APPLE__)
+    // OSX doesn't have a way to get the CPU, so we'll pick a random one.
+    int cpu = reinterpret_cast<uintptr_t>(this) % n_cpus_;
+#else
+    int cpu = sched_getcpu();
+    if (cpu < 0) {
+      LOG(FATAL) << ErrnoToString(errno);
+    }
+    CHECK_LT(cpu, n_cpus_);
+#endif  // defined(__APPLE__)
+    return locks_[cpu].lock;
+  }
+
   struct padded_lock {
     rw_spinlock lock;
     static constexpr size_t kPaddingSize = CACHELINE_SIZE - (sizeof(rw_spinlock) % CACHELINE_SIZE);
@@ -251,11 +253,28 @@ class percpu_rwlock {
   padded_lock *locks_;
 };
 
+// A scoped lock for PerCpuRwMutex. Works by choosing the current CPU and locking the lock for that
+// CPU. The lock is released when the guard goes out of scope.
+class SCOPED_CAPABILITY PerCpuRwSharedLock {
+ public:
+  explicit PerCpuRwSharedLock(PerCpuRwMutex& per_cpu_rwlock)  // NOLINT
+      ACQUIRE_SHARED(per_cpu_rwlock) {
+    current_cpu_lock_ = &per_cpu_rwlock.get_lock();
+    current_cpu_lock_->lock();
+  }
+
+  ~PerCpuRwSharedLock() RELEASE() {
+    current_cpu_lock_->unlock();
+  }
+ private:
+  rw_spinlock* current_cpu_lock_;
+};
+
 template <class Container>
 auto ToVector(const Container& container, std::mutex* mutex) {
   std::vector<typename Container::value_type> result;
   {
-    std::lock_guard<std::mutex> lock(*mutex);
+    std::lock_guard lock(*mutex);
     result.reserve(container.size());
     result.assign(container.begin(), container.end());
   }

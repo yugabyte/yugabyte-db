@@ -19,6 +19,7 @@ import static org.mockito.Mockito.when;
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Backup;
@@ -26,6 +27,7 @@ import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
@@ -37,7 +39,7 @@ import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
@@ -50,6 +52,7 @@ public class CreateBackupTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
   private CustomerConfig storageConfig;
+  private Users defaultUser;
   private static final UUID TABLE_1_UUID = UUID.randomUUID();
   private static final UUID TABLE_2_UUID = UUID.randomUUID();
   private static final UUID TABLE_3_UUID = UUID.randomUUID();
@@ -64,6 +67,7 @@ public class CreateBackupTest extends CommissionerBaseTest {
 
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
+    defaultUser = ModelFactory.testUser(defaultCustomer);
     storageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "bar");
     List<TableInfo> tableInfoList = new ArrayList<>();
     List<TableInfo> tableInfoList1 = new ArrayList<>();
@@ -149,9 +153,11 @@ public class CreateBackupTest extends CommissionerBaseTest {
   private TaskInfo submitTask(ITaskParams backupTableParams) {
     try {
       UUID taskUUID = commissioner.submit(TaskType.CreateBackup, backupTableParams);
+      // Set http context
+      TestUtils.setFakeHttpContext(defaultUser);
       CustomerTask.create(
           defaultCustomer,
-          defaultUniverse.universeUUID,
+          defaultUniverse.getUniverseUUID(),
           taskUUID,
           CustomerTask.TargetType.Universe,
           CustomerTask.TaskType.Backup,
@@ -165,23 +171,23 @@ public class CreateBackupTest extends CommissionerBaseTest {
 
   private TaskInfo submitTask(String keyspace, List<UUID> tableUUIDs, TableType backupType) {
     BackupRequestParams backupTableParams = new BackupRequestParams();
-    backupTableParams.universeUUID = defaultUniverse.universeUUID;
-    backupTableParams.customerUUID = defaultCustomer.uuid;
+    backupTableParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    backupTableParams.customerUUID = defaultCustomer.getUuid();
     BackupRequestParams.KeyspaceTable keyspaceTable = new BackupRequestParams.KeyspaceTable();
     keyspaceTable.keyspace = keyspace;
     keyspaceTable.tableUUIDList = tableUUIDs;
     backupTableParams.keyspaceTableList = Collections.singletonList(keyspaceTable);
     backupTableParams.backupType = backupType;
-    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    backupTableParams.storageConfigUUID = storageConfig.getConfigUUID();
     return submitTask(backupTableParams);
   }
 
   private TaskInfo submitTask(TableType backupType) {
     BackupRequestParams backupTableParams = new BackupRequestParams();
-    backupTableParams.universeUUID = defaultUniverse.universeUUID;
-    backupTableParams.customerUUID = defaultCustomer.uuid;
+    backupTableParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    backupTableParams.customerUUID = defaultCustomer.getUuid();
     backupTableParams.backupType = backupType;
-    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    backupTableParams.storageConfigUUID = storageConfig.getConfigUUID();
     return submitTask(backupTableParams);
   }
 
@@ -213,8 +219,8 @@ public class CreateBackupTest extends CommissionerBaseTest {
     shellResponse.code = 0;
     when(mockTableManagerYb.createBackup(any())).thenReturn(shellResponse);
     BackupRequestParams backupTableParams = new BackupRequestParams();
-    backupTableParams.universeUUID = defaultUniverse.universeUUID;
-    backupTableParams.customerUUID = defaultCustomer.uuid;
+    backupTableParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    backupTableParams.customerUUID = defaultCustomer.getUuid();
     BackupRequestParams.KeyspaceTable keyspaceTable1 = new BackupRequestParams.KeyspaceTable();
     BackupRequestParams.KeyspaceTable keyspaceTable2 = new BackupRequestParams.KeyspaceTable();
     keyspaceTable1.keyspace = "$$$Default2";
@@ -224,7 +230,7 @@ public class CreateBackupTest extends CommissionerBaseTest {
     keyspaceTables.add(keyspaceTable2);
     backupTableParams.keyspaceTableList = keyspaceTables;
     backupTableParams.backupType = TableType.PGSQL_TABLE_TYPE;
-    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    backupTableParams.storageConfigUUID = storageConfig.getConfigUUID();
     // Entire universe backup, only YCQL tables
     TaskInfo taskInfo = submitTask(backupTableParams);
     verify(mockTableManagerYb, times(2)).createBackup(any());
@@ -256,7 +262,7 @@ public class CreateBackupTest extends CommissionerBaseTest {
     TaskInfo taskInfo =
         submitTask("InvalidKeySpace", new ArrayList<>(), TableType.PGSQL_TABLE_TYPE);
     assertEquals(Failure, taskInfo.getTaskState());
-    String errMsg = taskInfo.getTaskDetails().get("errorString").asText();
+    String errMsg = taskInfo.getDetails().get("errorString").asText();
     assertThat(errMsg, containsString("Invalid Keyspaces or no tables to backup"));
     verify(mockTableManagerYb, times(0)).createBackup(any());
   }
@@ -319,6 +325,6 @@ public class CreateBackupTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(TableType.YQL_TABLE_TYPE);
     List<Backup> backupList = Backup.fetchAllBackupsByTaskUUID(taskInfo.getTaskUUID());
     assertNotEquals(0, backupList.size());
-    backupList.forEach((backup -> assertEquals(BackupState.Stopped, backup.state)));
+    backupList.forEach((backup -> assertEquals(BackupState.Stopped, backup.getState())));
   }
 }

@@ -40,16 +40,22 @@ consensus::LWHistoryCutoffPB* RequestTraits<consensus::LWHistoryCutoffPB>::Mutab
 }
 
 Status HistoryCutoffOperation::Apply(int64_t leader_term) {
-  HybridTime history_cutoff(request()->history_cutoff());
+  auto primary_cutoff = request()->has_primary_cutoff_ht() ?
+      HybridTime(request()->primary_cutoff_ht()) : HybridTime();
+  auto cotables_cutoff = request()->has_cotables_cutoff_ht() ?
+      HybridTime(request()->cotables_cutoff_ht()) : HybridTime();
+  docdb::HistoryCutoff history_cutoff(
+      { cotables_cutoff, primary_cutoff });
 
   VLOG_WITH_PREFIX(2) << "History cutoff replicated " << op_id() << ": " << history_cutoff;
 
-  history_cutoff = tablet()->RetentionPolicy()->UpdateCommittedHistoryCutoff(history_cutoff);
-  auto regular_db = tablet()->doc_db().regular;
+  auto tablet = VERIFY_RESULT(tablet_safe());
+  history_cutoff = tablet->RetentionPolicy()->UpdateCommittedHistoryCutoff(history_cutoff);
+  auto regular_db = tablet->regular_db();
   if (regular_db) {
     rocksdb::WriteBatch batch;
     docdb::ConsensusFrontiers frontiers;
-    frontiers.Largest().set_history_cutoff(history_cutoff);
+    frontiers.Largest().set_history_cutoff_information(history_cutoff);
     batch.SetFrontiers(&frontiers);
     rocksdb::WriteOptions options;
     RETURN_NOT_OK(regular_db->Write(options, &batch));
@@ -57,7 +63,7 @@ Status HistoryCutoffOperation::Apply(int64_t leader_term) {
   return Status::OK();
 }
 
-Status HistoryCutoffOperation::Prepare() {
+Status HistoryCutoffOperation::Prepare(IsLeaderSide is_leader_side) {
   VLOG_WITH_PREFIX(2) << "Prepare";
   return Status::OK();
 }

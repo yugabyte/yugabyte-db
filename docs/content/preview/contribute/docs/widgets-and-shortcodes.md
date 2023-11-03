@@ -14,6 +14,27 @@ type: docs
 
 There are a number of display widgets and shortcodes available. All the shortcodes mentioned on this page are defined in [/docs/layouts/shortcodes](https://github.com/yugabyte/yugabyte-db/tree/master/docs/layouts/shortcodes/).
 
+## Heading (Skipping ToC)
+
+To remove unnecessary headings from ToC.
+
+```md
+# For Heading 2
+{{</* header Level="2" */>}}Consistency{{</* /header */>}}
+
+# For Heading 3
+{{</* header Level="3" */>}}Consistency{{</* /header */>}}
+
+# For Heading 4
+{{</* header Level="4" */>}}Consistency{{</* /header */>}}
+
+# For Heading 5
+{{</* header Level="5" */>}}Consistency{{</* /header */>}}
+
+# For Heading 6
+{{</* header Level="6" */>}}Consistency{{</* /header */>}}
+```
+
 ## Admonition boxes
 
 Use the note, tip, and warning shortcodes to create admonition boxes.
@@ -58,6 +79,53 @@ This is a warning with a [link](https://www.yugabyte.com).
 {{</* /warning */>}}
 ```
 
+## Tables
+
+Markdown supports [tables](https://www.markdownguide.org/extended-syntax/#tables). By design, Markdown table rows are on a single line, and adding bullets and multi-line code blocks in table cells has to be done using HTML on a single line. To make creating custom tables simpler, use the _table_ shortcode. For example:
+
+```md
+{{</*table*/>}}
+| col-1 | col-2 |
+| ----- | ----- |
+<!-- row with bullets and code block -->
+|
+- 1
+- 2
+- 3 |
+```output
+ k | v
+---+---
+ 1 | 2
+(1 row)
+```|
+<!-- row with tip block -->
+| {{</*warning title="Beware" */>}} start and end rows with the pipe symbol {{</*/warning*/>}} |
+{{</*tip title="Awesome tip" */>}} Use 3 ticks for code blocks with pipe symbols {{</*/tip*/>}} |
+{{</*/table*/>}}
+```
+
+The above markdown should render a table as follows:
+
+{{<table>}}
+| col-1 | col-2 |
+| ----- | ----- |
+<!-- row with bullets and code block -->
+|
+- 1
+- 2
+- 3 |
+```output
+ k | v
+---+---
+ 1 | 2
+(1 row)
+```|
+<!-- row with tip block -->
+| {{< warning title="Beware" >}} start and end rows with the pipe symbol {{</warning>}} |
+{{< tip title="Awesome tip" >}} Use 3 ticks for code blocks with pipe symbols {{</tip>}} |
+{{</table>}}
+
+
 ## Inline section switcher
 
 An inline section switcher lets you switch between content sections **without a separate URL**. If you want to link to sub-sections inside a switcher, use tabs. This widget looks as follows:
@@ -92,7 +160,7 @@ The corresponding code for this widget is as follows. Note that the actual conte
   <li >
     <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab"
        role="tab" aria-controls="kubernetes" aria-selected="false">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
@@ -116,7 +184,7 @@ The corresponding code for this widget is as follows. Note that the actual conte
 
 ## Include content from other files
 
-The [includeCode](#includecode) and [includeFile](#includefile) shortcodes insert the contents of a file as plain text, while [includeMarkdown](#includemarkdown) inserts the contents of a file _and renders it as markdown_.
+The [includeCode](#includecode) shortcode inserts the contents of a file as plain text, while `readfile` and [includeMarkdown](#includemarkdown) insert the contents of a file _and renders it as markdown_.
 
 ### includeCode
 
@@ -156,7 +224,7 @@ This shortcode strips trailing whitespace from the input file.
 For more information on highlight options, see the Hugo docs on [highlighting in code fences](https://gohugo.io/content-management/syntax-highlighting/#highlighting-in-code-fences) and [supported syntax highlighting languages](https://gohugo.io/content-management/syntax-highlighting/#list-of-chroma-highlighting-languages).
 {{< /tip >}}
 
-### includeFile
+<!--### includeFile
 
 The `includeFile` shortcode infers the code language from the filename extension (or `output` if there's no extension) and creates its own code block.
 
@@ -194,11 +262,46 @@ CAREFUL! `hl_lines` takes a different form here than when you're specifying it o
 
 For more information on highlight options: <https://gohugo.io/content-management/syntax-highlighting/#highlight-shortcode>
 
-{{< /warning >}}
+{{< /warning >}}-->
 
 ### includeMarkdown
 
 Inserts the contents of a markdown file, rendered as part of the calling page. We use this primarily for [syntax diagrams](../syntax-diagrams/).
+
+## Landing Page sections
+
+### Learn through section
+
+This widget looks as follows:
+
+![Learn through section](/images/contribute/learn-through-section.png)
+
+The corresponding code for this widget is as follows.
+
+```go
+{{</* sections/text-with-right-image
+  title="Learn through examples"
+  description="Microservices need a cloud native relational database that is resilient, scalable, and geo-distributed. YugabyteDB powers your modern applications"
+  buttonText="Get started"
+  buttonUrl="/preview/quick-start-yugabytedb-managed/"
+  imageAlt="Yugabyte cloud"
+  imageUrl="/images/homepage/learn-through-examples.svg"
+*/>}}
+```
+
+To change image background to transparent, add `imageTransparent=true` in the code as shown below
+
+```go
+{{</* sections/text-with-right-image
+  title="Learn through examples"
+  description="Microservices need a cloud native relational database that is resilient, scalable, and geo-distributed. YugabyteDB powers your modern applications"
+  buttonText="Get started"
+  buttonUrl="/preview/quick-start-yugabytedb-managed/"
+  imageAlt="Yugabyte cloud"
+  imageTransparent=true
+  imageUrl="/images/homepage/learn-through-examples.svg"
+*/>}}
+```
 
 ## Other shortcodes
 

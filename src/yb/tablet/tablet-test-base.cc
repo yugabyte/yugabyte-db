@@ -13,6 +13,8 @@
 
 #include "yb/tablet/tablet-test-base.h"
 
+#include "yb/dockv/reader_projection.h"
+
 using std::string;
 using std::vector;
 
@@ -20,10 +22,9 @@ namespace yb {
 namespace tablet {
 
 Schema StringKeyTestSetup::CreateSchema() {
-  return Schema({ ColumnSchema("key", STRING, false, true),
-                  ColumnSchema("key_idx", INT32),
-                  ColumnSchema("val", INT32) },
-                1);
+  return Schema({ ColumnSchema("key", DataType::STRING, ColumnKind::HASH),
+                  ColumnSchema("key_idx", DataType::INT32),
+                  ColumnSchema("val", DataType::INT32) });
 }
 
 void StringKeyTestSetup::BuildRowKey(QLWriteRequestPB *req, int64_t key_idx) {
@@ -59,11 +60,10 @@ uint32_t StringKeyTestSetup::GetMaxRows() {
 }
 
 Schema CompositeKeyTestSetup::CreateSchema() {
-  return Schema({ ColumnSchema("key1", STRING, false, true),
-                  ColumnSchema("key2", INT32, false, true),
-                  ColumnSchema("key_idx", INT32),
-                  ColumnSchema("val", INT32) },
-                2);
+  return Schema({ ColumnSchema("key1", DataType::STRING, ColumnKind::HASH),
+                  ColumnSchema("key2", DataType::INT32, ColumnKind::HASH),
+                  ColumnSchema("key_idx", DataType::INT32),
+                  ColumnSchema("val", DataType::INT32) });
 }
 
 void CompositeKeyTestSetup::FormatKey(char *buf, size_t buf_size, int64_t key_idx) {
@@ -144,7 +144,8 @@ Status TabletTestPreBase::DeleteTestRow(LocalTabletWriter* writer, int32_t key_i
 }
 
 void TabletTestPreBase::VerifyTestRows(int32_t first_row, int32_t expected_count) {
-  auto iter = tablet()->NewRowIterator(client_schema_);
+  dockv::ReaderProjection projection(schema_);
+  auto iter = tablet()->NewRowIterator(projection);
   ASSERT_OK(iter);
 
   if (expected_count > INT_MAX) {
@@ -158,11 +159,9 @@ void TabletTestPreBase::VerifyTestRows(int32_t first_row, int32_t expected_count
   std::vector<bool> seen_rows;
   seen_rows.resize(expected_count);
 
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   QLValue value;
-  while (ASSERT_RESULT((**iter).HasNext())) {
-    ASSERT_OK_FAST((**iter).NextRow(&row));
-
+  while (ASSERT_RESULT((**iter).FetchNext(&row))) {
     if (VLOG_IS_ON(2)) {
       VLOG(2) << "Fetched row: " << row.ToString();
     }
@@ -188,9 +187,9 @@ void TabletTestPreBase::VerifyTestRows(int32_t first_row, int32_t expected_count
 
 Status TabletTestPreBase::IterateToStringList(vector<string> *out) {
   // TODO(dtxn) pass correct transaction ID if needed
-  auto iter = this->tablet()->NewRowIterator(this->client_schema_);
-  RETURN_NOT_OK(iter);
-  return yb::tablet::IterateToStringList(iter->get(), out);
+  dockv::ReaderProjection projection(schema_);
+  auto iter = VERIFY_RESULT(tablet()->NewRowIterator(projection));
+  return tablet::IterateToStringList(iter.get(), schema_, out);
 }
 
 uint32_t TabletTestPreBase::ClampRowCount(uint32_t proposal) const {

@@ -29,7 +29,7 @@ namespace rocksdb {
 void FlushScheduler::ScheduleFlush(ColumnFamilyData* cfd) {
 #ifndef NDEBUG
   {
-    std::lock_guard<std::mutex> lock(checking_mutex_);
+    std::lock_guard lock(checking_mutex_);
     assert(checking_set_.count(cfd) == 0);
     checking_set_.insert(cfd);
   }

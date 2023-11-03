@@ -70,8 +70,8 @@ string FormatBytesAsStr(const char* data,
   return result;
 }
 
-string FormatBytesAsStr(const string& s, QuotesType quotes_type, size_t max_length) {
-  return FormatBytesAsStr(s.c_str(), s.size(), quotes_type, max_length);
+string FormatBytesAsStr(const std::string_view& s, QuotesType quotes_type, size_t max_length) {
+  return FormatBytesAsStr(s.data(), s.size(), quotes_type, max_length);
 }
 
 string FormatSliceAsStr(const Slice& s, QuotesType quotes_type, size_t max_length) {

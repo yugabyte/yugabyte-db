@@ -19,8 +19,8 @@
 //
 
 #include "yb/rocksdb/db/db_test_util.h"
-#include "yb/rocksdb/util/sync_point.h"
 
+#include "yb/util/sync_point.h"
 
 namespace rocksdb {
 
@@ -68,7 +68,7 @@ class TestPropertiesCollectorFactory : public TablePropertiesCollectorFactory {
 class TestCompactionListener : public EventListener {
  public:
   void OnCompactionCompleted(DB *db, const CompactionJobInfo& ci) override {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     compacted_dbs_.push_back(db);
     ASSERT_GT(ci.input_files.size(), 0U);
     ASSERT_GT(ci.output_files.size(), 0U);
@@ -373,7 +373,7 @@ TEST_F(EventListenerTest, DisableBGCompaction) {
 class TestCompactionReasonListener : public EventListener {
  public:
   void OnCompactionCompleted(DB* db, const CompactionJobInfo& ci) override {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     compaction_reasons_.push_back(ci.compaction_reason);
   }
 

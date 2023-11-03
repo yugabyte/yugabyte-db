@@ -16,6 +16,24 @@
   when: util_exists.rc == 0
 
 - block:
+    - name: Check if python exists
+      raw: "which python 2> /dev/null"
+      register: python
+      ignore_errors: true
+
+    - name: Check if python3 exists
+      raw: "which python3 2> /dev/null"
+      register: python3
+      ignore_errors: true
+
+    - name: Symlink python3 to python
+      file:
+        src: "{{ python3.stdout | trim }}"
+        path: "{{ bin_path }}/python"
+        state: link
+        force: yes
+      when: python.stdout == "" and python3.stdout != ""
+
     - set_fact:
         gsutil_package_path: "/usr/local/{{ gsutil_package_name }}"
 

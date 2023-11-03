@@ -79,21 +79,21 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
     : catalog_(DCHECK_NOTNULL(catalog)),
       leader_shared_lock_(catalog->leader_lock_, std::try_to_lock),
       start_(std::chrono::steady_clock::now()),
-      leader_ready_term_(-1),
       file_name_(file_name),
       line_number_(line_number),
       function_name_(function_name) {
   bool catalog_loaded;
   {
     // Check if the catalog manager is running.
-    std::lock_guard<simple_spinlock> l(catalog_->state_lock_);
+    std::lock_guard l(catalog_->state_lock_);
     if (PREDICT_FALSE(catalog_->state_ != CatalogManager::kRunning)) {
       catalog_status_ = STATUS_SUBSTITUTE(ServiceUnavailable,
           "Catalog manager is not initialized. State: $0", catalog_->state_);
       return;
     }
-    leader_ready_term_ = catalog_->leader_ready_term_;
+    epoch_.leader_term = catalog_->leader_ready_term_;
     catalog_loaded = catalog_->is_catalog_loaded_;
+    epoch_.pitr_count = catalog_->sys_catalog_->pitr_count();
   }
 
   string uuid = catalog_->master_->fs_manager()->uuid();
@@ -106,8 +106,11 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
   }
 
   // Check if the catalog manager is the leader.
-  Consensus* consensus = catalog_->sys_catalog_->tablet_peer()->consensus();
-  ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
+  ConsensusStatePB cstate;
+  auto consensus_result = catalog_->sys_catalog_->tablet_peer()->GetConsensus();
+  if (consensus_result) {
+    cstate = consensus_result.get()->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
+  }
   if (PREDICT_FALSE(!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid)) {
     leader_status_ = STATUS_FORMAT(IllegalState,
                                    "Not the leader. Local UUID: $0, Consensus state: $1",
@@ -115,12 +118,12 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
     return;
   }
   // TODO: deduplicate the leadership check above and below (one is committed, one is active).
-  const Status s = consensus->CheckIsActiveLeaderAndHasLease();
+  const Status s = consensus_result.get()->CheckIsActiveLeaderAndHasLease();
   if (!s.ok()) {
     leader_status_ = s;
     return;
   }
-  if (PREDICT_FALSE(leader_ready_term_ != cstate.current_term())) {
+  if (PREDICT_FALSE(epoch_.leader_term != cstate.current_term())) {
     // Normally we use LeaderNotReadyToServe to indicate that the leader has not replicated its
     // NO_OP entry or the previous leader's lease has not expired yet, and the handling logic is to
     // to retry on the same server.
@@ -128,7 +131,7 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
         LeaderNotReadyToServe,
         "Leader not yet ready to serve requests: "
         "leader_ready_term_ = $0; cstate.current_term = $1",
-        leader_ready_term_, cstate.current_term());
+        epoch_.leader_term, cstate.current_term());
     return;
   }
   if (PREDICT_FALSE(!leader_shared_lock_.owns_lock())) {
@@ -136,22 +139,13 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
         ServiceUnavailable,
         "Couldn't get leader_lock_ in shared mode. Leader still loading catalog tables."
         "leader_ready_term_ = $0; cstate.current_term = $1",
-        leader_ready_term_, cstate.current_term());
+        epoch_.leader_term, cstate.current_term());
     return;
   }
   if (!catalog_loaded) {
     leader_status_ = STATUS_SUBSTITUTE(ServiceUnavailable, "Catalog manager is not loaded");
     return;
   }
-}
-
-ScopedLeaderSharedLock::ScopedLeaderSharedLock(
-    enterprise::CatalogManager* catalog,
-    const char* file_name,
-    int line_number,
-    const char* function_name)
-    : ScopedLeaderSharedLock(
-          static_cast<CatalogManager*>(catalog), file_name, line_number, function_name) {
 }
 
 ScopedLeaderSharedLock::~ScopedLeaderSharedLock() {
@@ -181,7 +175,7 @@ void ScopedLeaderSharedLock::Unlock() {
   }
 }
 
-int64_t ScopedLeaderSharedLock::GetLeaderReadyTerm() const { return leader_ready_term_; }
+int64_t ScopedLeaderSharedLock::GetLeaderReadyTerm() const { return epoch_.leader_term; }
 
 }  // namespace master
 }  // namespace yb

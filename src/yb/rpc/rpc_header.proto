@@ -71,6 +71,8 @@ message RequestHeader {
   // transit time between the client and server, if you wait exactly this amount of
   // time and then respond, you are likely to cause a timeout on the client.
   optional uint32 timeout_millis = 3;
+
+  repeated fixed32 sidecar_offsets = 4 [packed = true];
 }
 
 message ResponseHeader {
