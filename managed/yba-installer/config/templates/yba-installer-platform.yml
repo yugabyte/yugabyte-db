@@ -184,7 +184,7 @@ services:
         -Dconfig.file={{ .ConfFileLocation }} \
         -Dhttp.port=disabled \
         -Dhttps.port={{ yamlPath "platform.port" }}{{- if eq (yamlPath "platform.proxy.enable") "true"}} \
-        -Dhttp.nonProxyHost={{ yamlPath "platform.proxy.java_non_proxy" }} \
+        -Dhttp.nonProxyHosts={{ yamlPath "platform.proxy.java_non_proxy" }} \
         -Dhttp.proxyHost={{ yamlPath "platform.proxy.java_http_proxy_host" }} \
         -Dhttp.proxyPort={{ yamlPath "platform.proxy.java_http_proxy_port" }} \
         -Dhttps.proxyHost={{ yamlPath "platform.proxy.java_https_proxy_host" }} \
