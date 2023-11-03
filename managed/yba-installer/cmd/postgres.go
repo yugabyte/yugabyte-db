@@ -410,8 +410,9 @@ func (pg Postgres) copyConfFiles() {
 	// move conf files back to conf location
 	userName := viper.GetString("service_username")
 
-	findArgs := []string{pg.dataDir, "-iname", "*.conf", "-exec", "cp", "{}",
-		pg.ConfFileLocation, ";"}
+	// Add trailing slash to handle dataDir being a symlink
+	findArgs := []string{pg.dataDir + "/", "-iname", "*.conf", "-exec", "cp", "{}",
+		pg.ConfFileLocation, "\\;"}
 	if common.HasSudoAccess() {
 		common.MkdirAllOrFail(pg.ConfFileLocation, 0700)
 		common.Chown(pg.ConfFileLocation, userName, userName, false)
