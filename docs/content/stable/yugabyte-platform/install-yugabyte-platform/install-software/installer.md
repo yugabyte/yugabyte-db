@@ -86,7 +86,7 @@ To install YugabyteDB Anywhere using YBA Installer, do the following:
 
 After the installation succeeds, you can immediately start using YBA.
 
-If the installation fails due to permissions or lack of sudo privileges, you can re-try after running `yba-ctl clean all` to remove all traces of the previous attempt.
+If the installation fails due to permissions or lack of sudo privileges, you can retry after running `yba-ctl clean all` to remove all traces of the previous attempt.
 
 For more detailed installation instructions and information on how to use YBA Installer to manage your installation, refer to the following sections.
 
@@ -352,7 +352,7 @@ YBA Installer also supports a non-sudo installation, where sudo access is not re
 
 To facilitate a non-sudo install, YBA Installer will not create any additional users or set up services in systemd. The install will also be rooted in the home directory by default, instead of /opt, ensuring YBA Installer has write access to the base install directory. Instead of using systemd to manage services, basic cron jobs are used to start the services on bootup with basic management scripts used to restart the services after a crash.
 
-To perform a non-sudo installation, run any of the preceding commands without sudo access. You can't switch between a sudo and non-sudo access installation, and yba-ctl will return an error if sudo is not used when operating in an installation where sud access was used.
+To perform a non-sudo installation, run any of the preceding commands without sudo access. You can't switch between a sudo and non-sudo access installation, and `yba-ctl` will return an error if sudo is not used when operating in an installation where sudo access was used.
 
 ## Configuration options
 
