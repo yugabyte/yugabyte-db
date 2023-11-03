@@ -30,6 +30,7 @@ type PostgresState struct {
 type ReplicatedMigrationState struct {
 	PrometheusFileUser  uint32 `json:"prometheus_file_user"`
 	PrometheusFileGroup uint32 `json:"prometheus_file_group"`
+	StoragePath					string `json:"storage_path"`
 }
 
 func New() *State {
