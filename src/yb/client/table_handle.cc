@@ -405,6 +405,14 @@ void UpdateMapUpsertKeyValue(
   elem->set_string_value(entry_key);
 }
 
+void UpdateMapRemoveKey(QLWriteRequestPB* req, const int32_t column_id, const string& entry_key) {
+  auto column_value = req->add_column_values();
+  column_value->set_column_id(column_id);
+  auto sub_arg = column_value->add_subscript_args();
+  QLValuePB* elem = sub_arg->mutable_value();
+  elem->set_string_value(entry_key);
+}
+
 QLMapValuePB* AddMapColumn(QLWriteRequestPB* req, const int32_t& column_id) {
   auto column_value = req->add_column_values();
   column_value->set_column_id(column_id);

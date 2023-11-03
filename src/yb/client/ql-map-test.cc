@@ -245,5 +245,108 @@ TEST_F(QLMapTest, TwoKeyUpdateWithNewKeyInsert) {
   ASSERT_EQ("73", updated_map_pb.values(3).string_value());
 }
 
+TEST_F(QLMapTest, SingleKeyDelete) {
+  auto session = NewSession();
+  // First insert a row
+  auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+  auto* req = op->mutable_request();
+  AddHash(1, req);
+  QLAddInt32RangeValue(req, 0);
+  auto l1 = table_.PrepareColumn(req, "l1")->mutable_map_value();
+  for (int i = 1; i <= 3; ++i) {
+    l1->add_keys()->set_string_value(std::to_string(i));
+    l1->add_values()->set_string_value(std::to_string(i * 10));
+  }
+  // Map is: 1 => 10, 2 => 20, 3 => 30
+  ASSERT_OK(session->TEST_ApplyAndFlush(op));
+
+  auto rowblock = ReadRows(session.get(), 1);
+  ASSERT_EQ(1, rowblock->row_count());
+  auto& row = rowblock->row(0);
+  ASSERT_EQ(0, row.column(3).int32_value());
+  auto& map_pb = row.column(4).map_value();
+  LOG(INFO) << "Inserted Map: " << map_pb.DebugString();
+  ASSERT_EQ(3, map_pb.keys_size());
+  ASSERT_EQ(3, map_pb.values_size());
+  for (int i = 0; i < map_pb.keys_size(); ++i) {
+    ASSERT_EQ(map_pb.keys(i).int32_value() * 10, map_pb.values(i).int32_value());
+  }
+
+  // Now perform a delete
+  op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+  req = op->mutable_request();
+  AddHash(1, req);
+  QLAddInt32RangeValue(req, 0);
+  int column_id = table_.ColumnId("l1");
+  client::UpdateMapRemoveKey(req, column_id, "1");
+  ASSERT_OK(session->TEST_ApplyAndFlush(op));
+  // Map should be: 2 => 20, 3 => 30
+
+  // Check if key value has been deleted
+  auto new_rowblock = ReadRows(session.get(), 1);
+  ASSERT_EQ(1, new_rowblock->row_count());
+  auto& new_row = new_rowblock->row(0);
+  ASSERT_EQ(0, new_row.column(3).int32_value());
+  auto& updated_map_pb = new_row.column(4).map_value();
+  LOG(INFO) << "Updated Map: " << updated_map_pb.DebugString();
+  ASSERT_EQ(2, updated_map_pb.keys_size());
+  ASSERT_EQ(2, updated_map_pb.values_size());
+  // Ensure old values are intact
+  for (int i = 0; i < updated_map_pb.keys_size(); ++i) {
+    ASSERT_EQ(updated_map_pb.keys(i).int32_value() * 10, updated_map_pb.values(i).int32_value());
+  }
+}
+
+TEST_F(QLMapTest, TwoKeyDelete) {
+  auto session = NewSession();
+  // First insert a row
+  auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+  auto* req = op->mutable_request();
+  AddHash(1, req);
+  QLAddInt32RangeValue(req, 0);
+  auto l1 = table_.PrepareColumn(req, "l1")->mutable_map_value();
+  for (int i = 1; i <= 3; ++i) {
+    l1->add_keys()->set_string_value(std::to_string(i));
+    l1->add_values()->set_string_value(std::to_string(i * 15));
+  }
+  // Map is: 1 => 15, 2 => 30, 3 => 45
+  ASSERT_OK(session->TEST_ApplyAndFlush(op));
+
+  auto rowblock = ReadRows(session.get(), 1);
+  ASSERT_EQ(1, rowblock->row_count());
+  auto& row = rowblock->row(0);
+  ASSERT_EQ(0, row.column(3).int32_value());
+  auto& map_pb = row.column(4).map_value();
+  LOG(INFO) << "Inserted Map: " << map_pb.DebugString();
+  ASSERT_EQ(3, map_pb.keys_size());
+  ASSERT_EQ(3, map_pb.values_size());
+  for (int i = 0; i < map_pb.keys_size(); ++i) {
+    ASSERT_EQ(map_pb.keys(i).int32_value() * 15, map_pb.values(i).int32_value());
+  }
+
+  // Now perform two deletes
+  op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+  req = op->mutable_request();
+  AddHash(1, req);
+  QLAddInt32RangeValue(req, 0);
+  int column_id = table_.ColumnId("l1");
+  client::UpdateMapRemoveKey(req, column_id, "1");
+  client::UpdateMapRemoveKey(req, column_id, "3");
+  ASSERT_OK(session->TEST_ApplyAndFlush(op));
+  // Map should be: 2 => 30
+
+  // Check if values have been deleted
+  auto new_rowblock = ReadRows(session.get(), 1);
+  ASSERT_EQ(1, new_rowblock->row_count());
+  auto& new_row = new_rowblock->row(0);
+  ASSERT_EQ(0, new_row.column(3).int32_value());
+  auto& updated_map_pb = new_row.column(4).map_value();
+  LOG(INFO) << "Updated Map: " << updated_map_pb.DebugString();
+  ASSERT_EQ(1, updated_map_pb.keys_size());
+  ASSERT_EQ(1, updated_map_pb.values_size());
+  ASSERT_EQ("2", updated_map_pb.keys(0).string_value());
+  ASSERT_EQ("30", updated_map_pb.values(0).string_value());
+}
+
 }  // namespace client
 }  // namespace yb
