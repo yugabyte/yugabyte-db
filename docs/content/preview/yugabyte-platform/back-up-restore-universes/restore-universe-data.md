@@ -47,6 +47,8 @@ The restore begins immediately. When finished, a completed **Restore Backup** ta
 
 To confirm that the restore succeeded, select the **Tables** tab to compare the original table with the table to which you restored.
 
+To view the details of a restored database, navigate to **Universes > Restore History**, or **Backups > Restore History**.
+
 ## Restore selected databases or keyspaces and tables
 
 You can restore only a specific database (YSQL) or keyspace (YCQL).
@@ -83,6 +85,8 @@ To restore, do the following:
 The restore begins immediately. When finished, a completed **Restore Backup** task appears under **Tasks > Task History**.
 
 To confirm that the restore succeeded, select the **Tables** tab to compare the original table with the table to which you restored.
+
+To view the details of a restored database, navigate to **Universes > Restore History**, or **Backups > Restore History**.
 
 ## Advanced restore procedure
 
