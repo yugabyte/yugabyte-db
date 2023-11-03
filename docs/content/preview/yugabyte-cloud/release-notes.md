@@ -395,7 +395,7 @@ On this page:
   - allow list changes
 
 - Support for multiple Admin users on your account, and Admin users can now change the role of existing users. You can also invite multiple users at once, and assign them a role (Developer or Admin) when you invite them. You manage users using the **Users** tab on the **Security** page.
-- Additional charts on the **Invoices** on the **Billing** page, which break costs down by cluster and infrastructure (instance costs, storage, and data transfer) so that you can quickly evaluate your costs.
+- Additional charts on the **Invoices** on the **Usage & Billing** page, which break costs down by cluster and infrastructure (instance costs, storage, and data transfer) so that you can quickly evaluate your costs.
 
 **Fixes**
 
