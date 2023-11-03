@@ -65,8 +65,7 @@ public class XClusterTableConfig extends Model {
   private boolean replicationSetupDone;
 
   @ApiModelProperty(
-      value =
-          "YbaApi Internal. Whether this table needs bootstrap process " + "for replication setup")
+      value = "YbaApi Internal. Whether this table needs bootstrap process for replication setup")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.16.0.0")
   private boolean needBootstrap;
 

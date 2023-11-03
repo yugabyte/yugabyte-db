@@ -23,6 +23,8 @@ import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Audit.TargetType;
 import com.yugabyte.yw.models.Customer;
@@ -40,6 +42,9 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +54,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.yb.CommonTypes;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterReplicationOuterClass.GetXClusterSafeTimeResponsePB.NamespaceSafeTimePB;
@@ -65,6 +71,7 @@ import play.mvc.Result;
 public class DrConfigController extends AuthenticatedController {
 
   private final Commissioner commissioner;
+  private final MetricQueryHelper metricQueryHelper;
   private final BackupHelper backupHelper;
   private final CustomerConfigService customerConfigService;
   private final YBClientService ybService;
@@ -74,12 +81,14 @@ public class DrConfigController extends AuthenticatedController {
   @Inject
   public DrConfigController(
       Commissioner commissioner,
+      MetricQueryHelper metricQueryHelper,
       BackupHelper backupHelper,
       CustomerConfigService customerConfigService,
       YBClientService ybService,
       RuntimeConfGetter confGetter,
       XClusterUniverseService xClusterUniverseService) {
     this.commissioner = commissioner;
+    this.metricQueryHelper = metricQueryHelper;
     this.backupHelper = backupHelper;
     this.customerConfigService = customerConfigService;
     this.ybService = ybService;
@@ -566,14 +575,19 @@ public class DrConfigController extends AuthenticatedController {
     log.info("Received getSafetime DrConfig({}) request", drUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drUUID);
-
+    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+    Universe targetUniverse =
+        Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
     List<NamespaceSafeTimePB> namespaceSafeTimeList =
-        xClusterUniverseService.getNamespaceSafeTimeList(drConfig.getActiveXClusterConfig());
+        xClusterUniverseService.getNamespaceSafeTimeList(xClusterConfig);
 
     DrConfigSafetimeResp safetimeResp = new DrConfigSafetimeResp();
     namespaceSafeTimeList.forEach(
-        namespaceSafeTimePB ->
-            safetimeResp.safetimes.add(new NamespaceSafetime(namespaceSafeTimePB)));
+        namespaceSafeTimePB -> {
+          long estimatedDataLossMs = getEstimatedDataLossMs(targetUniverse, namespaceSafeTimePB);
+          safetimeResp.safetimes.add(
+              new NamespaceSafetime(namespaceSafeTimePB, estimatedDataLossMs));
+        });
     return PlatformResults.withData(safetimeResp);
   }
 
@@ -741,5 +755,59 @@ public class DrConfigController extends AuthenticatedController {
                 }
               });
     }
+  }
+
+  private long getEstimatedDataLossMs(
+      Universe targetUniverse, NamespaceSafeTimePB namespaceSafeTimePB) {
+    // -1 means could not find it from Prometheus.
+    long estimatedDataLossMs = -1;
+    try {
+      long safetimeEpochSeconds =
+          Duration.ofNanos(
+                  NamespaceSafetime.computeSafetimeEpochUsFromSafeTimeHt(
+                          namespaceSafeTimePB.getSafeTimeHt())
+                      * 1000)
+              .getSeconds();
+      String promQuery =
+          String.format(
+              "%s{export_type=\"master_export\",universe_uuid=\"%s\","
+                  + "node_address=\"%s\",namespace_id=\"%s\"}@%s",
+              XClusterConfigTaskBase.TXN_XCLUSTER_SAFETIME_LAG_NAME,
+              targetUniverse.getUniverseUUID().toString(),
+              targetUniverse.getMasterLeaderHostText(),
+              namespaceSafeTimePB.getNamespaceId(),
+              safetimeEpochSeconds);
+      ArrayList<MetricQueryResponse.Entry> queryResult =
+          this.metricQueryHelper.queryDirect(promQuery);
+      log.debug("Response to query {} is {}", promQuery, queryResult);
+      if (queryResult.size() != 1) {
+        log.error(
+            "Could not get the estimatedDataLoss: Prometheus did not return only one entry:"
+                + " {}",
+            queryResult);
+        return estimatedDataLossMs;
+      }
+      MetricQueryResponse.Entry metricEntry = queryResult.get(0);
+      if (metricEntry.values.isEmpty()) {
+        log.error(
+            "Could not get the estimatedDataLoss: no value exists for the metric entry: {}",
+            queryResult);
+        return estimatedDataLossMs;
+      }
+      estimatedDataLossMs =
+          metricEntry.values.stream()
+              .min(Comparator.comparing(ImmutablePair::getLeft))
+              .map(valueEntry -> valueEntry.getRight().longValue())
+              .orElse(-1L);
+      if (estimatedDataLossMs == -1) {
+        log.error(
+            "Could not get the estimatedDataLoss: could not identify the value with"
+                + " minimum key: {}",
+            queryResult);
+      }
+    } catch (Exception e) {
+      log.error("Could not get the estimatedDataLoss: {}", e.getMessage());
+    }
+    return estimatedDataLossMs;
   }
 }
