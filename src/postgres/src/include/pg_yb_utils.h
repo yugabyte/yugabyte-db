@@ -269,14 +269,6 @@ extern bool YbNeedAdditionalCatalogTables();
 extern void HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found);
 
 /*
- * Handle a DocDB status while ignoring the 'AlreadyPresent' error case. It is
- * useful in providing specific error messages in the case of 'AlreadyPresent"
- * error.
- */
-extern void HandleYBStatusIgnoreAlreadyPresent(YBCStatus status,
-											   bool *already_present);
-
-/*
  * Same as HandleYBStatus but delete the table description first if the
  * status is not ok.
  */
@@ -799,6 +791,10 @@ void YbUpdateSessionStats(YbInstrumentation *yb_instr);
 
 extern bool check_yb_read_time(char **newval, void **extra, GucSource source);
 extern void assign_yb_read_time(const char *newval, void *extra);
+
+/* GUC assign hook for max_replication_slots */
+extern void yb_assign_max_replication_slots(int newval, void *extra);
+
 /*
  * Refreshes the session stats snapshot with the collected stats. This function
  * is to be invoked before the query has started its execution.

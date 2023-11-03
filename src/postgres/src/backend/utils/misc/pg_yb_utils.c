@@ -750,22 +750,6 @@ HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found)
 	HandleYBStatus(status);
 }
 
-extern void HandleYBStatusIgnoreAlreadyPresent(YBCStatus status,
-											   bool *already_present)
-{
-	if (!status)
-		return;
-
-	if (YBCStatusIsAlreadyPresent(status))
-	{
-		*already_present = true;
-		YBCFreeStatus(status);
-		return;
-	}
-	*already_present = false;
-	HandleYBStatus(status);
-}
-
 void
 HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table)
 {
@@ -3611,6 +3595,18 @@ assign_yb_read_time(const char* newval, void *extra)
 			 		   "it should not be set to a timestamp before a DDL "
 					   "operation has been performed. It doesn't have well defined semantics"
 					   " for normal transactions and is only to be used after consultation")));
+}
+
+void
+yb_assign_max_replication_slots(int newval, void *extra)
+{
+	ereport(NOTICE,
+		(errmsg("max_replication_slots should be controlled using the Gflag"
+				" \"max_replication_slots\" on the YB-Master process"),
+		 errdetail("In Yugabyte clusters, the replication slots are managed by"
+		 		   " the YB-Master globally. Hence limits on the number of"
+				   " replication slots should be controlled using Gflags and"
+				   " not session-level GUC variables.")));
 }
 
 void YBCheckServerAccessIsAllowed() {

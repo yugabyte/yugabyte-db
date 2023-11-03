@@ -3114,7 +3114,7 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&max_replication_slots,
 		10, 0, MAX_BACKENDS /* XXX? */ ,
-		NULL, NULL, NULL
+		NULL, yb_assign_max_replication_slots, NULL
 	},
 
 	{

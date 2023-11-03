@@ -7161,5 +7161,32 @@ TEST_F(CDCSDKYsqlTest, TestPgReplicationSlotsView) {
   ASSERT_OK(conn.Fetch("SELECT * FROM pg_replication_slots"));
 }
 
+TEST_F(CDCSDKYsqlTest, TestCreateCDCStreamReplicationSlotLimit) {
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  ASSERT_EQ(tablets.size(), 1);
+
+  // Overwrite the max_replication_slots value to a small value for ease of testing.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_replication_slots) = 2;
+
+  int limit = 2;
+  for (int i = 1; i <= limit; i++) {
+    ASSERT_RESULT(CreateDBStreamWithReplicationSlot(Format("repl_slot_limit_test_$0", i)));
+  }
+
+  // Creation should fail since we have reached the limit.
+  auto creation_at_limit =
+      CreateDBStreamWithReplicationSlot(Format("repl_slot_limit_test_$0", limit + 1));
+  ASSERT_NOK(creation_at_limit);
+  ASSERT_NE(
+      creation_at_limit.status().ToUserMessage().find(
+          "all replication slots are in use"),
+      std::string::npos)
+      << creation_at_limit.status().ToUserMessage();
+
+  // Increase limit by 1 and creation should succeed.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_replication_slots) = 3;
+  ASSERT_RESULT(CreateDBStreamWithReplicationSlot(Format("repl_slot_limit_test_$0", limit + 1)));
+}
+
 }  // namespace cdc
 }  // namespace yb
