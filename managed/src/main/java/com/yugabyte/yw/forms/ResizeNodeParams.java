@@ -141,8 +141,12 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
               DeviceInfo oldDevice = currentUserIntent.getDeviceInfoForNode(n);
               DeviceInfo newDevice = newUserIntent.getDeviceInfoForNode(n);
 
+              Integer newCgroupSize = newUserIntent.getCGroupSize(n);
+              Integer oldCgroupSize = currentUserIntent.getCGroupSize(n);
+
               return !Objects.equals(oldInstanceType, newInstanceType)
-                  || !Objects.equals(oldDevice, newDevice);
+                  || !Objects.equals(oldDevice, newDevice)
+                  || !Objects.equals(oldCgroupSize, newCgroupSize);
             })
         .findFirst()
         .isPresent();
@@ -244,6 +248,9 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
     boolean hasChanges = false;
     Map<String, InstanceType> instanceTypeMap = new HashMap<>();
     for (NodeDetails node : nodes) {
+      Integer newCgroupSize = newUserIntent.getCGroupSize(node);
+      Integer oldCgroupSize = currentUserIntent.getCGroupSize(node);
+      hasChanges = hasChanges || !Objects.equals(oldCgroupSize, newCgroupSize);
       String newInstanceTypeCode = newUserIntent.getInstanceTypeForNode(node);
       String currentInstanceTypeCode = currentUserIntent.getInstanceTypeForNode(node);
       boolean instanceTypeChanged = false;
