@@ -7,11 +7,11 @@ menu:
   stable:
     identifier: architecture-transactional-io-path
     parent: architecture-acid-transactions
-    weight: 1156
+    weight: 80
 type: docs
 ---
 
-For an overview of common concepts used in YugabyteDB's implementation of distributed transactions, see [Distributed transactions](../distributed-txns/). 
+For an overview of common concepts used in YugabyteDB's implementation of distributed transactions, see [Distributed transactions](../distributed-txns/).
 
 The write path of a transaction is used for modifying multiple keys and the read path is used for reading a consistent combination of values from multiple tablets.
 
@@ -22,7 +22,7 @@ The write path can be demonstrated through the lifecycle of a single distributed
 The following diagram depicts the high-level steps of a distributed write-only transaction, not including
 any conflict resolution:
 
-![distributed_txn_write_path](/images/architecture/txn/distributed_txn_write_path.svg)
+![Distributed write-only transaction](/images/architecture/txn/distributed_txn_write_path.svg)
 
 ### Client requests transaction
 
@@ -49,7 +49,7 @@ It makes sense to select a transaction status tablet in a way such that the tran
 
 ### Write provisional records
 
-Provisional records are written to tablets containing the rows that need to be modified. These provisional records contain the transaction ID, the values that need to be written, and the provisional hybrid timestamp which is not the final commit timestamp and will in general be different for different provisional records within the same transaction. In contrast, there is only one commit hybrid timestamp for the entire transaction.
+Provisional records are written to tablets containing the rows that need to be modified. These provisional records contain the transaction ID, the values that need to be written, and the provisional hybrid timestamp, which is not the final commit timestamp and will in general be different for different provisional records within the same transaction. In contrast, there is only one commit hybrid timestamp for the entire transaction.
 
 As the provisional records are written, it is possible to encounter conflicts with other transactions. In
 this case, the transaction would have to be aborted and restarted. These restarts still happen transparently to the client up to a certain number of retries.
@@ -97,7 +97,7 @@ The YQL engine sends requests to all tablets from which the transaction needs to
 When a tablet server sees a relevant record with a hybrid time `ht_record`, it executes the following logic:
 
 - If `ht_record` &le; `ht_read`, include the record in the result.
-- If `ht_record` > `definitely_future_ht`, exclude the record from the result. `definitely_future_ht` means a hybrid time such that a record with a later hybrid time than that was definitely written after the read request had started. For now, `definitely_future_ht` can be assumed to be `global_limit`. 
+- If `ht_record` > `definitely_future_ht`, exclude the record from the result. `definitely_future_ht` means a hybrid time such that a record with a later hybrid time than that was definitely written after the read request had started. For now, `definitely_future_ht` can be assumed to be `global_limit`.
 - If `ht_read` < `ht_record` &le; `definitely_future_ht`, it is not known if this record was written before or after the start of the read request. But it cannot be omitted from the result because if it was in fact written before the read request, this may produce a client-observed inconsistency. Therefore, the entire read operation must be restarted with an updated value of `ht_read` = `ht_record`.
 
 To prevent an infinite loop of these read restarts, a tablet-dependent hybrid time value `local_limit`<sub>`tablet`</sub> is returned to the YQL engine, computed as the current safe time in this tablet. It is now known that any record (regular or provisional) written to this tablet with a hybrid time later than `local_limit`<sub>`tablet`</sub> could not have possibly been written before the start of the read request. Therefore, the read transaction would not have to be restarted if a record with a hybrid time later than `local_limit`<sub>`tablet`</sub> is observed in a later attempt to read from this tablet within the same transaction, and `definitely_future_ht` = `min(global_limit, local_limit`<sub>`tablet`</sub>`)` is set on future attempts.
