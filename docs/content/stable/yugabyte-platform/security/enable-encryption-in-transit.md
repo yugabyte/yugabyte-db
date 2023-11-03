@@ -247,13 +247,37 @@ If the key is protected by a passphrase in the PKCS12 archive, you are prompted 
 
 #### Verify certificate chain
 
-To verify the certificate chain, execute the following command:
+Perform the following steps to verify your certificates:
 
-```sh
-openssl verify -CAfile bundle.pem cert.pem
-```
+1. Execute the following verify command which checks the database node certificate (node.crt) against the root CA certificate (ca.crt):
 
-The `bundle.pem` file is a certificate bundle containing the root certificate and any intermediate certificates in the PEM format.
+    ```sh
+    openssl verify ca.crt bundle.pem node.crt
+    ```
+
+    The `bundle.pem` file is a certificate bundle containing the root certificate and any intermediate certificates in the PEM format.
+
+1. Verify that the node certificate (`node.crt`) and the node private key (`node.key`) match. See [How do I verify that a private key matches a certificate?](https://www.ssl247.com/knowledge-base/detail/how-do-i-verify-that-a-private-key-matches-a-certificate-openssl-1527076112539/ka03l0000015hscaay/)
+
+1. Verify that the node certificate and Root CA certificate expiration is at least 3 months by checking the validity field in the output of the following commands:
+
+    ```sh
+    openssl x509 -in node.crt -text -noout
+    ```
+
+    ```sh
+    openssl x509 -in root.crt -text -noout
+    ```
+
+1. Verify that the node certificate Common Name (CN) or Subject Alternate Name  (SAN) contains the IP address or DNS name of each on-prem node on which the nodes are deployed.
+
+    **Note** that the entry you provide for the CN or SAN should be the _same_ as the on-prem node. If the node is added as a DNS address in the on-prem provider, the same DNS entry should be present as the CN/SAN.
+
+    If you face any issue with the above verification, you can customize the level of certificate validation while creating a universe that uses these certificates. Refer to [Customizing the verification of RPC server certificate by the client](https://www.yugabyte.com/blog/yugabytedb-server-to-server-encryption/#customizing-the-verification-of-rpc-server-certificate-by-the-client).
+
+{{< note >}}
+Note that the client certificates and keys are required only if you intend to use [PostgreSQL certificate based authentication](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html#:~:text=independent%20authentication%20option-,clientcert,-%2C%20which%20can%20be).
+{{< /note >}}
 
 ### Rotate custom CA-signed certificates
 
