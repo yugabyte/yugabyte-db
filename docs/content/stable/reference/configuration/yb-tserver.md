@@ -585,7 +585,7 @@ Any active, idle in transaction, or idle in session connection counts toward the
 
 Some connections are reserved for superusers. The total number of superuser connections is determined by the `superuser_reserved_connections` [PostgreSQL server parameter](#postgresql-server-options). Connections available to non-superusers is equal to `ysql_max_connections` - `superuser_reserved_connections`.
 
-Default: 300
+Default: If `ysql_max_connections` is not set, the database startup process will determine the highest number of connections the system can support, from a minimum of 50 to a maximum of 300 (per node).
 
 ##### --ysql_default_transaction_isolation
 
