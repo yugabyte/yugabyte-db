@@ -58,6 +58,35 @@
 #include "yb/util/monotime.h"
 
 ////////////////////////////////////////////////////////////////////////////////
+// Yugabyte VLOG
+////////////////////////////////////////////////////////////////////////////////
+
+// Undefine the standard glog macros.
+#undef VLOG
+#undef VLOG_IF
+#undef VLOG_EVERY_N
+#undef VLOG_IF_EVERY_N
+
+// VLOG show up as regular INFO messages. These are similar to the standard glog macros, but they
+// include the VLOG level. This helps identify log spew from enabling higher verbosity levels.
+// Ex: I1011 20:44:27.393563 1874145280 cdc_service.cc:2792] vlog3: List of tablets with checkpoint
+// info read from cdc_state table: 1
+#define VERBOSITY_LEVEL_STR(verboselevel) "vlog" BOOST_PP_STRINGIZE(verboselevel) ": "
+
+#define VLOG(verboselevel) \
+  LOG_IF(INFO, VLOG_IS_ON(verboselevel)) << VERBOSITY_LEVEL_STR(verboselevel)
+
+#define VLOG_IF(verboselevel, condition) \
+  LOG_IF(INFO, (condition) && VLOG_IS_ON(verboselevel)) << VERBOSITY_LEVEL_STR(verboselevel)
+
+#define VLOG_EVERY_N(verboselevel, n) \
+  LOG_IF_EVERY_N(INFO, VLOG_IS_ON(verboselevel), n) << VERBOSITY_LEVEL_STR(verboselevel)
+
+#define VLOG_IF_EVERY_N(verboselevel, condition, n) \
+  LOG_IF_EVERY_N(INFO, (condition) && VLOG_IS_ON(verboselevel), n) \
+      << VERBOSITY_LEVEL_STR(verboselevel)
+
+////////////////////////////////////////////////////////////////////////////////
 // Throttled logging support
 ////////////////////////////////////////////////////////////////////////////////
 
