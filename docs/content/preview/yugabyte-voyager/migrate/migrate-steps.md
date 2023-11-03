@@ -214,6 +214,8 @@ Include the primary key definition in the `CREATE TABLE` statement. Primary Key 
 
 {{< /note >}}
 
+Refer to the [Manual review guideline](../../known-issues/) for a detailed list of limitations and suggested workarounds associated with the source databases when migrating to YugabyteDB Voyager.
+
 ### Export data
 
 Dump the source data into the `EXPORT_DIR/data` directory using the `yb-voyager export data` command as follows:

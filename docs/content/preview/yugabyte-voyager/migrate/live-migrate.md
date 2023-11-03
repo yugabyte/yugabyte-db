@@ -224,6 +224,8 @@ Include the primary key definition in the `CREATE TABLE` statement. Primary Key 
 
 {{< /note >}}
 
+Refer to the [Manual review guideline](../../known-issues/) for a detailed list of limitations and suggested workarounds associated with the source databases when migrating to YugabyteDB Voyager.
+
 ### Import schema
 
 Import the schema using the `yb-voyager import schema` command.
