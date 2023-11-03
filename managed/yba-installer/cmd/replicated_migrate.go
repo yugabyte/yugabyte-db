@@ -78,13 +78,15 @@ var replicatedMigrationStart = &cobra.Command{
 		}
 
 		// Get the uid and gid used by the prometheus container. This is used for rollback.
-		entry := config.Get("installRoot")
+		entry := config.Get("storage_path")
 		var replicatedInstallRoot string
 		if entry == replicatedctl.NilConfigEntry {
 			replicatedInstallRoot = "/opt/yugabyte"
 		} else {
 			replicatedInstallRoot = entry.Value
 		}
+		common.SetReplicatedBaseDir(replicatedInstallRoot)
+		state.Replicated.StoragePath = replicatedInstallRoot
 		checkFile := filepath.Join(replicatedInstallRoot, "prometheusv2/queries.active")
 		info, err := os.Stat(checkFile)
 		if err != nil {
@@ -351,7 +353,8 @@ func rollbackMigrations(state *ybactlstate.State) error {
 	prom := services[PrometheusServiceName].(Prometheus)
 	err := prom.RollbackMigration(
 		state.Replicated.PrometheusFileUser,
-		state.Replicated.PrometheusFileUser)
+		state.Replicated.PrometheusFileUser,
+		state.Replicated.StoragePath)
 	if err != nil {
 		log.Fatal("Failed to rollback prometheus migration: " + err.Error())
 	}
