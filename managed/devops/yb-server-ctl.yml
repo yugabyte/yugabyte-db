@@ -14,10 +14,13 @@
   vars:
     script_to_run: "{{ yb_home_dir | default('/home/yugabyte') }}/bin/yb-server-ctl.sh"
     systemd_option: "{{ systemd_services | default(false) }}"
+    is_clean_command: "{{ command == 'clean' or command == 'clean-logs'}}"
   tasks:
     - name: Call the ctl script with appropriate args
       shell: "{{ script_to_run }} {{ process }} {{ command }}"
-      when: not systemd_option and process != "thirdparty" and process != "platform-services"
+      when:
+        - not systemd_option or is_clean_command
+        - process != "thirdparty" and process != "platform-services"
 
     - name: Control the master and tserver with systemd
       block:
