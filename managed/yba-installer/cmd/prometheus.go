@@ -254,11 +254,13 @@ func (prom Prometheus) Upgrade() error {
 
 func (prom Prometheus) moveAndExtractPrometheusPackage() {
 
+	packagesPath := common.GetInstallerSoftwareDir() + "/packages"
+
 	srcPath := fmt.Sprintf(
 		"%s/third-party/prometheus-%s.linux-amd64.tar.gz", common.GetInstallerSoftwareDir(),
 		prom.version)
 	dstPath := fmt.Sprintf(
-		"%s/packages/prometheus-%s.linux-amd64.tar.gz", common.GetInstallerSoftwareDir(), prom.version)
+		"%s/prometheus-%s.linux-amd64.tar.gz", packagesPath, prom.version)
 
 	common.CopyFile(srcPath, dstPath)
 	rExtract, errExtract := os.Open(dstPath)
@@ -269,23 +271,29 @@ func (prom Prometheus) moveAndExtractPrometheusPackage() {
 
 	extPackagePath := fmt.Sprintf(
 		"%s/packages/prometheus-%s.linux-amd64", common.GetInstallerSoftwareDir(), prom.version)
+
 	if _, err := os.Stat(extPackagePath); err == nil {
 		log.Debug(extPackagePath + " already exists, skipping re-extract.")
 	} else {
-		if err := tar.Untar(rExtract, common.GetInstallerSoftwareDir()+"/packages",
-			tar.WithMaxUntarSize(-1)); err != nil {
+		if err := tar.Untar(rExtract, packagesPath, tar.WithMaxUntarSize(-1)); err != nil {
 			log.Fatal(fmt.Sprintf("failed to extract file %s, error: %s", dstPath, err.Error()))
 		}
 		log.Debug(dstPath + " successfully extracted.")
 	}
 
+	if common.HasSudoAccess() {
+		userName := viper.GetString("service_username")
+		if err := common.Chown(packagesPath, userName, userName, true); err != nil {
+			log.Fatal(fmt.Sprintf("failed to change ownership of %s: %s", packagesPath, err.Error()))
+		}
+	}
 }
 
 func (prom Prometheus) createDataDirs() {
 
-	common.MkdirAll(prom.DataDir+"/storage", os.ModePerm)
-	common.MkdirAll(prom.DataDir+"/swamper_targets", os.ModePerm)
-	common.MkdirAll(prom.DataDir+"/swamper_rules", os.ModePerm)
+	common.MkdirAll(prom.DataDir+"/storage", common.DirMode)
+	common.MkdirAll(prom.DataDir+"/swamper_targets", common.DirMode)
+	common.MkdirAll(prom.DataDir+"/swamper_rules", common.DirMode)
 	log.Debug(prom.DataDir + "/storage /swamper_targets /swamper_rules" + " directories created.")
 
 	// Create the log file
@@ -311,7 +319,7 @@ func (prom Prometheus) createPrometheusSymlinks() {
 		promBinaryDir = "/usr/local/bin"
 	} else {
 		// promBinaryDir doesn't exist for non-root mode, lets create it.
-		common.MkdirAll(promBinaryDir, os.ModePerm)
+		common.MkdirAll(promBinaryDir, common.DirMode)
 	}
 
 	common.CreateSymlink(promPkg, promBinaryDir, "prometheus")
