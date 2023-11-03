@@ -148,6 +148,9 @@ Status CDCSDKTestBase::SetUpWithParams(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = replication_factor;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pack_full_row_update) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_populate_safepoint_record) = cdc_populate_safepoint_record;
+  // Set max_replication_slots to a large value so that we don't run out of them during tests and
+  // don't have to do cleanups after every test case.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_replication_slots) = 500;
 
   MiniClusterOptions opts;
   opts.num_masters = num_masters;

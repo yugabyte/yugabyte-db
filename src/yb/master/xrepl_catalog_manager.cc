@@ -101,6 +101,9 @@ DEFINE_RUNTIME_int32(cdc_parent_tablet_deletion_task_retry_secs, 30,
 DEFINE_RUNTIME_bool(disable_auto_add_index_to_xcluster, false,
     "Disables the automatic addition of indexes to transactional xCluster replication.");
 
+DEFINE_NON_RUNTIME_uint32(max_replication_slots, 10,
+    "Controls the maximum number of replication slots that are allowed to exist.");
+
 DEFINE_test_flag(bool, hang_wait_replication_drain, false,
     "Used in tests to temporarily block WaitForReplicationDrain.");
 
@@ -853,25 +856,34 @@ Status CatalogManager::CreateNewXReplStream(
     TRACE("Acquired catalog manager lock");
     LockGuard lock(mutex_);
 
-    if (req.has_cdcsdk_ysql_replication_slot_name() &&
-        cdcsdk_replication_slots_to_stream_map_.contains(
-            ReplicationSlotName(req.cdcsdk_ysql_replication_slot_name()))) {
+    if (req.has_cdcsdk_ysql_replication_slot_name()) {
       auto slot_name = ReplicationSlotName(req.cdcsdk_ysql_replication_slot_name());
-      auto stream_id = FindOrNull(cdcsdk_replication_slots_to_stream_map_, slot_name);
-      SCHECK(
-          stream_id, IllegalState, "Stream with slot name $0 was not found unexpectedly",
-          slot_name);
-      auto stream = FindOrNull(cdc_stream_map_, *stream_id);
-      SCHECK(stream, IllegalState, "Stream with id $0 was not found unexpectedly", stream_id);
-      if (!(*stream)->LockForRead()->is_deleting()) {
-        return STATUS(
-            AlreadyPresent, "CDC stream with the given replication slot name already exists",
-            MasterError(MasterErrorPB::OBJECT_ALREADY_PRESENT));
+
+      // Duplicate detection.
+      if (cdcsdk_replication_slots_to_stream_map_.contains(
+              ReplicationSlotName(req.cdcsdk_ysql_replication_slot_name()))) {
+        auto stream_id = FindOrNull(cdcsdk_replication_slots_to_stream_map_, slot_name);
+        SCHECK(
+            stream_id, IllegalState, "Stream with slot name $0 was not found unexpectedly",
+            slot_name);
+        auto stream = FindOrNull(cdc_stream_map_, *stream_id);
+        SCHECK(stream, IllegalState, "Stream with id $0 was not found unexpectedly", stream_id);
+        if (!(*stream)->LockForRead()->is_deleting()) {
+          return STATUS(
+              AlreadyPresent, "CDC stream with the given replication slot name already exists",
+              MasterError(MasterErrorPB::OBJECT_ALREADY_PRESENT));
+        }
+
+        // A prior replication slot with the same name exists which is in the DELETING state. Remove
+        // from the map early so that we don't have to fail this request.
+        cdcsdk_replication_slots_to_stream_map_.erase(slot_name);
       }
 
-      // A prior replication slot with the same name exists which is in the DELETING state. Remove
-      // from the map early so that we don't have to fail this request.
-      cdcsdk_replication_slots_to_stream_map_.erase(slot_name);
+      if (cdcsdk_replication_slots_to_stream_map_.size() >= FLAGS_max_replication_slots) {
+        return STATUS(
+            ReplicationSlotLimitReached, "Replication slot limit reached",
+            MasterError(MasterErrorPB::REPLICATION_SLOT_LIMIT_REACHED));
+      }
     }
 
     // Construct the CDC stream if the producer wasn't bootstrapped.

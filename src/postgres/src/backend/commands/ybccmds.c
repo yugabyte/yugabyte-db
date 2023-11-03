@@ -1774,14 +1774,20 @@ YBCCreateReplicationSlot(const char *slot_name)
 												 MyDatabaseId,
 												 &handle));
 
-	bool already_present = false;
-	HandleYBStatusIgnoreAlreadyPresent(YBCPgExecCreateReplicationSlot(handle),
-									   &already_present);
-	if (already_present)
+	YBCStatus status = YBCPgExecCreateReplicationSlot(handle);
+	if (YBCStatusIsAlreadyPresent(status))
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
 				 errmsg("replication slot \"%s\" already exists",
 						slot_name)));
+
+	if (YBCStatusIsReplicationSlotLimitReached(status))
+		ereport(ERROR,
+				(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
+				 errmsg("all replication slots are in use"),
+				 errhint("Free one or increase max_replication_slots.")));
+
+	HandleYBStatus(status);
 }
 
 void

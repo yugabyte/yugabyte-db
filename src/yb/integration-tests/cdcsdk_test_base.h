@@ -39,6 +39,7 @@ DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_bool(cdc_populate_safepoint_record);
+DECLARE_uint32(max_replication_slots);
 
 namespace yb {
 using client::YBClient;
