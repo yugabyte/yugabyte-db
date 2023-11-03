@@ -65,15 +65,15 @@ Stop writes trigger is activated in one of the following scenarios:
 * **Memstores flushed too frequently:**
 This condition occurs if there are a large number of tables (or more accurately, a large number of tablets) all of which get writes. In such cases, the memstores are forced to flush frequently, resulting in too many SST files. In such cases, you can tune the total memstore size allocated.
 
-  Total memstore size is the minimum of the two flags:
+  Total memstore size is the minimum of the following two flags:
   
   * `global_memstore_size_mb_max` (default value is 2GB)
   * `global_memstore_size_percentage` (defaults to 10% of total YB-TServer memory allocated)
 
   There are 2 different options for controlling how much memory is allocated to YB-TServer:
   
-  * Setting `default_memory_limit_to_ram_ratio` to control what percentage of total RAM on the instance the process should use
-  * Specifying an absolute value using `memory_limit_hard_bytes`. For example, to give YB-TServer 32GB of RAM, use `--memory_limit_hard_bytes 34359738368`
+  * Setting `default_memory_limit_to_ram_ratio` to control what percentage of total RAM on the instance the process should use.
+  * Specifying an absolute value using `memory_limit_hard_bytes`. For example, to give YB-TServer 32GB of RAM, use `--memory_limit_hard_bytes 34359738368`.
 
 * **Too many memstores queued for flush**
 
