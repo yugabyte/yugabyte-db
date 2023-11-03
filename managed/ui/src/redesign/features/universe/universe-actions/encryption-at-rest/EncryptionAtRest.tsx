@@ -20,6 +20,9 @@ import { RotationHistory } from './components/RotationHistory';
 import { api, QUERY_KEY } from '../../../../utils/api';
 import { EncryptionAtRestConfig, Universe, KmsConfig } from '../../universe-form/utils/dto';
 import { YBLoading } from '../../../../../components/common/indicators';
+import { hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
+import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUtils';
 
 //EAR Component
 interface EncryptionAtRestProps {
@@ -135,6 +138,11 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
     }
   });
 
+  const canSetKey = hasNecessaryPerm({
+    onResource: universeId,
+    ...ApiPermissionMap.SET_ENCRYPTION_KEY
+  });
+
   if (isKMSConfigsLoading || isKMSHistoryLoading) return <YBLoading />;
 
   return (
@@ -152,9 +160,10 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
       cancelTestId="EncryptionAtRest-Close"
       buttonProps={{
         primary: {
-          disabled: !isFormValid()
+          disabled: !isFormValid() || !canSetKey
         }
       }}
+      submitButtonTooltip={!canSetKey ? RBAC_ERR_MSG_NO_PERM : ''}
     >
       <FormProvider {...formMethods}>
         <Box

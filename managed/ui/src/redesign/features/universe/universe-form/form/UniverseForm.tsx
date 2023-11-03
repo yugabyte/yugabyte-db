@@ -22,8 +22,8 @@ import { api, QUERY_KEY } from '../utils/api';
 import { UniverseFormData, ClusterType, ClusterModes } from '../utils/dto';
 import { UNIVERSE_NAME_FIELD, TOAST_AUTO_DISMISS_INTERVAL } from '../utils/constants';
 import { useFormMainStyles } from '../universeMainStyle';
-import { RbacValidator } from '../../../rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
 
 // ! How to add new form field ?
 // - add field to it's corresponding config type (CloudConfigFormValue/InstanceConfigFormValue/AdvancedConfigFormValue/..) present in UniverseFormData type at dto.ts
@@ -217,7 +217,7 @@ export const UniverseForm: FC<UniverseFormProps> = ({
                 <RbacValidator
                   accessRequiredOn={{
                     onResource: universeUUID,
-                    ...UserPermissionMap.editUniverse
+                    ...ApiPermissionMap.DELETE_READ_REPLICA
                   }}
                   isControl
                 >
@@ -236,8 +236,8 @@ export const UniverseForm: FC<UniverseFormProps> = ({
                 accessRequiredOn={{
                   onResource: !isEditMode && isPrimary ? undefined : universeUUID,
                   ...(!isEditMode && isPrimary
-                    ? UserPermissionMap.createUniverse
-                    : UserPermissionMap.editUniverse)
+                    ? ApiPermissionMap.CREATE_UNIVERSE
+                    : ApiPermissionMap.MODIFY_UNIVERSE)
                 }}
                 isControl
               >

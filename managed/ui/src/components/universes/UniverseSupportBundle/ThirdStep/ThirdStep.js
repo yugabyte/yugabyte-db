@@ -10,9 +10,7 @@ import { YBButton, YBModal } from '../../../common/forms/fields';
 import { ybFormatDate, YBTimeFormats } from '../../../../redesign/helpers/DateUtils';
 import { formatBytes } from '../../../xcluster/ReplicationUtils';
 
-import {
-  RbacValidator
-} from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { RbacValidator } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './ThirdStep.scss';
 
@@ -66,7 +64,10 @@ const getActions = (
         {isReady && (
           <RbacValidator
             isControl
-            accessRequiredOn={{ ...ApiPermissionMap.DOWNLOAD_SUPPORT_BUNDLE, onResource: { "UNIVERSE": universeUUID } }}
+            accessRequiredOn={{
+              ...ApiPermissionMap.DOWNLOAD_SUPPORT_BUNDLE,
+              onResource: { UNIVERSE: universeUUID }
+            }}
             popOverOverrides={{ zIndex: 100000 }}
           >
             <MenuItem
@@ -91,7 +92,10 @@ const getActions = (
         )}
         <RbacValidator
           isControl
-          accessRequiredOn={{ ...ApiPermissionMap.DELETE_SUPPORT_BUNDLE, onResource: { "UNIVERSE": universeUUID } }}
+          accessRequiredOn={{
+            ...ApiPermissionMap.DELETE_SUPPORT_BUNDLE,
+            onResource: { UNIVERSE: universeUUID }
+          }}
           overrideStyle={{ display: 'block' }}
           popOverOverrides={{ zIndex: 100000 }}
         >
@@ -142,8 +146,8 @@ export const ThirdStep = withRouter(
   }) => {
     const [creatingBundle, setCreatingBundle] = useState(
       supportBundles &&
-      Array.isArray(supportBundles) &&
-      supportBundles.find((supportBundle) => supportBundle.status === 'Running') !== undefined
+        Array.isArray(supportBundles) &&
+        supportBundles.find((supportBundle) => supportBundle.status === 'Running') !== undefined
     );
     const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
     const [deleteBundleObj, setDeleteBundleObj] = useState({});
@@ -189,7 +193,10 @@ export const ThirdStep = withRouter(
           <div className="create-bundle">
             <RbacValidator
               isControl
-              accessRequiredOn={{ ...ApiPermissionMap.CREATE_SUPPORT_BUNDLE, onResource: { "UNIVERSE": universeUUID } }}
+              accessRequiredOn={{
+                ...ApiPermissionMap.CREATE_SUPPORT_BUNDLE,
+                onResource: { UNIVERSE: universeUUID }
+              }}
               popOverOverrides={{ zIndex: 100000 }}
             >
               <YBButton

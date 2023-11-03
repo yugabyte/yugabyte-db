@@ -54,8 +54,8 @@ import ellipsisIcon from '../../common/media/more.svg';
 
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { UniverseAlertBadge } from '../YBUniverseItem/UniverseAlertBadge';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import './UniverseView.scss';
 
@@ -291,7 +291,7 @@ export const UniverseView = (props) => {
                 isControl
                 accessRequiredOn={{
                   onResource: row.universeUUID,
-                  ...UserPermissionMap.editUniverse
+                  ...ApiPermissionMap.RESUME_UNIVERSE
                 }}
               >
                 <YBMenuItem
@@ -316,7 +316,7 @@ export const UniverseView = (props) => {
             isControl
             accessRequiredOn={{
               onResource: row.universeUUID,
-              ...UserPermissionMap.deleteUniverse
+              ...ApiPermissionMap.DELETE_UNIVERSE
             }}
             overrideStyle={{ display: 'block' }}
           >
@@ -608,8 +608,7 @@ export const UniverseView = (props) => {
         {isNotHidden(currentCustomer.data.features, 'universe.create') && (
           <RbacValidator
             accessRequiredOn={{
-              onResource: undefined,
-              ...UserPermissionMap.createUniverse
+              ...ApiPermissionMap.CREATE_UNIVERSE
             }}
             isControl
           >
