@@ -24,7 +24,18 @@ On this page:
 
 **New Features**
 
+- Ability to track your usage per cluster over time. Navigate to **Usage & Billing > Usage** to view cumulative and daily usage of the following:
+
+  - cluster compute (vCPU hours)
+  - disk storage
+  - cloud backup storage
+  - data transfer
+
 - For Azure, all regions that are supported for single-region clusters are now available for multi-region clusters (including Virginia useast2, Tokyo, Seoul, Johannesburg, Texas, and Dubai).
+
+**Database**
+
+- Production track updated to 2.14.13.0.
 
 ### October 5, 2023
 
