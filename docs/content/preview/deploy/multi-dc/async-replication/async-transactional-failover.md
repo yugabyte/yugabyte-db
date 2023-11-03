@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Unplanned failover is the process of switching application traffic to the target (standby) universe in case the source (active) universe becomes unavailable. One of the common reasons for such a scenario is an outage of the source universe region.
+Unplanned failover is the process of switching application traffic to the Standby universe in case the Primary universe becomes unavailable. One of the common reasons for such a scenario is an outage of the Primary universe region.
 
 ## Performing failover
 

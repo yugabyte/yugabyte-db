@@ -83,30 +83,30 @@ To set up unidirectional transactional replication manually, do the following:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <target_master_addresses> \
+        -master_addresses <standby_master_addresses> \
         create_snapshot_schedule 1 10 ysql.yugabyte
     ```
 
-1. If the source universe already has data, then follow the bootstrap process described in [Bootstrap a target universe](../async-replication/#bootstrap-a-target-universe) before setting up replication with the transactional flag.
+1. If the Primary universe already has data, then follow the bootstrap process described in [Bootstrap a target universe](../async-replication/#bootstrap-a-target-universe) before setting up replication with the transactional flag.
 
-1. Set up xCluster replication from Primary to Standby (target) using yb-admin as follows:
+1. Set up xCluster replication from Primary to Standby using yb-admin as follows:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <target_master_addresses> \
+        -master_addresses <standby_master_addresses> \
         -certs_dir_name <cert_dir> \
         setup_universe_replication \
-        <source_universe_uuid>_<replication_name> \
-        <source_universe_master_addresses> \
-        <comma_separated_source_table_ids>  \
-        <comma_separated_source_bootstrap_ids> transactional
+        <primary_universe_uuid>_<replication_name> \
+        <primary_universe_master_addresses> \
+        <comma_separated_primary_table_ids>  \
+        <comma_separated_primary_bootstrap_ids> transactional
     ```
 
 1. Set the role of the Standby universe to `STANDBY`:
 
     ```sh
     ./bin/yb-admin \
-        -master_addresses <target_master_addresses> \ 
+        -master_addresses <standby_master_addresses> \ 
         -certs_dir_name <dir_name> \
         change_xcluster_role STANDBY
     ```
@@ -152,7 +152,7 @@ To set up unidirectional transactional replication using YugabyteDB Anywhere, do
 
 1. Set up xCluster Replication from Primary to Standby as follows:
 
-    - Navigate to your primary universe, select the **Replication** tab, and click **Configure Replication**.
+    - Navigate to your Primary universe, select the **Replication** tab, and click **Configure Replication**.
 
     - Enter a name for the replication, set the target universe to the Standby, and click **Next: Select Tables**.
 

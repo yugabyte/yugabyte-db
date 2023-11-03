@@ -14,25 +14,30 @@ type: docs
 
 ## Add a table to replication
 
-1. Create table on the Primary (if it does not already exist).
-1. Create table on the Standby.
-1. Add the table to replication using YBA UI.
+Add tables to replication in the following sequence:
+
+1. Create the table on the Primary (if it doesn't already exist).
+1. Create the table on the Standby.
+1. Add the table to the replication in YugabyteDB Anywhere.
 
 If the newly added table already has data before adding it to replication, then adding the table to replication can result in a Backup/Restore of that entire database from Primary to Standby.
 
-**Note**: The recommendation is to always set up replication on the new table before starting any workload to ensure that data is protected at all times.
+**Note**: Set up replication on the new table before starting any workload to ensure that data is protected at all times.
 
 ## Remove a table from replication
 
-1. Remove the table from replication using the YBA UI.
+Remove tables from replication in the following sequence:
 
+1. Remove the table from replication using YugabyteDB Anywhere.
 1. Drop the table from both Primary and Standby databases separately.
 
 ## Add a new index to replication
 
-Indexes are automatically added to replication in an atomic fashion after you create the indexes separately on Primary and Standby. You do not have to stop the writes on the Primary clusters.
+Indexes are automatically added to replication in an atomic fashion after you create the indexes separately on Primary and Standby. You do not have to stop the writes on the Primary.
 
 **Note**: The Create Index DDL may kill some in-flight transactions. This is a temporary error. Retry any failed transactions.
+
+Add indexes to replication in the following sequence:
 
 1. Create an index on the Primary.
 
@@ -50,6 +55,8 @@ For instructions on monitoring backfill, refer to [Monitor index backfill from t
 
 When an index is dropped it is automatically removed from replication.
 
+Remove indexes from replication in the following sequence:
+
 1. Drop the index on the Standby universe.
 
 1. Drop the index on the Primary universe.
@@ -58,9 +65,9 @@ When an index is dropped it is automatically removed from replication.
 
 ## Add a table partition to the replication
 
-The operation is the same as adding a table.
+Adding a table partition is similar to adding a table.
 
-The caveat is that the parent table (if not already) along with each new partition will have to be added to the replication as DDL changes are not replicated automatically. Each partition is treated as a separate table and is added to replication separately (like a table)
+The caveat is that the parent table (if not already) along with each new partition has to be added to the replication, as DDL changes are not replicated automatically. Each partition is treated as a separate table and is added to replication separately (like a table).
 
 Create a table with partitions:
 
@@ -84,15 +91,15 @@ FOR VALUES FROM ('2023-01-01') TO ('2023-03-30');
 
 Assume the parent table and default partition are included in the replication stream.
 
-To add a table partition to the replication, follow the same steps for [Add Table to replication](#add-table-to-replication).
+To add a table partition to the replication, follow the same steps for [Add a table to replication](#add-a-table-to-replication).
 
-## Remove table partition from replication
+## Remove table partitions from replication
 
-Remove Partition from Replication is the same as [Remove Table from Replication](#remove-table-from-replication).
+To remove a table partition from replication, follow the same steps as [Remove a table from replication](#remove-a-table-from-replication).
 
 ## Manually resync YBA monitoring
 
-One time setup:
+To manually resync YBA monitoring:
 
 1. In YugabyteDB Anywhere, navigate to your profile by clicking the profile icon in the top right and choosing **User Profile** (that is, https://<yourportal.yugabyte.com>/profile).
 
@@ -105,5 +112,5 @@ One time setup:
 1. Run the following command:
 
     ```sh
-    curl -k --location --request POST 'https://<yourportal.yugabyte.com>/api/v1/customers/<CutomerID>/xcluster_configs/sync?targetUniverseUUID=<StandbyUniverseUUID>' --header 'X-AUTH-YW-API-TOKEN: <APIToken>' --data
+    curl -k --location --request POST 'https://<yourportal.yugabyte.com>/api/v1/customers/<Customer_ID>/xcluster_configs/sync?targetUniverseUUID=<standby_universe_uuid>' --header 'X-AUTH-YW-API-TOKEN: <API_token>' --data
     ```
