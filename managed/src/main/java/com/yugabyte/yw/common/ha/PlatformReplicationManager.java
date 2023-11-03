@@ -406,6 +406,7 @@ public class PlatformReplicationManager {
       commandArgs.add(String.valueOf(prometheusPort));
       commandArgs.add("--verbose");
       commandArgs.add("--skip_restart");
+      commandArgs.add("--disable_version_check");
 
       return commandArgs;
     }
@@ -488,7 +489,6 @@ public class PlatformReplicationManager {
       commandArgs.add("restore");
       commandArgs.add("--input");
       commandArgs.add(input.getAbsolutePath());
-      commandArgs.add("--disable_version_check");
       String installation = replicationHelper.getInstallationType();
       if (StringUtils.isNotBlank(installation) && installation.trim().equals("yba-installer")) {
         commandArgs.add("--pg_restore_path");

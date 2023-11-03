@@ -219,6 +219,7 @@ create_backup() {
   k8s_namespace="${11}"
   k8s_pod="${12}"
   pgdump_path="${13}"
+  disable_version_check="${14}"
   include_releases_flag="**/releases/**"
 
   mkdir -p "${output_path}"
@@ -607,6 +608,7 @@ print_backup_usage() {
   echo "  --k8s_namespace                kubernetes namespace"
   echo "  --k8s_pod                      kubernetes pod"
   echo "  --yba_installer                yba_installer installation (default: false)"
+  echo "  --disable_version_check        disable the backup version check (default: false)"
   echo "  -?, --help                     show create help, then exit"
   echo
 }
@@ -765,6 +767,11 @@ case $command in
           pgpass_path=$2
           shift 2
           ;;
+        --disable_version_check)
+          disable_version_check=true
+          set -x
+          shift
+          ;;
         -?|--help)
           print_backup_usage
           exit 0
@@ -784,7 +791,7 @@ case $command in
     fi
     create_backup "$output_path" "$data_dir" "$exclude_prometheus" "$exclude_releases" \
     "$db_username" "$db_host" "$db_port" "$verbose" "$prometheus_host" "$prometheus_port" \
-    "$k8s_namespace" "$k8s_pod" "$pgdump_path"
+    "$k8s_namespace" "$k8s_pod" "$pgdump_path" "$disable_version_check"
     exit 0
     ;;
   restore)

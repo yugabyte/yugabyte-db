@@ -134,7 +134,6 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       expectedCommandArgs.add("restore");
       expectedCommandArgs.add("--input");
       expectedCommandArgs.add(inputPath);
-      expectedCommandArgs.add("--disable_version_check");
       if (isYbaInstaller) {
         expectedCommandArgs.add("--pg_restore_path");
         expectedCommandArgs.add(PG_RESTORE_PATH);
@@ -158,6 +157,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
     expectedCommandArgs.add("9090");
     expectedCommandArgs.add("--verbose");
     expectedCommandArgs.add("--skip_restart");
+    expectedCommandArgs.add("--disable_version_check");
 
     return expectedCommandArgs;
   }
