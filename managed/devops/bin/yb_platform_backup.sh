@@ -535,8 +535,7 @@ restore_backup() {
     modify_service prometheus stop
     # Find snapshot directory in backup
     run_sudo_cmd "rm -rf ${PROMETHEUS_DATA_DIR}/*"
-    # snapshot_dir="${destination}/'${prom_snapshot:2}'*"
-    run_sudo_cmd "mv ${destination}/'${prom_snapshot:2}'* ${PROMETHEUS_DATA_DIR}"
+    run_sudo_cmd "mv ${destination}/${prom_snapshot:2}* ${PROMETHEUS_DATA_DIR}"
     if [[ "${yba_installer}" = true ]] && [[ "${migration}" = true ]]; then
       backup_targets=$(find "${yugabackup}" -name swamper_targets -type d)
       if  [[ "$backup_targets" != "" ]] && [[ -d "$backup_targets" ]]; then
