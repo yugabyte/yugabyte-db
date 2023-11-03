@@ -85,7 +85,8 @@ extern Oid YBCExecuteInsertForDb(Oid dboid,
                                  TupleDesc tupleDesc,
                                  HeapTuple tuple,
                                  OnConflictAction onConflictAction,
-                                 Datum *ybctid);
+                                 Datum *ybctid,
+                                 YBCPgTransactionSetting transaction_setting);
 
 /*
  * Execute the insert outside of a transaction.
@@ -137,7 +138,7 @@ extern bool YBCExecuteDelete(Relation rel,
 							 TupleTableSlot *slot,
 							 List *returning_columns,
 							 bool target_tuple_fetched,
-							 bool is_single_row_txn,
+							 YBCPgTransactionSetting transaction_setting,
 							 bool changingPart,
 							 EState *estate);
 /*
@@ -164,7 +165,7 @@ extern bool YBCExecuteUpdate(Relation rel,
 							 EState *estate,
 							 ModifyTable *mt_plan,
 							 bool target_tuple_fetched,
-							 bool is_single_row_txn,
+							 YBCPgTransactionSetting transaction_setting,
 							 Bitmapset *updatedCols,
 							 bool canSetTag);
 

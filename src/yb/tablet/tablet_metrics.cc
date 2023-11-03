@@ -190,76 +190,83 @@ struct GaugeEntry {
 };
 
 struct EventStatsEntry {
+  uint32_t pggate_index;
   TabletEventStats event_stat;
   EventStatsPrototype* prototype;
 };
 
 const CounterEntry kCounters[] = {
-  {pggate::YB_ANALYZE_METRIC_NOT_LEADER_REJECTIONS,
+  {pggate::YB_STORAGE_COUNTER_NOT_LEADER_REJECTIONS,
       TabletCounters::kNotLeaderRejections,
       &METRIC_not_leader_rejections},
-  {pggate::YB_ANALYZE_METRIC_LEADER_MEMORY_PRESSURE_REJECTIONS,
+  {pggate::YB_STORAGE_COUNTER_LEADER_MEMORY_PRESSURE_REJECTIONS,
       TabletCounters::kLeaderMemoryPressureRejections,
       &METRIC_leader_memory_pressure_rejections},
-  {pggate::YB_ANALYZE_METRIC_MAJORITY_SST_FILES_REJECTIONS,
+  {pggate::YB_STORAGE_COUNTER_MAJORITY_SST_FILES_REJECTIONS,
       TabletCounters::kMajoritySstFilesRejections,
       &METRIC_majority_sst_files_rejections},
-  {pggate::YB_ANALYZE_METRIC_TRANSACTION_CONFLICTS,
+  {pggate::YB_STORAGE_COUNTER_TRANSACTION_CONFLICTS,
       TabletCounters::kTransactionConflicts,
       &METRIC_transaction_conflicts},
-  {pggate::YB_ANALYZE_METRIC_EXPIRED_TRANSACTIONS,
+  {pggate::YB_STORAGE_COUNTER_EXPIRED_TRANSACTIONS,
       TabletCounters::kExpiredTransactions,
       &METRIC_expired_transactions},
-  {pggate::YB_ANALYZE_METRIC_RESTART_READ_REQUESTS,
+  {pggate::YB_STORAGE_COUNTER_RESTART_READ_REQUESTS,
       TabletCounters::kRestartReadRequests,
       &METRIC_restart_read_requests},
-  {pggate::YB_ANALYZE_METRIC_CONSISTENT_PREFIX_READ_REQUESTS,
+  {pggate::YB_STORAGE_COUNTER_CONSISTENT_PREFIX_READ_REQUESTS,
       TabletCounters::kConsistentPrefixReadRequests,
       &METRIC_consistent_prefix_read_requests},
-  {pggate::YB_ANALYZE_METRIC_PICKED_READ_TIME_ON_DOCDB,
+  {pggate::YB_STORAGE_COUNTER_PICKED_READ_TIME_ON_DOCDB,
       TabletCounters::kPickReadTimeOnDocDB,
       &METRIC_picked_read_time_on_docdb},
-  {pggate::YB_ANALYZE_METRIC_PGSQL_CONSISTENT_PREFIX_READ_ROWS,
+  {pggate::YB_STORAGE_COUNTER_PGSQL_CONSISTENT_PREFIX_READ_ROWS,
       TabletCounters::kPgsqlConsistentPrefixReadRows,
       &METRIC_pgsql_consistent_prefix_read_rows},
-  {pggate::YB_ANALYZE_METRIC_TABLET_DATA_CORRUPTIONS,
+  {pggate::YB_STORAGE_COUNTER_TABLET_DATA_CORRUPTIONS,
       TabletCounters::kTabletDataCorruptions,
       &METRIC_tablet_data_corruptions},
-  {pggate::YB_ANALYZE_METRIC_ROWS_INSERTED,
+  {pggate::YB_STORAGE_COUNTER_ROWS_INSERTED,
       TabletCounters::kRowsInserted,
       &METRIC_rows_inserted},
-  {pggate::YB_ANALYZE_METRIC_FAILED_BATCH_LOCK,
+  {pggate::YB_STORAGE_COUNTER_FAILED_BATCH_LOCK,
       TabletCounters::kFailedBatchLock,
       &METRIC_failed_batch_lock},
-  {pggate::YB_ANALYZE_METRIC_DOCDB_KEYS_FOUND,
+  {pggate::YB_STORAGE_COUNTER_DOCDB_KEYS_FOUND,
       TabletCounters::kDocDBKeysFound,
       &METRIC_docdb_keys_found},
-  {pggate::YB_ANALYZE_METRIC_DOCDB_OBSOLETE_KEYS_FOUND,
+  {pggate::YB_STORAGE_COUNTER_DOCDB_OBSOLETE_KEYS_FOUND,
       TabletCounters::kDocDBObsoleteKeysFound,
       &METRIC_docdb_obsolete_keys_found},
-  {pggate::YB_ANALYZE_METRIC_DOCDB_OBSOLETE_KEYS_FOUND_PAST_CUTOFF,
+  {pggate::YB_STORAGE_COUNTER_DOCDB_OBSOLETE_KEYS_FOUND_PAST_CUTOFF,
       TabletCounters::kDocDBObsoleteKeysFoundPastCutoff,
       &METRIC_docdb_obsolete_keys_found_past_cutoff},
 };
 
 const GaugeEntry kGauges[] = {
-  {pggate::YB_ANALYZE_METRIC_ACTIVE_WRITE_QUERY_OBJECTS,
+  {pggate::YB_STORAGE_GAUGE_ACTIVE_WRITE_QUERY_OBJECTS,
       TabletGauges::kActiveWriteQueryObjects,
       &METRIC_active_write_query_objects},
 };
 
 const EventStatsEntry kEventStats[] = {
-  {TabletEventStats::kSnapshotReadInflightWaitDuration,
+  {pggate::YB_STORAGE_EVENT_SNAPSHOT_READ_INFLIGHT_WAIT_DURATION,
+      TabletEventStats::kSnapshotReadInflightWaitDuration,
       &METRIC_snapshot_read_inflight_wait_duration},
-  {TabletEventStats::kQlReadLatency,
+  {pggate::YB_STORAGE_EVENT_QL_READ_LATENCY,
+      TabletEventStats::kQlReadLatency,
       &METRIC_ql_read_latency},
-  {TabletEventStats::kWriteLockLatency,
+  {pggate::YB_STORAGE_EVENT_WRITE_LOCK_LATENCY,
+      TabletEventStats::kWriteLockLatency,
       &METRIC_write_lock_latency},
-  {TabletEventStats::kQlWriteLatency,
+  {pggate::YB_STORAGE_EVENT_QL_WRITE_LATENCY,
+      TabletEventStats::kQlWriteLatency,
       &METRIC_ql_write_latency},
-  {TabletEventStats::kReadTimeWait,
+  {pggate::YB_STORAGE_EVENT_READ_TIME_WAIT,
+      TabletEventStats::kReadTimeWait,
       &METRIC_read_time_wait},
-  {TabletEventStats::kTotalWaitQueueTime,
+  {pggate::YB_STORAGE_EVENT_TOTAL_WAIT_QUEUE_TIME,
+      TabletEventStats::kTotalWaitQueueTime,
       &METRIC_total_wait_queue_time},
 };
 
@@ -278,6 +285,8 @@ class TabletMetricsImpl final : public TabletMetrics {
   void IncrementBy(TabletGauges gauge, int64_t amount) override;
 
   void IncrementBy(TabletEventStats event_stats, uint64_t value, uint64_t amount) override;
+
+  void AddAggregateStats(TabletEventStats event_stats, const AggregateStats& other) override;
 
  private:
   std::vector<scoped_refptr<EventStats>> event_stats_;
@@ -325,6 +334,11 @@ void TabletMetricsImpl::IncrementBy(
   event_stats_[to_underlying(event_stats)]->IncrementBy(value, amount);
 }
 
+void TabletMetricsImpl::AddAggregateStats(
+    TabletEventStats event_stats, const AggregateStats& other) {
+  event_stats_[to_underlying(event_stats)]->Add(other);
+}
+
 } // namespace
 
 TabletMetrics::TabletMetrics()
@@ -332,65 +346,47 @@ TabletMetrics::TabletMetrics()
 
 ScopedTabletMetrics::ScopedTabletMetrics()
     : counters_(kElementsInTabletCounters, 0),
-      gauges_(kElementsInTabletGauges, 0) {}
+      gauges_(kElementsInTabletGauges, 0),
+      stats_(kElementsInTabletEventStats) { }
 
 ScopedTabletMetrics::~ScopedTabletMetrics() { }
 
-#if DCHECK_IS_ON()
-#define DCHECK_IN_USE() DCHECK(in_use_)
-#else
-#define DCHECK_IN_USE()
-#endif
-
 uint64_t ScopedTabletMetrics::Get(TabletCounters counter) const {
-  DCHECK_IN_USE();
   return counters_[to_underlying(counter)];
 }
 
 int64_t ScopedTabletMetrics::Get(TabletGauges gauge) const {
-  DCHECK_IN_USE();
   return gauges_[to_underlying(gauge)];
 }
 
 void ScopedTabletMetrics::IncrementBy(TabletCounters counter, uint64_t amount) {
-  DCHECK_IN_USE();
   counters_[to_underlying(counter)] += amount;
 }
 
 void ScopedTabletMetrics::IncrementBy(TabletGauges gauge, int64_t amount) {
-  DCHECK_IN_USE();
   gauges_[to_underlying(gauge)] += amount;
 }
 
 void ScopedTabletMetrics::IncrementBy(
     TabletEventStats event_stats, uint64_t value, uint64_t amount) {
-  DCHECK_IN_USE();
-  histogram_context_->IncrementBy(event_stats, value, amount);
+  stats_[to_underlying(event_stats)].IncrementBy(value, amount);
 }
 
-void ScopedTabletMetrics::Prepare() {
-#if DCHECK_IS_ON()
-  DCHECK(!in_use_);
-  in_use_ = true;
-#endif
-}
-
-void ScopedTabletMetrics::SetHistogramContext(TabletMetrics* histogram_context) {
-  histogram_context_ = histogram_context;
+void ScopedTabletMetrics::AddAggregateStats(
+    TabletEventStats event_stats, const AggregateStats& other) {
+  stats_[to_underlying(event_stats)].Add(other);
 }
 
 void ScopedTabletMetrics::CopyToPgsqlResponse(PgsqlResponsePB* response) const {
-  DCHECK_IN_USE();
   auto* metrics = response->mutable_metrics();
   for (const auto& counter : kCounters) {
     auto value = counters_[to_underlying(counter.counter)];
     // Don't send unchanged statistics.
-    if (value == 0) {
-      continue;
+    if (value != 0) {
+      auto* metric = metrics->add_counter_metrics();
+      metric->set_metric(counter.pggate_index);
+      metric->set_value(value);
     }
-    auto* metric = metrics->add_gauge_metrics();
-    metric->set_metric(counter.pggate_index);
-    metric->set_value(value);
   }
   for (const auto& gauge : kGauges) {
     auto value = gauges_[to_underlying(gauge.gauge)];
@@ -400,20 +396,27 @@ void ScopedTabletMetrics::CopyToPgsqlResponse(PgsqlResponsePB* response) const {
       metric->set_value(value);
     }
   }
+  for (const auto& event_stat : kEventStats) {
+    const auto& value = stats_[to_underlying(event_stat.event_stat)];
+    if (value.TotalCount() != 0) {
+      auto* metric = metrics->add_event_metrics();
+      metric->set_metric(event_stat.pggate_index);
+      metric->set_sum(value.TotalSum());
+      metric->set_count(value.TotalCount());
+    }
+  }
 }
 
 size_t ScopedTabletMetrics::Dump(std::stringstream* out) const {
-  DCHECK_IN_USE();
   size_t dumped = 0;
   for (const auto& counter : kCounters) {
     auto value = counters_[to_underlying(counter.counter)];
     // Don't dump unchanged statistics.
-    if (value == 0) {
-      continue;
+    if (value != 0) {
+      const auto* name = counter.prototype->name();
+      (*out) << name << ": " << value << '\n';
+      ++dumped;
     }
-    const auto* name = counter.prototype->name();
-    (*out) << name << ": " << value << '\n';
-    ++dumped;
   }
   for (const auto& gauge : kGauges) {
     auto value = gauges_[to_underlying(gauge.gauge)];
@@ -423,12 +426,22 @@ size_t ScopedTabletMetrics::Dump(std::stringstream* out) const {
       ++dumped;
     }
   }
+  for (const auto& event_stat : kEventStats) {
+    const auto& value = stats_[to_underlying(event_stat.event_stat)];
+    if (value.TotalCount() != 0) {
+      const auto* name = event_stat.prototype->name();
+      (*out) << name << ": "
+             << "sum: " << value.TotalSum() << ", "
+             << "count: " << value.TotalCount() << ", "
+             << "min: " << value.MinValue() << ", "
+             << "max: " << value.MaxValue() << '\n';
+      ++dumped;
+    }
+  }
   return dumped;
 }
 
 void ScopedTabletMetrics::MergeAndClear(TabletMetrics* target) {
-  DCHECK_IN_USE();
-
   for (size_t i = 0; i < counters_.size(); ++i) {
     if (counters_[i] > 0) {
       target->IncrementBy(static_cast<TabletCounters>(i), counters_[i]);
@@ -442,10 +455,12 @@ void ScopedTabletMetrics::MergeAndClear(TabletMetrics* target) {
     }
   }
 
-#if DCHECK_IS_ON()
-  in_use_ = false;
-#endif
-  histogram_context_ = nullptr;
+  for (size_t i = 0; i < stats_.size(); ++i) {
+    if (stats_[i].TotalCount() > 0) {
+      target->AddAggregateStats(static_cast<TabletEventStats>(i), stats_[i]);
+      stats_[i].Reset(PreserveTotalStats::kFalse);
+    }
+  }
 }
 
 std::unique_ptr<TabletMetrics> CreateTabletMetrics(

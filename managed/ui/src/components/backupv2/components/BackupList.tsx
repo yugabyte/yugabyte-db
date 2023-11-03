@@ -44,9 +44,13 @@ import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import BackupRestoreNewModal from './restore/BackupRestoreNewModal';
-import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import {
+  RbacValidator,
+  hasNecessaryPerm
+} from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+
 import './BackupList.scss';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const reactWidgets = require('react-widgets');
@@ -246,26 +250,19 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
     );
   };
 
-
   const canCreateBackup = hasNecessaryPerm({
-    onResource: universeUUID,
-    ...UserPermissionMap.createBackup
+    ...ApiPermissionMap.CREATE_BACKUP,
+    onResource: universeUUID ?? ''
   });
 
-  const canDeleteBackup = hasNecessaryPerm({
-    onResource: "CUSTOMER_ID",
-    ...UserPermissionMap.deleteBackup
-  });
+  const canDeleteBackup = hasNecessaryPerm(ApiPermissionMap.DELETE_BACKUP);
 
   const canRestoreBackup = hasNecessaryPerm({
-    onResource: "CUSTOMER_ID",
-    ...UserPermissionMap.restoreBackup
+    ...ApiPermissionMap.RESTORE_BACKUP,
+    onResource: universeUUID ?? ''
   });
 
-  const canChangeRetentionPeriod = hasNecessaryPerm({
-    onResource: "CUSTOMER_ID",
-    ...UserPermissionMap.changeRetentionPeriod
-  });
+  const canChangeRetentionPeriod = hasNecessaryPerm(ApiPermissionMap.EDIT_BACKUP);
 
   const getActions = (row: IBackup) => {
     if (row.commonBackupInfo.state === Backup_States.DELETED) {
@@ -293,56 +290,83 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         pullRight
         onClick={(e) => e.stopPropagation()}
       >
-        <MenuItem
-          disabled={
-            row.commonBackupInfo.state !== Backup_States.COMPLETED || !row.isStorageConfigPresent || !canRestoreBackup
-          }
-          onClick={(e) => {
-            e.stopPropagation();
-            if (
-              row.commonBackupInfo.state !== Backup_States.COMPLETED ||
-              !row.isStorageConfigPresent || !canRestoreBackup
-            ) {
-              return;
-            }
-            setRestoreEntireBackup(true);
-            setRestoreDetails(row);
-            setShowRestoreModal(true);
+        <RbacValidator
+          accessRequiredOn={{
+            onResource: universeUUID,
+            ...ApiPermissionMap.RESTORE_BACKUP,
           }}
+          isControl
+          overrideStyle={{ display: 'block' }}
         >
-          Restore Entire Backup
-        </MenuItem>
-        <MenuItem
-          onClick={(e) => {
-            e.stopPropagation();
-            if (!row.isStorageConfigPresent || !canDeleteBackup) return;
-            setSelectedBackups([row]);
-            setShowDeleteModal(true);
-          }}
-          disabled={!row.isStorageConfigPresent || !canDeleteBackup}
-          className="action-danger"
-        >
-          Delete Backup
-        </MenuItem>
-        <MenuItem
-          onClick={(e) => {
-            e.stopPropagation();
-            if (
+          <MenuItem
+            disabled={
               row.commonBackupInfo.state !== Backup_States.COMPLETED ||
-              !row.isStorageConfigPresent || !canChangeRetentionPeriod
-            ) {
-              return;
+              !row.isStorageConfigPresent ||
+              !canRestoreBackup
             }
+            onClick={(e) => {
+              e.stopPropagation();
+              if (
+                row.commonBackupInfo.state !== Backup_States.COMPLETED ||
+                !row.isStorageConfigPresent ||
+                !canRestoreBackup
+              ) {
+                return;
+              }
+              setRestoreEntireBackup(true);
+              setRestoreDetails(row);
+              setShowRestoreModal(true);
+            }}
+          >
+            Restore Entire Backup
+          </MenuItem>
+        </RbacValidator>
+        <RbacValidator
+          accessRequiredOn={ApiPermissionMap.DELETE_BACKUP}
+          isControl
+          overrideStyle={{ display: 'block' }}
+        >
+          <MenuItem
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!row.isStorageConfigPresent || !canDeleteBackup) return;
+              setSelectedBackups([row]);
+              setShowDeleteModal(true);
+            }}
+            disabled={!row.isStorageConfigPresent || !canDeleteBackup}
+            className="action-danger"
+          >
+            Delete Backup
+          </MenuItem>
+        </RbacValidator>
+        <RbacValidator
+          accessRequiredOn={ApiPermissionMap.EDIT_BACKUP}
+          isControl
+          overrideStyle={{ display: 'block' }}
+        >
+          <MenuItem
+            onClick={(e) => {
+              e.stopPropagation();
+              if (
+                row.commonBackupInfo.state !== Backup_States.COMPLETED ||
+                !row.isStorageConfigPresent ||
+                !canChangeRetentionPeriod
+              ) {
+                return;
+              }
 
-            setSelectedBackups([row]);
-            setShowEditBackupModal(true);
-          }}
-          disabled={
-            row.commonBackupInfo.state !== Backup_States.COMPLETED || !row.isStorageConfigPresent || !canChangeRetentionPeriod
-          }
-        >
-          Change Retention Period
-        </MenuItem>
+              setSelectedBackups([row]);
+              setShowEditBackupModal(true);
+            }}
+            disabled={
+              row.commonBackupInfo.state !== Backup_States.COMPLETED ||
+              !row.isStorageConfigPresent ||
+              !canChangeRetentionPeriod
+            }
+          >
+            Change Retention Period
+          </MenuItem>
+        </RbacValidator>
       </DropdownButton>
     );
   };
@@ -364,6 +388,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
             currentUniverse?.data?.universeDetails?.universePaused ||
             !canCreateBackup
           }
+          hasPerm={canCreateBackup}
         />
         <BackupCreateModal
           visible={showBackupCreateModal}
@@ -477,11 +502,9 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
             maxMenuHeight={300}
           ></Select>
           <RbacValidator
-            accessRequiredOn={{
-              onResource: universeUUID,
-              ...UserPermissionMap.createBackup
-            }}
-            isControl>
+            accessRequiredOn={ApiPermissionMap.DELETE_BACKUP}
+            isControl
+          >
             <YBButton
               btnText="Delete"
               btnIcon="fa fa-trash-o"
@@ -494,9 +517,10 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
               <RbacValidator
                 accessRequiredOn={{
                   onResource: universeUUID,
-                  ...UserPermissionMap.createBackup
+                  ...ApiPermissionMap.CREATE_BACKUP
                 }}
-                isControl>
+                isControl
+              >
                 <YBButton
                   loading={isTableListLoading}
                   btnText="Backup now"

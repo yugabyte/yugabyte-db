@@ -14,17 +14,19 @@ import { Role } from './IRoles';
 // export const roleMethods
 export default createStateContext<Role | null>(null);
 
-export const Pages = ['CREATE_ROLE', 'LIST_ROLE', 'EDIT_ROLE'] as const;
+export const Pages = {
+  CREATE_ROLE: 'CREATE_ROLE',
+  LIST_ROLE: 'LIST_ROLE',
+  EDIT_ROLE: 'EDIT_ROLE'
+} as const;
+export const EditViews = { CONFIGURATIONS: 'CONFIGURATIONS', USERS: 'USERS' } as const;
 
-export const EditViews = ['CONFIGURATIONS', 'USERS'] as const;
-
-export type Page = typeof Pages[number];
-export type EditView = typeof EditViews[number];
+export type Page = keyof typeof Pages;
 
 export type RoleViewContext = {
   formProps: {
     currentPage: Page;
-    editView?: EditView
+    editView?: keyof typeof EditViews;
   };
   currentRole: Role | null;
 };
@@ -50,7 +52,7 @@ export const roleMethods = (context: RoleViewContext) => ({
     ...context,
     currentRole
   }),
-  setEditView: (editView: EditView): RoleViewContext => ({
+  setEditView: (editView: keyof typeof EditViews): RoleViewContext => ({
     ...context,
     formProps: {
       ...context.formProps,

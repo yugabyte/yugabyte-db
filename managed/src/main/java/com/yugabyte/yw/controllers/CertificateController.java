@@ -27,6 +27,8 @@ import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.extended.CertificateInfoExt;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
@@ -184,7 +186,7 @@ public class CertificateController extends AuthenticatedController {
     return PlatformResults.withData(certUUID);
   }
 
-  @ApiOperation(value = "Create a self signed certificate", response = UUID.class)
+  @ApiOperation(value = "YbaApi Internal. Create a self signed certificate", response = UUID.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "label",
@@ -198,6 +200,7 @@ public class CertificateController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   public Result createSelfSignedCert(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     ObjectNode formData = (ObjectNode) request.body().asJson();
@@ -223,7 +226,9 @@ public class CertificateController extends AuthenticatedController {
     return PlatformResults.withData(certUUID);
   }
 
-  @ApiOperation(value = "Add a client certificate", response = CertificateDetails.class)
+  @ApiOperation(
+      value = "YbaApi Internal. Add a client certificate",
+      response = CertificateDetails.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "certificate",
@@ -237,6 +242,7 @@ public class CertificateController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   public Result getClientCert(UUID customerUUID, UUID rootCA, Http.Request request) {
     Form<ClientCertParams> formData =
         formFactory.getFormDataOrBadRequest(request, ClientCertParams.class);
@@ -322,9 +328,10 @@ public class CertificateController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Get a certificate's UUID",
+      value = "YbaApi Internal. Get a certificate's UUID",
       response = UUID.class,
       nickname = "getCertificate")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   public Result get(UUID customerUUID, String label) {
     Customer.getOrBadRequest(customerUUID);
     CertificateInfo cert = CertificateInfo.getOrBadRequest(customerUUID, label);
@@ -403,13 +410,16 @@ public class CertificateController extends AuthenticatedController {
     return YBPSuccess.empty();
   }
 
-  @ApiOperation(value = "Update an empty certificate", response = CertificateInfoExt.class)
+  @ApiOperation(
+      value = "YbaApi Internal. Update an empty certificate",
+      response = CertificateInfoExt.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   public Result updateEmptyCustomCert(UUID customerUUID, UUID rootCA, Http.Request request) {
     Form<CertificateParams> formData =
         formFactory.getFormDataOrBadRequest(request, CertificateParams.class);

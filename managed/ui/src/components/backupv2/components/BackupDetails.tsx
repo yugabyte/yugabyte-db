@@ -34,9 +34,10 @@ import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { handleCACertErrMsg } from '../../customCACerts';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './BackupDetails.scss';
+import { Action, Resource } from '../../../redesign/features/rbac';
 
 export type IncrementalBackupProps = {
   isRestoreEntireBackup?: boolean; // if the restore entire backup button is clicked
@@ -247,11 +248,9 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
         <div className="side-panel__content">
           <Row className="backup-details-actions">
             <RbacValidator
-              accessRequiredOn={{
-                onResource: 'CUSTOMER_ID',
-                ...UserPermissionMap.deleteBackup
-              }}
+              accessRequiredOn={ApiPermissionMap.DELETE_BACKUP}
               isControl
+              popOverOverrides={{ zIndex: 10000 }}
             >
               <YBButton
                 btnText="Delete"
@@ -267,11 +266,9 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             </RbacValidator>
             {!hideRestore && (
               <RbacValidator
-                accessRequiredOn={{
-                  onResource: 'CUSTOMER_ID',
-                  ...UserPermissionMap.restoreBackup
-                }}
+                customValidateFunction={(userPerm) => find(userPerm, { actions: [Action.BACKUP_RESTORE], resourceType: Resource.UNIVERSE }) !== undefined}
                 isControl
+                popOverOverrides={{ zIndex: 10000 }}
               >
                 <YBButton
                   btnText="Restore Entire Backup"
@@ -307,11 +304,9 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             )}
             {onEdit && (
               <RbacValidator
-                accessRequiredOn={{
-                  onResource: 'CUSTOMER_ID',
-                  ...UserPermissionMap.editBackup
-                }}
+                accessRequiredOn={ApiPermissionMap.EDIT_BACKUP}
                 isControl
+                popOverOverrides={{ zIndex: 10000 }}
               >
                 <YBButton
                   btnText="Change Retention Period"
@@ -403,14 +398,12 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 <div className="header-text">KMS Config</div>
                 <div>{kmsConfig ? kmsConfig.metadata?.name : '-'}</div>
               </div>
-              {
-                !backupDetails.onDemand && (
-                  <div>
-                    <div className='header-text'>Schedule Name</div>
-                    <div>{backupDetails.scheduleName}</div>
-                  </div>
-                )
-              }
+              {!backupDetails.onDemand && (
+                <div>
+                  <div className="header-text">Schedule Name</div>
+                  <div>{backupDetails.scheduleName}</div>
+                </div>
+              )}
             </div>
             {!storageConfigName && (
               <span className="assign-config-msg">
@@ -442,14 +435,12 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               {currentUniverseUUID && backupDetails.isStorageConfigPresent && (
                 <Col lg={6} className="no-padding">
                   <RbacValidator
-                    accessRequiredOn={{
-                      onResource: currentUniverseUUID,
-                      ...UserPermissionMap.createBackup
-                    }}
+                    customValidateFunction={(userPerm) => find(userPerm, { actions: [Action.BACKUP_RESTORE], resourceType: Resource.UNIVERSE }) !== undefined}
                     overrideStyle={{
                       display: 'unset'
                     }}
                     isControl
+                    popOverOverrides={{ zIndex: 10000 }}
                   >
                     <YBButton
                       btnText="Add Incremental Backup"

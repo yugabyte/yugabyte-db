@@ -9,6 +9,8 @@ import static com.yugabyte.yw.commissioner.TaskGarbageCollector.YB_TASK_GC_GC_CH
 import static io.prometheus.client.CollectorRegistry.defaultRegistry;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
@@ -30,18 +32,21 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Date;
 import java.util.UUID;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.MockitoAnnotations;
 
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(JUnitParamsRunner.class)
 public class TaskGarbageCollectorTest extends FakeDBApplication {
 
   private void checkCounters(
@@ -86,6 +91,7 @@ public class TaskGarbageCollectorTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
+    MockitoAnnotations.initMocks(this);
     defaultCustomer = ModelFactory.testCustomer();
     when(mockRuntimeConfFactory.globalRuntimeConf()).thenReturn(mockAppConfig);
     taskGarbageCollector =
@@ -182,6 +188,37 @@ public class TaskGarbageCollectorTest extends FakeDBApplication {
     assertFalse(TaskInfo.maybeGet(parentTask.getUuid()).isPresent());
     assertFalse(TaskInfo.maybeGet(subTask.getUuid()).isPresent());
     assertTrue(CustomerTask.get(customerTask.getId()) == null);
+  }
+
+  @Test
+  @Parameters({"SoftwareUpgrade", "RollbackUpgrade", "FinalizeUpgrade"})
+  public void testDeleteUpgradeTask(CustomerTask.TaskType taskType) {
+    TaskInfo parentTask = new TaskInfo(TaskType.CreateUniverse);
+    parentTask.setOwner("test");
+    parentTask.setTaskState(TaskInfo.State.Success);
+    parentTask.setDetails(mapper.createObjectNode());
+    parentTask.save();
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
+    CustomerTask customerTask =
+        spy(
+            CustomerTask.create(
+                defaultCustomer,
+                universe.getUniverseUUID(),
+                parentTask.getUuid(),
+                TargetType.Universe,
+                taskType,
+                universe.getName()));
+    customerTask.setCompletionTime(new Date());
+    customerTask.save();
+    taskGarbageCollector.purgeStaleTasks(defaultCustomer, Collections.singletonList(customerTask));
+    assertTrue(TaskInfo.maybeGet(parentTask.getUuid()).isPresent());
+    assertNotNull(CustomerTask.get(customerTask.getId()));
+    universe.delete();
+    // Check that the task is deleted if the universe does not exist.
+    taskGarbageCollector.purgeStaleTasks(defaultCustomer, Collections.singletonList(customerTask));
+    checkCounters(defaultCustomer.getUuid(), 2.0, 0.0, 1.0, 1.0);
+    assertFalse(TaskInfo.maybeGet(parentTask.getUuid()).isPresent());
+    assertNull(CustomerTask.get(customerTask.getId()));
   }
 
   private String getTotalCounterName(String name) {

@@ -3,6 +3,8 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -41,6 +43,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
+@Retryable
+@Abortable
 public class VMImageUpgrade extends UpgradeTaskBase {
 
   private final Map<UUID, List<String>> replacementRootVolumes = new ConcurrentHashMap<>();
@@ -78,18 +82,32 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    taskParams().verifyParams(getUniverse(), isFirstTry);
+  }
+
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    Set<NodeDetails> nodeSet = fetchNodesForCluster();
+    String newVersion = taskParams().ybSoftwareVersion;
+    if (taskParams().isSoftwareUpdateViaVm) {
+      createCheckUpgradeTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
+      if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.promoteAutoFlag)
+          && CommonUtils.isAutoFlagSupported(newVersion)) {
+        createCheckSoftwareVersionTask(nodeSet, newVersion)
+            .setSubTaskGroupType(getTaskSubGroupType());
+      }
+    }
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
           Set<NodeDetails> nodeSet = fetchNodesForCluster();
 
-          // Verify the request params and fail if invalid
-          taskParams().verifyParams(getUniverse());
-
           String newVersion = taskParams().ybSoftwareVersion;
-          if (taskParams().isSoftwareUpdateViaVm) {
-            createCheckUpgradeTask(newVersion).setSubTaskGroupType(getTaskSubGroupType());
-          }
 
           // Create task sequence for VM Image upgrade
           createVMImageUpgradeTasks(nodeSet);
@@ -98,8 +116,6 @@ public class VMImageUpgrade extends UpgradeTaskBase {
             // Promote Auto flags on compatible versions.
             if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.promoteAutoFlag)
                 && CommonUtils.isAutoFlagSupported(newVersion)) {
-              createCheckSoftwareVersionTask(nodeSet, newVersion)
-                  .setSubTaskGroupType(getTaskSubGroupType());
               createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
                   Collections.singleton(taskParams().getUniverseUUID()),
                   Collections.singleton(taskParams().getUniverseUUID()),
@@ -178,6 +194,8 @@ public class VMImageUpgrade extends UpgradeTaskBase {
       node.ybPrebuiltAmi =
           taskParams().vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages;
       List<NodeDetails> nodeList = Collections.singletonList(node);
+      // TODO This can be improved to skip already provisioned nodes as there are long running
+      // subtasks.
       createInstallNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createWaitForNodeAgentTasks(nodeList).setSubTaskGroupType(SubTaskGroupType.Provisioning);
       createHookProvisionTask(nodeList, TriggerType.PreNodeProvision);

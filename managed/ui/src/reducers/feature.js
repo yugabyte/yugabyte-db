@@ -28,13 +28,11 @@ const initialStateFeatureInTest = {
   enableNewUI: true, // feature flag to enable new revamped UI,
   enableCustomEmailTemplates: true,
   enableAWSProviderValidation: true,
-  enableGFlagMultilineConf: true,
   enableMKR: true,
   enableS3BackupProxy: false,
   enableRRGflags: true,
   enableLDAPRoleMapping: true,
   enableNewRestoreModal: true,
-  enableRBAC: true,
   enableCACertRotation: true
 };
 
@@ -63,8 +61,7 @@ const initialStateFeatureReleased = {
   enableNotificationTemplates: false,
   enableRestore: true,
   enablePrefillKubeConfig: true,
-  enableCustomEmailTemplates: true,
-  enableGFlagMultilineConf: true
+  enableCustomEmailTemplates: true
   // enableRRGflags: true
 };
 

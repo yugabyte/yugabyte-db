@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC, useState } from 'react';
+import { FC, useState } from 'react';
 import { DropdownButton, MenuItem, Tab } from 'react-bootstrap';
 import { withRouter } from 'react-router';
 import { useSelector } from 'react-redux';
@@ -19,9 +19,10 @@ import { PointInTimeRecovery } from '../pitr/PointInTimeRecovery';
 import { isYbcInstalledInUniverse, getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { BackupThrottleParameters } from '../components/BackupThrottleParameters';
 import { BackupAdvancedRestore } from '../components/BackupAdvancedRestore';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+
 import './UniverseLevelBackup.scss';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 interface UniverseBackupProps {
   params: {
@@ -73,7 +74,8 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
       )}
       <RbacValidator
         accessRequiredOn={{
-          ...UserPermissionMap.listBackup
+          ...ApiPermissionMap.GET_BACKUPS_BY_PAGE,
+          onResource: uuid
         }}
       >
         <YBTabsPanel id="backup-tab-panel" defaultTab="backupList">
@@ -112,12 +114,10 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
               >
                 <RbacValidator
                   isControl
-                  accessRequiredOn={
-                    {
-                      onResource: "CUSTOMER_ID",
-                      ...UserPermissionMap.restoreBackup
-                    }
-                  }
+                  accessRequiredOn={{
+                    onResource: uuid,
+                    ...ApiPermissionMap.RESTORE_BACKUP
+                  }}
                 >
                   <MenuItem
                     onClick={(e) => {
@@ -126,6 +126,7 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
                       setShowAdvancedRestore(true);
                     }}
                     disabled={currentUniverse?.data?.universeDetails?.universePaused}
+                    data-testid="UniverseBackup-AdvancedRestore"
                   >
                     Advanced Restore
                   </MenuItem>
@@ -133,12 +134,10 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
                 {YBCInstalled && (
                   <RbacValidator
                     isControl
-                    accessRequiredOn={
-                      {
-                        onResource: uuid,
-                        ...UserPermissionMap.createBackup
-                      }
-                    }
+                    accessRequiredOn={{
+                      onResource: uuid,
+                      ...ApiPermissionMap.MODIFY_BACKUP_THROTTLE_PARAMS
+                    }}
                   >
                     <MenuItem
                       onClick={(e) => {
@@ -147,6 +146,7 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
                         setShowThrottleParametersModal(true);
                       }}
                       disabled={currentUniverse?.data?.universeDetails?.universePaused}
+                      data-testid="UniverseBackup-ConfigureThrottle"
                     >
                       Configure Throttle Parameters
                     </MenuItem>

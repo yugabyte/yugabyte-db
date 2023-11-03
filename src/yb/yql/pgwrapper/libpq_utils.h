@@ -195,6 +195,7 @@ class PGConn {
   Result<PGResultPtr> Fetch(const std::string& command);
 
   template <class... Args>
+  requires(sizeof...(Args) > 0)
   Result<PGResultPtr> FetchFormat(const std::string& format, Args&&... args) {
     return Fetch(Format(format, std::forward<Args>(args)...));
   }

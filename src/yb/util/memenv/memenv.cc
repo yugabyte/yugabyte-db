@@ -27,7 +27,7 @@
 #include <string>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stringprintf.h"
@@ -70,7 +70,7 @@ class RandomAccessFileImpl : public RandomAccessFile {
     return 0;
   }
 
-  const string& filename() const override {
+  const std::string& filename() const override {
     return file_->filename();
   }
 

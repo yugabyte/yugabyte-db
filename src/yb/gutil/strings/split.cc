@@ -32,7 +32,7 @@ using std::set;
 using std::pair;
 
 #include "yb/gutil/integral_types.h"
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strtoint.h"

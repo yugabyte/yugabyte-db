@@ -422,7 +422,7 @@ static void startup_die(SIGNAL_ARGS);
 static void dummy_handler(SIGNAL_ARGS);
 static void StartupPacketTimeoutHandler(void);
 static void CleanupBackend(int pid, int exitstatus);
-static void CleanupKilledProcess(PGPROC *proc);
+static bool CleanupKilledProcess(PGPROC *proc);
 static bool CleanupBackgroundWorker(int pid, int exitstatus);
 static void HandleChildCrash(int pid, int exitstatus, const char *procname);
 static void LogChildExit(int lev, const char *procname,
@@ -2946,9 +2946,15 @@ reaper(SIGNAL_ARGS)
 					WTERMSIG(exitstatus) == SIGKILL ||
 					WTERMSIG(exitstatus) == SIGSEGV)
 				{
-					YBC_LOG_INFO("cleaning up after process with pid %d exited with status %d",
-								 pid, exitstatus);
-					CleanupKilledProcess(proc);
+					elog(INFO, "cleaning up after process with pid %d exited with status %d",
+						 pid, exitstatus);
+					if (!CleanupKilledProcess(proc))
+					{
+						YbCrashInUnmanageableState = true;
+						ereport(WARNING,
+								(errmsg("terminating active server processes due to backend crash "
+										"that is unable to be cleaned up")));
+					}
 				}
 				else
 				{
@@ -2957,7 +2963,6 @@ reaper(SIGNAL_ARGS)
 							(errmsg("terminating active server processes due to backend crash from "
 									"unexpected error code %d",
 							 WTERMSIG(exitstatus))));
-					break;
 				}
 				break;
 			}
@@ -3380,7 +3385,13 @@ CleanupBackgroundWorker(int pid,
 	return false;
 }
 
-static void
+/*
+ * CleanupKilledProcess - cleanup after an unexpectedly killed process.
+ *
+ * Returns true if the process was succesfully cleaned up, false if the process
+ * cannot be cleaned up.
+ */
+static bool
 CleanupKilledProcess(PGPROC *proc)
 {
 	if (proc->backendId == InvalidBackendId)
@@ -3406,12 +3417,17 @@ CleanupKilledProcess(PGPROC *proc)
 		ConditionVariableCancelSleepForProc(proc);
 
 		if (proc->lockGroupLeader != NULL)
-			RemoveLockGroupLeader(proc);
+		{
+			elog(WARNING, "cannot cleanup after a process in a lockgroup");
+			return false;
+		}
 
 		DisownLatchOnBehalfOfPid(&proc->procLatch, proc->pid);
 
 		ReleaseProcToFreeList(proc);
 	}
+
+	return true;
 }
 
 /*
@@ -3428,7 +3444,14 @@ CleanupBackend(int pid,
 	dlist_mutable_iter iter;
 
 	if (YBIsEnabledInPostgresEnvVar())
+	{
 		LogChildExit(EXIT_STATUS_0(exitstatus) ? DEBUG2 : WARNING, _("server process"), pid, exitstatus);
+
+		if (WTERMSIG(exitstatus) == SIGKILL)
+			pgstat_report_query_termination("Terminated by SIGKILL", pid);
+		else if (WTERMSIG(exitstatus) == SIGSEGV)
+			pgstat_report_query_termination("Terminated by SIGSEGV", pid);
+	}
 	else
 		LogChildExit(DEBUG2, _("server process"), pid, exitstatus);
 
@@ -3803,11 +3826,6 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 				 activity ? errdetail("Failed process was running: %s", activity) : 0));
 	else if (WIFSIGNALED(exitstatus))
 	{
-		if (WTERMSIG(exitstatus) == SIGKILL)
-			pgstat_report_query_termination("Terminated by SIGKILL", pid);
-		else if (WTERMSIG(exitstatus) == SIGSEGV)
-			pgstat_report_query_termination("Terminated by SIGSEGV", pid);
-
 #if defined(WIN32)
 		ereport(lev,
 

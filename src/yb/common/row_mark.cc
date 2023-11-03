@@ -14,7 +14,7 @@
 
 #include "yb/common/row_mark.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/common/common.pb.h"
 #include "yb/gutil/macros.h"

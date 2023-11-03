@@ -13,7 +13,6 @@
 # under the License.
 #
 set -euo pipefail
-
 script_name=${0##*/}
 script_name=${script_name%.*}
 
@@ -273,6 +272,9 @@ Test options:
   --(with|no)-odyssey
     Specify whether to build Odyssey (PostgreSQL connection pooler). Not building by default.
 
+  --validate-args-only
+    Only validate command-line arguments and exit immediately. Suppress all unnecessary output.
+
 Debug options:
 
   --verbose
@@ -313,7 +315,37 @@ set_cxx_test_name() {
   if [[ -n $cxx_test_name ]]; then
     fatal "Only one C++ test name can be specified (found '$cxx_test_name' and '$1')."
   fi
-  cxx_test_name=$1
+  if [[ $1 == TEST* ]]; then
+    local test_source_path
+    test_source_path=$(
+      ( cd "$YB_SRC_ROOT/src" && git grep "$1" ) | cut -d: -f1 | sort | uniq
+    )
+    if [[ ! -f "$YB_SRC_ROOT/src/$test_source_path" ]]; then
+      fatal "Failed to identify test path based on code substring $cxx_test_name." \
+            "Grep result: $test_source_path"
+    fi
+    cxx_test_name=${test_source_path##*/}
+    cxx_test_name=${cxx_test_name%.cc}
+
+    # A convenience syntax for copying and pasting a line from a C++ test.
+    # E.g. --cxx-test='TEST(FormatTest, Time) {' or even
+    # --cxx-test='TEST_F_EX(ClientTest, CompactionStatusWaitingForHeartbeats, CompactionClientTest)'
+
+    local gtest_filter
+    local identifier='([a-zA-Z_][a-zA-Z_0-9]*)'
+    if [[ $1 =~ ^(TEST_F_EX)\($identifier,\ *$identifier,\ *$identifier\) ||
+          $1 =~ ^(TEST|TEST_F)\($identifier,\ *$identifier\) ]]; then
+      gtest_filter=${BASH_REMATCH[2]}.${BASH_REMATCH[3]}
+    else
+      fatal "Could not determine gtest test filter from source substring $1"
+    fi
+    export YB_GTEST_FILTER=$gtest_filter
+
+    log "Determined C++ test based on source substring:" \
+        "--cxx-test=$cxx_test_name --gtest_filter=$gtest_filter"
+  else
+    cxx_test_name=$1
+  fi
   running_any_tests=true
   build_java=false
 }
@@ -934,12 +966,16 @@ build_tests=""
 build_fuzz_targets=""
 
 # These will influence what targets to build if invoked with the packaged_targets meta-target.
-build_odyssey="false"
+build_odyssey=false
 if is_linux; then
-  build_odyssey="true"
+  build_odyssey=true
 fi
 
-build_yugabyted_ui="false"
+build_yugabyted_ui=false
+
+# -------------------------------------------------------------------------------------------------
+
+validate_args_only=false
 
 # -------------------------------------------------------------------------------------------------
 # Actually parsing command-line arguments
@@ -1409,7 +1445,7 @@ while [[ $# -gt 0 ]]; do
       export YB_LINKING_TYPE=full-lto
     ;;
     --lto)
-      if [[ ! $2 =~ ^(thin|full|none) ]]; then
+      if [[ ! $2 =~ ^(thin|full|none)$ ]]; then
         fatal "Invalid LTO type: $2"
       fi
       if [[ $2 == "none" ]]; then
@@ -1459,6 +1495,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --reset-cxx-test-filter)
       reset_cxx_test_filter=true
+    ;;
+    --validate-args-only)
+      validate_args_only=true
     ;;
     *)
       if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then
@@ -1523,6 +1562,9 @@ if is_mac && [[ $should_build_clangd_index == "true" && ${YB_COMPILER_TYPE:-} ==
   # On macOS, we need to use our custom-built version of Clang to build the clangd index.
   YB_COMPILER_TYPE=clang16
 fi
+if [[ $validate_args_only == "true" ]]; then
+  yb_set_build_type_quietly=true
+fi
 set_cmake_build_type_and_compiler_type
 
 if [[ $should_build_clangd_index == "true" && ! ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ ]]; then
@@ -1540,8 +1582,10 @@ if [[ ${reset_cxx_test_filter} == "true" ]]; then
   set_cxx_test_filter_regex ""
 fi
 
-log "YugabyteDB build is running on host '$HOSTNAME'"
-log "YB_COMPILER_TYPE=$YB_COMPILER_TYPE"
+if [[ $validate_args_only == "false" ]]; then
+  log "YugabyteDB build is running on host '$HOSTNAME'"
+  log "YB_COMPILER_TYPE=$YB_COMPILER_TYPE"
+fi
 
 normalize_build_type
 if [[ ${verbose} == "true" ]]; then
@@ -1659,6 +1703,10 @@ then
         "--java-test <class_name>#testMethodName" \
         " or remove the --run-java-test-methods-separately flag. " \
         "To run all Java tests, replace --java-test=<test_name> with --java-tests."
+fi
+
+if [[ $validate_args_only == "true" ]]; then
+  exit
 fi
 
 # End of post-processing and validating command-line arguments.
@@ -1952,9 +2000,9 @@ if [[ ${build_java} == "true" ]]; then
   capture_sec_timestamp java_build_end
 
   if [[ $collect_java_tests == "true" ]]; then
-    capture_sec_timestap collect_java_tests_start
+    capture_sec_timestamp collect_java_tests_start
     collect_java_tests
-    capture_sec_timestap collect_java_tests_end
+    capture_sec_timestamp collect_java_tests_end
   fi
 
   log "Java build finished, total time information above."

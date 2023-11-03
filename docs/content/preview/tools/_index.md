@@ -89,8 +89,8 @@ To create a local cluster, follow the steps in [Quick start](../quick-start/).
 
 To create a cluster in YugabyteDB Managed, follow the steps in [Create a cluster](../yugabyte-cloud/cloud-quickstart/). In addition, do the following:
 
-- [Download the cluster certificate](../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate); YugabyteDB requires the use of TLS
-- [Add your computer to the cluster IP allow list](../yugabyte-cloud/cloud-secure-clusters/add-connections/#assign-an-ip-allow-list-to-a-cluster); this allows your computer to access the cluster
+- [Download the cluster certificate](../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate); YugabyteDB Managed requires the use of TLS
+- [Add your computer to the cluster IP allow list](../yugabyte-cloud/cloud-secure-clusters/add-connections/); this allows your computer to access the cluster
 
 ## Connection parameters
 

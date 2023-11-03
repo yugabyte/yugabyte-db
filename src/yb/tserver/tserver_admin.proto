@@ -230,6 +230,9 @@ message FlushTabletsRequestPB {
 
   // Whether we want to flush or compact all tablets in the server.
   optional bool all_tablets = 5;
+
+  // Only flush/compact regular RocksDB, not intents RocksDB.
+  optional bool regular_only = 6;
 }
 
 message FlushTabletsResponsePB {
@@ -307,17 +310,17 @@ message TestRetryRequestPB {
   required int32 num_retries = 4;
 }
 
+message TestRetryResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
 message UpdateTransactionTablesVersionRequestPB {
   required uint64 version = 1;
 }
 
 message UpdateTransactionTablesVersionResponsePB {
   optional TabletServerErrorPB error = 1;
-}
-
-message TestRetryResponsePB {
-  optional TabletServerErrorPB error = 1;
-  optional fixed64 propagated_hybrid_time = 2;
 }
 
 service TabletServerAdminService {

@@ -15,7 +15,7 @@
 
 #include <stdint.h>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/qlexpr/ql_name.h"
 #include "yb/common/ql_type.h"

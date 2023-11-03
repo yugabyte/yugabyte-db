@@ -42,7 +42,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
@@ -1043,10 +1042,11 @@ Status ExternalMiniCluster::WaitForLeaderCommitTermAdvance() {
   return STATUS(TimedOut, Format("Term did not advance from $0.", start_opid.term()));
 }
 
-Status ExternalMiniCluster::GetLastOpIdForEachMasterPeer(
+Status ExternalMiniCluster::GetLastOpIdForMasterPeers(
     const MonoDelta& timeout,
     consensus::OpIdType opid_type,
-    vector<OpIdPB>* op_ids) {
+    vector<OpIdPB>* op_ids,
+    const std::vector<ExternalMaster*>& masters) {
   GetLastOpIdRequestPB opid_req;
   GetLastOpIdResponsePB opid_resp;
   opid_req.set_tablet_id(yb::master::kSysCatalogTabletId);
@@ -1054,11 +1054,11 @@ Status ExternalMiniCluster::GetLastOpIdForEachMasterPeer(
   controller.set_timeout(timeout);
 
   op_ids->clear();
-  for (scoped_refptr<ExternalMaster> master : masters_) {
+  for (auto master : masters) {
     opid_req.set_dest_uuid(master->uuid());
     opid_req.set_opid_type(opid_type);
     RETURN_NOT_OK_PREPEND(
-        GetConsensusProxy(master.get()).GetLastOpId(opid_req, &opid_resp, &controller),
+        GetConsensusProxy(master).GetLastOpId(opid_req, &opid_resp, &controller),
         Format("Failed to fetch last op id from $0", master->bound_rpc_hostport().port()));
     op_ids->push_back(opid_resp.opid());
     controller.Reset();
@@ -1068,11 +1068,23 @@ Status ExternalMiniCluster::GetLastOpIdForEachMasterPeer(
 }
 
 Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int64_t target_index) {
-  auto deadline = CoarseMonoClock::Now() + opts_.timeout.ToSteadyDuration();
+  std::vector<ExternalMaster*> masters;
+  for (auto master : masters_) {
+    masters.push_back(master.get());
+  }
+  return WaitForMastersToCommitUpTo(target_index, masters);
+}
+
+Status ExternalMiniCluster::WaitForMastersToCommitUpTo(
+    int64_t target_index, const std::vector<ExternalMaster*>& masters, MonoDelta timeout) {
+  if (!timeout.Initialized()) {
+    timeout = opts_.timeout;
+  }
+  auto deadline = CoarseMonoClock::Now() + timeout.ToSteadyDuration();
 
   for (int i = 1;; i++) {
     vector<OpIdPB> ids;
-    Status s = GetLastOpIdForEachMasterPeer(opts_.timeout, consensus::COMMITTED_OPID, &ids);
+    Status s = GetLastOpIdForMasterPeers(opts_.timeout, consensus::COMMITTED_OPID, &ids, masters);
 
     if (s.ok()) {
       bool any_behind = false;
@@ -1331,7 +1343,7 @@ Status ExternalMiniCluster::WaitForInitDb() {
 }
 
 Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx, MonoDelta deadline) {
-  auto proxy = GetMasterProxy<master::MasterClusterProxy>();
+  auto proxy = GetLeaderMasterProxy<master::MasterClusterProxy>();
   std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
   master::ListTabletServersRequestPB req;
   master::ListTabletServersResponsePB resp;
@@ -1629,15 +1641,14 @@ Result<tserver::GetSplitKeyResponsePB> ExternalMiniCluster::GetSplitKey(
 
 Status ExternalMiniCluster::FlushTabletsOnSingleTServer(
     ExternalTabletServer* ts, const std::vector<yb::TabletId> tablet_ids,
-    bool is_compaction) {
+    tserver::FlushTabletsRequestPB_Operation operation) {
   tserver::FlushTabletsRequestPB req;
   tserver::FlushTabletsResponsePB resp;
   rpc::RpcController controller;
   controller.set_timeout(10s * kTimeMultiplier);
 
   req.set_dest_uuid(ts->uuid());
-  req.set_operation(is_compaction ? tserver::FlushTabletsRequestPB::COMPACT
-                                  : tserver::FlushTabletsRequestPB::FLUSH);
+  req.set_operation(operation);
   for (const auto& tablet_id : tablet_ids) {
     req.add_tablet_ids(tablet_id);
   }
@@ -2505,6 +2516,14 @@ Result<bool> ExternalDaemon::ExtractMetricValue<bool>(const JsonReader& r,
                                                       const char* value_field) {
   bool value;
   RETURN_NOT_OK(r.ExtractBool(metric, value_field, &value));
+  return value;
+}
+
+template <>
+Result<uint32_t> ExternalDaemon::ExtractMetricValue<uint32_t>(
+    const JsonReader& r, const Value* metric, const char* value_field) {
+  uint32_t value;
+  RETURN_NOT_OK(r.ExtractUInt32(metric, value_field, &value));
   return value;
 }
 

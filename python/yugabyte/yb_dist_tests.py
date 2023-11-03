@@ -26,168 +26,24 @@ import atexit
 import glob
 import argparse
 
-from functools import total_ordering
+from typing import Optional, List, Set, Dict, cast
 
-from yugabyte import command_util
-from yugabyte.common_util import get_build_type_from_build_root, \
-                           get_compiler_type_from_build_root, \
-                           is_macos  # nopep8
+from yugabyte.common_util import (
+    get_build_type_from_build_root,
+    get_compiler_type_from_build_root
+)
 from yugabyte.postgres_build_util import POSTGRES_BUILD_SUBDIR
 from yugabyte import artifact_upload
-from typing import Optional, List, Set, Dict, cast
+from yugabyte.test_descriptor import TestDescriptor
 
 import dataclasses
 
-# This is used to separate relative binary path from gtest_filter for C++ tests in what we call
-# a "test descriptor" (a string that identifies a particular test).
-#
-# This must match the constant with the same name in common-test-env.sh.
-TEST_DESCRIPTOR_SEPARATOR = ":::"
-BINARY_AND_TEST_NAME_SEPARATOR = "__"
-
-JAVA_TEST_DESCRIPTOR_RE = re.compile(r'^([a-z0-9-]+)/src/test/(?:java|scala)/(.*)$')
-
-TEST_DESCRIPTOR_ATTEMPT_PREFIX = TEST_DESCRIPTOR_SEPARATOR + 'attempt_'
-TEST_DESCRIPTOR_ATTEMPT_INDEX_RE = re.compile(
-    r'^(.*)' + TEST_DESCRIPTOR_ATTEMPT_PREFIX + r'(\d+)$')
 
 global_conf: Optional['GlobalTestConfig'] = None
 
 CLOCK_SYNC_WAIT_LOGGING_INTERVAL_SEC = 10
 
 MAX_TIME_TO_WAIT_FOR_CLOCK_SYNC_SEC = 60
-
-
-@total_ordering
-class TestDescriptor:
-    """
-    A "test descriptor" identifies a particular test we could run on a distributed test worker.
-    A string representation of a "test descriptor" is an optional "attempt_<index>:::" followed by
-    one of the options below:
-    - A C++ test program name relative to the build root. This implies running all tests within
-      the test program. This has the disadvantage that a failure of one of those tests will cause
-      the rest of tests not to be run.
-    - A C++ test program name relative to the build root followed by the ':::' separator and the
-      gtest filter identifying a test within that test program,
-    - A string like 'com.yugabyte.jedis.TestYBJedis#testPool[1]' describing a Java test. This is
-      something that could be passed directly to the -Dtest=... Maven option.
-    - A Java test class source path (including .java/.scala extension) relative to the "java"
-      directory in the YugabyteDB source tree.
-    """
-    descriptor_str_without_attempt_index: str
-    attempt_index: int
-    is_jvm_based: bool
-    language: str
-    args_for_run_test: str
-    error_output_path: str
-
-    def __init__(self, descriptor_str: str) -> None:
-        assert global_conf is not None
-        self.descriptor_str = descriptor_str
-
-        attempt_index_match = TEST_DESCRIPTOR_ATTEMPT_INDEX_RE.match(descriptor_str)
-        if attempt_index_match:
-            self.attempt_index = int(attempt_index_match.group(2))
-            self.descriptor_str_without_attempt_index = attempt_index_match.group(1)
-        else:
-            self.attempt_index = 1
-            self.descriptor_str_without_attempt_index = descriptor_str
-
-        self.is_jvm_based = False
-        is_mvn_compatible_descriptor = False
-
-        if len(self.descriptor_str.split('#')) == 2:
-            self.is_jvm_based = True
-            # Could be Scala, but as of 08/2018 we only have Java tests in the repository.
-            self.language = 'Java'
-            is_mvn_compatible_descriptor = True
-        elif self.descriptor_str.endswith('.java'):
-            self.is_jvm_based = True
-            self.language = 'Java'
-        elif self.descriptor_str.endswith('.scala'):
-            self.is_jvm_based = True
-            self.language = 'Scala'
-
-        if self.is_jvm_based:
-            # This is a Java/Scala test.
-            if is_mvn_compatible_descriptor:
-                # This is a string of the form "com.yugabyte.jedis.TestYBJedis#testPool[1]".
-                self.args_for_run_test = self.descriptor_str
-                output_file_name = self.descriptor_str
-            else:
-                # The "test descriptors string " is the Java source file path relative to the "java"
-                # directory.
-                java_descriptor_match = JAVA_TEST_DESCRIPTOR_RE.match(
-                    self.descriptor_str_without_attempt_index)
-                if java_descriptor_match is None:
-                    raise ValueError(
-                        f"Java/Scala test descriptor {self.descriptor_str_without_attempt_index} "
-                        f"could not be parsed using the regular expression "
-                        f"{JAVA_TEST_DESCRIPTOR_RE}")
-
-                mvn_module, package_and_class_with_slashes = java_descriptor_match.groups()
-
-                package_and_class = package_and_class_with_slashes.replace('/', '.')
-                self.args_for_run_test = "{} {}".format(mvn_module, package_and_class)
-                output_file_name = package_and_class
-        else:
-            self.language = 'C++'
-            test_name: Optional[str]
-
-            # This is a C++ test.
-            if TEST_DESCRIPTOR_SEPARATOR in self.descriptor_str_without_attempt_index:
-                rel_test_binary, test_name = self.descriptor_str_without_attempt_index.split(
-                    TEST_DESCRIPTOR_SEPARATOR)
-            else:
-                rel_test_binary = self.descriptor_str_without_attempt_index
-                test_name = None
-
-            # Arguments for run-test.sh.
-            # - The absolute path to the test binary (the test descriptor only contains the relative
-            #   path).
-            # - Optionally, the gtest filter within the test program.
-            self.args_for_run_test = os.path.join(global_conf.build_root, rel_test_binary)
-            if test_name:
-                self.args_for_run_test += " " + test_name
-            output_file_name = rel_test_binary
-            if test_name:
-                output_file_name += BINARY_AND_TEST_NAME_SEPARATOR + test_name
-
-        output_file_name = re.sub(r'[\[\]/#]', '_', output_file_name)
-        self.error_output_path = os.path.join(
-                global_conf.build_root, 'yb-test-logs', output_file_name + '__error.log')
-
-    def __str__(self) -> str:
-        if self.attempt_index == 1:
-            return self.descriptor_str_without_attempt_index
-        return ''.join([
-            self.descriptor_str_without_attempt_index,
-            TEST_DESCRIPTOR_ATTEMPT_PREFIX,
-            str(self.attempt_index)
-        ])
-
-    def str_for_file_name(self) -> str:
-        return str(self).replace('/', '__').replace(':', '_')
-
-    def __eq__(self, other: object) -> bool:
-        other_descriptor = cast(TestDescriptor, other)
-        return self.descriptor_str == other_descriptor.descriptor_str
-
-    def __ne__(self, other: object) -> bool:
-        return not (self == other)
-
-    def __lt__(self, other: object) -> bool:
-        other_descriptor = cast(TestDescriptor, other)
-        return self.descriptor_str < other_descriptor.descriptor_str
-
-    def with_attempt_index(self, attempt_index: int) -> 'TestDescriptor':
-        assert attempt_index >= 1
-        copied = copy.copy(self)
-        copied.attempt_index = attempt_index
-        # descriptor_str is just the cached version of the string representation, with the
-        # attempt_index included (if it is greater than 1).
-        copied.descriptor_str = str(copied)
-        return copied
 
 
 class GlobalTestConfig:

@@ -77,11 +77,6 @@
 
 #include "yb/util/file_system_posix.h"
 
-using std::unique_ptr;
-using std::shared_ptr;
-
-#define STATUS_IO_ERROR(context, err_number) STATUS(IOError, (context), strerror(err_number))
-
 namespace rocksdb {
 
 namespace {
@@ -155,26 +150,26 @@ class PosixEnv : public Env {
   }
 
   virtual Status NewSequentialFile(const std::string& fname,
-                                   unique_ptr<SequentialFile>* result,
+                                   std::unique_ptr<SequentialFile>* result,
                                    const EnvOptions& options) override {
     return file_factory_->NewSequentialFile(fname, result, options);
   }
 
   virtual Status NewRandomAccessFile(const std::string& fname,
-                                     unique_ptr<RandomAccessFile>* result,
+                                     std::unique_ptr<RandomAccessFile>* result,
                                      const EnvOptions& options) override {
     return file_factory_->NewRandomAccessFile(fname, result, options);
   }
 
   virtual Status NewWritableFile(const std::string& fname,
-                                 unique_ptr<WritableFile>* result,
+                                 std::unique_ptr<WritableFile>* result,
                                  const EnvOptions& options) override {
     return file_factory_->NewWritableFile(fname, result, options);
   }
 
   virtual Status ReuseWritableFile(const std::string& fname,
                                    const std::string& old_fname,
-                                   unique_ptr<WritableFile>* result,
+                                   std::unique_ptr<WritableFile>* result,
                                    const EnvOptions& options) override {
     return file_factory_->ReuseWritableFile(fname, old_fname, result, options);
   }
@@ -184,7 +179,7 @@ class PosixEnv : public Env {
   }
 
   virtual Status NewDirectory(const std::string& name,
-                              unique_ptr<Directory>* result) override {
+                              std::unique_ptr<Directory>* result) override {
     result->reset();
     int fd;
     {
@@ -386,7 +381,7 @@ class PosixEnv : public Env {
   }
 
   virtual Status NewLogger(const std::string& fname,
-                           shared_ptr<Logger>* result) override {
+                           std::shared_ptr<Logger>* result) override {
     FILE* f;
     {
       IOSTATS_TIMER_GUARD(open_nanos);
@@ -398,10 +393,12 @@ class PosixEnv : public Env {
     } else {
       int fd = fileno(f);
 #ifdef ROCKSDB_FALLOCATE_PRESENT
-      fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, 4 * 1024);
+      if (fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, 4 * 1024) != 0) {
+        LOG(ERROR) << STATUS_IO_ERROR(fname, errno);
+      }
 #endif
       SetFD_CLOEXEC(fd, nullptr);
-      result->reset(new PosixLogger(f, &PosixEnv::gettid, this));
+      result->reset(new PosixLogger(fname, f, &PosixEnv::gettid, this));
       return Status::OK();
     }
   }
@@ -576,7 +573,7 @@ class PosixRocksDBFileFactory : public RocksDBFileFactory {
   ~PosixRocksDBFileFactory() {}
 
   Status NewSequentialFile(const std::string& fname,
-                           unique_ptr<SequentialFile>* result,
+                           std::unique_ptr<SequentialFile>* result,
                            const EnvOptions& options) override {
     result->reset();
     FILE* f = nullptr;
@@ -596,7 +593,7 @@ class PosixRocksDBFileFactory : public RocksDBFileFactory {
   }
 
   Status NewRandomAccessFile(const std::string& fname,
-                             unique_ptr<RandomAccessFile>* result,
+                             std::unique_ptr<RandomAccessFile>* result,
                              const EnvOptions& options) override {
     result->reset();
     Status s;
@@ -630,7 +627,7 @@ class PosixRocksDBFileFactory : public RocksDBFileFactory {
   }
 
   Status NewWritableFile(const std::string& fname,
-                         unique_ptr<WritableFile>* result,
+                         std::unique_ptr<WritableFile>* result,
                          const EnvOptions& options) override {
     result->reset();
     Status s;
@@ -667,7 +664,7 @@ class PosixRocksDBFileFactory : public RocksDBFileFactory {
 
   Status ReuseWritableFile(const std::string& fname,
                            const std::string& old_fname,
-                           unique_ptr<WritableFile>* result,
+                           std::unique_ptr<WritableFile>* result,
                            const EnvOptions& options) override {
     result->reset();
     Status s;

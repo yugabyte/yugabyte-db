@@ -337,6 +337,9 @@ public enum TaskType {
   DeleteXClusterConfigEntry(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterConfigEntry.class),
 
+  DeleteXClusterTableConfigEntry(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterTableConfigEntry.class),
+
   DeleteDrConfigEntry(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteDrConfigEntry.class),
 
   WaitForReplicationDrain(
@@ -482,6 +485,11 @@ public enum TaskType {
 
   PromoteAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags.class),
 
+  RollbackAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.RollbackAutoFlags.class),
+
+  StoreAutoFlagConfigVersion(
+      com.yugabyte.yw.commissioner.tasks.subtasks.StoreAutoFlagConfigVersion.class),
+
   CheckUpgrade(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade.class),
 
   ResizeNode(com.yugabyte.yw.commissioner.tasks.upgrade.ResizeNode.class),
@@ -501,6 +509,9 @@ public enum TaskType {
 
   ThirdpartySoftwareUpgrade(
       com.yugabyte.yw.commissioner.tasks.upgrade.ThirdpartySoftwareUpgrade.class),
+
+  ModifyAuditLoggingConfig(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ModifyAuditLoggingConfig.class),
 
   MarkUniverseForHealthScriptReUpload(
       com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload.class),
@@ -559,11 +570,28 @@ public enum TaskType {
 
   SoftwareUpgradeYB(com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgradeYB.class),
 
+  SoftwareKubernetesUpgradeYB(
+      com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareKubernetesUpgradeYB.class),
+
   FinalizeUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.FinalizeUpgrade.class),
+
+  RollbackUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.RollbackUpgrade.class),
+
+  RollbackKubernetesUpgrade(
+      com.yugabyte.yw.commissioner.tasks.upgrade.RollbackKubernetesUpgrade.class),
 
   ReprovisionNode(com.yugabyte.yw.commissioner.tasks.ReprovisionNode.class),
 
-  UpdateUniverseIntent(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent.class);
+  UpdateUniverseIntent(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent.class),
+
+  FreezeUniverse(com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse.class),
+
+  LdapUniverseSync(com.yugabyte.yw.commissioner.tasks.LdapUnivSync.class),
+
+  // Tasks belonging to subtasks.ldap classpath
+  QueryLdapServer(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.QueryLdapServer.class),
+
+  DbLdapSync(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.DbLdapSync.class);
 
   private final Class<? extends ITask> taskClass;
 
@@ -612,6 +640,9 @@ public enum TaskType {
           .put(UpdateKubernetesDiskSize, 49)
           .put(UpgradeKubernetesUniverse, 50)
           .put(FinalizeUpgrade, 51)
+          .put(RollbackUpgrade, 52)
+          .put(SoftwareKubernetesUpgradeYB, 53)
+          .put(RollbackKubernetesUpgrade, 54)
           // Node operations (70-89):
           .put(AddNodeToUniverse, 70)
           .put(DeleteNodeFromUniverse, 71)
@@ -651,6 +682,7 @@ public enum TaskType {
           .put(RunApiTriggeredHooks, 134)
           .put(SetUniverseKey, 135)
           .put(UpdateLoadBalancerConfig, 136)
+          .put(LdapUniverseSync, 137)
           .build();
 
   TaskType(Class<? extends ITask> taskClass) {

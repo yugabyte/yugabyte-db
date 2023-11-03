@@ -248,7 +248,7 @@ public class TestYsqlDump extends BasePgSQLTest {
     // The resulting string will be used to provide debug information if the below
     // comparison between the two files fails.
     String message = "Side-by-side diff between expected output and actual output:\n" +
-          new SideBySideDiff(expected, actual).getSideBySideDiff();
+          SideBySideDiff.generate(expected, actual) + "\n";
 
     int i = 0;
     for (; i < expectedLines.size() && i < actualLines.size(); ++i) {

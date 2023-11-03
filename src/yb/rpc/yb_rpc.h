@@ -90,7 +90,7 @@ class YBInboundConnectionContext : public YBConnectionContext {
   // Takes ownership of call_data content.
   Status HandleCall(const ConnectionPtr& connection, CallData* call_data)
       ON_REACTOR_THREAD override;
-  void Connected(const ConnectionPtr& connection) override;
+  Status Connected(const ConnectionPtr& connection) override;
   Result<ProcessCallsResult> ProcessCalls(
       const ConnectionPtr& connection,
       const IoVecs& data,
@@ -247,7 +247,7 @@ class YBOutboundConnectionContext : public YBConnectionContext {
   // Takes ownership of call_data content.
   Status HandleCall(const ConnectionPtr& connection, CallData* call_data)
       ON_REACTOR_THREAD override;
-  void Connected(const ConnectionPtr& connection) override;
+  Status Connected(const ConnectionPtr& connection) override;
   Status AssignConnection(const ConnectionPtr& connection) override;
   Result<ProcessCallsResult> ProcessCalls(
       const ConnectionPtr& connection,

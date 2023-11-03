@@ -22,12 +22,12 @@ import { YBLoadingCircleIcon } from '../../../../../components/common/indicators
 import { YBSearchInput } from '../../../../../components/common/forms/fields/YBSearchInput';
 import { RoleTypeComp } from '../../common/RbacUtils';
 
-import { RoleContextMethods, RoleViewContext } from '../RoleContext';
+import { EditViews, Pages, RoleContextMethods, RoleViewContext } from '../RoleContext';
 import { ForbiddenRoles, Role, RoleType } from '../IRoles';
 import { getAllRoles, getRoleBindingsForAllUsers } from '../../api';
-import { RbacValidator, hasNecessaryPerm } from '../../common/RbacValidator';
+import { RbacValidator, hasNecessaryPerm } from '../../common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../ApiAndUserPermMapping';
 import { SortOrder } from '../../../../helpers/constants';
-import { UserPermissionMap } from '../../UserPermPathMapping';
 
 import { Add, ArrowDropDown } from '@material-ui/icons';
 import { ReactComponent as Create } from '../../../../assets/edit_pen.svg';
@@ -40,6 +40,9 @@ const useStyles = makeStyles((theme) => ({
     padding: `${theme.spacing(5.5)}px ${theme.spacing(3)}px`,
     '& .yb-table-header th,.yb-table-row td': {
       paddingLeft: '0 !important'
+    },
+    '& .yb-table-row': {
+      cursor: 'default'
     }
   },
   moreActionsBut: {
@@ -115,63 +118,102 @@ const ListRoles = () => {
         icon: <User />,
         callback: () => {
           setCurrentRole(role);
-          setEditView("USERS");
-          setCurrentPage('EDIT_ROLE');
-        }
+          setEditView(EditViews.USERS);
+          setCurrentPage(Pages.EDIT_ROLE);
+        },
+        menuItemWrapper(elem: JSX.Element) {
+          return elem;
+        },
+        disabled: false
       }
     ];
 
+    menuOptions.push({
+      text: t('table.moreActions.editRole'),
+      icon: <Create />,
+      callback: () => {
+        setCurrentRole(role);
+        setEditView(EditViews.CONFIGURATIONS);
+        setCurrentPage(Pages.EDIT_ROLE);
+      },
+      menuItemWrapper(elem) {
+        return (
+          <RbacValidator
+            isControl
+            accessRequiredOn={{
+              ...ApiPermissionMap.MODIFY_RBAC_ROLE,
+              onResource: { ROLE: role.roleUUID }
+            }}
+            overrideStyle={{ display: 'block' }}
+          >
+            {elem}
+          </RbacValidator>
+        );
+      },
+      disabled: role.roleType === RoleType.SYSTEM
+    });
 
-    if (
-      hasNecessaryPerm({
-        ...UserPermissionMap.editRole,
-        onResource: role.roleUUID
-      })
-    ) {
-
-      menuOptions.push({
-        text: t('table.moreActions.editRole'),
-        icon: <Create />,
-        callback: () => {
-          setCurrentRole(role);
-          setEditView("CONFIGURATIONS");
-          setCurrentPage('EDIT_ROLE');
-        }
-      });
-
-      if (find(ForbiddenRoles, { name: role.name, roleType: role.roleType }) === undefined) {
-        menuOptions.push({
-          text: t('table.moreActions.cloneRole'),
-          icon: <Clone />,
-          callback: () => {
-            setCurrentRole({
-              ...role,
-              roleUUID: '',
-              name: ''
-            });
-            setEditView("CONFIGURATIONS");
-            setCurrentPage('CREATE_ROLE');
-          }
+    menuOptions.push({
+      text: t('table.moreActions.cloneRole'),
+      icon: <Clone />,
+      callback: () => {
+        setCurrentRole({
+          ...role,
+          roleUUID: '',
+          name: ''
         });
+        setEditView(EditViews.CONFIGURATIONS);
+        setCurrentPage(Pages.CREATE_ROLE);
+      },
+      menuItemWrapper(elem) {
+        return (
+          <RbacValidator
+            isControl
+            accessRequiredOn={{ ...ApiPermissionMap.CREATE_RBAC_ROLE }}
+            customValidateFunction={() => {
+              return hasNecessaryPerm({
+                ...ApiPermissionMap.CREATE_RBAC_ROLE,
+                onResource: { ROLE: role.roleUUID }
+              });
+            }}
+            overrideStyle={{ display: 'block' }}
+          >
+            {elem}
+          </RbacValidator>
+        );
+      },
+      disabled: find(ForbiddenRoles, { name: role.name, roleType: role.roleType }) !== undefined
+    });
 
-        if (
-          role.roleType !== RoleType.SYSTEM &&
-          hasNecessaryPerm({
-            ...UserPermissionMap.deleteRole,
-            onResource: role.roleUUID
-          })
-        ) {
-          menuOptions.push({
-            text: t('table.moreActions.deleteRole'),
-            icon: <Delete />,
-            callback: () => {
-              setCurrentRole(role);
-              toggleDeleteModal(true);
+    menuOptions.push({
+      text: t('table.moreActions.deleteRole'),
+      icon: <Delete />,
+      callback: () => {
+        setCurrentRole(role);
+        toggleDeleteModal(true);
+      },
+      menuItemWrapper(elem) {
+        return (
+          <RbacValidator
+            isControl
+            overrideStyle={{ display: 'block' }}
+            accessRequiredOn={{
+              ...ApiPermissionMap.DELETE_RBAC_ROLE,
+              onResource: { ROLE: role.roleUUID }
+            }}
+            customValidateFunction={() =>
+              hasNecessaryPerm({
+                ...ApiPermissionMap.DELETE_RBAC_ROLE,
+                onResource: { ROLE: role.roleUUID }
+              })
             }
-          });
-        }
-      }
-    }
+          >
+            {elem}
+          </RbacValidator>
+        );
+      },
+      disabled: role.roleType === RoleType.SYSTEM
+    });
 
     return (
       <MoreActionsMenu menuOptions={menuOptions}>
@@ -185,10 +227,7 @@ const ListRoles = () => {
   const allRoleMapping = flattenDeep(values(roleBindings ?? []));
 
   return (
-    <RbacValidator
-      accessRequiredOn={{ onResource: 'CUSTOMER_ID', ...UserPermissionMap.listRole }}
-      customValidateFunction={() => true}
-    >
+    <RbacValidator accessRequiredOn={ApiPermissionMap.GET_RBAC_ROLES}>
       <Box className={classes.root}>
         <div className={classes.actions}>
           <div className={classes.search}>
@@ -202,8 +241,7 @@ const ListRoles = () => {
           </div>
           <RbacValidator
             accessRequiredOn={{
-              onResource: undefined,
-              ...UserPermissionMap.createRole
+              ...ApiPermissionMap.CREATE_RBAC_ROLE
             }}
             isControl
           >
@@ -213,7 +251,7 @@ const ListRoles = () => {
               variant="primary"
               onClick={() => {
                 setCurrentRole(null);
-                setCurrentPage('CREATE_ROLE');
+                setCurrentPage(Pages.CREATE_ROLE);
               }}
               data-testid={`rbac-resource-create-role`}
             >
@@ -230,7 +268,7 @@ const ListRoles = () => {
             dataSort
             dataField="description"
             width="35%"
-            dataFormat={(desc) => desc ?? '-'}
+            dataFormat={(desc) => (desc ? desc : '-')}
           >
             {t('table.description')}
           </TableHeaderColumn>

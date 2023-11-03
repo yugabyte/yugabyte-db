@@ -15,9 +15,8 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
-
-#include <boost/optional/optional.hpp>
 
 #include "yb/qlexpr/ql_scanspec.h"
 
@@ -41,8 +40,8 @@ class DocPgsqlScanSpec : public qlexpr::PgsqlScanSpec {
   DocPgsqlScanSpec(const Schema& schema,
                    const rocksdb::QueryId query_id,
                    const dockv::DocKey& doc_key,
-                   const boost::optional<int32_t> hash_code = boost::none,
-                   const boost::optional<int32_t> max_hash_code = boost::none,
+                   const std::optional<int32_t> hash_code = std::nullopt,
+                   const std::optional<int32_t> max_hash_code = std::nullopt,
                    const dockv::DocKey& start_doc_key = DefaultStartDocKey(),
                    bool is_forward_scan = true,
                    const size_t prefix_length = 0);
@@ -58,8 +57,8 @@ class DocPgsqlScanSpec : public qlexpr::PgsqlScanSpec {
                    std::reference_wrapper<const dockv::KeyEntryValues> hashed_components,
                    std::reference_wrapper<const dockv::KeyEntryValues> range_components,
                    const PgsqlConditionPB* condition,
-                   boost::optional<int32_t> hash_code,
-                   boost::optional<int32_t> max_hash_code,
+                   std::optional<int32_t> hash_code,
+                   std::optional<int32_t> max_hash_code,
                    const dockv::DocKey& start_doc_key = DefaultStartDocKey(),
                    bool is_forward_scan = true,
                    const dockv::DocKey& lower_doc_key = DefaultStartDocKey(),
@@ -68,14 +67,10 @@ class DocPgsqlScanSpec : public qlexpr::PgsqlScanSpec {
                    AddHighestToUpperDocKey add_highest_to_upper_doc_key =
                        AddHighestToUpperDocKey::kFalse);
 
-  //------------------------------------------------------------------------------------------------
-  // Filters.
-  std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter() const override;
   // Returns the lower/upper range components of the key.
-  dockv::KeyEntryValues range_components(
-      const bool lower_bound,
-      std::vector<bool>* inclusivities = nullptr,
-      bool use_strictness = true) const override;
+  dockv::KeyEntryValues RangeComponents(
+      bool lower_bound,
+      std::vector<bool>* inclusivities = nullptr) const override;
 
   const std::shared_ptr<std::vector<qlexpr::OptionList>>& options() const override {
     return options_;
@@ -88,11 +83,15 @@ class DocPgsqlScanSpec : public qlexpr::PgsqlScanSpec {
  private:
   static const dockv::DocKey& DefaultStartDocKey();
 
-  // Return inclusive lower/upper range doc key considering the start_doc_key.
-  Result<dockv::KeyBytes> Bound(const bool lower_bound) const override;
+  dockv::KeyEntryValues DoRangeComponents(
+      bool lower_bound,
+      std::vector<bool>* inclusivities = nullptr,
+      bool* trivial = nullptr) const;
+
+  void CompleteBounds();
 
   // Returns the lower/upper doc key based on the range components.
-  dockv::KeyBytes bound_key(const Schema& schema, const bool lower_bound) const;
+  qlexpr::ScanBounds CalculateBounds(const Schema& schema) const;
 
   // Initialize options_ if range columns have one or more options (i.e. using EQ/IN
   // conditions). Otherwise options_ will stay null and we will only use the range_bounds for
@@ -119,18 +118,14 @@ class DocPgsqlScanSpec : public qlexpr::PgsqlScanSpec {
 
   // Hash code is used if hashed_components_ vector is empty.
   // hash values are positive int16_t.
-  const boost::optional<int32_t> hash_code_;
+  const std::optional<int32_t> hash_code_;
 
   // Max hash code is used if hashed_components_ vector is empty.
   // hash values are positive int16_t.
-  const boost::optional<int32_t> max_hash_code_;
+  const std::optional<int32_t> max_hash_code_;
 
   // Starting doc key when requested by the client.
   const dockv::KeyBytes start_doc_key_;
-
-  // Lower and upper keys for range condition.
-  dockv::KeyBytes lower_doc_key_;
-  dockv::KeyBytes upper_doc_key_;
 
   DISALLOW_COPY_AND_ASSIGN(DocPgsqlScanSpec);
 };

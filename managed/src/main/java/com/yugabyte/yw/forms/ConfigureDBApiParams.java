@@ -41,7 +41,7 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
   public ServerType configureServer;
 
   @Override
-  public void verifyParams(Universe universe) {
+  public void verifyParams(Universe universe, boolean isFirstTry) {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     CommunicationPorts universePorts = universe.getUniverseDetails().communicationPorts;
     boolean changeInYsql =

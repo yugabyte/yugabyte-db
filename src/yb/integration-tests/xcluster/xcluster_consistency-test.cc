@@ -20,6 +20,7 @@
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -237,7 +238,8 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
   Result<uint64_t> GetXClusterSafeTimeLagFromMetrics(const NamespaceId& namespace_id) {
     auto& cm = VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
     const auto metrics =
-        cm.TEST_xcluster_safe_time_service()->TEST_GetMetricsForNamespace(namespace_id);
+        cm.GetXClusterManagerImpl()->TEST_xcluster_safe_time_service()->TEST_GetMetricsForNamespace(
+            namespace_id);
     const auto safe_time_lag = metrics->consumer_safe_time_lag->value();
     const auto safe_time_skew = metrics->consumer_safe_time_skew->value();
     CHECK_GE(safe_time_lag, safe_time_skew);

@@ -11,9 +11,11 @@ import static org.junit.Assert.assertTrue;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
@@ -47,14 +49,16 @@ public class RoleBindingUtilTest extends FakeDBApplication {
   private Universe universe2;
   private Users user;
   private Role role;
+  private RuntimeConfGetter confGetter;
 
   @Before
   public void setup() {
+    confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
     ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
     this.environment = new Environment(new File("."), classLoader, Mode.TEST);
     this.permissionUtil = new PermissionUtil(environment);
 
-    roleBindingUtil = new RoleBindingUtil(permissionUtil);
+    roleBindingUtil = new RoleBindingUtil(permissionUtil, confGetter);
     customer = ModelFactory.testCustomer("tc1", "Test Customer 1");
     universe1 = ModelFactory.createUniverse("Test Universe 1", customer.getId());
     universe2 = ModelFactory.createUniverse("Test Universe 2", customer.getId());
@@ -218,7 +222,7 @@ public class RoleBindingUtilTest extends FakeDBApplication {
             .build();
     roleBindingUtil.validateResourceDefinition(customer.getUuid(), resourceDefinition3);
 
-    // Assert that exception is thrown if none of the fields 'allowAll' or 'resourceUUIDSet' are
+    // Assert that no exception is thrown if none of the fields 'allowAll' or 'resourceUUIDSet' are
     // filled.
     ResourceDefinition resourceDefinition4 =
         ResourceDefinition.builder()
@@ -226,8 +230,7 @@ public class RoleBindingUtilTest extends FakeDBApplication {
             .allowAll(false)
             .resourceUUIDSet(new HashSet<>())
             .build();
-    assertPlatformException(
-        () -> roleBindingUtil.validateResourceDefinition(customer.getUuid(), resourceDefinition4));
+    roleBindingUtil.validateResourceDefinition(customer.getUuid(), resourceDefinition4);
   }
 
   @Test
@@ -378,5 +381,164 @@ public class RoleBindingUtilTest extends FakeDBApplication {
         () ->
             roleBindingUtil.validateRoleResourceDefinition(
                 customer.getUuid(), roleResourceDefinition1));
+  }
+
+  @Test
+  public void testValidateRoleResourceDefinitionSystemRoleInvalid() {
+    // Create custom test role.
+    Role role =
+        Role.create(
+            customer.getUuid(),
+            "FakeRole2",
+            "FakeRoleDescription1",
+            RoleType.System,
+            new HashSet<>(
+                Arrays.asList(
+                    new Permission(ResourceType.UNIVERSE, Action.READ),
+                    new Permission(ResourceType.UNIVERSE, Action.CREATE))));
+
+    // Assert that exception is thrown when resource group is given for system defined roles.
+    ResourceDefinition resourceDefinition1 =
+        ResourceDefinition.builder().resourceType(ResourceType.UNIVERSE).allowAll(true).build();
+    ResourceGroup resourceGroup1 = new ResourceGroup();
+    resourceGroup1.setResourceDefinitionSet(new HashSet<>(Arrays.asList(resourceDefinition1)));
+    RoleResourceDefinition roleResourceDefinition1 = new RoleResourceDefinition();
+    roleResourceDefinition1.setRoleUUID(role.getRoleUUID());
+    roleResourceDefinition1.setResourceGroup(resourceGroup1);
+    // Exception should be thrown because system roles should not have a resource group attached.
+    assertPlatformException(
+        () ->
+            roleBindingUtil.validateRoleResourceDefinition(
+                customer.getUuid(), roleResourceDefinition1));
+  }
+
+  @Test
+  public void testValidateRoleResourceDefinitionSystemRoleValid() {
+    // Create custom test role.
+    Role role =
+        Role.create(
+            customer.getUuid(),
+            "FakeRole2",
+            "FakeRoleDescription1",
+            RoleType.System,
+            new HashSet<>(
+                Arrays.asList(
+                    new Permission(ResourceType.UNIVERSE, Action.READ),
+                    new Permission(ResourceType.UNIVERSE, Action.CREATE))));
+
+    // Assert that exception is not thrown when resource group is not given for system defined
+    // roles.
+    RoleResourceDefinition roleResourceDefinition1 = new RoleResourceDefinition();
+    roleResourceDefinition1.setRoleUUID(role.getRoleUUID());
+    // Exception should not be thrown since system roles do not have a resource group attached.
+    roleBindingUtil.validateRoleResourceDefinition(customer.getUuid(), roleResourceDefinition1);
+  }
+
+  @Test
+  public void testGetResourceUuids() {
+    // Create custom test role.
+    Role role1 =
+        Role.create(
+            customer.getUuid(),
+            "FakeRole11",
+            "FakeRoleDescription11",
+            RoleType.System,
+            new HashSet<>(Arrays.asList(new Permission(ResourceType.UNIVERSE, Action.READ))));
+
+    // Create custom test role.
+    Role role2 =
+        Role.create(
+            customer.getUuid(),
+            "FakeRole12",
+            "FakeRoleDescription12",
+            RoleType.System,
+            new HashSet<>(
+                Arrays.asList(
+                    new Permission(ResourceType.UNIVERSE, Action.READ),
+                    new Permission(ResourceType.UNIVERSE, Action.UPDATE))));
+
+    Universe universe3 = ModelFactory.createUniverse("Test Universe 3", customer.getId());
+
+    RoleResourceDefinition roleResourceDefinition11 = new RoleResourceDefinition();
+    ResourceDefinition resourceDefinition11 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.UNIVERSE)
+            .allowAll(false)
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(universe1.getUniverseUUID())))
+            .build();
+    ResourceGroup resourceGroup11 = new ResourceGroup();
+    resourceGroup11.setResourceDefinitionSet(new HashSet<>(Arrays.asList(resourceDefinition11)));
+    roleResourceDefinition11.setResourceGroup(resourceGroup11);
+    RoleBinding rB1 = RoleBinding.create(user, RoleBindingType.Custom, role1, resourceGroup11);
+    Set<UUID> resourceUUIDs =
+        roleBindingUtil.getResourceUuids(user.getUuid(), ResourceType.UNIVERSE, Action.READ);
+    assertEquals(3, resourceUUIDs.size());
+    assertTrue(resourceUUIDs.contains(universe1.getUniverseUUID()));
+    assertTrue(resourceUUIDs.contains(universe2.getUniverseUUID()));
+    assertTrue(resourceUUIDs.contains(universe3.getUniverseUUID()));
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    resourceUUIDs =
+        roleBindingUtil.getResourceUuids(user.getUuid(), ResourceType.UNIVERSE, Action.READ);
+    assertEquals(1, resourceUUIDs.size());
+    assertTrue(resourceUUIDs.contains(universe1.getUniverseUUID()));
+    rB1.delete();
+
+    RoleResourceDefinition roleResourceDefinition12 = new RoleResourceDefinition();
+    ResourceDefinition resourceDefinition12 =
+        ResourceDefinition.builder()
+            .resourceType(ResourceType.UNIVERSE)
+            .allowAll(false)
+            .resourceUUIDSet(new HashSet<>(Arrays.asList(universe2.getUniverseUUID())))
+            .build();
+    ResourceGroup resourceGroup12 = new ResourceGroup();
+    resourceGroup12.setResourceDefinitionSet(new HashSet<>(Arrays.asList(resourceDefinition12)));
+    roleResourceDefinition12.setResourceGroup(resourceGroup12);
+    RoleBinding rB2 = RoleBinding.create(user, RoleBindingType.Custom, role2, resourceGroup12);
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
+    resourceUUIDs =
+        roleBindingUtil.getResourceUuids(user.getUuid(), ResourceType.UNIVERSE, Action.READ);
+    assertEquals(3, resourceUUIDs.size());
+    assertTrue(resourceUUIDs.contains(universe1.getUniverseUUID()));
+    assertTrue(resourceUUIDs.contains(universe2.getUniverseUUID()));
+    assertTrue(resourceUUIDs.contains(universe3.getUniverseUUID()));
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    resourceUUIDs =
+        roleBindingUtil.getResourceUuids(user.getUuid(), ResourceType.UNIVERSE, Action.READ);
+    assertEquals(1, resourceUUIDs.size());
+    assertTrue(resourceUUIDs.contains(universe2.getUniverseUUID()));
+    rB2.delete();
+
+    rB1 = RoleBinding.create(user, RoleBindingType.Custom, role1, resourceGroup11);
+    rB2 = RoleBinding.create(user, RoleBindingType.Custom, role2, resourceGroup12);
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    resourceUUIDs =
+        roleBindingUtil.getResourceUuids(user.getUuid(), ResourceType.UNIVERSE, Action.READ);
+    assertEquals(2, resourceUUIDs.size());
+    assertTrue(resourceUUIDs.contains(universe1.getUniverseUUID()));
+    assertTrue(resourceUUIDs.contains(universe2.getUniverseUUID()));
+
+    RoleResourceDefinition roleResourceDefinition13 = new RoleResourceDefinition();
+    ResourceDefinition resourceDefinition13 =
+        ResourceDefinition.builder().resourceType(ResourceType.UNIVERSE).allowAll(true).build();
+    ResourceGroup resourceGroup13 = new ResourceGroup();
+    resourceGroup13.setResourceDefinitionSet(new HashSet<>(Arrays.asList(resourceDefinition13)));
+    roleResourceDefinition13.setResourceGroup(resourceGroup13);
+    rB1 = RoleBinding.create(user, RoleBindingType.Custom, role1, resourceGroup11);
+    rB2 = RoleBinding.create(user, RoleBindingType.Custom, role2, resourceGroup12);
+    RoleBinding rB3 = RoleBinding.create(user, RoleBindingType.Custom, role, resourceGroup13);
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
+    resourceUUIDs =
+        roleBindingUtil.getResourceUuids(user.getUuid(), ResourceType.UNIVERSE, Action.READ);
+    assertEquals(3, resourceUUIDs.size());
+    assertTrue(resourceUUIDs.contains(universe1.getUniverseUUID()));
+    assertTrue(resourceUUIDs.contains(universe2.getUniverseUUID()));
+    assertTrue(resourceUUIDs.contains(universe3.getUniverseUUID()));
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    resourceUUIDs =
+        roleBindingUtil.getResourceUuids(user.getUuid(), ResourceType.UNIVERSE, Action.READ);
+    assertEquals(3, resourceUUIDs.size());
+    assertTrue(resourceUUIDs.contains(universe1.getUniverseUUID()));
+    assertTrue(resourceUUIDs.contains(universe2.getUniverseUUID()));
+    assertTrue(resourceUUIDs.contains(universe3.getUniverseUUID()));
   }
 }

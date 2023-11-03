@@ -24,7 +24,7 @@
 #include "yb/gutil/hash/hash.h"
 
 #include "yb/gutil/integral_types.h"
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include "yb/gutil/hash/jenkins.h"
 #include "yb/gutil/hash/jenkins_lookup2.h"
 #include "yb/gutil/macros.h"

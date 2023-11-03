@@ -153,7 +153,6 @@ extern void errfinish(int dummy,...);
 
 extern int	errcode(int sqlerrcode);
 extern int	yb_txn_errcode(uint16_t txn_errcode);
-extern int	yb_forbid_stmt_restart(bool forbid_stmt_restart);
 
 extern int	errcode_for_file_access(void);
 extern int	errcode_for_socket_access(void);
@@ -208,8 +207,6 @@ extern int	err_generic_string(int field, const char *str);
 extern int	geterrcode(void);
 extern int	geterrposition(void);
 extern int	getinternalerrposition(void);
-
-extern uint16_t geterryb_txn_errcode(void);
 
 /*----------
  * Old-style error reporting API: to be used in this way:
@@ -402,7 +399,6 @@ typedef struct ErrorData
 	uint16_t	yb_txn_errcode;	/* YB transaction error cast to uint16, as returned by static_cast
 								 * of TransactionErrorTag::Decode
 								 * of Status::ErrorData(TransactionErrorTag::kCategory) */
-	bool        yb_forbid_stmt_restart;   /* statement restart is forbidden */
 	/* context containing associated non-constant strings */
 	struct MemoryContextData *assoc_context;
 } ErrorData;

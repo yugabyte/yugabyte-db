@@ -3,10 +3,12 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -16,14 +18,14 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
 /**
  * This task will be deprecated for upgrading universe having version greater or equal to 2.20.x,
  * please ensure any new changes here should also be made on new task SoftwareUpgradeYB.
  */
-@Slf4j
+@Retryable
+@Abortable
 public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
 
   private final XClusterUniverseService xClusterUniverseService;
@@ -36,29 +38,28 @@ public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
   }
 
   @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    taskParams().verifyParams(getUniverse(), isFirstTry);
+  }
+
+  protected SoftwareUpgradeParams taskParams() {
+    return (SoftwareUpgradeParams) taskParams;
+  }
+
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    createPrecheckTasks(universe, taskParams().ybSoftwareVersion);
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
           Set<NodeDetails> allNodes = toOrderedSet(nodes);
           Universe universe = getUniverse();
-          // Verify the request params and fail if invalid.
-          taskParams().verifyParams(universe);
-
           String newVersion = taskParams().ybSoftwareVersion;
-
-          // Preliminary checks for upgrades.
-          createCheckUpgradeTask(newVersion).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
-
-          // PreCheck for Available Memory on tserver nodes.
-          long memAvailableLimit =
-              confGetter.getConfForScope(universe, UniverseConfKeys.dbMemAvailableLimit);
-          // No need to run the check if the minimum allowed is 0.
-          if (memAvailableLimit > 0) {
-            createAvailableMemoryCheck(allNodes, Util.AVAILABLE_MEMORY, memAvailableLimit)
-                .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
-          }
-
           if (!universe
               .getUniverseDetails()
               .xClusterInfo
@@ -75,7 +76,11 @@ public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
           // Download software to all nodes.
           createDownloadTasks(allNodes, newVersion);
           // Install software on nodes.
-          createUpgradeTaskFlowTasks(nodes, newVersion, reProvisionRequired);
+          createUpgradeTaskFlowTasks(
+              nodes,
+              newVersion,
+              getUpgradeContext(taskParams().ybSoftwareVersion),
+              reProvisionRequired);
 
           if (taskParams().installYbc) {
             createYbcInstallTask(universe, new ArrayList<>(allNodes), newVersion);

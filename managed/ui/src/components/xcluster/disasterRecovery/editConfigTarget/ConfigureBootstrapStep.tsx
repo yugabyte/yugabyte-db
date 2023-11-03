@@ -1,11 +1,11 @@
 import { makeStyles, Typography } from '@material-ui/core';
 import { Trans, useTranslation } from 'react-i18next';
+import { useFormContext } from 'react-hook-form';
 
 import { YBTooltip } from '../../../../redesign/components';
 import { ReactComponent as InfoIcon } from '../../../../redesign/assets/info-message.svg';
 import { ReactSelectStorageConfigField } from '../../sharedComponents/ReactSelectStorageConfig';
 import { EditConfigTargetFormValues } from './EditConfigTargetModal';
-import { useFormContext } from 'react-hook-form';
 
 interface ConfigureBootstrapStepProps {
   isFormDisabled: boolean;

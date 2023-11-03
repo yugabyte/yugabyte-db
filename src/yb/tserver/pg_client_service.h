@@ -42,12 +42,14 @@ class PgMutationCounter;
     (AlterTable) \
     (BackfillIndex) \
     (CreateDatabase) \
+    (CreateReplicationSlot) \
     (CreateSequencesDataTable) \
     (CreateTable) \
     (CreateTablegroup) \
     (DeleteDBSequences) \
     (DeleteSequenceTuple) \
     (DropDatabase) \
+    (DropReplicationSlot) \
     (DropTable) \
     (DropTablegroup) \
     (FetchSequenceTuple) \
@@ -63,9 +65,11 @@ class PgMutationCounter;
     (IsInitDbDone) \
     (IsObjectPartOfXRepl) \
     (ListLiveTabletServers) \
+    (ListReplicationSlots) \
     (OpenTable) \
     (ReadSequenceTuple) \
     (ReserveOids) \
+    (GetNewObjectId) \
     (RollbackToSubTransaction) \
     (SetActiveSubTransaction) \
     (TabletServerCount) \
@@ -104,6 +108,7 @@ class PgClientServiceImpl : public PgClientServiceIf {
       const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) override;
 
   void InvalidateTableCache();
+  void CheckObjectIdAllocators(const std::unordered_set<uint32_t>& db_oids);
 
   size_t TEST_SessionsCount();
 

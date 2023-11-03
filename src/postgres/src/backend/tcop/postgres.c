@@ -92,6 +92,9 @@
 #include "utils/builtins.h"
 #include "utils/rel.h"
 
+/* YB includes */
+#include "replication/walsender_private.h"
+
 /* ----------------
  *		global variables
  * ----------------
@@ -4143,9 +4146,11 @@ YBIsDmlCommandTag(const char *command_tag)
 
 /* Whether we are allowed to restart current query/txn. */
 static bool
-yb_is_restart_possible(const ErrorData *edata, int attempt,
-					   const YBQueryRestartData *restart_data,
-					   bool *retries_exhausted)
+yb_is_restart_possible(const ErrorData* edata,
+					   int attempt,
+					   const YBQueryRestartData* restart_data,
+						 bool* retries_exhausted,
+						 bool* rc_ignoring_ddl_statement)
 {
 	if (!IsYugaByteEnabled())
 	{
@@ -4159,20 +4164,11 @@ yb_is_restart_possible(const ErrorData *edata, int attempt,
 	bool is_read_restart_error = YBCIsRestartReadError(edata->yb_txn_errcode);
 	bool is_conflict_error     = YBCIsTxnConflictError(edata->yb_txn_errcode);
 	bool is_deadlock_error	   = YBCIsTxnDeadlockError(edata->yb_txn_errcode);
-
 	if (!is_read_restart_error && !is_conflict_error && !is_deadlock_error)
 	{
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "Restart isn't possible, code %d isn't a read restart/conflict/deadlock error",
 			          edata->yb_txn_errcode);
-		return false;
-	}
-
-	if (edata->yb_forbid_stmt_restart)
-	{
-		if (yb_debug_log_internal_restarts)
-			elog(LOG, "Restart isn't possible, statement restart is forbidden");
-
 		return false;
 	}
 
@@ -4303,7 +4299,15 @@ yb_is_restart_possible(const ErrorData *edata, int attempt,
 	bool is_read = strncmp(command_tag, "SELECT", 6) == 0;
 	bool is_dml  = YBIsDmlCommandTag(command_tag);
 
-	if (!IsYBReadCommitted() && !(is_read || is_dml))
+	if (IsYBReadCommitted())
+	{
+		if (YBGetDdlNestingLevel() != 0) {
+			elog(LOG, "READ COMMITTED retry semantics don't support DDLs");
+			*rc_ignoring_ddl_statement = true;
+			return false;
+		}
+	}
+	else if (!(is_read || is_dml))
 	{
 		// if !read committed, we only support retries with SELECT/UPDATE/INSERT/DELETE. There are other
 		// statements that might result in a kReadRestart/kConflict like CREATE INDEX. We don't retry
@@ -4546,10 +4550,10 @@ yb_attempt_to_restart_on_error(int attempt,
 	MemoryContext error_context = MemoryContextSwitchTo(exec_context);
 	ErrorData*    edata         = CopyErrorData();
 	bool					retries_exhausted = false;
+	bool					rc_ignoring_ddl_statement = false;
 
-	if (yb_is_restart_possible(edata, attempt, restart_data,
-							   &retries_exhausted))
-	{
+	if (yb_is_restart_possible(
+					edata, attempt, restart_data, &retries_exhausted, &rc_ignoring_ddl_statement)) {
 		if (yb_debug_log_internal_restarts)
 		{
 			ereport(LOG,
@@ -4681,6 +4685,14 @@ yb_attempt_to_restart_on_error(int attempt,
 			}
 		}
 	} else {
+		/* if we shouldn't restart - propagate the error */
+
+		if (rc_ignoring_ddl_statement) {
+			edata->message = psprintf(
+				"Read Committed txn cannot proceed because of error in DDL. %s", edata->message);
+			ReThrowError(edata);
+		}
+
 		if (retries_exhausted) {
 			edata->message = psprintf("%s. %s", "All transparent retries exhausted", edata->message);
 			ReThrowError(edata);

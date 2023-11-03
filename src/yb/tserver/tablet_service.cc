@@ -37,8 +37,6 @@
 #include <string>
 #include <vector>
 
-#include <glog/logging.h>
-
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
@@ -227,7 +225,7 @@ METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader
                            yb::MetricUnit::kOperations,
                            "Number of split operations added to the leader's Raft log.");
 
-DECLARE_bool(TEST_enable_db_catalog_version_mode);
+DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 DEFINE_test_flag(bool, skip_aborting_active_transactions_during_schema_change, false,
                  "Skip aborting active transactions during schema change");
@@ -1593,8 +1591,8 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
   TRACE_EVENT1("tserver", "FlushTablets",
                "TS: ", req->dest_uuid());
 
-  LOG(INFO) << "Processing FlushTablets from " << context.requestor_string();
-  VLOG(1) << "Full FlushTablets request: " << req->DebugString();
+  LOG_WITH_PREFIX(INFO) << "Processing FlushTablets from " << context.requestor_string();
+  VLOG_WITH_PREFIX(1) << "Full FlushTablets request: " << req->DebugString();
   TabletPeers tablet_peers;
   TSTabletManager::TabletPtrs tablet_ptrs;
 
@@ -1612,10 +1610,14 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
     }
   }
   switch (req->operation()) {
-    case FlushTabletsRequestPB::FLUSH:
+    case FlushTabletsRequestPB::FLUSH: {
+      auto flush_flags = req->regular_only() ? tablet::FlushFlags::kRegular
+                                             : tablet::FlushFlags::kAllDbs;
+      VLOG_WITH_PREFIX(1) << "flush_flags: " << to_underlying(flush_flags);
       for (const tablet::TabletPtr& tablet : tablet_ptrs) {
         resp->set_failed_tablet_id(tablet->tablet_id());
-        RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->Flush(tablet::FlushMode::kAsync), resp, &context);
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(
+            tablet->Flush(tablet::FlushMode::kAsync, flush_flags), resp, &context);
         if (!FLAGS_TEST_skip_force_superblock_flush) {
           RETURN_UNKNOWN_ERROR_IF_NOT_OK(
               tablet->FlushSuperblock(tablet::OnlyIfDirty::kTrue), resp, &context);
@@ -1630,6 +1632,7 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
         resp->clear_failed_tablet_id();
       }
       break;
+    }
     case FlushTabletsRequestPB::COMPACT:
       RETURN_UNKNOWN_ERROR_IF_NOT_OK(
           server_->tablet_manager()->TriggerAdminCompaction(tablet_ptrs, true /* should_wait */),
@@ -1840,7 +1843,7 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
       [catalog_version, database_oid, this, &ts_catalog_version]() -> Result<bool> {
         // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make
         // sure to handle that case if initdb ever goes through this codepath.
-        if (FLAGS_TEST_enable_db_catalog_version_mode) {
+        if (FLAGS_ysql_enable_db_catalog_version_mode) {
           server_->get_ysql_db_catalog_version(
               database_oid, &ts_catalog_version, nullptr /* last_breaking_catalog_version */);
         } else {
@@ -2206,6 +2209,10 @@ void ConsensusServiceImpl::UpdateConsensus(const consensus::LWConsensusRequestPB
 
   CompleteUpdateConsensusResponse(tablet_peer, resp);
 
+  auto trace = Trace::CurrentTrace();
+  if (trace && req->trace_requested()) {
+    resp->dup_trace_buffer(trace->DumpToString(true));
+  }
   context.RespondSuccess();
 }
 
@@ -2970,7 +2977,7 @@ void TabletServiceAdminImpl::TestRetry(
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "TestRetry", req, resp, &context)) {
     return;
   }
-  auto num_calls = num_test_retry_calls.fetch_add(1) + 1;
+  auto num_calls = TEST_num_test_retry_calls_.fetch_add(1) + 1;
   if (num_calls < req->num_retries()) {
     SetupErrorAndRespond(
         resp->mutable_error(),

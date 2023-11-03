@@ -376,7 +376,7 @@ NULL);
 
 -- YB: With default max_stack_depth, ASAN build detects stack-overflow first.
 -- Prevent that by lowering max_stack_depth temporarily.
-set max_stack_depth = '900kB';
+set max_stack_depth = '950kB';
 
 -- Check that stack depth detection mechanism works and
 -- max_stack_depth is not set too high

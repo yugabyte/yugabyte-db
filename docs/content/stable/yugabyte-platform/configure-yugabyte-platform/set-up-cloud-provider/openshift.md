@@ -98,7 +98,7 @@ Expect the following output:
 serviceaccount/yugabyte-platform-universe-management created
 ```
 
-The next step is to grant access to this service account using Roles and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you. If you are creating clusters across multiple namespaces, you need to create Roles and RoleBindings with a cluster-admin role in each namespace where you intend to create and deploy the universe. For more information, see [RBAC resources](https://github.com/yugabyte/charts/tree/master/rbac#c-platform-namespacedyaml).
+The next step is to grant access to this service account using Roles and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you. If you are creating clusters across multiple namespaces, you need to create Roles and RoleBindings in each namespace where you intend to create and deploy the universe. Alternatively, you can create ClusterRoles and ClusterRoleBindings which will allow you to create universes in all the namespaces. For more information, see [Platform Global](https://github.com/yugabyte/charts/tree/master/rbac#a-platform-globalyaml) and [Platform Namespaced](https://github.com/yugabyte/charts/tree/master/rbac#c-platform-namespacedyaml) sections from the RBAC resources documentation.
 
 To create the required RBAC objects, execute the following command:
 

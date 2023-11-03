@@ -42,7 +42,6 @@
 #include <vector>
 
 #include <boost/function.hpp>
-#include <glog/logging.h>
 
 #include "yb/common/common_flags.h"
 #include "yb/common/hybrid_time.h"
@@ -431,9 +430,12 @@ Status Heartbeater::Thread::TryHeartbeat() {
   }
 
   req.mutable_tablet_report()->set_is_incremental(!sending_full_report_);
+  // We rely on the heartbeat thread calling GetNumLiveTablets regularly to keep the
+  // ts_live_tablet_peers metric up to date. If you remove this call, add another mechanism to
+  // update the metric.
   req.set_num_live_tablets(server_->tablet_manager()->GetNumLiveTablets());
   req.set_leader_count(server_->tablet_manager()->GetLeaderCount());
-  if (FLAGS_TEST_enable_db_catalog_version_mode) {
+  if (FLAGS_ysql_enable_db_catalog_version_mode) {
     auto fingerprint = server_->GetCatalogVersionsFingerprint();
     if (fingerprint.has_value()) {
       req.set_ysql_db_catalog_versions_fingerprint(*fingerprint);
@@ -588,8 +590,8 @@ Status Heartbeater::Thread::TryHeartbeat() {
   sending_full_report_ = sending_full_report_ && !all_processed;
 
   // Update the master's YSQL catalog version (i.e. if there were schema changes for YSQL objects).
-  if (FLAGS_TEST_enable_db_catalog_version_mode) {
-    // We never expect rolling gflag change of --TEST_enable_db_catalog_version_mode. In per-db
+  if (FLAGS_ysql_enable_db_catalog_version_mode) {
+    // We never expect rolling gflag change of --ysql_enable_db_catalog_version_mode. In per-db
     // mode, we do not use ysql_catalog_version.
     DCHECK(!last_hb_response_.has_ysql_catalog_version());
     if (last_hb_response_.has_db_catalog_version_data()) {
@@ -612,7 +614,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
       VLOG_WITH_FUNC(2) << "got no master catalog version data";
     }
   } else {
-    // We never expect rolling gflag change of --TEST_enable_db_catalog_version_mode. In
+    // We never expect rolling gflag change of --ysql_enable_db_catalog_version_mode. In
     // non-per-db mode, we do not use db_catalog_version_data.
     DCHECK(!last_hb_response_.has_db_catalog_version_data());
     if (last_hb_response_.has_ysql_catalog_version()) {

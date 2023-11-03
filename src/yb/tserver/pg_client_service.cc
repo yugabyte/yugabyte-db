@@ -27,6 +27,8 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
+#include "yb/client/transaction.h"
+#include "yb/client/transaction_pool.h"
 
 #include "yb/dockv/partition.h"
 #include "yb/common/pg_types.h"
@@ -50,7 +52,6 @@
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
-#include "yb/tserver/txn_cache.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -89,11 +90,15 @@ DEFINE_test_flag(uint64, delay_before_get_locks_status_ms, 0,
                  "being used to test pg_locks behavior when split happens after fetching involved "
                  "tablet(s) locations.");
 
+DEFINE_test_flag(uint64, ysql_oid_prefetch_adjustment, 0,
+                 "Amount to add when prefetch the next batch of OIDs. Never use this flag in "
+                 "production environment. In unit test we use this flag to force allocation of "
+                 "large Postgres OIDs.");
+
 DECLARE_uint64(transaction_heartbeat_usec);
 
-namespace yb {
-namespace tserver {
 
+namespace yb::tserver {
 namespace {
 
 template <class Resp>
@@ -103,6 +108,42 @@ void Respond(const Status& status, Resp* resp, rpc::RpcContext* context) {
   }
   context->RespondSuccess();
 }
+
+class TxnAssignment {
+ public:
+  using Watcher = std::shared_ptr<client::YBTransactionPtr>;
+
+  explicit TxnAssignment(rw_spinlock* mutex) : mutex_(*mutex) {}
+
+  void Assign(const Watcher& watcher, IsDDL is_ddl) {
+    std::lock_guard lock(mutex_);
+    *(is_ddl ? &ddl_ : &plain_) = watcher;
+  }
+
+  client::YBTransactionPtr Get() {
+    SharedLock lock(mutex_);
+    // TODO(kramanathan): Return the DDL txn in preference to the plain txn until GHI #18451 is
+    // resolved.
+    auto ddl = ddl_.lock();
+    if (ddl) {
+      return *ddl;
+    }
+
+    auto plain = plain_.lock();
+    if (plain) {
+      return *plain;
+    }
+
+    return nullptr;
+  }
+
+ private:
+  using WatcherWeak = Watcher::weak_type;
+
+  rw_spinlock& mutex_;
+  WatcherWeak plain_;
+  WatcherWeak ddl_;
+};
 
 class PgClientSessionLocker;
 
@@ -119,7 +160,7 @@ class LockablePgClientSession : public PgClientSession {
       Touch();
       std::shared_ptr<CountDownLatch> latch;
       {
-        std::unique_lock<std::mutex> lock(mutex_);
+        std::unique_lock lock(mutex_);
         latch = ProcessSharedRequest(size, &exchange_->exchange());
       }
       if (latch) {
@@ -156,28 +197,107 @@ class LockablePgClientSession : public PgClientSession {
   std::atomic<CoarseTimePoint> expiration_;
 };
 
-class PgClientSessionLocker {
+template <class T>
+class DeferredConstructible {
  public:
-  using LockablePtr = std::shared_ptr<LockablePgClientSession>;
+  DeferredConstructible() = default;
 
-  explicit PgClientSessionLocker(const LockablePtr& lockable)
-      : lockable_(lockable), lock_(lockable->mutex_) {
+  ~DeferredConstructible() {
+    get().~T();
   }
 
-  PgClientSession& operator*() const {
-    return *lockable_;
+  T& get() const {
+#ifndef NDEBUG
+    DCHECK(initialized_);
+#endif
+    return *pointer_cast<T*>(holder_);
   }
 
-  PgClientSession* operator->() const {
-    return lockable_.get();
+  template <class... Args>
+  void Init(Args&&... args) {
+#ifndef NDEBUG
+    DCHECK(!initialized_);
+    initialized_ = true;
+#endif
+    new (holder_) T(std::forward<Args>(args)...);
   }
 
  private:
-  LockablePtr lockable_;
+  mutable char holder_[sizeof(T)];
+#ifndef NDEBUG
+  bool initialized_{false};
+#endif
+
+  DISALLOW_COPY_AND_ASSIGN(DeferredConstructible);
+};
+
+using TransactionBuilder = std::function<
+    client::YBTransactionPtr(
+        TxnAssignment* dest, IsDDL, client::ForceGlobalTransaction, CoarseTimePoint)>;
+
+class SessionInfo {
+ public:
+  LockablePgClientSession& session() { return session_.get(); }
+
+  uint64_t id() const { return session_.get().id(); }
+
+  TxnAssignment& txn_assignment() { return txn_assignment_; }
+
+  template <class... Args>
+  static auto Make(rw_spinlock* txn_assignment_mutex,
+                   CoarseDuration lifetime,
+                   const TransactionBuilder& builder,
+                   Args&&... args) {
+    struct ConstructorAccessor : public SessionInfo {
+      explicit ConstructorAccessor(rw_spinlock* txn_assignment_mutex)
+          : SessionInfo(txn_assignment_mutex) {}
+    };
+    auto accessor = std::make_shared<ConstructorAccessor>(txn_assignment_mutex);
+    SessionInfo* session_info = accessor.get();
+    session_info->session_.Init(
+        lifetime,
+        [&builder, txn_assignment = &session_info->txn_assignment_](auto&&... builder_args) {
+          return builder(txn_assignment, std::forward<decltype(builder_args)>(builder_args)...);
+        },
+        accessor,
+        std::forward<Args>(args)...);
+    return std::shared_ptr<SessionInfo>(std::move(accessor), session_info);
+  }
+
+ private:
+  explicit SessionInfo(rw_spinlock* txn_assignment_mutex)
+      : txn_assignment_(txn_assignment_mutex) {}
+
+  TxnAssignment txn_assignment_;
+  DeferredConstructible<LockablePgClientSession> session_;
+};
+
+void AddTransactionInfo(
+    PgGetActiveTransactionListResponsePB* out, SessionInfo* src) {
+  auto txn = src->txn_assignment().Get();
+  if (txn) {
+    auto& entry = *out->add_entries();
+    entry.set_session_id(src->id());
+    txn->id().AsSlice().CopyToBuffer(entry.mutable_txn_id());
+  }
+}
+
+using LockablePgClientSessionPtr = std::shared_ptr<LockablePgClientSession>;
+
+class PgClientSessionLocker {
+ public:
+  explicit PgClientSessionLocker(LockablePgClientSessionPtr lockable)
+      : lockable_(std::move(lockable)), lock_(lockable_->mutex_) {
+  }
+
+  PgClientSession* operator->() const { return lockable_.get(); }
+
+ private:
+  LockablePgClientSessionPtr lockable_;
   std::unique_lock<std::mutex> lock_;
 };
 
-using LockablePgClientSessionPtr = std::shared_ptr<LockablePgClientSession>;
+using SessionInfoPtr = std::shared_ptr<SessionInfo>;
 using OldTxnsRespPtr = std::shared_ptr<tserver::GetOldTransactionsResponsePB>;
 using RemoteTabletServerPtr = std::shared_ptr<client::internal::RemoteTabletServer>;
 using OldTransactionMetadataPB = tserver::GetOldTransactionsResponsePB::OldTransactionMetadataPB;
@@ -232,12 +352,14 @@ class PgClientServiceImpl::Impl {
         xcluster_context_(xcluster_context),
         pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
         response_cache_(parent_mem_tracker, metric_entity),
-        instance_id_(Uuid::Generate()) {
+        instance_id_(Uuid::Generate()),
+        transaction_builder_([this](auto&&... args) {
+          return BuildTransaction(std::forward<decltype(args)>(args)...);
+        }) {
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
   }
 
   ~Impl() {
-    txn_cache_.ClearCache();
     check_expired_sessions_.Shutdown();
   }
 
@@ -252,19 +374,20 @@ class PgClientServiceImpl::Impl {
     }
 
     auto session_id = ++session_serial_no_;
-    auto session = std::make_shared<LockablePgClientSession>(
-        FLAGS_pg_client_session_expiration_ms * 1ms, session_id, &client(), clock_,
-        transaction_pool_provider_, &table_cache_, xcluster_context_,
-        pg_node_level_mutation_counter_, &response_cache_, &sequence_cache_, &txn_cache_);
+    auto session_info = SessionInfo::Make(
+        &txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
+        FLAGS_pg_client_session_expiration_ms * 1ms,
+        transaction_builder_, session_id, &client(), clock_, &table_cache_, xcluster_context_,
+        pg_node_level_mutation_counter_, &response_cache_, &sequence_cache_);
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
       resp->set_instance_id(instance_id_.data(), instance_id_.size());
-      session->StartExchange(instance_id_);
+      session_info->session().StartExchange(instance_id_);
     }
 
     std::lock_guard lock(mutex_);
-    auto it = sessions_.insert(std::move(session)).first;
-    session_expiration_queue_.push({(**it).expiration(), session_id});
+    auto it = sessions_.insert(std::move(session_info)).first;
+    session_expiration_queue_.push({(**it).session().expiration(), session_id});
     return Status::OK();
   }
 
@@ -339,6 +462,47 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status GetNewObjectId(
+      const PgGetNewObjectIdRequestPB& req,
+      PgGetNewObjectIdResponsePB* resp,
+      rpc::RpcContext* context) {
+    // Number of OIDs to prefetch (preallocate) in YugabyteDB setup.
+    // Given there are multiple Postgres nodes, each node should prefetch
+    // in smaller chunks.
+    constexpr int32_t kYbOidPrefetch = 256;
+    auto db_oid = req.db_oid();
+    std::lock_guard lock(mutex_);
+    auto& oid_chunk = reserved_oids_map_[db_oid];
+    if (oid_chunk.oid_count == 0) {
+      const uint32_t next_oid = oid_chunk.next_oid +
+          static_cast<uint32_t>(FLAGS_TEST_ysql_oid_prefetch_adjustment);
+      uint32_t begin_oid, end_oid;
+      RETURN_NOT_OK(client().ReservePgsqlOids(
+          GetPgsqlNamespaceId(db_oid), next_oid, kYbOidPrefetch, &begin_oid, &end_oid));
+      oid_chunk.next_oid = begin_oid;
+      oid_chunk.oid_count = end_oid - begin_oid;
+      VLOG(1) << "Reserved oids in database: " << db_oid << ", next_oid: " << next_oid
+              << ", begin_oid: " << begin_oid << ", end_oid: " << end_oid;
+    }
+    uint32 new_oid = oid_chunk.next_oid;
+    oid_chunk.next_oid++;
+    oid_chunk.oid_count--;
+    resp->set_new_oid(new_oid);
+    return Status::OK();
+  }
+
+  void CheckObjectIdAllocators(const std::unordered_set<uint32_t>& db_oids) {
+    std::lock_guard lock(mutex_);
+    for (auto it = reserved_oids_map_.begin(); it != reserved_oids_map_.end();) {
+      if (db_oids.count(it->first) == 0) {
+        LOG(INFO) << "Erase PG object id allocator of database: " << it->first;
+        it = reserved_oids_map_.erase(it);
+      } else {
+        it++;
+      }
+    }
+  }
+
   Status GetCatalogMasterVersion(
       const PgGetCatalogMasterVersionRequestPB& req,
       PgGetCatalogMasterVersionResponsePB* resp,
@@ -384,7 +548,7 @@ class PgClientServiceImpl::Impl {
   // Comparator used for maintaining a max heap of old transactions based on their start times.
   struct OldTransactionComparator {
     bool operator()(
-        const OldTransactionMetadataPBPtr lhs, const OldTransactionMetadataPBPtr rhs) const {
+        const OldTransactionMetadataPBPtr& lhs, const OldTransactionMetadataPBPtr& rhs) const {
       // Order is reversed so that we pop newer transactions first.
       if (lhs->start_time() != rhs->start_time()) {
         return lhs->start_time() < rhs->start_time();
@@ -730,6 +894,16 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status ListReplicationSlots(
+      const PgListReplicationSlotsRequestPB& req, PgListReplicationSlotsResponsePB* resp,
+      rpc::RpcContext* context) {
+    auto streams = VERIFY_RESULT(client().ListCDCSDKStreams());
+    for (const auto& stream : streams) {
+      stream.ToPB(resp->mutable_replication_slots()->Add());
+    }
+    return Status::OK();
+  }
+
   Status GetIndexBackfillProgress(
       const PgGetIndexBackfillProgressRequestPB& req, PgGetIndexBackfillProgressResponsePB* resp,
       rpc::RpcContext* context) {
@@ -904,11 +1078,20 @@ class PgClientServiceImpl::Impl {
       const PgGetActiveTransactionListRequestPB& req, PgGetActiveTransactionListResponsePB* resp,
       rpc::RpcContext* context) {
     if (req.has_session_id()) {
-      txn_cache_.CopyTransactionInfo(req.session_id().value(), resp);
+      AddTransactionInfo(resp, VERIFY_RESULT(GetSessionInfo(req.session_id().value())).get());
       return Status::OK();
     }
 
-    txn_cache_.CopyTransactionInfoForAllSessions(resp);
+    decltype(sessions_) sessions_snapshot;
+    {
+      std::lock_guard lock(mutex_);
+      sessions_snapshot = sessions_;
+    }
+
+    for (const auto& session : sessions_snapshot) {
+      AddTransactionInfo(resp, session.get());
+    }
+
     return Status::OK();
   }
 
@@ -973,11 +1156,6 @@ class PgClientServiceImpl::Impl {
       }
     }
 
-    if (status.ok()) {
-      const auto& txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req.transaction_id()));
-      txn_cache_.EraseTransactionById(TransactionId(txn_id));
-    }
-
     StatusToPB(status, resp->mutable_status());
     return Status::OK();
   }
@@ -1019,15 +1197,19 @@ class PgClientServiceImpl::Impl {
     return GetSession(req.session_id());
   }
 
-  Result<LockablePgClientSessionPtr> DoGetSession(uint64_t session_id) {
-    SharedLock<rw_spinlock> lock(mutex_);
+  Result<SessionInfoPtr> GetSessionInfo(uint64_t session_id) {
     DCHECK_NE(session_id, 0);
+    SharedLock lock(mutex_);
     auto it = sessions_.find(session_id);
-    if (it == sessions_.end()) {
-      return STATUS_FORMAT(InvalidArgument, "Unknown session: $0", session_id);
-    }
-    (**it).Touch();
+    SCHECK(it != sessions_.end(), InvalidArgument, "Unknown session: $0", session_id);
     return *it;
+  }
+
+  Result<LockablePgClientSessionPtr> DoGetSession(uint64_t session_id) {
+    auto session_info = VERIFY_RESULT(GetSessionInfo(session_id));
+    LockablePgClientSessionPtr result(session_info, &session_info->session());
+    result->Touch();
+    return result;
   }
 
   Result<PgClientSessionLocker> GetSession(uint64_t session_id) {
@@ -1058,11 +1240,10 @@ class PgClientServiceImpl::Impl {
       session_expiration_queue_.pop();
       auto it = sessions_.find(id);
       if (it != sessions_.end()) {
-        auto current_expiration = (**it).expiration();
+        auto current_expiration = (**it).session().expiration();
         if (current_expiration > now) {
           session_expiration_queue_.push({current_expiration, id});
         } else {
-          txn_cache_.EraseTransactionEntries(it->get()->id());
           sessions_.erase(it);
         }
       }
@@ -1074,6 +1255,16 @@ class PgClientServiceImpl::Impl {
     return VERIFY_RESULT(GetSession(*req))->Perform(req, resp, context);
   }
 
+  [[nodiscard]] client::YBTransactionPtr BuildTransaction(
+      TxnAssignment* dest, IsDDL is_ddl, client::ForceGlobalTransaction force_global,
+      CoarseTimePoint deadline) {
+    auto watcher = std::make_shared<client::YBTransactionPtr>(
+        transaction_pool_provider_().Take(force_global, deadline));
+    dest->Assign(watcher, is_ddl);
+    auto* txn = &**watcher;
+    return {std::move(watcher), txn};
+  }
+
   const TabletServerIf& tablet_server_;
   std::shared_future<client::YBClient*> client_future_;
   scoped_refptr<ClockBase> clock_;
@@ -1081,11 +1272,17 @@ class PgClientServiceImpl::Impl {
   PgTableCache table_cache_;
   rw_spinlock mutex_;
 
+  struct OidPrefetchChunk {
+    uint32_t next_oid = kPgFirstNormalObjectId;
+    uint32_t oid_count = 0;
+  };
+  std::unordered_map<uint32_t, OidPrefetchChunk> reserved_oids_map_ GUARDED_BY(mutex_);
+
   boost::multi_index_container<
-      LockablePgClientSessionPtr,
+      SessionInfoPtr,
       boost::multi_index::indexed_by<
           boost::multi_index::hashed_unique<
-              boost::multi_index::const_mem_fun<PgClientSession, uint64_t, &PgClientSession::id>
+              boost::multi_index::const_mem_fun<SessionInfo, uint64_t, &SessionInfo::id>
           >
       >
   > sessions_ GUARDED_BY(mutex_);
@@ -1116,9 +1313,10 @@ class PgClientServiceImpl::Impl {
 
   PgSequenceCache sequence_cache_;
 
-  TransactionCache txn_cache_;
-
   const Uuid instance_id_;
+
+  std::array<rw_spinlock, 8> txns_assignment_mutexes_;
+  TransactionBuilder transaction_builder_;
 };
 
 PgClientServiceImpl::PgClientServiceImpl(
@@ -1147,6 +1345,10 @@ void PgClientServiceImpl::InvalidateTableCache() {
   impl_->InvalidateTableCache();
 }
 
+void PgClientServiceImpl::CheckObjectIdAllocators(const std::unordered_set<uint32_t>& db_oids) {
+  impl_->CheckObjectIdAllocators(db_oids);
+}
+
 size_t PgClientServiceImpl::TEST_SessionsCount() {
   return impl_->TEST_SessionsCount();
 }
@@ -1170,5 +1372,4 @@ void PgClientServiceImpl::method( \
 BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DEFINE, ~, YB_PG_CLIENT_METHODS);
 BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_ASYNC_METHOD_DEFINE, ~, YB_PG_CLIENT_ASYNC_METHODS);
 
-}  // namespace tserver
-}  // namespace yb
+}  // namespace yb::tserver

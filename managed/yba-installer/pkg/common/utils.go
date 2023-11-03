@@ -531,7 +531,7 @@ func logNode(node *yaml.Node) {
 	log.Info("end log node")
 }
 
-// SetYamlValue sets the entry yamlPath to value in filePath. yamlPath must already exist
+// SetYamlValue sets the entry yamlPath to value in filePath
 func SetYamlValue(filePath string, yamlPath string, value interface{}) error {
 	origYamlBytes, err := os.ReadFile(filePath)
 	if err != nil {

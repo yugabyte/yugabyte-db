@@ -107,6 +107,7 @@ DELETE  /customers/:cUUID/configs/:configUUID/delete                           c
 # List keys that we allow configuring - no auth needed
 GET /runtime_config/mutable_keys                                               com.yugabyte.yw.controllers.RuntimeConfController.listKeys()
 GET /runtime_config/mutable_key_info                                           com.yugabyte.yw.controllers.RuntimeConfController.listKeyInfo()
+GET /runtime_config/feature_flags                                              com.yugabyte.yw.controllers.RuntimeConfController.listFeatureFlags()
 
 # List of Scopes for a given customer - static scope, the global scope, current customer scope and all its
 # sub-scopes (i.e. universes and providers owned by this customer)
@@ -309,6 +310,9 @@ GET     /customers/:cUUID/universes/:uniUUID/cdc_streams                       c
 POST    /customers/:cUUID/universes/:uniUUID/cdc_streams                       com.yugabyte.yw.controllers.UniverseCdcStreamController.createCdcStream(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 DELETE  /customers/:cUUID/universes/:uniUUID/cdc_streams/:streamId             com.yugabyte.yw.controllers.UniverseCdcStreamController.deleteCdcStream(cUUID: java.util.UUID, uniUUID: java.util.UUID, streamId: String)
 
+# Universe LDAP users Sync API
+POST /customers/:cUUID/universes/:univUUID/ldap_roles_sync                     com.yugabyte.yw.controllers.LdapUniverseSyncController.syncUniverse(cUUID: java.util.UUID, univUUID: java.util.UUID, request: Request)
+
 # Universe performance suggestions
 GET     /customers/:cUUID/universes/:uniUUID/unused_indexes                    com.yugabyte.yw.controllers.UniversePerfController.getUnusedIndexes(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/query_distribution_suggestions    com.yugabyte.yw.controllers.UniversePerfController.getQueryDistributionSuggestions(cUUID: java.util.UUID, uniUUID: java.util.UUID)
@@ -368,6 +372,7 @@ GET     /customers/:cUUID/dr_configs/:drUUID/safetime                          c
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/restart                   com.yugabyte.yw.controllers.UpgradeUniverseController.restartUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/software                  com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeSoftware(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/finalize                  com.yugabyte.yw.controllers.UpgradeUniverseController.finalizeUpgrade(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/universes/:uniUUID/upgrade/rollback                  com.yugabyte.yw.controllers.UpgradeUniverseController.rollbackUpgrade(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/gflags                    com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeGFlags(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/kubernetes_overrides      com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeKubernetesOverrides(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/certs                     com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeCerts(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
@@ -377,6 +382,7 @@ POST    /customers/:cUUID/universes/:uniUUID/upgrade/systemd                   c
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/resize_node               com.yugabyte.yw.controllers.UpgradeUniverseController.resizeNode(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/thirdparty_software       com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeThirdpartySoftware(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/reboot                    com.yugabyte.yw.controllers.UpgradeUniverseController.rebootUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/universes/:uniUUID/audit_log_config                  com.yugabyte.yw.controllers.UpgradeUniverseController.modifyAuditLogging(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 
 # Table Management API
 GET     /customers/:cUUID/universes/:uniUUID/tables                            com.yugabyte.yw.controllers.TablesController.listTables(cUUID: java.util.UUID, uniUUID: java.util.UUID, includeParentTableInfo: java.lang.Boolean ?= false, excludeColocatedTables: java.lang.Boolean ?= false, includeColocatedParentTables: java.lang.Boolean ?= false)
@@ -600,6 +606,7 @@ GET /customers/:cUUID/rbac/role_binding                                        c
 POST /customers/:cUUID/rbac/role_binding/:userUUID                             com.yugabyte.yw.controllers.RBACController.setRoleBindings(cUUID: java.util.UUID, userUUID: java.util.UUID, request: Request)
 # UI Only API
 GET /customers/:cUUID/rbac/user/:userUUID                                      com.yugabyte.yw.controllers.RBACController.getUserResourcePermissions(cUUID: java.util.UUID, userUUID: java.util.UUID, resourceType: String ?= null)
+GET /rbac/routes                                                               com.yugabyte.yw.controllers.RBACController.fetchRoutesPermissionDetails()
 
 # Telemetry Provider APIs
 GET /customers/:cUUID/telemetry_provider/:intUUID                              com.yugabyte.yw.controllers.TelemetryProviderController.getTelemetryProvider(cUUID: java.util.UUID, intUUID: java.util.UUID)

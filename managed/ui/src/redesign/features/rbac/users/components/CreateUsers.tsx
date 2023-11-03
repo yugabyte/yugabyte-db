@@ -13,14 +13,15 @@ import { toast } from 'react-toastify';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { useTranslation } from 'react-i18next';
 import { FormProvider, useForm } from 'react-hook-form';
-import { Box, makeStyles } from '@material-ui/core';
+import { Box, FormHelperText, makeStyles } from '@material-ui/core';
 import Container from '../../common/Container';
+import { isSSOEnabled } from '../../../../../config';
 import { RolesAndResourceMapping } from '../../policy/RolesAndResourceMapping';
 import { YBInputField, YBPasswordField } from '../../../../components';
 import { createUser } from '../../api';
 import { RbacUserWithResources } from '../interface/Users';
 import { Resource } from '../../permission';
-import { UserContextMethods, UserViewContext } from './UserContext';
+import { UserContextMethods, UserPages, UserViewContext } from './UserContext';
 import { createErrorMessage } from '../../../universe/universe-form/utils/helpers';
 import { getUserValidationSchema } from './UserValidationSchema';
 
@@ -95,7 +96,7 @@ const CreateUsersForm = forwardRef((_, forwardRef) => {
       onSuccess: () => {
         toast.success(t('form.successMsg', { user_email: methods.getValues().email }));
         queryClient.invalidateQueries('users');
-        setCurrentPage('LIST_USER');
+        setCurrentPage(UserPages.LIST_USER);
       },
       onError: (err) => {
         toast.error(createErrorMessage(err));
@@ -133,21 +134,31 @@ const CreateUsersForm = forwardRef((_, forwardRef) => {
             placeholder={t('form.emailPlaceholder')}
             fullWidth
           />
-          <YBPasswordField
-            name="password"
-            control={methods.control}
-            label={t('form.password')}
-            placeholder={t('form.password')}
-            fullWidth
-          />
-          <YBPasswordField
-            name="confirmPassword"
-            control={methods.control}
-            label={t('form.confirmPassword')}
-            placeholder={t('form.confirmPassword')}
-            fullWidth
-          />
+          {!isSSOEnabled() && (
+            <>
+              <YBPasswordField
+                name="password"
+                control={methods.control}
+                label={t('form.password')}
+                placeholder={t('form.password')}
+                fullWidth
+              />
+              <YBPasswordField
+                name="confirmPassword"
+                control={methods.control}
+                label={t('form.confirmPassword')}
+                placeholder={t('form.confirmPassword')}
+                fullWidth
+              />
+            </>
+          )}
+
           <RolesAndResourceMapping />
+          {errors.roleResourceDefinitions?.message && (
+            <FormHelperText required error>
+              {errors.roleResourceDefinitions.message}
+            </FormHelperText>
+          )}
         </form>
       </Box>
     </FormProvider>
@@ -168,7 +179,7 @@ export const CreateUsers = () => {
     <Container
       onCancel={() => {
         setCurrentUser(null);
-        setCurrentPage('LIST_USER');
+        setCurrentPage(UserPages.LIST_USER);
       }}
       onSave={() => {
         createUserRef.current?.onSave();

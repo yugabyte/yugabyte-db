@@ -5,8 +5,8 @@ import { getSeverityLabel } from './AlertUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 
 import prometheusIcon from '../../metrics/images/prometheus-icon.svg';
-import {  hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './AlertDetails.scss';
 
 const findValueforlabel = (labels, labelToFind) => {
@@ -138,17 +138,17 @@ export default class AlertDetails extends Component {
                 </Col>
                 {alertDetails.state === 'ACTIVE' && !isReadOnly && (
                   <Col lg={6} className="no-padding">
-                      <ButtonGroup>
-                        <DropdownButton id="alert-mark-as-button" title="Mark as">
+                    <ButtonGroup>
+                      <DropdownButton id="alert-mark-as-button" title="Mark as">
+                        <RbacValidator
+                          accessRequiredOn={ApiPermissionMap.ACKNOWLEDGE_ALERT}
+                          isControl
+                        >
                           <MenuItem
                             eventKey="1"
-                            disabled={!hasNecessaryPerm({
-                              ...UserPermissionMap.acknowledgeAlert
-                            })}
+                            disabled={!hasNecessaryPerm(ApiPermissionMap.ACKNOWLEDGE_ALERT)}
                             onClick={(e) => {
-                              if(!hasNecessaryPerm({
-                                ...UserPermissionMap.acknowledgeAlert
-                              })){
+                              if (!hasNecessaryPerm(ApiPermissionMap.ACKNOWLEDGE_ALERT)) {
                                 return;
                               }
                               e.stopPropagation();
@@ -157,8 +157,9 @@ export default class AlertDetails extends Component {
                           >
                             Acknowledged
                           </MenuItem>
-                        </DropdownButton>
-                      </ButtonGroup>
+                        </RbacValidator>
+                      </DropdownButton>
+                    </ButtonGroup>
                   </Col>
                 )}
               </Row>

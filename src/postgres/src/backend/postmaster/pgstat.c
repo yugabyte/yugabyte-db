@@ -2868,20 +2868,33 @@ void
 pgstat_report_query_termination(const char *termination_reason, int32 backend_pid)
 {
 	PgStat_MsgQueryTermination msg;
+	int			i;
+	volatile PgBackendStatus *beentry = BackendStatusArray;
 
-	if (pgStatSock == PGINVALID_SOCKET || !MyBEEntry)
+	if (beentry == NULL || pgStatSock == PGINVALID_SOCKET)
 		return;
 
-	pgstat_setheader(&msg.m_hdr, PGSTAT_MTYPE_QUERYTERMINATION);
-	msg.m_databaseoid = MyBEEntry->st_databaseid;
-	msg.backend_pid = backend_pid;
+	for (i = 0; i < MaxBackends; i++)
+	{
+		if (beentry->st_procpid == backend_pid)
+		{
+			pgstat_setheader(&msg.m_hdr, PGSTAT_MTYPE_QUERYTERMINATION);
+			msg.m_databaseoid = beentry->st_databaseid;
+			msg.backend_pid = backend_pid;
 
-	msg.activity_start_timestamp = MyBEEntry->st_activity_start_timestamp;
-	msg.m_st_userid = MyBEEntry->st_userid;
-	msg.activity_end_timestamp = GetCurrentTimestamp();
-	StrNCpy(msg.query_string, MyBEEntry->st_activity_raw, sizeof(msg.query_string));
-	StrNCpy(msg.termination_reason, termination_reason, sizeof(msg.termination_reason));
-	pgstat_send(&msg, sizeof(msg));
+			msg.activity_start_timestamp = beentry->st_activity_start_timestamp;
+			msg.m_st_userid = beentry->st_userid;
+			msg.activity_end_timestamp = GetCurrentTimestamp();
+			StrNCpy(msg.query_string, beentry->st_activity_raw, sizeof(msg.query_string));
+			StrNCpy(msg.termination_reason, termination_reason, sizeof(msg.termination_reason));
+			pgstat_send(&msg, sizeof(msg));
+
+			return;
+		}
+
+		beentry++;
+	}
+	elog(WARNING, "could not find BEEntry for pid %d to add to yb_terminated_queries", backend_pid);
 }
 
 /* ----------
@@ -4331,7 +4344,6 @@ pgstat_get_crashed_backend_activity(int pid, char *buffer, int buflen)
 			 */
 			ascii_safe_strlcpy(buffer, activity,
 							   Min(buflen, pgstat_track_activity_query_size));
-			MyBEEntry = (PgBackendStatus *) beentry;
 
 			return buffer;
 		}

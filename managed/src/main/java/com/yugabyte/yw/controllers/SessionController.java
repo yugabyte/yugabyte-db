@@ -32,6 +32,8 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.controllers.handlers.SessionHandler;
@@ -43,6 +45,7 @@ import com.yugabyte.yw.models.Audit.ActionType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -51,6 +54,10 @@ import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import db.migration.default_.common.R__Sync_System_Roles;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.*;
@@ -211,7 +218,12 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "getLogs", response = LogData.class)
   @With(TokenAuthenticator.class)
-  @AuthzPath
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getLogs(Integer maxLines) {
     String appHomeDir = config.getString("application.home");
     String logDir = config.getString("log.override.path");
@@ -239,7 +251,12 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "getFilteredLogs", produces = "text/plain", response = String.class)
   @With(TokenAuthenticator.class)
-  @AuthzPath
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getFilteredLogs(
       Integer maxLines,
       String universeName,
@@ -541,6 +558,7 @@ public class SessionController extends AbstractPlatformController {
   // Any changes to security should be authenticated.
   @ApiOperation(value = "UI_ONLY", hidden = true)
   @With(TokenAuthenticator.class)
+  @AuthzPath
   public Result set_security(UUID customerUUID, Http.Request request) {
     Form<SetSecurityFormData> formData =
         formFactory.getFormDataOrBadRequest(request, SetSecurityFormData.class);
@@ -576,6 +594,7 @@ public class SessionController extends AbstractPlatformController {
 
   @With(TokenAuthenticator.class)
   @ApiOperation(value = "UI_ONLY", hidden = true, response = SessionInfo.class)
+  @AuthzPath
   public Result api_token(UUID customerUUID, Long apiTokenVersion, Http.Request request) {
     Users user = CommonUtils.getUserFromContext();
 
@@ -720,6 +739,7 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
   @With(TokenAuthenticator.class)
+  @AuthzPath
   public Result logout() {
     Users user = CommonUtils.getUserFromContext();
     if (user != null) {
@@ -739,6 +759,7 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
   @With(TokenAuthenticator.class)
+  @AuthzPath
   public CompletionStage<Result> proxyRequest(
       UUID universeUUID, String requestUrl, Http.Request request) {
 
@@ -827,8 +848,19 @@ public class SessionController extends AbstractPlatformController {
     private final String htmlMessage;
   }
 
-  @ApiOperation(value = "getAdminNotifications", response = AdminNotifications.class)
+  @ApiOperation(
+      value =
+          "WARNING: This is a preview API that could change."
+              + " Returns the current list of notifications for admin",
+      response = AdminNotifications.class)
   @With(TokenAuthenticator.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
   public Result getAdminNotifications(UUID customerUUID) {
     // Validate Customer UUID
     Customer.getOrBadRequest(customerUUID);

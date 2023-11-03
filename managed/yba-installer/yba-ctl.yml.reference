@@ -145,6 +145,7 @@ postgres:
    install:
       enabled: true # yba-ctl will set up its own postgres
       username: postgres # user to connect to yugaware db
+      password: ""
       port: 5432
       restartSeconds: 10 # restart interval on exit
       locale: en_US.UTF8 # Locale for initdb
@@ -177,12 +178,14 @@ postgres:
 
 prometheus:
     port: 9090
-    restartSeconds: 10     # time (in seconds) to sleep before restarting prometheus service
-    scrapeInterval: 10s    # time between prometheus data scrapes
-    scrapeTimeout: 10s     # time before a scrape request times out
-    maxConcurrency: 20     # max number of queries to execute concurrently
-    maxSamples: 5000000    # max number of samples prometheus can load to process single query
-    timeout: 30s           # time before a query times out
-    retentionTime: 15d     # time to retain metrics
-
-
+    restartSeconds: 10        # time (in seconds) to sleep before restarting prometheus service
+    scrapeInterval: 10s       # time between prometheus data scrapes
+    scrapeTimeout: 10s        # time before a scrape request times out
+    maxConcurrency: 20        # max number of queries to execute concurrently
+    maxSamples: 5000000       # max number of samples prometheus can load to process single query
+    timeout: 30s              # time before a query times out
+    retentionTime: 15d        # time to retain metrics
+    enableHttps: false        # enable HTTPS for prometheus web UI
+    enableAuth: false         # enable authentication for prometheus
+    authUsername: prometheus  # username to authenticate to prometheus (if enableAuth)
+    authPassword: ""          # password to authenticate to prometheus (if enableAuth)

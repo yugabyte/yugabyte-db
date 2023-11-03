@@ -160,15 +160,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
-  public static final ConfKeyInfo<Boolean> granularMetrics =
-      new ConfKeyInfo<>(
-          "yb.ui.feature_flags.granular_metrics",
-          ScopeType.UNIVERSE,
-          "Granular level metrics",
-          "View granular level metrics when user selects specific time period in a chart",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
-
   public static final ConfKeyInfo<Boolean> pgBasedBackup =
       new ConfKeyInfo<>(
           "yb.backup.pg_based",
@@ -751,6 +742,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "The maximum time that we allow a tserver to be behind its peers",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> waitForServerReadyTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.wait_for_server_ready.timeout",
+          ScopeType.UNIVERSE,
+          "Wait for server ready timeout",
+          "Controls the max time for server to finish locally bootstrapping",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Long> checkMemoryTimeoutSecs =
       new ConfKeyInfo<>(
           "yb.dbmem.checks.timeout",
@@ -919,7 +918,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Always backup tablespaces when taking ysql backups. This is a UI flag"
               + " used to appropriately send 'useTablespaces' parameter to backend in API.",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowVolumeDecrease =
       new ConfKeyInfo<>(
           "yb.edit.allow_volume_decrease",
@@ -936,4 +935,30 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Number of parallel node agent reinstallations at a time",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ldapUniverseSync =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_universe_sync",
+          ScopeType.UNIVERSE,
+          "To perform sync of user-groups between the Universe DB nodes and LDAP Server",
+          "If configured, this feature allows users to synchronise user groups configured"
+              + " on the upstream LDAP Server with user roles in YBDB nodes associated"
+              + " with the universe.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> notifyPeerOnRemoval =
+      new ConfKeyInfo<>(
+          "yb.gflags.notify_peer_of_removal_from_cluster",
+          ScopeType.UNIVERSE,
+          "Notify Peers in Cluster on Node Removal",
+          "Notify peers in cluster on a master node removal",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> alwaysWaitForDataMove =
+      new ConfKeyInfo<>(
+          "yb.always_wait_for_data_move",
+          ScopeType.UNIVERSE,
+          "Always wait for data move on remove node",
+          "Always run wait for data move during remove node",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

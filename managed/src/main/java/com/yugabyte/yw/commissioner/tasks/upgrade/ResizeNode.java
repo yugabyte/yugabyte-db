@@ -55,9 +55,13 @@ public class ResizeNode extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    taskParams().verifyParams(getUniverse(), !isFirstTry() ? getNodeState() : null, isFirstTry);
+  }
+
+  @Override
   public void run() {
-    // Verify the request params and fail if invalid.
-    taskParams().verifyParams(getUniverse(), !isFirstTry() ? getNodeState() : null);
     runUpgrade(
         () -> {
           Universe universe = getUniverse();
@@ -399,6 +403,7 @@ public class ResizeNode extends UpgradeTaskBase {
     params.force = taskParams().isForceResizeNode();
     params.useSystemd = universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
     params.placementUuid = node.placementUuid;
+    params.cgroupSize = getCGroupSize(node);
 
     ChangeInstanceType changeInstanceTypeTask = createTask(ChangeInstanceType.class);
     changeInstanceTypeTask.initialize(params);

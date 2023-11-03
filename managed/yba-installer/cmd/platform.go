@@ -524,6 +524,16 @@ func (plat Platform) Upgrade() error {
 	//Crontab based monitoring for non-root installs.
 	if !common.HasSudoAccess() {
 		plat.CreateCronJob()
+	} else {
+		// Allow yugabyte user to fully manage this installation (GetBaseInstall() to be safe)
+		userName := viper.GetString("service_username")
+		chownClosure := func() error {
+			return common.Chown(common.GetBaseInstall(), userName, userName, true)
+		}
+		if err := chownClosure(); err != nil {
+			log.Error("Failed to set ownership of " + common.GetBaseInstall() + ": " + err.Error())
+			return err
+		}
 	}
 	err := plat.Start()
 	return err

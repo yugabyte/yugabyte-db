@@ -2,8 +2,6 @@
 
 #include "yb/tablet/operations/snapshot_operation.h"
 
-#include <glog/logging.h>
-
 #include "yb/common/snapshot.h"
 
 #include "yb/consensus/consensus_round.h"

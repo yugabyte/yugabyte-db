@@ -56,7 +56,7 @@ find "$log_dir" -type f -print0 | xargs -0 ls -t | grep $log_base_name | while r
     CAT="zcat"
   fi
   $CAT "$file_path" | \
-      awk -v min_time=$min_time -v max_time=$max_time -v regex=$grep_regex 'BEGIN{IGNORECASE=1}
+      awk -v min_time=$min_time -v max_time=$max_time -v regex="$grep_regex" 'BEGIN{IGNORECASE=1}
             /^YW [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T/{
               if(matches && valid_time)
                 print buf

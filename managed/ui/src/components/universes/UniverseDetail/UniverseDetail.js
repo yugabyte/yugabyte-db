@@ -54,9 +54,9 @@ import { EnableYSQLModal } from '../../../redesign/features/universe/universe-ac
 import { EnableYCQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYCQLModal';
 import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-gflags/EditGflags';
 import { UniverseState, getUniverseStatus } from '../helpers/universeHelpers';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
-import { DisasterRecovery } from '../../xcluster/disasterRecovery/DisasterRecoveryPanel';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { DrPanel } from '../../xcluster/disasterRecovery/DrPanel';
 import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 
 import './UniverseDetail.scss';
@@ -303,6 +303,10 @@ class UniverseDetail extends Component {
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.IS_UNIVERSE_AUTH_ENFORCED
       )?.value === 'true';
+    const isGFlagMultilineConfEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (config) => config.key === RuntimeConfigKey.IS_GFLAG_MULTILINE_ENABLED
+      )?.value === 'true';
 
     const isConfigureYSQLEnabled =
       runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.configure_db_api.ysql')
@@ -455,7 +459,7 @@ class UniverseDetail extends Component {
             mountOnEnter={true}
             unmountOnExit={true}
           >
-            <DisasterRecovery currentUniverseUuid={currentUniverse.data.universeUUID} />
+            <DrPanel currentUniverseUuid={currentUniverse.data.universeUUID} />
           </Tab.Pane>
         ),
         isNotHidden(currentCustomer.data.features, 'universes.details.tasks') && (
@@ -468,14 +472,11 @@ class UniverseDetail extends Component {
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.tasks')}
           >
             <UniverseTaskList
-              universe={universe}
-              tasks={tasks}
-              isCommunityEdition={!!customer.INSECURE_apiToken}
-              fetchCustomerTasks={this.props.fetchCustomerTasks}
-              refreshUniverseData={this.getUniverseInfo}
-              abortCurrentTask={this.props.abortCurrentTask}
+              universeUuid={currentUniverse.data.universeUUID}
+              abortTask={this.props.abortCurrentTask}
               hideTaskAbortModal={this.props.hideTaskAbortModal}
               showTaskAbortModal={this.props.showTaskAbortModal}
+              refreshUniverseData={this.getUniverseInfo}
               visibleModal={visibleModal}
             />
           </Tab.Pane>
@@ -485,42 +486,42 @@ class UniverseDetail extends Component {
       ...(isReadOnlyUniverse
         ? []
         : [
-          isNotHidden(currentCustomer.data.features, 'universes.details.backups') && (
-            <Tab.Pane
-              eventKey={'backups'}
-              tabtitle={<>Backups</>}
-              key="backups-tab"
-              mountOnEnter={true}
-              unmountOnExit={true}
-              disabled={isDisabled(currentCustomer.data.features, 'universes.details.backups')}
-            >
-              {featureFlags.test['backupv2'] || featureFlags.released['backupv2'] ? (
-                <UniverseLevelBackup />
-              ) : (
-                <ListBackupsContainer currentUniverse={currentUniverse.data} />
-              )}
-            </Tab.Pane>
-          ),
+            isNotHidden(currentCustomer.data.features, 'universes.details.backups') && (
+              <Tab.Pane
+                eventKey={'backups'}
+                tabtitle={<>Backups</>}
+                key="backups-tab"
+                mountOnEnter={true}
+                unmountOnExit={true}
+                disabled={isDisabled(currentCustomer.data.features, 'universes.details.backups')}
+              >
+                {featureFlags.test['backupv2'] || featureFlags.released['backupv2'] ? (
+                  <UniverseLevelBackup />
+                ) : (
+                  <ListBackupsContainer currentUniverse={currentUniverse.data} />
+                )}
+              </Tab.Pane>
+            ),
 
-          isNotHidden(currentCustomer.data.features, 'universes.details.health') && (
-            <Tab.Pane
-              eventKey={'health'}
-              tabtitle="Health"
-              key="health-tab"
-              mountOnEnter={true}
-              unmountOnExit={true}
-              disabled={isDisabled(currentCustomer.data.features, 'universes.details.heath')}
-            >
-              <UniverseHealthCheckList
-                universe={universe}
-                currentCustomer={currentCustomer}
-                currentUser={currentUser}
-                closeModal={closeModal}
-                visibleModal={visibleModal}
-              />
-            </Tab.Pane>
-          )
-        ])
+            isNotHidden(currentCustomer.data.features, 'universes.details.health') && (
+              <Tab.Pane
+                eventKey={'health'}
+                tabtitle="Health"
+                key="health-tab"
+                mountOnEnter={true}
+                unmountOnExit={true}
+                disabled={isDisabled(currentCustomer.data.features, 'universes.details.heath')}
+              >
+                <UniverseHealthCheckList
+                  universe={universe}
+                  currentCustomer={currentCustomer}
+                  currentUser={currentUser}
+                  closeModal={closeModal}
+                  visibleModal={visibleModal}
+                />
+              </Tab.Pane>
+            )
+          ])
     ].filter((element) => element);
 
     const currentBreadCrumb = (
@@ -609,12 +610,10 @@ class UniverseDetail extends Component {
                       {!universePaused && (
                         <RbacValidator
                           isControl
-                          accessRequiredOn={
-                            {
-                              onResource: uuid,
-                              ...UserPermissionMap.updateUniverse
-                            }
-                          }
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.MODIFY_UNIVERSE
+                          }}
                         >
                           <YBMenuItem
                             disabled={isUniverseStatusPending}
@@ -643,12 +642,10 @@ class UniverseDetail extends Component {
                         ).value === 'true' && (
                           <RbacValidator
                             isControl
-                            accessRequiredOn={
-                              {
-                                onResource: uuid,
-                                ...UserPermissionMap.updateUniverse
-                              }
-                            }
+                            accessRequiredOn={{
+                              onResource: uuid,
+                              ...ApiPermissionMap.MODIFY_UNIVERSE
+                            }}
                           >
                             <YBMenuItem
                               disabled={isUniverseStatusPending}
@@ -663,12 +660,10 @@ class UniverseDetail extends Component {
                       {!universePaused && !useSystemd && !isItKubernetesUniverse && (
                         <RbacValidator
                           isControl
-                          accessRequiredOn={
-                            {
-                              onResource: uuid,
-                              ...UserPermissionMap.updateUniverse
-                            }
-                          }
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.MODIFY_UNIVERSE
+                          }}
                         >
                           <YBMenuItem
                             disabled={isUniverseStatusPending || onPremSkipProvisioning}
@@ -687,12 +682,10 @@ class UniverseDetail extends Component {
                       {!universePaused && enableThirdpartyUpgrade && (
                         <RbacValidator
                           isControl
-                          accessRequiredOn={
-                            {
-                              onResource: uuid,
-                              ...UserPermissionMap.updateUniverse
-                            }
-                          }
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.MODIFY_UNIVERSE
+                          }}
                         >
                           <YBMenuItem
                             disabled={isUniverseStatusPending}
@@ -716,12 +709,10 @@ class UniverseDetail extends Component {
                         ) && (
                           <RbacValidator
                             isControl
-                            accessRequiredOn={
-                              {
-                                onResource: uuid,
-                                ...UserPermissionMap.editUniverse
-                              }
-                            }
+                            accessRequiredOn={{
+                              onResource: uuid,
+                              ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                            }}
                           >
                             <YBMenuItem
                               to={`/universes/${uuid}/edit/primary`}
@@ -739,12 +730,10 @@ class UniverseDetail extends Component {
                       {!universePaused && !this.isRRFlagsEnabled() && (
                         <RbacValidator
                           isControl
-                          accessRequiredOn={
-                            {
-                              onResource: uuid,
-                              ...UserPermissionMap.readUniverse
-                            }
-                          }
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                          }}
                         >
                           <YBMenuItem
                             disabled={isUniverseStatusPending}
@@ -761,12 +750,10 @@ class UniverseDetail extends Component {
                       {!universePaused && this.isRRFlagsEnabled() && (
                         <RbacValidator
                           isControl
-                          accessRequiredOn={
-                            {
-                              onResource: uuid,
-                              ...UserPermissionMap.readUniverse
-                            }
-                          }
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                          }}
                         >
                           <YBMenuItem
                             disabled={isUniverseStatusPending}
@@ -783,12 +770,10 @@ class UniverseDetail extends Component {
                       {!universePaused && isItKubernetesUniverse && (
                         <RbacValidator
                           isControl
-                          accessRequiredOn={
-                            {
-                              onResource: uuid,
-                              ...UserPermissionMap.updateUniverse
-                            }
-                          }
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.MODIFY_UNIVERSE
+                          }}
                         >
                           <YBMenuItem
                             disabled={isUniverseStatusPending}
@@ -803,12 +788,10 @@ class UniverseDetail extends Component {
                       {!universePaused && (
                         <RbacValidator
                           isControl
-                          accessRequiredOn={
-                            {
-                              onResource: uuid,
-                              ...UserPermissionMap.readUniverse
-                            }
-                          }
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                          }}
                         >
                           <YBMenuItem
                             disabled={isUniverseStatusPending}
@@ -827,7 +810,10 @@ class UniverseDetail extends Component {
                       )}
                       {!universePaused && isConfigureYSQLEnabled && (
                         <RbacValidator
-                          accessRequiredOn={UserPermissionMap.editUniverse}
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                          }}
                           isControl
                         >
                           <YBMenuItem
@@ -842,7 +828,10 @@ class UniverseDetail extends Component {
                       )}
                       {!universePaused && isConfigureYCQLEnabled && (
                         <RbacValidator
-                          accessRequiredOn={UserPermissionMap.editUniverse}
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                          }}
                           isControl
                         >
                           <YBMenuItem
@@ -858,12 +847,10 @@ class UniverseDetail extends Component {
                       {!universePaused && (
                         <RbacValidator
                           isControl
-                          accessRequiredOn={
-                            {
-                              onResource: uuid,
-                              ...UserPermissionMap.updateUniverse
-                            }
-                          }
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.MODIFY_UNIVERSE
+                          }}
                         >
                           <YBMenuItem
                             disabled={isUniverseStatusPending}
@@ -883,19 +870,18 @@ class UniverseDetail extends Component {
                       {!isReadOnlyUniverse && !universePaused && (
                         <RbacValidator
                           isControl
-                          accessRequiredOn={
-                            {
-                              onResource: uuid,
-                              ...UserPermissionMap.editUniverse
-                            }
-                          }
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                          }}
                         >
                           <YBMenuItem
                             disabled={isUniverseStatusPending}
                             to={
                               this.isNewUIEnabled()
-                                ? `/universes/${uuid}/${this.hasReadReplica(universeInfo) ? 'edit' : 'create'
-                                }/async`
+                                ? `/universes/${uuid}/${
+                                    this.hasReadReplica(universeInfo) ? 'edit' : 'create'
+                                  }/async`
                                 : `/universes/${uuid}/edit/async`
                             }
                             availability={getFeatureState(
@@ -913,12 +899,10 @@ class UniverseDetail extends Component {
                       {!universePaused && (
                         <RbacValidator
                           isControl
-                          accessRequiredOn={
-                            {
-                              onResource: uuid,
-                              ...UserPermissionMap.readUniverse
-                            }
-                          }
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                          }}
                         >
                           <UniverseAppsModal
                             currentUniverse={currentUniverse.data}
@@ -940,45 +924,41 @@ class UniverseDetail extends Component {
 
                       {(featureFlags.test['supportBundle'] ||
                         featureFlags.released['supportBundle']) && (
-                          <>
-                            <MenuItem divider />
-                            {!universePaused && (
-                              <RbacValidator
-                                isControl
-                                accessRequiredOn={
-                                  {
-                                    onResource: "CUSTOMER_ID",
-                                    ...UserPermissionMap.listSupportBundle
-                                  }
+                        <>
+                          <MenuItem divider />
+                          {!universePaused && (
+                            <RbacValidator
+                              isControl
+                              accessRequiredOn={{
+                                onResource: uuid,
+                                ...ApiPermissionMap.GET_SUPPORT_BUNDLE
+                              }}
+                            >
+                              <UniverseSupportBundle
+                                currentUniverse={currentUniverse.data}
+                                modal={modal}
+                                closeModal={closeModal}
+                                button={
+                                  <YBMenuItem onClick={showSupportBundleModal}>
+                                    <YBLabelWithIcon icon="fa fa-file-archive-o">
+                                      Support Bundles
+                                    </YBLabelWithIcon>
+                                  </YBMenuItem>
                                 }
-                              >
-                                <UniverseSupportBundle
-                                  currentUniverse={currentUniverse.data}
-                                  modal={modal}
-                                  closeModal={closeModal}
-                                  button={
-                                    <YBMenuItem onClick={showSupportBundleModal}>
-                                      <YBLabelWithIcon icon="fa fa-file-archive-o">
-                                        Support Bundles
-                                      </YBLabelWithIcon>
-                                    </YBMenuItem>
-                                  }
-                                />
-                              </RbacValidator>
-                            )}
-                            <MenuItem divider />
-                          </>
-                        )}
+                              />
+                            </RbacValidator>
+                          )}
+                          <MenuItem divider />
+                        </>
+                      )}
 
                       {!universePaused && (
                         <RbacValidator
                           isControl
-                          accessRequiredOn={
-                            {
-                              onResource: uuid,
-                              ...UserPermissionMap.editUniverse
-                            }
-                          }
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.MODIFY_UNIVERSE
+                          }}
                         >
                           <YBMenuItem
                             disabled={isUniverseStatusPending}
@@ -996,7 +976,7 @@ class UniverseDetail extends Component {
                               }
                             >
                               {currentUniverse.data.universeConfig &&
-                                currentUniverse.data.universeConfig.takeBackups === 'true'
+                              currentUniverse.data.universeConfig.takeBackups === 'true'
                                 ? 'Disable Backup'
                                 : 'Enable Backup'}
                             </YBLabelWithIcon>
@@ -1024,12 +1004,10 @@ class UniverseDetail extends Component {
                           featureFlags.released['pausedUniverse']) && (
                           <RbacValidator
                             isControl
-                            accessRequiredOn={
-                              {
-                                onResource: uuid,
-                                ...UserPermissionMap.pauseResumeUniverse
-                              }
-                            }
+                            accessRequiredOn={{
+                              onResource: uuid,
+                              ...ApiPermissionMap.RESUME_UNIVERSE
+                            }}
                           >
                             <YBMenuItem
                               onClick={showToggleUniverseStateModal}
@@ -1040,7 +1018,9 @@ class UniverseDetail extends Component {
                               disabled={universePaused && isUniverseStatusPending}
                             >
                               <YBLabelWithIcon
-                                icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
+                                icon={
+                                  universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'
+                                }
                               >
                                 {universePaused ? 'Resume Universe' : 'Pause Universe'}
                               </YBLabelWithIcon>
@@ -1049,12 +1029,10 @@ class UniverseDetail extends Component {
                         )}
                       <RbacValidator
                         isControl
-                        accessRequiredOn={
-                          {
-                            onResource: uuid,
-                            ...UserPermissionMap.deleteUniverse
-                          }
-                        }
+                        accessRequiredOn={{
+                          onResource: uuid,
+                          ...ApiPermissionMap.DELETE_UNIVERSE
+                        }}
                       >
                         <YBMenuItem
                           onClick={showDeleteUniverseModal}
@@ -1108,6 +1086,7 @@ class UniverseDetail extends Component {
             this.props.fetchCustomerTasks();
             this.props.getUniverseInfo(currentUniverse.data.universeUUID);
           }}
+          isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
           universeData={currentUniverse.data}
         />
 

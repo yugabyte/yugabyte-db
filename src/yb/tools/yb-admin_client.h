@@ -323,6 +323,11 @@ class ClusterAdminClient {
   Status PromoteAutoFlags(
       const std::string& max_flag_class, const bool promote_non_runtime_flags, const bool force);
 
+  Status RollbackAutoFlags(uint32_t rollback_version);
+
+  Status PromoteSingleAutoFlag(const std::string& process_name, const std::string& flag_name);
+  Status DemoteSingleAutoFlag(const std::string& process_name, const std::string& flag_name);
+
   Status ListAllNamespaces();
 
   // Snapshot operations.
@@ -539,6 +544,7 @@ class ClusterAdminClient {
   std::unique_ptr<master::MasterDdlProxy> master_ddl_proxy_;
   std::unique_ptr<master::MasterEncryptionProxy> master_encryption_proxy_;
   std::unique_ptr<master::MasterReplicationProxy> master_replication_proxy_;
+  std::unique_ptr<master::MasterTestProxy> master_test_proxy_;
 
   // Skip yb_client_ and related fields' initialization.
   std::unique_ptr<client::YBClient> yb_client_;

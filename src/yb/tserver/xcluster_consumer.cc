@@ -230,7 +230,7 @@ void XClusterConsumer::Shutdown() {
     client->Shutdown();
   }
 
-  local_client_->client->Shutdown();
+  local_client_->Shutdown();
 
   for (const auto& poller : pollers_to_shutdown) {
     poller->CompleteShutdown();
@@ -338,6 +338,7 @@ void XClusterConsumer::UpdateInMemoryState(
   stream_schema_version_map_.clear();
   stream_colocated_schema_version_map_.clear();
   stream_to_schema_version_.clear();
+  min_schema_version_map_.clear();
 
   for (const auto& [replication_group_id_str, producer_entry_pb] :
        DCHECK_NOTNULL(consumer_registry)->producer_map()) {
@@ -388,6 +389,12 @@ void XClusterConsumer::UpdateInMemoryState(
           schema_version_map[schema_versions.old_producer_schema_version()] =
               schema_versions.old_consumer_schema_version();
         }
+
+        auto min_schema_version = schema_versions.old_consumer_schema_version() > 0 ?
+            schema_versions.old_consumer_schema_version() :
+            schema_versions.current_consumer_schema_version();
+        min_schema_version_map_[std::make_pair(
+            stream_entry_pb.consumer_table_id(), kColocationIdNotSet)] = min_schema_version;
       }
 
       for (const auto& [colocated_id, versions] : stream_entry_pb.colocated_schema_versions()) {
@@ -404,6 +411,11 @@ void XClusterConsumer::UpdateInMemoryState(
           schema_version_map[versions.old_producer_schema_version()] =
               versions.old_consumer_schema_version();
         }
+
+        auto min_schema_version = versions.old_consumer_schema_version() > 0 ?
+            versions.old_consumer_schema_version() : versions.current_consumer_schema_version();
+        min_schema_version_map_[std::make_pair(
+            stream_entry_pb.consumer_table_id(), colocated_id)] = min_schema_version;
       }
 
       for (const auto& [consumer_tablet_id, producer_tablet_list] :
@@ -420,6 +432,24 @@ void XClusterConsumer::UpdateInMemoryState(
     }
   }
   run_thread_cond_.notify_all();
+}
+
+SchemaVersion XClusterConsumer::GetMinXClusterSchemaVersion(const TableId& table_id,
+    const ColocationId& colocation_id) {
+  SharedLock l(master_data_mutex_);
+  if (!is_shutdown_) {
+    auto iter = min_schema_version_map_.find(make_pair(table_id, colocation_id));
+    if (iter != min_schema_version_map_.end()) {
+      VLOG_WITH_FUNC(4) << Format("XCluster min schema version for $0,$1:$2",
+          table_id, colocation_id, iter->second);
+      return iter->second;
+    }
+
+    VLOG_WITH_FUNC(4) << Format("XCluster tableid,colocationid pair not found in registry: $0,$1",
+        table_id, colocation_id);
+  }
+
+  return cdc::kInvalidSchemaVersion;
 }
 
 void XClusterConsumer::TriggerPollForNewTablets() {
@@ -731,7 +761,14 @@ Status XClusterConsumer::PublishXClusterSafeTime() {
   }
 
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-  RETURN_NOT_OK_PREPEND(session->TEST_Flush(), "Failed to flush to XClusterSafeTime table");
+  // We dont use TEST_Flush here since it gets stuck on shutdown (#19402).
+  auto future = session->FlushFuture();
+  SCHECK(
+      future.wait_for(client->default_rpc_timeout().ToSteadyDuration()) ==
+          std::future_status::ready,
+      IllegalState, "Failed to flush to XClusterSafeTime table");
+
+  RETURN_NOT_OK_PREPEND(future.get().status, "Failed to flush to XClusterSafeTime table");
 
   last_safe_time_published_at_ = MonoTime::Now();
 

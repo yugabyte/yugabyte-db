@@ -15,7 +15,7 @@
 
 #include <string>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/dockv/intent.h"

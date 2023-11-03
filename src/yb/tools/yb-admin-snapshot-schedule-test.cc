@@ -2558,11 +2558,19 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, PgsqlTestMonotonicSequenceNoPacked,
 
 class YbAdminSnapshotScheduleTestPerDbCatalogVersion : public YbAdminSnapshotScheduleTestWithYsql {
  public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    YbAdminSnapshotScheduleTestWithYsql::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back(
+        "--allowed_preview_flags_csv=ysql_enable_db_catalog_version_mode");
+    opts->extra_master_flags.emplace_back(
+        "--allowed_preview_flags_csv=ysql_enable_db_catalog_version_mode");
+  }
+
   Status PrepareDbCatalogVersion(pgwrapper::PGConn* conn) {
     LOG(INFO) << "Preparing pg_yb_catalog_version to have one row per database";
     RETURN_NOT_OK(conn->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
     // "ON CONFLICT DO NOTHING" is only needed for the case where the cluster already has
-    // those rows (e.g., when initdb is run with --TEST_enable_db_catalog_version_mode=true).
+    // those rows (e.g., when initdb is run with --ysql_enable_db_catalog_version_mode=true).
     RETURN_NOT_OK(conn->Execute("INSERT INTO pg_catalog.pg_yb_catalog_version "
                                 "SELECT oid, 1, 1 from pg_catalog.pg_database where oid != 1 "
                                 "ON CONFLICT DO NOTHING"));
@@ -2572,10 +2580,10 @@ class YbAdminSnapshotScheduleTestPerDbCatalogVersion : public YbAdminSnapshotSch
   void RestartClusterSetDbCatalogVersionMode(
       bool enabled, const std::vector<string>& extra_tserver_flags) {
     LOG(INFO) << "Restart the cluster and turn "
-              << (enabled ? "on" : "off") << " --TEST_enable_db_catalog_version_mode";
+              << (enabled ? "on" : "off") << " --ysql_enable_db_catalog_version_mode";
     cluster_->Shutdown();
     const string db_catalog_version_gflag =
-      Format("--TEST_enable_db_catalog_version_mode=$0", enabled ? "true" : "false");
+      Format("--ysql_enable_db_catalog_version_mode=$0", enabled ? "true" : "false");
     for (size_t i = 0; i != cluster_->num_masters(); ++i) {
       cluster_->master(i)->mutable_flags()->push_back(db_catalog_version_gflag);
     }

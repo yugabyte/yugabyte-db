@@ -167,7 +167,7 @@ const initialValues = {
   incremental_backup_frequency: 1,
   incremental_backup_frequency_type: INCREMENTAL_BACKUP_DURATION_OPTIONS[1],
   isTableByTableBackup: false,
-  useTablespaces: true
+  useTablespaces: false
 };
 
 export const BackupCreateModal: FC<BackupCreateModalProps> = ({
@@ -225,7 +225,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
     (c: RunTimeConfigEntry) => c.key === 'yb.backup.allow_table_by_table_backup_ycql'
   );
 
-  const showTakeTablespaceOption = runtimeConfigs?.configEntries?.find(
+  const useTablespacesByDefault = runtimeConfigs?.configEntries?.find(
     (c: RunTimeConfigEntry) => c.key === 'yb.backup.always_backup_tablespaces'
   );
 
@@ -237,6 +237,13 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
     (values: any) => {
       if (isYbcEnabledinCurrentUniverse) {
         values = omit(values, 'parallel_threads');
+      }
+      // if usetablespaces is enabled in runtime config, then send the "useTablespaces" as true
+      if (useTablespacesByDefault?.value === 'true') {
+        values['useTablespaces'] = true;
+      }
+      if (values['api_type'].value !== BACKUP_API_TYPES.YSQL) {
+        values['useTablespaces'] = false;
       }
       return createBackup(values, isIncrementalBackup);
     },
@@ -288,7 +295,12 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       if (isYbcEnabledinCurrentUniverse) {
         values = omit(values, 'parallel_threads');
       }
-
+      if (useTablespacesByDefault?.value === 'true') {
+        values['useTablespaces'] = true;
+      }
+      if (values['api_type'].value !== BACKUP_API_TYPES.YSQL) {
+        values['useTablespaces'] = false;
+      }
       return createBackupSchedule(values);
     },
     {
@@ -551,7 +563,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
               isIncrementalBackup,
               isEditBackupMode,
               allowTableByTableBackup,
-              showTakeTablespaceOption
+              useTablespacesByDefault
             })}
           </>
         )
@@ -574,7 +586,7 @@ function BackupConfigurationForm({
   isIncrementalBackup,
   isEditBackupMode,
   allowTableByTableBackup,
-  showTakeTablespaceOption
+  useTablespacesByDefault
 }: {
   kmsConfigList: any;
   setFieldValue: Function;
@@ -595,7 +607,7 @@ function BackupConfigurationForm({
   isIncrementalBackup: boolean;
   isEditBackupMode: boolean;
   allowTableByTableBackup: RunTimeConfigEntry;
-  showTakeTablespaceOption: RunTimeConfigEntry;
+  useTablespacesByDefault: RunTimeConfigEntry;
 }) {
   const ALL_DB_OPTION = {
     label: `All ${values['api_type'].value === BACKUP_API_TYPES.YSQL ? 'Databases' : 'Keyspaces'}`,
@@ -795,14 +807,14 @@ function BackupConfigurationForm({
       )}
 
       {
-        showTakeTablespaceOption?.value === 'false' && (
+        values['api_type'].value === BACKUP_API_TYPES.YSQL && useTablespacesByDefault?.value === 'false' && (
           <Row>
             <Col lg={8} className='no-padding tablespaces'>
               <div>
                 <Field
                   name="useTablespaces"
                   component={YBCheckBox}
-                  disabled={isEditMode && !isEditBackupMode}
+                  disabled={isEditMode || isEditBackupMode}
                   checkState={values['useTablespaces']}
                 />
                 Backup tablespaces information

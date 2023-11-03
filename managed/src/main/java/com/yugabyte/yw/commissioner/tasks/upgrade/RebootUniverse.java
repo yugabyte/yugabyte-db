@@ -3,6 +3,8 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -13,6 +15,8 @@ import java.util.LinkedHashSet;
 import javax.inject.Inject;
 import play.mvc.Http.Status;
 
+@Retryable
+@Abortable
 public class RebootUniverse extends UpgradeTaskBase {
 
   @Inject
@@ -31,17 +35,19 @@ public class RebootUniverse extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    if (taskParams().upgradeOption != UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "Only ROLLING_UPGRADE option is supported for reboot.");
+    }
+    taskParams().verifyParams(getUniverse(), isFirstTry);
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
-          // Verify the request params and fail if invalid
-          taskParams().verifyParams(getUniverse());
-
-          if (taskParams().upgradeOption != UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE) {
-            throw new PlatformServiceException(
-                Status.BAD_REQUEST, "Only ROLLING_UPGRADE option is supported for reboot.");
-          }
-
           LinkedHashSet<NodeDetails> nodes = fetchAllNodes(taskParams().upgradeOption);
           createRollingNodesUpgradeTaskFlow(
               (nodez, processTypes) ->

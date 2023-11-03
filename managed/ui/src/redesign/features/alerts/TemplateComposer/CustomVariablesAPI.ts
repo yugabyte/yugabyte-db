@@ -83,4 +83,5 @@ export const previewAlertNotification = (template: IAlertChannelTemplates, alert
     `${ROOT_URL}/customers/${cUUID}/alert_notification_preview`,
     { alertChannelTemplates: { ...template }, alertConfigUuid }
   );
-}
+};
+

@@ -1,18 +1,35 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.*;
+import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.CONTROLLER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSERVER;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Download;
 import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Install;
-import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.*;
-import static org.hamcrest.CoreMatchers.*;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.Certs;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.Everything;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.GFlags;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.Software;
+import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType.ToggleTls;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.StringContains.containsString;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -20,15 +37,29 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.*;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
+import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
-import com.yugabyte.yw.common.config.*;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -40,8 +71,16 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
+import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -50,7 +89,20 @@ import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import junitparams.JUnitParamsRunner;
@@ -63,7 +115,11 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.*;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import play.libs.Json;
@@ -461,8 +517,8 @@ public class NodeManagerTest extends FakeDBApplication {
     ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
     releaseMetadata.filePath = "/yb/release.tar.gz";
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(releaseMetadata);
-
     when(mockConfig.getString(NodeManager.BOOT_SCRIPT_PATH)).thenReturn("");
+    when(mockConfGetter.getStaticConf()).thenReturn(mockConfig);
     when(mockConfGetter.getConfForScope(
             any(Provider.class), eq(ProviderConfKeys.universeBootScript)))
         .thenReturn("");
@@ -512,6 +568,13 @@ public class NodeManagerTest extends FakeDBApplication {
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ssh2Enabled))).thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.devopsCommandTimeout)))
         .thenReturn(Duration.ofHours(1));
+
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.notifyPeerOnRemoval)))
+        .thenReturn(true);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.notifyPeerOnRemoval)))
+        .thenReturn(true);
   }
 
   private String getMountPoints(AnsibleConfigureServers.Params taskParam) {
@@ -2330,7 +2393,7 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   private Map<String, String> extractGFlags(List<String> command) {
-    String gflagsJson = mapKeysToValues(command).get("--gflags");
+    String gflagsJson = LocalNodeManager.convertCommandArgListToMap(command).get("--gflags");
     if (gflagsJson == null) {
       throw new IllegalStateException("Empty gflags for " + command);
     }
@@ -3942,15 +4005,19 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   private void verifyCGroupSize(Universe universe, NodeDetails node, int value) {
-    NodeTaskParams nodeTaskParams = new NodeTaskParams();
-    nodeTaskParams.azUuid = node.azUuid;
-    nodeTaskParams.placementUuid = node.placementUuid;
-    assertEquals(value, NodeManager.getCGroupSize(mockConfGetter, universe, nodeTaskParams));
+    assertEquals(
+        value,
+        UniverseDefinitionTaskBase.getCGroupSize(
+            mockConfGetter,
+            universe,
+            universe.getUniverseDetails().getPrimaryCluster(),
+            universe.getUniverseDetails().getClusterByUuid(node.placementUuid),
+            node));
   }
 
   private void checkArguments(
       List<String> currentArgs, List<String> allPossibleArgs, String... argsExpected) {
-    Map<String, String> k2v = mapKeysToValues(currentArgs);
+    Map<String, String> k2v = LocalNodeManager.convertCommandArgListToMap(currentArgs);
     List<String> allArgsCpy = new ArrayList<>(allPossibleArgs);
     for (int i = 0; i < argsExpected.length; i += 2) {
       String key = argsExpected[i];
@@ -4008,21 +4075,6 @@ public class NodeManagerTest extends FakeDBApplication {
     ArgumentCaptor<List> arg = ArgumentCaptor.forClass(List.class);
     verify(shellProcessHandler).run(arg.capture(), any(ShellProcessContext.class));
     return new ArrayList<>(arg.getValue());
-  }
-
-  private Map<String, String> mapKeysToValues(List<String> args) {
-    Map<String, String> result = new HashMap<>();
-    for (int i = 0; i < args.size(); i++) {
-      String key = args.get(i);
-      if (key.startsWith("--")) {
-        String value = "";
-        if (i < args.size() - 1 && !args.get(i + 1).startsWith("--")) {
-          value = args.get(++i);
-        }
-        result.put(key, value);
-      }
-    }
-    return result;
   }
 
   private void assertFails(Runnable r, String expectedError) {

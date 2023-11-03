@@ -34,7 +34,7 @@ export interface YBModalProps extends DialogProps {
   onSubmit?: () => void;
   enableBackdropDismiss?: boolean;
   submitLabel?: string;
-  submitButtonTooltip?: string;
+  submitButtonTooltip?: React.ReactNode;
   submitTestId?: string;
   cancelLabel?: React.ReactNode;
   cancelButtonTooltip?: string;
@@ -268,7 +268,9 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
     >
       <form className={classes.form}>
         {customTitle ? (
-          <div className={clsx(classes.modalTitle, titleContentProps)}>{customTitle}</div>
+          <DialogTitle id="form-dialog-title" disableTypography className={dialogTitle}>
+            {customTitle}
+          </DialogTitle>
         ) : (
           title && (
             <DialogTitle id="form-dialog-title" disableTypography className={dialogTitle}>

@@ -28,8 +28,7 @@
 
 #include "yb/yql/pggate/pg_expr.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 namespace {
 
@@ -50,9 +49,14 @@ LWPgsqlExpressionPB* AllocNonVirtualBindPB(
   return nullptr;
 }
 
+dockv::KeyEntryValue QLValueToKeyEntryValue(const LWQLValuePB* input, SortingType sorting) {
+  return input
+      ? dockv::KeyEntryValue::FromQLValuePBForKey(*input, sorting)
+      : dockv::KeyEntryValue();
+}
+
 dockv::KeyEntryValue QLValueToKeyEntryValue(const LWQLValuePB* input, const ColumnSchema& desc) {
-  return input ? dockv::KeyEntryValue::FromQLValuePBForKey(*input, desc.sorting_type())
-               : dockv::KeyEntryValue();
+  return QLValueToKeyEntryValue(input, desc.sorting_type());
 }
 
 ArenaList<LWPgsqlExpressionPB>& SubExprsOut(LWPgsqlExpressionPB* bind_pb) {
@@ -62,6 +66,14 @@ ArenaList<LWPgsqlExpressionPB>& SubExprsOut(LWPgsqlExpressionPB* bind_pb) {
 }
 
 } // namespace
+
+namespace pg_column::internal {
+
+ExtractKeyColumnValue::type ExtractKeyColumnValue::operator()(const LWPgsqlExpressionPB& pb) const {
+  return QLValueToKeyEntryValue(&pb.value(), sorting_);
+}
+
+} // namespace pg_column::internal
 
 PgColumn::PgColumn(std::reference_wrapper<const Schema> schema, size_t index)
     : schema_(schema), index_(index) {
@@ -202,8 +214,8 @@ Result<dockv::KeyEntryValue> PgColumn::BuildKeyColumnValue() const {
   return BuildKeyColumnValue(&temp_value);
 }
 
-Result<dockv::KeyEntryValue> PgColumn::BuildSubExprKeyColumnValue(size_t idx) const {
-  return QLValueToKeyEntryValue(&std::next(SubExprsOut(bind_pb_).begin(), idx)->value(), desc());
+PgColumn::SubExprKeyColumnValueProvider PgColumn::BuildSubExprKeyColumnValueProvider() const {
+  return SubExprKeyColumnValueProvider(SubExprsOut(bind_pb_), desc().sorting_type());
 }
 
 Status PgColumn::SetSubExprs(PgDml* stmt, PgExpr **value, size_t count) {
@@ -217,10 +229,6 @@ Status PgColumn::SetSubExprs(PgDml* stmt, PgExpr **value, size_t count) {
     RETURN_NOT_OK(value[i]->EvalTo(cond->add_operands()));
   }
   return Status::OK();
-}
-
-size_t PgColumn::SubExprsCount() const {
-  return SubExprsOut(bind_pb_).size();
 }
 
 // Moves IN operator bound for range key component into 'condition_expr' field
@@ -239,5 +247,4 @@ Status PgColumn::MoveBoundKeyInOperator(LWPgsqlReadRequestPB* read_req) {
   return Status::OK();
 }
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

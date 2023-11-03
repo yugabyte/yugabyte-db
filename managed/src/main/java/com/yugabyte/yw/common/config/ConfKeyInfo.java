@@ -38,6 +38,9 @@ public class ConfKeyInfo<T> {
     // Keys for which we do not have metadata yet
     BETA,
     // Keys with dedicated UI
-    UIDriven
+    UIDriven,
+    // Feature flag keys. Only allowed data type: boolean.
+    // These can be viewed without authorising. Should only be set at global scope.
+    FEATURE_FLAG
   }
 }

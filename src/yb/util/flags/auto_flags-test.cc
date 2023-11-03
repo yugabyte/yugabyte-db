@@ -73,8 +73,6 @@ void ParseCommandLineFlags(vector<string> arguments) {
 }  // namespace
 
 TEST(AutoFlagsTest, TestPromote) {
-  ASSERT_NOK(PromoteAutoFlag("Invalid_flag"));
-
   ASSERT_EQ(FLAGS_test_auto_flag, 0);
   VerifyFlagDefault(0);
 
@@ -85,17 +83,18 @@ TEST(AutoFlagsTest, TestPromote) {
   ASSERT_EQ(FLAGS_test_auto_double, 1);
   ASSERT_EQ(FLAGS_test_auto_string, "false");
 
-  ASSERT_OK(PromoteAutoFlag(kFlagName));
+  const auto* flag_desc = GetAutoFlagDescription(kFlagName);
+  ASSERT_NO_FATALS(PromoteAutoFlag(*flag_desc));
   ASSERT_EQ(FLAGS_test_auto_flag, 100);
   VerifyFlagDefault(100);
 
-  // Override should still work
+  // Setting an override should take precedence.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_test_auto_flag) = 10;
   ASSERT_EQ(FLAGS_test_auto_flag, 10);
   VerifyFlagDefault(100);
 
   // Promote should not modify overridden values
-  ASSERT_OK(PromoteAutoFlag(kFlagName));
+  ASSERT_NO_FATALS(PromoteAutoFlag(*flag_desc));
   ASSERT_EQ(FLAGS_test_auto_flag, 10);
 }
 
@@ -113,7 +112,8 @@ TEST(AutoFlagsTest, TestAutoPromoted) {
   ASSERT_EQ(FLAGS_test_auto_string, "true");
 
   // promote again should be no-op
-  ASSERT_OK(PromoteAutoFlag(kFlagName));
+  const auto* flag_desc = GetAutoFlagDescription(kFlagName);
+  ASSERT_NO_FATALS(PromoteAutoFlag(*flag_desc));
   ASSERT_EQ(FLAGS_test_auto_flag, 100);
   VerifyFlagDefault(100);
 }
@@ -173,4 +173,32 @@ TEST(AutoFlagsTest, TestGetFlagsEligibleForPromotion) {
   ASSERT_EQ(eligible_flags["p3"].size(), 2);
 }
 
+TEST(AutoFlagsTest, TestDemote) {
+  ASSERT_EQ(FLAGS_test_auto_flag, 0);
+  VerifyFlagDefault(0);
+
+  const auto* flag_desc = GetAutoFlagDescription(kFlagName);
+  ASSERT_NO_FATALS(PromoteAutoFlag(*flag_desc));
+  ASSERT_EQ(FLAGS_test_auto_flag, 100);
+  VerifyFlagDefault(100);
+
+  ASSERT_NO_FATALS(DemoteAutoFlag(*flag_desc));
+  ASSERT_EQ(FLAGS_test_auto_flag, 0);
+  VerifyFlagDefault(0);
+
+  // Setting an override should take precedence.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_test_auto_flag) = 10;
+  ASSERT_EQ(FLAGS_test_auto_flag, 10);
+  VerifyFlagDefault(0);
+
+  // Promote should not modify overridden values.
+  ASSERT_NO_FATALS(PromoteAutoFlag(*flag_desc));
+  ASSERT_EQ(FLAGS_test_auto_flag, 10);
+  VerifyFlagDefault(100);
+
+  // Demote should not modify overridden values.
+  ASSERT_NO_FATALS(DemoteAutoFlag(*flag_desc));
+  ASSERT_EQ(FLAGS_test_auto_flag, 10);
+  VerifyFlagDefault(0);
+}
 }  // namespace yb

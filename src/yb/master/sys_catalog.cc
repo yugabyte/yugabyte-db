@@ -36,7 +36,6 @@
 #include <memory>
 
 #include <boost/optional.hpp>
-#include <glog/logging.h>
 #include <rapidjson/document.h>
 
 #include "yb/client/client.h"
@@ -458,6 +457,30 @@ void SysCatalogTable::SysCatalogStateChanged(
 
     LOG(INFO) << "Processing context '" << context->ToString()
               << "' - new count " << new_count << ", old count " << old_count;
+    // For Sys Catalog config changes which don't have 'unsafe_config_change' set - if new_config
+    // and old_config have the same number of peers, then the change config must have been a
+    // ROLE_CHANGE, thus old_config must have exactly one more peer in transition (PRE_VOTER or
+    // PRE_OBSERVER) when compared against new_config.
+    //
+    // The above might not hold true for config changes where 'unsafe_config_change' is set. Hence
+    // we use severity level WARNING as opposed to FATAL below to avoid running into a crash loop.
+    if (new_count == old_count) {
+      auto old_config_peers_transition_count =
+          CountServersInTransition(context->change_record.old_config());
+      auto new_config_peers_transition_count =
+          CountServersInTransition(context->change_record.new_config());
+      if (old_config_peers_transition_count - new_config_peers_transition_count != 1) {
+        LOG(WARNING) << "Expected old config to have exactly one additional server in transition "
+                     << "(PRE_VOTER or PRE_OBSERVER) when compared against new config, but found "
+                     << old_config_peers_transition_count << " transitioning servers in old config "
+                     << context->change_record.old_config().ShortDebugString() << " and "
+                     << new_config_peers_transition_count << "transitioning servers in new config "
+                     << context->change_record.new_config().ShortDebugString();
+      }
+    } else if (std::abs(new_count - old_count) != 1) {
+      LOG(WARNING) << "Expected exactly one server addition or deletion, found " << new_count
+                   << " servers in new config and " << old_count << " servers in old config.";
+    }
 
     Status s = master_->ResetMemoryState(context->change_record.new_config());
     if (!s.ok()) {
@@ -1003,7 +1026,7 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImplWithReadTime(
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        &cond, boost::none /* hash_code */, boost::none /* max_hash_code */);
+        &cond, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   } else {
     iter->InitForTableType(read_data.table_info->table_type);
@@ -1268,7 +1291,7 @@ Status SysCatalogTable::ReadPgClassInfo(
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        &cond, boost::none /* hash_code */, boost::none /* max_hash_code */);
+        &cond, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1381,7 +1404,7 @@ Result<uint32_t> SysCatalogTable::ReadPgClassColumnWithOidValue(const uint32_t d
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        &cond, boost::none /* hash_code */, boost::none /* max_hash_code */);
+        &cond, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1426,7 +1449,7 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        &cond, boost::none /* hash_code */, boost::none /* max_hash_code */);
+        &cond, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1477,7 +1500,7 @@ Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttNameTypid
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
-        boost::none /* hash_code */, boost::none /* max_hash_code */);
+        std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1542,7 +1565,7 @@ Result<std::unordered_map<uint32_t, string>> SysCatalogTable::ReadPgEnum(
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        nullptr /* cond */, boost::none /* hash_code */, boost::none /* max_hash_code */);
+        nullptr /* cond */, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1598,7 +1621,7 @@ Result<std::unordered_map<uint32_t, PgTypeInfo>> SysCatalogTable::ReadPgTypeInfo
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
-        boost::none /* hash_code */, boost::none /* max_hash_code */);
+        std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1818,7 +1841,7 @@ Result<RelIdToAttributesMap> SysCatalogTable::ReadPgAttributeInfo(
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
-        boost::none /* hash_code */, boost::none /* max_hash_code */);
+        std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1928,7 +1951,7 @@ Result<RelTypeOIDMap> SysCatalogTable::ReadCompositeTypeFromPgClass(
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, nullptr,
-        boost::none /* hash_code */, boost::none /* max_hash_code */);
+        std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 

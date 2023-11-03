@@ -410,7 +410,7 @@ Proceed as follows:
     table id: 000033e1000030008000000000004006, CDC bootstrap id: c967967523eb4e03bcc201bb464e0679
     ```
 
-1. Take the backup of the tables on the source universe and restore at the target universe by following instructions from [Backup and restore](../../../manage/backup-restore/).
+1. Take the backup of the tables on the source universe and restore at the target universe by following instructions from [Backup and restore](../../../manage/backup-restore/snapshot-ysql/).
 1. Execute the following command to set up the replication stream using the bootstrap IDs generated in step 1. Ensure that the bootstrap IDs are in the same order as their corresponding table IDs.
 
     ```sh

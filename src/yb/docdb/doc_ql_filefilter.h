@@ -15,28 +15,12 @@
 
 #pragma once
 
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/rocksdb/db/compaction.h"
-#include "yb/util/status_fwd.h"
+#include "yb/qlexpr/qlexpr_fwd.h"
 
-namespace yb {
-namespace docdb {
+#include "yb/rocksdb/rocksdb_fwd.h"
 
-class QLRangeBasedFileFilter : public rocksdb::ReadFileFilter {
- public:
-  QLRangeBasedFileFilter(const dockv::KeyEntryValues& lower_bounds,
-                         const std::vector<bool>& lower_bounds_inclusive_,
-                         const dockv::KeyEntryValues& upper_bounds,
-                         const std::vector<bool>& upper_bounds_inclusive_);
+namespace yb::docdb {
 
-  bool Filter(const rocksdb::FdWithBoundaries& file) const override;
+std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter(const qlexpr::YQLScanSpec& scan_spec);
 
- private:
-  std::vector<dockv::KeyBytes> lower_bounds_;
-  std::vector<bool> lower_bounds_inclusive_;
-  std::vector<dockv::KeyBytes> upper_bounds_;
-  std::vector<bool> upper_bounds_inclusive_;
-};
-
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

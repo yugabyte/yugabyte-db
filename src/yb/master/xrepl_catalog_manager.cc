@@ -32,6 +32,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/master.h"
@@ -41,7 +42,6 @@
 #include "yb/master/master_util.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/snapshot_transfer_manager.h"
-#include "yb/master/sys_catalog-internal.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 
@@ -124,6 +124,7 @@ DEFINE_test_flag(
 
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
+DECLARE_bool(ysql_yb_enable_replication_commands);
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
   RETURN_NOT_OK_PREPEND((expr), Format("An error occurred while $0", action))
@@ -283,6 +284,7 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
 void CatalogManager::ClearXReplState() {
   // Clear CDC stream map.
   cdc_stream_map_.clear();
+
   xcluster_producer_tables_to_stream_map_.clear();
 
   // Clear CDCSDK stream map.
@@ -723,11 +725,25 @@ Status CatalogManager::CreateCDCStream(
   }
 
   std::string id_type_option_value(cdc::kTableId);
+  bool source_type_found = false;
+  std::string source_type_option_value(CDCRequestSource_Name(cdc::CDCRequestSource::XCLUSTER));
 
   for (auto option : req->options()) {
     if (option.key() == cdc::kIdType) {
       id_type_option_value = option.value();
     }
+    if (option.key() == cdc::kSourceType) {
+      source_type_found = true;
+      source_type_option_value = option.value();
+    }
+  }
+
+  if (source_type_option_value == CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK) &&
+      !FLAGS_ysql_yb_enable_replication_commands) {
+    RETURN_INVALID_REQUEST_STATUS(
+        "Creation of CDCSDK stream is disallowed when ysql_yb_enable_replication_commands is "
+        "false",
+        (*req));
   }
 
   if (req->has_table_id()) {
@@ -754,18 +770,12 @@ Status CatalogManager::CreateCDCStream(
       RETURN_NOT_OK(AddTableIdToCDCStream(*req));
     }
   } else {
-    bool source_type_found = false;
-    for (auto option : req->options()) {
-      if (option.key() == cdc::kSourceType) {
-        source_type_found = true;
-        if (option.value() != CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK)) {
-          RETURN_INVALID_REQUEST_STATUS(
-              "Namespace CDC stream is only supported for CDCSDK", (*req));
-        }
-      }
-    }
     if (!source_type_found) {
       RETURN_INVALID_REQUEST_STATUS("source_type wasn't found in the request", (*req));
+    }
+
+    if (source_type_option_value != CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK)) {
+      RETURN_INVALID_REQUEST_STATUS("Namespace CDC stream is only supported for CDCSDK", (*req));
     }
 
     if (id_type_option_value != cdc::kNamespaceId) {
@@ -786,10 +796,10 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
     const CreateCDCStreamRequestPB& req, CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
   auto ns = VERIFY_RESULT(FindNamespaceById(req.namespace_id()));
-  if (ns->database_type() == YQL_DATABASE_PGSQL && !req.has_cdcsdk_ysql_replication_slot_name()) {
-    RETURN_INVALID_REQUEST_STATUS(
-        "cdcsdk_ysql_replication_slot_name is required for YSQL databases", req);
-  }
+
+  // TODO(#19211): Validate that if the ns type is PGSQL, it must have the replication slot name in
+  // the request. This can only be done after we have ensured that YSQL is the only client
+  // requesting to create CDC streams.
 
   std::vector<TableInfoPtr> tables;
   {
@@ -811,7 +821,7 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
   }
 
   return CreateNewXReplStream(
-      req, CreateNewCDCStreamMode::kNamespaceAndTableIds, table_ids, ns->id(), resp, epoch);
+      req, CreateNewCDCStreamMode::kCdcsdkNamespaceAndTableIds, table_ids, ns->id(), resp, epoch);
 }
 
 Status CatalogManager::CreateNewXReplStream(
@@ -830,9 +840,22 @@ Status CatalogManager::CreateNewXReplStream(
     if (req.has_cdcsdk_ysql_replication_slot_name() &&
         cdcsdk_replication_slots_to_stream_map_.contains(
             ReplicationSlotName(req.cdcsdk_ysql_replication_slot_name()))) {
-      return STATUS(
-          InvalidArgument, "CDC stream with the given replication slot name already exists",
-          req.ShortDebugString(), MasterError(MasterErrorPB::OBJECT_ALREADY_PRESENT));
+      auto slot_name = ReplicationSlotName(req.cdcsdk_ysql_replication_slot_name());
+      auto stream_id = FindOrNull(cdcsdk_replication_slots_to_stream_map_, slot_name);
+      SCHECK(
+          stream_id, IllegalState, "Stream with slot name $0 was not found unexpectedly",
+          slot_name);
+      auto stream = FindOrNull(cdc_stream_map_, *stream_id);
+      SCHECK(stream, IllegalState, "Stream with id $0 was not found unexpectedly", stream_id);
+      if (!(*stream)->LockForRead()->is_deleting()) {
+        return STATUS(
+            AlreadyPresent, "CDC stream with the given replication slot name already exists",
+            MasterError(MasterErrorPB::OBJECT_ALREADY_PRESENT));
+      }
+
+      // A prior replication slot with the same name exists which is in the DELETING state. Remove
+      // from the map early so that we don't have to fail this request.
+      cdcsdk_replication_slots_to_stream_map_.erase(slot_name);
     }
 
     // Construct the CDC stream if the producer wasn't bootstrapped.
@@ -912,8 +935,15 @@ Status CatalogManager::CreateNewXReplStream(
     auto table = VERIFY_RESULT(FindTableById(table_id));
     for (const auto& tablet : table->GetTablets()) {
       cdc::CDCStateTableEntry entry(tablet->id(), stream->StreamId());
-      entry.checkpoint = OpId().Min();
-      entry.last_replication_time = GetCurrentTimeMicros();
+      if (mode == CreateNewCDCStreamMode::kCdcsdkNamespaceAndTableIds) {
+        entry.checkpoint = OpId().Invalid();
+        entry.active_time = 0;
+        entry.cdc_sdk_safe_time = 0;
+      } else {
+        DCHECK(mode == CreateNewCDCStreamMode::kXClusterTableIds);
+        entry.checkpoint = OpId().Min();
+        entry.last_replication_time = GetCurrentTimeMicros();
+      }
       entries.push_back(std::move(entry));
     }
   }
@@ -1019,54 +1049,58 @@ Status CatalogManager::DeleteCDCStream(
   LOG(INFO) << "Servicing DeleteCDCStream request from " << RequestorString(rpc) << ": "
             << req->ShortDebugString();
 
-  if (req->stream_id_size() < 1) {
+  if (req->stream_id_size() == 0 && req->cdcsdk_ysql_replication_slot_name_size() == 0) {
     return STATUS(
-        InvalidArgument, "No CDC Stream ID given", req->ShortDebugString(),
+        InvalidArgument, "No CDC Stream ID or YSQL Replication Slot Name given",
         MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
   std::vector<CDCStreamInfoPtr> streams;
   {
     SharedLock lock(mutex_);
-    for (const auto& stream_id : req->stream_id()) {
-      auto stream =
-          FindPtrOrNull(cdc_stream_map_, VERIFY_RESULT(xrepl::StreamId::FromString(stream_id)));
 
-      if (stream == nullptr || stream->LockForRead()->is_deleting()) {
-        resp->add_not_found_stream_ids(stream_id);
-        LOG(WARNING) << "CDC stream does not exist: " << stream_id;
+    for (const auto& stream_id : req->stream_id()) {
+      auto stream_opt = VERIFY_RESULT(GetStreamIfValidForDelete(
+          VERIFY_RESULT(xrepl::StreamId::FromString(stream_id)), req->force_delete()));
+      if (stream_opt) {
+        streams.emplace_back(std::move(*stream_opt));
       } else {
-        auto ltm = stream->LockForRead();
-        if (req->has_force_delete() && req->force_delete() == false) {
-          bool active = (ltm->pb.state() == SysCDCStreamEntryPB::ACTIVE);
-          bool is_WAL = false;
-          for (const auto& option : ltm->pb.options()) {
-            if (option.key() == "record_format" && option.value() == "WAL") {
-              is_WAL = true;
-            }
-          }
-          if (is_WAL && active) {
-            return STATUS(
-                NotSupported,
-                "Cannot delete an xCluster Stream in replication. "
-                "Use 'force_delete' to override",
-                req->ShortDebugString(),
-                MasterError(MasterErrorPB::INVALID_REQUEST));
-          }
-        }
-        streams.push_back(stream);
+        resp->add_not_found_stream_ids(stream_id);
+      }
+    }
+
+    for (const auto& replication_slot_name : req->cdcsdk_ysql_replication_slot_name()) {
+      auto slot_name = ReplicationSlotName(replication_slot_name);
+      auto stream_it = FindOrNull(cdcsdk_replication_slots_to_stream_map_, slot_name);
+      auto stream_id = stream_it ? *stream_it : xrepl::StreamId::Nil();
+      auto stream_opt =
+          VERIFY_RESULT(GetStreamIfValidForDelete(std::move(stream_id), req->force_delete()));
+      if (stream_opt) {
+        streams.emplace_back(std::move(*stream_opt));
+      } else {
+        resp->add_not_found_cdcsdk_ysql_replication_slot_names(replication_slot_name);
       }
     }
   }
 
-  if (!resp->not_found_stream_ids().empty() && !req->ignore_errors()) {
-    string missing_streams;
-    JoinElements(resp->not_found_stream_ids(), ",", &missing_streams);
+  const auto& not_found_stream_ids = resp->not_found_stream_ids();
+  const auto& not_found_cdcsdk_ysql_replication_slot_names =
+      resp->not_found_cdcsdk_ysql_replication_slot_names();
+  if ((!not_found_stream_ids.empty() || !not_found_cdcsdk_ysql_replication_slot_names.empty()) &&
+      !req->ignore_errors()) {
+    std::vector<std::string> missing_streams(
+        resp->not_found_stream_ids_size() +
+        resp->not_found_cdcsdk_ysql_replication_slot_names_size());
+    missing_streams.insert(
+        missing_streams.end(), not_found_stream_ids.begin(), not_found_stream_ids.end());
+    missing_streams.insert(
+        missing_streams.end(), not_found_cdcsdk_ysql_replication_slot_names.begin(),
+        not_found_cdcsdk_ysql_replication_slot_names.end());
     return STATUS(
         NotFound,
         Format(
             "Did not find all requested CDC streams. Missing streams: [$0]. Request: $1",
-            missing_streams, req->ShortDebugString()),
+            JoinStrings(missing_streams, ","), req->ShortDebugString()),
         MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
   }
 
@@ -1084,6 +1118,31 @@ Status CatalogManager::DeleteCDCStream(
             << " per request from " << RequestorString(rpc);
 
   return Status::OK();
+}
+
+Result<std::optional<CDCStreamInfoPtr>> CatalogManager::GetStreamIfValidForDelete(
+    const xrepl::StreamId& stream_id, bool force_delete) {
+  auto stream = FindPtrOrNull(cdc_stream_map_, stream_id);
+  if (stream == nullptr || stream->LockForRead()->is_deleting()) {
+    return std::nullopt;
+  }
+
+  auto ltm = stream->LockForRead();
+  if (!force_delete && ltm->pb.state() == SysCDCStreamEntryPB::ACTIVE) {
+    for (const auto& option : ltm->pb.options()) {
+      if (option.key() == "record_format") {
+        if (option.value() == "WAL") {
+          return STATUS(
+              NotSupported,
+              "Cannot delete an xCluster Stream in replication. "
+              "Use 'force_delete' to override",
+              MasterError(MasterErrorPB::INVALID_REQUEST));
+        }
+        break;
+      }
+    }
+  }
+  return stream;
 }
 
 Status CatalogManager::MarkCDCStreamsForMetadataCleanup(
@@ -1550,25 +1609,8 @@ Status CatalogManager::CleanUpCDCStreamsMetadata(const std::vector<CDCStreamInfo
   return CleanUpCDCMetadataFromSystemCatalog(drop_stream_table_list);
 }
 
-Status CatalogManager::RemoveStreamFromXClusterProducerConfig(
-    const std::vector<CDCStreamInfo*>& streams) {
-  auto xcluster_config = XClusterConfig();
-  auto l = xcluster_config->LockForWrite();
-  auto* data = l.mutable_data();
-  auto paused_producer_stream_ids =
-      data->pb.mutable_xcluster_producer_registry()->mutable_paused_producer_stream_ids();
-  for (const auto& stream : streams) {
-    paused_producer_stream_ids->erase(stream->id());
-  }
-  data->pb.set_version(data->pb.version() + 1);
-  RETURN_NOT_OK(CheckStatus(
-      sys_catalog_->Upsert(leader_ready_term(), xcluster_config.get()),
-      "updating xcluster config in sys-catalog"));
-  l.Commit();
-  return Status::OK();
-}
-
-Status CatalogManager::CleanUpDeletedCDCStreams(const std::vector<CDCStreamInfoPtr>& streams) {
+Status CatalogManager::CleanUpDeletedCDCStreams(
+    const LeaderEpoch& epoch, const std::vector<CDCStreamInfoPtr>& streams) {
   // First. For each deleted stream, delete the cdc state rows.
   // Delete all the entries in cdc_state table that contain all the deleted cdc streams.
 
@@ -1632,11 +1674,12 @@ Status CatalogManager::CleanUpDeletedCDCStreams(const std::vector<CDCStreamInfoP
   }
 
   // Remove the stream ID from the cluster config CDC stream replication enabled/disabled map.
-  RETURN_NOT_OK(RemoveStreamFromXClusterProducerConfig(streams_to_delete));
+  RETURN_NOT_OK(
+      xcluster_manager_->RemoveStreamFromXClusterProducerConfig(epoch, streams_to_delete));
 
   // The mutation will be aborted when 'l' exits the scope on early return.
   RETURN_NOT_OK(CheckStatus(
-      sys_catalog_->Delete(leader_ready_term(), streams_to_delete),
+      sys_catalog_->Delete(epoch.leader_term, streams_to_delete),
       "deleting CDC streams from sys-catalog"));
   LOG(INFO) << "Successfully deleted streams " << JoinStreamsCSVLine(streams_to_delete)
             << " from sys catalog";
@@ -1653,8 +1696,17 @@ Status CatalogManager::CleanUpDeletedCDCStreams(const std::vector<CDCStreamInfoP
         xcluster_producer_tables_to_stream_map_[id].erase(stream->StreamId());
         cdcsdk_tables_to_stream_map_[id].erase(stream->StreamId());
       }
+
+      // Delete entry from cdcsdk_replication_slots_to_stream_map_ if the map contains the same
+      // stream_id for the replication_slot_name key.
+      // It can contain a different stream_id in scenarios where a CreateCDCStream with same
+      // replication slot name was immediately invoked after DeleteCDCStream before the background
+      // cleanup task was executed.
       auto cdcsdk_ysql_replication_slot_name = stream->GetCdcsdkYsqlReplicationSlotName();
-      if (!cdcsdk_ysql_replication_slot_name.empty()) {
+      if (!cdcsdk_ysql_replication_slot_name.empty() &&
+          cdcsdk_replication_slots_to_stream_map_.contains(cdcsdk_ysql_replication_slot_name) &&
+          FindOrDie(cdcsdk_replication_slots_to_stream_map_, cdcsdk_ysql_replication_slot_name) ==
+              stream->StreamId()) {
         cdcsdk_replication_slots_to_stream_map_.erase(cdcsdk_ysql_replication_slot_name);
       }
     }
@@ -3457,7 +3509,7 @@ Status CatalogManager::UpdateXClusterConsumerOnTabletSplit(
       "Updating cluster config in sys-catalog"));
   l.Commit();
 
-  CreateXClusterSafeTimeTableAndStartService();
+  xcluster_manager_->CreateXClusterSafeTimeTableAndStartService();
 
   return Status::OK();
 }
@@ -3582,7 +3634,7 @@ Status CatalogManager::InitXClusterConsumer(
       "updating cluster config in sys-catalog"));
   l.Commit();
 
-  CreateXClusterSafeTimeTableAndStartService();
+  xcluster_manager_->CreateXClusterSafeTimeTableAndStartService();
 
   return Status::OK();
 }
@@ -3671,7 +3723,7 @@ void CatalogManager::MergeUniverseReplication(
 
   LOG(INFO) << "Done with Merging " << universe->id() << " into " << original_universe->id();
 
-  CreateXClusterSafeTimeTableAndStartService();
+  xcluster_manager_->CreateXClusterSafeTimeTableAndStartService();
 }
 
 Status CatalogManager::DeleteUniverseReplication(
@@ -3778,7 +3830,7 @@ Status CatalogManager::DeleteUniverseReplication(
   LOG(INFO) << "Processed delete universe replication of " << ri->ToString();
 
   // Run the safe time task as it may need to perform cleanups of it own
-  CreateXClusterSafeTimeTableAndStartService();
+  xcluster_manager_->CreateXClusterSafeTimeTableAndStartService();
 
   return Status::OK();
 }
@@ -3867,7 +3919,7 @@ Status CatalogManager::ChangeXClusterRole(
       "updating cluster config in sys-catalog"));
   l.Commit();
 
-  CreateXClusterSafeTimeTableAndStartService();
+  xcluster_manager_->CreateXClusterSafeTimeTableAndStartService();
 
   LOG(INFO) << "Successfully completed ChangeXClusterRole request from " << RequestorString(rpc);
   return Status::OK();
@@ -4033,67 +4085,8 @@ Status CatalogManager::SetUniverseReplicationEnabled(
       "updating cluster config in sys-catalog"));
   l.Commit();
 
-  CreateXClusterSafeTimeTableAndStartService();
+  xcluster_manager_->CreateXClusterSafeTimeTableAndStartService();
 
-  return Status::OK();
-}
-
-Status CatalogManager::PauseResumeXClusterProducerStreams(
-    const PauseResumeXClusterProducerStreamsRequestPB* req,
-    PauseResumeXClusterProducerStreamsResponsePB* resp,
-    rpc::RpcContext* rpc) {
-  LOG(INFO) << "Servicing PauseXCluster request from " << RequestorString(rpc) << ".";
-  SCHECK(req->has_is_paused(), InvalidArgument, "is_paused must be set in the request");
-  bool paused = req->is_paused();
-  string action = paused ? "Pausing" : "Resuming";
-  if (req->stream_ids_size() == 0) {
-    LOG(INFO) << action << " replication for all XCluster streams.";
-  }
-
-  auto xcluster_config = XClusterConfig();
-  auto l = xcluster_config->LockForWrite();
-  {
-    SharedLock lock(mutex_);
-    auto paused_producer_stream_ids = l.mutable_data()
-                                          ->pb.mutable_xcluster_producer_registry()
-                                          ->mutable_paused_producer_stream_ids();
-    // If an empty stream_ids list is given, then pause replication for all streams. Presence in
-    // paused_producer_stream_ids indicates that a stream is paused.
-    if (req->stream_ids().empty()) {
-      if (paused) {
-        for (auto& [stream_id, stream_info] : cdc_stream_map_) {
-          // If the stream id is not already in paused_producer_stream_ids, then insert it into
-          // paused_producer_stream_ids to pause it.
-          if (!paused_producer_stream_ids->count(stream_id.ToString())) {
-            paused_producer_stream_ids->insert({stream_id.ToString(), true});
-          }
-        }
-      } else {
-        // Clear paused_producer_stream_ids to resume replication for all streams.
-        paused_producer_stream_ids->clear();
-      }
-    } else {
-      // Pause or resume the user-provided list of streams.
-      for (const auto& stream_id : req->stream_ids()) {
-        bool contains_stream_id = paused_producer_stream_ids->count(stream_id);
-        bool stream_exists =
-            cdc_stream_map_.contains(VERIFY_RESULT(xrepl::StreamId::FromString(stream_id)));
-        SCHECK(stream_exists, NotFound, "XCluster Stream: $0 does not exists", stream_id);
-        if (paused && !contains_stream_id) {
-          // Insert stream id to pause replication on that stream.
-          paused_producer_stream_ids->insert({stream_id, true});
-        } else if (!paused && contains_stream_id) {
-          // Erase stream id to resume replication on that stream.
-          paused_producer_stream_ids->erase(stream_id);
-        }
-      }
-    }
-  }
-  l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
-  RETURN_NOT_OK(CheckStatus(
-      sys_catalog_->Upsert(leader_ready_term(), xcluster_config.get()),
-      "updating xcluster config in sys-catalog"));
-  l.Commit();
   return Status::OK();
 }
 
@@ -4151,7 +4144,7 @@ Status CatalogManager::AlterUniverseReplication(
     return SetupError(resp->mutable_error(), s);
   }
 
-  CreateXClusterSafeTimeTableAndStartService();
+  xcluster_manager_->CreateXClusterSafeTimeTableAndStartService();
 
   return Status::OK();
 }
@@ -4777,7 +4770,7 @@ Status CatalogManager::UpdateConsumerOnProducerSplit(
       "Updating cluster config in sys-catalog"));
   l.Commit();
 
-  CreateXClusterSafeTimeTableAndStartService();
+  xcluster_manager_->CreateXClusterSafeTimeTableAndStartService();
 
   return Status::OK();
 }
@@ -4824,11 +4817,11 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
   auto replication_group_map =
       l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
   auto producer_entry = FindOrNull(*replication_group_map, replication_group_id.ToString());
-  SCHECK(producer_entry, NotFound, Format("Missing universe $0", replication_group_id));
+  SCHECK(producer_entry, NotFound, Format("Missing replication group $0", replication_group_id));
   auto stream_entry = FindOrNull(*producer_entry->mutable_stream_map(), stream_id.ToString());
   SCHECK(
       stream_entry, NotFound,
-      Format("Missing universe $0, stream $1", replication_group_id, stream_id));
+      Format("Missing replication group $0, stream $1", replication_group_id, stream_id));
   auto schema_cached = stream_entry->mutable_producer_schema();
   // Clear out any cached schema version
   schema_cached->Clear();
@@ -4876,7 +4869,13 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
   } else {
     // If we have already seen this producer schema version, then verify that the consumer schema
     // version matches what we saw from other tablets or we received a new one.
-    DCHECK(req->consumer_schema_version() >= current_consumer_schema_version);
+    // If we get an older schema version from the consumer, that's an indication that it
+    // has not yet performed the ALTER and caught up to the latest schema version so fail the
+    // request until it catches up to the latest schema version.
+    SCHECK(req->consumer_schema_version() >= current_consumer_schema_version, InternalError,
+        Format(
+            "Received Older Consumer schema version $0 for replication group $1, table $2",
+            req->consumer_schema_version(), replication_group_id, consumer_table_id));
   }
 
   schema_versions_pb->set_current_producer_schema_version(current_producer_schema_version);
@@ -4905,7 +4904,7 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
   LOG(INFO) << Format(
       "Updated the schema versions for table $0 with stream id $1, colocation id $2."
       "Current producer schema version:$3, current consumer schema version:$4 "
-      "old producer schema version:$5, old consumer schema version:$6, universe:$7",
+      "old producer schema version:$5, old consumer schema version:$6, replication group:$7",
       replication_group_id, stream_id, req->colocation_id(), current_producer_schema_version,
       current_consumer_schema_version, old_producer_schema_version, old_consumer_schema_version,
       replication_group_id);
@@ -5544,12 +5543,12 @@ Status CatalogManager::ResumeXClusterConsumerAfterNewSchema(
   return Status::OK();
 }
 
-Status CatalogManager::RunXClusterBgTasks() {
+Status CatalogManager::RunXClusterBgTasks(const LeaderEpoch& epoch) {
   // Clean up Deleted CDC Streams on the Producer.
   std::vector<CDCStreamInfoPtr> streams;
   WARN_NOT_OK(FindCDCStreamsMarkedAsDeleting(&streams), "Failed Finding Deleting CDC Streams");
   if (!streams.empty()) {
-    WARN_NOT_OK(CleanUpDeletedCDCStreams(streams), "Failed Cleaning Deleted CDC Streams");
+    WARN_NOT_OK(CleanUpDeletedCDCStreams(epoch, streams), "Failed Cleaning Deleted CDC Streams");
   }
 
   // Clean up Failed Universes on the Consumer.
@@ -6428,24 +6427,14 @@ Status CatalogManager::FillHeartbeatResponseCDC(
     resp->set_xcluster_enabled_on_producer(true);
   }
   if (cluster_config.has_consumer_registry()) {
-    {
-      auto l = xcluster_safe_time_info_.LockForRead();
-      *resp->mutable_xcluster_namespace_to_safe_time() = l->pb.safe_time_map();
-    }
-
     if (req->cluster_config_version() < cluster_config.version()) {
       const auto& consumer_registry = cluster_config.consumer_registry();
       resp->set_cluster_config_version(cluster_config.version());
       *resp->mutable_consumer_registry() = consumer_registry;
     }
   }
-  if (req->has_xcluster_config_version() &&
-      req->xcluster_config_version() < VERIFY_RESULT(GetXClusterConfigVersion())) {
-    auto xcluster_config = XClusterConfig();
-    auto l = xcluster_config->LockForRead();
-    resp->set_xcluster_config_version(l->pb.version());
-    *resp->mutable_xcluster_producer_registry() = l->pb.xcluster_producer_registry();
-  }
+
+  RETURN_NOT_OK(xcluster_manager_->FillHeartbeatResponse(*req, resp));
 
   return Status::OK();
 }
@@ -6474,7 +6463,7 @@ Status CatalogManager::BumpVersionAndStoreClusterConfig(
       "updating cluster config in sys-catalog"));
   l->Commit();
 
-  CreateXClusterSafeTimeTableAndStartService();
+  xcluster_manager_->CreateXClusterSafeTimeTableAndStartService();
   return Status::OK();
 }
 
@@ -6485,6 +6474,8 @@ bool CatalogManager::ShouldAddTableToXClusterReplication(
   }
 
   // Only user created YSQL Indexes should be automatically added to xCluster replication.
+  // For Colocated tables, this function will return false since it is only called on the parent
+  // colocated table which cannot be an index.
   if (pb.colocated() || pb.table_type() != PGSQL_TABLE_TYPE || !IsIndex(pb) ||
       !IsUserCreatedTable(table)) {
     return false;
@@ -6604,36 +6595,6 @@ Status CatalogManager::BootstrapTable(
   return xcluster_rpc->client()->BootstrapProducer(
       YQLDatabase::YQL_DATABASE_PGSQL, table_info.namespace_name(), pg_schema_names,
       {table_info.name()}, std::move(callback));
-}
-
-Status CatalogManager::WaitForAllXClusterConsumerTablesToCatchUpToSafeTime(
-    const NamespaceId& namespace_id, const HybridTime& min_safe_time) {
-  CHECK(min_safe_time.is_valid());
-  // Force a refresh of the xCluster safe time map so that it accounts for all tables under
-  // replication.
-  auto initial_safe_time =
-      VERIFY_RESULT(xcluster_safe_time_service_->RefreshAndGetXClusterNamespaceToSafeTimeMap());
-  if (!initial_safe_time.contains(namespace_id)) {
-    // Namespace is not part of any xCluster replication.
-    return Status::OK();
-  }
-
-  auto initial_ht = initial_safe_time[namespace_id];
-  initial_ht.MakeAtLeast(min_safe_time);
-
-  // Wait for the xCluster safe time to advance beyond the initial value. This ensures all tables
-  // under replication are part of the safe time computation.
-  return WaitFor(
-      [this, &namespace_id, &initial_ht]() -> Result<bool> {
-        const auto ht = VERIFY_RESULT(GetXClusterSafeTime(namespace_id));
-        if (ht > initial_ht) {
-          return true;
-        }
-        YB_LOG_EVERY_N_SECS(WARNING, 10)
-            << "Waiting for xCluster safe time" << ht << " to advance beyond " << initial_ht;
-        return false;
-      },
-      MonoDelta::kMax, "Waiting for xCluster safe time to get past now", 100ms);
 }
 
 Status CatalogManager::RemoveTableFromXcluster(const vector<TabletId>& table_ids) {
@@ -6814,5 +6775,16 @@ Status CatalogManager::ValidateTableSchemaForXCluster(
 
   return Status::OK();
 }
+
+std::unordered_set<xrepl::StreamId> CatalogManager::GetAllXreplStreamIds() const {
+  SharedLock l(mutex_);
+  std::unordered_set<xrepl::StreamId> result;
+  for (const auto& [stream_id, _] : cdc_stream_map_) {
+    result.insert(stream_id);
+  }
+
+  return result;
+}
+
 }  // namespace master
 }  // namespace yb

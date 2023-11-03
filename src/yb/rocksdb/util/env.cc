@@ -86,8 +86,10 @@ yb::Result<uint64_t> Env::GetFileSize(const std::string& fname) {
   return result;
 }
 
-void Env::CleanupFile(const std::string& fname) {
-  WARN_NOT_OK(DeleteFile(fname), "Failed to cleanup " + fname);
+bool Env::CleanupFile(const std::string& fname, const std::string& log_prefix) {
+  Status s;
+  WARN_NOT_OK(s = DeleteFile(fname), log_prefix + "Failed to cleanup " + fname);
+  return s.ok();
 }
 
 void Env::GetChildrenWarnNotOk(const std::string& dir,

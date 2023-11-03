@@ -25,9 +25,11 @@ import { YBLabelWithIcon } from '../../../common/descriptors';
 import { api, providerQueryKey, universeQueryKey } from '../../../../redesign/helpers/api';
 import { getInfraProviderTab, getLinkedUniverses } from '../utils';
 
-import styles from './ProviderView.module.scss';
 import { ProviderStatusLabel } from '../components/ProviderStatusLabel';
 import { useInterval } from 'react-use';
+import { RbacValidator, hasNecessaryPerm } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import styles from './ProviderView.module.scss';
 
 interface ProviderViewProps {
   providerUUID: string;
@@ -95,13 +97,19 @@ export const ProviderView = ({ providerUUID }: ProviderViewProps) => {
           id="provider-overview-actions"
           pullRight
         >
-          <MenuItem
-            eventKey="1"
-            onSelect={showDeleteProviderModal}
-            disabled={linkedUniverses.length > 0}
+          <RbacValidator
+            accessRequiredOn={ApiPermissionMap.DELETE_PROVIDER}
+            isControl
+            overrideStyle={{ display: 'block' }}
           >
-            <YBLabelWithIcon icon="fa fa-trash">Delete Configuration</YBLabelWithIcon>
-          </MenuItem>
+            <MenuItem
+              eventKey="1"
+              onSelect={showDeleteProviderModal}
+              disabled={linkedUniverses.length > 0 || !hasNecessaryPerm(ApiPermissionMap.DELETE_PROVIDER)}
+            >
+              <YBLabelWithIcon icon="fa fa-trash">Delete Configuration</YBLabelWithIcon>
+            </MenuItem>
+          </RbacValidator>
         </DropdownButton>
       </div>
       <ProviderDetails linkedUniverses={linkedUniverses} providerConfig={providerConfig} />
@@ -111,6 +119,6 @@ export const ProviderView = ({ providerUUID }: ProviderViewProps) => {
         providerConfig={providerConfig}
         redirectURL={`/${PROVIDER_ROUTE_PREFIX}/${getInfraProviderTab(providerConfig)}`}
       />
-    </div>
+    </div >
   );
 };

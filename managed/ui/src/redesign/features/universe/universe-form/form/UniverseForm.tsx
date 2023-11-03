@@ -22,8 +22,8 @@ import { api, QUERY_KEY } from '../utils/api';
 import { UniverseFormData, ClusterType, ClusterModes } from '../utils/dto';
 import { UNIVERSE_NAME_FIELD, TOAST_AUTO_DISMISS_INTERVAL } from '../utils/constants';
 import { useFormMainStyles } from '../universeMainStyle';
-import { RbacValidator } from '../../../rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../rbac/UserPermPathMapping';
+import { RbacValidator } from '../../../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
 
 // ! How to add new form field ?
 // - add field to it's corresponding config type (CloudConfigFormValue/InstanceConfigFormValue/AdvancedConfigFormValue/..) present in UniverseFormData type at dto.ts
@@ -46,7 +46,7 @@ interface UniverseFormProps {
   onDeleteRR?: () => void;
   submitLabel?: string;
   isNewUniverse?: boolean; // This flag is used only in new cluster creation flow - we don't have proper state params to differentiate
-  editUniverseUUID?: string;
+  universeUUID?: string;
 }
 
 export const UniverseForm: FC<UniverseFormProps> = ({
@@ -56,7 +56,7 @@ export const UniverseForm: FC<UniverseFormProps> = ({
   onClusterTypeChange,
   onDeleteRR,
   submitLabel,
-  editUniverseUUID,
+  universeUUID,
   isNewUniverse = false
 }) => {
   const classes = useFormMainStyles();
@@ -216,10 +216,11 @@ export const UniverseForm: FC<UniverseFormProps> = ({
               {onDeleteRR && isEditRR && (
                 <RbacValidator
                   accessRequiredOn={{
-                    onResource: editUniverseUUID,
-                    ...UserPermissionMap.editUniverse
+                    onResource: universeUUID,
+                    ...ApiPermissionMap.DELETE_READ_REPLICA
                   }}
-                  isControl>
+                  isControl
+                >
                   <YBButton
                     variant="secondary"
                     size="large"
@@ -233,15 +234,18 @@ export const UniverseForm: FC<UniverseFormProps> = ({
               &nbsp;
               <RbacValidator
                 accessRequiredOn={{
-                  onResource: undefined,
-                  ...UserPermissionMap.createUniverse
+                  onResource: !isEditMode && isPrimary ? undefined : universeUUID,
+                  ...(!isEditMode && isPrimary
+                    ? ApiPermissionMap.CREATE_UNIVERSE
+                    : ApiPermissionMap.MODIFY_UNIVERSE)
                 }}
-                isControl>
+                isControl
+              >
                 <YBButton
                   variant="primary"
                   size="large"
                   type="submit"
-                  data-testid="UniverseForm-Submit"
+                  data-testid={`UniverseForm-${mode}-${clusterType}`}
                 >
                   {submitLabel ? submitLabel : t('common.save')}
                 </YBButton>
@@ -264,7 +268,7 @@ export const UniverseForm: FC<UniverseFormProps> = ({
             <AdvancedConfiguration />
           </>
         )}
-        <GFlags />
+        <GFlags runtimeConfigs={runtimeConfigs} />
         {isPrimary && <HelmOverrides />}
         <UserTags />
       </>

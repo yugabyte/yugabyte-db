@@ -101,6 +101,8 @@ public class NodeDetails {
     SoftwareInstalled(START, DELETE, ADD),
     // Set after the YB software is upgraded via Rolling Restart.
     UpgradeSoftware(),
+    // set when software version is rollback.
+    RollbackUpgrade(),
     // set when software version is finalized after upgrade.
     FinalizeUpgrade(),
     // Set after the YB specific GFlags are updated via Rolling Restart.
@@ -357,6 +359,13 @@ public class NodeDetails {
   }
 
   @JsonIgnore
+  public boolean isSoftwareDeleted() {
+    return state == NodeState.Decommissioned
+        || state == NodeState.Terminating // Software can be partially removed during this state.
+        || state == NodeState.Terminated;
+  }
+
+  @JsonIgnore
   public boolean isActive() {
     // TODO For some reason ToBeAdded node is treated as 'Active', which it's not the case.
     // Need to better figure out the meaning of 'Active' - and it's usage - as currently it's used
@@ -377,6 +386,7 @@ public class NodeDetails {
   public boolean isQueryable() {
     return (state == NodeState.UpgradeSoftware
         || state == NodeState.FinalizeUpgrade
+        || state == NodeState.RollbackUpgrade
         || state == NodeState.UpdateGFlags
         || state == NodeState.Live
         || state == NodeState.ToBeRemoved

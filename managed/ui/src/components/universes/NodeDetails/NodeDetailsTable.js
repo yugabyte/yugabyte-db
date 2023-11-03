@@ -21,8 +21,7 @@ import { getUniverseStatus, UniverseState } from '../helpers/universeHelpers';
 
 import './NodeDetailsTable.scss';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
-import { hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+
 
 const NODE_TYPE = [
   {
@@ -61,7 +60,8 @@ export default class NodeDetailsTable extends Component {
       customer,
       currentUniverse,
       providers,
-      isDedicatedNodes
+      isDedicatedNodes,
+      isKubernetesCluster
     } = this.props;
     const successIcon = <i className="fa fa-check-circle yb-success-color" />;
     const warningIcon = <i className="fa fa-warning yb-fail-color" />;
@@ -72,12 +72,16 @@ export default class NodeDetailsTable extends Component {
 
     if (isDedicatedNodes && clusterType === 'primary') {
       if (this.state.nodeTypeDropdownValue === NodeType.Master) {
-        sortedNodeDetails = sortedNodeDetails.filter(
-          (nodeDetails) => nodeDetails.dedicatedTo === NodeType.Master.toUpperCase()
+        sortedNodeDetails = sortedNodeDetails.filter((nodeDetails) =>
+          isKubernetesCluster
+            ? nodeDetails.isMasterProcess
+            : nodeDetails.dedicatedTo === NodeType.Master.toUpperCase()
         );
       } else if (this.state.nodeTypeDropdownValue === NodeType.TServer) {
-        sortedNodeDetails = sortedNodeDetails.filter(
-          (nodeDetails) => nodeDetails.dedicatedTo === NodeType.TServer.toUpperCase()
+        sortedNodeDetails = sortedNodeDetails.filter((nodeDetails) =>
+          isKubernetesCluster
+            ? nodeDetails.isTServerProcess
+            : nodeDetails.dedicatedTo === NodeType.TServer.toUpperCase()
         );
       }
     }
@@ -314,13 +318,7 @@ export default class NodeDetailsTable extends Component {
     const displayNodeActions =
       !this.props.isReadOnlyUniverse &&
       universeStatus.state !== UniverseState.PAUSED &&
-      isNotHidden(customer.currentCustomer.data.features, 'universes.tableActions') && 
-      hasNecessaryPerm({
-        onResource: currentUniverse.data.universeUUID,
-        ...UserPermissionMap.editUniverse
-      })
-      ;
-
+      isNotHidden(customer.currentCustomer.data.features, 'universes.tableActions');
     return (
       <div className="node-details-table-container">
         <YBPanelItem

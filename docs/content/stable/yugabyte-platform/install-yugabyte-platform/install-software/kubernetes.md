@@ -394,6 +394,8 @@ securityContext:
   enabled: true
 ```
 
+This value is not supported on OpenShift, which runs all the containers of YugabyteDB Anywhere as non-root by default. Modifying securityContext on OpenShift could cause the containers to fail.
+
 ### Set pod labels and annotations
 
 Kubernetes resources, such as pods, can have additional metadata in the form of labels and annotations. These key-value pairs are used by other tools such as Prometheus. You can add labels and annotations to the YugabyteDB Anywhere pods as follows:

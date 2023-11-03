@@ -24,7 +24,7 @@ import com.yugabyte.yw.metrics.data.AlertState;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.MetricConfigDefinition;
 import java.io.IOException;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
@@ -117,14 +117,13 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     HashMap<String, String> params = new HashMap<>();
     long startTimestamp = 1646925800;
     params.put("start", String.valueOf(startTimestamp));
-    params.put("end", String.valueOf(startTimestamp - STEP_SIZE + 1));
+    params.put("end", String.valueOf(startTimestamp - 1));
 
     try {
       metricQueryHelper.query(ImmutableList.of("valid_metric"), params);
     } catch (PlatformServiceException re) {
       AssertHelper.assertBadRequest(
-          re.buildResult(fakeRequest),
-          "Should be at least " + STEP_SIZE + " seconds between start and end time");
+          re.buildResult(fakeRequest), "Queried time interval should be positive");
     }
   }
 
@@ -357,13 +356,13 @@ public class MetricQueryHelperTest extends FakeDBApplication {
       assertTrue(metricKeys.contains(capturedQueryParam.get("queryKey")));
       assertThat(
           Integer.parseInt(capturedQueryParam.get("start").toString()),
-          allOf(notNullValue(), equalTo(1481147528)));
+          allOf(notNullValue(), equalTo(1481147526)));
       assertThat(
           Integer.parseInt(capturedQueryParam.get("step").toString()),
-          allOf(notNullValue(), equalTo(2)));
+          allOf(notNullValue(), equalTo(3)));
       assertThat(
           Integer.parseInt(capturedQueryParam.get("end").toString()),
-          allOf(notNullValue(), equalTo(1481147648)));
+          allOf(notNullValue(), equalTo(1481147646)));
     }
   }
 
@@ -383,7 +382,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
         AlertData.builder()
             .activeAt(
                 ZonedDateTime.parse("2018-07-04T20:27:12.60602144+02:00")
-                    .withZoneSameInstant(ZoneId.of("UTC")))
+                    .withZoneSameInstant(ZoneOffset.UTC))
             .annotations(ImmutableMap.of("summary", "Clock Skew Alert for universe Test is firing"))
             .labels(
                 ImmutableMap.of(

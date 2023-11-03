@@ -270,7 +270,8 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
 
   change_req.set_tablet_id(source_tablet_id);
   change_req.set_stream_id(stream_id.ToString());
-  change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
+  // Skip over the initial schema ops, to fetch the SPLIT_OP and trigger cdc_state children updates.
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(2);
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
 
   // Might need to retry since we are performing stepdowns and thus could get LeaderNotReadyToServe.
@@ -281,18 +282,46 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
 
   ASSERT_OK(GetChangesWithRetries(cdc_proxy.get(), change_req, &change_resp));
 
+  // Also verify that the entries in cdc_state for the children tablets are properly initialized.
+  // They should have the checkpoint set to the split_op, but not have any replication times yet as
+  // they have not been polled for yet.
+  const auto child_tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_->id());
+  cdc::CDCStateTable cdc_state_table(client_.get());
+  Status s;
+  int children_found = 0;
+  OpId split_op_checkpoint;
+  for (auto row_result : ASSERT_RESULT(
+           cdc_state_table.GetTableRange(cdc::CDCStateTableEntrySelector().IncludeAll(), &s))) {
+    ASSERT_OK(row_result);
+    auto& row = *row_result;
+    if (child_tablet_ids.contains(row.key.tablet_id)) {
+      ASSERT_TRUE(row.checkpoint);
+      ASSERT_GT(row.checkpoint->index, 0);
+      ++children_found;
+      if (split_op_checkpoint.empty()) {
+        split_op_checkpoint = *row.checkpoint;
+      } else {
+        // Verify that both children have the same checkpoint set.
+        ASSERT_EQ(*row.checkpoint, split_op_checkpoint);
+      }
+    }
+  }
+  ASSERT_OK(s);
+  ASSERT_EQ(children_found, 2);
+
   // Now let the parent tablet get deleted by the background task.
   // To do so, we need to issue a GetChanges to both children tablets.
-  for (const auto& child_tablet_id : ListActiveTabletIdsForTable(cluster_.get(), table_->id())) {
+  for (const auto& child_tablet_id : child_tablet_ids) {
     cdc::GetChangesRequestPB child_change_req;
     cdc::GetChangesResponsePB child_change_resp;
-
     child_change_req.set_tablet_id(child_tablet_id);
     child_change_req.set_stream_id(stream_id.ToString());
-    child_change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
-    child_change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
 
     ASSERT_OK(GetChangesWithRetries(cdc_proxy.get(), child_change_req, &child_change_resp));
+    // Ensure that we get back no records since nothing has been written to the children and we
+    // shouldn't be re-replicating any rows from our parent.
+    ASSERT_EQ(child_change_resp.records_size(), 0);
+    ASSERT_GT(child_change_resp.checkpoint().op_id().index(), split_op_checkpoint.index);
   }
 
   SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_snapshot_coordinator_poll_interval_ms));

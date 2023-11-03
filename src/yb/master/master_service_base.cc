@@ -13,6 +13,7 @@
 
 #include "yb/master/master_service_base.h"
 #include "yb/master/master.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
 
 namespace yb {
@@ -38,6 +39,14 @@ PermissionsManager* MasterServiceBase::handler(PermissionsManager*) {
 
 EncryptionManager* MasterServiceBase::handler(EncryptionManager*) {
   return &server_->encryption_manager();
+}
+
+XClusterManager* MasterServiceBase::handler(XClusterManager*) {
+  return server_->xcluster_manager_impl();
+}
+
+TestAsyncRpcManager* MasterServiceBase::handler(TestAsyncRpcManager*) {
+  return server_->test_async_rpc_manager();
 }
 
 Status HandleLockAndCallFunction(

@@ -119,16 +119,6 @@ TEST_F(PgStatActivityTest, CurrentTransaction) {
   ASSERT_OK(conn.FetchFormat("SELECT * FROM $0", kTableName));
   ASSERT_TRUE(ASSERT_RESULT(HasTransactionId(&conn)));
   ASSERT_OK(conn.RollbackTransaction());
-
-  // Canceled transaction via yb_cancel_transaction()
-  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 FOR KEY SHARE", kTableName));
-  auto txn_info = ASSERT_RESULT(GetTransactionInfo(&conn));
-  auto txn_id = ASSERT_RESULT(FullyDecodeTransactionId(txn_info.txn_id.AsSlice()));
-  ASSERT_TRUE(ASSERT_RESULT(
-      conn.FetchValue<bool>(Format("SELECT yb_cancel_transaction(uuid('$0'))", txn_id))));
-  ASSERT_FALSE(ASSERT_RESULT(HasTransactionId(&conn)));
-  ASSERT_OK(conn.RollbackTransaction());
 }
 
 // The test checks that the pg_stat_activity function produces result with valid

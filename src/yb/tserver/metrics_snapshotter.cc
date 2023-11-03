@@ -38,8 +38,6 @@
 
 #include <rapidjson/document.h>
 
-#include <glog/logging.h>
-
 #include "yb/common/jsonb.h"
 #include "yb/common/wire_protocol.h"
 
@@ -84,6 +82,8 @@
 #include "yb/util/tsan_util.h"
 #include "yb/util/varint.h"
 
+#include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
+
 using namespace std::literals;
 
 DEFINE_UNKNOWN_int32(metrics_snapshotter_interval_ms, 30 * 1000,
@@ -114,6 +114,7 @@ DEFINE_UNKNOWN_uint64(metrics_snapshotter_ttl_ms, 7 * 24 * 60 * 60 * 1000 /* 1 w
 TAG_FLAG(metrics_snapshotter_ttl_ms, advanced);
 
 DECLARE_int32(max_tables_metrics_breakdowns);
+DECLARE_bool(enable_ysql_conn_mgr_stats);
 
 using std::shared_ptr;
 using std::vector;
@@ -145,6 +146,8 @@ class MetricsSnapshotter::Thread {
   Status DoPrometheusMetricsSnapshot(const client::TableHandle& table,
     shared_ptr<YBSession> session, const std::string& entity_type, const std::string& entity_id,
     const std::string& metric_name, int64_t metric_val, const rapidjson::Document* details);
+  Status DoYsqlConnMgrMetricsSnapshot(const client::TableHandle& table,
+    shared_ptr<YBSession> session);
   Status DoMetricsSnapshot();
 
   void FlushSession(const std::shared_ptr<YBSession>& session,
@@ -314,6 +317,79 @@ Status MetricsSnapshotter::Thread::DoPrometheusMetricsSnapshot(const client::Tab
   return Status::OK();
 }
 
+namespace {
+
+constexpr uint32_t kYsqlConnMgrMaxPools = YSQL_CONN_MGR_MAX_POOLS;
+
+constexpr auto kMetricWhitelistItemNodeUp = "node_up";
+constexpr auto kMetricWhitelistItemCpuUsage = "cpu_usage";
+constexpr auto kMetricWhitelistItemDiskUsage = "disk_usage";
+constexpr auto kMetricWhitelistItemYsqlConnMgr = "ysql_conn_mgr";
+
+} // namespace
+
+Status MetricsSnapshotter::Thread::DoYsqlConnMgrMetricsSnapshot(const client::TableHandle& table,
+    shared_ptr<YBSession> session) {
+  if (!FLAGS_enable_ysql_conn_mgr_stats) {
+    YB_LOG_EVERY_N_SECS(WARNING, 120) << "Metrics whitelist contains ysql_conn_mgr, but "
+                                      << "enable_ysql_conn_mgr_stats flag is false.";
+    return Status::OK();
+  }
+  // Below is a modified copy of the GetYsqlConnMgrStats function in
+  // pgsql_webserver_wrapper.cc.
+  std::vector<ConnectionStats> stats_list;
+  auto shm_key = server_->GetYsqlConnMgrStatsShmemKey();
+  if (shm_key == 0) {
+    YB_LOG_EVERY_N_SECS(WARNING, 120) << "Ysql connection manager shmem key is zero.";
+    return Status::OK();
+  }
+
+  int shmid = shmget(shm_key, 0, 0666);
+  if (shmid == -1) {
+    YB_LOG_EVERY_N_SECS(WARNING, 120) << "Unable to find ysql conn mgr stats from the shared "
+                                      << "memory segment, with errno: "
+                                      << strerror(errno);
+    return Status::OK();
+  }
+  // Attach to the segment to get a pointer to it.
+  auto *shmp = (struct ConnectionStats *)shmat(shmid, NULL, 0);
+  if (shmp == NULL) {
+    YB_LOG_EVERY_N_SECS(WARNING, 120) << "Unable to find ysql conn mgr stats from the shared "
+                                      << "memory segment, with errno: "
+                                      << strerror(errno);
+    return Status::OK();
+  }
+  for (uint32_t itr = 0; itr < kYsqlConnMgrMaxPools; itr++) {
+    if (strcmp(shmp[itr].pool_name, "") == 0) {
+      break;
+    }
+    stats_list.push_back(shmp[itr]);
+  }
+  // Detach from shared memory.
+  shmdt(shmp);
+  // End of modified copy of the GetYsqlConnMgrStats function.
+
+  uint64_t total_logical_connections = 0;
+  uint64_t total_physical_connections = 0;
+  for (const auto &stat : stats_list) {
+    if (strcmp(stat.pool_name, "control_connection") != 0) {
+      total_logical_connections += stat.active_clients +
+                                   stat.queued_clients +
+                                   stat.idle_or_pending_clients;
+      total_physical_connections += stat.active_servers + stat.idle_servers;
+    }
+  }
+  RETURN_NOT_OK(DoPrometheusMetricsSnapshot(table, session, "tserver",
+                                            server_->permanent_uuid(),
+                                            "total_logical_connections",
+                                            total_logical_connections));
+  RETURN_NOT_OK(DoPrometheusMetricsSnapshot(table, session, "tserver",
+                                            server_->permanent_uuid(),
+                                            "total_physical_connections",
+                                            total_physical_connections));
+  return Status::OK();
+}
+
 Status MetricsSnapshotter::Thread::DoMetricsSnapshot() {
   CHECK(IsCurrentThread());
 
@@ -336,20 +412,20 @@ Status MetricsSnapshotter::Thread::DoMetricsSnapshot() {
   WARN_NOT_OK(
       server_->metric_registry()->WriteForPrometheus(&nmswriter, entity_opts, opt),
       "Couldn't write metrics for native metrics storage");
-  for (const auto& kv : server_metrics) {
-    if (tserver_metrics_whitelist_.find(kv.first) != tserver_metrics_whitelist_.end()) {
+  for (const auto& [metric_name, metric_value] : server_metrics) {
+    if (tserver_metrics_whitelist_.contains(metric_name)) {
       RETURN_NOT_OK(DoPrometheusMetricsSnapshot(table, session, "tserver",
-            server_->permanent_uuid(), kv.first, kv.second));
+            server_->permanent_uuid(), metric_name, metric_value));
     }
   }
 
-  if (tserver_metrics_whitelist_.find("node_up") != tserver_metrics_whitelist_.end()) {
+  if (tserver_metrics_whitelist_.contains(kMetricWhitelistItemNodeUp)) {
     RETURN_NOT_OK(DoPrometheusMetricsSnapshot(table, session, "tserver",
                                               server_->permanent_uuid(), "node_up",
                                               1));
   }
 
-  if (tserver_metrics_whitelist_.find("disk_usage") != tserver_metrics_whitelist_.end()) {
+  if (tserver_metrics_whitelist_.contains(kMetricWhitelistItemDiskUsage)) {
     struct statvfs stat;
     set<uint64_t> fs_ids;
     std::vector<std::string> all_data_paths = opts_.fs_opts.data_paths;
@@ -372,7 +448,7 @@ Status MetricsSnapshotter::Thread::DoMetricsSnapshot() {
     }
   }
 
-  if (tserver_metrics_whitelist_.find("cpu_usage") != tserver_metrics_whitelist_.end()) {
+  if (tserver_metrics_whitelist_.contains(kMetricWhitelistItemCpuUsage)) {
     // Store the {total_ticks, user_ticks, and system_ticks}
     auto cur_ticks = CHECK_RESULT(GetCpuUsage());
     bool get_cpu_success = std::all_of(
@@ -418,11 +494,15 @@ Status MetricsSnapshotter::Thread::DoMetricsSnapshot() {
     }
   }
 
-  for (const auto& kv : table_metrics) {
-    for (const auto& vkv : kv.second) {
-      if (table_metrics_whitelist_.find(vkv.first) != table_metrics_whitelist_.end()) {
-        RETURN_NOT_OK(DoPrometheusMetricsSnapshot(table, session, "table", kv.first, vkv.first,
-              vkv.second));
+  if (tserver_metrics_whitelist_.contains(kMetricWhitelistItemYsqlConnMgr)) {
+    RETURN_NOT_OK(DoYsqlConnMgrMetricsSnapshot(table, session));
+  }
+
+  for (const auto& [table_id, table_metrics] : table_metrics) {
+    for (const auto& [metric_name, metric_value] : table_metrics) {
+      if (table_metrics_whitelist_.contains(metric_name)) {
+        RETURN_NOT_OK(DoPrometheusMetricsSnapshot(table, session, "table", table_id, metric_name,
+              metric_value));
       }
     }
   }

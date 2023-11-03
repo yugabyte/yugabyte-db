@@ -13,9 +13,10 @@ import { YBPanelItem } from '../../panels';
 import { AlertDestinationDetails } from './AlertDestinationDetails';
 import { isNonAvailable } from '../../../utils/LayoutUtils';
 
-import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
-import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+
 import './AlertDestinationConfiguration.scss';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 /**
  * This is the header for YB Panel Item.
  */
@@ -33,9 +34,7 @@ const header = (isReadOnly, destinationCount, onAddAlertDestination) => (
       <FlexShrink className="pull-right">
         {!isReadOnly && (
           <RbacValidator
-            accessRequiredOn={{
-              ...UserPermissionMap.createAlertsConfig
-            }}
+            accessRequiredOn={ApiPermissionMap.CREATE_ALERT_DESTINATION}
             isControl
           >
             <Button bsClass="btn btn-orange btn-config" onClick={() => onAddAlertDestination(true)}>
@@ -176,12 +175,8 @@ export const AlertDestinations = (props) => {
   // This method will handle all the required actions for the particular row.
 
   const editActionLabel = isReadOnly ? 'Destination Details' : 'Edit Destination';
-  const canEditDestination = hasNecessaryPerm({
-    ...UserPermissionMap.editAlertsConfig
-  });
-  const canDeleteDestination = hasNecessaryPerm({
-    ...UserPermissionMap.deleteAlertsConfig
-  });
+  const canEditDestination = hasNecessaryPerm(ApiPermissionMap.MODIFY_ALERT_DESTINATION);
+  const canDeleteDestination = hasNecessaryPerm(ApiPermissionMap.DELETE_ALERT_DESTINATION);
   const formatConfigActions = (cell, row) => {
     return (
       <>
@@ -199,15 +194,24 @@ export const AlertDestinations = (props) => {
           >
             <i className="fa fa-info-circle"></i> Channels Details
           </MenuItem>
-
-          <MenuItem disabled={!canEditDestination} onClick={() => canEditDestination && onEditDestination(row)}>
-            <i className="fa fa-pencil"></i> {editActionLabel}
-          </MenuItem>
-
+          <RbacValidator
+            accessRequiredOn={ApiPermissionMap.MODIFY_ALERT_DESTINATION}
+            isControl
+          >
+            <MenuItem disabled={!canEditDestination} onClick={() => canEditDestination && onEditDestination(row)}>
+              <i className="fa fa-pencil"></i> {editActionLabel}
+            </MenuItem>
+          </RbacValidator>
           {!isReadOnly && (
-          <MenuItem onClick={() => canDeleteDestination && showDeleteModal(row.name)} disabled={!canDeleteDestination} >
-            <i className="fa fa-trash"></i> Delete Destination
-          </MenuItem>
+            <RbacValidator
+              accessRequiredOn={ApiPermissionMap.DELETE_ALERT_DESTINATION}
+              isControl
+              overrideStyle={{ display: 'block' }}
+            >
+              <MenuItem onClick={() => canDeleteDestination && showDeleteModal(row.name)} disabled={!canDeleteDestination} >
+                <i className="fa fa-trash"></i> Delete Destination
+              </MenuItem>
+            </RbacValidator>
           )}
           {
             <YBConfirmModal
@@ -228,9 +232,7 @@ export const AlertDestinations = (props) => {
 
   return (
     <RbacValidator
-      accessRequiredOn={{
-        ...UserPermissionMap.readAlertsConfig
-      }}
+      accessRequiredOn={ApiPermissionMap.GET_ALERT_DESTINATIONS}
     >
       <>
         <YBPanelItem

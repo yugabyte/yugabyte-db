@@ -20,7 +20,8 @@ import { assertUnreachableCase, handleServerError } from '../../../utils/errorHa
 import { ConfigTableSelect } from '../sharedComponents/tableSelect/ConfigTableSelect';
 import { XClusterConfigStatus } from '../constants';
 
-import { XClusterConfig, XClusterTableType } from '../XClusterTypes';
+import { XClusterTableType } from '../XClusterTypes';
+import { XClusterConfig } from '../dtos';
 
 import styles from './RestartConfigModal.module.scss';
 
@@ -111,18 +112,14 @@ export const RestartConfigModal = ({
         closeModal();
 
         fetchTaskUntilItCompletes(
-          response.data.taskUUID,
+          response.taskUUID,
           (err: boolean) => {
             if (err) {
               toast.error(
                 <span className={styles.alertMsg}>
                   <i className="fa fa-exclamation-circle" />
                   <span>{`Failed to restart replication: ${xClusterConfig.name}`}</span>
-                  <a
-                    href={`/tasks/${response.data.taskUUID}`}
-                    rel="noopener noreferrer"
-                    target="_blank"
-                  >
+                  <a href={`/tasks/${response.taskUUID}`} rel="noopener noreferrer" target="_blank">
                     View Details
                   </a>
                 </span>

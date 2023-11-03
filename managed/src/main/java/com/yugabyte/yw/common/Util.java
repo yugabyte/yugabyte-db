@@ -93,6 +93,7 @@ public class Util {
   public static final String CUSTOMERS = "customers";
   public static final String UNIVERSES = "universes";
   public static final String USERS = "users";
+  public static final String ROLE = "role";
   public static final String UNIVERSE_UUID = "universeUUID";
 
   public static final String AVAILABLE_MEMORY = "MemAvailable";
@@ -995,5 +996,14 @@ public class Util {
       }
     }
     return dataDirPath;
+  }
+
+  public static String extractRegexValue(String input, String patternStr) {
+    Pattern pattern = Pattern.compile(patternStr);
+    Matcher matcher = pattern.matcher(input);
+    if (matcher.find()) {
+      return matcher.group(1);
+    }
+    return null;
   }
 }

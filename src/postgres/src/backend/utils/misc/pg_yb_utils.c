@@ -29,6 +29,7 @@
 #include <assert.h>
 #include <inttypes.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -476,12 +477,12 @@ YBSavepointsEnabled()
 /*
  * Return true if we are in per-database catalog version mode. In order to
  * use per-database catalog version mode, two conditions must be met:
- *   * --FLAGS_TEST_enable_db_catalog_version_mode=true
+ *   * --FLAGS_ysql_enable_db_catalog_version_mode=true
  *   * the table pg_yb_catalog_version has one row per database.
  * This function takes care of the YSQL upgrade from global catalog version
  * mode to per-database catalog version mode when the default value of
- * --FLAGS_TEST_enable_db_catalog_version_mode is changed to true. In this
- * upgrade procedure --FLAGS_TEST_enable_db_catalog_version_mode is set to
+ * --FLAGS_ysql_enable_db_catalog_version_mode is changed to true. In this
+ * upgrade procedure --FLAGS_ysql_enable_db_catalog_version_mode is set to
  * true before the table pg_yb_catalog_version is updated to have one row per
  * database.
  * This function does not consider going from per-database catalog version
@@ -499,7 +500,7 @@ YBIsDBCatalogVersionMode()
 	if (cached_gflag == -1)
 	{
 		cached_gflag = YBCIsEnvVarTrueWithDefault(
-			"FLAGS_TEST_enable_db_catalog_version_mode", false);
+			"FLAGS_ysql_enable_db_catalog_version_mode", false);
 	}
 
 	/*
@@ -521,7 +522,7 @@ YBIsDBCatalogVersionMode()
 	}
 
 	/*
-	 * At this point, we know that FLAGS_TEST_enable_db_catalog_version_mode is
+	 * At this point, we know that FLAGS_ysql_enable_db_catalog_version_mode is
 	 * turned on. However in case of YSQL upgrade we may not be ready to enable
 	 * per-db catalog version mode yet. Note that we only provide support where
 	 * we go from global catalog version mode to per-db catalog version mode,
@@ -589,7 +590,7 @@ static bool
 YBCanEnableDBCatalogVersionMode()
 {
 	/*
-	 * Even when FLAGS_TEST_enable_db_catalog_version_mode is turned on we
+	 * Even when FLAGS_ysql_enable_db_catalog_version_mode is turned on we
 	 * cannot simply enable per-database catalog mode if the table
 	 * pg_yb_catalog_version does not have one row for each database.
 	 * Consider YSQL upgrade, it happens after cluster software upgrade and
@@ -624,6 +625,15 @@ YBCanEnableDBCatalogVersionMode()
 	 * to have one row per database.
 	 */
 	return (YbGetNumberOfDatabases() > 1);
+}
+
+/*
+ * Used to determine whether we should preload certain catalog tables.
+ */
+bool YbNeedAdditionalCatalogTables() 
+{
+	return *YBCGetGFlags()->ysql_catalog_preload_additional_tables ||
+			IS_NON_EMPTY_STR_FLAG(YBCGetGFlags()->ysql_catalog_preload_additional_table_list);
 }
 
 void
@@ -737,6 +747,22 @@ HandleYBStatusIgnoreNotFound(YBCStatus status, bool *not_found)
 		return;
 	}
 	*not_found = false;
+	HandleYBStatus(status);
+}
+
+extern void HandleYBStatusIgnoreAlreadyPresent(YBCStatus status,
+											   bool *already_present)
+{
+	if (!status)
+		return;
+
+	if (YBCStatusIsAlreadyPresent(status))
+	{
+		*already_present = true;
+		YBCFreeStatus(status);
+		return;
+	}
+	*already_present = false;
 	HandleYBStatus(status);
 }
 
@@ -1374,6 +1400,7 @@ YbMemCtxReset(MemoryContext context)
 static void
 YBResetDdlState()
 {
+	YBCStatus status = NULL;
 	if (ddl_transaction_state.mem_context)
 	{
 		if (GetCurrentMemoryContext() == ddl_transaction_state.mem_context)
@@ -1389,12 +1416,12 @@ YBResetDdlState()
 		 * during this ddl transaction are released, we assume they are no longer
 		 * needed after the ddl transaction aborts.
 		 */
-		HandleYBStatusAtErrorLevel(
-			YbMemCtxReset(ddl_transaction_state.mem_context), WARNING);
+		status = YbMemCtxReset(ddl_transaction_state.mem_context);
 	}
 	ddl_transaction_state = (struct DdlTransactionState){0};
 	YBResetEnableNonBreakingDDLMode();
-	HandleYBStatusAtErrorLevel(YBCPgClearSeparateDdlTxnMode(), WARNING);
+	HandleYBStatus(YBCPgClearSeparateDdlTxnMode());
+	HandleYBStatus(status);
 }
 
 int
@@ -1432,12 +1459,13 @@ YBIncrementDdlNestingLevel(bool is_catalog_version_increment,
 void
 YBDecrementDdlNestingLevel()
 {
+	--ddl_transaction_state.nesting_level;
 	if (yb_test_fail_next_ddl)
 	{
 		yb_test_fail_next_ddl = false;
 		elog(ERROR, "Failed DDL operation as requested");
 	}
-	if (ddl_transaction_state.nesting_level == 1)
+	if (ddl_transaction_state.nesting_level == 0)
 	{
 		if (GetCurrentMemoryContext() == ddl_transaction_state.mem_context)
 			MemoryContextSwitchTo(ddl_transaction_state.mem_context->parent);
@@ -1467,8 +1495,6 @@ YBDecrementDdlNestingLevel()
 			YBCPgHasWriteOperationsInDdlTxnMode() &&
 			YbIncrementMasterCatalogVersionTableEntry(
 					is_breaking_catalog_change, is_global_ddl);
-
-		--ddl_transaction_state.nesting_level;
 
 		HandleYBStatus(YBCPgExitSeparateDdlTxnMode());
 
@@ -1501,10 +1527,6 @@ YBDecrementDdlNestingLevel()
 			}
 		}
 		YBClearDdlHandles();
-	}
-	else
-	{
-		--ddl_transaction_state.nesting_level;
 	}
 }
 
@@ -1947,88 +1969,53 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 	return is_ddl;
 }
 
-static void
-ddlTxnErrorCallback(void *arg)
-{
-	const bool *is_txn_ddl = (const bool *) arg;
-	uint16_t txn_errcode = geterryb_txn_errcode();
-
-	if (*is_txn_ddl)
-	{
-		if (YBCIsRestartReadError(txn_errcode) ||
-			YBCIsTxnConflictError(txn_errcode) ||
-			YBCIsTxnDeadlockError(txn_errcode))
-			errcontext("transactional DDLs cannot be restarted");
-
-		/* always forbid DDL statement restart */
-		yb_forbid_stmt_restart(true);
-	}
-}
-
-static void
-YBTxnDdlProcessUtility(PlannedStmt *pstmt, const char *queryString,
-					   ProcessUtilityContext context, ParamListInfo params,
-					   QueryEnvironment *queryEnv, DestReceiver *dest,
-					   char *completionTag)
-{
-	ErrorContextCallback errcallback;
+static void YBTxnDdlProcessUtility(
+		PlannedStmt *pstmt,
+		const char *queryString,
+		ProcessUtilityContext context,
+		ParamListInfo params,
+		QueryEnvironment *queryEnv,
+		DestReceiver *dest,
+		char *completionTag) {
 
 	/* Assuming this is a breaking change by default. */
 	bool is_catalog_version_increment = true;
 	bool is_breaking_catalog_change = true;
-	const bool is_txn_ddl =
-		IsTransactionalDdlStatement(pstmt, &is_catalog_version_increment,
-									&is_breaking_catalog_change, context);
+	bool is_txn_ddl = IsTransactionalDdlStatement(pstmt,
+												  &is_catalog_version_increment,
+												  &is_breaking_catalog_change,
+												  context);
 
+	if (is_txn_ddl) {
+		YBIncrementDdlNestingLevel(is_catalog_version_increment,
+								   is_breaking_catalog_change);
+	}
 	PG_TRY();
 	{
-		/* Set up callback to flag DDL transaction errors as non-restartable */
-		errcallback.callback = ddlTxnErrorCallback;
-		errcallback.arg = (void *) &is_txn_ddl;
-		errcallback.previous = error_context_stack;
-		error_context_stack = &errcallback;
-
-		if (is_txn_ddl)
-		{
-			YBIncrementDdlNestingLevel(is_catalog_version_increment,
-									   is_breaking_catalog_change);
-		}
-
 		if (prev_ProcessUtility)
-			prev_ProcessUtility(pstmt, queryString, context, params, queryEnv,
+			prev_ProcessUtility(pstmt, queryString,
+								context, params, queryEnv,
 								dest, completionTag);
 		else
-			standard_ProcessUtility(pstmt, queryString, context, params,
-									queryEnv, dest, completionTag);
-
-		if (is_txn_ddl)
-		{
-			YBDecrementDdlNestingLevel();
-		}
-
-		/* Pop the error context stack */
-		error_context_stack = errcallback.previous;
+			standard_ProcessUtility(pstmt, queryString,
+									context, params, queryEnv,
+									dest, completionTag);
 	}
 	PG_CATCH();
 	{
-		if (is_txn_ddl)
-		{
+		if (is_txn_ddl) {
 			/*
-			 * It is possible that nesting_level has wrong value due to error,
-			 * so the DDL transaction state should be reset.
-			 *
-			 * YBResetDdlState() can fail operations while exiting DDL mode, or
-			 * resetting the memory context. These will be recorded in the log,
-			 * but it isn't the end of the world because the original error is
-			 * about to be rethrown. If exiting DDL mode failed, it will retry
-			 * the memory cleanup as part of memory context reset and will
-			 * abort the DDL transaction as part of AbortTransaction().
+			 * It is possible that nesting_level has wrong value due to error.
+			 * Ddl transaction state should be reset.
 			 */
 			YBResetDdlState();
 		}
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
+	if (is_txn_ddl) {
+		YBDecrementDdlNestingLevel();
+	}
 }
 
 static void YBCInstallTxnDdlHook() {
@@ -3589,6 +3576,43 @@ void assign_yb_xcluster_consistency_level(const char* newval, void* extra) {
 	yb_xcluster_consistency_level = *((int*)extra);
 }
 
+bool
+check_yb_read_time(char **newval, void **extra, GucSource source)
+{
+	/* Read time should be convertable to unsigned long long */
+	unsigned long long read_time_ull = strtoull(*newval, NULL, 0);
+	char read_time_string[23];
+	sprintf(read_time_string, "%llu", read_time_ull);
+	if (strcmp(*newval, read_time_string))
+	{
+		GUC_check_errdetail("Accepted value is Unix timestamp in microseconds."
+							" i.e. 1694673026673528");
+		return false;
+	}
+	/* Read time should not be set to a timestamp in the future */
+	struct timeval now_tv;
+	gettimeofday(&now_tv, NULL);
+	unsigned long long now_micro_sec = ((unsigned long long)now_tv.tv_sec * USECS_PER_SEC) + now_tv.tv_usec;
+	if(read_time_ull > now_micro_sec)
+	{
+		GUC_check_errdetail("Provided timestamp is in the future.");
+		return false;
+	}
+	return true;
+}
+
+void
+assign_yb_read_time(const char* newval, void *extra) 
+{
+	yb_read_time = strtoull(newval, NULL, 0);
+	ereport(NOTICE,
+			(errmsg("yb_read_time should be set with caution."),
+			 errdetail("No DDL operations should be performed while it is set and "
+			 		   "it should not be set to a timestamp before a DDL "
+					   "operation has been performed. It doesn't have well defined semantics"
+					   " for normal transactions and is only to be used after consultation")));
+}
+
 void YBCheckServerAccessIsAllowed() {
 	if (*YBCGetGFlags()->ysql_disable_server_file_access)
 		ereport(ERROR,
@@ -3620,8 +3644,17 @@ aggregateStats(YbInstrumentation *instr, const YBCPgExecStats *exec_stats)
 	instr->write_flushes.count += exec_stats->num_flushes;
 	instr->write_flushes.wait_time += exec_stats->flush_wait;
 
-	for (int i = 0; i < YB_ANALYZE_METRIC_COUNT; ++i) {
-		instr->storage_metrics[i] += exec_stats->storage_metrics[i];
+	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
+		instr->storage_gauge_metrics[i] += exec_stats->storage_gauge_metrics[i];
+	}
+	for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
+		instr->storage_counter_metrics[i] += exec_stats->storage_counter_metrics[i];
+	}
+	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
+		YbPgEventMetric* agg = &instr->storage_event_metrics[i];
+		const YBCPgExecEventMetric* val = &exec_stats->storage_event_metrics[i];
+		agg->sum += val->sum;
+		agg->count += val->count;
 	}
 }
 
@@ -3647,8 +3680,20 @@ calculateExecStatsDiff(const YbSessionStats *stats, YBCPgExecStats *result)
 	result->num_flushes = current->num_flushes - old->num_flushes;
 	result->flush_wait = current->flush_wait - old->flush_wait;
 
-	for (int i = 0; i < YB_ANALYZE_METRIC_COUNT; ++i) {
-		result->storage_metrics[i] = current->storage_metrics[i] - old->storage_metrics[i];
+	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
+		result->storage_gauge_metrics[i] =
+				current->storage_gauge_metrics[i] - old->storage_gauge_metrics[i];
+	}
+	for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
+		result->storage_counter_metrics[i] =
+				current->storage_counter_metrics[i] - old->storage_counter_metrics[i];
+	}
+	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
+		YBCPgExecEventMetric* result_metric = &result->storage_event_metrics[i];
+		const YBCPgExecEventMetric* current_metric = &current->storage_event_metrics[i];
+		const YBCPgExecEventMetric* old_metric = &old->storage_event_metrics[i];
+		result_metric->sum = current_metric->sum - old_metric->sum;
+		result_metric->count = current_metric->count - old_metric->count;
 	}
 }
 
@@ -3668,8 +3713,18 @@ refreshExecStats(YbSessionStats *stats, bool include_catalog_stats)
 		old->catalog = current->catalog;
 
 	if (yb_session_stats.current_state.metrics_capture) {
-		for (int i = 0; i < YB_ANALYZE_METRIC_COUNT; ++i) {
-			old->storage_metrics[i] = current->storage_metrics[i];
+		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
+			old->storage_gauge_metrics[i] = current->storage_gauge_metrics[i];
+		}
+		for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
+			old->storage_counter_metrics[i] = current->storage_counter_metrics[i];
+		}
+		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
+			YBCPgExecEventMetric* old_metric = &old->storage_event_metrics[i];
+			const YBCPgExecEventMetric* current_metric =
+					&current->storage_event_metrics[i];
+			old_metric->sum = current_metric->sum;
+			old_metric->count = current_metric->count;
 		}
 	}
 }
@@ -3820,19 +3875,24 @@ OptSplit *
 YbGetSplitOptions(Relation rel)
 {
 	OptSplit *split_options = makeNode(OptSplit);
-	split_options->split_type = NUM_TABLETS;
-	split_options->num_tablets = rel->yb_table_properties->num_tablets;
 	/*
-	 * Copy split points if we have a live range key.
-	 * (RelationGetPrimaryKeyIndex returns InvalidOid if pkey is currently
-	 * being dropped).
+	 * The split type is NUM_TABLETS when the relation has hash key columns
+	 * OR if the relation's range key is currently being dropped. Otherwise,
+	 * the split type is SPLIT_POINTS.
 	 */
-	if (rel->yb_table_properties->num_hash_key_columns == 0
-		&& rel->yb_table_properties->num_tablets > 1
-		&& !(rel->rd_rel->relkind == RELKIND_RELATION
-		&& RelationGetPrimaryKeyIndex(rel) == InvalidOid))
+	split_options->split_type =
+		rel->yb_table_properties->num_hash_key_columns > 0 ||
+		(rel->rd_rel->relkind == RELKIND_RELATION &&
+		 RelationGetPrimaryKeyIndex(rel) == InvalidOid) ? NUM_TABLETS :
+		SPLIT_POINTS;
+	split_options->num_tablets = rel->yb_table_properties->num_tablets;
+
+	/*
+	 * Copy split points for range keys with more than one tablet.
+	 */
+	if (split_options->split_type == SPLIT_POINTS
+		&& rel->yb_table_properties->num_tablets > 1)
 	{
-		split_options->split_type = SPLIT_POINTS;
 		YBCPgTableDesc yb_desc = NULL;
 		HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId,
 						RelationGetRelid(rel), &yb_desc));

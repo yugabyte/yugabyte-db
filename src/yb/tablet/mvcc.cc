@@ -43,6 +43,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/to_stream.h"
 #include "yb/util/trace.h"
 
 using std::ostream;
@@ -354,11 +355,11 @@ void MvccManager::AddPending(HybridTime ht, const OpId& op_id, bool is_follower_
     auto get_details_msg = [&](bool drain_aborted) {
       std::ostringstream ss;
 #define LOG_INFO_FOR_HT_LOWER_BOUND_IMPL(full, safe_time) \
-             "\n  " << EXPR_VALUE_FOR_LOG(full) \
-          << "\n  " << (ht <= safe_time ? "!!! " : "") << EXPR_VALUE_FOR_LOG(ht <= safe_time) \
-          << "\n  " << EXPR_VALUE_FOR_LOG( \
+             "\n  " << YB_EXPR_TO_STREAM(full) \
+          << "\n  " << (ht <= safe_time ? "!!! " : "") << YB_EXPR_TO_STREAM(ht <= safe_time) \
+          << "\n  " << YB_EXPR_TO_STREAM( \
                            static_cast<int64_t>(ht.ToUint64() - safe_time.ToUint64())) \
-          << "\n  " << EXPR_VALUE_FOR_LOG(ht.PhysicalDiff(safe_time)) \
+          << "\n  " << YB_EXPR_TO_STREAM(ht.PhysicalDiff(safe_time)) \
           << "\n  "
 
 #define LOG_INFO_FOR_HT_LOWER_BOUND_WITH_SOURCE(t) LOG_INFO_FOR_HT_LOWER_BOUND_IMPL(t, t.safe_time)
@@ -371,8 +372,8 @@ void MvccManager::AddPending(HybridTime ht, const OpId& op_id, bool is_follower_
          << LOG_INFO_FOR_HT_LOWER_BOUND(last_replicated_)
          << LOG_INFO_FOR_HT_LOWER_BOUND(last_ht_in_queue)
          << LOG_INFO_FOR_HT_LOWER_BOUND(propagated_safe_time_)
-         << "\n  " << EXPR_VALUE_FOR_LOG(queue_.size())
-         << "\n  " << EXPR_VALUE_FOR_LOG(queue_);
+         << "\n  " << YB_EXPR_TO_STREAM(queue_.size())
+         << "\n  " << YB_EXPR_TO_STREAM(queue_);
       return ss.str();
 #undef LOG_INFO_FOR_HT_LOWER_BOUND
     };
@@ -463,7 +464,7 @@ void MvccManager::UpdatePropagatedSafeTimeOnLeader(const FixedHybridTimeLease& h
     // Do not crash in production.
     if (safe_time < propagated_safe_time_) {
       YB_LOG_EVERY_N_SECS(ERROR, 5) << LogPrefix()
-          << "Previously saw " << EXPR_VALUE_FOR_LOG(propagated_safe_time_)
+          << "Previously saw " << YB_EXPR_TO_STREAM(propagated_safe_time_)
           << ", but now safe time is " << safe_time;
     } else {
       propagated_safe_time_ = safe_time;
@@ -627,14 +628,16 @@ HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
                                      : max_safe_time_returned_without_lease_.safe_time;
   CHECK_GE(result, enforced_min_time)
       << InvariantViolationLogPrefix()
-      << ": " << EXPR_VALUE_FOR_LOG(has_lease)
-      << ", " << EXPR_VALUE_FOR_LOG(enforced_min_time.ToUint64() - result.ToUint64())
-      << ", " << EXPR_VALUE_FOR_LOG(ht_lease)
-      << ", " << EXPR_VALUE_FOR_LOG(last_replicated_)
-      << ", " << EXPR_VALUE_FOR_LOG(clock_->Now())
-      << ", " << EXPR_VALUE_FOR_LOG(ToString(deadline))
-      << ", " << EXPR_VALUE_FOR_LOG(queue_.size())
-      << ", " << EXPR_VALUE_FOR_LOG(queue_);
+      << ": "
+      << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
+          has_lease,
+          enforced_min_time.ToUint64() - result.ToUint64(),
+          ht_lease,
+          last_replicated_,
+          clock_->Now(),
+          ToString(deadline),
+          queue_.size(),
+          queue_);
 
   if (has_lease) {
     max_safe_time_returned_with_lease_ = { result, source };

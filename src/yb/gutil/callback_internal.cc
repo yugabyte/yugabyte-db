@@ -19,7 +19,7 @@
 
 #include "yb/gutil/callback_internal.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 namespace yb {
 namespace internal {

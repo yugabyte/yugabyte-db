@@ -169,6 +169,16 @@ Status AddColumnToMap(
       cdc_datum_message->set_pg_type(col_schema.pg_type_oid());
     }
   } else {
+    if (ql_value.has_varint_value()) {
+      PrimitiveValue v = PrimitiveValue::FromQLValuePB(ql_value);
+      ql_value.set_varint_value(v.ToString());
+    }
+
+    if (ql_value.has_decimal_value()) {
+      PrimitiveValue v = PrimitiveValue::FromQLValuePB(ql_value);
+      ql_value.set_decimal_value(v.ToString());
+    }
+
     cdc_datum_message->mutable_cql_value()->CopyFrom(ql_value);
     col_schema.type()->ToQLTypePB(cdc_datum_message->mutable_cql_type());
   }
@@ -310,8 +320,8 @@ Status PopulateBeforeImageForDeleteOp(
         RETURN_NOT_OK(row.GetValue(schema.column_id(index), &ql_value));
         if (!ql_value.IsNull()) {
           RETURN_NOT_OK(AddColumnToMap(
-              tablet_peer, columns[index], PrimitiveValue(), enum_oid_label_map, composite_atts_map,
-              row_message->add_old_tuple(), &ql_value.value()));
+              tablet_peer, columns[index], dockv::KeyEntryValue(), enum_oid_label_map,
+              composite_atts_map, row_message->add_old_tuple(), &ql_value.value()));
         }
       }
     }
@@ -348,7 +358,7 @@ Status PopulateBeforeImageForUpdateOp(
         case CDCRecordType::FULL_ROW_NEW_IMAGE: {
           if (!ql_value.IsNull() && !shouldAddColumn) {
             RETURN_NOT_OK(AddColumnToMap(
-                tablet_peer, columns[index], PrimitiveValue(), enum_oid_label_map,
+                tablet_peer, columns[index], dockv::KeyEntryValue(), enum_oid_label_map,
                 composite_atts_map, row_message->add_new_tuple(), &ql_value.value()));
           }
           break;
@@ -356,7 +366,7 @@ Status PopulateBeforeImageForUpdateOp(
         case CDCRecordType::ALL: {
           if (!ql_value.IsNull()) {
             RETURN_NOT_OK(AddColumnToMap(
-                tablet_peer, columns[index], PrimitiveValue(), enum_oid_label_map,
+                tablet_peer, columns[index], dockv::KeyEntryValue(), enum_oid_label_map,
                 composite_atts_map, row_message->add_old_tuple(), &ql_value.value()));
             if (!shouldAddColumn) {
               auto new_tuple_pb = row_message->mutable_new_tuple()->Add();

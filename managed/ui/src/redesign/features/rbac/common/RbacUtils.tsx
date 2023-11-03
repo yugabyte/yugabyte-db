@@ -50,8 +50,13 @@ export const isRbacEnabled = () => {
   return localStorage.getItem(rbac_identifier) === 'true';
 };
 
+export const getRbacEnabledVal = () => {
+  return localStorage.getItem(rbac_identifier);
+};
+
 export const clearRbacCreds = () => {
   localStorage.removeItem(rbac_identifier);
+  delete (window as any).rbac_permissions;
 };
 
 export const resourceOrderByRelevance = [
@@ -60,3 +65,5 @@ export const resourceOrderByRelevance = [
   Resource.ROLE,
   Resource.DEFAULT
 ];
+
+export const RBAC_USER_MNG_ROUTE = '/admin/rbac?tab=users';

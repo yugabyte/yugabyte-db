@@ -174,20 +174,21 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   CHECK(!started_);
   start_time_micros_ = GetCurrentTimeMicros();
 
-  LOG_WITH_PREFIX(INFO) << "Beginning remote bootstrap session"
-                        << " from remote peer at address " << bootstrap_peer_addr.ToString();
-
   // Set up an RPC proxy for the RemoteBootstrapService.
   proxy_.reset(new RemoteBootstrapServiceProxy(proxy_cache, bootstrap_peer_addr));
 
+  auto rbs_source_role = "LEADER";
   BeginRemoteBootstrapSessionRequestPB req;
   req.set_requestor_uuid(permanent_uuid());
   req.set_tablet_id(tablet_id_);
-  // if tablet_leader_conn_info is populated, then propagate it through
-  // the BeginRemoteBootstrapSessionRequestPB req.
   if (tablet_leader_conn_info.has_cloud_info()) {
+    // If tablet_leader_conn_info is populated, propagate it to the RBS source (which is a follower
+    // in this case) as it will have to request the leader peer to anchor its logs.
     *req.mutable_tablet_leader_conn_info() = tablet_leader_conn_info;
+    rbs_source_role = "FOLLOWER";
   }
+  LOG_WITH_PREFIX(INFO) << "Beginning remote bootstrap session from peer " << bootstrap_peer_uuid
+                        << " [" << rbs_source_role << "] at " << bootstrap_peer_addr.ToString();
 
   rpc::RpcController controller;
   controller.set_timeout(MonoDelta::FromMilliseconds(
@@ -199,7 +200,8 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
       UnwindRemoteError(proxy_->BeginRemoteBootstrapSession(req, &resp, &controller), controller);
 
   if (!status.ok()) {
-    status = status.CloneAndPrepend("Unable to begin remote bootstrap session");
+    status = status.CloneAndPrepend(
+        Format("Unable to begin remote bootstrap session $0", resp.session_id()));
     LOG_WITH_PREFIX(WARNING) << status;
     return status;
   }
@@ -256,7 +258,8 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
 
   downloader_.Start(
       proxy_, resp.session_id(), MonoDelta::FromMilliseconds(resp.session_idle_timeout_millis()));
-  LOG_WITH_PREFIX(INFO) << "Began remote bootstrap session " << session_id();
+  LOG_WITH_PREFIX(INFO) << "Began remote bootstrap session " << session_id()
+                        << " [Bootstrapping from " << rbs_source_role << "]";
 
   superblock_.reset(resp.release_superblock());
 

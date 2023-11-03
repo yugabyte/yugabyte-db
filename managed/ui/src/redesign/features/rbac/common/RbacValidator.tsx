@@ -7,8 +7,9 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { Component, ErrorInfo, FC, cloneElement, useState } from 'react';
+import { Component, ErrorInfo, FC, cloneElement, useRef, useState } from 'react';
 import { find } from 'lodash';
+import { useClickAway } from 'react-use';
 import { Popover, Tooltip, Typography } from '@material-ui/core';
 import { CSSProperties } from '@material-ui/styles';
 import { ActionType, Permission } from '../permission';
@@ -28,9 +29,48 @@ export interface RbacValidatorProps {
   onEnd?: (resource: any) => void;
   overrideStyle?: CSSProperties;
   customValidateFunction?: (permissions: UserPermission[]) => boolean;
+  popOverOverrides?: CSSProperties;
 }
 
-export const RBAC_ERR_MSG_NO_PERM = "You don't have permission";
+type RequireProperty<T, Prop extends keyof T> = T & { [key in Prop]-?: T[key] };
+type RequireAccessReqOrCustomValidateFn =
+  | RequireProperty<RbacValidatorProps, 'accessRequiredOn'>
+  | RequireProperty<RbacValidatorProps, 'customValidateFunction'>;
+
+export const RBAC_ERR_MSG_NO_PERM = (
+  <Typography variant="body2">
+    You don’t have permission to do this action.
+    <br />
+    <br />
+    If you think you should be able to do this action, contact your administrator.
+  </Typography>
+);
+
+type ErrorBoundaryState = {
+  hasError: boolean;
+};
+export class ErrorBoundary extends Component {
+  public state: ErrorBoundaryState = {
+    hasError: false
+  };
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    //if error == '401, , then log and display permission needed
+    console.error(error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <h1>Something went wrong.</h1>;
+    }
+
+    return this.props.children;
+  }
+}
 
 const findResource = (accessRequiredOn: RbacValidatorProps['accessRequiredOn']) => {
   const { onResource, resourceType } = accessRequiredOn;
@@ -68,6 +108,73 @@ const findResource = (accessRequiredOn: RbacValidatorProps['accessRequiredOn']) 
   return resource;
 };
 
+export const getWrappedChildren = ({
+  minimal,
+  overrideStyle
+}: {
+  minimal: boolean;
+  overrideStyle: CSSProperties;
+}) => {
+  if (minimal) {
+    return (
+      <Tooltip title="Permission required">
+        <LockIcon />
+      </Tooltip>
+    );
+  }
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        textAlign: 'center',
+        ...overrideStyle
+      }}
+      data-testid="rbac-no-perm"
+    >
+      <LockIcon />
+      {RBAC_ERR_MSG_NO_PERM}
+    </div>
+  );
+};
+export const getErrorBoundary = ({
+  minimal,
+  overrideStyle,
+  children
+}: {
+  minimal: boolean;
+  overrideStyle: CSSProperties;
+  children: React.ReactNode;
+}) => (
+  <ErrorBoundary>
+    <div
+      style={{
+        position: 'relative'
+      }}
+      data-testid="rbac-no-perm"
+    >
+      <div
+        style={{
+          background: '#fffdfdf7',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          zIndex: 1001,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        {getWrappedChildren({ minimal, overrideStyle })}
+      </div>
+      {children}
+    </div>
+  </ErrorBoundary>
+);
+
 export const hasNecessaryPerm = (accessRequiredOn: RbacValidatorProps['accessRequiredOn']) => {
   const { permissionRequired } = accessRequiredOn;
 
@@ -83,17 +190,44 @@ export const hasNecessaryPerm = (accessRequiredOn: RbacValidatorProps['accessReq
   return false;
 };
 
-export const RbacValidator: FC<RbacValidatorProps> = ({
+export const RbacValidator: FC<RequireAccessReqOrCustomValidateFn> = ({
   accessRequiredOn,
   children,
   onEnd,
   customValidateFunction,
   minimal = false,
   isControl = false,
-  overrideStyle = {}
+  overrideStyle = {},
+  popOverOverrides = {}
 }) => {
   if (!isRbacEnabled()) {
     return <>{children}</>;
+  }
+
+  const controlComp = (
+    <ErrorBoundary>
+      <div
+        style={{
+          opacity: 0.5,
+          userSelect: 'none',
+          display: 'inline-block',
+          ...overrideStyle
+        }}
+        data-testid="rbac-no-perm"
+      >
+        <ButtonDisabledPopover popOverOverrides={popOverOverrides}>
+          {children as any}
+        </ButtonDisabledPopover>
+      </div>
+    </ErrorBoundary>
+  );
+
+  if (customValidateFunction) {
+    if (customValidateFunction((window as any).rbac_permissions)) {
+      return <>{children}</>;
+    } else {
+      return isControl ? controlComp : getErrorBoundary({ minimal, overrideStyle, children });
+    }
   }
 
   const { permissionRequired } = accessRequiredOn;
@@ -104,114 +238,34 @@ export const RbacValidator: FC<RbacValidatorProps> = ({
     onEnd(resource);
   }
 
-  if (customValidateFunction && customValidateFunction((window as any).rbac_permissions)) {
-    return <>{children}</>;
-  } else if (resource && permissionRequired.every((p) => resource.actions.includes(p))) {
+  if (resource && permissionRequired.every((p) => resource.actions.includes(p))) {
     return <>{children}</>;
   }
-
-  const getWrappedChildren = () => {
-    if (minimal) {
-      return (
-        <Tooltip title="Permission required">
-          <LockIcon />
-        </Tooltip>
-      );
-    }
-    return (
-      <div
-        style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}
-        data-testid="rbac-no-perm"
-      >
-        <LockIcon />
-        You don&apos;t have permission to view this page
-      </div>
-    );
-  };
 
   if (isControl) {
-    return (
-      <ErrorBoundary>
-        <div
-          style={{
-            opacity: 0.5,
-            userSelect: 'none',
-            display: 'inline-block',
-            ...overrideStyle
-          }}
-          data-testid="rbac-no-perm"
-        >
-          <RBACPopover>{children as any}</RBACPopover>
-        </div>
-      </ErrorBoundary>
-    );
+    return controlComp;
   }
 
-  return (
-    <ErrorBoundary>
-      <div
-        style={{
-          position: 'relative'
-        }}
-        data-testid="rbac-no-perm"
-      >
-        <div
-          style={{
-            background: '#fffdfdf7',
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            zIndex: 1001,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          {getWrappedChildren()}
-        </div>
-        {children}
-      </div>
-    </ErrorBoundary>
-  );
+  return getErrorBoundary({ minimal, overrideStyle, children });
 };
 
-type ErrorBoundaryState = {
-  hasError: boolean;
-};
-export class ErrorBoundary extends Component {
-  public state: ErrorBoundaryState = {
-    hasError: false
-  };
-
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    //if error == '401, , then log and display permission needed
-    console.error(error, info);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return <h1>Something went wrong.</h1>;
-    }
-
-    return this.props.children;
-  }
-}
-
-const RBACPopover = ({ children }: { children: React.ReactElement }) => {
+export const ButtonDisabledPopover = ({
+  children,
+  popOverOverrides = {}
+}: {
+  children: React.ReactElement;
+  popOverOverrides: CSSProperties;
+}) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
+  const ref = useRef(null);
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     setAnchorEl(event.currentTarget);
   };
   const handleClose = () => {
     setAnchorEl(null);
   };
+
   const reactChild = cloneElement(children, {
     onClick: (e: React.MouseEvent<HTMLButtonElement>) => {
       e.preventDefault();
@@ -220,8 +274,10 @@ const RBACPopover = ({ children }: { children: React.ReactElement }) => {
     }
   });
 
+  useClickAway(ref, handleClose);
+
   return (
-    <div>
+    <div ref={ref}>
       {reactChild}
       <Popover
         id={'rbac_perm_error'}
@@ -236,6 +292,9 @@ const RBACPopover = ({ children }: { children: React.ReactElement }) => {
           vertical: 'top',
           horizontal: 'center'
         }}
+        style={{
+          ...popOverOverrides
+        }}
       >
         <div
           style={{
@@ -244,12 +303,7 @@ const RBACPopover = ({ children }: { children: React.ReactElement }) => {
             zIndex: 1001
           }}
         >
-          <Typography variant="body2">
-            You don’t have permission to do this action.
-            <br />
-            <br />
-            If you think you should be able to do this action, contact your administrator.
-          </Typography>
+          {RBAC_ERR_MSG_NO_PERM}
         </div>
       </Popover>
     </div>

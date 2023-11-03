@@ -23,7 +23,7 @@ Note that as the feature in Tech Preview, there are some known limitations. For 
 
 ### Key enhancements
 
-* The yb-voyager [export data](../reference/yb-voyager-cli/#export-data) and [export schema](../reference/yb-voyager-cli/#export-schema) commands now support overriding the `pg_dump` arguments internally. The arguments are present at `/etc/yb-voyager/pg_dump-args.ini`. Any additions or modifications to this file will be honoured by yb-voyager.
+* The yb-voyager [export data](../reference/data-migration/export-data/) and [export schema](../reference/schema-migration/export-schema/) commands now support overriding the `pg_dump` arguments internally. The arguments are present at `/etc/yb-voyager/pg_dump-args.ini`. Any additions or modifications to this file will be honoured by yb-voyager.
 * All yb-voyager commands that require a password now support providing passwords using environment variables such as `SOURCE_DB_PASSWORD` and `TARGET_DB_PASSWORD`. This addresses the security concern of a password being leaked via the `ps` command output. In addition, the password will not be present in any configuration or log files on the disk.
 
 ## v1.4 - June 30, 2023
@@ -38,7 +38,7 @@ Note that as the feature in Tech Preview, there are some known limitations. For 
 
 * The `analyze-schema` command now reports unsupported data types.
 
-* The `--file-opts` CLI argument is now deprecated. Use the new [--escape-char](../reference/yb-voyager-cli/#escape-char) and [--quote-char](../reference/yb-voyager-cli/#quote-char) options.
+* The `--file-opts` CLI argument is now deprecated. Use the new [--escape-char](../reference/bulk-data-load/import-data-file/#arguments) and [--quote-char](../reference/bulk-data-load/import-data-file/#arguments) options.
 
 ### Bug fixes
 
@@ -58,7 +58,7 @@ Note that as the feature in Tech Preview, there are some known limitations. For 
 
 * Export data for MySQL and Oracle is now 2-4x faster. To leverage this performance improvement, set the environment variable `BETA_FAST_DATA_EXPORT=1`. Most features, such as migrating partitioned tables, sequences, and so on, are supported in this mode. Refer to [Export data](../migrate/migrate-steps/#export-data) for more details.
 
-* Added support for characters such as backspace(\b) in quote and escape character with [--file-opts](../reference/yb-voyager-cli/#file-opts) in import data file.
+* Added support for characters such as backspace(\b) in quote and escape character with [--file-opts](../reference/bulk-data-load/import-data-file/#arguments) in import data file.
 
 * Added ability to specify null value string in import data file.
 

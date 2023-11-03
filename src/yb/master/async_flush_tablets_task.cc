@@ -37,12 +37,14 @@ AsyncFlushTablets::AsyncFlushTablets(Master *master,
                                      const vector<TabletId>& tablet_ids,
                                      const FlushRequestId& flush_id,
                                      bool is_compaction,
+                                     bool regular_only,
                                      LeaderEpoch epoch)
-: RetrySpecificTSRpcTask(master, callback_pool, ts_uuid, table, std::move(epoch),
+: RetrySpecificTSRpcTaskWithTable(master, callback_pool, ts_uuid, table, std::move(epoch),
                              /* async_task_throttler */ nullptr),
       tablet_ids_(tablet_ids),
       flush_id_(flush_id),
-      is_compaction_(is_compaction) {
+      is_compaction_(is_compaction),
+      regular_only_(regular_only) {
 }
 
 string AsyncFlushTablets::description() const {
@@ -97,6 +99,7 @@ bool AsyncFlushTablets::SendRequest(int attempt) {
   for (const TabletId& id : tablet_ids_) {
     req.add_tablet_ids(id);
   }
+  req.set_regular_only(regular_only_);
 
   ts_admin_proxy_->FlushTabletsAsync(req, &resp_, &rpc_, BindRpcCallback());
   VLOG(1) << "Send flush tablets request to " << permanent_uuid_

@@ -635,7 +635,7 @@ class AwsCloud(AbstractCloud):
                 instance.wait_until_stopped()
         except ClientError as e:
             logging.error(e)
-            raise YBOpsRuntimeError("Failed to start instance {}: {}".format(host_info["id"], e))
+            raise YBOpsRuntimeError("Failed to stop instance {}: {}".format(host_info["id"], e))
 
     def start_instance(self, host_info, server_ports):
         ec2 = boto3.resource('ec2', host_info["region"])

@@ -194,7 +194,7 @@
   weight = 1
   identifier = "yugabytedb-releases"
   parent = "releases"
-  url = "/preview/releases/"
+  url = "/preview/releases/release-notes/"
   [main.params]
     excludeVersion = true
     imageUrl = "/icons/database.svg"
@@ -232,8 +232,16 @@
 ########## Bottom menu for left navigation
 
 [[leftbottom]]
-  name = "Join our community"
+  name = "Download"
   weight = 1
+  pre = "<i class='icon-download'></i>"
+  url = "https://download.yugabyte.com/"
+  [leftbottom.params]
+    newTab = true
+
+[[leftbottom]]
+  name = "Join our community"
+  weight = 2
   identifier = "join-our-community"
   pre = "<i class='icon-join'></i>"
   [leftbottom.params]
@@ -241,7 +249,7 @@
 
 [[leftbottom]]
   name = "Slack"
-  weight = 1
+  weight = 3
   parent = "join-our-community"
   pre = "<i class='icon-slack'></i>"
   url = "https://communityinviter.com/apps/yugabyte-db/register"
@@ -250,7 +258,7 @@
 
 [[leftbottom]]
   name = "Yugabyte University"
-  weight = 2
+  weight = 4
   parent = "join-our-community"
   pre = "<i class='icon-university'></i>"
   url = "https://university.yugabyte.com/"
@@ -259,7 +267,7 @@
 
 [[leftbottom]]
   name = "GitHub"
-  weight = 3
+  weight = 5
   parent = "join-our-community"
   pre = "<i class='icon-github'></i>"
   url = "https://github.com/yugabyte/yugabyte-db"
@@ -268,7 +276,7 @@
 
 [[leftbottom]]
   name = "Yugabyte Friday Tech Talks"
-  weight = 4
+  weight = 6
   parent = "join-our-community"
   pre = "<i class='icon-yftt'></i>"
   url = "https://www.yugabyte.com/yftt/"
@@ -277,7 +285,7 @@
 
 [[leftbottom]]
   name = "Forum"
-  weight = 5
+  weight = 7
   parent = "join-our-community"
   pre = "<i class='icon-forum'></i>"
   url = "https://forum.yugabyte.com/"
@@ -286,7 +294,7 @@
 
 [[leftbottom]]
   name = "Contact Support"
-  weight = 2
+  weight = 3
   pre = "<i class='icon-support'></i>"
   url = "https://support.yugabyte.com/hc/en-us"
   [leftbottom.params]
@@ -600,32 +608,40 @@
     showSection = true
 
 [[preview_releases]]
-  name = "Release versioning"
+  name = "Releases"
   weight = 2
-  identifier = "release-versioning"
-  url = "/preview/releases/versioning/"
-  [preview_releases.params]
-    showSection = true
-
-[[preview_releases]]
-  name = "YugabyteDB Releases"
-  weight = 3
   identifier = "releases"
   url = "/preview/releases/"
   [preview_releases.params]
     showSection = true
 
 [[preview_releases]]
+  name = "Versioning"
+  weight = 3
+  identifier = "release-versioning"
+  url = "/preview/releases/versioning/"
+  [preview_releases.params]
+    showSection = true
+
+[[preview_releases]]
+  name = "YugabyteDB"
+  weight = 4
+  identifier = "release-notes"
+  url = "/preview/releases/release-notes/"
+  [preview_releases.params]
+    showSection = true
+
+[[preview_releases]]
   name = "End of life and older previews"
-  parent = "releases"
+  parent = "release-notes"
   weight = 9999
   identifier = "end-of-life"
   [preview_releases.params]
     showSection = true
 
 [[preview_releases]]
-  name = "YugabyteDB Anywhere releases"
-  weight = 4
+  name = "YugabyteDB Anywhere"
+  weight = 5
   identifier = "yba-releases"
   url = "/preview/releases/yba-releases/"
   [preview_releases.params]
@@ -677,25 +693,25 @@
     showSection = true
     hideLink = true
 
-[[preview_yugabyte-platform]]
-  name = "YugabyteDB Anywhere API"
-  parent = "anywhere-automation"
-  weight = 3
-  identifier = "yugabytedb-anywhere-api"
-  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
-  [preview_yugabyte-platform.params]
-    showSection = true
-    newTab = true
+#[[preview_yugabyte-platform]]
+#  name = "YugabyteDB Anywhere API"
+#  parent = "anywhere-automation"
+#  weight = 3
+#  identifier = "yugabytedb-anywhere-api"
+#  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
+#  [preview_yugabyte-platform.params]
+#    showSection = true
+#    newTab = true
 
-[[preview_yugabyte-platform]]
-  name = "Terraform provider"
-  parent = "anywhere-automation"
-  weight = 30
-  identifier = "yba-terraform-provider"
-  url = "https://registry.terraform.io/providers/yugabyte/yba/latest/docs/"
-  [preview_yugabyte-platform.params]
-    showSection = true
-    newTab = true
+# [[preview_yugabyte-platform]]
+#  name = "Terraform provider"
+#  parent = "anywhere-automation"
+#  weight = 30
+#  identifier = "yba-terraform-provider"
+#  url = "https://registry.terraform.io/providers/yugabyte/yba/latest/docs/"
+#  [preview_yugabyte-platform.params]
+#    showSection = true
+#    newTab = true
 
 
 ########## Menus (in preview) for YB Managed section
@@ -717,25 +733,25 @@
     showSection = true
     hideLink = true
 
-[[preview_yugabyte-cloud]]
-  name = "REST API"
-  parent = "managed-automation"
-  weight = 20
-  identifier = "yugabytedb-managed-api"
-  url = "https://api-docs.yugabyte.com/docs/managed-apis/"
-  [preview_yugabyte-cloud.params]
-    showSection = true
-    newTab = true
+# [[preview_yugabyte-cloud]]
+#  name = "REST API"
+#  parent = "managed-automation"
+#  weight = 20
+#  identifier = "yugabytedb-managed-api"
+#  url = "https://api-docs.yugabyte.com/docs/managed-apis/"
+#  [preview_yugabyte-cloud.params]
+#    showSection = true
+#    newTab = true
 
-[[preview_yugabyte-cloud]]
-  name = "Terraform provider"
-  parent = "managed-automation"
-  weight = 30
-  identifier = "yugabytedb-terraform-provider"
-  url = "https://registry.terraform.io/providers/yugabyte/ybm/latest/docs/"
-  [preview_yugabyte-cloud.params]
-    showSection = true
-    newTab = true
+# [[preview_yugabyte-cloud]]
+#  name = "Terraform provider"
+#  parent = "managed-automation"
+#  weight = 30
+#  identifier = "yugabytedb-terraform-provider"
+#  url = "https://registry.terraform.io/providers/yugabyte/ybm/latest/docs/"
+#  [preview_yugabyte-cloud.params]
+#    showSection = true
+#    newTab = true
 
 # [[preview_yugabyte-cloud]]
 #   name = "What's New"
@@ -760,6 +776,60 @@
   name = "YugabyteDB Voyager"
   weight = 2
   identifier = "yugabytedb-voyager"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-voyager]]
+  name = "Schema migration"
+  parent = "yb-voyager-cli"
+  weight = 3
+  identifier = "schema-migration"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-voyager]]
+  name = "Data migration"
+  parent = "yb-voyager-cli"
+  weight = 4
+  identifier = "data-migration"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-voyager]]
+  name = "Cutover and archive"
+  parent = "yb-voyager-cli"
+  weight = 6
+  identifier = "cutover-archive"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-voyager]]
+  name = "Fall-forward"
+  parent = "yb-voyager-cli"
+  weight = 5
+  identifier = "fall-forward"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-voyager]]
+  name = "Cutover and archive"
+  parent = "yb-voyager-cli"
+  weight = 6
+  identifier = "cutover-archive"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-voyager]]
+  name = "Bulk data load"
+  parent = "yb-voyager-cli"
+  weight = 7
+  identifier = "bulk-data-load-ref"
   [preview_yugabyte-voyager.params]
     showSection = true
     hideLink = true

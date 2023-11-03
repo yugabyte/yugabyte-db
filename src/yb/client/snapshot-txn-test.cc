@@ -705,7 +705,7 @@ bool IntermittentTxnFailure(const Status& status) {
   return false;
 }
 
-// Concurrently execute multiple transaction, each of them writes the same key multiple times.
+// Concurrently execute multiple transactions, each of them writes the same key multiple times.
 // And perform tserver restarts in parallel to it.
 // This test checks that transaction participant state correctly restored after restart.
 void SnapshotTxnTest::TestMultiWriteWithRestart() {
