@@ -14,7 +14,14 @@ import { ReactComponent as LockIcon } from '../../../../assets/lock.svg';
 import { ButtonDisabledPopover } from './ButtonDisabledPopover';
 
 export const RBAC_ERR_MSG_NO_PERM = (
-  <Typography variant="body2">
+  <Typography
+    variant="body2"
+    style={{
+      fontSize: '13px',
+      fontWeight: 400,
+      lineHeight: 1.25,
+    }}
+  >
     You don’t have permission to do this action.
     <br />
     <br />

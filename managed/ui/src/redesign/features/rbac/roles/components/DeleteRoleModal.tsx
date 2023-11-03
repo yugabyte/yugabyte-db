@@ -36,7 +36,8 @@ const useStyles = makeStyles((theme) => ({
     borderRadius: theme.spacing(1),
     background: '#fce2e1',
     marginBottom: theme.spacing(3),
-    gap: theme.spacing(1)
+    gap: theme.spacing(1),
+    wordBreak: 'break-all'
   }
 }));
 
