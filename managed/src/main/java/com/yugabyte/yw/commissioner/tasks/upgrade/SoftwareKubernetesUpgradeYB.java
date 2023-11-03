@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -43,6 +44,9 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
           createCheckUpgradeTask(taskParams().ybSoftwareVersion)
               .setSubTaskGroupType(getTaskSubGroupType());
 
+          createUpdateUniverseSoftwareUpgradeStateTask(
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading);
+
           // Create Kubernetes Upgrade Task
           createUpgradeTask(
               getUniverse(),
@@ -67,6 +71,9 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
           // Mark the final software version on the universe
           createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
               .setSubTaskGroupType(getTaskSubGroupType());
+
+          createUpdateUniverseSoftwareUpgradeStateTask(
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize);
         });
   }
 }

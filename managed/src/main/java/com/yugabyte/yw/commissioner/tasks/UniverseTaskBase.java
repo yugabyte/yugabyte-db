@@ -87,6 +87,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistGFlags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseSoftwareUpgradeState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseYbcDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpgradeYbc;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForClockSync;
@@ -155,6 +156,7 @@ import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.forms.TableInfoForm.NamespaceInfoResp;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -166,6 +168,7 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.NodeAgent;
@@ -260,6 +263,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.KubernetesOverridesUpgrade,
           TaskType.GFlagsKubernetesUpgrade,
           TaskType.SoftwareKubernetesUpgrade,
+          TaskType.SoftwareKubernetesUpgradeYB,
           TaskType.EditKubernetesUniverse,
           TaskType.RestartUniverseKubernetesUpgrade,
           TaskType.CertsRotateKubernetesUpgrade,
@@ -268,6 +272,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.SoftwareUpgrade,
           TaskType.SoftwareUpgradeYB,
           TaskType.FinalizeUpgrade,
+          TaskType.RollbackUpgrade,
+          TaskType.RollbackKubernetesUpgrade,
           TaskType.RestartUniverse,
           TaskType.RebootNodeInUniverse,
           TaskType.VMImageUpgrade,
@@ -289,6 +295,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.SyncXClusterConfig,
           TaskType.DestroyUniverse,
           TaskType.DestroyKubernetesUniverse);
+
+  protected static final Set<TaskType> SOFTWARE_UPGRADE_ROLLBACK_TASKS =
+      ImmutableSet.of(TaskType.RollbackKubernetesUpgrade, TaskType.RollbackUpgrade);
+
+  protected static final Set<TaskType> ROLLBACK_SUPPORTED_SOFTWARE_UPGRADE_TASKS =
+      ImmutableSet.of(TaskType.SoftwareKubernetesUpgradeYB, TaskType.SoftwareUpgradeYB);
 
   protected Set<UUID> lockedXClusterUniversesUuidSet = null;
 
@@ -397,13 +409,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                 UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
                 if (universeDetails.placementModificationTaskUuid != null
                     && !SAFE_TO_RUN_IF_UNIVERSE_BROKEN.contains(taskType)) {
-                  String msg =
-                      String.format(
-                          "Universe %s placement update failed - can't run %s task until placement"
-                              + " update succeeds",
-                          taskParams().getUniverseUUID(), taskType.name());
-                  log.error(msg);
-                  throw new RuntimeException(msg);
+                  // support rollbacks during software upgrade if previous failed task was software
+                  // upgrade.
+                  boolean isRollback =
+                      isRollbackTask(universe, universeDetails.placementModificationTaskUuid);
+                  if (!isRollback) {
+                    String msg =
+                        String.format(
+                            "Universe %s placement update failed - can't run %s task until"
+                                + " placement update succeeds",
+                            taskParams().getUniverseUUID(), taskType.name());
+                    log.error(msg);
+                    throw new RuntimeException(msg);
+                  }
                 }
               });
     }
@@ -532,14 +550,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           // only allow subset of safe to execute tasks
           if (universeDetails.placementModificationTaskUuid != null
               && !SAFE_TO_RUN_IF_UNIVERSE_BROKEN.contains(owner)) {
-            String msg =
-                "Universe "
-                    + taskParams().getUniverseUUID()
-                    + " placement update failed - can't run "
-                    + owner.name()
-                    + " task until placement update succeeds";
-            log.error(msg);
-            throw new RuntimeException(msg);
+            // support rollbacks during software upgrade if previous failed task was software
+            // upgrade.
+            boolean isRollback =
+                isRollbackTask(universe, universeDetails.placementModificationTaskUuid);
+            if (!isRollback) {
+              String msg =
+                  "Universe "
+                      + taskParams().getUniverseUUID()
+                      + " placement update failed - can't run "
+                      + owner.name()
+                      + " task until placement update succeeds";
+              log.error(msg);
+              throw new RuntimeException(msg);
+            }
           }
         }
         markUniverseUpdateInProgress(owner, universe, updaterConfig);
@@ -550,6 +574,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         return updaterConfig;
       }
     };
+  }
+
+  private boolean isRollbackTask(Universe universe, UUID placementModificationTaskUuid) {
+    Customer customer = Customer.get(universe.getCustomerId());
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    CustomerTask placementModificationTask =
+        CustomerTask.getOrBadRequest(
+            customer.getUuid(), universeDetails.placementModificationTaskUuid);
+    Optional<TaskInfo> placementModificationTaskInfo =
+        TaskInfo.maybeGet(placementModificationTask.getTaskUUID());
+    return placementModificationTaskInfo.isPresent()
+        && ROLLBACK_SUPPORTED_SOFTWARE_UPGRADE_TASKS.contains(
+            placementModificationTaskInfo.get().getTaskType())
+        && SOFTWARE_UPGRADE_ROLLBACK_TASKS.contains(getTaskExecutor().getTaskType(getClass()));
   }
 
   private UniverseUpdater getFreezeUniverseUpdater(UniverseUpdaterConfig updaterConfig) {
@@ -4092,6 +4130,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.enable = enable;
     LoadBalancerStateChange task = createTask(LoadBalancerStateChange.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Creates a task to update universe state */
+  protected SubTaskGroup createUpdateUniverseSoftwareUpgradeStateTask(SoftwareUpgradeState state) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateUniverseState");
+    UpdateUniverseSoftwareUpgradeState.Params params =
+        new UpdateUniverseSoftwareUpgradeState.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.state = state;
+    UpdateUniverseSoftwareUpgradeState task = createTask(UpdateUniverseSoftwareUpgradeState.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);

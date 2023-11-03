@@ -38,6 +38,15 @@ public class GFlagsUpgradeParams extends UpgradeWithGFlags {
   @Override
   public void verifyParams(Universe universe, boolean isFirstTry) {
     super.verifyParams(universe, isFirstTry);
+
+    if (universe
+        .getUniverseDetails()
+        .softwareUpgradeState
+        .equals(UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot upgrade gflags on universe in pre-finalize state.");
+    }
+
     if (masterGFlags == null) {
       masterGFlags = new HashMap<>();
     }

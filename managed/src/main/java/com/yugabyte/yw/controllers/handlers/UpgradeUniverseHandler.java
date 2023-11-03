@@ -162,8 +162,9 @@ public class UpgradeUniverseHandler {
 
   public UUID finalizeUpgrade(
       FinalizeUpgradeParams requestParams, Customer customer, Universe universe) {
-    // TODO(vbansal): Add validations for finalize based on universe state.
-    // Will add them in subsequent diffs.
+
+    requestParams.verifyParams(universe, true);
+
     return submitUpgradeTask(
         TaskType.FinalizeUpgrade,
         CustomerTask.TaskType.FinalizeUpgrade,
@@ -174,13 +175,14 @@ public class UpgradeUniverseHandler {
 
   public UUID rollbackUpgrade(
       RollbackUpgradeParams requestParams, Customer customer, Universe universe) {
-    // TODO(vbansal): Add validations for finalize based on universe state.
-    // Will add them in subsequent diffs.
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     TaskType taskType =
         userIntent.providerType.equals(CloudType.kubernetes)
             ? TaskType.RollbackKubernetesUpgrade
             : TaskType.RollbackUpgrade;
+
+    requestParams.verifyParams(universe, true);
+
     return submitUpgradeTask(
         taskType, CustomerTask.TaskType.RollbackUpgrade, requestParams, customer, universe);
   }
