@@ -351,7 +351,8 @@ expand_partitioned_rtentry(PlannerInfo *root, RelOptInfo *relinfo,
 	 * that survive pruning.  Below, we will initialize child objects for the
 	 * surviving partitions.
 	 */
-	relinfo->live_parts = live_parts = prune_append_rel_partitions(root, relinfo);
+	relinfo->live_parts = live_parts =
+		prune_append_rel_partitions(relinfo, partdesc->oids);
 
 	/* Expand simple_rel_array and friends to hold child objects. */
 	num_live_parts = bms_num_members(live_parts);

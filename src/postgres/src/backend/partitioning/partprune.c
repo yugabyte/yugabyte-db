@@ -765,7 +765,7 @@ gen_partprune_steps(RelOptInfo *rel, List *clauses, PartClauseTarget target,
  * Callers must ensure that 'rel' is a partitioned table.
  */
 Bitmapset *
-prune_append_rel_partitions(PlannerInfo *root, RelOptInfo *rel)
+prune_append_rel_partitions(RelOptInfo *rel, Oid *yb_oids)
 {
 	List	   *clauses = rel->baserestrictinfo;
 	List	   *pruning_steps;
@@ -814,10 +814,7 @@ prune_append_rel_partitions(PlannerInfo *root, RelOptInfo *rel)
 	context.partrelids = (Oid *) palloc0(sizeof(Oid) * rel->nparts);
 
 	for (int i = 0; i < rel->nparts; ++i)
-	{
-		uint32 rti = rel->part_rels[i]->relid;
-		context.partrelids[i] = root->simple_rte_array[rti]->relid;
-	}
+		context.partrelids[i] = yb_oids[i];
 
 	/* These are not valid when being called from the planner */
 	context.planstate = NULL;
